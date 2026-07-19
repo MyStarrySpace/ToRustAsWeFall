@@ -1,0 +1,25 @@
+[remap]
+
+importer="wavefront_obj"
+importer_version=1
+type="Mesh"
+uid="uid://b2saqf7jaat1v"
+path="res://.godot/imported/cleanstreets_spike_lane_studs.obj-418feff4a19c91c9a3bbb48bb675eda0.mesh"
+
+[deps]
+
+files=["res://.godot/imported/cleanstreets_spike_lane_studs.obj-418feff4a19c91c9a3bbb48bb675eda0.mesh"]
+
+source_file="res://resources/models/cleanstreets/spike_lane/cleanstreets_spike_lane_studs.obj"
+dest_files=["res://.godot/imported/cleanstreets_spike_lane_studs.obj-418feff4a19c91c9a3bbb48bb675eda0.mesh", "res://.godot/imported/cleanstreets_spike_lane_studs.obj-418feff4a19c91c9a3bbb48bb675eda0.mesh"]
+
+[params]
+
+generate_tangents=true
+generate_lods=true
+generate_shadow_mesh=true
+generate_lightmap_uv2=false
+generate_lightmap_uv2_texel_size=0.2
+scale_mesh=Vector3(1, 1, 1)
+offset_mesh=Vector3(0, 0, 0)
+force_disable_mesh_compression=false

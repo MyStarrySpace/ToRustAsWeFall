@@ -11,3 +11,5 @@ For any puzzle, level, encounter, tutorial, mechanic-composition, or playtest wo
 Treat systems thinking as a required design lens. Define the causal model the player is meant to build, make action-to-consequence feedback legible, and distinguish reasoning difficulty from control, camera, memory, visibility, and repetitive-execution costs. A failure should falsify an understandable player prediction. Once the model is solved, do not pad the encounter with repeated execution that produces no new decision or information.
 
 The worktree is often shared with concurrent agents. Preserve unrelated edits and inspect current file state before modifying an existing file.
+
+For any new unique 3D visual asset, read and apply `to-rust-as-we-fall/docs/ASSET_AUTHORING_STANDARD.md`. Ship UV-mapped portable model sources and external textures; keep Godot scenes as gameplay/collision wrappers rather than the only home of visible geometry.

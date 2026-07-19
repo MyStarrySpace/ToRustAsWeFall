@@ -17,6 +17,17 @@ func _init() -> void:
 	check(bool(registry.get("valid", false)), "biome registry validates: %s" % str(registry.get("errors", [])))
 	check(Biomes.biome_ids().has("cleanstreets"), "Cleanstreets participates in run-depth rotation")
 	check(GeneratedChunkScene != null, "generated stretch presenter with theme-hazard runtime loads")
+	var clean_theme: Dictionary = Biomes.theme_contract_for("cleanstreets", 71926)
+	var landmark_def := (clean_theme.get("landmarks", []) as Array)[0] as Dictionary
+	check(str(landmark_def.get("asset_contract", "")) == "editable_3d_v1",
+		"toll pavilion declares the portable editable-asset contract")
+	for model_v in landmark_def.get("editable_assets", []):
+		check_editable_model(str(model_v))
+	var route_def := (clean_theme.get("route_setpieces", []) as Array)[0] as Dictionary
+	check(str(route_def.get("asset_contract", "")) == "editable_3d_v1",
+		"stud lane declares the portable editable-asset contract")
+	for model_v in route_def.get("editable_assets", []):
+		check_editable_model(str(model_v))
 
 	var spec: Dictionary = Generator.generate({
 		"id": "verify_cleanstreets",
@@ -52,12 +63,21 @@ func _init() -> void:
 				check(lane != null and lane.find_child("HostileArchitecture", true, false) != null,
 					"stud lane keeps its visible fixtures as scene nodes")
 				if lane != null:
+					check(not _has_scene_local_primitive(lane),
+						"stud lane visible geometry comes from portable assets, not scene-local primitives")
 					lane.call("configure", first)
 					var p := _vec3(first.get("position", []))
 					check(bool(lane.call("covers_flat", p)), "stud lane covers its emitted risk-cell center")
 					check(not bool(lane.call("covers_flat", p + Vector3(3.0, 0.0, 3.0))),
 						"stud damage remains local to the visible fixture")
 					lane.free()
+	var pavilion_packed := load(str(landmark_def.get("scene", ""))) as PackedScene
+	check(pavilion_packed != null, "authored toll-pavilion wrapper loads external model sources")
+	if pavilion_packed != null:
+		var pavilion := pavilion_packed.instantiate() as Node3D
+		check(not _has_scene_local_primitive(pavilion),
+			"toll pavilion visible geometry comes from portable assets, not scene-local primitives")
+		pavilion.free()
 	print("CLEANSTREETS GENERATION: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures > 0 else 0)
 
@@ -69,6 +89,33 @@ func check(condition: bool, message: String) -> void:
 		return
 	failures += 1
 	push_error("FAIL: %s" % message)
+
+
+func check_editable_model(path: String) -> void:
+	var mesh := load(path) as Mesh
+	check(mesh != null, "%s imports as an editable mesh" % path.get_file())
+	check(FileAccess.file_exists(path.trim_suffix(".obj") + ".mtl") \
+		and FileAccess.file_exists(path.trim_suffix(".obj") + ".png"),
+		"%s keeps its material and paintable texture beside the model" % path.get_file())
+	if mesh == null:
+		return
+	var has_complete_uvs := mesh.get_surface_count() > 0
+	for surface in range(mesh.get_surface_count()):
+		var arrays := mesh.surface_get_arrays(surface)
+		var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		var uvs: PackedVector2Array = arrays[Mesh.ARRAY_TEX_UV]
+		if vertices.is_empty() or uvs.size() != vertices.size():
+			has_complete_uvs = false
+	check(has_complete_uvs, "%s has UVs for every imported vertex" % path.get_file())
+
+
+func _has_scene_local_primitive(node: Node) -> bool:
+	if node is MeshInstance3D and (node as MeshInstance3D).mesh is PrimitiveMesh:
+		return true
+	for child in node.get_children():
+		if _has_scene_local_primitive(child):
+			return true
+	return false
 
 
 func _vec3(raw: Variant) -> Vector3:

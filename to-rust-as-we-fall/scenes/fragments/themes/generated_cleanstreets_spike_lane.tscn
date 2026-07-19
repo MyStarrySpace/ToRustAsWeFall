@@ -1,93 +1,50 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene load_steps=11 format=3]
 
 [ext_resource type="Script" path="res://scripts/game/objects/cleanstreets_spike_lane.gd" id="1_lane"]
+[ext_resource type="Mesh" path="res://resources/models/cleanstreets/spike_lane/cleanstreets_spike_lane_road.obj" id="2_road_mesh"]
+[ext_resource type="Texture2D" path="res://resources/models/cleanstreets/spike_lane/cleanstreets_spike_lane_road.png" id="3_road_texture"]
+[ext_resource type="Mesh" path="res://resources/models/cleanstreets/spike_lane/cleanstreets_spike_lane_curbs.obj" id="4_curb_mesh"]
+[ext_resource type="Texture2D" path="res://resources/models/cleanstreets/spike_lane/cleanstreets_spike_lane_curbs.png" id="5_curb_texture"]
+[ext_resource type="Mesh" path="res://resources/models/cleanstreets/spike_lane/cleanstreets_spike_lane_studs.obj" id="6_stud_mesh"]
+[ext_resource type="Texture2D" path="res://resources/models/cleanstreets/spike_lane/cleanstreets_spike_lane_studs.png" id="7_stud_texture"]
 
 [sub_resource type="StandardMaterial3D" id="RoadMaterial"]
-albedo_color = Color(0.42, 0.45, 0.47, 1)
+albedo_texture = ExtResource("3_road_texture")
 metallic = 0.32
 roughness = 0.62
+texture_filter = 0
 
 [sub_resource type="StandardMaterial3D" id="CurbMaterial"]
-albedo_color = Color(0.09, 0.28, 0.27, 1)
+albedo_texture = ExtResource("5_curb_texture")
 metallic = 0.48
 roughness = 0.5
+texture_filter = 0
 
-[sub_resource type="StandardMaterial3D" id="SpikeMaterial"]
-albedo_color = Color(0.76, 0.73, 0.61, 1)
+[sub_resource type="StandardMaterial3D" id="StudMaterial"]
+albedo_texture = ExtResource("7_stud_texture")
 metallic = 0.86
 roughness = 0.28
-
-[sub_resource type="BoxMesh" id="RoadMesh"]
-material = SubResource("RoadMaterial")
-size = Vector3(0.92, 0.06, 0.92)
-
-[sub_resource type="BoxMesh" id="SlantedCurbMesh"]
-material = SubResource("CurbMaterial")
-size = Vector3(0.92, 0.12, 0.18)
-
-[sub_resource type="CylinderMesh" id="SpikeMesh"]
-material = SubResource("SpikeMaterial")
-top_radius = 0.0
-bottom_radius = 0.055
-height = 0.18
-radial_segments = 6
+texture_filter = 0
 
 [node name="GeneratedCleanstreetsSpikeLane" type="Node3D"]
 script = ExtResource("1_lane")
 metadata/theme_id = "cleanstreets"
 metadata/setpiece_kind = "symmetric_damage_lane"
+metadata/editable_asset_root = "res://resources/models/cleanstreets/spike_lane"
 
-[node name="RoadInset" type="MeshInstance3D" parent="."]
-position = Vector3(0, 0.05, 0)
-mesh = SubResource("RoadMesh")
+[node name="RoadModel" type="MeshInstance3D" parent="."]
+material_override = SubResource("RoadMaterial")
+mesh = ExtResource("2_road_mesh")
 
 [node name="HostileArchitecture" type="Node3D" parent="."]
 
-[node name="NoRestCurbLeft" type="MeshInstance3D" parent="HostileArchitecture"]
-position = Vector3(0, 0.14, -0.38)
-rotation = Vector3(0.42, 0, 0)
-mesh = SubResource("SlantedCurbMesh")
+[node name="CurbModel" type="MeshInstance3D" parent="HostileArchitecture"]
+material_override = SubResource("CurbMaterial")
+mesh = ExtResource("4_curb_mesh")
 
-[node name="NoRestCurbRight" type="MeshInstance3D" parent="HostileArchitecture"]
-position = Vector3(0, 0.14, 0.38)
-rotation = Vector3(-0.42, 0, 0)
-mesh = SubResource("SlantedCurbMesh")
-
-[node name="StudNW" type="MeshInstance3D" parent="HostileArchitecture"]
-position = Vector3(-0.28, 0.17, -0.24)
-mesh = SubResource("SpikeMesh")
-
-[node name="StudN" type="MeshInstance3D" parent="HostileArchitecture"]
-position = Vector3(0, 0.17, -0.24)
-mesh = SubResource("SpikeMesh")
-
-[node name="StudNE" type="MeshInstance3D" parent="HostileArchitecture"]
-position = Vector3(0.28, 0.17, -0.24)
-mesh = SubResource("SpikeMesh")
-
-[node name="StudW" type="MeshInstance3D" parent="HostileArchitecture"]
-position = Vector3(-0.28, 0.17, 0)
-mesh = SubResource("SpikeMesh")
-
-[node name="StudC" type="MeshInstance3D" parent="HostileArchitecture"]
-position = Vector3(0, 0.17, 0)
-mesh = SubResource("SpikeMesh")
-
-[node name="StudE" type="MeshInstance3D" parent="HostileArchitecture"]
-position = Vector3(0.28, 0.17, 0)
-mesh = SubResource("SpikeMesh")
-
-[node name="StudSW" type="MeshInstance3D" parent="HostileArchitecture"]
-position = Vector3(-0.28, 0.17, 0.24)
-mesh = SubResource("SpikeMesh")
-
-[node name="StudS" type="MeshInstance3D" parent="HostileArchitecture"]
-position = Vector3(0, 0.17, 0.24)
-mesh = SubResource("SpikeMesh")
-
-[node name="StudSE" type="MeshInstance3D" parent="HostileArchitecture"]
-position = Vector3(0.28, 0.17, 0.24)
-mesh = SubResource("SpikeMesh")
+[node name="StudModel" type="MeshInstance3D" parent="HostileArchitecture"]
+material_override = SubResource("StudMaterial")
+mesh = ExtResource("6_stud_mesh")
 
 [node name="Feedback" type="Node3D" parent="."]
 

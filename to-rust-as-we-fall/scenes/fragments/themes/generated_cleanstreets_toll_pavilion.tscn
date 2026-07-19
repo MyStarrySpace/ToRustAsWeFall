@@ -1,192 +1,65 @@
-[gd_scene load_steps=15 format=3]
+[gd_scene load_steps=13 format=3]
 
-[sub_resource type="StandardMaterial3D" id="BoneMaterial"]
-albedo_color = Color(0.58, 0.51, 0.39, 1)
+[ext_resource type="Mesh" path="res://resources/models/cleanstreets/toll_pavilion/cleanstreets_toll_pavilion_structure.obj" id="1_structure_mesh"]
+[ext_resource type="Texture2D" path="res://resources/models/cleanstreets/toll_pavilion/cleanstreets_toll_pavilion_structure.png" id="2_structure_texture"]
+[ext_resource type="Mesh" path="res://resources/models/cleanstreets/toll_pavilion/cleanstreets_toll_pavilion_fixtures.obj" id="3_fixture_mesh"]
+[ext_resource type="Texture2D" path="res://resources/models/cleanstreets/toll_pavilion/cleanstreets_toll_pavilion_fixtures.png" id="4_fixture_texture"]
+[ext_resource type="Mesh" path="res://resources/models/cleanstreets/toll_pavilion/cleanstreets_toll_pavilion_screen.obj" id="5_screen_mesh"]
+[ext_resource type="Texture2D" path="res://resources/models/cleanstreets/toll_pavilion/cleanstreets_toll_pavilion_screen.png" id="6_screen_texture"]
+[ext_resource type="Mesh" path="res://resources/models/cleanstreets/toll_pavilion/cleanstreets_toll_pavilion_studs.obj" id="7_stud_mesh"]
+[ext_resource type="Texture2D" path="res://resources/models/cleanstreets/toll_pavilion/cleanstreets_toll_pavilion_studs.png" id="8_stud_texture"]
+
+[sub_resource type="StandardMaterial3D" id="StructureMaterial"]
+albedo_texture = ExtResource("2_structure_texture")
 metallic = 0.16
 roughness = 0.72
+texture_filter = 0
 
-[sub_resource type="StandardMaterial3D" id="TealMaterial"]
-albedo_color = Color(0.07, 0.29, 0.28, 1)
+[sub_resource type="StandardMaterial3D" id="FixtureMaterial"]
+albedo_texture = ExtResource("4_fixture_texture")
 metallic = 0.42
 roughness = 0.54
+texture_filter = 0
 
-[sub_resource type="StandardMaterial3D" id="GoldMaterial"]
-albedo_color = Color(0.62, 0.42, 0.14, 1)
+[sub_resource type="StandardMaterial3D" id="ScreenMaterial"]
+albedo_texture = ExtResource("6_screen_texture")
 emission_enabled = true
-emission = Color(0.92, 0.58, 0.18, 1)
-emission_energy_multiplier = 1.25
-metallic = 0.5
-roughness = 0.38
-
-[sub_resource type="StandardMaterial3D" id="CyanMaterial"]
-albedo_color = Color(0.08, 0.42, 0.46, 1)
-emission_enabled = true
-emission = Color(0.22, 0.9, 0.92, 1)
+emission = Color(1, 1, 1, 1)
 emission_energy_multiplier = 1.7
+emission_texture = ExtResource("6_screen_texture")
+texture_filter = 0
 
-[sub_resource type="StandardMaterial3D" id="SpikeMaterial"]
-albedo_color = Color(0.73, 0.72, 0.66, 1)
+[sub_resource type="StandardMaterial3D" id="StudMaterial"]
+albedo_texture = ExtResource("8_stud_texture")
 metallic = 0.84
 roughness = 0.3
-
-[sub_resource type="BoxMesh" id="DaisMesh"]
-material = SubResource("BoneMaterial")
-size = Vector3(8.4, 0.4, 5.2)
-
-[sub_resource type="BoxMesh" id="StepMesh"]
-material = SubResource("BoneMaterial")
-size = Vector3(6.6, 0.22, 0.7)
-
-[sub_resource type="CylinderMesh" id="PierMesh"]
-material = SubResource("BoneMaterial")
-top_radius = 0.62
-bottom_radius = 0.48
-height = 3.2
-radial_segments = 8
-
-[sub_resource type="BoxMesh" id="CanopyMesh"]
-material = SubResource("BoneMaterial")
-size = Vector3(9.2, 0.86, 5.9)
-
-[sub_resource type="BoxMesh" id="FasciaMesh"]
-material = SubResource("TealMaterial")
-size = Vector3(5.8, 0.78, 0.12)
-
-[sub_resource type="BoxMesh" id="QueueFinMesh"]
-material = SubResource("TealMaterial")
-size = Vector3(0.18, 1.5, 3.5)
-
-[sub_resource type="BoxMesh" id="SlantedBenchMesh"]
-material = SubResource("TealMaterial")
-size = Vector3(2.1, 0.18, 0.6)
-
-[sub_resource type="CylinderMesh" id="SpikeMesh"]
-material = SubResource("SpikeMaterial")
-top_radius = 0.0
-bottom_radius = 0.08
-height = 0.24
-radial_segments = 6
-
-[sub_resource type="BoxMesh" id="KioskMesh"]
-material = SubResource("TealMaterial")
-size = Vector3(0.75, 1.55, 0.72)
-
-[sub_resource type="BoxMesh" id="ScreenMesh"]
-material = SubResource("CyanMaterial")
-size = Vector3(0.48, 0.42, 0.05)
+texture_filter = 0
 
 [node name="GeneratedCleanstreetsTollPavilion" type="Node3D"]
 metadata/theme_id = "cleanstreets"
 metadata/source_area = "The Cleanstreets Initiative / Transit Plazas"
 metadata/landmark_kind = "building_feature_cluster"
+metadata/editable_asset_root = "res://resources/models/cleanstreets/toll_pavilion"
 
 [node name="BuildingBody" type="Node3D" parent="."]
 
-[node name="Dais" type="MeshInstance3D" parent="BuildingBody"]
-position = Vector3(0, 0.2, 0)
-mesh = SubResource("DaisMesh")
-
-[node name="FrontStep" type="MeshInstance3D" parent="BuildingBody"]
-position = Vector3(0, 0.11, 2.92)
-mesh = SubResource("StepMesh")
-
-[node name="PierNW" type="MeshInstance3D" parent="BuildingBody"]
-position = Vector3(-3.15, 2, -1.7)
-rotation = Vector3(0.03, 0, -0.08)
-mesh = SubResource("PierMesh")
-
-[node name="PierN" type="MeshInstance3D" parent="BuildingBody"]
-position = Vector3(0, 2, -1.7)
-mesh = SubResource("PierMesh")
-
-[node name="PierNE" type="MeshInstance3D" parent="BuildingBody"]
-position = Vector3(3.15, 2, -1.7)
-rotation = Vector3(-0.03, 0, 0.08)
-mesh = SubResource("PierMesh")
-
-[node name="PierSW" type="MeshInstance3D" parent="BuildingBody"]
-position = Vector3(-3.15, 2, 1.7)
-rotation = Vector3(-0.03, 0, -0.08)
-mesh = SubResource("PierMesh")
-
-[node name="PierS" type="MeshInstance3D" parent="BuildingBody"]
-position = Vector3(0, 2, 1.7)
-mesh = SubResource("PierMesh")
-
-[node name="PierSE" type="MeshInstance3D" parent="BuildingBody"]
-position = Vector3(3.15, 2, 1.7)
-rotation = Vector3(0.03, 0, 0.08)
-mesh = SubResource("PierMesh")
-
-[node name="Canopy" type="MeshInstance3D" parent="BuildingBody"]
-position = Vector3(0, 4.08, 0)
-mesh = SubResource("CanopyMesh")
-
-[node name="DistrictFascia" type="MeshInstance3D" parent="BuildingBody"]
-position = Vector3(0, 4.12, 3.01)
-mesh = SubResource("FasciaMesh")
+[node name="StructureModel" type="MeshInstance3D" parent="BuildingBody"]
+material_override = SubResource("StructureMaterial")
+mesh = ExtResource("1_structure_mesh")
 
 [node name="ThemeFeature" type="Node3D" parent="."]
 
-[node name="QueueFinLeft" type="MeshInstance3D" parent="ThemeFeature"]
-position = Vector3(-2.25, 1.15, 0.1)
-rotation = Vector3(0.05, 0, 0)
-mesh = SubResource("QueueFinMesh")
+[node name="FixtureModel" type="MeshInstance3D" parent="ThemeFeature"]
+material_override = SubResource("FixtureMaterial")
+mesh = ExtResource("3_fixture_mesh")
 
-[node name="QueueFinMidLeft" type="MeshInstance3D" parent="ThemeFeature"]
-position = Vector3(-0.75, 1.15, 0.1)
-rotation = Vector3(0.05, 0, 0)
-mesh = SubResource("QueueFinMesh")
+[node name="ScreenModel" type="MeshInstance3D" parent="ThemeFeature"]
+material_override = SubResource("ScreenMaterial")
+mesh = ExtResource("5_screen_mesh")
 
-[node name="QueueFinMidRight" type="MeshInstance3D" parent="ThemeFeature"]
-position = Vector3(0.75, 1.15, 0.1)
-rotation = Vector3(0.05, 0, 0)
-mesh = SubResource("QueueFinMesh")
-
-[node name="QueueFinRight" type="MeshInstance3D" parent="ThemeFeature"]
-position = Vector3(2.25, 1.15, 0.1)
-rotation = Vector3(0.05, 0, 0)
-mesh = SubResource("QueueFinMesh")
-
-[node name="NoRestBenchLeft" type="MeshInstance3D" parent="ThemeFeature"]
-position = Vector3(-3.05, 0.72, 3.45)
-rotation = Vector3(-0.18, 0.18, -0.32)
-mesh = SubResource("SlantedBenchMesh")
-
-[node name="NoRestBenchRight" type="MeshInstance3D" parent="ThemeFeature"]
-position = Vector3(2.7, 0.72, 3.55)
-rotation = Vector3(-0.18, -0.2, 0.32)
-mesh = SubResource("SlantedBenchMesh")
-
-[node name="TollKiosk" type="MeshInstance3D" parent="ThemeFeature"]
-position = Vector3(4.45, 0.98, 1.0)
-rotation = Vector3(0, -0.12, 0)
-mesh = SubResource("KioskMesh")
-
-[node name="TollScreen" type="MeshInstance3D" parent="ThemeFeature"]
-position = Vector3(4.38, 1.2, 1.37)
-rotation = Vector3(0, -0.12, 0)
-mesh = SubResource("ScreenMesh")
-
-[node name="StudLeft" type="MeshInstance3D" parent="ThemeFeature"]
-position = Vector3(-2.9, 0.56, 2.2)
-mesh = SubResource("SpikeMesh")
-
-[node name="StudMidLeft" type="MeshInstance3D" parent="ThemeFeature"]
-position = Vector3(-1.5, 0.56, 2.2)
-mesh = SubResource("SpikeMesh")
-
-[node name="StudMid" type="MeshInstance3D" parent="ThemeFeature"]
-position = Vector3(0, 0.56, 2.2)
-mesh = SubResource("SpikeMesh")
-
-[node name="StudMidRight" type="MeshInstance3D" parent="ThemeFeature"]
-position = Vector3(1.5, 0.56, 2.2)
-mesh = SubResource("SpikeMesh")
-
-[node name="StudRight" type="MeshInstance3D" parent="ThemeFeature"]
-position = Vector3(2.9, 0.56, 2.2)
-mesh = SubResource("SpikeMesh")
+[node name="StudModel" type="MeshInstance3D" parent="ThemeFeature"]
+material_override = SubResource("StudMaterial")
+mesh = ExtResource("7_stud_mesh")
 
 [node name="VaultLight" type="OmniLight3D" parent="ThemeFeature"]
 position = Vector3(0, 3.35, 0)

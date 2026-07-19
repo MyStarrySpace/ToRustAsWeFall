@@ -3142,10 +3142,20 @@ func _test_biomes() -> void:
 					"biome '%s' landmark contains authored district features" % needed)
 				theme_root.free()
 		if needed == "cleanstreets":
+			var clean_landmark := theme_landmarks[0] as Dictionary
+			_assert_equals(str(clean_landmark.get("asset_contract", "")), "editable_3d_v1",
+				"Cleanstreets landmark declares the portable editable-asset contract")
+			_assert_true((clean_landmark.get("editable_assets", []) as Array).size() >= 4,
+				"Cleanstreets pavilion exposes its UV-mapped model families as source assets")
 			var route_setpieces: Array = theme.get("route_setpieces", [])
 			_assert_true(not route_setpieces.is_empty(),
 				"Cleanstreets declares authored interactive hostile-architecture fixtures")
 			if not route_setpieces.is_empty():
+				var clean_setpiece := route_setpieces[0] as Dictionary
+				_assert_equals(str(clean_setpiece.get("asset_contract", "")), "editable_3d_v1",
+					"Cleanstreets route fixture declares the portable editable-asset contract")
+				_assert_true((clean_setpiece.get("editable_assets", []) as Array).size() >= 3,
+					"Cleanstreets spike lane exposes its UV-mapped model families as source assets")
 				var packed_setpiece := load(str((route_setpieces[0] as Dictionary).get("scene", ""))) as PackedScene
 				_assert_true(packed_setpiece != null, "Cleanstreets route setpiece scene loads")
 				if packed_setpiece != null:

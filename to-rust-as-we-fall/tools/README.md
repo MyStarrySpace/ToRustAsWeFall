@@ -1,5 +1,15 @@
 # Asset Tools
 
+## Blockbench-ready generated assets
+
+New unique 3D visuals must follow [`docs/ASSET_AUTHORING_STANDARD.md`](../docs/ASSET_AUTHORING_STANDARD.md). The Cleanstreets exporter turns tooling-only construction scenes into UV-mapped `.obj + .mtl + .png` model kits used by thin Godot gameplay wrappers:
+
+```powershell
+..\Godot_v4.7-stable_win64_console.exe --headless --path . --script tools/bake_cleanstreets_assets.gd
+```
+
+Open any exported OBJ under `resources/models/cleanstreets/` in Blockbench and paint its adjacent PNG. Re-run the baker only when intentionally regenerating the model and template, because it replaces the generated paint sheets.
+
 ## glTF sidecar material wiring
 
 Use `gltf_wire_material_sidecars.py` after re-exporting a Crocotile `.gltf`. Crocotile rewrites the material table, so previously wired emissive and normal textures can disappear even when the sidecar PNG files are still beside the base textures. This tool reconnects sidecars by naming convention.

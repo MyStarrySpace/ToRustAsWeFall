@@ -100,6 +100,13 @@ const BIOMES := {
 				"id": "cleanstreets_toll_pavilion",
 				"kind": "building_feature_cluster",
 				"scene": "res://scenes/fragments/themes/generated_cleanstreets_toll_pavilion.tscn",
+				"asset_contract": "editable_3d_v1",
+				"editable_assets": [
+					"res://resources/models/cleanstreets/toll_pavilion/cleanstreets_toll_pavilion_structure.obj",
+					"res://resources/models/cleanstreets/toll_pavilion/cleanstreets_toll_pavilion_fixtures.obj",
+					"res://resources/models/cleanstreets/toll_pavilion/cleanstreets_toll_pavilion_screen.obj",
+					"res://resources/models/cleanstreets/toll_pavilion/cleanstreets_toll_pavilion_studs.obj",
+				],
 				"anchor_structures": ["terminal", "class_gate", "shortcut_gate", "junction", "hide_slot", "barrier", "carry_gear"],
 				"clearance": 4.8,
 				"primary_read": "The immaculate arterial narrows through a toll pavilion whose furniture is designed to prevent rest.",
@@ -109,6 +116,12 @@ const BIOMES := {
 				"id": "anti_loiter_stud_lane",
 				"kind": "symmetric_damage_lane",
 				"scene": "res://scenes/fragments/themes/generated_cleanstreets_spike_lane.tscn",
+				"asset_contract": "editable_3d_v1",
+				"editable_assets": [
+					"res://resources/models/cleanstreets/spike_lane/cleanstreets_spike_lane_road.obj",
+					"res://resources/models/cleanstreets/spike_lane/cleanstreets_spike_lane_curbs.obj",
+					"res://resources/models/cleanstreets/spike_lane/cleanstreets_spike_lane_studs.obj",
+				],
 				"count": 5,
 				"damage_per_second": 4.0,
 				"primary_read": "The metal studs occupy cells the route preview already marks as risky.",
@@ -209,6 +222,7 @@ static func validate() -> Dictionary:
 			var scene_path := str(landmark.get("scene", ""))
 			if scene_path == "" or not ResourceLoader.exists(scene_path):
 				errors.append("Biome '%s' landmark scene is missing: %s" % [id, scene_path])
+			_validate_editable_assets(id, "landmark", landmark, errors)
 			if (landmark.get("anchor_structures", []) as Array).is_empty():
 				errors.append("Biome '%s' landmark has no systemic anchor structures" % id)
 			if str(landmark.get("primary_read", "")).strip_edges() == "" \
@@ -222,10 +236,39 @@ static func validate() -> Dictionary:
 			var setpiece_scene := str(setpiece.get("scene", ""))
 			if setpiece_scene == "" or not ResourceLoader.exists(setpiece_scene):
 				errors.append("Biome '%s' route setpiece scene is missing: %s" % [id, setpiece_scene])
+			_validate_editable_assets(id, "route setpiece", setpiece, errors)
 			for causal_field in ["primary_read", "leverage", "failure_prediction"]:
 				if str(setpiece.get(causal_field, "")).strip_edges() == "":
 					errors.append("Biome '%s' route setpiece lacks %s" % [id, causal_field])
 	return {"valid": errors.is_empty(), "errors": errors, "theme_count": BIOMES.size()}
+
+
+static func _validate_editable_assets(
+		biome_id: String,
+		role: String,
+		definition: Dictionary,
+		errors: Array[String]
+) -> void:
+	if str(definition.get("asset_contract", "")) != "editable_3d_v1":
+		return
+	var assets := definition.get("editable_assets", []) as Array
+	if assets.is_empty():
+		errors.append("Biome '%s' %s declares editable_3d_v1 without source assets" % [biome_id, role])
+		return
+	for asset_v in assets:
+		var asset_path := str(asset_v)
+		var extension := asset_path.get_extension().to_lower()
+		if extension not in ["obj", "gltf", "glb", "bbmodel"]:
+			errors.append("Biome '%s' %s has a non-portable editable asset: %s" % [biome_id, role, asset_path])
+			continue
+		if not FileAccess.file_exists(asset_path) or not ResourceLoader.exists(asset_path):
+			errors.append("Biome '%s' %s editable asset is missing or cannot import: %s" % [biome_id, role, asset_path])
+			continue
+		if extension == "obj":
+			var base_path := asset_path.trim_suffix(".obj")
+			for sidecar in [base_path + ".mtl", base_path + ".png"]:
+				if not FileAccess.file_exists(sidecar):
+					errors.append("Biome '%s' %s OBJ is missing its paintable sidecar: %s" % [biome_id, role, sidecar])
 
 ## Pick a biome deterministically from an arbitrary string key (the roguelike keys on run-seed/depth/branch so a
 ## descent rotates biomes and two forks can lead to different regions).

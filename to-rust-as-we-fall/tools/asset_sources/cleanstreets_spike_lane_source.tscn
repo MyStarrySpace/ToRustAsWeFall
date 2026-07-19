@@ -1,0 +1,66 @@
+[gd_scene load_steps=4 format=3]
+
+[sub_resource type="BoxMesh" id="RoadMesh"]
+size = Vector3(0.92, 0.06, 0.92)
+
+[sub_resource type="BoxMesh" id="SlantedCurbMesh"]
+size = Vector3(0.92, 0.12, 0.18)
+
+[sub_resource type="CylinderMesh" id="SpikeMesh"]
+top_radius = 0.0
+bottom_radius = 0.055
+height = 0.18
+radial_segments = 6
+
+[node name="CleanstreetsSpikeLaneBakeSource" type="Node3D"]
+metadata/tooling_only = true
+
+[node name="RoadInset" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.05, 0)
+mesh = SubResource("RoadMesh")
+
+[node name="NoRestCurbLeft" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.14, -0.38)
+rotation = Vector3(0.42, 0, 0)
+mesh = SubResource("SlantedCurbMesh")
+
+[node name="NoRestCurbRight" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.14, 0.38)
+rotation = Vector3(-0.42, 0, 0)
+mesh = SubResource("SlantedCurbMesh")
+
+[node name="StudNW" type="MeshInstance3D" parent="."]
+position = Vector3(-0.28, 0.17, -0.24)
+mesh = SubResource("SpikeMesh")
+
+[node name="StudN" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.17, -0.24)
+mesh = SubResource("SpikeMesh")
+
+[node name="StudNE" type="MeshInstance3D" parent="."]
+position = Vector3(0.28, 0.17, -0.24)
+mesh = SubResource("SpikeMesh")
+
+[node name="StudW" type="MeshInstance3D" parent="."]
+position = Vector3(-0.28, 0.17, 0)
+mesh = SubResource("SpikeMesh")
+
+[node name="StudC" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.17, 0)
+mesh = SubResource("SpikeMesh")
+
+[node name="StudE" type="MeshInstance3D" parent="."]
+position = Vector3(0.28, 0.17, 0)
+mesh = SubResource("SpikeMesh")
+
+[node name="StudSW" type="MeshInstance3D" parent="."]
+position = Vector3(-0.28, 0.17, 0.24)
+mesh = SubResource("SpikeMesh")
+
+[node name="StudS" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.17, 0.24)
+mesh = SubResource("SpikeMesh")
+
+[node name="StudSE" type="MeshInstance3D" parent="."]
+position = Vector3(0.28, 0.17, 0.24)
+mesh = SubResource("SpikeMesh")

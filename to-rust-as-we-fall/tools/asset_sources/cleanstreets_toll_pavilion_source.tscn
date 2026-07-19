@@ -1,0 +1,144 @@
+[gd_scene load_steps=11 format=3]
+
+[sub_resource type="BoxMesh" id="DaisMesh"]
+size = Vector3(8.4, 0.4, 5.2)
+
+[sub_resource type="BoxMesh" id="StepMesh"]
+size = Vector3(6.6, 0.22, 0.7)
+
+[sub_resource type="CylinderMesh" id="PierMesh"]
+top_radius = 0.62
+bottom_radius = 0.48
+height = 3.2
+radial_segments = 8
+
+[sub_resource type="BoxMesh" id="CanopyMesh"]
+size = Vector3(9.2, 0.86, 5.9)
+
+[sub_resource type="BoxMesh" id="FasciaMesh"]
+size = Vector3(5.8, 0.78, 0.12)
+
+[sub_resource type="BoxMesh" id="QueueFinMesh"]
+size = Vector3(0.18, 1.5, 3.5)
+
+[sub_resource type="BoxMesh" id="SlantedBenchMesh"]
+size = Vector3(2.1, 0.18, 0.6)
+
+[sub_resource type="CylinderMesh" id="SpikeMesh"]
+top_radius = 0.0
+bottom_radius = 0.08
+height = 0.24
+radial_segments = 6
+
+[sub_resource type="BoxMesh" id="KioskMesh"]
+size = Vector3(0.75, 1.55, 0.72)
+
+[sub_resource type="BoxMesh" id="ScreenMesh"]
+size = Vector3(0.48, 0.42, 0.05)
+
+[node name="CleanstreetsTollPavilionBakeSource" type="Node3D"]
+metadata/tooling_only = true
+
+[node name="Dais" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.2, 0)
+mesh = SubResource("DaisMesh")
+
+[node name="FrontStep" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.11, 2.92)
+mesh = SubResource("StepMesh")
+
+[node name="PierNW" type="MeshInstance3D" parent="."]
+position = Vector3(-3.15, 2, -1.7)
+rotation = Vector3(0.03, 0, -0.08)
+mesh = SubResource("PierMesh")
+
+[node name="PierN" type="MeshInstance3D" parent="."]
+position = Vector3(0, 2, -1.7)
+mesh = SubResource("PierMesh")
+
+[node name="PierNE" type="MeshInstance3D" parent="."]
+position = Vector3(3.15, 2, -1.7)
+rotation = Vector3(-0.03, 0, 0.08)
+mesh = SubResource("PierMesh")
+
+[node name="PierSW" type="MeshInstance3D" parent="."]
+position = Vector3(-3.15, 2, 1.7)
+rotation = Vector3(-0.03, 0, -0.08)
+mesh = SubResource("PierMesh")
+
+[node name="PierS" type="MeshInstance3D" parent="."]
+position = Vector3(0, 2, 1.7)
+mesh = SubResource("PierMesh")
+
+[node name="PierSE" type="MeshInstance3D" parent="."]
+position = Vector3(3.15, 2, 1.7)
+rotation = Vector3(0.03, 0, 0.08)
+mesh = SubResource("PierMesh")
+
+[node name="Canopy" type="MeshInstance3D" parent="."]
+position = Vector3(0, 4.08, 0)
+mesh = SubResource("CanopyMesh")
+
+[node name="DistrictFascia" type="MeshInstance3D" parent="."]
+position = Vector3(0, 4.12, 3.01)
+mesh = SubResource("FasciaMesh")
+
+[node name="QueueFinLeft" type="MeshInstance3D" parent="."]
+position = Vector3(-2.25, 1.15, 0.1)
+rotation = Vector3(0.05, 0, 0)
+mesh = SubResource("QueueFinMesh")
+
+[node name="QueueFinMidLeft" type="MeshInstance3D" parent="."]
+position = Vector3(-0.75, 1.15, 0.1)
+rotation = Vector3(0.05, 0, 0)
+mesh = SubResource("QueueFinMesh")
+
+[node name="QueueFinMidRight" type="MeshInstance3D" parent="."]
+position = Vector3(0.75, 1.15, 0.1)
+rotation = Vector3(0.05, 0, 0)
+mesh = SubResource("QueueFinMesh")
+
+[node name="QueueFinRight" type="MeshInstance3D" parent="."]
+position = Vector3(2.25, 1.15, 0.1)
+rotation = Vector3(0.05, 0, 0)
+mesh = SubResource("QueueFinMesh")
+
+[node name="NoRestBenchLeft" type="MeshInstance3D" parent="."]
+position = Vector3(-3.05, 0.72, 3.45)
+rotation = Vector3(-0.18, 0.18, -0.32)
+mesh = SubResource("SlantedBenchMesh")
+
+[node name="NoRestBenchRight" type="MeshInstance3D" parent="."]
+position = Vector3(2.7, 0.72, 3.55)
+rotation = Vector3(-0.18, -0.2, 0.32)
+mesh = SubResource("SlantedBenchMesh")
+
+[node name="TollKiosk" type="MeshInstance3D" parent="."]
+position = Vector3(4.45, 0.98, 1.0)
+rotation = Vector3(0, -0.12, 0)
+mesh = SubResource("KioskMesh")
+
+[node name="TollScreen" type="MeshInstance3D" parent="."]
+position = Vector3(4.38, 1.2, 1.37)
+rotation = Vector3(0, -0.12, 0)
+mesh = SubResource("ScreenMesh")
+
+[node name="StudLeft" type="MeshInstance3D" parent="."]
+position = Vector3(-2.9, 0.56, 2.2)
+mesh = SubResource("SpikeMesh")
+
+[node name="StudMidLeft" type="MeshInstance3D" parent="."]
+position = Vector3(-1.5, 0.56, 2.2)
+mesh = SubResource("SpikeMesh")
+
+[node name="StudMid" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.56, 2.2)
+mesh = SubResource("SpikeMesh")
+
+[node name="StudMidRight" type="MeshInstance3D" parent="."]
+position = Vector3(1.5, 0.56, 2.2)
+mesh = SubResource("SpikeMesh")
+
+[node name="StudRight" type="MeshInstance3D" parent="."]
+position = Vector3(2.9, 0.56, 2.2)
+mesh = SubResource("SpikeMesh")

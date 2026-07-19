@@ -1,0 +1,25 @@
+[remap]
+
+importer="wavefront_obj"
+importer_version=1
+type="Mesh"
+uid="uid://bhqq6a8dkydqj"
+path="res://.godot/imported/cleanstreets_toll_pavilion_structure.obj-4c62359082da9451e4ebbc4f048aecee.mesh"
+
+[deps]
+
+files=["res://.godot/imported/cleanstreets_toll_pavilion_structure.obj-4c62359082da9451e4ebbc4f048aecee.mesh"]
+
+source_file="res://resources/models/cleanstreets/toll_pavilion/cleanstreets_toll_pavilion_structure.obj"
+dest_files=["res://.godot/imported/cleanstreets_toll_pavilion_structure.obj-4c62359082da9451e4ebbc4f048aecee.mesh", "res://.godot/imported/cleanstreets_toll_pavilion_structure.obj-4c62359082da9451e4ebbc4f048aecee.mesh"]
+
+[params]
+
+generate_tangents=true
+generate_lods=true
+generate_shadow_mesh=true
+generate_lightmap_uv2=false
+generate_lightmap_uv2_texel_size=0.2
+scale_mesh=Vector3(1, 1, 1)
+offset_mesh=Vector3(0, 0, 0)
+force_disable_mesh_compression=false
