@@ -174,6 +174,8 @@ static func generate(settings: Dictionary) -> Dictionary:
 	graybox["navigation_node_count"] = nodes.size()
 	graybox["navigation_edge_count"] = routes.size()
 	graybox["spatial_feature_count"] = spatial_features.size()
+	var themed_landmarks := _build_themed_landmarks(nodes, navigation_grid, resolved)
+	graybox["themed_landmark_count"] = themed_landmarks.size()
 	var anchors := _build_anchors(nodes)
 	var world_slot := _build_world_slot(resolved, anchors)
 	var teaching_chain := _teaching_chain_edges(catalog, archetype_chain)
@@ -191,6 +193,7 @@ static func generate(settings: Dictionary) -> Dictionary:
 		"id": str(resolved.get("id", "generated_stretch")),
 		"title": str(resolved.get("title", "Generated Stretch")),
 		"biome": str(resolved.get("biome", "")),
+		"area_theme": (resolved.get("area_theme", {}) as Dictionary).duplicate(true),
 		"source": {
 			"generator": "archetype_based_stretch_v2_systems",
 			"seed": int(resolved.get("seed", 0)),
@@ -206,6 +209,7 @@ static func generate(settings: Dictionary) -> Dictionary:
 		"navigation_grid": navigation_grid,
 		"roompieces": _roompieces_block(layout),
 		"spatial_features": spatial_features,
+		"themed_landmarks": themed_landmarks,
 		"nodes": nodes,
 		"routes": routes,
 		"archetype_chain": archetype_chain,
@@ -251,6 +255,8 @@ static func generate(settings: Dictionary) -> Dictionary:
 				"chunk.generation.unsupported_placeholder_count",
 				"chunk.generation.navigation",
 				"chunk.generation.spatial_features",
+				"chunk.generation.area_theme",
+				"chunk.generation.themed_landmarks",
 				"chunk.generation.active_loadout",
 				"chunk.generation.solution_path",
 				"chunk.generation.blocked_nodes"
@@ -284,6 +290,16 @@ static func generate(settings: Dictionary) -> Dictionary:
 			"success": false,
 			"ok": false,
 			"error": "spatial_feature_contract_failed",
+			"validation": spec["validation"],
+			"draft_spec": spec,
+		}
+	var theme_validation := validate_area_theme(spec)
+	(spec["validation"] as Dictionary)["area_theme"] = theme_validation
+	if not bool(theme_validation.get("valid", false)):
+		return {
+			"success": false,
+			"ok": false,
+			"error": "area_theme_contract_failed",
 			"validation": spec["validation"],
 			"draft_spec": spec,
 		}
@@ -434,6 +450,69 @@ static func validate_spatial_features(spec: Dictionary) -> Dictionary:
 		if (causal_model.get("emergent_inputs", []) as Array).size() < 3:
 			errors.append("%s does not name enough interacting systems for emergence" % feature_id)
 	return {"valid": errors.is_empty(), "errors": errors, "feature_count": features.size()}
+
+
+## Public verifier for roguelite district identity. A biome is not a color name: it must carry an authored
+## building/feature cluster, a distinct surface language, and a placement beside a compatible systemic node.
+static func validate_area_theme(spec: Dictionary) -> Dictionary:
+	var errors: Array[String] = []
+	var biome := str(spec.get("biome", ""))
+	var theme: Dictionary = spec.get("area_theme", {})
+	var landmarks: Array = spec.get("themed_landmarks", [])
+	if biome == "":
+		return {"valid": theme.is_empty() and landmarks.is_empty(), "errors": errors, "landmark_count": 0}
+	if theme.is_empty():
+		errors.append("Biome '%s' has no rendered area theme" % biome)
+		return {"valid": false, "errors": errors, "landmark_count": landmarks.size()}
+	if str(theme.get("contract_id", "")) != "main_game_area_theme_v1":
+		errors.append("Biome '%s' uses an unknown area-theme contract" % biome)
+	if str(theme.get("id", "")) != biome:
+		errors.append("Area theme id does not match biome '%s'" % biome)
+	if (theme.get("building_vocabulary", []) as Array).is_empty() \
+			or (theme.get("feature_vocabulary", []) as Array).is_empty():
+		errors.append("Biome '%s' does not expose both buildings and features" % biome)
+	if landmarks.is_empty():
+		errors.append("Biome '%s' emitted no authored landmark" % biome)
+	var nodes_by_id := {}
+	for node_v in spec.get("nodes", []):
+		if node_v is Dictionary:
+			nodes_by_id[str((node_v as Dictionary).get("id", ""))] = node_v
+	var grid = GridWorld.from_data(spec.get("navigation_grid", {}))
+	for landmark_v in landmarks:
+		if not (landmark_v is Dictionary):
+			errors.append("Biome '%s' emitted a malformed landmark" % biome)
+			continue
+		var landmark := landmark_v as Dictionary
+		var scene_path := str(landmark.get("scene", ""))
+		if scene_path == "" or not ResourceLoader.exists(scene_path):
+			errors.append("Theme landmark has no authored scene: %s" % scene_path)
+		var node_id := str(landmark.get("anchor_node_id", ""))
+		if not nodes_by_id.has(node_id):
+			errors.append("Theme landmark references unknown node %s" % node_id)
+			continue
+		var anchor_node := nodes_by_id[node_id] as Dictionary
+		if str(anchor_node.get("role", "")) in ["entry", "boundary", "shelter", "shelter_arrival"]:
+			errors.append("Theme landmark anchors to a boundary/shelter node")
+		var anchor_structures: Array = landmark.get("anchor_structures", [])
+		var matched := false
+		for structure_v in anchor_node.get("structures", []):
+			if anchor_structures.has(str(structure_v)):
+				matched = true
+				break
+		if not matched:
+			errors.append("Theme landmark %s is not beside a compatible systemic structure" % str(landmark.get("id", "")))
+		var position := _array_to_vec3(landmark.get("position", []), Vector3.INF)
+		if position == Vector3.INF:
+			errors.append("Theme landmark %s has no position" % str(landmark.get("id", "")))
+		else:
+			var center_cell := grid.world_to_grid(position)
+			var level := int(landmark.get("elevation_index", 0))
+			if grid.is_walkable(center_cell.x, center_cell.y, {}, {}, level):
+				errors.append("Theme landmark %s overlaps the walkable route" % str(landmark.get("id", "")))
+		for field in ["primary_read", "feedback_role"]:
+			if str(landmark.get(field, "")).strip_edges() == "":
+				errors.append("Theme landmark %s is missing %s" % [str(landmark.get("id", "")), field])
+	return {"valid": errors.is_empty(), "errors": errors, "landmark_count": landmarks.size()}
 
 
 static func build_navigation_grid_from_spec(spec: Dictionary) -> Dictionary:
@@ -697,6 +776,7 @@ static func _resolve_settings(settings: Dictionary) -> Dictionary:
 	if biome != "" and BiomesScript.has_biome(biome) and (not (raw_limitations is Dictionary) or (raw_limitations as Dictionary).is_empty()):
 		raw_limitations = BiomesScript.limitations_for(biome)
 	resolved["biome"] = biome
+	resolved["area_theme"] = BiomesScript.theme_contract_for(biome, seed) if biome != "" else {}
 	resolved["limitations"] = _normalize_limitations(raw_limitations)
 	resolved["composition"] = _normalize_composition(settings.get("composition", {}))
 	resolved["roster"] = settings.get("roster", [])
@@ -1810,6 +1890,16 @@ static func _assign_spatial_features(nodes: Array, layout: Dictionary, piece_cat
 			continue
 		var node_index := int(node_indices[node_id])
 		var node := nodes[node_index] as Dictionary
+		# Biome filtering can legitimately remove part of an archetype's usual ecology. Preserve the
+		# WFC footprint (and therefore the run economy), but do not advertise or instance a systemic
+		# platform unless at least two kinds of content remain to form a readable relationship.
+		var represented_systems := (
+			(1 if (node.get("flora", []) as Array).size() > 0 else 0)
+			+ (1 if (node.get("enemies", []) as Array).size() > 0 else 0)
+			+ (1 if (node.get("structures", []) as Array).size() > 0 else 0)
+		)
+		if represented_systems < 2:
+			continue
 		var feature := feature_def.duplicate(true)
 		feature.merge({
 			"contract_id": "generated_spatial_feature_v1",
@@ -1870,6 +1960,115 @@ static func _collect_spatial_features(nodes: Array, navigation_grid: Dictionary)
 		feature["floor_cells"] = floor_cells
 		result.append(feature.duplicate(true))
 	return result
+
+
+## Place a district landmark OUTSIDE the authoritative walkable footprint, beside a node whose real structure
+## matches the landmark's vocabulary. It frames an existing causal beat without introducing a decorative fake
+## interaction or obstructing movement. The prefab owns all geometry; generation emits only placement data.
+static func _build_themed_landmarks(nodes: Array, navigation_grid: Dictionary, settings: Dictionary) -> Array:
+	var theme: Dictionary = settings.get("area_theme", {})
+	if theme.is_empty() or navigation_grid.is_empty():
+		return []
+	var grid = GridWorld.from_data(navigation_grid)
+	var seed := int(settings.get("seed", 0))
+	var result: Array = []
+	var occupied: Array[Vector3] = []
+	for landmark_v in theme.get("landmarks", []):
+		if not (landmark_v is Dictionary):
+			continue
+		var landmark_def := landmark_v as Dictionary
+		var anchor_structures: Array = landmark_def.get("anchor_structures", [])
+		var candidates: Array = []
+		for node_v in nodes:
+			if not (node_v is Dictionary):
+				continue
+			var node := node_v as Dictionary
+			if str(node.get("role", "")) in ["entry", "boundary", "shelter", "shelter_arrival"]:
+				continue
+			var matches := 0
+			for structure_v in node.get("structures", []):
+				if anchor_structures.has(str(structure_v)):
+					matches += 1
+			if matches <= 0:
+				continue
+			var node_id := str(node.get("id", ""))
+			candidates.append({
+				"node": node,
+				"score": matches * 1000 + posmod(int(hash(
+					"theme-anchor:%d:%s:%s" % [seed, str(landmark_def.get("id", "")), node_id]
+				)), 1000),
+			})
+		candidates.sort_custom(func(a, b):
+			if int(a.get("score", 0)) != int(b.get("score", 0)):
+				return int(a.get("score", 0)) > int(b.get("score", 0))
+			return str((a.get("node", {}) as Dictionary).get("id", "")) \
+				< str((b.get("node", {}) as Dictionary).get("id", ""))
+		)
+		var clearance := float(landmark_def.get("clearance", 3.5))
+		for candidate_v in candidates:
+			var anchor_node := (candidate_v as Dictionary).get("node", {}) as Dictionary
+			var anchor_position := _array_to_vec3(anchor_node.get("position", []), Vector3.ZERO)
+			var level := int(anchor_node.get("elevation_index", 0))
+			var landmark_position := _themed_landmark_position(
+				grid, anchor_position, level, clearance, seed, str(landmark_def.get("id", "")), occupied
+			)
+			if landmark_position == Vector3.INF:
+				continue
+			var toward_anchor := anchor_position - landmark_position
+			var placed := landmark_def.duplicate(true)
+			placed.merge({
+				"contract_id": "generated_theme_landmark_v1",
+				"theme_id": str(theme.get("id", "")),
+				"source_area": str(theme.get("source_area", "")),
+				"anchor_node_id": str(anchor_node.get("id", "")),
+				"position": _vec3_to_array(landmark_position),
+				"elevation_index": level,
+				"rotation_y": atan2(toward_anchor.x, toward_anchor.z),
+			}, true)
+			result.append(placed)
+			occupied.append(landmark_position)
+			break
+	return result
+
+
+static func _themed_landmark_position(
+	grid,
+	anchor: Vector3,
+	level: int,
+	clearance: float,
+	seed: int,
+	landmark_id: String,
+	occupied: Array[Vector3]
+) -> Vector3:
+	var directions := [
+		Vector3(0, 0, 1), Vector3(1, 0, 0), Vector3(0, 0, -1), Vector3(-1, 0, 0),
+		Vector3(1, 0, 1).normalized(), Vector3(1, 0, -1).normalized(),
+		Vector3(-1, 0, -1).normalized(), Vector3(-1, 0, 1).normalized(),
+	]
+	var start := posmod(int(hash("theme-site:%d:%s" % [seed, landmark_id])), directions.size())
+	for radius in [clearance + 4.0, clearance + 6.0, clearance + 8.0]:
+		for i in range(directions.size()):
+			var direction := directions[(start + i) % directions.size()] as Vector3
+			var candidate := anchor + direction * float(radius)
+			candidate.y = anchor.y
+			if _themed_landmark_site_is_clear(grid, candidate, level, clearance, occupied):
+				return candidate
+	return Vector3.INF
+
+
+static func _themed_landmark_site_is_clear(
+	grid, position: Vector3, level: int, clearance: float, occupied: Array[Vector3]
+) -> bool:
+	for used in occupied:
+		if Vector2(used.x - position.x, used.z - position.z).length() < clearance * 2.0 + 2.0:
+			return false
+	var center: Vector2i = grid.world_to_grid(position)
+	var cell_radius := int(ceil((clearance + 0.75) / maxf(0.01, float(grid.cell_size))))
+	for dz in range(-cell_radius, cell_radius + 1):
+		for dx in range(-cell_radius, cell_radius + 1):
+			if grid.is_walkable(center.x + dx, center.y + dz, {}, {}, level):
+				return false
+	return true
 
 
 ## The WFC analogue of _apply_graybox_layout: node spatial fields come from the room-piece each slot collapsed

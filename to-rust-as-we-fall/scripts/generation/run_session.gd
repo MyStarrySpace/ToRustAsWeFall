@@ -9,6 +9,7 @@ extends RefCounted
 const GeneratorScript := preload("res://scripts/generation/stretch_generator.gd")
 const BranchScript := preload("res://scripts/generation/run_branch_decisions.gd")
 const ChunkGenScript := preload("res://scripts/generation/chunk_generator.gd")
+const BiomesScript := preload("res://scripts/generation/biomes.gd")
 
 ## Level kinds a run can serve. "stretch" = the WFC room-piece levels. "atom" = GATED ATOM CHAINS from the
 ## chunk-atom pipeline: provably gated + lock-before-key + safe-passage (the report card is the playability
@@ -64,8 +65,9 @@ func start() -> Dictionary:
 		spec = _generate_atom_level(0)
 	else:
 		var settings := BranchScript._settings(seed, 0, "entry", "teaching", roster)
+		_apply_depth_theme(settings, 0)
 		spec = GeneratorScript.generate(settings)
-	history = [{"depth": 0, "choice": "start", "pattern": "start", "reward": {}, "roster": roster.duplicate(), "spec_id": str(spec.get("id", ""))}]
+	history = [{"depth": 0, "choice": "start", "pattern": "start", "reward": {}, "roster": roster.duplicate(), "spec_id": str(spec.get("id", "")), "biome": str(spec.get("biome", ""))}]
 	return spec
 
 ## The branch decision offered at the current shelter (two tradeoff options). In atom mode the FIRST
@@ -100,12 +102,22 @@ func choose(option: Dictionary) -> Dictionary:
 	else:
 		var settings: Dictionary = (option.get("settings", {}) as Dictionary).duplicate(true)
 		settings["roster"] = roster.duplicate()
+		_apply_depth_theme(settings, depth)
 		spec = GeneratorScript.generate(settings)
 	history.append({
 		"depth": depth, "choice": str(option.get("id", "")), "pattern": str(option.get("id", "")),
 		"reward": reward, "roster": roster.duplicate(), "spec_id": str(spec.get("id", "")),
+		"biome": str(spec.get("biome", "")),
 	})
 	return spec
+
+## Theme is a property of the descended DEPTH, not of which risk/reward option happened to reach it. This gives
+## the run a reproducible district sequence and guarantees adjacent generated stretches change area identity;
+## branch choices still change topology, pressure, rewards, and seed without turning biome into hidden roulette.
+func _apply_depth_theme(settings: Dictionary, target_level_depth: int) -> void:
+	var biome := BiomesScript.for_depth(seed, target_level_depth)
+	settings["biome"] = biome
+	settings["title"] = "%s — Depth %d" % [BiomesScript.display_name(biome), target_level_depth + 1]
 
 ## Convenience for headless runs/tests: descend by a simple POLICY — "risky" takes the costly option, "safe" the
 ## other. Returns the next spec.

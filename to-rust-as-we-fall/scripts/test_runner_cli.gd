@@ -3104,7 +3104,11 @@ func _test_roompiece_catalog() -> void:
 func _test_biomes() -> void:
 	_test_name = "Biomes"
 	var Biomes = load("res://scripts/generation/biomes.gd")
+	var registry_validation: Dictionary = Biomes.validate()
+	_assert_true(bool(registry_validation.get("valid", false)),
+		"biome area-theme registry validates (errors: %s)" % str(registry_validation.get("errors", [])))
 	var ids: Array = Biomes.biome_ids()
+	var floor_tiles := {}
 	for needed in ["channels", "stacks", "garden", "deadzone"]:
 		_assert_true(ids.has(needed), "biome registry has '%s'" % needed)
 		_assert_true(Biomes.has_biome(needed), "has_biome('%s')" % needed)
@@ -3117,6 +3121,27 @@ func _test_biomes() -> void:
 		_assert_true((allowed.get("enemies", []) as Array).size() > 0, "biome '%s' allows enemies" % needed)
 		_assert_true((allowed.get("structures", []) as Array).size() > 0, "biome '%s' allows structures" % needed)
 		_assert_true((allowed.get("structures", []) as Array).has("shelter"), "biome '%s' allows a shelter" % needed)
+		var theme: Dictionary = Biomes.theme_contract_for(needed, 17)
+		_assert_equals(str(theme.get("contract_id", "")), "main_game_area_theme_v1",
+			"biome '%s' exposes the rendered area-theme contract" % needed)
+		_assert_true(not (theme.get("building_vocabulary", []) as Array).is_empty() \
+				and not (theme.get("feature_vocabulary", []) as Array).is_empty(),
+			"biome '%s' names both main-game buildings and features" % needed)
+		floor_tiles[str(theme.get("floor_tile", ""))] = true
+		var theme_landmarks: Array = theme.get("landmarks", [])
+		_assert_true(not theme_landmarks.is_empty(), "biome '%s' has an authored landmark cluster" % needed)
+		if not theme_landmarks.is_empty():
+			var packed_theme := load(str((theme_landmarks[0] as Dictionary).get("scene", ""))) as PackedScene
+			_assert_true(packed_theme != null, "biome '%s' landmark scene loads" % needed)
+			if packed_theme != null:
+				var theme_root := packed_theme.instantiate()
+				_assert_true(theme_root.find_child("BuildingBody", true, false) != null,
+					"biome '%s' landmark contains authored building nodes" % needed)
+				_assert_true(theme_root.find_child("ThemeFeature", true, false) != null,
+					"biome '%s' landmark contains authored district features" % needed)
+				theme_root.free()
+	_assert_true(floor_tiles.size() >= 3,
+		"area themes use distinct surface languages rather than one recolored deck (saw %d)" % floor_tiles.size())
 
 	# A biome RESTRICTS generation to its palette slice: every placed flora/enemy/structure is in the biome's lists,
 	# the spec records the biome, and the level still connects entry->exit and stays bare-pair solvable.
@@ -3130,6 +3155,12 @@ func _test_biomes() -> void:
 		if not bool(spec.get("success", false)):
 			continue
 		_assert_equals(str(spec.get("biome", "")), biome, "spec records its biome")
+		_assert_equals(str((spec.get("area_theme", {}) as Dictionary).get("id", "")), biome,
+			"spec records biome '%s' as a rendered area theme" % biome)
+		_assert_true(bool(StretchGeneratorScript.validate_area_theme(spec).get("valid", false)),
+			"biome '%s' emits a valid authored landmark placement" % biome)
+		_assert_equals((spec.get("themed_landmarks", []) as Array).size(), 1,
+			"biome '%s' emits one dominant district landmark cluster" % biome)
 		var usage: Dictionary = spec.get("palette_usage", {})
 		for cat_key in ["flora", "enemies", "structures"]:
 			for used in usage.get(cat_key, []):
@@ -3146,12 +3177,46 @@ func _test_biomes() -> void:
 		_assert_true(bool(spec.get("headless", {}).get("solution_summary", {}).get("bare_pair_solvable", false)),
 			"biome '%s' level is bare-pair solvable" % biome)
 
+	# Theme identity is a generation invariant, not a lucky landmark placement for the four showcase seeds.
+	# Sweep enough topology/content deals to catch a biome whose compatible anchor can disappear intermittently.
+	var theme_sweep_failures: Array[String] = []
+	for biome in ["channels", "stacks", "garden", "deadzone"]:
+		for seed in range(12):
+			var swept: Dictionary = StretchGeneratorScript.generate({
+				"seed": seed,
+				"complexity_tier": "standard",
+				"biome": biome,
+				"id": "biome_sweep_%s_%d" % [biome, seed],
+			})
+			if not bool(swept.get("success", false)):
+				theme_sweep_failures.append("%s/%d:%s" % [biome, seed, str(swept.get("error", "failed"))])
+				continue
+			if (swept.get("themed_landmarks", []) as Array).size() != 1 \
+					or not bool(StretchGeneratorScript.validate_area_theme(swept).get("valid", false)):
+				theme_sweep_failures.append("%s/%d:invalid_landmark" % [biome, seed])
+	_assert_true(theme_sweep_failures.is_empty(),
+		"every district keeps one valid landmark across a 48-stretch seed sweep (failures: %s)"
+		% str(theme_sweep_failures))
+
 	# Deterministic + varied biome selection.
 	_assert_equals(Biomes.for_key("7:2:deep"), Biomes.for_key("7:2:deep"), "for_key is deterministic")
 	var distinct := {}
+	var sequence: Array[String] = []
 	for d in range(12):
-		distinct[Biomes.for_depth(99, d)] = true
+		var depth_biome: String = Biomes.for_depth(99, d)
+		distinct[depth_biome] = true
+		sequence.append(depth_biome)
 	_assert_true(distinct.size() >= 2, "descending rotates through multiple biomes (saw %d)" % distinct.size())
+	var first_cycle_unique := {}
+	var adjacent_unique := true
+	for i in range(sequence.size()):
+		if i < ids.size():
+			first_cycle_unique[sequence[i]] = true
+		if i > 0 and sequence[i] == sequence[i - 1]:
+			adjacent_unique = false
+	_assert_equals(first_cycle_unique.size(), ids.size(),
+		"a run visits every district before repeating one")
+	_assert_true(adjacent_unique, "adjacent procedural depths always change area theme")
 
 func _test_poi_distribution() -> void:
 	_test_name = "POI Distribution"
@@ -5851,6 +5916,46 @@ func _test_generated_stretch_quality() -> void:
 	chunk.queue_free()
 	await get_tree().process_frame
 
+	# (d) A biome-themed spec instantiates its authored main-game landmark cluster and uses the district's
+	# surface language. This is the one renderer integration check; --test-biomes covers all four contracts
+	# without booting four complete levels.
+	var themed_spec: Dictionary = StretchGeneratorScript.generate({
+		"seed": int(hash("biome_test:channels")),
+		"complexity_tier": "standard",
+		"biome": "channels",
+		"id": "quality_theme_channels",
+	})
+	_assert_true(bool(themed_spec.get("success", false)), "a themed generated stretch builds for rendering")
+	var themed_chunk = load("res://scenes/fragments/chunks/generated_stretch_chunk.tscn").instantiate()
+	themed_chunk.configure_chunk({"spec": themed_spec, "spiral": false, "branches": false})
+	get_tree().root.add_child(themed_chunk)
+	if themed_chunk.has_method("_build_chunk"):
+		themed_chunk._build_chunk()
+	await get_tree().process_frame
+	var live_landmark := themed_chunk.find_child("GeneratedThemeLandmark_*", true, false) as Node3D
+	_assert_true(live_landmark != null,
+		"the playable generated chunk instances its authored district building/feature cluster")
+	if live_landmark != null:
+		_assert_equals(str(live_landmark.get_meta("theme_id", "")), "channels",
+			"the live landmark keeps its biome provenance")
+		_assert_true(live_landmark.find_child("BuildingBody", true, false) != null,
+			"the live landmark contains authored building massing")
+		_assert_true(live_landmark.find_child("ThemeFeature", true, false) != null,
+			"the live landmark contains authored area features")
+	var themed_graybox: Dictionary = themed_chunk.get_graybox_state()
+	_assert_equals(int(themed_graybox.get("instanced_themed_landmark_count", 0)), 1,
+		"every emitted district landmark gets exactly one prefab instance")
+	var themed_floor := themed_chunk.find_child("GeneratedFloor_L0", true, false) as MeshInstance3D
+	var themed_texture_path := ""
+	if themed_floor != null and themed_floor.material_override is StandardMaterial3D:
+		var themed_texture := (themed_floor.material_override as StandardMaterial3D).albedo_texture
+		if themed_texture != null:
+			themed_texture_path = str(themed_texture.resource_path)
+	_assert_true(themed_texture_path.ends_with("deck_metal.png"),
+		"the Channels theme applies its district floor material")
+	themed_chunk.queue_free()
+	await get_tree().process_frame
+
 	# The normal generated-stretch presentation bends the same data grid onto a helix. The authored prefab rides
 	# that transform as one rigid systems deck; every one of its data cells must still have click collision at the
 	# corresponding warped world point.
@@ -6537,12 +6642,15 @@ func _test_run_session_e2e() -> void:
 	s.start()
 	_assert_true(s.current_is_playable(), "depth 0 generates a playable (bare-pair-solvable) level")
 	_assert_true(_run_level_connects(s.spec), "depth 0 connects entry -> exit on its grid")
+	_assert_true(str(s.spec.get("biome", "")) != "" and not (s.spec.get("themed_landmarks", []) as Array).is_empty(),
+		"depth 0 is dealt as a rendered main-game area theme")
 	_assert_equals((s.spec.get("settings", {}) as Dictionary).get("roster", []), s.roster,
 		"the level is generated with the run's roster")
 
 	# Descend several depths taking the costly branch each time: every level stays playable + connected, and a
 	# recruit branch grows the roster (and the NEXT level is generated with the grown party).
 	var recruited := false
+	var previous_generated_biome := str(s.spec.get("biome", ""))
 	for i in range(6):
 		if s.at_finale():
 			break
@@ -6564,6 +6672,12 @@ func _test_run_session_e2e() -> void:
 			_assert_true(_run_level_connects(s.spec), "depth %d connects entry -> exit" % s.depth)
 			_assert_equals((s.spec.get("settings", {}) as Dictionary).get("roster", []), s.roster,
 				"depth %d is generated with the run's (possibly grown) roster" % s.depth)
+			var next_biome := str(s.spec.get("biome", ""))
+			_assert_true(next_biome != "" and next_biome != previous_generated_biome,
+				"depth %d changes district theme from the previous procedural stretch" % s.depth)
+			_assert_true(not (s.spec.get("themed_landmarks", []) as Array).is_empty(),
+				"depth %d carries its themed building/feature cluster" % s.depth)
+			previous_generated_biome = next_biome
 		if pat == "recruit":
 			_assert_equals((s.roster as Array).size(), before + 1, "a recruit branch grows the party by one")
 			recruited = true

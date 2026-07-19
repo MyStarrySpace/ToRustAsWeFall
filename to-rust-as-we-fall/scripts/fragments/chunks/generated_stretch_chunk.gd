@@ -74,6 +74,7 @@ var _node_targets: Dictionary = {}
 var _node_interactables: Dictionary = {}
 var _route_surfaces: Dictionary = {}
 var _spatial_feature_roots: Array[Node3D] = []
+var _theme_landmark_roots: Array[Node3D] = []
 var _content_marker_count := 0
 var _spatial_fixture_count := 0
 var _route_choice := ""
@@ -190,6 +191,7 @@ func _build_chunk() -> void:
 	_node_interactables.clear()
 	_route_surfaces.clear()
 	_spatial_feature_roots.clear()
+	_theme_landmark_roots.clear()
 	_drop_downs.clear()
 	_climbvines.clear()
 	_branch_caches.clear()
@@ -212,6 +214,7 @@ func _build_chunk() -> void:
 	# (warped at the vertex level in _build_walkable_floor) and the fill light keep their own transforms.
 	var flat_child_start := get_child_count()
 	_build_spatial_features()
+	_build_theme_landmarks()
 	_build_generated_nodes()
 
 	# Branch caches are authored FLAT like the node dressing, so build them BEFORE the warp pass and let it re-seat
@@ -815,6 +818,9 @@ func get_preview_state() -> Dictionary:
 		"spec_id": str(_spec.get("id", "")),
 		"schema": str(_spec.get("schema", "")),
 		"title": str(_spec.get("title", "")),
+		"biome": str(_spec.get("biome", "")),
+		"area_theme": (_spec.get("area_theme", {}) as Dictionary).duplicate(true),
+		"themed_landmarks": (_spec.get("themed_landmarks", []) as Array).duplicate(true),
 		"complexity_tier": str(_spec.get("source", {}).get("complexity_tier", "")),
 		"resolved_budget": _spec.get("budget", {}).duplicate(true),
 		"limitations": _spec.get("settings", {}).get("limitations", {}).duplicate(true),
@@ -857,6 +863,7 @@ func get_preview_state() -> Dictionary:
 		"unsupported_placeholder_count": _unsupported_placeholder_count,
 		"content_marker_count": _content_marker_count,
 		"spatial_fixture_count": _spatial_fixture_count,
+		"themed_landmark_count": _theme_landmark_roots.size(),
 		"active_loadout": _active_loadout,
 		"active_party": _active_party.duplicate(),
 		"blocked_nodes": _blocked_nodes.duplicate(),
@@ -910,6 +917,7 @@ func get_preview_state() -> Dictionary:
 		"rests_taken": _rests_taken,
 		"unsupported_placeholder_count": _unsupported_placeholder_count,
 		"spatial_fixture_count": _spatial_fixture_count,
+		"themed_landmark_count": _theme_landmark_roots.size(),
 		"drop_down_count": _drop_downs.size(),
 		"branch_cache_count": _branch_caches.size(),
 		"branch_atp_collected": _branch_atp_collected,
@@ -1759,6 +1767,7 @@ func _clear_generated_children() -> void:
 	_node_interactables.clear()
 	_route_surfaces.clear()
 	_spatial_feature_roots.clear()
+	_theme_landmark_roots.clear()
 
 
 func _build_foundation() -> void:
@@ -1770,11 +1779,12 @@ func _build_foundation() -> void:
 	var bounds_center := _vec3(bounds.get("center", []), Vector3(12.0, 0.0, 0.0))
 	var bounds_size := _vec3(bounds.get("size", []), Vector3(24.0, 3.0, 10.0))
 	var min_point := _vec3(bounds.get("min", []), bounds_center - bounds_size * 0.5)
+	var theme: Dictionary = _spec.get("area_theme", {})
 	_add_light(
 		self,
 		Vector3(bounds_center.x, min_point.y + 8.0, bounds_center.z),
-		Color(0.72, 0.86, 0.96),
-		1.25,
+		_color_from_array(theme.get("light_color", []), Color(0.72, 0.86, 0.96)),
+		float(theme.get("light_energy", 1.25)),
 		maxf(34.0, bounds_size.x * 0.5)
 	)
 
@@ -1832,10 +1842,13 @@ func _build_floor_surface(grid, lvl: int, cells: Array, risk: Dictionary, cell: 
 			_warp_pos(w + Vector3(-h, 0.0, h)),
 		]
 		_add_floor_slab(st_risk if is_risk else st_main, corners, 0.16)
-	_commit_floor_surface(st_main, "GeneratedFloor_L%d" % lvl, _tiled_floor_material("deck_metal"))
+	var theme: Dictionary = _spec.get("area_theme", {})
+	var floor_tile := str(theme.get("floor_tile", "deck_metal"))
+	var risk_tile := str(theme.get("risk_tile", "rust_iron"))
+	_commit_floor_surface(st_main, "GeneratedFloor_L%d" % lvl, _tiled_floor_material(floor_tile))
 	if has_risk:
 		_commit_floor_surface(
-			st_risk, "GeneratedFloorRisk_L%d" % lvl, _tiled_floor_material("rust_iron")
+			st_risk, "GeneratedFloorRisk_L%d" % lvl, _tiled_floor_material(risk_tile)
 		)
 
 
@@ -1895,6 +1908,37 @@ func _build_spatial_features() -> void:
 					label.text = "GRATED SYSTEM DECK"
 		add_child(root)
 		_spatial_feature_roots.append(root)
+		_spatial_fixture_count += 1
+
+
+## Main-game area identity for roguelite stretches. These are authored district clusters placed by the
+## generator beside compatible systemic nodes; this presenter only instantiates and seats them on the same
+## flat-to-helix transform as the node they frame. No building geometry is synthesized here.
+func _build_theme_landmarks() -> void:
+	for landmark_v in _spec.get("themed_landmarks", []):
+		if not (landmark_v is Dictionary):
+			continue
+		var landmark := landmark_v as Dictionary
+		var scene_path := str(landmark.get("scene", ""))
+		var packed := load(scene_path) as PackedScene
+		if packed == null:
+			continue
+		var root := packed.instantiate() as Node3D
+		if root == null:
+			continue
+		var landmark_id := str(landmark.get("id", "district_landmark"))
+		root.name = "GeneratedThemeLandmark_%s" % landmark_id
+		root.position = _vec3(landmark.get("position", []), Vector3.ZERO)
+		root.rotation.y = float(landmark.get("rotation_y", 0.0))
+		root.set_meta("contract_id", str(landmark.get("contract_id", "")))
+		root.set_meta("theme_id", str(landmark.get("theme_id", "")))
+		root.set_meta("source_area", str(landmark.get("source_area", "")))
+		root.set_meta("anchor_node_id", str(landmark.get("anchor_node_id", "")))
+		root.set_meta("primary_read", str(landmark.get("primary_read", "")))
+		root.set_meta("feedback_role", str(landmark.get("feedback_role", "")))
+		root.add_to_group("generated_theme_landmark")
+		add_child(root)
+		_theme_landmark_roots.append(root)
 		_spatial_fixture_count += 1
 
 
@@ -4097,6 +4141,8 @@ func _graybox_state() -> Dictionary:
 		"instanced_content_marker_count": _content_marker_count,
 		"spatial_feature_count": int(graybox.get("spatial_feature_count", 0)),
 		"instanced_spatial_feature_count": _spatial_feature_roots.size(),
+		"themed_landmark_count": int(graybox.get("themed_landmark_count", 0)),
+		"instanced_themed_landmark_count": _theme_landmark_roots.size(),
 		"outline_target_count": _node_targets.size(),
 		"route_surface_instance_count": _route_surfaces.size(),
 		"bounds": graybox.get("bounds", {}).duplicate(true),
@@ -4527,6 +4573,19 @@ func _vec3(raw: Variant, fallback: Vector3) -> Vector3:
 		return raw as Vector3
 	if raw is Array and (raw as Array).size() >= 3:
 		return Vector3(float((raw as Array)[0]), float((raw as Array)[1]), float((raw as Array)[2]))
+	return fallback
+
+
+func _color_from_array(raw: Variant, fallback: Color) -> Color:
+	if raw is Color:
+		return raw as Color
+	if raw is Array and (raw as Array).size() >= 3:
+		return Color(
+			float((raw as Array)[0]),
+			float((raw as Array)[1]),
+			float((raw as Array)[2]),
+			float((raw as Array)[3]) if (raw as Array).size() >= 4 else 1.0
+		)
 	return fallback
 
 

@@ -40,6 +40,19 @@ by the procedural pipeline (WFC stretches / atom chains) and varies per seed.
 - Guarded by `--test-roguelike-goal` (in `--test-all`): run shape, finale arrival, retrieval
   gating, permadeath ledger, wipe, the finale chunk's prize state, the presenter's finale arm.
 
+## District theming — DONE (2026-07-19)
+
+Procedural depths now rotate through four mechanically grounded districts inspired by the main
+game: Channels, Open Files / Stacks, Greenfields Collective, and the Deadzone. A seeded run visits
+all four before repeating one, and adjacent depths never reuse a district.
+
+Each district contract controls its content pools, floor and hazard surfaces, lighting, landmark
+anchor requirements, causal read, and feedback role. The dominant landmark is an authored scene
+cluster rather than runtime-built decorative geometry: a Channels pump house, Stacks archive
+spire, Greenfields root pavilion, or Deadzone chembrane ruin. The generator places that cluster
+beside a compatible systemic node so the building vocabulary reinforces what the stretch asks the
+player to notice and manipulate.
+
 ## Next (the "more elements" track)
 
 Grow the generator's vocabulary so runs vary in MECHANIC, not just layout — the reusable object
