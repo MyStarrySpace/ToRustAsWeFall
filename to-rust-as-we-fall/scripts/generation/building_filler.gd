@@ -163,10 +163,13 @@ static func fill(frag: Fragment, seed_value: int, opts: Dictionary = {}) -> Dict
 	# links appended to the grid — real traversal, not scenery).
 	var landmarks: Array = []
 	var bridge_plans: Array = []
+	var service_links: Array = []
 	if bool(opts.get("landmarks", true)):
-		var lm := _plan_landmarks(seed_value, lots, walk, origin, cs, w, h, frag, grid, vol)
+		var lm := _plan_landmarks(seed_value, lots, walk, origin, cs, w, h, frag, grid, vol,
+			str(opts.get("idiom", "mixed")))
 		landmarks = lm["landmarks"]
 		bridge_plans = lm["bridges"]
+		service_links = lm["service_links"]
 		var consumed: Dictionary = lm["consumed"]
 		if not consumed.is_empty():
 			var kept_lots: Array = []
@@ -490,6 +493,7 @@ static func fill(frag: Fragment, seed_value: int, opts: Dictionary = {}) -> Dict
 	return {"buildings": out_lots.size(), "boxes": frag.walls.size() - boxes_before,
 		"props": prop_count, "viaducts": via_plans.size(), "lathes": lathes, "lots": out_lots,
 		"landmarks": landmarks, "bridges": bridge_plans, "programs": program_tally,
+		"service_links": service_links,
 		"through_blocks": int(program_tally.get("through", 0)), "rail_docks": dock_plans.size(),
 		"walk_decks": walk_decks, "deck_links": deck_links,
 		"deck_routes": deck_routes, "dock_gangs": dock_gangs,
@@ -508,7 +512,11 @@ const LANDMARK_KINDS := {
 	# legal 4.0 m plane; ancourage's overhang is the ELEVATED brim (its roots are ground clutter
 	# by design). greenfields has solid street-level walls, so it genuinely needs a 4-cell lot.
 	"ancourage": 3, "greenfields": 4, "hypelines": 3,
+	"fabrication_hall": 3, "bonded_warehouse": 3, "reclamation_works": 3,
+	"distribution_substation": 3,
 }
+const INFRASTRUCTURE_KINDS := ["fabrication_hall", "bonded_warehouse", "reclamation_works",
+	"distribution_substation"]
 const BRIDGE_MIN_SPAN := 3.0
 const BRIDGE_MAX_SPAN := 16.0
 const BRIDGE_LEVEL_TOL := 1.4    # a socket may sit this far off a level plane and still snap to it
@@ -516,8 +524,9 @@ const BRIDGE_LEVEL_TOL := 1.4    # a socket may sit this far off a level plane a
 # Pick up to two big street-adjacent lots, orient each landmark's MAIN door to its street (the road
 # connector), carve the approach, and bridge the pair's facing ledge sockets when the lane is clear.
 static func _plan_landmarks(seed_value: int, lots: Array, walk: Dictionary, origin: Vector3, cs: float,
-		w: int, h: int, frag: Fragment, grid: Dictionary, vol: DistrictVolume = null) -> Dictionary:
-	var out := {"landmarks": [], "bridges": [], "consumed": {}}
+		w: int, h: int, frag: Fragment, grid: Dictionary, vol: DistrictVolume = null,
+		idiom: String = "mixed") -> Dictionary:
+	var out := {"landmarks": [], "bridges": [], "service_links": [], "consumed": {}}
 	var cands: Array = []
 	for li in range(lots.size()):
 		var lot := lots[li] as Dictionary
@@ -570,7 +579,18 @@ static func _plan_landmarks(seed_value: int, lots: Array, walk: Dictionary, orig
 				fits.append(kk)
 		if fits.is_empty():
 			fits = ["bulwark_wharf"]
-		var kind := str(fits[_ri(rng, 0, fits.size() - 1)])
+		var choice_pool := fits
+		var infra_fits: Array = []
+		for fit_v in fits:
+			if INFRASTRUCTURE_KINDS.has(str(fit_v)):
+				infra_fits.append(fit_v)
+		if pi == 0 and not infra_fits.is_empty() and (idiom == "industrial" or _rf(rng) < 0.55):
+			choice_pool = infra_fits
+		elif pi > 0 and INFRASTRUCTURE_KINDS.has(prev_kind):
+			var compatible := _compatible_service_kinds(prev_kind, fits)
+			if not compatible.is_empty():
+				choice_pool = compatible
+		var kind := str(choice_pool[_ri(rng, 0, choice_pool.size() - 1)])
 		prev_kind = kind
 		var spec_seed := _ri(rng, 1, 999983)
 		var spec: Dictionary = BaseShapeBuilder.generate(kind, spec_seed)
@@ -605,6 +625,7 @@ static func _plan_landmarks(seed_value: int, lots: Array, walk: Dictionary, orig
 		# e.g. the hypelines arms) dock straight into the grid — level cells + a ladder link
 		var socks: Array = []
 		var lanes: Array = []
+		var service_ports: Array = []
 		for a2 in (anchors.get("connectors", []) as Array):
 			var ad2 := a2 as Dictionary
 			if str(ad2["kind"]) == "bridge":
@@ -621,10 +642,20 @@ static func _plan_landmarks(seed_value: int, lots: Array, walk: Dictionary, orig
 			var lplan := apply_lane_to_grid(grid, lane as Dictionary, origin, cs)
 			if not lplan.is_empty():
 				_emit_lane_stub(frag, lplan)
+		for service_v in (anchors.get("service_ports", []) as Array):
+			var service := service_v as Dictionary
+			var sp := pos + basis * (service["pos"] as Vector3)
+			var sd := basis * (service["dir"] as Vector3)
+			service_ports.append({"id": service["id"], "commodity": service["commodity"],
+				"flow": service["flow"], "width": float(service["width"]),
+				"pos": [sp.x, sp.y, sp.z], "dir": [sd.x, sd.y, sd.z]})
 		(out["landmarks"] as Array).append({"kind": kind, "pos": [pos.x, pos.y, pos.z], "yaw": yaw,
 			"spec_seed": spec_seed,
-			"street": [sdir.x, sdir.y], "door_cell": [door_cell.x, door_cell.y], "approach": approach,
-			"sockets": socks, "lanes": lanes})
+			"street": [sdir.x, sdir.y], "door_cell": [door_cell.x, door_cell.y],
+			"door_pos": [door_w.x, door_w.y, door_w.z], "approach": approach,
+			"sockets": socks, "lanes": lanes, "service_ports": service_ports,
+			"system_role": str(spec.get("system_role", "")),
+			"supply_chain_stage": str(spec.get("supply_chain_stage", ""))})
 		# BALCONY slots grow flora: seeded glowing plants on the tier ledges — the building is
 		# level dressing and a light source, not scenery (the plants ride the survey's sockets)
 		for a4 in (anchors.get("balcony_slots", []) as Array):
@@ -650,6 +681,14 @@ static func _plan_landmarks(seed_value: int, lots: Array, walk: Dictionary, orig
 					"kill_max": Vector3(kc.x + 1.4, 0.0, kc.z + 1.4)})
 	# the BRIDGE: first facing, level-snappable, clear-laned socket pair between the two landmarks
 	if (out["landmarks"] as Array).size() == 2:
+		var service_plan := plan_service_link((out["landmarks"] as Array)[0] as Dictionary,
+			(out["landmarks"] as Array)[1] as Dictionary)
+		if not service_plan.is_empty():
+			(out["service_links"] as Array).append(service_plan)
+			# A typed exchange is also a playable two-stage operation. The loader turns this plain data
+			# into shared Interactables + causal links + one marked environmental field; no generated
+			# building script gets its own bespoke click behavior.
+			frag.objects.append(service_operation_from_link(service_plan))
 		var plan := plan_bridge((out["landmarks"] as Array)[0] as Dictionary,
 			(out["landmarks"] as Array)[1] as Dictionary, walk, origin, cs,
 			float(grid.get("level_height", 4.0)))
@@ -658,6 +697,168 @@ static func _plan_landmarks(seed_value: int, lots: Array, walk: Dictionary, orig
 			_apply_bridge_to_grid(grid, plan)
 			_emit_bridge(frag, plan, origin, cs)
 	return out
+
+## Pick kinds that can exchange at least one exact commodity. This is the causal grammar: the first
+## structure constrains the second by its declared ports instead of only by silhouette variety.
+static func _compatible_service_kinds(first_kind: String, fits: Array) -> Array:
+	var first: Dictionary = BaseShapeBuilder.SPECS.get(first_kind, {})
+	var out: Array = []
+	for fit_v in fits:
+		var candidate: Dictionary = BaseShapeBuilder.SPECS.get(str(fit_v), {})
+		if _service_specs_compatible(first, candidate):
+			out.append(fit_v)
+	return out
+
+static func _service_specs_compatible(a: Dictionary, b: Dictionary) -> bool:
+	for pa_v in (a.get("service_ports", []) as Array):
+		var pa := pa_v as Dictionary
+		for pb_v in (b.get("service_ports", []) as Array):
+			var pb := pb_v as Dictionary
+			if str(pa.get("commodity", "")) == str(pb.get("commodity", "")) \
+					and str(pa.get("flow", "")) != str(pb.get("flow", "")):
+				return true
+	return false
+
+## Resolve one directed link between two already world-transformed landmark plans. The link is data,
+## not a collision-bearing pipe across the street; theme/encounter layers may render it overhead,
+## underground, or as a causal overlay without changing the construction contract.
+static func plan_service_link(lm_a: Dictionary, lm_b: Dictionary) -> Dictionary:
+	for pair_v in [[lm_a, lm_b], [lm_b, lm_a]]:
+		var pair := pair_v as Array
+		var source := pair[0] as Dictionary
+		var sink := pair[1] as Dictionary
+		for out_v in (source.get("service_ports", []) as Array):
+			var output := out_v as Dictionary
+			if str(output.get("flow", "")) != "out":
+				continue
+			for in_v in (sink.get("service_ports", []) as Array):
+				var input := in_v as Dictionary
+				if str(input.get("flow", "")) != "in" \
+						or str(input.get("commodity", "")) != str(output.get("commodity", "")):
+					continue
+				var source_control := _landmark_control_position(source)
+				var receiver_control := _landmark_control_position(sink)
+				var street := _landmark_street_vector(sink)
+				var effect_pos := receiver_control + street * 1.55
+				return {"commodity": output["commodity"],
+					"from_kind": str(source.get("kind", "")), "from_port": output["id"],
+					"from_pos": output["pos"], "to_kind": str(sink.get("kind", "")),
+					"to_port": input["id"], "to_pos": input["pos"],
+					"source_control_pos": source_control,
+					"receiver_control_pos": receiver_control,
+					"effect_pos": effect_pos,
+					"effect_half": Vector2(0.72, 1.18) if absf(street.x) > 0.5 else Vector2(1.18, 0.72)}
+	return {}
+
+
+## Convert a typed architectural exchange into the loader's reusable playable contract. Copy names the
+## exact verb and consequence before commitment; the environmental field is deliberately local, visible,
+## and optional, so failure tests a prediction instead of invalidating an otherwise solved stretch.
+static func service_operation_from_link(link: Dictionary) -> Dictionary:
+	var commodity := str(link.get("commodity", "service"))
+	var language := _service_language(commodity)
+	var from_kind := str(link.get("from_kind", "source"))
+	var to_kind := str(link.get("to_kind", "receiver"))
+	return {
+		"type": "infrastructure_operation",
+		"operation_id": "%s_%s_%s" % [commodity, from_kind, to_kind],
+		"commodity": commodity,
+		"source_kind": from_kind,
+		"receiver_kind": to_kind,
+		"source_name": _building_title(from_kind),
+		"receiver_name": _building_title(to_kind),
+		"source_control_pos": link.get("source_control_pos", Vector3.ZERO),
+		"receiver_control_pos": link.get("receiver_control_pos", Vector3.ZERO),
+		"effect_pos": link.get("effect_pos", Vector3.ZERO),
+		"effect_half": link.get("effect_half", Vector2(1.18, 0.72)),
+		"source_action": language["source_action"],
+		"source_preview": language["source_preview"],
+		"receiver_action": language["receiver_action"],
+		"receiver_preview": language["receiver_preview"],
+		"service_relationship": language["service_relationship"],
+		"effect_relationship": language["effect_relationship"],
+		"hazard_label": language["hazard_label"],
+		"safe_label": language["safe_label"],
+		"damage_per_second": language["damage_per_second"],
+		"safe_concealment": language["safe_concealment"],
+	}
+
+
+static func _landmark_control_position(landmark: Dictionary) -> Vector3:
+	var door := _arr3(landmark, "door_pos")
+	if door == Vector3.ZERO:
+		door = _arr3(landmark, "pos")
+	return Vector3(door.x, 0.12, door.z) + _landmark_street_vector(landmark) * 0.42
+
+
+static func _landmark_street_vector(landmark: Dictionary) -> Vector3:
+	var raw: Variant = landmark.get("street", [0, 1])
+	if raw is Array and (raw as Array).size() >= 2:
+		var direction := Vector3(float(raw[0]), 0.0, float(raw[1]))
+		return direction.normalized() if direction.length_squared() > 0.0 else Vector3.FORWARD
+	return Vector3.FORWARD
+
+
+static func _building_title(kind: String) -> String:
+	return str((BaseShapeBuilder.SPECS.get(kind, {}) as Dictionary).get("title", kind.replace("_", " ").capitalize()))
+
+
+static func _service_language(commodity: String) -> Dictionary:
+	match commodity:
+		"electricity":
+			return {
+				"source_action": "ROUTE POWER", "receiver_action": "GROUND AND START",
+				"source_preview": "Energizes the receiving control and makes GROUND AND START available.",
+				"receiver_preview": "Grounds the marked arc fault; the service approach stops draining health.",
+				"service_relationship": "POWER FEEDS", "effect_relationship": "GROUNDS ARC FAULT",
+				"hazard_label": "ARC FAULT", "safe_label": "GROUNDED SERVICE BAY",
+				"damage_per_second": 2.0, "safe_concealment": false,
+			}
+		"fabricated_goods":
+			return {
+				"source_action": "DISPATCH PARTS", "receiver_action": "CLEAR RECEIVING",
+				"source_preview": "Moves the parts order to receiving and makes CLEAR RECEIVING available.",
+				"receiver_preview": "Moves the marked cargo spill off the service approach.",
+				"service_relationship": "PARTS FEED", "effect_relationship": "CLEARS CARGO SPILL",
+				"hazard_label": "UNSECURED CARGO", "safe_label": "RECEIVING LANE CLEAR",
+				"damage_per_second": 1.5, "safe_concealment": false,
+			}
+		"wastewater":
+			return {
+				"source_action": "OPEN EFFLUENT LINE", "receiver_action": "RUN RECLAMATION",
+				"source_preview": "Routes the effluent to reclamation and makes RUN RECLAMATION available.",
+				"receiver_preview": "Filters the marked acid spill; the service approach stops draining health.",
+				"service_relationship": "EFFLUENT FEEDS", "effect_relationship": "FILTERS ACID SPILL",
+				"hazard_label": "ACID EFFLUENT", "safe_label": "FILTERED SERVICE BAY",
+				"damage_per_second": 2.0, "safe_concealment": false,
+			}
+		"process_water":
+			return {
+				"source_action": "PUMP RECLAIMED WATER", "receiver_action": "FLUSH FABRICATION LINE",
+				"source_preview": "Pressurizes the fabrication intake and makes FLUSH FABRICATION LINE available.",
+				"receiver_preview": "Flushes the marked steam leak; the service approach stops draining health.",
+				"service_relationship": "WATER FEEDS", "effect_relationship": "CLEARS STEAM LEAK",
+				"hazard_label": "STEAM LEAK", "safe_label": "COOLED SERVICE BAY",
+				"damage_per_second": 2.0, "safe_concealment": false,
+			}
+		"data":
+			return {
+				"source_action": "SEND MANIFEST", "receiver_action": "ACCEPT MANIFEST",
+				"source_preview": "Sends the inventory manifest and makes ACCEPT MANIFEST available.",
+				"receiver_preview": "Suppresses the marked enforcement scanner; its service bay becomes full cover.",
+				"service_relationship": "MANIFEST FEEDS", "effect_relationship": "SUPPRESSES SCANNER",
+				"hazard_label": "ENFORCEMENT SCANNER", "safe_label": "SCAN-BLIND SERVICE BAY",
+				"damage_per_second": 0.0, "safe_concealment": true,
+			}
+		_:
+			return {
+				"source_action": "ROUTE SERVICE", "receiver_action": "COMMISSION RECEIVER",
+				"source_preview": "Routes the typed service and makes COMMISSION RECEIVER available.",
+				"receiver_preview": "Resolves the marked service fault on the approach.",
+				"service_relationship": "SERVICE FEEDS", "effect_relationship": "RESOLVES FAULT",
+				"hazard_label": "SERVICE FAULT", "safe_label": "SERVICE BAY SAFE",
+				"damage_per_second": 1.5, "safe_concealment": false,
+			}
 
 ## PURE bridge planner (unit-testable): the first pair of near-axis-aligned, mutually FACING bridge
 ## sockets that snaps to a level plane and whose lane crosses only STREET cells. Returns {} or

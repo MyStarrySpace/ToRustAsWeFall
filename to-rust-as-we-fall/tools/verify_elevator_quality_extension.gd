@@ -174,11 +174,13 @@ func _run() -> void:
 	var wreckage_anchor: Vector3 = sequence._wreckage_interaction_anchor()
 	_place_party(sequence, wreckage_anchor, 2.0)
 	await _trigger_as(sequence._wreckage_interactable, "aster")
-	_check(bool(sequence.headless_get_state().get("wreckage_cleared", false))
+	_check(bool(sequence.headless_get_state().get("wreckage_clear_in_progress", false))
+		and not bool(sequence.headless_get_state().get("wreckage_cleared", false))
 		and wreckage_animation.current_animation == "clear_together",
-		"both characters distribute the load through the in-world lift animation")
+		"both characters begin a revalidated in-world lift instead of opening immediately")
 	sequence.headless_advance(float(sequence.WRECKAGE_CLEAR_SECONDS) + 0.1, 0.05)
-	_check(str(sequence.headless_get_state().get("current_step", "")) == "junction_arrive",
+	_check(bool(sequence.headless_get_state().get("wreckage_cleared", false))
+		and str(sequence.headless_get_state().get("current_step", "")) == "junction_arrive",
 		"only the reunited pair advances to Endo's Junction")
 
 	# Junction: three different stations, both character perspectives, then one

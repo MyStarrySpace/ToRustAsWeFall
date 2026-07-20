@@ -220,6 +220,10 @@ static func build_contract(catalog, nodes: Array, routes: Array, settings: Dicti
 		node["action_verb"] = action_verb_for_node(node)
 		node["prediction_hint"] = str(beat.get("prediction", ""))
 		node["evidence_hint"] = str(beat.get("evidence", ""))
+		# A node is not a section merely because it has a coordinate. Preserve the
+		# bounded composition the runtime must present: which system the player
+		# changes, which system responds, and the observable state transition.
+		node["playable_section"] = _playable_section_for_node(node, beat)
 		nodes[node_index] = node
 		lesson_spine.append({
 			"node": node_id,
@@ -343,6 +347,170 @@ static func action_verb_for_node(node: Dictionary) -> String:
 			return verb.replace("_", " ").to_upper()
 
 
+## Convert a semantic beat into a spatial/runtime contract. The interaction is
+## deliberately described as a relation between systems, never as "visit point".
+## Presentation and tests consume this same contract, so cause/effect copy cannot
+## drift away from the state transition the generated chunk performs.
+static func _playable_section_for_node(node: Dictionary, beat: Dictionary) -> Dictionary:
+	var verb := str(beat.get("verb", "intervene"))
+	var source_role := "control"
+	var effect_role := "route"
+	var source_category := "structures"
+	var effect_category := "structures"
+	var relationship_label := "CHANGES"
+	match verb:
+		"redirect":
+			source_role = "committed enemy"
+			effect_role = "impact target"
+			source_category = "enemies"
+			effect_category = "structures"
+			relationship_label = "CHARGE HITS"
+		"cultivate":
+			source_role = "flora"
+			effect_role = "fauna" if not (node.get("enemies", []) as Array).is_empty() else "route"
+			source_category = "flora"
+			effect_category = "enemies" if not (node.get("enemies", []) as Array).is_empty() else "structures"
+			relationship_label = "FLORA CHANGES"
+		"support":
+			source_role = "carried load"
+			effect_role = "party mobility"
+			source_category = "structures"
+			effect_category = "party"
+			relationship_label = "LOAD SLOWS"
+		"distract":
+			source_role = "positioned signal"
+			effect_role = "patrol attention"
+			source_category = "flora" if not (node.get("flora", []) as Array).is_empty() else "structures"
+			effect_category = "enemies"
+			relationship_label = "SIGNAL PULLS"
+		"coordinate":
+			source_role = "paired controls"
+			effect_role = "shared route"
+			relationship_label = "BOTH UNLOCK"
+		"reconstruct":
+			source_role = "fragment relation"
+			effect_role = "hidden route"
+			relationship_label = "RELATION REVEALS"
+		"time":
+			source_role = "entry phase"
+			effect_role = "safe interval"
+			relationship_label = "PHASE OPENS"
+		"authorize":
+			source_role = "authority bearer"
+			effect_role = "class gate"
+			source_category = "party"
+			effect_category = "structures"
+			relationship_label = "AUTHORIZES"
+		"contain":
+			source_role = "nested dependency"
+			effect_role = "container state"
+			relationship_label = "DEPENDENCY FEEDS"
+		"forage":
+			source_role = "finite cache"
+			effect_role = "party ATP"
+			source_category = "structures"
+			effect_category = "party"
+			relationship_label = "CACHE ADDS"
+		"exploit":
+			source_role = "ecology signal"
+			effect_role = "enemy pairing"
+			source_category = "enemies"
+			effect_category = "enemies"
+			relationship_label = "SIGNAL COUPLES"
+		"stage":
+			source_role = "prepared relay"
+			effect_role = "crossing capacity"
+			source_category = "structures"
+			effect_category = "party"
+			relationship_label = "RELAY PRESERVES"
+		"budget":
+			source_role = "lane dose"
+			effect_role = "party capacity"
+			source_category = "structures"
+			effect_category = "party"
+			relationship_label = "LANE DRAINS"
+		"recover":
+			source_role = "banked ATP"
+			effect_role = "party recovery"
+			source_category = "party"
+			effect_category = "party"
+			relationship_label = "ATP RESTORES"
+		"diagnose":
+			source_role = "shared model"
+			effect_role = "load-bearing repair"
+			source_category = "party"
+			effect_category = "structures"
+			relationship_label = "MODEL PREDICTS"
+		"recognize":
+			source_role = "transition"
+			effect_role = "carried state"
+			source_category = "structures"
+			effect_category = "party"
+			relationship_label = "PRESERVES"
+
+	var systems: Array[String] = [source_role, effect_role]
+	for input in ["party position", "route topology"]:
+		if not systems.has(input):
+			systems.append(input)
+	return {
+		"schema": "trawf_playable_section_v1",
+		"boundary": "the local room-piece, its route mouths, and the named cause/effect actors",
+		"action": str(node.get("action_verb", action_verb_for_node(node))),
+		"predicted_effect": _consequence_preview_for_node(node, verb, beat),
+		"completed_preview": _completed_preview_for_node(node, verb, beat),
+		"source_role": source_role,
+		"effect_role": effect_role,
+		"source_category": source_category,
+		"effect_category": effect_category,
+		"relationship_label": relationship_label,
+		"before_state": str(beat.get("likely_misconception", "unchanged route")),
+		"after_state": str(beat.get("effect", "changed route")),
+		"failure_prediction": "If the relation is wrong, the named effect target will not enter the predicted state.",
+		"observable_evidence": str(beat.get("evidence", "the affected target visibly changes")),
+		"interacting_systems": systems,
+		"runtime_handler": "generated_section_state_transition_v1",
+	}
+
+
+static func _consequence_preview_for_node(node: Dictionary, verb: String, beat: Dictionary) -> String:
+	match verb:
+		"redirect": return "Redirects the committed charge into the marked impact target"
+		"cultivate":
+			match str(node.get("variant", "")):
+				"hushbloom_stun": return "Stuns the linked fauna after the Hushbloom opens"
+				"flure_iron_decoy": return "Pulls the linked patrol toward the Flure's iron signal"
+				"climbvine_traversal": return "Grows a traversable Climbvine across the linked route"
+			return "Changes the linked fauna or route after the plant readiness tell"
+		"support": return "Moves the load but reduces the carrier's mobility"
+		"distract": return "Pulls patrol attention away and opens a timed blind region"
+		"coordinate": return "Opens the shared route only while both side states align"
+		"reconstruct": return "Reveals the route if the fragment relations agree"
+		"time": return "Uses the current patrol phase to open a safe crossing interval"
+		"authorize": return "Opens the gate only for the matching authority bearer"
+		"contain": return "Propagates the nested output into the container and exit"
+		"forage": return "Consumes this cache and adds its shown ATP yield"
+		"exploit": return "Couples the enemy responses so they vacate the crossing"
+		"stage": return "Turns the long attrition run into bounded relay segments"
+		"budget": return "Commits the shown dose and drains capacity until the lane clears"
+		"recover": return "Spends banked ATP to restore party capacity and reduce debt"
+		"diagnose": return "Tests this model against every perspective and applies its repair"
+		"recognize": return "Carries the declared party or world state into the next section"
+	var fallback := str(beat.get("effect", "Changes the linked target state")).strip_edges()
+	return fallback if fallback.length() <= 110 else fallback.left(107) + "..."
+
+
+static func _completed_preview_for_node(node: Dictionary, verb: String, beat: Dictionary) -> String:
+	if verb == "cultivate":
+		match str(node.get("variant", "")):
+			"hushbloom_stun": return "The linked fauna is stunned after the Hushbloom tell"
+			"flure_iron_decoy": return "Patrol attention is now pulled toward the Flure"
+			"climbvine_traversal": return "The Climbvine now spans the linked route"
+	if verb == "support":
+		return "The load is staged; its carrier now moves more slowly"
+	var observed := str(beat.get("effect", "The linked target changed")).strip_edges()
+	return observed if observed.length() <= 110 else observed.left(107) + "..."
+
+
 static func validate_contract(spec: Dictionary) -> Dictionary:
 	var errors: Array[String] = []
 	var contract: Dictionary = spec.get("systems_contract", {})
@@ -417,6 +585,15 @@ static func validate_contract(spec: Dictionary) -> Dictionary:
 		for field in ["prediction", "intervention", "evidence"]:
 			if str(beat.get(field, "")).strip_edges() == "":
 				errors.append("Critical node %s is missing %s feedback." % [str(node.get("id", "")), field])
+		var section: Dictionary = node.get("playable_section", {})
+		if str(section.get("schema", "")) != "trawf_playable_section_v1":
+			errors.append("Critical node %s is a point without a playable-section contract." % str(node.get("id", "")))
+		else:
+			for field in ["boundary", "action", "predicted_effect", "source_role", "effect_role", "relationship_label", "observable_evidence", "runtime_handler"]:
+				if str(section.get(field, "")).strip_edges() == "":
+					errors.append("Playable section %s is missing %s." % [str(node.get("id", "")), field])
+			if (section.get("interacting_systems", []) as Array).size() < 2:
+				errors.append("Playable section %s must compose at least two named systems." % str(node.get("id", "")))
 	if critical_count >= 2 and (not focus_has_teach or not focus_has_test):
 		errors.append("The focus causal model must be taught and tested later under a changed condition.")
 	if not focus_matches_profile:
@@ -555,6 +732,30 @@ static func _focus_model_id(models: Array, profile: Dictionary) -> String:
 
 static func _build_causal_links(nodes: Array, models: Array) -> Array:
 	var links := []
+	# Every playable section exposes its LOCAL causal edge. Earlier contracts only
+	# linked one checkpoint to a later checkpoint, which made the level read as a
+	# tour of points and hid what the current action would affect in the room.
+	for raw_node in nodes:
+		if not (raw_node is Dictionary):
+			continue
+		var node := raw_node as Dictionary
+		var node_id := str(node.get("id", ""))
+		var section: Dictionary = node.get("playable_section", {})
+		if node_id == "" or section.is_empty() or str(node.get("role", "")) in ["boundary", "shelter_arrival"]:
+			continue
+		links.append({
+			"kind": "intervention_effect",
+			"node": node_id,
+			"from": "%s:cause" % node_id,
+			"to": "%s:effect" % node_id,
+			"source_role": str(section.get("source_role", "cause")),
+			"effect_role": str(section.get("effect_role", "effect")),
+			"state": str(section.get("after_state", "changed")),
+			"state_label": str(section.get("relationship_label", "CHANGES")),
+			"prediction": str(section.get("predicted_effect", "")),
+			"visibility_policy": "party_visibility_union",
+			"display": "hover_or_pause",
+		})
 	# Link each concrete output to the first later consumer of that exact cycle-scoped
 	# state. This preserves repeated chains and safely crosses reward detours.
 	for source_index in range(nodes.size()):

@@ -188,6 +188,13 @@ const PREVIEW_ENTRIES := [
 		# while this standalone preview keeps every gate, signal, and failure readable for tuning.
 		"config": {"stages": ["distract:lure", "distract:patrol", "distract:twin"], "seed": 7,
 			"zone_setpieces": false}},
+	# ADJACENCY LAB: the same generation path used by a real descent, with the prior district
+	# supplied explicitly so the entry threshold can be judged without playing a whole run first.
+	{"id": "zone_transition_lab", "chunk": "generated_stretch", "title": "Channels to Garden Transition", "stage": 3,
+		"config": {"settings": {"id": "zone_transition_lab", "title": "Channels to Garden Transition",
+			"seed": 431, "complexity_tier": "standard", "progression_stage": 3,
+			"biome": "garden", "previous_biome": "channels"},
+			"overlays": {"aster": false, "peris": false, "endo": false}}},
 ]
 
 ## The menu entry for an id (or {} if none).
@@ -385,6 +392,7 @@ var _vision_sources_cache: Array[Vector3] = []
 var _inventory_panel_label: Label
 var _inventory_panel_title: Label
 var _inventory_controls_flow: HFlowContainer
+var _inventory_panel_margin: MarginContainer
 var _preview_item_nodes: Dictionary = {}
 
 var _preview_layer: CanvasLayer
@@ -612,6 +620,15 @@ func _regenerate_preview_variation() -> void:
 
 func _unload_chunk(chunk_name: String) -> void:
 	cancel_preview_emphasis()
+	var unloading_active: bool = _active_chunk != null and _chunks.get(chunk_name) == _active_chunk
+	if unloading_active:
+		# A coord map is part of the active chunk's spatial contract, not persistent run
+		# state. Retire it with the geometry so a flat successor cannot inherit a helix.
+		if _game_state != null:
+			_game_state.coord_map = null
+		if _path_render_manager != null:
+			_path_render_manager.set_path_feedback_source(null)
+		_active_chunk = null
 	super._unload_chunk(chunk_name)
 
 # If the chunk names an environment GLB (a modeled backdrop), instantiate it under the scene and force
@@ -989,12 +1006,16 @@ func _roguelike_choose(option: Dictionary) -> void:
 	_close_branch_modal()
 	if _run_session == null:
 		return
+	# Keep the outgoing id before the session advances. _roguelike_sync_config() points
+	# preview_chunk at the NEXT level; unloading after that call by the new id leaves the
+	# old generated floor, collision, and coord map alive beneath its successor.
+	var outgoing_chunk := preview_chunk
 	if bool(option.get("summary_new_run", false)):
 		# a fresh run on the next seed: new descent, new target depth, full roster
 		_run_session = RunSession.new(_run_session.seed + 1, _run_session.levels)
 		_run_session.start()
 		_roguelike_sync_config()
-		_unload_chunk(preview_chunk)
+		_unload_chunk(outgoing_chunk)
 		_preview_interactables.clear()
 		_begin_chunk()
 		_roguelike_respawn_party()
@@ -1006,7 +1027,7 @@ func _roguelike_choose(option: Dictionary) -> void:
 		show_preview_message("%s joins the run." % RunBranchDecisions.display_name(str(reward["recruit"])), 3.5)
 	_run_session.choose(option)   # grows the roster, deepens, generates the next level
 	_roguelike_sync_config()
-	_unload_chunk(preview_chunk)
+	_unload_chunk(outgoing_chunk)
 	# The unloaded chunk's interactables are queue_free'd; drop them from the preview's caches so the speed-recipient
 	# list (and the active-character push) never touch a freed node. _begin_chunk repopulates from the new chunk.
 	_preview_interactables.clear()
@@ -1395,6 +1416,11 @@ func get_preview_engram_overlay() -> Node:
 
 func get_preview_active_character() -> String:
 	return _active_char_id
+
+
+func get_preview_character_node(char_id: String) -> Node3D:
+	var character = _characters.get(char_id, null)
+	return character as Node3D if character is Node3D and is_instance_valid(character) else null
 
 func get_preview_selected_characters() -> Array:
 	return _selected_char_ids.duplicate()
@@ -2210,6 +2236,7 @@ func _refresh_ability_hint_flow() -> void:
 	_ability_hint_flow.visible = _ability_hint_flow.get_child_count() > 0
 
 func _build_inventory_panel() -> void:
+	_inventory_panel_margin = _preview_layer.get_node("InventoryMargin") as MarginContainer
 	_inventory_panel_title = _preview_layer.get_node("InventoryMargin/Panel/Content/Title") as Label
 	_inventory_controls_flow = _preview_layer.get_node("InventoryMargin/Panel/Content/ControlHints") as HFlowContainer
 	# The old secondary action remains the explicit consume-item key. Direct party abilities have their
@@ -2808,6 +2835,7 @@ func _refresh_inventory_panel() -> void:
 	if _inventory_panel_label == null:
 		return
 	var lines: Array[String] = []
+	var has_inventory_state := false
 	for char_id in CHARACTER_IDS:
 		var slot_names: Array[String] = []
 		for slot in get_preview_hand_slots(char_id):
@@ -2815,6 +2843,8 @@ func _refresh_inventory_panel() -> void:
 		var internal_names: Array[String] = []
 		for item_id in get_preview_internal_items(char_id):
 			internal_names.append(get_preview_item_display_name(str(item_id), char_id))
+		if not slot_names.all(func(value: String) -> bool: return value == "-") or not internal_names.is_empty():
+			has_inventory_state = true
 		var status := ""
 		if _game_state != null and _game_state.is_endocytosing(char_id):
 			status = "  |  consuming"
@@ -2828,6 +2858,7 @@ func _refresh_inventory_panel() -> void:
 
 	var active_item := _get_primary_held_item(_active_char_id)
 	if active_item != "":
+		has_inventory_state = true
 		lines.append("Active hold: %s" % get_preview_item_display_name(active_item, _active_char_id))
 	else:
 		lines.append("Active hold: -")
@@ -2835,7 +2866,15 @@ func _refresh_inventory_panel() -> void:
 	var collection_names: Array[String] = []
 	for item_id in get_preview_collection_items():
 		collection_names.append(get_preview_item_display_name(str(item_id)))
+	if not collection_names.is_empty():
+		has_inventory_state = true
 	lines.append("Collection: %s" % (", ".join(collection_names) if not collection_names.is_empty() else "-"))
+	if not has_inventory_state:
+		lines = ["No carried items."]
+	if _inventory_panel_margin != null:
+		# Empty inventory is a compact control drawer, not a permanent diagnostic
+		# ledger covering a quarter of the playable ground.
+		_inventory_panel_margin.offset_top = -176.0 if not has_inventory_state else -288.0
 	_inventory_panel_label.text = "\n".join(lines)
 
 func _get_primary_held_item(char_id: String) -> String:

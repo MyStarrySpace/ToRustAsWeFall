@@ -21,9 +21,9 @@
 			1.5
 		],
 		"node_01": [
-			14.5,
+			15.5,
 			0.449999988079071,
-			0.5
+			2.5
 		],
 		"node_02": [
 			27.5,
@@ -48,7 +48,7 @@
 		"node_06": [
 			80.5,
 			0.449999988079071,
-			1.5
+			2.5
 		],
 		"node_07": [
 			93.5,
@@ -159,7 +159,37 @@
 				"notes": "Use overlay timing plus flora or scarpet cover to substitute for a combat specialist."
 			},
 			"solve": "",
-			"spatial_affordances": [],
+			"spatial_affordances": [
+				{
+					"emergent_inputs": [
+						"enemy commitment",
+						"party position",
+						"impact target material",
+						"route topology",
+						"timing"
+					],
+					"failure_prediction": "A misaligned bait leaves the marked target unchanged and the route blocked.",
+					"feature_kind": "grated_platform",
+					"feature_variant": "charge_intersection",
+					"feedback": [
+						"the committed charge path stays visible from the approach",
+						"the impact target shows its before and after state"
+					],
+					"id": "grated_charge_intersection",
+					"leverage": "Change the charge line instead of servicing the blocker directly.",
+					"primary_insight": "The enemy, bait line, and impact target form one local redirection system.",
+					"priority": 108.0,
+					"socket_policy": "separate_bait_lane_from_impact_target",
+					"variants": [
+						"destroy_barrier",
+						"kill_enemy",
+						"reveal_plant",
+						"reveal_terminal",
+						"reveal_passage",
+						"activate_mechanism"
+					]
+				}
+			],
 			"stage": 2,
 			"step_count": 6,
 			"survival_kind": "",
@@ -667,6 +697,7 @@
 			"variant": "terminal_task"
 		}
 	],
+	"area_theme": {},
 	"biome": "",
 	"budget": {
 		"archetype_depth": 5,
@@ -954,6 +985,7 @@
 			0
 		],
 		"elevation_step": 0.72,
+		"infrastructure_operation_count": 0,
 		"layout_engine": "wfc_v1",
 		"navigation_contract_id": "unified_grid_v1",
 		"navigation_edge_count": 12,
@@ -966,11 +998,13 @@
 			"node_budget": 11,
 			"spec_id": "generated_chain_nested_poc_shelter_2_to_3"
 		},
-		"spatial_feature_count": 1,
+		"spatial_feature_count": 3,
 		"supports_click_to_move": true,
 		"supports_multiple_elevations": false,
 		"supports_outline_targets": true,
 		"surface_y_base": 0.45,
+		"themed_landmark_count": 0,
+		"themed_setpiece_count": 0,
 		"unit_scale": 1.0
 	},
 	"headless": {
@@ -1641,12 +1675,16 @@
 			"chunk.generation.unsupported_placeholder_count",
 			"chunk.generation.navigation",
 			"chunk.generation.spatial_features",
+			"chunk.generation.area_theme",
+			"chunk.generation.themed_landmarks",
+			"chunk.generation.themed_setpieces",
 			"chunk.generation.active_loadout",
 			"chunk.generation.solution_path",
 			"chunk.generation.blocked_nodes"
 		]
 	},
 	"id": "generated_chain_nested_poc_shelter_2_to_3",
+	"infrastructure_operations": [],
 	"navigation_grid": {
 		"cell_size": 1.0,
 		"contract_id": "unified_grid_v1",
@@ -2804,14 +2842,6 @@
 					],
 					[
 						16,
-						6
-					],
-					[
-						17,
-						6
-					],
-					[
-						16,
 						5
 					],
 					[
@@ -2819,28 +2849,12 @@
 						5
 					],
 					[
-						15,
-						3
-					],
-					[
 						16,
-						3
+						6
 					],
 					[
 						17,
-						3
-					],
-					[
-						15,
-						4
-					],
-					[
-						16,
-						4
-					],
-					[
-						17,
-						4
+						6
 					],
 					[
 						16,
@@ -2856,164 +2870,112 @@
 			"main_01_02": {
 				"cells": [
 					[
-						18,
-						3
-					],
-					[
-						18,
-						4
-					],
-					[
-						18,
-						5
-					],
-					[
-						19,
-						3
-					],
-					[
-						19,
-						4
-					],
-					[
-						19,
-						5
-					],
-					[
-						20,
-						3
-					],
-					[
-						20,
-						4
-					],
-					[
 						20,
 						5
 					],
 					[
-						21,
-						3
+						20,
+						6
 					],
 					[
-						21,
-						4
+						20,
+						7
 					],
 					[
 						21,
 						5
 					],
 					[
-						22,
-						3
+						21,
+						6
+					],
+					[
+						21,
+						7
 					],
 					[
 						22,
-						4
+						5
 					],
 					[
 						22,
+						6
+					],
+					[
+						22,
+						7
+					],
+					[
+						23,
 						5
 					],
 					[
 						23,
-						3
+						6
 					],
 					[
 						23,
-						4
-					],
-					[
-						23,
-						5
-					],
-					[
-						24,
-						3
-					],
-					[
-						24,
-						4
+						7
 					],
 					[
 						24,
 						5
 					],
 					[
-						25,
-						3
+						24,
+						6
+					],
+					[
+						24,
+						7
 					],
 					[
 						25,
-						4
+						5
 					],
 					[
 						25,
+						6
+					],
+					[
+						25,
+						7
+					],
+					[
+						26,
 						5
 					],
 					[
 						26,
-						3
+						6
 					],
 					[
 						26,
-						4
-					],
-					[
-						26,
-						5
-					],
-					[
-						27,
-						3
-					],
-					[
-						27,
-						4
+						7
 					],
 					[
 						27,
 						5
 					],
 					[
-						28,
-						3
+						27,
+						6
+					],
+					[
+						27,
+						7
 					],
 					[
 						28,
-						4
-					],
-					[
-						28,
-						5
-					],
-					[
-						29,
-						4
-					],
-					[
-						30,
-						4
-					],
-					[
-						29,
-						3
-					],
-					[
-						30,
-						3
-					],
-					[
-						29,
-						5
-					],
-					[
-						30,
 						5
 					],
 					[
 						28,
 						6
+					],
+					[
+						28,
+						7
 					],
 					[
 						29,
@@ -3022,6 +2984,34 @@
 					[
 						30,
 						6
+					],
+					[
+						28,
+						4
+					],
+					[
+						29,
+						4
+					],
+					[
+						29,
+						5
+					],
+					[
+						30,
+						4
+					],
+					[
+						30,
+						5
+					],
+					[
+						29,
+						7
+					],
+					[
+						30,
+						7
 					]
 				],
 				"kind": "safe"
@@ -3213,14 +3203,6 @@
 					[
 						81,
 						6
-					],
-					[
-						81,
-						5
-					],
-					[
-						81,
-						4
 					]
 				],
 				"kind": "safe"
@@ -3228,164 +3210,128 @@
 			"main_06_07": {
 				"cells": [
 					[
-						84,
-						3
-					],
-					[
-						84,
-						4
-					],
-					[
-						84,
-						5
-					],
-					[
-						85,
-						3
-					],
-					[
-						85,
-						4
-					],
-					[
 						85,
 						5
 					],
 					[
-						86,
-						3
-					],
-					[
-						86,
-						4
-					],
-					[
-						86,
-						5
-					],
-					[
-						87,
-						3
-					],
-					[
-						87,
-						4
-					],
-					[
-						87,
-						5
-					],
-					[
-						88,
-						3
-					],
-					[
-						88,
-						4
-					],
-					[
-						88,
-						5
-					],
-					[
-						89,
-						3
-					],
-					[
-						89,
-						4
-					],
-					[
-						89,
-						5
-					],
-					[
-						90,
-						3
-					],
-					[
-						90,
-						4
-					],
-					[
-						90,
-						5
-					],
-					[
-						91,
-						3
-					],
-					[
-						91,
-						4
-					],
-					[
-						91,
-						5
-					],
-					[
-						92,
-						3
-					],
-					[
-						92,
-						4
-					],
-					[
-						92,
-						5
-					],
-					[
-						93,
-						3
-					],
-					[
-						93,
-						4
-					],
-					[
-						93,
-						5
-					],
-					[
-						94,
-						4
-					],
-					[
-						95,
-						4
-					],
-					[
-						94,
-						5
-					],
-					[
-						95,
-						5
-					],
-					[
-						94,
-						3
-					],
-					[
-						95,
-						3
-					],
-					[
-						93,
+						85,
 						6
 					],
 					[
-						94,
+						85,
+						7
+					],
+					[
+						86,
+						5
+					],
+					[
+						86,
 						6
 					],
 					[
-						95,
+						86,
+						7
+					],
+					[
+						87,
+						5
+					],
+					[
+						87,
+						6
+					],
+					[
+						87,
+						7
+					],
+					[
+						88,
+						5
+					],
+					[
+						88,
+						6
+					],
+					[
+						88,
+						7
+					],
+					[
+						89,
+						5
+					],
+					[
+						89,
+						6
+					],
+					[
+						89,
+						7
+					],
+					[
+						90,
+						5
+					],
+					[
+						90,
+						6
+					],
+					[
+						90,
+						7
+					],
+					[
+						91,
+						5
+					],
+					[
+						91,
+						6
+					],
+					[
+						91,
+						7
+					],
+					[
+						92,
+						5
+					],
+					[
+						92,
+						6
+					],
+					[
+						92,
+						7
+					],
+					[
+						93,
+						5
+					],
+					[
+						93,
 						6
 					],
 					[
 						93,
 						7
+					],
+					[
+						94,
+						5
+					],
+					[
+						95,
+						5
+					],
+					[
+						94,
+						6
+					],
+					[
+						95,
+						6
 					],
 					[
 						94,
@@ -4713,118 +4659,6 @@
 		"supports_multiple_elevations": false,
 		"walkable_cells": [
 			[
-				15,
-				3
-			],
-			[
-				16,
-				3
-			],
-			[
-				17,
-				3
-			],
-			[
-				18,
-				3
-			],
-			[
-				19,
-				3
-			],
-			[
-				20,
-				3
-			],
-			[
-				21,
-				3
-			],
-			[
-				22,
-				3
-			],
-			[
-				23,
-				3
-			],
-			[
-				24,
-				3
-			],
-			[
-				25,
-				3
-			],
-			[
-				26,
-				3
-			],
-			[
-				27,
-				3
-			],
-			[
-				28,
-				3
-			],
-			[
-				29,
-				3
-			],
-			[
-				30,
-				3
-			],
-			[
-				84,
-				3
-			],
-			[
-				85,
-				3
-			],
-			[
-				86,
-				3
-			],
-			[
-				87,
-				3
-			],
-			[
-				88,
-				3
-			],
-			[
-				89,
-				3
-			],
-			[
-				90,
-				3
-			],
-			[
-				91,
-				3
-			],
-			[
-				92,
-				3
-			],
-			[
-				93,
-				3
-			],
-			[
-				94,
-				3
-			],
-			[
-				95,
-				3
-			],
-			[
 				119,
 				3
 			],
@@ -5925,6 +5759,46 @@
 				6
 			],
 			[
+				18,
+				6
+			],
+			[
+				19,
+				6
+			],
+			[
+				20,
+				6
+			],
+			[
+				21,
+				6
+			],
+			[
+				22,
+				6
+			],
+			[
+				23,
+				6
+			],
+			[
+				24,
+				6
+			],
+			[
+				25,
+				6
+			],
+			[
+				26,
+				6
+			],
+			[
+				27,
+				6
+			],
+			[
 				28,
 				6
 			],
@@ -6105,6 +5979,50 @@
 				6
 			],
 			[
+				82,
+				6
+			],
+			[
+				83,
+				6
+			],
+			[
+				84,
+				6
+			],
+			[
+				85,
+				6
+			],
+			[
+				86,
+				6
+			],
+			[
+				87,
+				6
+			],
+			[
+				88,
+				6
+			],
+			[
+				89,
+				6
+			],
+			[
+				90,
+				6
+			],
+			[
+				91,
+				6
+			],
+			[
+				92,
+				6
+			],
+			[
 				93,
 				6
 			],
@@ -6281,6 +6199,50 @@
 				7
 			],
 			[
+				18,
+				7
+			],
+			[
+				19,
+				7
+			],
+			[
+				20,
+				7
+			],
+			[
+				21,
+				7
+			],
+			[
+				22,
+				7
+			],
+			[
+				23,
+				7
+			],
+			[
+				24,
+				7
+			],
+			[
+				25,
+				7
+			],
+			[
+				26,
+				7
+			],
+			[
+				27,
+				7
+			],
+			[
+				28,
+				7
+			],
+			[
 				29,
 				7
 			],
@@ -6310,6 +6272,54 @@
 			],
 			[
 				72,
+				7
+			],
+			[
+				81,
+				7
+			],
+			[
+				82,
+				7
+			],
+			[
+				83,
+				7
+			],
+			[
+				84,
+				7
+			],
+			[
+				85,
+				7
+			],
+			[
+				86,
+				7
+			],
+			[
+				87,
+				7
+			],
+			[
+				88,
+				7
+			],
+			[
+				89,
+				7
+			],
+			[
+				90,
+				7
+			],
+			[
+				91,
+				7
+			],
+			[
+				92,
 				7
 			],
 			[
@@ -6397,6 +6407,26 @@
 				8
 			],
 			[
+				16,
+				8
+			],
+			[
+				17,
+				8
+			],
+			[
+				18,
+				8
+			],
+			[
+				19,
+				8
+			],
+			[
+				20,
+				8
+			],
+			[
 				68,
 				8
 			],
@@ -6414,6 +6444,26 @@
 			],
 			[
 				72,
+				8
+			],
+			[
+				81,
+				8
+			],
+			[
+				82,
+				8
+			],
+			[
+				83,
+				8
+			],
+			[
+				84,
+				8
+			],
+			[
+				85,
 				8
 			],
 			[
@@ -6466,14 +6516,14 @@
 					"id": "flure",
 					"label": "flure",
 					"local_offset": [
-						-1.85000002384186,
+						-1.87999999523163,
 						0.725000023841858,
-						-1.10000002384186
+						-1.39999997615814
 					],
 					"position": [
-						0.649999976158142,
+						0.620000004768372,
 						1.17499995231628,
-						1.39999997615814
+						1.10000002384186
 					],
 					"role": "puzzle_flora",
 					"rotation_y_degrees": -11.0,
@@ -6491,14 +6541,14 @@
 					"id": "barrier",
 					"label": "barrier",
 					"local_offset": [
-						0.0,
+						1.29999995231628,
 						0.625,
-						0.899999976158142
+						1.39999997615814
 					],
 					"position": [
-						2.5,
+						3.79999995231628,
 						1.07500004768372,
-						3.40000009536743
+						3.90000009536743
 					],
 					"role": "structure",
 					"rotation_y_degrees": 26.0,
@@ -6582,9 +6632,9 @@
 				"capbage"
 			],
 			"approach_position": [
-				13.8400001525879,
+				15.5,
 				0.449999988079071,
-				0.840000033378601
+				2.5
 			],
 			"approaches": [
 				{
@@ -6656,14 +6706,14 @@
 					"id": "scarpet",
 					"label": "scarpet",
 					"local_offset": [
-						-1.28999996185303,
+						-1.5,
 						0.0799999982118607,
-						-0.219999998807907
+						-1.45000004768372
 					],
 					"position": [
-						13.210000038147,
+						14.0,
 						0.529999971389771,
-						0.280000001192093
+						1.04999995231628
 					],
 					"role": "cover",
 					"rotation_y_degrees": 0.0,
@@ -6673,7 +6723,7 @@
 						0.159999996423721,
 						1.70000004768372
 					],
-					"socket_id": "",
+					"socket_id": "flora_0",
 					"support": "implemented"
 				},
 				{
@@ -6681,14 +6731,14 @@
 					"id": "sapscraps",
 					"label": "sapscraps",
 					"local_offset": [
-						0.720000028610229,
+						1.5,
 						0.550000011920929,
-						-0.0500000007450581
+						1.39999997615814
 					],
 					"position": [
-						15.2200002670288,
+						17.0,
 						1.0,
-						0.449999988079071
+						3.90000009536743
 					],
 					"role": "pressure",
 					"rotation_y_degrees": 37.0,
@@ -6698,7 +6748,7 @@
 						1.10000002384186,
 						1.20000004768372
 					],
-					"socket_id": "",
+					"socket_id": "enemy_0",
 					"support": "implemented"
 				},
 				{
@@ -6706,14 +6756,14 @@
 					"id": "barrier",
 					"label": "barrier",
 					"local_offset": [
-						0.550000011920929,
+						0.0,
 						0.625,
-						0.180000007152557
+						1.25
 					],
 					"position": [
-						15.0500001907349,
+						15.5,
 						1.07500004768372,
-						0.680000007152557
+						3.75
 					],
 					"role": "structure",
 					"rotation_y_degrees": 74.0,
@@ -6723,7 +6773,7 @@
 						1.25,
 						0.5
 					],
-					"socket_id": "",
+					"socket_id": "structure_0",
 					"support": "implemented"
 				}
 			],
@@ -6736,17 +6786,17 @@
 			"evidence_hint": "the tell, charge path, impact, and changed target remain visible",
 			"exploit_target": "",
 			"floor_size": [
-				3.0,
+				5.0,
 				0.140000000596046,
-				1.0
+				5.0
 			],
 			"flora": [
 				"scarpet"
 			],
 			"footprint": [
-				3.0,
+				5.0,
 				0.140000000596046,
-				1.0
+				5.0
 			],
 			"id": "node_01",
 			"label": "Redirected enemy aggression · Destroy Barrier",
@@ -6755,10 +6805,33 @@
 			"nested_archetypes": [],
 			"nested_depth": 0,
 			"optional": false,
+			"playable_section": {
+				"action": "BAIT THE CHARGE",
+				"after_state": "enemy momentum changes the target state",
+				"before_state": "the enemy must be defeated directly",
+				"boundary": "the local room-piece, its route mouths, and the named cause/effect actors",
+				"completed_preview": "enemy momentum changes the target state",
+				"effect_category": "structures",
+				"effect_role": "impact target",
+				"failure_prediction": "If the relation is wrong, the named effect target will not enter the predicted state.",
+				"interacting_systems": [
+					"committed enemy",
+					"impact target",
+					"party position",
+					"route topology"
+				],
+				"observable_evidence": "the tell, charge path, impact, and changed target remain visible",
+				"predicted_effect": "Redirects the committed charge into the marked impact target",
+				"relationship_label": "CHARGE HITS",
+				"runtime_handler": "generated_section_state_transition_v1",
+				"schema": "trawf_playable_section_v1",
+				"source_category": "enemies",
+				"source_role": "committed enemy"
+			},
 			"position": [
-				14.5,
+				15.5,
 				0.449999988079071,
-				0.5
+				2.5
 			],
 			"prediction_hint": "the enemy will strike the aligned target after committing",
 			"pressure": 1,
@@ -6777,7 +6850,269 @@
 			},
 			"shortcut": false,
 			"solve": "",
-			"spatial_affordances": [],
+			"spatial_affordances": [
+				{
+					"emergent_inputs": [
+						"enemy commitment",
+						"party position",
+						"impact target material",
+						"route topology",
+						"timing"
+					],
+					"failure_prediction": "A misaligned bait leaves the marked target unchanged and the route blocked.",
+					"feature_kind": "grated_platform",
+					"feature_variant": "charge_intersection",
+					"feedback": [
+						"the committed charge path stays visible from the approach",
+						"the impact target shows its before and after state"
+					],
+					"id": "grated_charge_intersection",
+					"leverage": "Change the charge line instead of servicing the blocker directly.",
+					"primary_insight": "The enemy, bait line, and impact target form one local redirection system.",
+					"priority": 108.0,
+					"socket_policy": "separate_bait_lane_from_impact_target",
+					"variants": [
+						"destroy_barrier",
+						"kill_enemy",
+						"reveal_plant",
+						"reveal_terminal",
+						"reveal_passage",
+						"activate_mechanism"
+					]
+				}
+			],
+			"spatial_feature": {
+				"affordance_id": "grated_charge_intersection",
+				"archetype_id": "1",
+				"archetype_name": "Redirected enemy aggression",
+				"archetype_variant": "destroy_barrier",
+				"causal_model": {
+					"emergent_inputs": [
+						"enemy commitment",
+						"party position",
+						"impact target material",
+						"route topology",
+						"timing"
+					],
+					"failure_prediction": "A misaligned bait leaves the marked target unchanged and the route blocked.",
+					"feedback": [
+						"the committed charge path stays visible from the approach",
+						"the impact target shows its before and after state"
+					],
+					"leverage": "Change the charge line instead of servicing the blocker directly.",
+					"primary_insight": "The enemy, bait line, and impact target form one local redirection system.",
+					"reasoning_ends": "when the player can predict the response before committing across the deck",
+					"system_boundary": "the grated platform, its system sockets, and connected route mouths"
+				},
+				"content_sockets": {
+					"enemies": [
+						[
+							1.5,
+							0.0,
+							1.4
+						],
+						[
+							1.5,
+							0.0,
+							-1.35
+						],
+						[
+							0.45,
+							0.0,
+							-1.6
+						]
+					],
+					"flora": [
+						[
+							-1.5,
+							0.0,
+							-1.45
+						],
+						[
+							-1.5,
+							0.0,
+							1.35
+						]
+					],
+					"structures": [
+						[
+							0.0,
+							0.0,
+							1.25
+						],
+						[
+							-0.15,
+							0.0,
+							-1.45
+						]
+					]
+				},
+				"contract_id": "generated_spatial_feature_v1",
+				"elevation_index": 0,
+				"feature_variant": "charge_intersection",
+				"floor_cells": [
+					[
+						16,
+						4
+					],
+					[
+						17,
+						4
+					],
+					[
+						18,
+						4
+					],
+					[
+						19,
+						4
+					],
+					[
+						20,
+						4
+					],
+					[
+						16,
+						5
+					],
+					[
+						17,
+						5
+					],
+					[
+						18,
+						5
+					],
+					[
+						19,
+						5
+					],
+					[
+						20,
+						5
+					],
+					[
+						16,
+						6
+					],
+					[
+						17,
+						6
+					],
+					[
+						18,
+						6
+					],
+					[
+						19,
+						6
+					],
+					[
+						20,
+						6
+					],
+					[
+						16,
+						7
+					],
+					[
+						17,
+						7
+					],
+					[
+						18,
+						7
+					],
+					[
+						19,
+						7
+					],
+					[
+						20,
+						7
+					],
+					[
+						16,
+						8
+					],
+					[
+						17,
+						8
+					],
+					[
+						18,
+						8
+					],
+					[
+						19,
+						8
+					],
+					[
+						20,
+						8
+					]
+				],
+				"floor_replacement": true,
+				"footprint": [
+					5.0,
+					0.140000000596046,
+					5.0
+				],
+				"id": "feature_node_01",
+				"interaction_socket": [
+					0.0,
+					0.0,
+					0.0
+				],
+				"kind": "grated_platform",
+				"node_id": "node_01",
+				"position": [
+					15.5,
+					0.449999988079071,
+					2.5
+				],
+				"rail_mouths": [
+					"n",
+					"s",
+					"e",
+					"w"
+				],
+				"roompiece": "grated_platform",
+				"rotation": 0,
+				"scene": "res://scenes/fragments/features/generated_grated_platform.tscn",
+				"socket_assignments": [
+					{
+						"category": "flora",
+						"content_id": "scarpet",
+						"position": [
+							14.0,
+							0.529999971389771,
+							1.04999995231628
+						],
+						"socket": "flora_0"
+					},
+					{
+						"category": "enemies",
+						"content_id": "sapscraps",
+						"position": [
+							17.0,
+							1.0,
+							3.90000009536743
+						],
+						"socket": "enemy_0"
+					},
+					{
+						"category": "structures",
+						"content_id": "barrier",
+						"position": [
+							15.5,
+							1.07500004768372,
+							3.75
+						],
+						"socket": "structure_0"
+					}
+				]
+			},
 			"stage": 2,
 			"structures": [
 				"barrier"
@@ -6885,14 +7220,14 @@
 					"id": "flure",
 					"label": "flure",
 					"local_offset": [
-						-1.28999996185303,
+						-1.24000000953674,
 						0.725000023841858,
-						-0.879999995231628
+						-1.12000000476837
 					],
 					"position": [
-						26.2099990844727,
+						26.2600002288818,
 						1.17499995231628,
-						1.62000000476837
+						1.37999999523163
 					],
 					"role": "puzzle_flora",
 					"rotation_y_degrees": 11.0,
@@ -6910,14 +7245,14 @@
 					"id": "sapscraps",
 					"label": "sapscraps",
 					"local_offset": [
-						0.720000028610229,
+						0.899999976158142,
 						0.550000011920929,
-						-0.200000002980232
+						0.959999978542328
 					],
 					"position": [
-						28.2199993133545,
+						28.3999996185303,
 						1.0,
-						2.29999995231628
+						3.46000003814697
 					],
 					"role": "pressure",
 					"rotation_y_degrees": 48.0,
@@ -6935,14 +7270,14 @@
 					"id": "terminal",
 					"label": "terminal",
 					"local_offset": [
-						0.550000011920929,
+						1.05999994277954,
 						0.824999988079071,
-						0.720000028610229
+						1.12000000476837
 					],
 					"position": [
-						28.0499992370605,
+						28.5599994659424,
 						1.27499997615814,
-						3.22000002861023
+						3.61999988555908
 					],
 					"role": "guidance",
 					"rotation_y_degrees": 85.0,
@@ -6984,6 +7319,29 @@
 			"nested_archetypes": [],
 			"nested_depth": 0,
 			"optional": false,
+			"playable_section": {
+				"action": "DEPLOY FLURE DECOY",
+				"after_state": "the mature plant changes the target state",
+				"before_state": "the plant effect is immediate or useful anywhere",
+				"boundary": "the local room-piece, its route mouths, and the named cause/effect actors",
+				"completed_preview": "Patrol attention is now pulled toward the Flure",
+				"effect_category": "enemies",
+				"effect_role": "fauna",
+				"failure_prediction": "If the relation is wrong, the named effect target will not enter the predicted state.",
+				"interacting_systems": [
+					"flora",
+					"fauna",
+					"party position",
+					"route topology"
+				],
+				"observable_evidence": "growth state, target link, and resulting target response are visible",
+				"predicted_effect": "Pulls the linked patrol toward the Flure's iron signal",
+				"relationship_label": "FLORA CHANGES",
+				"runtime_handler": "generated_section_state_transition_v1",
+				"schema": "trawf_playable_section_v1",
+				"source_category": "flora",
+				"source_role": "flora"
+			},
 			"position": [
 				27.5,
 				0.449999988079071,
@@ -7091,14 +7449,14 @@
 					"id": "scarpet",
 					"label": "scarpet",
 					"local_offset": [
-						-1.57000005245209,
+						-1.55999994277954,
 						0.0799999982118607,
-						-0.439999997615814
+						-0.560000002384186
 					],
 					"position": [
-						39.9300003051758,
+						39.939998626709,
 						0.529999971389771,
-						1.05999994277954
+						0.939999997615814
 					],
 					"role": "cover",
 					"rotation_y_degrees": -11.0,
@@ -7116,14 +7474,14 @@
 					"id": "forage_cache",
 					"label": "forage_cache",
 					"local_offset": [
-						0.0,
+						1.03999996185303,
 						0.375,
-						0.360000014305115
+						0.560000002384186
 					],
 					"position": [
-						41.5,
+						42.5400009155273,
 						0.824999988079071,
-						1.86000001430511
+						2.05999994277954
 					],
 					"role": "resource",
 					"rotation_y_degrees": 26.0,
@@ -7163,6 +7521,29 @@
 			"nested_archetypes": [],
 			"nested_depth": 0,
 			"optional": true,
+			"playable_section": {
+				"action": "SECURE +3 ATP LYSATE",
+				"after_state": "the next state becomes reachable",
+				"before_state": "every visible object must be serviced independently",
+				"boundary": "the local room-piece, its route mouths, and the named cause/effect actors",
+				"completed_preview": "the next state becomes reachable",
+				"effect_category": "structures",
+				"effect_role": "route",
+				"failure_prediction": "If the relation is wrong, the named effect target will not enter the predicted state.",
+				"interacting_systems": [
+					"control",
+					"route",
+					"party position",
+					"route topology"
+				],
+				"observable_evidence": "the target state and route visibly change",
+				"predicted_effect": "the next state becomes reachable",
+				"relationship_label": "CHANGES",
+				"runtime_handler": "generated_section_state_transition_v1",
+				"schema": "trawf_playable_section_v1",
+				"source_category": "structures",
+				"source_role": "control"
+			},
 			"position": [
 				41.5,
 				0.449999988079071,
@@ -7309,14 +7690,14 @@
 					"id": "scarpet",
 					"label": "scarpet",
 					"local_offset": [
-						-1.57000005245209,
+						-1.55999994277954,
 						0.0799999982118607,
-						-0.660000026226044
+						-0.839999973773956
 					],
 					"position": [
-						52.9300003051758,
+						52.939998626709,
 						0.529999971389771,
-						0.839999973773956
+						0.660000026226044
 					],
 					"role": "cover",
 					"rotation_y_degrees": 22.0,
@@ -7334,14 +7715,14 @@
 					"id": "carry_gear",
 					"label": "carry_gear",
 					"local_offset": [
-						0.0,
+						1.03999996185303,
 						0.400000005960464,
-						0.540000021457672
+						0.839999973773956
 					],
 					"position": [
-						54.5,
+						55.5400009155273,
 						0.850000023841858,
-						2.03999996185303
+						2.33999991416931
 					],
 					"role": "structure",
 					"rotation_y_degrees": 59.0,
@@ -7395,6 +7776,29 @@
 			],
 			"nested_depth": 1,
 			"optional": false,
+			"playable_section": {
+				"action": "STAGE THE CARRY",
+				"after_state": "the resource moves while the carrier becomes vulnerable",
+				"before_state": "the carrier can move as if unburdened",
+				"boundary": "the local room-piece, its route mouths, and the named cause/effect actors",
+				"completed_preview": "The load is staged; its carrier now moves more slowly",
+				"effect_category": "party",
+				"effect_role": "party mobility",
+				"failure_prediction": "If the relation is wrong, the named effect target will not enter the predicted state.",
+				"interacting_systems": [
+					"carried load",
+					"party mobility",
+					"party position",
+					"route topology"
+				],
+				"observable_evidence": "mobility, exposure, capacity, and delivery progress remain visible",
+				"predicted_effect": "Moves the load but reduces the carrier's mobility",
+				"relationship_label": "LOAD SLOWS",
+				"runtime_handler": "generated_section_state_transition_v1",
+				"schema": "trawf_playable_section_v1",
+				"source_category": "structures",
+				"source_role": "carried load"
+			},
 			"position": [
 				54.5,
 				0.449999988079071,
@@ -7526,14 +7930,14 @@
 					"id": "terminal",
 					"label": "terminal",
 					"local_offset": [
-						-0.550000011920929,
+						1.01999998092651,
 						0.824999988079071,
-						0.899999976158142
+						1.39999997615814
 					],
 					"position": [
-						66.9499969482422,
+						68.5199966430664,
 						1.27499997615814,
-						3.40000009536743
+						3.90000009536743
 					],
 					"role": "guidance",
 					"rotation_y_degrees": 33.0,
@@ -7585,6 +7989,29 @@
 			],
 			"nested_depth": 1,
 			"optional": false,
+			"playable_section": {
+				"action": "RELATE THE FRAGMENTS",
+				"after_state": "the hidden pattern or route becomes legible",
+				"before_state": "collecting every fragment automatically solves the pattern",
+				"boundary": "the local room-piece, its route mouths, and the named cause/effect actors",
+				"completed_preview": "the hidden pattern or route becomes legible",
+				"effect_category": "structures",
+				"effect_role": "hidden route",
+				"failure_prediction": "If the relation is wrong, the named effect target will not enter the predicted state.",
+				"interacting_systems": [
+					"fragment relation",
+					"hidden route",
+					"party position",
+					"route topology"
+				],
+				"observable_evidence": "contradictions and confirmed links stay visible",
+				"predicted_effect": "Reveals the route if the fragment relations agree",
+				"relationship_label": "RELATION REVEALS",
+				"runtime_handler": "generated_section_state_transition_v1",
+				"schema": "trawf_playable_section_v1",
+				"source_category": "structures",
+				"source_role": "fragment relation"
+			},
 			"position": [
 				67.5,
 				0.449999988079071,
@@ -7643,9 +8070,9 @@
 				"seefern"
 			],
 			"approach_position": [
-				79.620002746582,
+				80.5,
 				0.449999988079071,
-				2.1800000667572
+				2.5
 			],
 			"approaches": [
 				{
@@ -7717,14 +8144,14 @@
 					"id": "scarpet",
 					"label": "scarpet",
 					"local_offset": [
-						-1.57000005245209,
+						-1.5,
 						0.0799999982118607,
-						-0.439999997615814
+						-1.45000004768372
 					],
 					"position": [
-						78.9300003051758,
+						79.0,
 						0.529999971389771,
-						1.05999994277954
+						1.04999995231628
 					],
 					"role": "cover",
 					"rotation_y_degrees": 0.0,
@@ -7734,7 +8161,7 @@
 						0.159999996423721,
 						1.70000004768372
 					],
-					"socket_id": "",
+					"socket_id": "flora_0",
 					"support": "implemented"
 				},
 				{
@@ -7742,14 +8169,14 @@
 					"id": "sapscraps",
 					"label": "sapscraps",
 					"local_offset": [
-						0.959999978542328,
+						1.5,
 						0.550000011920929,
-						-0.100000001490116
+						1.39999997615814
 					],
 					"position": [
-						81.4599990844727,
+						82.0,
 						1.0,
-						1.39999997615814
+						3.90000009536743
 					],
 					"role": "pressure",
 					"rotation_y_degrees": 37.0,
@@ -7759,7 +8186,7 @@
 						1.10000002384186,
 						1.20000004768372
 					],
-					"socket_id": "",
+					"socket_id": "enemy_0",
 					"support": "implemented"
 				},
 				{
@@ -7767,14 +8194,14 @@
 					"id": "barrier",
 					"label": "barrier",
 					"local_offset": [
-						0.550000011920929,
+						0.0,
 						0.625,
-						0.360000014305115
+						1.25
 					],
 					"position": [
-						81.0500030517578,
+						80.5,
 						1.07500004768372,
-						1.86000001430511
+						3.75
 					],
 					"role": "structure",
 					"rotation_y_degrees": 74.0,
@@ -7784,7 +8211,7 @@
 						1.25,
 						0.5
 					],
-					"socket_id": "",
+					"socket_id": "structure_0",
 					"support": "implemented"
 				}
 			],
@@ -7797,17 +8224,17 @@
 			"evidence_hint": "the tell, charge path, impact, and changed target remain visible",
 			"exploit_target": "",
 			"floor_size": [
-				4.0,
+				5.0,
 				0.140000000596046,
-				2.0
+				5.0
 			],
 			"flora": [
 				"scarpet"
 			],
 			"footprint": [
-				4.0,
+				5.0,
 				0.140000000596046,
-				2.0
+				5.0
 			],
 			"id": "node_06",
 			"label": "Redirected enemy aggression · Kill Enemy",
@@ -7816,10 +8243,33 @@
 			"nested_archetypes": [],
 			"nested_depth": 0,
 			"optional": false,
+			"playable_section": {
+				"action": "BAIT THE CHARGE",
+				"after_state": "enemy momentum changes the target state",
+				"before_state": "the enemy must be defeated directly",
+				"boundary": "the local room-piece, its route mouths, and the named cause/effect actors",
+				"completed_preview": "enemy momentum changes the target state",
+				"effect_category": "structures",
+				"effect_role": "impact target",
+				"failure_prediction": "If the relation is wrong, the named effect target will not enter the predicted state.",
+				"interacting_systems": [
+					"committed enemy",
+					"impact target",
+					"party position",
+					"route topology"
+				],
+				"observable_evidence": "the tell, charge path, impact, and changed target remain visible",
+				"predicted_effect": "Redirects the committed charge into the marked impact target",
+				"relationship_label": "CHARGE HITS",
+				"runtime_handler": "generated_section_state_transition_v1",
+				"schema": "trawf_playable_section_v1",
+				"source_category": "enemies",
+				"source_role": "committed enemy"
+			},
 			"position": [
 				80.5,
 				0.449999988079071,
-				1.5
+				2.5
 			],
 			"prediction_hint": "the enemy will strike the aligned target after committing",
 			"pressure": 1,
@@ -7838,7 +8288,269 @@
 			},
 			"shortcut": false,
 			"solve": "",
-			"spatial_affordances": [],
+			"spatial_affordances": [
+				{
+					"emergent_inputs": [
+						"enemy commitment",
+						"party position",
+						"impact target material",
+						"route topology",
+						"timing"
+					],
+					"failure_prediction": "A misaligned bait leaves the marked target unchanged and the route blocked.",
+					"feature_kind": "grated_platform",
+					"feature_variant": "charge_intersection",
+					"feedback": [
+						"the committed charge path stays visible from the approach",
+						"the impact target shows its before and after state"
+					],
+					"id": "grated_charge_intersection",
+					"leverage": "Change the charge line instead of servicing the blocker directly.",
+					"primary_insight": "The enemy, bait line, and impact target form one local redirection system.",
+					"priority": 108.0,
+					"socket_policy": "separate_bait_lane_from_impact_target",
+					"variants": [
+						"destroy_barrier",
+						"kill_enemy",
+						"reveal_plant",
+						"reveal_terminal",
+						"reveal_passage",
+						"activate_mechanism"
+					]
+				}
+			],
+			"spatial_feature": {
+				"affordance_id": "grated_charge_intersection",
+				"archetype_id": "1",
+				"archetype_name": "Redirected enemy aggression",
+				"archetype_variant": "kill_enemy",
+				"causal_model": {
+					"emergent_inputs": [
+						"enemy commitment",
+						"party position",
+						"impact target material",
+						"route topology",
+						"timing"
+					],
+					"failure_prediction": "A misaligned bait leaves the marked target unchanged and the route blocked.",
+					"feedback": [
+						"the committed charge path stays visible from the approach",
+						"the impact target shows its before and after state"
+					],
+					"leverage": "Change the charge line instead of servicing the blocker directly.",
+					"primary_insight": "The enemy, bait line, and impact target form one local redirection system.",
+					"reasoning_ends": "when the player can predict the response before committing across the deck",
+					"system_boundary": "the grated platform, its system sockets, and connected route mouths"
+				},
+				"content_sockets": {
+					"enemies": [
+						[
+							1.5,
+							0.0,
+							1.4
+						],
+						[
+							1.5,
+							0.0,
+							-1.35
+						],
+						[
+							0.45,
+							0.0,
+							-1.6
+						]
+					],
+					"flora": [
+						[
+							-1.5,
+							0.0,
+							-1.45
+						],
+						[
+							-1.5,
+							0.0,
+							1.35
+						]
+					],
+					"structures": [
+						[
+							0.0,
+							0.0,
+							1.25
+						],
+						[
+							-0.15,
+							0.0,
+							-1.45
+						]
+					]
+				},
+				"contract_id": "generated_spatial_feature_v1",
+				"elevation_index": 0,
+				"feature_variant": "charge_intersection",
+				"floor_cells": [
+					[
+						81,
+						4
+					],
+					[
+						82,
+						4
+					],
+					[
+						83,
+						4
+					],
+					[
+						84,
+						4
+					],
+					[
+						85,
+						4
+					],
+					[
+						81,
+						5
+					],
+					[
+						82,
+						5
+					],
+					[
+						83,
+						5
+					],
+					[
+						84,
+						5
+					],
+					[
+						85,
+						5
+					],
+					[
+						81,
+						6
+					],
+					[
+						82,
+						6
+					],
+					[
+						83,
+						6
+					],
+					[
+						84,
+						6
+					],
+					[
+						85,
+						6
+					],
+					[
+						81,
+						7
+					],
+					[
+						82,
+						7
+					],
+					[
+						83,
+						7
+					],
+					[
+						84,
+						7
+					],
+					[
+						85,
+						7
+					],
+					[
+						81,
+						8
+					],
+					[
+						82,
+						8
+					],
+					[
+						83,
+						8
+					],
+					[
+						84,
+						8
+					],
+					[
+						85,
+						8
+					]
+				],
+				"floor_replacement": true,
+				"footprint": [
+					5.0,
+					0.140000000596046,
+					5.0
+				],
+				"id": "feature_node_06",
+				"interaction_socket": [
+					0.0,
+					0.0,
+					0.0
+				],
+				"kind": "grated_platform",
+				"node_id": "node_06",
+				"position": [
+					80.5,
+					0.449999988079071,
+					2.5
+				],
+				"rail_mouths": [
+					"n",
+					"s",
+					"e",
+					"w"
+				],
+				"roompiece": "grated_platform",
+				"rotation": 0,
+				"scene": "res://scenes/fragments/features/generated_grated_platform.tscn",
+				"socket_assignments": [
+					{
+						"category": "flora",
+						"content_id": "scarpet",
+						"position": [
+							79.0,
+							0.529999971389771,
+							1.04999995231628
+						],
+						"socket": "flora_0"
+					},
+					{
+						"category": "enemies",
+						"content_id": "sapscraps",
+						"position": [
+							82.0,
+							1.0,
+							3.90000009536743
+						],
+						"socket": "enemy_0"
+					},
+					{
+						"category": "structures",
+						"content_id": "barrier",
+						"position": [
+							80.5,
+							1.07500004768372,
+							3.75
+						],
+						"socket": "structure_0"
+					}
+				]
+			},
 			"stage": 2,
 			"structures": [
 				"barrier"
@@ -7946,14 +8658,14 @@
 					"id": "hushbloom",
 					"label": "hushbloom",
 					"local_offset": [
-						-1.45000004768372,
+						-1.5,
 						0.550000011920929,
-						-1.04999995231628
+						-1.45000004768372
 					],
 					"position": [
-						92.0500030517578,
+						92.0,
 						1.0,
-						1.45000004768372
+						1.04999995231628
 					],
 					"role": "resource",
 					"rotation_y_degrees": 11.0,
@@ -7971,14 +8683,14 @@
 					"id": "naturalizers",
 					"label": "naturalizers",
 					"local_offset": [
-						1.35000002384186,
+						1.5,
 						0.550000011920929,
-						-1.0
+						1.39999997615814
 					],
 					"position": [
-						94.8499984741211,
+						95.0,
 						1.0,
-						1.5
+						3.90000009536743
 					],
 					"role": "pressure",
 					"rotation_y_degrees": 48.0,
@@ -8045,6 +8757,29 @@
 			"nested_archetypes": [],
 			"nested_depth": 0,
 			"optional": false,
+			"playable_section": {
+				"action": "PLACE THE FLORA",
+				"after_state": "the mature plant changes the target state",
+				"before_state": "the plant effect is immediate or useful anywhere",
+				"boundary": "the local room-piece, its route mouths, and the named cause/effect actors",
+				"completed_preview": "The linked fauna is stunned after the Hushbloom tell",
+				"effect_category": "enemies",
+				"effect_role": "fauna",
+				"failure_prediction": "If the relation is wrong, the named effect target will not enter the predicted state.",
+				"interacting_systems": [
+					"flora",
+					"fauna",
+					"party position",
+					"route topology"
+				],
+				"observable_evidence": "growth state, target link, and resulting target response are visible",
+				"predicted_effect": "Stuns the linked fauna after the Hushbloom opens",
+				"relationship_label": "FLORA CHANGES",
+				"runtime_handler": "generated_section_state_transition_v1",
+				"schema": "trawf_playable_section_v1",
+				"source_category": "flora",
+				"source_role": "flora"
+			},
 			"position": [
 				93.5,
 				0.449999988079071,
@@ -8120,31 +8855,31 @@
 				"content_sockets": {
 					"enemies": [
 						[
-							1.35,
+							1.5,
 							0.0,
-							-1.0
+							1.4
 						],
 						[
-							1.35,
+							1.5,
 							0.0,
-							0.9
+							-1.35
 						],
 						[
-							0.35,
+							0.45,
 							0.0,
-							-1.55
+							-1.6
 						]
 					],
 					"flora": [
 						[
-							-1.45,
+							-1.5,
 							0.0,
-							-1.05
+							-1.45
 						],
 						[
-							-1.45,
+							-1.5,
 							0.0,
-							0.85
+							1.35
 						]
 					],
 					"structures": [
@@ -8298,9 +9033,9 @@
 						"category": "flora",
 						"content_id": "hushbloom",
 						"position": [
-							92.0500030517578,
+							92.0,
 							1.0,
-							1.45000004768372
+							1.04999995231628
 						],
 						"socket": "flora_0"
 					},
@@ -8308,9 +9043,9 @@
 						"category": "enemies",
 						"content_id": "naturalizers",
 						"position": [
-							94.8499984741211,
+							95.0,
 							1.0,
-							1.5
+							3.90000009536743
 						],
 						"socket": "enemy_0"
 					},
@@ -8448,14 +9183,14 @@
 					"id": "scarpet",
 					"label": "scarpet",
 					"local_offset": [
-						-1.28999996185303,
+						-1.24000000953674,
 						0.0799999982118607,
-						-0.660000026226044
+						-0.839999973773956
 					],
 					"position": [
-						104.209999084473,
+						104.26000213623,
 						0.529999971389771,
-						0.839999973773956
+						0.660000026226044
 					],
 					"role": "cover",
 					"rotation_y_degrees": 22.0,
@@ -8473,14 +9208,14 @@
 					"id": "carry_gear",
 					"label": "carry_gear",
 					"local_offset": [
-						0.0,
+						0.779999971389771,
 						0.400000005960464,
-						0.540000021457672
+						0.839999973773956
 					],
 					"position": [
-						105.5,
+						106.279998779297,
 						0.850000023841858,
-						2.03999996185303
+						2.33999991416931
 					],
 					"role": "structure",
 					"rotation_y_degrees": 59.0,
@@ -8534,6 +9269,29 @@
 			],
 			"nested_depth": 1,
 			"optional": false,
+			"playable_section": {
+				"action": "STAGE THE CARRY",
+				"after_state": "the resource moves while the carrier becomes vulnerable",
+				"before_state": "the carrier can move as if unburdened",
+				"boundary": "the local room-piece, its route mouths, and the named cause/effect actors",
+				"completed_preview": "The load is staged; its carrier now moves more slowly",
+				"effect_category": "party",
+				"effect_role": "party mobility",
+				"failure_prediction": "If the relation is wrong, the named effect target will not enter the predicted state.",
+				"interacting_systems": [
+					"carried load",
+					"party mobility",
+					"party position",
+					"route topology"
+				],
+				"observable_evidence": "mobility, exposure, capacity, and delivery progress remain visible",
+				"predicted_effect": "Moves the load but reduces the carrier's mobility",
+				"relationship_label": "LOAD SLOWS",
+				"runtime_handler": "generated_section_state_transition_v1",
+				"schema": "trawf_playable_section_v1",
+				"source_category": "structures",
+				"source_role": "carried load"
+			},
 			"position": [
 				105.5,
 				0.449999988079071,
@@ -8665,14 +9423,14 @@
 					"id": "shortcut_gate",
 					"label": "shortcut_gate",
 					"local_offset": [
-						-0.550000011920929,
+						0.5,
 						1.10000002384186,
-						0.180000007152557
+						0.280000001192093
 					],
 					"position": [
-						117.949996948242,
+						119.0,
 						1.54999995231628,
-						0.680000007152557
+						0.779999971389771
 					],
 					"role": "shortcut",
 					"rotation_y_degrees": 33.0,
@@ -8724,6 +9482,29 @@
 			],
 			"nested_depth": 1,
 			"optional": false,
+			"playable_section": {
+				"action": "RELATE THE FRAGMENTS",
+				"after_state": "the hidden pattern or route becomes legible",
+				"before_state": "collecting every fragment automatically solves the pattern",
+				"boundary": "the local room-piece, its route mouths, and the named cause/effect actors",
+				"completed_preview": "the hidden pattern or route becomes legible",
+				"effect_category": "structures",
+				"effect_role": "hidden route",
+				"failure_prediction": "If the relation is wrong, the named effect target will not enter the predicted state.",
+				"interacting_systems": [
+					"fragment relation",
+					"hidden route",
+					"party position",
+					"route topology"
+				],
+				"observable_evidence": "contradictions and confirmed links stay visible",
+				"predicted_effect": "Reveals the route if the fragment relations agree",
+				"relationship_label": "RELATION REVEALS",
+				"runtime_handler": "generated_section_state_transition_v1",
+				"schema": "trawf_playable_section_v1",
+				"source_category": "structures",
+				"source_role": "fragment relation"
+			},
 			"position": [
 				118.5,
 				0.449999988079071,
@@ -8800,14 +9581,14 @@
 					"id": "hushbloom",
 					"label": "hushbloom",
 					"local_offset": [
-						-1.00999999046326,
+						-0.920000016689301,
 						0.550000011920929,
-						-0.439999997615814
+						-0.560000002384186
 					],
 					"position": [
-						130.490005493164,
+						130.580001831055,
 						1.0,
-						1.05999994277954
+						0.939999997615814
 					],
 					"role": "resource",
 					"rotation_y_degrees": -11.0,
@@ -8825,14 +9606,14 @@
 					"id": "shelter",
 					"label": "shelter",
 					"local_offset": [
-						0.0,
+						0.519999980926514,
 						1.20000004768372,
-						0.360000014305115
+						0.560000002384186
 					],
 					"position": [
-						131.5,
+						132.020004272461,
 						1.65000009536743,
-						1.86000001430511
+						2.05999994277954
 					],
 					"role": "rest",
 					"rotation_y_degrees": 26.0,
@@ -9043,14 +9824,6 @@
 					],
 					[
 						13,
-						2
-					],
-					[
-						14,
-						2
-					],
-					[
-						13,
 						1
 					],
 					[
@@ -9058,28 +9831,12 @@
 						1
 					],
 					[
-						12,
-						-1
-					],
-					[
 						13,
-						-1
+						2
 					],
 					[
 						14,
-						-1
-					],
-					[
-						12,
-						0
-					],
-					[
-						13,
-						0
-					],
-					[
-						14,
-						0
+						2
 					],
 					[
 						13,
@@ -9101,164 +9858,112 @@
 			{
 				"cells": [
 					[
-						15,
-						-1
-					],
-					[
-						15,
-						0
-					],
-					[
-						15,
-						1
-					],
-					[
-						16,
-						-1
-					],
-					[
-						16,
-						0
-					],
-					[
-						16,
-						1
-					],
-					[
-						17,
-						-1
-					],
-					[
-						17,
-						0
-					],
-					[
 						17,
 						1
 					],
 					[
-						18,
-						-1
+						17,
+						2
 					],
 					[
-						18,
-						0
+						17,
+						3
 					],
 					[
 						18,
 						1
 					],
 					[
-						19,
-						-1
+						18,
+						2
+					],
+					[
+						18,
+						3
 					],
 					[
 						19,
-						0
+						1
 					],
 					[
 						19,
+						2
+					],
+					[
+						19,
+						3
+					],
+					[
+						20,
 						1
 					],
 					[
 						20,
-						-1
+						2
 					],
 					[
 						20,
-						0
-					],
-					[
-						20,
-						1
-					],
-					[
-						21,
-						-1
-					],
-					[
-						21,
-						0
+						3
 					],
 					[
 						21,
 						1
 					],
 					[
-						22,
-						-1
+						21,
+						2
+					],
+					[
+						21,
+						3
 					],
 					[
 						22,
-						0
+						1
 					],
 					[
 						22,
+						2
+					],
+					[
+						22,
+						3
+					],
+					[
+						23,
 						1
 					],
 					[
 						23,
-						-1
+						2
 					],
 					[
 						23,
-						0
-					],
-					[
-						23,
-						1
-					],
-					[
-						24,
-						-1
-					],
-					[
-						24,
-						0
+						3
 					],
 					[
 						24,
 						1
 					],
 					[
-						25,
-						-1
+						24,
+						2
+					],
+					[
+						24,
+						3
 					],
 					[
 						25,
-						0
-					],
-					[
-						25,
-						1
-					],
-					[
-						26,
-						0
-					],
-					[
-						27,
-						0
-					],
-					[
-						26,
-						-1
-					],
-					[
-						27,
-						-1
-					],
-					[
-						26,
-						1
-					],
-					[
-						27,
 						1
 					],
 					[
 						25,
 						2
+					],
+					[
+						25,
+						3
 					],
 					[
 						26,
@@ -9267,6 +9972,34 @@
 					[
 						27,
 						2
+					],
+					[
+						25,
+						0
+					],
+					[
+						26,
+						0
+					],
+					[
+						26,
+						1
+					],
+					[
+						27,
+						0
+					],
+					[
+						27,
+						1
+					],
+					[
+						26,
+						3
+					],
+					[
+						27,
+						3
 					]
 				],
 				"from": "node_01",
@@ -9583,14 +10316,6 @@
 					[
 						78,
 						2
-					],
-					[
-						78,
-						1
-					],
-					[
-						78,
-						0
 					]
 				],
 				"from": "node_05",
@@ -9604,164 +10329,128 @@
 			{
 				"cells": [
 					[
-						81,
-						-1
-					],
-					[
-						81,
-						0
-					],
-					[
-						81,
-						1
-					],
-					[
-						82,
-						-1
-					],
-					[
-						82,
-						0
-					],
-					[
 						82,
 						1
 					],
 					[
-						83,
-						-1
-					],
-					[
-						83,
-						0
-					],
-					[
-						83,
-						1
-					],
-					[
-						84,
-						-1
-					],
-					[
-						84,
-						0
-					],
-					[
-						84,
-						1
-					],
-					[
-						85,
-						-1
-					],
-					[
-						85,
-						0
-					],
-					[
-						85,
-						1
-					],
-					[
-						86,
-						-1
-					],
-					[
-						86,
-						0
-					],
-					[
-						86,
-						1
-					],
-					[
-						87,
-						-1
-					],
-					[
-						87,
-						0
-					],
-					[
-						87,
-						1
-					],
-					[
-						88,
-						-1
-					],
-					[
-						88,
-						0
-					],
-					[
-						88,
-						1
-					],
-					[
-						89,
-						-1
-					],
-					[
-						89,
-						0
-					],
-					[
-						89,
-						1
-					],
-					[
-						90,
-						-1
-					],
-					[
-						90,
-						0
-					],
-					[
-						90,
-						1
-					],
-					[
-						91,
-						0
-					],
-					[
-						92,
-						0
-					],
-					[
-						91,
-						1
-					],
-					[
-						92,
-						1
-					],
-					[
-						91,
-						-1
-					],
-					[
-						92,
-						-1
-					],
-					[
-						90,
+						82,
 						2
 					],
 					[
-						91,
+						82,
+						3
+					],
+					[
+						83,
+						1
+					],
+					[
+						83,
 						2
 					],
 					[
-						92,
+						83,
+						3
+					],
+					[
+						84,
+						1
+					],
+					[
+						84,
+						2
+					],
+					[
+						84,
+						3
+					],
+					[
+						85,
+						1
+					],
+					[
+						85,
+						2
+					],
+					[
+						85,
+						3
+					],
+					[
+						86,
+						1
+					],
+					[
+						86,
+						2
+					],
+					[
+						86,
+						3
+					],
+					[
+						87,
+						1
+					],
+					[
+						87,
+						2
+					],
+					[
+						87,
+						3
+					],
+					[
+						88,
+						1
+					],
+					[
+						88,
+						2
+					],
+					[
+						88,
+						3
+					],
+					[
+						89,
+						1
+					],
+					[
+						89,
+						2
+					],
+					[
+						89,
+						3
+					],
+					[
+						90,
+						1
+					],
+					[
+						90,
 						2
 					],
 					[
 						90,
 						3
+					],
+					[
+						91,
+						1
+					],
+					[
+						92,
+						1
+					],
+					[
+						91,
+						2
+					],
+					[
+						92,
+						2
 					],
 					[
 						91,
@@ -11046,14 +11735,42 @@
 					13,
 					0
 				],
-				"piece": "corridor_straight",
-				"rotation": 180,
+				"piece": "grated_platform",
+				"rotation": 0,
 				"size": [
-					3,
-					1
+					5,
+					5
 				],
-				"spatial_affordance": {},
-				"spatial_feature_kind": ""
+				"spatial_affordance": {
+					"emergent_inputs": [
+						"enemy commitment",
+						"party position",
+						"impact target material",
+						"route topology",
+						"timing"
+					],
+					"failure_prediction": "A misaligned bait leaves the marked target unchanged and the route blocked.",
+					"feature_kind": "grated_platform",
+					"feature_variant": "charge_intersection",
+					"feedback": [
+						"the committed charge path stays visible from the approach",
+						"the impact target shows its before and after state"
+					],
+					"id": "grated_charge_intersection",
+					"leverage": "Change the charge line instead of servicing the blocker directly.",
+					"primary_insight": "The enemy, bait line, and impact target form one local redirection system.",
+					"priority": 108.0,
+					"socket_policy": "separate_bait_lane_from_impact_target",
+					"variants": [
+						"destroy_barrier",
+						"kill_enemy",
+						"reveal_plant",
+						"reveal_terminal",
+						"reveal_passage",
+						"activate_mechanism"
+					]
+				},
+				"spatial_feature_kind": "grated_platform"
 			},
 			{
 				"level": 0,
@@ -11126,14 +11843,42 @@
 					78,
 					0
 				],
-				"piece": "hall",
+				"piece": "grated_platform",
 				"rotation": 0,
 				"size": [
-					4,
-					2
+					5,
+					5
 				],
-				"spatial_affordance": {},
-				"spatial_feature_kind": ""
+				"spatial_affordance": {
+					"emergent_inputs": [
+						"enemy commitment",
+						"party position",
+						"impact target material",
+						"route topology",
+						"timing"
+					],
+					"failure_prediction": "A misaligned bait leaves the marked target unchanged and the route blocked.",
+					"feature_kind": "grated_platform",
+					"feature_variant": "charge_intersection",
+					"feedback": [
+						"the committed charge path stays visible from the approach",
+						"the impact target shows its before and after state"
+					],
+					"id": "grated_charge_intersection",
+					"leverage": "Change the charge line instead of servicing the blocker directly.",
+					"primary_insight": "The enemy, bait line, and impact target form one local redirection system.",
+					"priority": 108.0,
+					"socket_policy": "separate_bait_lane_from_impact_target",
+					"variants": [
+						"destroy_barrier",
+						"kill_enemy",
+						"reveal_plant",
+						"reveal_terminal",
+						"reveal_passage",
+						"activate_mechanism"
+					]
+				},
+				"spatial_feature_kind": "grated_platform"
 			},
 			{
 				"level": 0,
@@ -11292,22 +12037,30 @@
 			},
 			"node_01": {
 				"connection_cell": [
-					14,
-					0
+					15,
+					2
 				],
 				"connection_points": {
 					"e": [
-						2,
-						0
+						4.0,
+						2.0
+					],
+					"n": [
+						2.0,
+						0.0
+					],
+					"s": [
+						2.0,
+						4.0
 					],
 					"w": [
-						0,
-						0
+						0.0,
+						2.0
 					]
 				},
 				"footprint": [
-					3,
-					1
+					5,
+					5
 				],
 				"level": 0,
 				"origin_cell": [
@@ -11315,7 +12068,11 @@
 					0
 				],
 				"walkable": [
-					"..."
+					".....",
+					".....",
+					".....",
+					".....",
+					"....."
 				]
 			},
 			"node_02": {
@@ -11467,21 +12224,29 @@
 			"node_06": {
 				"connection_cell": [
 					80,
-					1
+					2
 				],
 				"connection_points": {
 					"e": [
-						3.0,
+						4.0,
+						2.0
+					],
+					"n": [
+						2.0,
 						0.0
+					],
+					"s": [
+						2.0,
+						4.0
 					],
 					"w": [
 						0.0,
-						0.0
+						2.0
 					]
 				},
 				"footprint": [
-					4,
-					2
+					5,
+					5
 				],
 				"level": 0,
 				"origin_cell": [
@@ -11489,8 +12254,11 @@
 					0
 				],
 				"walkable": [
-					"....",
-					"...."
+					".....",
+					".....",
+					".....",
+					".....",
+					"....."
 				]
 			},
 			"node_07": {
@@ -11614,16 +12382,16 @@
 					2.5
 				],
 				"midpoint": [
-					8.5,
+					9.0,
 					0.449999988079071,
-					1.5
+					2.5
 				],
 				"slope": 0.0,
 				"supports_click_to_move": true,
 				"to": [
-					14.5,
+					15.5,
 					0.449999988079071,
-					0.5
+					2.5
 				],
 				"width": 1.85
 			},
@@ -11640,14 +12408,14 @@
 			"risk": "safe",
 			"surface": {
 				"from": [
-					14.5,
+					15.5,
 					0.449999988079071,
-					0.5
+					2.5
 				],
 				"midpoint": [
-					21.0,
+					21.5,
 					0.449999988079071,
-					1.5
+					2.5
 				],
 				"slope": 0.0,
 				"supports_click_to_move": true,
@@ -11773,14 +12541,14 @@
 				"midpoint": [
 					74.0,
 					0.449999988079071,
-					2.0
+					2.5
 				],
 				"slope": 0.0,
 				"supports_click_to_move": true,
 				"to": [
 					80.5,
 					0.449999988079071,
-					1.5
+					2.5
 				],
 				"width": 1.85
 			},
@@ -11799,12 +12567,12 @@
 				"from": [
 					80.5,
 					0.449999988079071,
-					1.5
+					2.5
 				],
 				"midpoint": [
 					87.0,
 					0.449999988079071,
-					2.0
+					2.5
 				],
 				"slope": 0.0,
 				"supports_click_to_move": true,
@@ -11978,6 +12746,7 @@
 	],
 	"schema": "trawf_generated_stretch_spec_v1",
 	"settings": {
+		"area_theme": {},
 		"biome": "",
 		"budget": {
 			"archetype_depth": 5,
@@ -12173,6 +12942,7 @@
 				]
 			}
 		},
+		"previous_biome": "",
 		"progression_stage": 3,
 		"reasoning_budget_added_nodes": 0,
 		"roster": [],
@@ -12220,7 +12990,8 @@
 			"preview_party_preset": "full_party_full_health",
 			"region": "Channels",
 			"slot_id": "generated_chain_nested_poc_shelter_2_to_3"
-		}
+		},
+		"zone_transition": {}
 	},
 	"source": {
 		"complexity_tier": "standard",
@@ -12230,6 +13001,470 @@
 		"seed": 2403
 	},
 	"spatial_features": [
+		{
+			"affordance_id": "grated_charge_intersection",
+			"archetype_id": "1",
+			"archetype_name": "Redirected enemy aggression",
+			"archetype_variant": "destroy_barrier",
+			"causal_model": {
+				"emergent_inputs": [
+					"enemy commitment",
+					"party position",
+					"impact target material",
+					"route topology",
+					"timing"
+				],
+				"failure_prediction": "A misaligned bait leaves the marked target unchanged and the route blocked.",
+				"feedback": [
+					"the committed charge path stays visible from the approach",
+					"the impact target shows its before and after state"
+				],
+				"leverage": "Change the charge line instead of servicing the blocker directly.",
+				"primary_insight": "The enemy, bait line, and impact target form one local redirection system.",
+				"reasoning_ends": "when the player can predict the response before committing across the deck",
+				"system_boundary": "the grated platform, its system sockets, and connected route mouths"
+			},
+			"content_sockets": {
+				"enemies": [
+					[
+						1.5,
+						0.0,
+						1.4
+					],
+					[
+						1.5,
+						0.0,
+						-1.35
+					],
+					[
+						0.45,
+						0.0,
+						-1.6
+					]
+				],
+				"flora": [
+					[
+						-1.5,
+						0.0,
+						-1.45
+					],
+					[
+						-1.5,
+						0.0,
+						1.35
+					]
+				],
+				"structures": [
+					[
+						0.0,
+						0.0,
+						1.25
+					],
+					[
+						-0.15,
+						0.0,
+						-1.45
+					]
+				]
+			},
+			"contract_id": "generated_spatial_feature_v1",
+			"elevation_index": 0,
+			"feature_variant": "charge_intersection",
+			"floor_cells": [
+				[
+					16,
+					4
+				],
+				[
+					17,
+					4
+				],
+				[
+					18,
+					4
+				],
+				[
+					19,
+					4
+				],
+				[
+					20,
+					4
+				],
+				[
+					16,
+					5
+				],
+				[
+					17,
+					5
+				],
+				[
+					18,
+					5
+				],
+				[
+					19,
+					5
+				],
+				[
+					20,
+					5
+				],
+				[
+					16,
+					6
+				],
+				[
+					17,
+					6
+				],
+				[
+					18,
+					6
+				],
+				[
+					19,
+					6
+				],
+				[
+					20,
+					6
+				],
+				[
+					16,
+					7
+				],
+				[
+					17,
+					7
+				],
+				[
+					18,
+					7
+				],
+				[
+					19,
+					7
+				],
+				[
+					20,
+					7
+				],
+				[
+					16,
+					8
+				],
+				[
+					17,
+					8
+				],
+				[
+					18,
+					8
+				],
+				[
+					19,
+					8
+				],
+				[
+					20,
+					8
+				]
+			],
+			"floor_replacement": true,
+			"footprint": [
+				5.0,
+				0.140000000596046,
+				5.0
+			],
+			"id": "feature_node_01",
+			"interaction_socket": [
+				0.0,
+				0.0,
+				0.0
+			],
+			"kind": "grated_platform",
+			"node_id": "node_01",
+			"position": [
+				15.5,
+				0.449999988079071,
+				2.5
+			],
+			"rail_mouths": [
+				"n",
+				"s",
+				"e",
+				"w"
+			],
+			"roompiece": "grated_platform",
+			"rotation": 0,
+			"scene": "res://scenes/fragments/features/generated_grated_platform.tscn",
+			"socket_assignments": [
+				{
+					"category": "flora",
+					"content_id": "scarpet",
+					"position": [
+						14.0,
+						0.529999971389771,
+						1.04999995231628
+					],
+					"socket": "flora_0"
+				},
+				{
+					"category": "enemies",
+					"content_id": "sapscraps",
+					"position": [
+						17.0,
+						1.0,
+						3.90000009536743
+					],
+					"socket": "enemy_0"
+				},
+				{
+					"category": "structures",
+					"content_id": "barrier",
+					"position": [
+						15.5,
+						1.07500004768372,
+						3.75
+					],
+					"socket": "structure_0"
+				}
+			]
+		},
+		{
+			"affordance_id": "grated_charge_intersection",
+			"archetype_id": "1",
+			"archetype_name": "Redirected enemy aggression",
+			"archetype_variant": "kill_enemy",
+			"causal_model": {
+				"emergent_inputs": [
+					"enemy commitment",
+					"party position",
+					"impact target material",
+					"route topology",
+					"timing"
+				],
+				"failure_prediction": "A misaligned bait leaves the marked target unchanged and the route blocked.",
+				"feedback": [
+					"the committed charge path stays visible from the approach",
+					"the impact target shows its before and after state"
+				],
+				"leverage": "Change the charge line instead of servicing the blocker directly.",
+				"primary_insight": "The enemy, bait line, and impact target form one local redirection system.",
+				"reasoning_ends": "when the player can predict the response before committing across the deck",
+				"system_boundary": "the grated platform, its system sockets, and connected route mouths"
+			},
+			"content_sockets": {
+				"enemies": [
+					[
+						1.5,
+						0.0,
+						1.4
+					],
+					[
+						1.5,
+						0.0,
+						-1.35
+					],
+					[
+						0.45,
+						0.0,
+						-1.6
+					]
+				],
+				"flora": [
+					[
+						-1.5,
+						0.0,
+						-1.45
+					],
+					[
+						-1.5,
+						0.0,
+						1.35
+					]
+				],
+				"structures": [
+					[
+						0.0,
+						0.0,
+						1.25
+					],
+					[
+						-0.15,
+						0.0,
+						-1.45
+					]
+				]
+			},
+			"contract_id": "generated_spatial_feature_v1",
+			"elevation_index": 0,
+			"feature_variant": "charge_intersection",
+			"floor_cells": [
+				[
+					81,
+					4
+				],
+				[
+					82,
+					4
+				],
+				[
+					83,
+					4
+				],
+				[
+					84,
+					4
+				],
+				[
+					85,
+					4
+				],
+				[
+					81,
+					5
+				],
+				[
+					82,
+					5
+				],
+				[
+					83,
+					5
+				],
+				[
+					84,
+					5
+				],
+				[
+					85,
+					5
+				],
+				[
+					81,
+					6
+				],
+				[
+					82,
+					6
+				],
+				[
+					83,
+					6
+				],
+				[
+					84,
+					6
+				],
+				[
+					85,
+					6
+				],
+				[
+					81,
+					7
+				],
+				[
+					82,
+					7
+				],
+				[
+					83,
+					7
+				],
+				[
+					84,
+					7
+				],
+				[
+					85,
+					7
+				],
+				[
+					81,
+					8
+				],
+				[
+					82,
+					8
+				],
+				[
+					83,
+					8
+				],
+				[
+					84,
+					8
+				],
+				[
+					85,
+					8
+				]
+			],
+			"floor_replacement": true,
+			"footprint": [
+				5.0,
+				0.140000000596046,
+				5.0
+			],
+			"id": "feature_node_06",
+			"interaction_socket": [
+				0.0,
+				0.0,
+				0.0
+			],
+			"kind": "grated_platform",
+			"node_id": "node_06",
+			"position": [
+				80.5,
+				0.449999988079071,
+				2.5
+			],
+			"rail_mouths": [
+				"n",
+				"s",
+				"e",
+				"w"
+			],
+			"roompiece": "grated_platform",
+			"rotation": 0,
+			"scene": "res://scenes/fragments/features/generated_grated_platform.tscn",
+			"socket_assignments": [
+				{
+					"category": "flora",
+					"content_id": "scarpet",
+					"position": [
+						79.0,
+						0.529999971389771,
+						1.04999995231628
+					],
+					"socket": "flora_0"
+				},
+				{
+					"category": "enemies",
+					"content_id": "sapscraps",
+					"position": [
+						82.0,
+						1.0,
+						3.90000009536743
+					],
+					"socket": "enemy_0"
+				},
+				{
+					"category": "structures",
+					"content_id": "barrier",
+					"position": [
+						80.5,
+						1.07500004768372,
+						3.75
+					],
+					"socket": "structure_0"
+				}
+			]
+		},
 		{
 			"affordance_id": "grated_signal_roost",
 			"archetype_id": "2",
@@ -12256,31 +13491,31 @@
 			"content_sockets": {
 				"enemies": [
 					[
-						1.35,
+						1.5,
 						0.0,
-						-1.0
+						1.4
 					],
 					[
-						1.35,
+						1.5,
 						0.0,
-						0.9
+						-1.35
 					],
 					[
-						0.35,
+						0.45,
 						0.0,
-						-1.55
+						-1.6
 					]
 				],
 				"flora": [
 					[
-						-1.45,
+						-1.5,
 						0.0,
-						-1.05
+						-1.45
 					],
 					[
-						-1.45,
+						-1.5,
 						0.0,
-						0.85
+						1.35
 					]
 				],
 				"structures": [
@@ -12434,9 +13669,9 @@
 					"category": "flora",
 					"content_id": "hushbloom",
 					"position": [
-						92.0500030517578,
+						92.0,
 						1.0,
-						1.45000004768372
+						1.04999995231628
 					],
 					"socket": "flora_0"
 				},
@@ -12444,9 +13679,9 @@
 					"category": "enemies",
 					"content_id": "naturalizers",
 					"position": [
-						94.8499984741211,
+						95.0,
 						1.0,
-						1.5
+						3.90000009536743
 					],
 					"socket": "enemy_0"
 				},
@@ -12467,6 +13702,123 @@
 	"systems_contract": {
 		"boundary": "the generated entry-to-shelter route and the states changed inside it",
 		"causal_links": [
+			{
+				"display": "hover_or_pause",
+				"effect_role": "impact target",
+				"from": "node_01:cause",
+				"kind": "intervention_effect",
+				"node": "node_01",
+				"prediction": "Redirects the committed charge into the marked impact target",
+				"source_role": "committed enemy",
+				"state": "enemy momentum changes the target state",
+				"state_label": "CHARGE HITS",
+				"to": "node_01:effect",
+				"visibility_policy": "party_visibility_union"
+			},
+			{
+				"display": "hover_or_pause",
+				"effect_role": "fauna",
+				"from": "node_02:cause",
+				"kind": "intervention_effect",
+				"node": "node_02",
+				"prediction": "Pulls the linked patrol toward the Flure's iron signal",
+				"source_role": "flora",
+				"state": "the mature plant changes the target state",
+				"state_label": "FLORA CHANGES",
+				"to": "node_02:effect",
+				"visibility_policy": "party_visibility_union"
+			},
+			{
+				"display": "hover_or_pause",
+				"effect_role": "route",
+				"from": "node_03:cause",
+				"kind": "intervention_effect",
+				"node": "node_03",
+				"prediction": "the next state becomes reachable",
+				"source_role": "control",
+				"state": "the next state becomes reachable",
+				"state_label": "CHANGES",
+				"to": "node_03:effect",
+				"visibility_policy": "party_visibility_union"
+			},
+			{
+				"display": "hover_or_pause",
+				"effect_role": "party mobility",
+				"from": "node_04:cause",
+				"kind": "intervention_effect",
+				"node": "node_04",
+				"prediction": "Moves the load but reduces the carrier's mobility",
+				"source_role": "carried load",
+				"state": "the resource moves while the carrier becomes vulnerable",
+				"state_label": "LOAD SLOWS",
+				"to": "node_04:effect",
+				"visibility_policy": "party_visibility_union"
+			},
+			{
+				"display": "hover_or_pause",
+				"effect_role": "hidden route",
+				"from": "node_05:cause",
+				"kind": "intervention_effect",
+				"node": "node_05",
+				"prediction": "Reveals the route if the fragment relations agree",
+				"source_role": "fragment relation",
+				"state": "the hidden pattern or route becomes legible",
+				"state_label": "RELATION REVEALS",
+				"to": "node_05:effect",
+				"visibility_policy": "party_visibility_union"
+			},
+			{
+				"display": "hover_or_pause",
+				"effect_role": "impact target",
+				"from": "node_06:cause",
+				"kind": "intervention_effect",
+				"node": "node_06",
+				"prediction": "Redirects the committed charge into the marked impact target",
+				"source_role": "committed enemy",
+				"state": "enemy momentum changes the target state",
+				"state_label": "CHARGE HITS",
+				"to": "node_06:effect",
+				"visibility_policy": "party_visibility_union"
+			},
+			{
+				"display": "hover_or_pause",
+				"effect_role": "fauna",
+				"from": "node_07:cause",
+				"kind": "intervention_effect",
+				"node": "node_07",
+				"prediction": "Stuns the linked fauna after the Hushbloom opens",
+				"source_role": "flora",
+				"state": "the mature plant changes the target state",
+				"state_label": "FLORA CHANGES",
+				"to": "node_07:effect",
+				"visibility_policy": "party_visibility_union"
+			},
+			{
+				"display": "hover_or_pause",
+				"effect_role": "party mobility",
+				"from": "node_08:cause",
+				"kind": "intervention_effect",
+				"node": "node_08",
+				"prediction": "Moves the load but reduces the carrier's mobility",
+				"source_role": "carried load",
+				"state": "the resource moves while the carrier becomes vulnerable",
+				"state_label": "LOAD SLOWS",
+				"to": "node_08:effect",
+				"visibility_policy": "party_visibility_union"
+			},
+			{
+				"display": "hover_or_pause",
+				"effect_role": "hidden route",
+				"from": "node_09:cause",
+				"kind": "intervention_effect",
+				"node": "node_09",
+				"prediction": "Reveals the route if the fragment relations agree",
+				"source_role": "fragment relation",
+				"state": "the hidden pattern or route becomes legible",
+				"state_label": "RELATION REVEALS",
+				"to": "node_09:effect",
+				"visibility_policy": "party_visibility_union"
+			},
 			{
 				"display": "highlight_or_pause",
 				"from": "node_01",
@@ -12913,8 +14265,15 @@
 			"to_index": 4
 		}
 	],
+	"themed_landmarks": [],
+	"themed_setpieces": [],
 	"title": "Generated Chain/Nested POC: Shelter 2 -> Shelter 3",
 	"validation": {
+		"area_theme": {
+			"errors": [],
+			"landmark_count": 0,
+			"valid": true
+		},
 		"bare_pair_solvable": true,
 		"multi_solution": true,
 		"multi_solution_ok": true,
@@ -12923,7 +14282,7 @@
 		"solution_warnings": [],
 		"spatial_features": {
 			"errors": [],
-			"feature_count": 1,
+			"feature_count": 3,
 			"valid": true
 		},
 		"spotlight_within_stage": true,
@@ -12953,5 +14312,6 @@
 		"preview_party_preset": "full_party_full_health",
 		"region": "Channels",
 		"slot_id": "generated_chain_nested_poc_shelter_2_to_3"
-	}
+	},
+	"zone_transition": {}
 }

@@ -14,6 +14,37 @@
         "barrier",
         "reroute"
       ],
+      "spatial_affordances": [
+        {
+          "id": "grated_charge_intersection",
+          "feature_kind": "grated_platform",
+          "feature_variant": "charge_intersection",
+          "variants": [
+            "destroy_barrier",
+            "kill_enemy",
+            "reveal_plant",
+            "reveal_terminal",
+            "reveal_passage",
+            "activate_mechanism"
+          ],
+          "priority": 108,
+          "socket_policy": "separate_bait_lane_from_impact_target",
+          "primary_insight": "The enemy, bait line, and impact target form one local redirection system.",
+          "leverage": "Change the charge line instead of servicing the blocker directly.",
+          "failure_prediction": "A misaligned bait leaves the marked target unchanged and the route blocked.",
+          "feedback": [
+            "the committed charge path stays visible from the approach",
+            "the impact target shows its before and after state"
+          ],
+          "emergent_inputs": [
+            "enemy commitment",
+            "party position",
+            "impact target material",
+            "route topology",
+            "timing"
+          ]
+        }
+      ],
       "compatible_node_roles": [
         "route_pressure",
         "danger",
@@ -1201,6 +1232,35 @@
         "iron_bloom",
         "attrition",
         "crossing"
+      ],
+      "spatial_affordances": [
+        {
+          "id": "grated_dose_crossing",
+          "feature_kind": "grated_platform",
+          "feature_variant": "dose_crossing",
+          "variants": [
+            "iron_bloom",
+            "atmospheric",
+            "biofilm_mat",
+            "flooded_lane"
+          ],
+          "priority": 104,
+          "socket_policy": "separate_short_dose_lane_from_safe_detour",
+          "primary_insight": "Route cost is dose rate multiplied by time, not geometric length alone.",
+          "leverage": "Compare the projected total dose before choosing a lane.",
+          "failure_prediction": "Entering the short lane with insufficient capacity drains the party before the far mouth.",
+          "feedback": [
+            "each lane shows rate, duration, and projected total before commitment",
+            "remaining party capacity stays visible during exposure"
+          ],
+          "emergent_inputs": [
+            "hazard dose rate",
+            "route length",
+            "party capacity",
+            "movement state",
+            "safe-detour topology"
+          ]
+        }
       ],
       "compatible_node_roles": [
         "route_pressure",

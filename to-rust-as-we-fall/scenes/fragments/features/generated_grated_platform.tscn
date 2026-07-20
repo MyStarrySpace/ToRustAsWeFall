@@ -261,7 +261,7 @@ position = Vector3(2.18, -1.1, 2.18)
 mesh = SubResource("SupportMesh")
 
 [node name="SignalSocket" type="MeshInstance3D" parent="."]
-position = Vector3(-1.45, 0.14, -1.05)
+position = Vector3(-1.5, 0.14, -1.45)
 mesh = SubResource("SignalMesh")
 
 [node name="SignalLight" type="OmniLight3D" parent="SignalSocket"]
@@ -286,16 +286,16 @@ billboard = 1
 [node name="Interaction" type="Marker3D" parent="Sockets"]
 
 [node name="Flora0" type="Marker3D" parent="Sockets"]
-position = Vector3(-1.45, 0, -1.05)
+position = Vector3(-1.5, 0, -1.45)
 
 [node name="Flora1" type="Marker3D" parent="Sockets"]
-position = Vector3(-1.45, 0, 0.85)
+position = Vector3(-1.5, 0, 1.35)
 
 [node name="Enemy0" type="Marker3D" parent="Sockets"]
-position = Vector3(1.35, 0, -1)
+position = Vector3(1.5, 0, 1.4)
 
 [node name="Enemy1" type="Marker3D" parent="Sockets"]
-position = Vector3(1.35, 0, 0.9)
+position = Vector3(1.5, 0, -1.35)
 
 [node name="Structure0" type="Marker3D" parent="Sockets"]
 position = Vector3(0, 0, 1.25)

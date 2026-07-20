@@ -1,0 +1,275 @@
+[gd_scene load_steps=16 format=3]
+
+[ext_resource type="Script" path="res://scripts/game/world/authored_spatial_layout_3d.gd" id="1_layout"]
+[ext_resource type="PackedScene" path="res://resources/models/elevator/endo-junction.glb" id="2_model"]
+
+[sub_resource type="StandardMaterial3D" id="GuideMaterial"]
+albedo_color = Color(0.13, 0.42, 0.36, 1)
+emission_enabled = true
+emission = Color(0.08, 0.3, 0.24, 1)
+emission_energy_multiplier = 0.55
+metallic = 0.35
+roughness = 0.66
+
+[sub_resource type="BoxMesh" id="GuideMesh"]
+material = SubResource("GuideMaterial")
+size = Vector3(8.6, 0.025, 0.08)
+
+[sub_resource type="StandardMaterial3D" id="AsterPinMaterial"]
+albedo_color = Color(0.2, 0.48, 0.78, 1)
+emission_enabled = true
+emission = Color(0.12, 0.34, 0.68, 1)
+emission_energy_multiplier = 0.65
+
+[sub_resource type="StandardMaterial3D" id="PerisPinMaterial"]
+albedo_color = Color(0.72, 0.38, 0.12, 1)
+emission_enabled = true
+emission = Color(0.58, 0.24, 0.06, 1)
+emission_energy_multiplier = 0.55
+
+[sub_resource type="StandardMaterial3D" id="NeutralPinMaterial"]
+albedo_color = Color(0.34, 0.64, 0.55, 1)
+emission_enabled = true
+emission = Color(0.18, 0.46, 0.36, 1)
+emission_energy_multiplier = 0.5
+
+[sub_resource type="CylinderMesh" id="AsterPinMesh"]
+material = SubResource("AsterPinMaterial")
+top_radius = 0.26
+bottom_radius = 0.3
+height = 0.045
+
+[sub_resource type="CylinderMesh" id="PerisPinMesh"]
+material = SubResource("PerisPinMaterial")
+top_radius = 0.26
+bottom_radius = 0.3
+height = 0.045
+
+[sub_resource type="CylinderMesh" id="NeutralPinMesh"]
+material = SubResource("NeutralPinMaterial")
+top_radius = 0.26
+bottom_radius = 0.3
+height = 0.045
+
+[sub_resource type="CylinderMesh" id="RecoverPadMesh"]
+material = SubResource("PerisPinMaterial")
+top_radius = 0.68
+bottom_radius = 0.76
+height = 0.055
+
+[sub_resource type="CylinderMesh" id="ScoutPadMesh"]
+material = SubResource("AsterPinMaterial")
+top_radius = 0.68
+bottom_radius = 0.76
+height = 0.055
+
+[sub_resource type="StandardMaterial3D" id="ContainerMaterial"]
+albedo_color = Color(0.16, 0.2, 0.18, 1)
+metallic = 0.25
+roughness = 0.58
+
+[sub_resource type="BoxMesh" id="ContainerMesh"]
+material = SubResource("ContainerMaterial")
+size = Vector3(0.85, 0.5, 0.62)
+
+[sub_resource type="StandardMaterial3D" id="DrinkMaterial"]
+albedo_color = Color(0.28, 0.38, 0.4, 1)
+metallic = 0.45
+roughness = 0.28
+
+[sub_resource type="CylinderMesh" id="DrinkMesh"]
+material = SubResource("DrinkMaterial")
+top_radius = 0.07
+bottom_radius = 0.055
+height = 0.2
+
+[sub_resource type="StandardMaterial3D" id="PlantMaterial"]
+albedo_color = Color(0.13, 0.12, 0.075, 1)
+roughness = 0.82
+
+[sub_resource type="SphereMesh" id="PlantMesh"]
+material = SubResource("PlantMaterial")
+radius = 0.24
+height = 0.42
+
+[sub_resource type="BoxShape3D" id="FloorShape"]
+size = Vector3(9.0, 0.12, 7.0)
+
+[node name="ElevatorJunctionShelter" type="Node3D"]
+script = ExtResource("1_layout")
+hidden_visual_paths = Array[NodePath]([NodePath("Visuals/EndoJunctionModel/Junction_Ceiling"), NodePath("Visuals/EndoJunctionModel/Junction_RockRight"), NodePath("Visuals/EndoJunctionModel/Junction_Facility"), NodePath("Visuals/EndoJunctionModel/Junction_Bedroll"), NodePath("Visuals/EndoJunctionModel/Junction_Pillow"), NodePath("Visuals/EndoJunctionModel/Junction_Flora")])
+occlusion_exempt_paths = Array[NodePath]([NodePath("Visuals/EndoJunctionModel")])
+metadata/archetype_id = "recovery_survey"
+metadata/causal_model = "survey three distinct stations with both perspectives; choose one preparation; follow the field lane; return to the plant"
+metadata/navigation_rule = "west-east circulation lane remains clear"
+
+[node name="Visuals" type="Node3D" parent="."]
+
+[node name="EndoJunctionModel" parent="Visuals" instance=ExtResource("2_model")]
+position = Vector3(-3, 0, -3.1)
+scale = Vector3(0.55, 0.55, 0.55)
+
+[node name="NavigationGuide" type="MeshInstance3D" parent="Visuals" groups=["camera_occlusion_exempt"]]
+position = Vector3(0.85, 0.018, 0)
+mesh = SubResource("GuideMesh")
+
+[node name="SurveyHeader" type="Label3D" parent="Visuals" groups=["camera_occlusion_exempt"]]
+position = Vector3(1.8, 2.45, -2.72)
+text = "ENDO'S JUNCTION  /  SHELTER SURVEY"
+font_size = 48
+pixel_size = 0.0036
+modulate = Color(0.58, 0.9, 0.78, 1)
+outline_modulate = Color(0.01, 0.025, 0.02, 0.95)
+outline_size = 10
+billboard = 1
+
+[node name="FieldExitLabel" type="Label3D" parent="Visuals" groups=["camera_occlusion_exempt"]]
+position = Vector3(5.35, 2.0, 0)
+text = "FIELDWORK  >"
+font_size = 44
+pixel_size = 0.0035
+modulate = Color(0.4, 0.86, 0.72, 1)
+outline_modulate = Color(0.01, 0.025, 0.02, 0.95)
+outline_size = 9
+billboard = 1
+
+[node name="StationPins" type="Node3D" parent="Visuals"]
+
+[node name="Workbench" type="MeshInstance3D" parent="Visuals/StationPins" groups=["camera_occlusion_exempt"]]
+position = Vector3(0.4, 0.04, -1.15)
+mesh = SubResource("AsterPinMesh")
+
+[node name="Monitor" type="MeshInstance3D" parent="Visuals/StationPins" groups=["camera_occlusion_exempt"]]
+position = Vector3(3.35, 0.04, -2.25)
+mesh = SubResource("NeutralPinMesh")
+
+[node name="Food" type="MeshInstance3D" parent="Visuals/StationPins" groups=["camera_occlusion_exempt"]]
+position = Vector3(3.3, 0.04, 1)
+mesh = SubResource("PerisPinMesh")
+
+[node name="Lookout" type="MeshInstance3D" parent="Visuals/StationPins" groups=["camera_occlusion_exempt"]]
+position = Vector3(-2.5, 0.04, -1.55)
+mesh = SubResource("NeutralPinMesh")
+
+[node name="Heater" type="MeshInstance3D" parent="Visuals/StationPins" groups=["camera_occlusion_exempt"]]
+position = Vector3(1.65, 0.04, 2.2)
+mesh = SubResource("NeutralPinMesh")
+
+[node name="Markings" type="MeshInstance3D" parent="Visuals/StationPins" groups=["camera_occlusion_exempt"]]
+position = Vector3(4.35, 0.04, 1.75)
+mesh = SubResource("NeutralPinMesh")
+
+[node name="Game" type="MeshInstance3D" parent="Visuals/StationPins" groups=["camera_occlusion_exempt"]]
+position = Vector3(2, 0.04, -1.1)
+mesh = SubResource("NeutralPinMesh")
+
+[node name="PrepRecover" type="MeshInstance3D" parent="Visuals/StationPins" groups=["camera_occlusion_exempt"]]
+position = Vector3(-0.55, 0.04, 2.55)
+mesh = SubResource("RecoverPadMesh")
+
+[node name="PrepScout" type="MeshInstance3D" parent="Visuals/StationPins" groups=["camera_occlusion_exempt"]]
+position = Vector3(5.2, 0.04, -2.6)
+mesh = SubResource("ScoutPadMesh")
+
+[node name="PrepRecoverLabel" type="Label3D" parent="Visuals/StationPins" groups=["camera_occlusion_exempt"]]
+position = Vector3(-0.55, 0.12, 2.55)
+text = "RECOVER"
+font_size = 32
+pixel_size = 0.003
+modulate = Color(0.95, 0.62, 0.24, 1)
+outline_size = 8
+billboard = 1
+
+[node name="PrepScoutLabel" type="Label3D" parent="Visuals/StationPins" groups=["camera_occlusion_exempt"]]
+position = Vector3(5.2, 0.12, -2.6)
+text = "SCOUT"
+font_size = 32
+pixel_size = 0.003
+modulate = Color(0.42, 0.72, 1, 1)
+outline_size = 8
+billboard = 1
+
+[node name="DrinkContainer" type="Node3D" parent="Visuals"]
+position = Vector3(-1.85, 0, 2.2)
+
+[node name="Container" type="MeshInstance3D" parent="Visuals/DrinkContainer"]
+position = Vector3(0, 0.25, 0)
+mesh = SubResource("ContainerMesh")
+
+[node name="Drink" type="MeshInstance3D" parent="Visuals/DrinkContainer" groups=["camera_occlusion_exempt"]]
+position = Vector3(0, 0.62, 0)
+mesh = SubResource("DrinkMesh")
+
+[node name="DormantPlantVisual" type="MeshInstance3D" parent="Visuals" groups=["camera_occlusion_exempt"]]
+position = Vector3(4.25, 0.25, -1.15)
+mesh = SubResource("PlantMesh")
+
+[node name="ShelterLight" type="OmniLight3D" parent="Visuals"]
+position = Vector3(0.75, 2.65, 0)
+light_color = Color(0.82, 0.64, 0.4, 1)
+light_energy = 2.2
+omni_range = 7.5
+
+[node name="WalkableFloor" type="StaticBody3D" parent="."]
+position = Vector3(0.8, -0.06, 0)
+collision_layer = 1
+collision_mask = 0
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="WalkableFloor"]
+shape = SubResource("FloorShape")
+
+[node name="Anchors" type="Node3D" parent="."]
+
+[node name="Entry" type="Marker3D" parent="Anchors"]
+position = Vector3(-3.35, 0.5, 0)
+
+[node name="Center" type="Marker3D" parent="Anchors"]
+position = Vector3(0.6, 0.5, 0)
+
+[node name="Exit" type="Marker3D" parent="Anchors"]
+position = Vector3(5.3, 0.5, 0)
+
+[node name="Workbench" type="Marker3D" parent="Anchors"]
+position = Vector3(0.4, 1.05, -1.15)
+
+[node name="Monitor" type="Marker3D" parent="Anchors"]
+position = Vector3(3.35, 1.1, -2.25)
+
+[node name="Food" type="Marker3D" parent="Anchors"]
+position = Vector3(3.3, 0.8, 1)
+
+[node name="Lookout" type="Marker3D" parent="Anchors"]
+position = Vector3(-2.5, 1.05, -1.55)
+
+[node name="Heater" type="Marker3D" parent="Anchors"]
+position = Vector3(1.65, 0.55, 2.2)
+
+[node name="Markings" type="Marker3D" parent="Anchors"]
+position = Vector3(4.35, 1, 1.75)
+
+[node name="Game" type="Marker3D" parent="Anchors"]
+position = Vector3(2, 0.95, -1.1)
+
+[node name="PrepRecover" type="Marker3D" parent="Anchors"]
+position = Vector3(-0.55, 0.05, 2.55)
+
+[node name="PrepScout" type="Marker3D" parent="Anchors"]
+position = Vector3(5.2, 0.05, -2.6)
+
+[node name="Plant" type="Marker3D" parent="Anchors"]
+position = Vector3(4.25, 0.55, -1.15)
+
+[node name="EndoEntry" type="Marker3D" parent="Anchors"]
+position = Vector3(5.3, 0.5, 0)
+
+[node name="DrinkPickup" type="Marker3D" parent="Anchors"]
+position = Vector3(-1.85, 0.5, 2.2)
+
+[node name="PartyRest" type="Marker3D" parent="Anchors"]
+position = Vector3(-2.25, 0.5, 0)
+
+[node name="ClearLaneStart" type="Marker3D" parent="Anchors"]
+position = Vector3(-3.35, 0.05, 0)
+
+[node name="ClearLaneEnd" type="Marker3D" parent="Anchors"]
+position = Vector3(5.3, 0.05, 0)

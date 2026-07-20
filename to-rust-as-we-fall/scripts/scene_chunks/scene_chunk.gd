@@ -3,6 +3,8 @@ extends Node3D
 
 const INTERACTABLE_SCENE := preload("res://scenes/game/interactable.tscn")
 const CAUSAL_FEEDBACK_LINK_SCRIPT := preload("res://scripts/game/world/causal_feedback_link.gd")
+const INFRASTRUCTURE_OPERATION_SCRIPT := preload("res://scripts/game/objects/infrastructure_operation.gd")
+const INFRASTRUCTURE_SERVICE_FIELD_SCRIPT := preload("res://scripts/game/objects/infrastructure_service_field.gd")
 
 var host: Node = null
 var chunk_name := ""
@@ -1047,6 +1049,7 @@ func _wire_causal_feedback_manager() -> void:
 
 ## Register a readable cause -> effect relationship between any two 3D nodes.
 ## opts: label, source_offset, target_offset, arc_height, dash_count, target_highlight,
+## interaction_source (hover delegate when the visible cause is a child actor),
 ## visibility_query, visibility_policy, owner_character, character_tint, path_style,
 ## flow_speed, feedback_mode, draw_duration, name.
 ## Preview hosts automatically supply the shared party-perception query.
@@ -1142,6 +1145,102 @@ func get_causal_feedback_state() -> Dictionary:
 		if bool(state.get("visible", false)):
 			visible_count += 1
 	return {"count": states.size(), "visible_count": visible_count, "links": states}
+
+
+## Materialize the shared typed-service interaction contract used by data fragments and roguelite
+## stretches. The caller owns only placement data and keeps the returned operation/field references for
+## reset and polling; cursor verbs, consequence copy, outlines, causal links, and state transitions live here.
+func _add_infrastructure_operation(spec: Dictionary) -> Dictionary:
+	var operation := INFRASTRUCTURE_OPERATION_SCRIPT.new()
+	var operation_id := str(spec.get("operation_id", "infrastructure_operation"))
+	operation.name = "InfrastructureOperation_%s" % operation_id
+	operation.configure(spec)
+	add_child(operation)
+
+	var source_pos := _infrastructure_vec3(spec.get("source_control_pos", Vector3.ZERO))
+	var receiver_pos := _infrastructure_vec3(spec.get("receiver_control_pos", Vector3.ZERO))
+	var commodity := str(spec.get("commodity", "service"))
+	var tint := _infrastructure_commodity_color(commodity)
+	var source_mesh := _add_box(operation, source_pos + Vector3(0.0, 0.42, 0.0),
+		Vector3(0.56, 0.84, 0.46), Color(0.10, 0.14, 0.16), tint, 1.2, "SourceControlMesh")
+	var receiver_mesh := _add_box(operation, receiver_pos + Vector3(0.0, 0.42, 0.0),
+		Vector3(0.56, 0.84, 0.46), Color(0.13, 0.12, 0.11), Color(0.95, 0.64, 0.32), 0.75,
+		"ReceiverControlMesh")
+	var source_status := _add_label(operation, "SOURCE READY", source_pos + Vector3(0.0, 1.18, 0.0), tint)
+	var receiver_status := _add_label(operation, "AWAITING SERVICE", receiver_pos + Vector3(0.0, 1.18, 0.0),
+		Color(0.62, 0.65, 0.70))
+
+	var source_name := str(spec.get("source_name", "source plant"))
+	var receiver_name := str(spec.get("receiver_name", "receiving plant"))
+	var source_control := _add_object_interactable(
+		operation, "InfrastructureSource_%s" % operation_id, "%s service control" % source_name,
+		source_pos, str(spec.get("source_action", "ROUTE SERVICE")), [source_mesh],
+		"", 0.7, true, 1.65, Interactable.InteractableType.TIMED_ACTION
+	)
+	source_control.set("consequence_preview", str(spec.get("source_preview", "Routes service to the receiver.")))
+	var receiver_control := _add_object_interactable(
+		operation, "InfrastructureReceiver_%s" % operation_id, "%s receiving control" % receiver_name,
+		receiver_pos, str(spec.get("receiver_action", "COMMISSION RECEIVER")), [receiver_mesh],
+		"", 0.9, true, 1.65, Interactable.InteractableType.TIMED_ACTION
+	)
+	receiver_control.set("consequence_preview", str(spec.get("receiver_preview", "Resolves the marked service fault.")))
+
+	var field := INFRASTRUCTURE_SERVICE_FIELD_SCRIPT.new()
+	field.name = "InfrastructureServiceField_%s" % operation_id
+	field.configure({
+		"position": _infrastructure_vec3(spec.get("effect_pos", Vector3.ZERO)), "commodity": commodity,
+		"half": _infrastructure_vec2(spec.get("effect_half", Vector2(1.18, 0.72))),
+		"damage_per_second": float(spec.get("damage_per_second", 0.0)),
+		"safe_concealment": bool(spec.get("safe_concealment", false)),
+		"hazard_label": str(spec.get("hazard_label", "SERVICE FAULT")),
+		"safe_label": str(spec.get("safe_label", "SERVICE BAY SAFE")),
+	})
+	operation.add_child(field)
+
+	var service_link := _add_causal_feedback_link(source_mesh, receiver_mesh, tint, {
+		"name": "InfrastructureServiceLink_%s" % operation_id, "interaction_source": source_control,
+		"label": str(spec.get("service_relationship", "SERVICE FEEDS")),
+		"feedback_mode": "predicted", "visibility_policy": "contextual",
+		"source_offset": Vector3(0.0, 0.58, 0.0), "target_offset": Vector3(0.0, 0.58, 0.0),
+		"arc_height": 1.35, "dash_count": 8, "flow_speed": 0.28, "draw_duration": 0.4,
+	})
+	var effect_link := _add_causal_feedback_link(receiver_mesh, field, Color(0.95, 0.64, 0.32), {
+		"name": "InfrastructureConsequenceLink_%s" % operation_id, "interaction_source": receiver_control,
+		"label": str(spec.get("effect_relationship", "RESOLVES FAULT")),
+		"feedback_mode": "predicted", "visibility_policy": "contextual",
+		"source_offset": Vector3(0.0, 0.58, 0.0), "target_offset": Vector3(0.0, 0.18, 0.0),
+		"arc_height": 0.9, "dash_count": 6, "flow_speed": 0.32, "draw_duration": 0.35,
+	})
+	operation.bind_runtime(source_control, receiver_control, field, source_status, receiver_status,
+		service_link, effect_link)
+	return {"operation": operation, "field": field, "source_control": source_control,
+		"receiver_control": receiver_control, "service_link": service_link, "effect_link": effect_link}
+
+
+func _infrastructure_commodity_color(commodity: String) -> Color:
+	match commodity:
+		"electricity": return Color(0.42, 0.72, 0.95)
+		"data": return Color(0.58, 0.50, 0.96)
+		"fabricated_goods": return Color(0.95, 0.64, 0.32)
+		"wastewater": return Color(0.72, 0.54, 0.24)
+		"process_water": return Color(0.24, 0.78, 0.72)
+		_: return Color(0.36, 0.91, 0.50)
+
+
+func _infrastructure_vec3(value: Variant) -> Vector3:
+	if value is Vector3:
+		return value as Vector3
+	if value is Array and (value as Array).size() >= 3:
+		return Vector3(float(value[0]), float(value[1]), float(value[2]))
+	return Vector3.ZERO
+
+
+func _infrastructure_vec2(value: Variant) -> Vector2:
+	if value is Vector2:
+		return value as Vector2
+	if value is Array and (value as Array).size() >= 2:
+		return Vector2(float(value[0]), float(value[1]))
+	return Vector2(1.18, 0.72)
 
 ## Create an interactable for an OBJECT and cross-wire it to the shared outline+particle highlight, so
 ## the object gets the hover OUTLINE and the click/active SHIMMER — the SAME feedback tutorial objects

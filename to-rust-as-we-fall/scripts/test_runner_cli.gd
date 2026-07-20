@@ -184,6 +184,9 @@ func _ready() -> void:
 			"--test-state-machine":
 				ran_test = true
 				_test_state_machine()
+			"--test-story-beats":
+				ran_test = true
+				_test_story_beats()
 			"--test-elevator-enemy-engagement":
 				ran_test = true
 				_test_elevator_enemy_engagement()
@@ -1276,6 +1279,7 @@ func _run_all_tests() -> void:
 	_test_grid_pathfinding()
 	_test_game_state()
 	_test_state_machine()
+	_test_story_beats()
 	_test_elevator_enemy_engagement()
 	_test_data_identify()
 	_test_hidden_detection()
@@ -3163,6 +3167,13 @@ func _test_biomes() -> void:
 				_assert_equals(primitive_count, 0,
 					"biome '%s' landmark visible geometry comes from portable models" % needed)
 				theme_root.free()
+		var infrastructure_catalog: Dictionary = theme.get("infrastructure_catalog", {})
+		_assert_equals(infrastructure_catalog.size(), 4,
+			"biome '%s' can draw from the measured infrastructure catalog" % needed)
+		for infrastructure_v in infrastructure_catalog.values():
+			var infrastructure := infrastructure_v as Dictionary
+			_assert_equals(str(infrastructure.get("asset_contract", "")), "editable_3d_v1",
+				"%s keeps a portable wrapper contract" % str(infrastructure.get("id", "infrastructure")))
 		if needed == "cleanstreets":
 			var clean_landmark := theme_landmarks[0] as Dictionary
 			_assert_equals(str(clean_landmark.get("asset_contract", "")), "editable_3d_v1",
@@ -3189,6 +3200,15 @@ func _test_biomes() -> void:
 					setpiece_root.free()
 	_assert_true(floor_tiles.size() >= 3,
 		"area themes use distinct surface languages rather than one recolored deck (saw %d)" % floor_tiles.size())
+	var threshold: Dictionary = Biomes.transition_contract_for("channels", "garden")
+	_assert_equals(str(threshold.get("contract_id", "")), "generated_zone_transition_v1",
+		"adjacent districts expose a serialized entry-transition contract")
+	_assert_equals(str(threshold.get("from_floor_tile", "")), "deck_metal",
+		"the threshold retains the district being left")
+	_assert_equals(str(threshold.get("to_floor_tile", "")), "rock",
+		"the threshold resolves into the destination district")
+	_assert_true(int(threshold.get("length_cells", 0)) >= 3,
+		"the threshold has enough walking distance to read as a transition")
 
 	# A biome RESTRICTS generation to its palette slice: every placed flora/enemy/structure is in the biome's lists,
 	# the spec records the biome, and the level still connects entry->exit and stays bare-pair solvable.
@@ -3206,8 +3226,10 @@ func _test_biomes() -> void:
 			"spec records biome '%s' as a rendered area theme" % biome)
 		_assert_true(bool(StretchGeneratorScript.validate_area_theme(spec).get("valid", false)),
 			"biome '%s' emits a valid authored landmark placement" % biome)
-		_assert_equals((spec.get("themed_landmarks", []) as Array).size(), 1,
-			"biome '%s' emits one dominant district landmark cluster" % biome)
+		_assert_equals((spec.get("themed_landmarks", []) as Array).size(), 3,
+			"biome '%s' emits one dominant district landmark plus a two-building service pair" % biome)
+		_assert_equals((spec.get("infrastructure_operations", []) as Array).size(), 1,
+			"biome '%s' emits one bounded typed service operation" % biome)
 		if biome == "cleanstreets":
 			_assert_true(not (spec.get("themed_setpieces", []) as Array).is_empty(),
 				"Cleanstreets emits active stud lanes on route-risk cells")
@@ -3241,11 +3263,12 @@ func _test_biomes() -> void:
 			if not bool(swept.get("success", false)):
 				theme_sweep_failures.append("%s/%d:%s" % [biome, seed, str(swept.get("error", "failed"))])
 				continue
-			if (swept.get("themed_landmarks", []) as Array).size() != 1 \
+			if (swept.get("themed_landmarks", []) as Array).size() != 3 \
+					or (swept.get("infrastructure_operations", []) as Array).size() != 1 \
 					or not bool(StretchGeneratorScript.validate_area_theme(swept).get("valid", false)):
 				theme_sweep_failures.append("%s/%d:invalid_landmark" % [biome, seed])
 	_assert_true(theme_sweep_failures.is_empty(),
-		"every district keeps one valid landmark across a %d-stretch seed sweep (failures: %s)"
+		"every district keeps its valid landmark and infrastructure pair across a %d-stretch seed sweep (failures: %s)"
 		% [expected_biomes.size() * 12, str(theme_sweep_failures)])
 
 	# Deterministic + varied biome selection.
@@ -3267,6 +3290,21 @@ func _test_biomes() -> void:
 	_assert_equals(first_cycle_unique.size(), ids.size(),
 		"a run visits every district before repeating one")
 	_assert_true(adjacent_unique, "adjacent procedural depths always change area theme")
+	var transition_spec: Dictionary = StretchGeneratorScript.generate({
+		"seed": 431,
+		"complexity_tier": "standard",
+		"previous_biome": "channels",
+		"biome": "garden",
+		"id": "biome_transition_channels_to_garden",
+	})
+	_assert_true(bool(transition_spec.get("success", false)),
+		"a stretch with an incoming district transition generates")
+	_assert_equals(str((transition_spec.get("zone_transition", {}) as Dictionary).get("from_id", "")),
+		"channels", "the generated stretch remembers the previous district")
+	_assert_equals(str((transition_spec.get("zone_transition", {}) as Dictionary).get("to_id", "")),
+		"garden", "the generated transition ends in the active district")
+	_assert_true(bool(StretchGeneratorScript.validate_area_theme(transition_spec).get("valid", false)),
+		"the incoming transition remains part of the area-theme validation")
 
 func _test_poi_distribution() -> void:
 	_test_name = "POI Distribution"
@@ -5972,6 +6010,7 @@ func _test_generated_stretch_quality() -> void:
 	var themed_spec: Dictionary = StretchGeneratorScript.generate({
 		"seed": int(hash("biome_test:channels")),
 		"complexity_tier": "standard",
+		"previous_biome": "garden",
 		"biome": "channels",
 		"id": "quality_theme_channels",
 	})
@@ -6003,6 +6042,14 @@ func _test_generated_stretch_quality() -> void:
 			themed_texture_path = str(themed_texture.resource_path)
 	_assert_true(themed_texture_path.ends_with("deck_metal.png"),
 		"the Channels theme applies its district floor material")
+	var live_transition := themed_chunk.find_child("GeneratedZoneTransition_L0", true, false) as MeshInstance3D
+	_assert_true(live_transition != null,
+		"the playable stretch renders an entry threshold from the previous district")
+	if live_transition != null:
+		_assert_true(live_transition.material_override is ShaderMaterial,
+			"the entry threshold crossfades both district surface languages")
+	_assert_true(int(themed_graybox.get("zone_transition_floor_cell_count", 0)) >= 3,
+		"the district transition occupies several walkable cells instead of one hard seam")
 	themed_chunk.queue_free()
 	await get_tree().process_frame
 
@@ -6725,6 +6772,11 @@ func _test_run_session_e2e() -> void:
 			var next_biome := str(s.spec.get("biome", ""))
 			_assert_true(next_biome != "" and next_biome != previous_generated_biome,
 				"depth %d changes district theme from the previous procedural stretch" % s.depth)
+			var transition := s.spec.get("zone_transition", {}) as Dictionary
+			_assert_equals(str(transition.get("from_id", "")), previous_generated_biome,
+				"depth %d carries the previous district into its entry threshold" % s.depth)
+			_assert_equals(str(transition.get("to_id", "")), next_biome,
+				"depth %d resolves its entry threshold into the new district" % s.depth)
 			_assert_true(not (s.spec.get("themed_landmarks", []) as Array).is_empty(),
 				"depth %d carries its themed building/feature cluster" % s.depth)
 			previous_generated_biome = next_biome
@@ -6843,6 +6895,43 @@ func _test_roguelike_loader_descent() -> void:
 
 	inst.queue_free()
 	await tree.process_frame
+
+	# Cross-layout handoff regression: a WFC level owns a spiral coord map, while the
+	# authored chase is flat. Advancing must retire the outgoing root AND its spatial
+	# transform before loading the corridor, or both layouts appear fused in-world.
+	var seam_inst = scene.instantiate()
+	seam_inst.set("preview_menu", true)
+	tree.root.add_child(seam_inst)
+	for i in range(4):
+		await tree.process_frame
+	seam_inst.call("_apply_preview_entry", seam_inst.call("get_preview_entry", "roguelike_wfc"))
+	seam_inst.call("_begin_chunk")
+	for i in range(6):
+		await tree.process_frame
+	var seam_session = seam_inst.get("_run_session")
+	var seam_state = seam_inst.get("_game_state")
+	var outgoing_root: Node3D = seam_inst.get("_active_chunk")
+	_assert_equals(str(seam_inst.get("preview_chunk")), "generated_stretch",
+		"the WFC run begins on the generated spiral")
+	_assert_true(seam_state != null and seam_state.coord_map != null,
+		"the generated spiral installs its chunk-owned coordinate map")
+	# Put the pure-data session immediately before its deterministic chase deal. The
+	# current spec stays the already-loaded WFC level; choose() now produces the chase.
+	seam_session.depth = int(seam_session.call("_chase_depth")) - 1
+	seam_inst.call("_roguelike_choose", {"id": "seam_regression", "reward": {}})
+	for i in range(8):
+		await tree.process_frame
+	var seam_chunks: Dictionary = seam_inst.get("_chunks")
+	var live_root: Node3D = seam_inst.get("_active_chunk")
+	_assert_equals(str(seam_inst.get("preview_chunk")), "lockout_chase",
+		"the deterministic deal advances into the authored chase")
+	_assert_true(not seam_chunks.has("generated_stretch") and seam_chunks.has("lockout_chase"),
+		"the outgoing spiral root cannot survive beneath the chase hallway")
+	_assert_true(live_root != null and live_root != outgoing_root,
+		"the active root switches atomically to the chase chunk")
+	_assert_true(seam_state.coord_map == null,
+		"the flat chase cannot inherit the outgoing spiral coordinate map")
+	await _dispose_scene(seam_inst)
 
 func _test_curriculum_ramp() -> void:
 	_test_name = "Curriculum Ramp"
@@ -13576,6 +13665,8 @@ func _test_elevator_wreckage_gate() -> void:
 		if gate_scene != null else null
 	_assert_true(gate_scene != null and gate_animation != null,
 		"The hallway gate is an inspectable authored scene with an AnimationPlayer")
+	_assert_true(gate_scene.get_script() == load("res://scripts/game/objects/party_gate_3d.gd"),
+		"The authored wreckage delegates roster, proximity, and barrier state to the reusable party gate")
 	_assert_true(gate_scene != null and gate_scene.find_child("AsterAssist", true, false) != null \
 		and gate_scene.find_child("PerisAssist", true, false) != null,
 		"Two visible brace positions communicate the cooperation threshold")
@@ -13584,6 +13675,10 @@ func _test_elevator_wreckage_gate() -> void:
 	_assert_true(instance._wreckage_interactable != null \
 		and int(instance._wreckage_interactable.get("interactable_type")) == Interactable.InteractableType.TIMED_ACTION,
 		"Clearing wreckage is a deliberate click-to-work action")
+	var edge_target: Vector3 = instance.WRECKAGE_GATE_POS + Vector3(3.0, 0.0, 7.0)
+	for member_id in ["aster", "peris"]:
+		_assert_true(gs.compute_preview_path(member_id, edge_target).is_empty(),
+			"The intact gate has no path around its outer edge for %s" % member_id.capitalize())
 
 	# Representative misconception: one nearby body is enough. Loose pieces fall,
 	# the animation names the noise, and ordinary Enemy FSMs acquire that actor.
@@ -13613,27 +13708,73 @@ func _test_elevator_wreckage_gate() -> void:
 	_assert_true(int(instance._damage_feedback_counts.get("aster:IMPACT", 0)) >= 1,
 		"The fatal listener strike uses the ordinary source-labelled damage feedback")
 
-	# Revision: bring both characters to the two marks. The same interaction now clears,
-	# opens collision, and advances only after its authored lift animation.
-	gs.restore_character("aster")
-	instance._rearm_wreckage_after_solo_failure()
+	# Symmetry: losing Aster cannot leave a Peris-only loophole through the same gate.
+	_set_sequence_character_position(instance, "peris", anchor + Vector3(0.0, 0.0, 1.0))
 	for enemy in instance._wreckage_listeners:
 		if is_instance_valid(enemy):
 			enemy._change_state("idle")
 			gs.set_character_distracted(enemy.char_id, true)
-	_set_sequence_character_position(instance, "aster", anchor + Vector3(0.0, 0.0, -1.0))
-	_set_sequence_character_position(instance, "peris", anchor + Vector3(0.0, 0.0, 1.0))
+	instance._rearm_wreckage_after_solo_failure()
 	instance._wreckage_interactable.set("active_character", "peris")
 	instance._wreckage_interactable.call("_trigger", false)
-	_assert_true(bool(instance.headless_get_state().get("wreckage_party_ready", false)) \
-		and bool(instance.headless_get_state().get("wreckage_cleared", false)),
-		"The revised two-person model clears the gate")
-	_assert_equals(gate_animation.current_animation if gate_animation != null else "", "clear_together",
-		"The two-person lift plays in the world rather than being described in a dialogue card")
-	await get_tree().process_frame
-	_assert_true(blocker == null or blocker.disabled,
-		"The clear animation removes the matching physical blocker")
+	_assert_equals(str(instance.headless_get_state().get("wreckage_alert_target", "")), "peris",
+		"The same solo-failure policy names Peris when Aster is down")
+	_assert_true(not bool(instance.headless_get_state().get("wreckage_cleared", false)) \
+		and str(instance._current_step) == "route_choice",
+		"Peris-only also remains before Endo's Junction")
+
+	# The gate validates twice: once when both braces start the lift and again when
+	# the animation finishes. Losing either member in that window collapses back
+	# into the same noisy failure instead of inheriting a stale pass.
+	for lost_id in ["peris", "aster"]:
+		for party_id in ["aster", "peris"]:
+			gs.restore_character(party_id)
+		_set_sequence_character_position(instance, "aster", anchor + Vector3(0.0, 0.0, -1.0))
+		_set_sequence_character_position(instance, "peris", anchor + Vector3(0.0, 0.0, 1.0))
+		for enemy in instance._wreckage_listeners:
+			if is_instance_valid(enemy):
+				enemy._change_state("idle")
+				gs.set_character_distracted(enemy.char_id, true)
+		instance._rearm_wreckage_after_solo_failure()
+		var survivor_id := "aster" if lost_id == "peris" else "peris"
+		instance._wreckage_interactable.set("active_character", survivor_id)
+		instance._wreckage_interactable.call("_trigger", false)
+		var opening_state: Dictionary = instance.headless_get_state()
+		_assert_true(bool(opening_state.get("wreckage_clear_in_progress", false)) \
+			and not bool(opening_state.get("wreckage_cleared", false)),
+			"The paired lift remains provisional until its delayed commit")
+		_assert_equals(gate_animation.current_animation if gate_animation != null else "", "clear_together",
+			"The provisional pass plays through the authored lift animation")
+		await get_tree().process_frame
+		_assert_true(blocker != null and not blocker.disabled,
+			"Collision remains authoritative until the delayed gate commit")
+		gs.down_character(lost_id)
+		instance.headless_advance(float(instance.WRECKAGE_CLEAR_SECONDS) + 0.1, 0.05)
+		var invalidated_state: Dictionary = instance.headless_get_state()
+		_assert_true(str(instance._current_step) == "route_choice" \
+			and not bool(invalidated_state.get("wreckage_cleared", false)),
+			"Losing %s during the lift cancels the Endo handoff" % lost_id.capitalize())
+		_assert_equals(str(invalidated_state.get("wreckage_alert_target", "")), survivor_id,
+			"The invalidated lift redirects its readable noise consequence to the survivor")
+
+	# Revision: the intact pair now commits atomically after the animation.
+	for party_id in ["aster", "peris"]:
+		gs.restore_character(party_id)
+	_set_sequence_character_position(instance, "aster", anchor + Vector3(0.0, 0.0, -1.0))
+	_set_sequence_character_position(instance, "peris", anchor + Vector3(0.0, 0.0, 1.0))
+	for enemy in instance._wreckage_listeners:
+		if is_instance_valid(enemy):
+			enemy._change_state("idle")
+			gs.set_character_distracted(enemy.char_id, true)
+	instance._rearm_wreckage_after_solo_failure()
+	var opened_count := [0]
+	gate_scene.opened.connect(func(): opened_count[0] += 1)
+	instance._wreckage_interactable.set("active_character", "peris")
+	instance._wreckage_interactable.call("_trigger", false)
 	instance.headless_advance(float(instance.WRECKAGE_CLEAR_SECONDS) + 0.1, 0.05)
+	_assert_true(bool(instance.headless_get_state().get("wreckage_cleared", false)) \
+		and opened_count[0] == 1,
+		"The intact pair commits the reusable physical/navigation gate exactly once")
 	_assert_equals(instance._current_step, "junction_arrive",
 		"Only the intact Aster-Peris pair reaches Endo's Junction")
 
@@ -13659,6 +13800,11 @@ func _test_elevator() -> void:
 		for i in range(5):
 			await get_tree().process_frame
 		_assert_true(instance.is_inside_tree(), "Scene is in tree")
+		_assert_true(instance._junction_beat is SurveyProtocolStoryBeat
+				and instance._story_beat_runner.beat(&"junction_arrive") == instance._junction_beat,
+			"Elevator composes Junction through the shared StoryBeat runner")
+		_assert_true(instance._junction_beat.protocols.configuration_errors().is_empty(),
+			"Elevator Junction's authored protocol graph passes reusable validation")
 
 		var env: Node = instance.find_child("Environment", true, false)
 		_assert_true(env != null, "Environment node exists")
@@ -14180,8 +14326,10 @@ func _test_elevator() -> void:
 		_set_sequence_character_position(instance, "peris", wreckage_anchor + Vector3(0.0, 0.0, 1.1))
 		instance._wreckage_interactable.set("active_character", "aster")
 		instance._wreckage_interactable.call("_trigger", false)
-		_assert_true(bool(instance.headless_get_state().get("wreckage_cleared", false)),
-			"Aster and Peris together distribute the wreckage load")
+		var wreckage_opening: Dictionary = instance.headless_get_state()
+		_assert_true(bool(wreckage_opening.get("wreckage_clear_in_progress", false)) \
+			and not bool(wreckage_opening.get("wreckage_cleared", false)),
+			"Aster and Peris together begin the revalidated wreckage lift")
 		instance.headless_advance(float(instance.WRECKAGE_CLEAR_SECONDS) + 0.1, 0.05)
 		_assert_equals(instance._current_step, "junction_arrive",
 			"The cleared two-person gate hands the intact pair to Endo's Junction")
@@ -16813,6 +16961,138 @@ func _test_state_machine() -> void:
 	_assert_equals(_drive_fsm_sequence(0.05), _drive_fsm_sequence(0.5),
 		"chained timed transitions are step-size invariant (fast-forward / replay safe)")
 	_assert_equals(_drive_fsm_sequence(0.05), "s2", "the chained FSM ends in the final state")
+
+# --- Test: reusable story-beat lifecycle and composed causal puzzle mechanics ---
+func _test_story_beats() -> void:
+	_test_name = "Story Beat Architecture"
+	var context := StoryBeatContext.new(self, null, null, null, {&"owner": self})
+	_assert_true(context.service(&"owner") == self,
+		"StoryBeatContext exposes explicitly registered capabilities")
+	_assert_true(context.missing_services([&"owner", &"missing"]) == PackedStringArray(["missing"]),
+		"StoryBeatContext reports missing dependencies before a beat enters")
+
+	# The runner owns lifecycle and honors a beat's transition request without knowing
+	# anything about the beat's concrete implementation.
+	var runner := StoryBeatRunner.new()
+	runner.setup(context)
+	var lifecycle_log: Array[String] = []
+	var opening := CallbackStoryBeat.new(&"opening").configure_callbacks({
+		"enter": func(_payload: Dictionary): lifecycle_log.append("opening_enter"),
+		"exit": func(_reason: StringName): lifecycle_log.append("opening_exit"),
+	})
+	var followup := CallbackStoryBeat.new(&"followup").configure_callbacks({
+		"enter": func(_payload: Dictionary): lifecycle_log.append("followup_enter"),
+	})
+	_assert_true(runner.register_beat(opening) and runner.register_beat(followup),
+		"StoryBeatRunner registers distinct typed beats")
+	_assert_true(not runner.register_beat(CallbackStoryBeat.new(&"opening")),
+		"StoryBeatRunner rejects duplicate beat ids")
+	_assert_true(runner.transition_to(&"opening") and opening.is_active(),
+		"StoryBeatRunner enters the requested beat")
+	opening.request_transition(&"followup", {"cause": "test"})
+	_assert_equals(str(runner.active_beat_id()), "followup",
+		"A beat can request a runner-owned transition")
+	_assert_true(not opening.is_active() and followup.is_active(),
+		"Transition exits the previous beat before entering the next")
+	_assert_true(lifecycle_log == ["opening_enter", "opening_exit", "followup_enter"],
+		"CallbackStoryBeat delegates lifecycle hooks in deterministic order")
+
+	var protocol_order := ["repair"]
+	var protocol_definitions := {
+		"repair": {
+			"evidence": ["scan", "trace"],
+			"choices": ["brace", "bypass"],
+			"resolution_sites": {
+				"brace": "install_brace",
+				"bypass": "install_bypass",
+			},
+		},
+	}
+	var site_definitions := {
+		"scan": {"protocol": "repair", "kind": "evidence", "role": "aster"},
+		"trace": {"protocol": "repair", "kind": "evidence", "role": "peris"},
+		"brace": {"protocol": "repair", "kind": "choice", "role": "aster"},
+		"bypass": {"protocol": "repair", "kind": "choice", "role": "peris"},
+		"install_brace": {"protocol": "repair", "kind": "resolution", "role": "aster"},
+		"install_bypass": {"protocol": "repair", "kind": "resolution", "role": "peris"},
+	}
+	var investigation := SurveyProtocolStoryBeat.new(&"investigation")
+	investigation.configure(
+		2, ["aster", "peris"], ["recover", "scout"],
+		protocol_order, protocol_definitions, site_definitions
+	)
+	var investigation_runner := StoryBeatRunner.new()
+	investigation_runner.setup(context)
+	_assert_true(investigation_runner.register_beat(investigation)
+		and investigation_runner.transition_to(&"investigation"),
+		"A configured SurveyProtocolStoryBeat enters through the generic runner")
+
+	_assert_true(investigation.record_observation("console", "aster"),
+		"A survey records its first distinct observation")
+	_assert_true(investigation.record_observation("console", "peris"),
+		"A second perspective is recorded even when revisiting a station")
+	_assert_equals(investigation.survey.observation_count(), 1,
+		"Revisiting a station does not inflate distinct-observation progress")
+	_assert_true(not investigation.survey_ready(),
+		"Required perspectives alone do not replace the distinct-observation threshold")
+	_assert_true(investigation.record_observation("bulkhead", "aster")
+		and investigation.survey_ready(),
+		"Distinct observations plus every required actor unlock preparation")
+	_assert_true(not investigation.choose_preparation("not_authored"),
+		"A beat rejects an unconfigured preparation")
+	_assert_true(investigation.choose_preparation("scout"),
+		"A valid preparation starts the first evidence protocol")
+	_assert_equals(investigation.protocols.current_protocol(), "repair",
+		"Protocol order, rather than scene methods, selects the active protocol")
+	_assert_true(investigation.is_protocol_site_available("scan")
+		and not investigation.is_protocol_site_available("brace"),
+		"Only evidence sites are available before the causal model is assembled")
+
+	var missing_actor: Dictionary = investigation.submit_protocol_site("scan")
+	_assert_equals(str(missing_actor.get("reason", "")), "wrong_actor",
+		"A required specialist cannot be bypassed by omitting the actor id")
+	var wrong_actor: Dictionary = investigation.submit_protocol_site("scan", "peris")
+	_assert_equals(str(wrong_actor.get("reason", "")), "wrong_actor",
+		"Protocol rules enforce authored actor capability independently of UI")
+	_assert_equals(investigation.protocols.evidence_count(), 0,
+		"A rejected action cannot mutate evidence state")
+	_assert_true(bool(investigation.submit_protocol_site("scan", "aster").get("accepted", false))
+		and bool(investigation.submit_protocol_site("trace", "peris").get("accepted", false)),
+		"Specialists can contribute their evidence through the same reusable model")
+	_assert_true(investigation.is_protocol_site_available("brace")
+		and investigation.is_protocol_site_available("bypass"),
+		"Completing evidence exposes the authored decision branches")
+	_assert_true(bool(investigation.submit_protocol_site("brace", "aster").get("accepted", false)),
+		"Selecting one branch records a consequential decision")
+	_assert_true(not investigation.is_protocol_site_available("install_bypass")
+		and investigation.is_protocol_site_available("install_brace"),
+		"Only the selected decision's physical resolution becomes available")
+	_assert_true(bool(investigation.submit_protocol_site("install_brace", "aster").get("accepted", false))
+		and investigation.objectives_are_complete(),
+		"Executing the selected consequence completes the composed objective")
+	var investigation_snapshot := investigation.snapshot()
+	_assert_equals(str(investigation_snapshot.state.selected_preparation), "scout",
+		"Story-beat snapshots contain reusable mechanic state")
+	var restored_investigation := SurveyProtocolStoryBeat.new(&"investigation_restored")
+	restored_investigation.configure(
+		2, ["aster", "peris"], ["recover", "scout"],
+		protocol_order, protocol_definitions, site_definitions
+	)
+	restored_investigation.restore(investigation_snapshot)
+	_assert_true(restored_investigation.survey_ready()
+		and restored_investigation.objectives_are_complete()
+		and restored_investigation.selected_preparation == "scout",
+		"A configured story beat restores its composed runtime state without scene dependencies")
+	_assert_true(investigation.protocols.configuration_errors().is_empty(),
+		"A valid evidence-decision graph passes authoring validation")
+
+	var broken_sequence := EvidenceDecisionSequence.new(
+		["broken"],
+		{"broken": {"evidence": ["missing"], "choices": ["choice"], "resolution_sites": {}}},
+		{"choice": {"protocol": "wrong", "kind": "evidence"}}
+	)
+	_assert_true(broken_sequence.configuration_errors().size() >= 3,
+		"Authoring validation catches missing, misowned, mistyped, and unresolved sites")
 
 # --- Test: an enemy configured like the elevator's fork lane engages a target that walks in ---
 # Data-layer (scheduler + _process), so headless runs the same combat loop as real play: the fork
@@ -28439,6 +28719,18 @@ func _test_gate_block() -> void:
 	_assert_equals(ok_restored, true, "Gate passes with available Endo")
 	_assert_equals(passed_count[0], 1, "passed signal fired once")
 
+	# Physical gates opt into the same policy with an authoritative proximity check.
+	var proximity_gate := Gate.new()
+	proximity_gate.required_members = [&"endo"]
+	proximity_gate.position = grid.grid_to_world(Vector2i(1, 1))
+	proximity_gate.radius = 1.1
+	proximity_gate.require_proximity = true
+	_assert_equals(str(proximity_gate.blocking_reason(gs, ["aster", "peris", "endo"])),
+		"out_of_range_endo", "Proximity gate names the available member outside its work radius")
+	gs.snap_character_to("endo", proximity_gate.position)
+	_assert_true(proximity_gate.is_satisfied(gs, ["aster", "peris", "endo"]),
+		"The reusable gate predicate accepts an available required member inside its radius")
+
 # Zone A to spoke to gate to Zone B. Zone transitions fire their signals,
 # and hub reachability shifts: zone A's hubs are reachable while in zone A,
 # fall out of reach once zone B is entered.
@@ -31152,6 +31444,64 @@ func _test_junction_flow() -> void:
 	instance._load_chunk("junction")
 	for i in range(3):
 		await get_tree().process_frame
+
+	# The shelter is an authored spatial asset: the controller consumes named
+	# anchors instead of recreating furniture and interaction coordinates.
+	var layout := instance._junction_shelter_layout as AuthoredSpatialLayout3D
+	_assert_true(layout != null, "Junction uses the authored shelter layout asset")
+	if layout != null:
+		var required_anchors := [
+			"Entry", "Center", "Exit", "Workbench", "Monitor", "Food", "Lookout",
+			"Heater", "Markings", "Game", "PrepRecover", "PrepScout", "Plant",
+			"EndoEntry", "DrinkPickup", "PartyRest", "ClearLaneStart", "ClearLaneEnd",
+		]
+		var authored_anchor_names := layout.anchor_names()
+		for anchor_name in required_anchors:
+			_assert_true(authored_anchor_names.has(anchor_name),
+				"Junction authored layout exposes '%s'" % anchor_name)
+
+		var ceiling := layout.find_child("Junction_Ceiling", true, false) as VisualInstance3D
+		var east_blocker := layout.find_child("Junction_RockRight", true, false) as VisualInstance3D
+		var bedroll := layout.find_child("Junction_Bedroll", true, false) as VisualInstance3D
+		_assert_true(ceiling != null and not ceiling.visible,
+			"Junction ceiling cannot occlude the party from the default camera")
+		_assert_true(east_blocker != null and not east_blocker.visible,
+			"Junction opens visibly into the fieldwork annex")
+		_assert_true(bedroll != null and not bedroll.visible,
+			"Central circulation lane is not blocked by the old bedroll")
+		var imported_flora := layout.find_child("Junction_Flora", true, false) as Node3D
+		_assert_true(imported_flora != null and not imported_flora.visible,
+			"Broken Web alpha-card flora cannot become black or white occlusion planes")
+
+		var grid: GridWorld = instance._grid
+		var entry_cell := grid.world_to_grid(layout.anchor_position("Entry"))
+		var exit_cell := grid.world_to_grid(layout.anchor_position("Exit"))
+		_assert_true(not grid.find_path(entry_cell, exit_cell, {}, false, {}, {}, instance.LEVEL_LOWER).is_empty(),
+			"Junction has a continuous west-east circulation path")
+		for anchor_name in ["Workbench", "Monitor", "Food", "Lookout", "Heater", "Markings",
+				"Game", "PrepRecover", "PrepScout", "Plant", "DrinkPickup", "PartyRest"]:
+			var anchor_cell := grid.world_to_grid(layout.anchor_position(anchor_name))
+			_assert_true(grid.is_walkable(anchor_cell.x, anchor_cell.y, {}, {}, instance.LEVEL_LOWER),
+				"Junction anchor '%s' is on the lower-deck footprint" % anchor_name)
+			_assert_true(not grid.find_path(entry_cell, anchor_cell, {}, false, {}, {}, instance.LEVEL_LOWER).is_empty(),
+				"Junction anchor '%s' is reachable from the entry" % anchor_name)
+
+		var clearance_anchors := [
+			"Workbench", "Monitor", "Food", "Lookout", "Heater", "Markings", "Game",
+			"PrepRecover", "PrepScout", "Plant",
+		]
+		var minimum_clearance := INF
+		for i in range(clearance_anchors.size()):
+			for j in range(i + 1, clearance_anchors.size()):
+				var a := layout.anchor_position(clearance_anchors[i])
+				var b := layout.anchor_position(clearance_anchors[j])
+				minimum_clearance = minf(minimum_clearance, Vector2(a.x, a.z).distance_to(Vector2(b.x, b.z)))
+		_assert_true(minimum_clearance >= 1.0,
+			"Junction interaction footprints do not overlap (minimum %.2fm)" % minimum_clearance)
+		for anchor_name in ["Workbench", "Monitor", "Food", "Lookout", "Heater", "Markings", "Game", "Plant"]:
+			var lane_offset := absf(layout.anchor_position(anchor_name).z - layout.global_position.z)
+			_assert_true(lane_offset >= 0.9,
+				"Junction station '%s' stays outside the clear center lane" % anchor_name)
 
 	# Verify interactable objects exist
 	var interactable_names := ["Junction_Workbench", "Junction_Monitor", "Junction_Food", "Junction_Lookout", "Junction_Heater", "Junction_Markings", "Junction_Game"]

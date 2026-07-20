@@ -2,6 +2,7 @@ extends "res://scripts/scene_chunks/scene_chunk.gd"
 
 const LatheBuilderScript := preload("res://scripts/generation/lathe_builder.gd")
 const SdfMesherScript := preload("res://scripts/generation/sdf_mesher.gd")
+const InfrastructureBuilderScript := preload("res://scripts/generation/infrastructure_structure_builder.gd")
 const GRIME_SHADER := preload("res://resources/tile_grime.gdshader")
 
 ## The DATA-DRIVEN fragment loader. Point it at a `Fragment` resource (the data) and it COMPOSES the scene from
@@ -37,6 +38,8 @@ var _wipe_count := 0
 var _decoratives: Array = []  # DecorativeFlora — ornamental invasives (docs/DECORATIVE_FLORA.md)
 var _spread_patches: Array = []  # the Verdanta patches runbacks grew (freed on host reset)
 var _spike_strips: Array = []    # SpikeStrip hostile architecture (the shared DoT tick reads them)
+var _infrastructure_operations: Array = [] # typed source -> receiver -> environmental consequence beats
+var _infrastructure_fields: Array = []     # shared hazard/concealment polling, like Candids/SpikeStrips
 var _hushblooms: Array = []      # Hushbloom stun flora (thigmonastic; pickable for the carried throw)
 var _fall_pos := Vector3.ZERO    # where the party last wiped (the runback decor pass grows here)
 
@@ -820,6 +823,33 @@ func _spawn_landmark_building(lm: Dictionary) -> void:
 		_add_nutech_details(root, spec)
 	if str(spec.get("kind", "")) == "facility_checkpoint":
 		_add_facility_checkpoint_details(root, spec)
+	if InfrastructureBuilderScript.is_infrastructure(spec):
+		_add_infrastructure_details(root, spec, BuildingSurvey.from_spec(spec))
+
+## Shared by live procedural fragments and the architecture showcase/bake. Material roles are kept
+## separate so the portable atlas preserves readable construction layers and service-flow lights.
+func _add_infrastructure_details(root: Node3D, spec: Dictionary, survey: BuildingSurvey) -> void:
+	var built: Dictionary = InfrastructureBuilderScript.build(spec, survey)
+	_add_lattice_mesh(root, "InfraMetal", built.get("metal"),
+		_tinted_tile_material("facility_metal", Color(0.46, 0.50, 0.47)))
+	_add_lattice_mesh(root, "InfraRust", built.get("rust"),
+		_tinted_tile_material("rust_iron", Color(0.48, 0.25, 0.14)))
+	var dark := StandardMaterial3D.new()
+	dark.albedo_color = Color(0.055, 0.065, 0.07)
+	dark.roughness = 0.94
+	_add_lattice_mesh(root, "InfraDark", built.get("dark"), dark)
+	var input_mat := StandardMaterial3D.new()
+	input_mat.albedo_color = Color(0.10, 0.24, 0.31)
+	input_mat.emission_enabled = true
+	input_mat.emission = Color(0.42, 0.72, 0.95)
+	input_mat.emission_energy_multiplier = 2.0
+	_add_lattice_mesh(root, "InfraInputs", built.get("input_glow"), input_mat)
+	var output_mat := StandardMaterial3D.new()
+	output_mat.albedo_color = Color(0.08, 0.28, 0.15)
+	output_mat.emission_enabled = true
+	output_mat.emission = Color(0.36, 0.91, 0.50)
+	output_mat.emission_energy_multiplier = 2.0
+	_add_lattice_mesh(root, "InfraOutputs", built.get("output_glow"), output_mat)
 
 func _spawn_lathe_building(lp: Dictionary) -> void:
 	var profile: Dictionary = LatheBuilderScript.make_profile(lp)
@@ -1013,6 +1043,10 @@ func _spawn_object(spec: Dictionary) -> void:
 				_f(spec, "dot", 6.0))
 			add_child(strip)
 			_spike_strips.append(strip)
+		"infrastructure_operation":
+			# A generated typed service exchange: two explicit verbs, two spatial cause/effect markers,
+			# and a nearby field whose cost/cover state actually changes on completion.
+			_spawn_infrastructure_operation(spec)
 		"exit_shelter":
 			# {pos:Vector3, radius:float, label:String, color:Color} — the fragment's win pad: rest -> complete
 			_spawn_exit_shelter(spec)
@@ -1054,6 +1088,14 @@ func _spawn_object(spec: Dictionary) -> void:
 				_add_label(self, lbl, _v3(spec, "pos") + Vector3(0, 1.4, 0), color)
 		_:
 			push_warning("DataFragmentChunk: unknown object type '%s'" % str(spec.get("type", "")))
+
+
+func _spawn_infrastructure_operation(spec: Dictionary) -> void:
+	var built := _add_infrastructure_operation(spec)
+	if built.is_empty():
+		return
+	_infrastructure_operations.append(built.get("operation"))
+	_infrastructure_fields.append(built.get("field"))
 
 func _spawn_enemy(spec: Dictionary, gs) -> void:
 	if gs == null:
@@ -1105,7 +1147,8 @@ func _update(_delta: float) -> void:
 ## The LOADER owns the hide-tier pass: Capbage = FULL beats Scarpet = MEDIUM beats exposed, from each
 ## member's REAL position every frame. Chunks never re-implement hide logic.
 func _update_shared_concealment() -> void:
-	if fragment == null or (_capbages.is_empty() and _scarpets.is_empty() and _candid_zones.is_empty()):
+	if fragment == null or (_capbages.is_empty() and _scarpets.is_empty() and _candid_zones.is_empty() \
+			and _infrastructure_fields.is_empty()):
 		return
 	var gs = _get_game_state()
 	if gs == null:
@@ -1129,6 +1172,11 @@ func _update_shared_concealment() -> void:
 			for mat in _scarpets:
 				if is_instance_valid(mat) and mat.conceals(pos):
 					tier = GameState.CONCEAL_MEDIUM
+					break
+		if tier == GameState.CONCEAL_NONE:
+			for service_field in _infrastructure_fields:
+				if is_instance_valid(service_field) and service_field.conceals(pos):
+					tier = GameState.CONCEAL_FULL
 					break
 		gs.set_character_concealment(cid, tier)
 
@@ -1275,7 +1323,8 @@ func _candid_tag() -> String:
 
 func _arm_candid_tick() -> void:
 	var sched = _get_scheduler()
-	if sched == null or (_candid_zones.is_empty() and _spike_strips.is_empty()):
+	if sched == null or (_candid_zones.is_empty() and _spike_strips.is_empty() \
+			and _infrastructure_fields.is_empty()):
 		return
 	sched.cancel_tag(_candid_tag())
 	sched.schedule_after(CANDID_TICK, _on_candid_tick, _candid_tag())
@@ -1296,6 +1345,11 @@ func _on_candid_tick() -> void:
 				if is_instance_valid(strip) and strip.covers(pos):
 					gs.adjust_stat(cid, "hp", -strip.dot_per_sec * CANDID_TICK)
 					break
+			for service_field in _infrastructure_fields:
+				if is_instance_valid(service_field) and service_field.is_hazardous() \
+						and service_field.covers(pos):
+					gs.adjust_stat(cid, "hp", -service_field.dot_per_sec * CANDID_TICK)
+					break
 	# Hostile architecture is indiscriminate: an enemy standing on the studs drains too — that's
 	# the tactic (lure/push them across it). Candid biofilm never hurts fauna; only the strips do.
 	if gs != null and not _spike_strips.is_empty():
@@ -1314,7 +1368,8 @@ func _on_candid_tick() -> void:
 func _ensure_scheduled() -> void:
 	if _scheduled:
 		return
-	if _channels.is_empty() and _candid_zones.is_empty() and _spike_strips.is_empty():
+	if _channels.is_empty() and _candid_zones.is_empty() and _spike_strips.is_empty() \
+			and _infrastructure_fields.is_empty():
 		return
 	var sched = _get_scheduler()
 	if sched == null:
@@ -1474,6 +1529,9 @@ func reset_preview_state() -> void:
 		var deco := deco_v as DecorativeFlora
 		if deco != null and is_instance_valid(deco):
 			deco.reset_decoration()
+	for operation in _infrastructure_operations:
+		if is_instance_valid(operation) and operation.has_method("reset_operation"):
+			operation.call("reset_operation")
 	_fall_pos = Vector3.ZERO
 	_scheduled = false
 	_set_preview_step((fragment.id if fragment != null and fragment.id != "" else "data_fragment") + "_start")
@@ -1488,6 +1546,8 @@ func enemies() -> Array: return _enemies
 func decoratives() -> Array: return _decoratives
 func hushblooms() -> Array: return _hushblooms
 func spike_strips() -> Array: return _spike_strips
+func infrastructure_operations() -> Array: return _infrastructure_operations
+func infrastructure_fields() -> Array: return _infrastructure_fields
 
 # --- Dictionary readers (tolerant defaults so a sparse .tres still loads) ---
 

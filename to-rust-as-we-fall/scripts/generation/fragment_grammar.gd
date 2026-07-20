@@ -733,6 +733,7 @@ static func _emit(seed_value: int, placed_cells: Array, placed_objects: Array, l
 		"lathe_buildings": bld_stats.get("lathes", []),   # revolve-tower plans (the loader lofts them)
 		"landmark_buildings": bld_stats.get("landmarks", []),   # hero plans (consumed gameplay anchors)
 		"landmark_bridges": bld_stats.get("bridges", []),       # ledge-to-ledge walkable deck spans
+		"infrastructure_links": bld_stats.get("service_links", []),   # typed supply/utility exchanges
 	}
 	frag.time_state = {"note_default": "Shape-grammar preview — N regenerates.", "routing_mode": "safe"}
 	return frag

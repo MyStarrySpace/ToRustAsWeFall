@@ -189,7 +189,14 @@ static func _build_domain(slot: Dictionary, catalog) -> Array:
 ## denser geometry, while the seed still chooses among equally suitable hosts.
 static func _enforce_spatial_feature_budget(slots: Array, catalog, settings: Dictionary) -> void:
 	var tier := str(settings.get("complexity_tier", "teaching"))
-	var budget := 2 if tier in ["hard", "setpiece"] else 1
+	# A single authored systems room surrounded by generic point rooms still reads
+	# as a point tour. Spatial complexity owns how many bounded compositions can be
+	# held in memory at once; campaign stage does not inflate this count.
+	var default_budgets := {"teaching": 2, "standard": 3, "hard": 4, "setpiece": 5}
+	var spatial_profile: Dictionary = settings.get("spatial_profile", {})
+	var budget := maxi(1, int(spatial_profile.get(
+		"systems_section_budget", int(default_budgets.get(tier, 3))
+	)))
 	var seed := int(settings.get("seed", 0))
 	var candidates: Array = []
 	for slot in slots:

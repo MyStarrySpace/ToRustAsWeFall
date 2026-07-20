@@ -5,6 +5,7 @@ const CatalogScript := preload("res://scripts/generation/stretch_archetype_catal
 const CapabilitiesScript := preload("res://scripts/generation/stretch_capabilities.gd")
 const SpiralCoordMapScript := preload("res://scripts/generation/spiral_coord_map.gd")
 const WaterShader := preload("res://resources/channels_water.gdshader")
+const ZoneTransitionFloorShader := preload("res://resources/zone_transition_floor.gdshader")
 const WaterTexV0 := preload("res://resources/models/channels/channels_water_v0.png")
 const WaterTexV1 := preload("res://resources/models/channels/channels_water_v1.png")
 
@@ -73,13 +74,19 @@ var _catalog := CatalogScript.new()
 var _node_markers: Dictionary = {}
 var _node_targets: Dictionary = {}
 var _node_interactables: Dictionary = {}
+var _node_content_nodes: Dictionary = {}
+var _generated_section_states: Dictionary = {}
+var _generated_section_links: Dictionary = {}
+var _generated_party_endpoints: Dictionary = {}
 var _route_surfaces: Dictionary = {}
 var _spatial_feature_roots: Array[Node3D] = []
 var _theme_landmark_roots: Array[Node3D] = []
 var _theme_setpiece_roots: Array[Node3D] = []
+var _infrastructure_runtime: Array = []
 var _theme_hazard_accumulator := 0.0
 var _theme_hazard_damage_total := 0.0
 var _theme_hazard_contacts: Dictionary = {}
+var _zone_transition_floor_cell_count := 0
 var _content_marker_count := 0
 var _spatial_fixture_count := 0
 var _route_choice := ""
@@ -194,13 +201,22 @@ func _build_chunk() -> void:
 	_node_markers.clear()
 	_node_targets.clear()
 	_node_interactables.clear()
+	_node_content_nodes.clear()
+	_generated_section_states.clear()
+	_generated_section_links.clear()
+	for endpoint_v in _generated_party_endpoints.values():
+		if endpoint_v is Node and is_instance_valid(endpoint_v):
+			(endpoint_v as Node).queue_free()
+	_generated_party_endpoints.clear()
 	_route_surfaces.clear()
 	_spatial_feature_roots.clear()
 	_theme_landmark_roots.clear()
 	_theme_setpiece_roots.clear()
+	_infrastructure_runtime.clear()
 	_theme_hazard_accumulator = 0.0
 	_theme_hazard_damage_total = 0.0
 	_theme_hazard_contacts.clear()
+	_zone_transition_floor_cell_count = 0
 	_drop_downs.clear()
 	_climbvines.clear()
 	_branch_caches.clear()
@@ -224,6 +240,7 @@ func _build_chunk() -> void:
 	var flat_child_start := get_child_count()
 	_build_spatial_features()
 	_build_theme_landmarks()
+	_build_infrastructure_operations()
 	_build_theme_setpieces()
 	_build_generated_nodes()
 
@@ -836,8 +853,10 @@ func get_preview_state() -> Dictionary:
 		"title": str(_spec.get("title", "")),
 		"biome": str(_spec.get("biome", "")),
 		"area_theme": (_spec.get("area_theme", {}) as Dictionary).duplicate(true),
+		"zone_transition": (_spec.get("zone_transition", {}) as Dictionary).duplicate(true),
 		"themed_landmarks": (_spec.get("themed_landmarks", []) as Array).duplicate(true),
 		"themed_setpieces": (_spec.get("themed_setpieces", []) as Array).duplicate(true),
+		"infrastructure_operations": (_spec.get("infrastructure_operations", []) as Array).duplicate(true),
 		"theme_hazard_damage_total": _theme_hazard_damage_total,
 		"complexity_tier": str(_spec.get("source", {}).get("complexity_tier", "")),
 		"resolved_budget": _spec.get("budget", {}).duplicate(true),
@@ -883,6 +902,7 @@ func get_preview_state() -> Dictionary:
 		"spatial_fixture_count": _spatial_fixture_count,
 		"themed_landmark_count": _theme_landmark_roots.size(),
 		"themed_setpiece_count": _theme_setpiece_roots.size(),
+		"zone_transition_floor_cell_count": _zone_transition_floor_cell_count,
 		"active_loadout": _active_loadout,
 		"active_party": _active_party.duplicate(),
 		"blocked_nodes": _blocked_nodes.duplicate(),
@@ -938,6 +958,7 @@ func get_preview_state() -> Dictionary:
 		"spatial_fixture_count": _spatial_fixture_count,
 		"themed_landmark_count": _theme_landmark_roots.size(),
 		"themed_setpiece_count": _theme_setpiece_roots.size(),
+		"zone_transition_floor_cell_count": _zone_transition_floor_cell_count,
 		"theme_hazard_damage_total": _theme_hazard_damage_total,
 		"drop_down_count": _drop_downs.size(),
 		"branch_cache_count": _branch_caches.size(),
@@ -1066,6 +1087,7 @@ func on_preview_movement_started(_char_id: String) -> void:
 
 
 func _process(delta: float) -> void:
+	_update_generated_party_endpoints()
 	_sync_hydraulic_bridge_blocker()
 	_update_theme_hazards(delta)
 	if _scarcity_clock_started or _food_test_mode() != FOOD_TEST_SCARCITY or _shelter_reached:
@@ -1083,7 +1105,7 @@ func _process(delta: float) -> void:
 ## cells already carry navigation risk, so SAFE avoids them where an alternate lane exists and DIRECT may spend
 ## health for time. One fixture wins per tick to prevent overlapping authored nodes from multiplying damage.
 func _update_theme_hazards(delta: float) -> void:
-	if _theme_setpiece_roots.is_empty() or _shelter_reached:
+	if (_theme_setpiece_roots.is_empty() and _infrastructure_runtime.is_empty()) or _shelter_reached:
 		return
 	_theme_hazard_accumulator += maxf(0.0, delta)
 	if _theme_hazard_accumulator < THEME_HAZARD_TICK:
@@ -1100,17 +1122,36 @@ func _update_theme_hazards(delta: float) -> void:
 				continue
 			if bool(setpiece.call("covers_flat", position)):
 				highest_dps = maxf(highest_dps, float(setpiece.get("damage_per_second")))
+		for runtime_v in _infrastructure_runtime:
+			var runtime := runtime_v as Dictionary
+			var operation = runtime.get("operation")
+			if operation == null or not is_instance_valid(operation) or not operation.has_method("get_state"):
+				continue
+			var state: Dictionary = operation.call("get_state")
+			var field_state: Dictionary = state.get("field", {})
+			if not bool(field_state.get("hazardous", false)):
+				continue
+			var spec: Dictionary = runtime.get("spec", {})
+			var center := _vec3(spec.get("effect_pos", []), Vector3.ZERO)
+			var half_raw: Variant = spec.get("effect_half", [0.66, 0.66])
+			var half := Vector2(0.66, 0.66)
+			if half_raw is Array and (half_raw as Array).size() >= 2:
+				half = Vector2(float(half_raw[0]), float(half_raw[1]))
+			elif half_raw is Vector2:
+				half = half_raw as Vector2
+			if absf(position.x - center.x) <= half.x and absf(position.z - center.z) <= half.y:
+				highest_dps = maxf(highest_dps, float(field_state.get("damage_per_second", 0.0)))
 		if highest_dps <= 0.0:
 			_theme_hazard_contacts.erase(char_id)
 			continue
 		var damage := highest_dps * elapsed
 		_adjust_character_stat(char_id, "hp", -damage)
 		_theme_hazard_damage_total += damage
-		_last_outcome = "cleanstreets_studs:%s" % char_id
+		_last_outcome = "marked_route_hazard:%s" % char_id
 		if not _theme_hazard_contacts.has(char_id):
 			_theme_hazard_contacts[char_id] = true
 			_show_note(
-				"ACTIVE STUDS // %s is taking continuous damage. SAFE routing avoids marked risk cells."
+				"MARKED ROUTE HAZARD // %s is taking continuous damage. The linked service controls clear it."
 				% char_id.capitalize(),
 				2.4
 			)
@@ -1163,6 +1204,11 @@ func reset_preview_state() -> void:
 	_theme_hazard_accumulator = 0.0
 	_theme_hazard_damage_total = 0.0
 	_theme_hazard_contacts.clear()
+	for runtime_v in _infrastructure_runtime:
+		var infrastructure_operation = (runtime_v as Dictionary).get("operation")
+		if infrastructure_operation != null and is_instance_valid(infrastructure_operation) \
+				and infrastructure_operation.has_method("reset_operation"):
+			infrastructure_operation.call("reset_operation")
 	_reset_hydraulic_state()
 	_route_choice = ""
 	_route_phase = "unstarted"
@@ -1396,6 +1442,11 @@ func activate_generated_node(node_id: String) -> bool:
 		var chain_output_ref := str(node.get("chain_output_ref", ""))
 		if chain_output_ref != "":
 			_produced_chain_states[chain_output_ref] = node_id
+		# Every playable section must resolve its advertised local cause -> effect
+		# transition. Chain outputs are optional progression data; nesting this under
+		# that condition left ordinary sections permanently showing their pre-action
+		# prediction even after the interaction had completed.
+		_apply_generated_section_transition(node)
 	var role := str(node.get("role", ""))
 	if first_completion:
 		match survival:
@@ -1438,6 +1489,88 @@ func activate_generated_node(node_id: String) -> bool:
 			_collect_hydraulic_spillway_food()
 	_highlight_node(node_id, true)
 	return true
+
+
+## Apply the same before -> after state advertised by the hover preview and local
+## causal link. Generated systems can later replace this handler with a richer kit
+## object, but even the shared baseline changes a named world target instead of
+## treating the interaction as an invisible checkpoint flag.
+func _apply_generated_section_transition(node: Dictionary) -> void:
+	var node_id := str(node.get("id", ""))
+	if node_id == "" or not _generated_section_states.has(node_id):
+		return
+	var section: Dictionary = node.get("playable_section", {})
+	var state := _generated_section_states[node_id] as Dictionary
+	state["state"] = "complete"
+	state["observed_effect"] = str(section.get("completed_preview", section.get("after_state", "changed")))
+	_generated_section_states[node_id] = state
+	var interactable: Node = _node_interactables.get(node_id, null)
+	if interactable != null and is_instance_valid(interactable):
+		# The post-state remains inspectable, but no longer lies by offering the same
+		# pre-commit verb after the consequence has already happened.
+		interactable.set("tutorial_label", "REVIEW RESULT")
+		interactable.set("consequence_preview", state["observed_effect"])
+		interactable.set("dwell_time", 0.0)
+		interactable.set("interactable_type", Interactable.InteractableType.INSPECTION)
+	var party_endpoint: Node = _generated_party_endpoints.get(node_id, null)
+	if party_endpoint != null and is_instance_valid(party_endpoint):
+		party_endpoint.set_meta("character_id", _get_active_character())
+		party_endpoint.set_meta("locked_character", true)
+	var target = state.get("target", null)
+	if target is Node3D and is_instance_valid(target):
+		(target as Node3D).set_meta("generated_section_state", "complete")
+		(target as Node3D).set_meta("generated_observed_effect", state["observed_effect"])
+		# Persistent state read plus a short arrival pulse. The target remains visibly
+		# changed after the animation so the player can compare prediction to result.
+		(target as Node3D).scale *= 1.08
+		if target is MeshInstance3D:
+			var mesh_target := target as MeshInstance3D
+			if mesh_target.material_override is StandardMaterial3D:
+				var changed_material := (mesh_target.material_override as StandardMaterial3D).duplicate() as StandardMaterial3D
+				var completion_color := _generated_section_completion_color(section)
+				# A completed target needs a persistent state read, not a floodlight. High
+				# green emission turned pale generated markers into white silhouettes in
+				# Web builds and obscured their shape/category.
+				changed_material.albedo_color = changed_material.albedo_color.lerp(completion_color, 0.2)
+				changed_material.emission_enabled = true
+				changed_material.emission = completion_color.darkened(0.22)
+				changed_material.emission_energy_multiplier = 0.38
+				mesh_target.material_override = changed_material
+	var link = _generated_section_links.get(node_id, null)
+	if link != null and is_instance_valid(link):
+		link.call("set_feedback_mode", "complete")
+		link.call("set_latched", true)
+		link.call("flash", 1.6, 1.35)
+		link.call("pulse_arrival", 1.25, 1.0)
+		get_tree().create_timer(1.75).timeout.connect(func():
+			if is_instance_valid(link):
+				link.call("set_latched", false)
+		)
+
+
+func _generated_section_completion_color(section: Dictionary) -> Color:
+	match str(section.get("effect_category", "")):
+		"flora":
+			return _content_color("flora", "implemented")
+		"enemy", "enemies":
+			return _content_color("enemies", "implemented")
+		"structure", "structures":
+			return _content_color("structures", "implemented")
+		"party":
+			return _character_color(_get_active_character()).darkened(0.16)
+		_:
+			return Color(0.36, 0.52, 0.46)
+
+
+## Headless/playtest readout without exposing live node references.
+func get_generated_section_state(node_id: String) -> Dictionary:
+	if not _generated_section_states.has(node_id):
+		return {}
+	var state := (_generated_section_states[node_id] as Dictionary).duplicate()
+	var target = state.get("target", null)
+	state["target_name"] = str(target.name) if target is Node and is_instance_valid(target) else ""
+	state.erase("target")
+	return state
 
 
 func _chain_progression_ready(node: Dictionary) -> bool:
@@ -1887,8 +2020,23 @@ func _build_floor_surface(grid, lvl: int, cells: Array, risk: Dictionary, cell: 
 	st_main.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var st_risk := SurfaceTool.new()
 	st_risk.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var st_transition := SurfaceTool.new()
+	st_transition.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var has_risk := false
+	var has_transition := false
 	var h := cell * 0.5
+	var transition: Dictionary = _spec.get("zone_transition", {})
+	var entry_node := _find_node("entry")
+	var transition_enabled := (
+		not transition.is_empty()
+		and not entry_node.is_empty()
+		and int(entry_node.get("elevation_index", 0)) == lvl
+	)
+	var entry_flat := _anchor_position("entry")
+	var transition_length := maxf(
+		cell * 3.0,
+		float(transition.get("length_cells", 6)) * cell
+	)
 	for cp in cells:
 		var v := Vector2i(int((cp as Array)[0]), int((cp as Array)[1]))
 		var w: Vector3 = grid.grid_to_world(v, lvl)
@@ -1904,13 +2052,35 @@ func _build_floor_surface(grid, lvl: int, cells: Array, risk: Dictionary, cell: 
 		# points, so their warped vertices coincide and the deck stays watertight with a tile seam on every
 		# data-cell boundary at every lane (a rigid per-cell frame left wedge gaps where the warp fans the
 		# outer lanes). Flat levels warp through identity and get the same axis-aligned tile as before.
-		var corners := [
-			_warp_pos(w + Vector3(-h, 0.0, -h)),
-			_warp_pos(w + Vector3(h, 0.0, -h)),
-			_warp_pos(w + Vector3(h, 0.0, h)),
-			_warp_pos(w + Vector3(-h, 0.0, h)),
+		var flat_corners := [
+			w + Vector3(-h, 0.0, -h),
+			w + Vector3(h, 0.0, -h),
+			w + Vector3(h, 0.0, h),
+			w + Vector3(-h, 0.0, h),
 		]
-		_add_floor_slab(st_risk if is_risk else st_main, corners, 0.16)
+		var corners := [
+			_warp_pos(flat_corners[0]),
+			_warp_pos(flat_corners[1]),
+			_warp_pos(flat_corners[2]),
+			_warp_pos(flat_corners[3]),
+		]
+		var transition_distance := Vector2(w.x - entry_flat.x, w.z - entry_flat.z).length()
+		var uses_transition := transition_enabled and not is_risk \
+			and transition_distance <= transition_length + h
+		if uses_transition:
+			has_transition = true
+			_zone_transition_floor_cell_count += 1
+			var corner_blends: Array[float] = []
+			for flat_corner_v in flat_corners:
+				var flat_corner := flat_corner_v as Vector3
+				var corner_distance := Vector2(
+					flat_corner.x - entry_flat.x,
+					flat_corner.z - entry_flat.z
+				).length()
+				corner_blends.append(clampf(corner_distance / transition_length, 0.0, 1.0))
+			_add_floor_slab(st_transition, corners, 0.16, corner_blends)
+		else:
+			_add_floor_slab(st_risk if is_risk else st_main, corners, 0.16)
 	var theme: Dictionary = _spec.get("area_theme", {})
 	var floor_tile := str(theme.get("floor_tile", "deck_metal"))
 	var risk_tile := str(theme.get("risk_tile", "rust_iron"))
@@ -1919,6 +2089,32 @@ func _build_floor_surface(grid, lvl: int, cells: Array, risk: Dictionary, cell: 
 		_commit_floor_surface(
 			st_risk, "GeneratedFloorRisk_L%d" % lvl, _tiled_floor_material(risk_tile)
 		)
+	if has_transition:
+		_commit_floor_surface(
+			st_transition,
+			"GeneratedZoneTransition_L%d" % lvl,
+			_zone_transition_floor_material(transition)
+		)
+
+
+func _zone_transition_floor_material(transition: Dictionary) -> ShaderMaterial:
+	var material := ShaderMaterial.new()
+	material.shader = ZoneTransitionFloorShader
+	var tile_root := "res://resources/models/elevator/tiles/"
+	var from_texture = load(tile_root + str(transition.get("from_floor_tile", "deck_metal")) + ".png")
+	var to_texture = load(tile_root + str(transition.get("to_floor_tile", "deck_metal")) + ".png")
+	if from_texture != null:
+		material.set_shader_parameter("from_texture", from_texture)
+	if to_texture != null:
+		material.set_shader_parameter("to_texture", to_texture)
+	var from_light := _color_from_array(
+		transition.get("from_light_color", []), Color(0.5, 0.55, 0.58)
+	)
+	var to_light := _color_from_array(
+		transition.get("to_light_color", []), Color(0.5, 0.55, 0.58)
+	)
+	material.set_shader_parameter("threshold_tint", from_light.lerp(to_light, 0.5))
+	return material
 
 
 ## Feature prefabs own the visible standing surface and its raycast collision. Excluding those cells from the
@@ -1973,6 +2169,10 @@ func _build_spatial_features() -> void:
 					label.text = "SIGNAL / RESPONSE DECK"
 				"split_perch":
 					label.text = "DISTRACTION / TASK DECK"
+				"charge_intersection":
+					label.text = "BAIT LINE / IMPACT TARGET"
+				"dose_crossing":
+					label.text = "SHORT DOSE / SAFE DETOUR"
 				_:
 					label.text = "GRATED SYSTEM DECK"
 		add_child(root)
@@ -2009,6 +2209,22 @@ func _build_theme_landmarks() -> void:
 		add_child(root)
 		_theme_landmark_roots.append(root)
 		_spatial_fixture_count += 1
+
+
+## The generator has already proven port compatibility and reachable placement. The presenter uses
+## SceneChunk's shared materializer, so this is the same interaction/feedback object as a data fragment,
+## merely seated in the generated stretch's flat frame before the normal helix warp pass.
+func _build_infrastructure_operations() -> void:
+	for operation_v in _spec.get("infrastructure_operations", []):
+		if not (operation_v is Dictionary):
+			continue
+		var operation_spec := (operation_v as Dictionary).duplicate(true)
+		var built := _add_infrastructure_operation(operation_spec)
+		if built.is_empty():
+			continue
+		built["spec"] = operation_spec
+		_infrastructure_runtime.append(built)
+		_spatial_fixture_count += 3 # source control, receiver control, environmental field
 
 
 ## Interactive district fixtures use authored scenes just like landmarks, but sit ON navigation risk cells.
@@ -2049,7 +2265,12 @@ func _build_theme_setpieces() -> void:
 ## overlays read) and drops `thick` straight down. A closed solid so its trimesh collision is a dependable ray
 ## target from above (a flat quad isn't). Because the corners are warped per-vertex, adjacent cells share
 ## corner points and the deck tiles watertight on flat AND warped levels alike.
-func _add_floor_slab(st: SurfaceTool, corners: Array, thick: float) -> void:
+func _add_floor_slab(
+	st: SurfaceTool,
+	corners: Array,
+	thick: float,
+	corner_blends: Array[float] = []
+) -> void:
 	var lift := Vector3.UP * 0.02
 	var drop := Vector3.DOWN * thick
 	var A: Vector3 = corners[0] + lift
@@ -2060,26 +2281,44 @@ func _add_floor_slab(st: SurfaceTool, corners: Array, thick: float) -> void:
 	var F := B + drop
 	var G := C + drop
 	var H := D + drop
-	_tri_auto(st, A, C, B)
-	_tri_auto(st, A, D, C)  # top
-	_tri_auto(st, E, F, G)
-	_tri_auto(st, E, G, H)  # bottom
-	_tri_auto(st, A, B, F)
-	_tri_auto(st, A, F, E)  # -lane side
-	_tri_auto(st, D, H, G)
-	_tri_auto(st, D, G, C)  # +lane side
-	_tri_auto(st, A, E, H)
-	_tri_auto(st, A, H, D)  # -s side
-	_tri_auto(st, B, C, G)
-	_tri_auto(st, B, G, F)  # +s side
+	var blends: Array[float] = [1.0, 1.0, 1.0, 1.0]
+	if corner_blends.size() == 4:
+		blends = corner_blends
+	var ca := Color(float(blends[0]), 0.0, 0.0, 1.0)
+	var cb := Color(float(blends[1]), 0.0, 0.0, 1.0)
+	var cc := Color(float(blends[2]), 0.0, 0.0, 1.0)
+	var cd := Color(float(blends[3]), 0.0, 0.0, 1.0)
+	_tri_auto(st, A, C, B, ca, cc, cb)
+	_tri_auto(st, A, D, C, ca, cd, cc)  # top
+	_tri_auto(st, E, F, G, ca, cb, cc)
+	_tri_auto(st, E, G, H, ca, cc, cd)  # bottom
+	_tri_auto(st, A, B, F, ca, cb, cb)
+	_tri_auto(st, A, F, E, ca, cb, ca)  # -lane side
+	_tri_auto(st, D, H, G, cd, cd, cc)
+	_tri_auto(st, D, G, C, cd, cc, cc)  # +lane side
+	_tri_auto(st, A, E, H, ca, ca, cd)
+	_tri_auto(st, A, H, D, ca, cd, cd)  # -s side
+	_tri_auto(st, B, C, G, cb, cc, cc)
+	_tri_auto(st, B, G, F, cb, cc, cb)  # +s side
 
 
 ## Emit one triangle with its face normal derived from the (possibly warped) vertices themselves.
-func _tri_auto(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3) -> void:
+func _tri_auto(
+	st: SurfaceTool,
+	a: Vector3,
+	b: Vector3,
+	c: Vector3,
+	color_a := Color.WHITE,
+	color_b := Color.WHITE,
+	color_c := Color.WHITE
+) -> void:
 	var n := (b - a).cross(c - a)
 	st.set_normal(n.normalized() if n.length_squared() > 1e-12 else Vector3.UP)
+	st.set_color(color_a)
 	st.add_vertex(a)
+	st.set_color(color_b)
 	st.add_vertex(b)
+	st.set_color(color_c)
 	st.add_vertex(c)
 
 
@@ -3739,6 +3978,10 @@ func _build_generated_node(node: Dictionary) -> void:
 		interaction_type,
 		false
 	)
+	var section: Dictionary = node.get("playable_section", {})
+	if not section.is_empty():
+		interactable.set("consequence_preview", str(section.get("predicted_effect", "")))
+		interactable.set_meta("playable_section", section.duplicate(true))
 	# Procedural stretches can put several actionable nodes in one camera view. Persistent
 	# binding billboards turn that composition into a wall of repeated "Right-click" copy;
 	# the shared outline cursor still exposes this same action verb on hover.
@@ -3767,8 +4010,172 @@ func _build_generated_node(node: Dictionary) -> void:
 
 		interactable.input_ray_pickable = false
 	_node_targets[node_id] = target
+	_wire_generated_section_feedback(node, interactable, marker)
 	if _is_diagnosis_node(node):
 		_build_diagnosis_reads(node, pos, pad_size)
+
+
+## Materialize the node-local cause -> effect edge emitted by the systems
+## curriculum. The endpoint is a named actor/structure inside this room-piece,
+## not the next checkpoint on the route. Hover and planning pause therefore show
+## what THIS action changes before the player commits it.
+func _wire_generated_section_feedback(node: Dictionary, interactable: Node3D, fallback_target: Node3D) -> void:
+	var section: Dictionary = node.get("playable_section", {})
+	if section.is_empty() or interactable == null:
+		return
+	var node_id := str(node.get("id", ""))
+	var visual_source := _generated_section_cause_target(
+		node_id,
+		str(section.get("source_role", "")),
+		str(section.get("source_category", ""))
+	)
+	var target := _generated_section_effect_target(
+		node_id,
+		str(section.get("effect_role", "")),
+		str(section.get("effect_category", "")),
+		visual_source
+	)
+	if target == null:
+		target = fallback_target
+	if visual_source == null or visual_source == target:
+		visual_source = interactable
+	if target == null or target == visual_source:
+		return
+	var link := _add_causal_feedback_link(
+		visual_source,
+		target,
+		_role_color(str(node.get("role", "route_pressure"))).lightened(0.22),
+		{
+			"name": "GeneratedSectionLink_%s" % node_id,
+			"interaction_source": interactable,
+			"label": str(section.get("relationship_label", "CHANGES")),
+			# The cursor already names the relation and exact consequence. Keeping
+			# every fixed-size Label3D visible in planning mode turns the overview
+			# into a wall of text; the rings/dashes carry the spatial connection.
+			"show_label": false,
+			# The source/effect objects are already exposed by the hovered section.
+			# Do not ask the fog query to hide the explanatory edge between them;
+			# that recreated the original "visible verb, invisible consequence" bug.
+			"visibility_query": Callable(self, "_generated_section_feedback_visible"),
+			"feedback_mode": "predicted",
+			"visibility_policy": "contextual",
+			"source_offset": Vector3(0.0, 0.95, 0.0),
+			"target_offset": Vector3(0.0, 0.95, 0.0),
+			"arc_height": 1.65,
+			"dash_count": 9,
+			"flow_speed": 0.32,
+			"draw_duration": 0.45,
+			# Generated previews reserve persistent HUD drawers at the bottom. Do not
+			# render half-clipped rings through those controls during planning pause.
+			"viewport_safe_margins": Vector4(42.0, 66.0, 42.0, 146.0),
+		}
+	)
+	if link != null:
+		_generated_section_links[node_id] = link
+		_generated_section_states[node_id] = {
+			"state": "predicted",
+			"source_role": str(section.get("source_role", "cause")),
+			"effect_role": str(section.get("effect_role", "effect")),
+			"target": target,
+			"predicted_effect": str(section.get("predicted_effect", "")),
+		}
+
+
+func _generated_section_feedback_visible(_from_world: Vector3, _to_world: Vector3) -> bool:
+	return true
+
+
+func _generated_section_cause_target(
+		node_id: String, source_role: String, source_category := "") -> Node3D:
+	if source_category == "party":
+		return _generated_section_party_target(node_id)
+	var categories: Dictionary = _node_content_nodes.get(node_id, {})
+	var normalized := source_role.to_lower()
+	var preferred: Array[String] = []
+	if source_category in ["flora", "enemies", "structures"]:
+		preferred = [source_category]
+	elif normalized.contains("load") or normalized.contains("carry"):
+		preferred = ["structures", "flora", "enemies"]
+	elif normalized.contains("flora"):
+		preferred = ["flora", "structures", "enemies"]
+	elif normalized.contains("enemy"):
+		preferred = ["enemies", "flora", "structures"]
+	elif normalized.contains("signal"):
+		preferred = ["flora", "structures", "enemies"]
+	elif normalized.contains("cache") or normalized.contains("control") or normalized.contains("lane") \
+			or normalized.contains("transition") or normalized.contains("relay"):
+		preferred = ["structures", "flora", "enemies"]
+	else:
+		preferred = ["flora", "structures", "enemies"]
+	for category in preferred:
+		for candidate in categories.get(category, []):
+			if candidate is Node3D and is_instance_valid(candidate):
+				return candidate as Node3D
+	return null
+
+
+func _generated_section_effect_target(
+		node_id: String, effect_role: String, effect_category := "", exclude: Node3D = null) -> Node3D:
+	if effect_category == "party":
+		return _generated_section_party_target(node_id)
+	var categories: Dictionary = _node_content_nodes.get(node_id, {})
+	var preferred: Array[String] = []
+	var normalized := effect_role.to_lower()
+	if effect_category in ["flora", "enemies", "structures"]:
+		preferred = [effect_category]
+	elif normalized.contains("party") or normalized.contains("mobility") \
+			or normalized.contains("capacity") or normalized.contains("recovery"):
+		return _generated_section_party_target(node_id)
+	elif normalized.contains("fauna") or normalized.contains("patrol") or normalized.contains("enemy"):
+		preferred = ["enemies", "structures", "flora"]
+	elif normalized.contains("gate") or normalized.contains("route") or normalized.contains("target") \
+			or normalized.contains("container") or normalized.contains("repair"):
+		preferred = ["structures", "enemies", "flora"]
+	elif normalized.contains("atp") or normalized.contains("capacity") or normalized.contains("mobility") \
+			or normalized.contains("recovery"):
+		preferred = ["structures", "flora", "enemies"]
+	else:
+		preferred = ["structures", "enemies", "flora"]
+	for category in preferred:
+		for candidate in categories.get(category, []):
+			if candidate is Node3D and is_instance_valid(candidate) and candidate != exclude:
+				return candidate as Node3D
+	return null
+
+
+func _generated_section_party_target(node_id: String) -> Node3D:
+	if _generated_party_endpoints.has(node_id):
+		var existing: Node3D = _generated_party_endpoints[node_id] as Node3D
+		if existing != null and is_instance_valid(existing):
+			return existing
+	var endpoint := Node3D.new()
+	endpoint.name = "GeneratedPartyEndpoint_%s" % node_id
+	endpoint.top_level = true
+	endpoint.set_meta("character_id", _get_active_character())
+	endpoint.set_meta("locked_character", false)
+	add_child(endpoint)
+	_generated_party_endpoints[node_id] = endpoint
+	_update_generated_party_endpoint(endpoint)
+	return endpoint
+
+
+func _update_generated_party_endpoints() -> void:
+	for endpoint_v in _generated_party_endpoints.values():
+		if endpoint_v is Node3D and is_instance_valid(endpoint_v):
+			_update_generated_party_endpoint(endpoint_v as Node3D)
+
+
+func _update_generated_party_endpoint(endpoint: Node3D) -> void:
+	if endpoint == null or host == null:
+		return
+	var character_id := str(endpoint.get_meta("character_id", _get_active_character()))
+	if not bool(endpoint.get_meta("locked_character", false)):
+		character_id = _get_active_character()
+		endpoint.set_meta("character_id", character_id)
+	if host.has_method("get_preview_character_node"):
+		var character_node = host.call("get_preview_character_node", character_id)
+		if character_node is Node3D and is_instance_valid(character_node):
+			endpoint.global_position = (character_node as Node3D).global_position
 
 
 func _generated_action_verb(node: Dictionary) -> String:
@@ -3866,6 +4273,8 @@ func _character_color(character: String) -> Color:
 func _build_node_content_markers(node: Dictionary, pos: Vector3) -> Array[MeshInstance3D]:
 	var meshes: Array[MeshInstance3D] = []
 	var label_parts: Array[String] = []
+	var node_id := str(node.get("id", "node"))
+	_node_content_nodes[node_id] = {"flora": [], "enemies": [], "structures": []}
 	var placements: Array = node.get("content_placements", [])
 	if not placements.is_empty():
 		for raw_placement in placements:
@@ -3886,6 +4295,10 @@ func _build_node_content_markers(node: Dictionary, pos: Vector3) -> Array[MeshIn
 				_content_color(category, support),
 				"Generated_%s_%s" % [category, key]
 			)
+			marker.set_meta("generated_node_id", node_id)
+			marker.set_meta("generated_content_category", category)
+			marker.set_meta("generated_content_id", key)
+			_register_generated_content_node(node_id, category, marker)
 			meshes.append(marker)
 			_content_marker_count += 1
 			var content_label := _add_label(
@@ -3916,8 +4329,7 @@ func _build_node_content_markers(node: Dictionary, pos: Vector3) -> Array[MeshIn
 			var support := _catalog.support_level(category, key)
 			if support != "implemented":
 				_unsupported_placeholder_count += 1
-			meshes.append(
-				_add_box(
+			var fallback_marker := _add_box(
 					self,
 					marker_pos,
 					Vector3(0.74, 0.58, 0.74),
@@ -3925,8 +4337,12 @@ func _build_node_content_markers(node: Dictionary, pos: Vector3) -> Array[MeshIn
 					Color.BLACK,
 					0.0,
 					"Generated_%s_%s" % [category, key]
-				)
 			)
+			fallback_marker.set_meta("generated_node_id", node_id)
+			fallback_marker.set_meta("generated_content_category", category)
+			fallback_marker.set_meta("generated_content_id", key)
+			_register_generated_content_node(node_id, category, fallback_marker)
+			meshes.append(fallback_marker)
 			_content_marker_count += 1
 			_add_label(
 				self,
@@ -4005,6 +4421,16 @@ func _build_node_content_markers(node: Dictionary, pos: Vector3) -> Array[MeshIn
 	if walk_element != "":
 		_add_label(self, walk_element, pos + Vector3(0.0, 2.78, 0.0), Color(0.68, 0.8, 0.88))
 	return meshes
+
+
+func _register_generated_content_node(node_id: String, category: String, content_node: Node3D) -> void:
+	if not _node_content_nodes.has(node_id):
+		_node_content_nodes[node_id] = {}
+	var categories := _node_content_nodes[node_id] as Dictionary
+	var entries: Array = categories.get(category, [])
+	entries.append(content_node)
+	categories[category] = entries
+	_node_content_nodes[node_id] = categories
 
 
 func _build_palette_legend() -> void:
@@ -4245,6 +4671,7 @@ func _graybox_state() -> Dictionary:
 		"instanced_spatial_feature_count": _spatial_feature_roots.size(),
 		"themed_landmark_count": int(graybox.get("themed_landmark_count", 0)),
 		"instanced_themed_landmark_count": _theme_landmark_roots.size(),
+		"zone_transition_floor_cell_count": _zone_transition_floor_cell_count,
 		"outline_target_count": _node_targets.size(),
 		"route_surface_instance_count": _route_surfaces.size(),
 		"bounds": graybox.get("bounds", {}).duplicate(true),

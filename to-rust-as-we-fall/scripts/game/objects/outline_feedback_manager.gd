@@ -142,9 +142,12 @@ func _ensure_cursor_verb() -> void:
 func _show_cursor_verb(target: Node) -> void:
 	_ensure_cursor_verb()
 	var verb := ""
+	var preview := ""
 	if target != null and is_instance_valid(target) and target.has_method("get_action_verb"):
 		verb = str(target.call("get_action_verb"))
-	_cursor_verb.text = verb
+	if target != null and is_instance_valid(target) and target.has_method("get_action_preview"):
+		preview = str(target.call("get_action_preview")).strip_edges()
+	_cursor_verb.text = verb + ("\n-> %s" % preview if preview != "" else "")
 	_cursor_verb.visible = verb != ""
 	if _cursor_verb.visible:
 		set_process(true)
@@ -162,7 +165,18 @@ func _follow_mouse() -> void:
 	if _cursor_verb == null or not is_instance_valid(_cursor_verb) or not _cursor_verb.visible:
 		return
 	var mp := get_viewport().get_mouse_position()
-	_cursor_verb.position = mp + Vector2(-_cursor_verb.size.x * 0.5, -_cursor_verb.size.y - 14.0)
+	# Keep the consequence beside the cursor instead of centering a wide two-line label
+	# over the cause, its target, and the relationship we are trying to explain.
+	var viewport_size := get_viewport().get_visible_rect().size
+	var desired := mp + Vector2(18.0, 18.0)
+	if desired.x + _cursor_verb.size.x > viewport_size.x - 12.0:
+		desired.x = mp.x - _cursor_verb.size.x - 18.0
+	if desired.y + _cursor_verb.size.y > viewport_size.y - 12.0:
+		desired.y = mp.y - _cursor_verb.size.y - 18.0
+	_cursor_verb.position = Vector2(
+		clampf(desired.x, 12.0, maxf(12.0, viewport_size.x - _cursor_verb.size.x - 12.0)),
+		clampf(desired.y, 12.0, maxf(12.0, viewport_size.y - _cursor_verb.size.y - 12.0))
+	)
 
 func _on_target_selected(target: Node) -> void:
 	if target == null:

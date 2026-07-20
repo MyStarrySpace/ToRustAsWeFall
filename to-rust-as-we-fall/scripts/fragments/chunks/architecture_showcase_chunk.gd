@@ -23,7 +23,8 @@ const REACH := {
 	"hypelines": 6.7, "greenfields": 3.2, "ancourage": 6.3, "bulwark_wharf": 7.2,
 	"cleanstreets": 6.1, "zone3": 3.4, "tiered_hall": 2.8, "tiered_terrace": 2.7,
 	"aghora_exchange": 3.9, "aghora_stack": 3.4, "locas_watchtower": 4.8, "nutech_facility": 4.2,
-	"facility_checkpoint": 9.5,
+	"facility_checkpoint": 9.5, "fabrication_hall": 2.8, "bonded_warehouse": 2.9,
+	"reclamation_works": 2.8, "distribution_substation": 2.8,
 }
 const REACH_DEFAULT := 3.5
 const GAP := 1.4
@@ -103,6 +104,8 @@ func _build_chunk() -> void:
 			_add_watchtower_details(root, spec)
 		if str(spec.get("kind", "")) == "nutech_facility":
 			_add_nutech_details(root, spec)
+		if InfrastructureBuilderScript.is_infrastructure(spec):
+			_add_infrastructure_details(root, spec, survey)
 		_add_anchor_markers(root, survey.anchors())
 		_specimens.append({"building": kind, "shape": str(spec.get("shape", "")),
 			"lattice": str(spec.get("lattice", "")), "verts": verts})
@@ -116,6 +119,7 @@ func _add_anchor_markers(root: Node3D, anchors: Dictionary) -> void:
 		{"list": anchors.get("weak_points", []), "col": Color(0.85, 0.15, 0.1), "r": 0.11},
 		{"list": anchors.get("connectors", []), "col": Color(0.2, 0.9, 0.4), "r": 0.09},
 		{"list": anchors.get("balcony_slots", []), "col": Color(1.0, 0.75, 0.2), "r": 0.08},
+		{"list": anchors.get("service_ports", []), "col": Color(0.42, 0.72, 0.95), "r": 0.075},
 	]
 	for sd in sets:
 		var s := sd as Dictionary
@@ -124,6 +128,8 @@ func _add_anchor_markers(root: Node3D, anchors: Dictionary) -> void:
 			var col := s["col"] as Color
 			if str(ad.get("kind", "")) == "bridge":
 				col = Color(0.2, 0.8, 0.95)
+			elif str(ad.get("kind", "")) == "service" and str(ad.get("flow", "in")) == "out":
+				col = Color(0.36, 0.91, 0.50)
 			var gem := MeshInstance3D.new()
 			gem.name = "Anchor"
 			var sm := SphereMesh.new()

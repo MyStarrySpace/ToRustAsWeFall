@@ -1,4 +1,6 @@
-[gd_scene load_steps=17 format=3]
+[gd_scene load_steps=18 format=3]
+
+[ext_resource type="Script" path="res://scripts/game/objects/party_gate_3d.gd" id="1_party_gate"]
 
 [sub_resource type="StandardMaterial3D" id="Material_rubble"]
 albedo_color = Color(0.19, 0.16, 0.14, 1)
@@ -52,7 +54,7 @@ rings = 32
 ring_segments = 12
 
 [sub_resource type="BoxShape3D" id="Shape_blocker"]
-size = Vector3(1.2, 2.5, 11)
+size = Vector3(1.2, 2.5, 16)
 
 [sub_resource type="Animation" id="Animation_reset"]
 resource_name = "RESET"
@@ -168,6 +170,10 @@ tracks/3/keys = {"times": PackedFloat32Array(0, 0.12, 0.6, 1), "transitions": Pa
 _data = {&"RESET": SubResource("Animation_reset"), &"clear_together": SubResource("Animation_clear"), &"solo_failure": SubResource("Animation_solo")}
 
 [node name="ElevatorWreckageGate" type="Node3D"]
+script = ExtResource("1_party_gate")
+required_members = PackedStringArray("aster", "peris")
+readiness_radius = 3.25
+navigation_padding = Vector2(0.2, 0.2)
 metadata/causal_model = "Two living party members distribute the load; one brace sheds loose rubble and alerts the nearby fauna."
 metadata/primary_insight = "Regroup before committing to a shared load."
 metadata/composition_tags = PackedStringArray("party_coordination", "noise", "enemy_alert", "threshold")
@@ -185,6 +191,18 @@ position = Vector3(-0.24, 1.32, 0)
 rotation = Vector3(0.04, 0, 0.18)
 mesh = SubResource("Mesh_beam")
 material_override = SubResource("Material_metal")
+
+[node name="SidePileA" type="MeshInstance3D" parent="Rubble"]
+position = Vector3(0, 1.08, -6.5)
+scale = Vector3(1, 1, 0.36)
+mesh = SubResource("Mesh_slab")
+material_override = SubResource("Material_rubble")
+
+[node name="SidePileB" type="MeshInstance3D" parent="Rubble"]
+position = Vector3(0, 1.08, 6.5)
+scale = Vector3(1, 1, 0.36)
+mesh = SubResource("Mesh_slab")
+material_override = SubResource("Material_rubble")
 
 [node name="StoneA" type="MeshInstance3D" parent="Rubble"]
 position = Vector3(-0.75, 0.42, -3.6)

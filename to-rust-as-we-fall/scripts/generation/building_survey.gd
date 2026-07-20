@@ -1817,6 +1817,7 @@ static func w_row(row_v: Variant) -> Vector3:
 ##   road         one per entrance threshold, facing out (main flagged for the level's spine)
 ##   bridge       where level bridges/walkable lanes dock (ledge rims, roof edges, hypelines arms)
 ##   balcony      content points on tier ledges (flora, lures, rest spots, set-piece controls)
+##   service      typed material/energy/data input or output on a measured wall plane
 ##   door         the placed entrances themselves (the placement authority's record)
 func _survey_sockets(placements: Array) -> void:
 	sockets.clear()
@@ -1827,6 +1828,7 @@ func _survey_sockets(placements: Array) -> void:
 		var fr := pl["frame"] as Dictionary
 		sockets.append({"kind": "door", "pos": fr["anchor"], "n": fr["n"], "main": bool(pl["main"])})
 		sockets.append({"kind": "road", "pos": fr["anchor"], "dir": fr["n"], "width": 1.2, "main": bool(pl["main"])})
+	_survey_service_ports()
 	if comp == "bulwark_towers":
 		# the barrier WINGS: one reach socket off each flank (tips run legally past the envelope)
 		var wgs: Dictionary = table_for(spec, "bulwark")["wing"]
@@ -1999,6 +2001,45 @@ func _survey_sockets(placements: Array) -> void:
 
 ## Silhouette radius at height y (drums). Boxes answer their larger half extent so a radial consumer
 ## (pipe drapes) still gets a usable envelope.
+## Typed utility ports are authored in normalized construction coordinates and resolved against the
+## surveyed profile here. A seeded scale roll therefore moves the port with the wall; construction,
+## procedural linking, gallery markers, and validation all read the same resulting socket.
+func _survey_service_ports() -> void:
+	var h := _height_total()
+	var is_drum := str(plan.get("kind", "")) == "drum"
+	for raw_v in (spec.get("service_ports", []) as Array):
+		var raw := raw_v as Dictionary
+		var y := float(raw.get("y", float(raw.get("y_frac", 0.5)) * h))
+		var n := Vector3.ZERO
+		var tangent := Vector3.ZERO
+		var pos := Vector3.ZERO
+		if is_drum:
+			var theta := float(plan.get("front_theta", PI * 0.5)) + float(raw.get("theta_off", 0.0))
+			n = Vector3(cos(theta), 0.0, sin(theta)).normalized()
+			tangent = Vector3(-n.z, 0.0, n.x)
+			pos = n * radius_at(y)
+			pos.y = y
+		else:
+			var he := half_extents_at(y)
+			match str(raw.get("face", "rear")):
+				"front":
+					n = Vector3(0, 0, 1); tangent = Vector3(1, 0, 0)
+				"right":
+					n = Vector3(1, 0, 0); tangent = Vector3(0, 0, 1)
+				"left":
+					n = Vector3(-1, 0, 0); tangent = Vector3(0, 0, 1)
+				_:
+					n = Vector3(0, 0, -1); tangent = Vector3(1, 0, 0)
+			var lateral_limit := he.x if absf(n.z) > 0.5 else he.y
+			pos = Vector3(n.x * he.x, y, n.z * he.y) \
+				+ tangent * clampf(float(raw.get("lateral", 0.0)), -0.85, 0.85) * lateral_limit
+		sockets.append({
+			"kind": "service", "id": str(raw.get("id", "service")),
+			"commodity": str(raw.get("commodity", "unspecified")),
+			"flow": str(raw.get("flow", "in")), "pos": pos, "dir": n,
+			"tangent": tangent, "width": float(raw.get("width", 0.3)),
+		})
+
 func radius_at(y: float) -> float:
 	if profile.is_empty():
 		return float(spec.get("radius", 2.0))
@@ -2058,6 +2099,7 @@ func anchors() -> Dictionary:
 	var weak: Array = []
 	var conns: Array = []
 	var balc: Array = []
+	var services: Array = []
 	for s_v in sockets:
 		var s := s_v as Dictionary
 		match str(s["kind"]):
@@ -2080,7 +2122,12 @@ func anchors() -> Dictionary:
 				var balcony_out: Vector3 = s.get("out", s.get("n", Vector3.ZERO))
 				var balcony_size := float(s.get("size", s.get("radius", 0.5)))
 				balc.append({"pos": s["pos"], "out": balcony_out, "size": balcony_size})
-	return {"weak_points": weak, "connectors": conns, "balcony_slots": balc}
+			"service":
+				services.append({"kind": "service", "id": s["id"], "commodity": s["commodity"],
+					"flow": s["flow"], "pos": s["pos"], "dir": s["dir"],
+					"tangent": s["tangent"], "width": float(s["width"])})
+	return {"weak_points": weak, "connectors": conns, "balcony_slots": balc,
+		"service_ports": services}
 
 ## The whole measured drawing as one dictionary (deterministic printing / comparison).
 func summary() -> Dictionary:
@@ -2572,6 +2619,21 @@ func _validate_socket(s: Dictionary, problems: Array[String]) -> void:
 				var on_z2 := absf(absf(pos.z) - he2.y) <= 0.3 and absf(pos.x) <= he2.x + 0.3
 				if not (on_x2 or on_z2):
 					problems.append("%s: %s socket floats off the wall planes" % [kind, skind])
+		"service":
+			if str(s.get("flow", "")) not in ["in", "out"]:
+				problems.append("%s: service socket '%s' has invalid flow '%s'" % [kind,
+					str(s.get("id", "?")), str(s.get("flow", ""))])
+			if str(s.get("commodity", "")) == "":
+				problems.append("%s: service socket '%s' has no commodity" % [kind, str(s.get("id", "?"))])
+			if str(plan.get("kind", "")) == "drum":
+				if absf(horiz.length() - radius_at(pos.y)) > 0.2:
+					problems.append("%s: service socket '%s' floats off the drum wall" % [kind, str(s.get("id", "?"))])
+			else:
+				var he3 := half_extents_at(pos.y)
+				var on_x3 := absf(absf(pos.x) - he3.x) <= 0.2 and absf(pos.z) <= he3.y + 0.2
+				var on_z3 := absf(absf(pos.z) - he3.y) <= 0.2 and absf(pos.x) <= he3.x + 0.2
+				if not (on_x3 or on_z3):
+					problems.append("%s: service socket '%s' floats off the box wall" % [kind, str(s.get("id", "?"))])
 		"bridge":
 			if not reach and horiz.length() > _footprint() + 1.0:
 				problems.append("%s: bridge socket floats %.2f out from a %.2f footprint" % [kind, horiz.length(), _footprint()])

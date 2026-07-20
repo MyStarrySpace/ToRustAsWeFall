@@ -13,12 +13,13 @@ wrapper. Runtime geometry is allowed only when its shape represents changing sta
 | Garden root pavilion | `resources/models/generated-biomes/garden_root_pavilion/` | `generated_garden_root_pavilion.tscn` | same catalog | External OBJ/MTL/PNG |
 | Deadzone chembrane ruin | `resources/models/generated-biomes/deadzone_chembrane_ruin/` | `generated_deadzone_chembrane_ruin.tscn` | same catalog | External OBJ/MTL/PNG |
 | Cleanstreets pavilion and stud lane | `resources/models/cleanstreets/` | Cleanstreets theme scenes | `cleanstreets_landmarks_source.tscn` + `bake_cleanstreets_assets.gd` | External OBJ/MTL/PNG |
-| Canonical district architecture | `resources/models/generated-architecture/<kind>/` | Parametric architecture builders | `architecture_showcase.tscn` + `bake_building_kit.gd` | 17 complete seed-0 kits |
+| Canonical district architecture | `resources/models/generated-architecture/<kind>/` | Parametric architecture builders | `architecture_showcase.tscn` + `bake_building_kit.gd` | 21 complete seed-0 kits |
 
 The canonical architecture catalog includes `plumbing_power`, `honeycomb_cooperative`, `beacon_hill`,
 `open_files`, `hypelines`, `greenfields`, `ancourage`, `bulwark_wharf`, `cleanstreets`, `zone3`,
 `tiered_hall`, `tiered_terrace`, `aghora_exchange`, `aghora_stack`, `locas_watchtower`,
-`nutech_facility`, and `facility_checkpoint`. Each kit includes the final body, entrances, lattice,
+`nutech_facility`, `facility_checkpoint`, `fabrication_hall`, `bonded_warehouse`, `reclamation_works`,
+and `distribution_substation`. Each kit includes the final body, entrances, lattice,
 ledges, pipes, and district-specific details—not only the old base massing. The `.asset.json` beside each
 kit records its seed and UV bake evidence.
 
@@ -89,6 +90,7 @@ added to that queue: they must start as portable assets under `resources/models/
 
 The generated-asset guard requires every biome definition to declare its portable model list, ensures
 runtime landmark scenes contain external meshes instead of visible scene primitives, and verifies all
-17 canonical architecture manifests. The Peris guard additionally checks UV-bearing imported props,
+21 canonical architecture manifests. `verify_infrastructure_catalog.gd` additionally seed-sweeps the
+four typed infrastructure surveys and checks their supply-chain compatibility. The Peris guard checks UV-bearing imported props,
 layout contracts, furniture clearance, individual plant-table support and canopy clearance, retired
 composition visibility, and a non-intersecting portal glow/live-view depth gap.

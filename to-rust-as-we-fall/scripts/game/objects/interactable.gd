@@ -25,6 +25,9 @@ enum InteractableType {
 @export var dwell_time := 1.5
 @export var interaction_radius := 2.0
 @export var description := ""
+## Concrete, pre-commit consequence shown beside the cursor verb. Keep this as a
+## prediction the runtime can actually honor, not another object name.
+@export_multiline var consequence_preview := ""
 @export var one_shot := false
 @export var interaction_enabled := true
 @export var interactable_type := InteractableType.HOLD_ACTION
@@ -400,6 +403,18 @@ func get_action_verb() -> String:
 	if _used or not interaction_enabled:
 		return ""
 	return InputLabels.expand(tutorial_label) if tutorial_label != "" else InputLabels.action_label("command")
+
+
+## Pair with get_action_verb() as "action -> consequence". Existing authored
+## objects fall back to their description; systemic objects should set the
+## shorter and mechanically testable consequence_preview explicitly.
+func get_action_preview() -> String:
+	if _used or not interaction_enabled:
+		return ""
+	var preview := consequence_preview.strip_edges()
+	if preview == "":
+		preview = description.strip_edges()
+	return InputLabels.expand(preview)
 
 func show_tutorial_label() -> void:
 	set_process(true)  # the label pulse is per-frame work

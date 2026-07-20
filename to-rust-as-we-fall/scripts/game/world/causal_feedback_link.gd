@@ -27,6 +27,10 @@ const CHARACTER_TINTS := {
 
 var source: Node3D = null
 var target: Node3D = null
+## Optional interaction delegate that requests this relationship on hover/click.
+## The visible cause can then be a flora/enemy mesh while its larger Interactable
+## remains the reliable input target.
+var interaction_source: Node = null
 var target_highlight: Node = null
 var _target_highlight_reason := ""
 
@@ -45,6 +49,7 @@ var _visibility_policy := VISIBILITY_CONTEXTUAL
 var _owner_character := ""
 var _character_tint := Color(1.0, 0.64, 0.2)
 var _draw_duration := 0.65
+var _viewport_safe_margins := Vector4(36.0, 36.0, 36.0, 36.0)
 var _reveal_started_msec := 0
 var _arrival_burst_started_msec := 0
 var _arrival_burst_until_msec := 0
@@ -76,6 +81,7 @@ var _rendering_enabled := DisplayServer.get_name() != "headless"
 func configure(source_node: Node3D, target_node: Node3D, tint: Color, opts: Dictionary = {}) -> void:
 	source = source_node
 	target = target_node
+	interaction_source = opts.get("interaction_source", source_node) as Node
 	_tint = tint
 	target_highlight = opts.get("target_highlight", null) as Node
 	_source_offset = opts.get("source_offset", _source_offset) as Vector3
@@ -94,6 +100,7 @@ func configure(source_node: Node3D, target_node: Node3D, tint: Color, opts: Dict
 	_visibility_policy = configured_visibility if VALID_VISIBILITY_POLICIES.has(configured_visibility) \
 		else VISIBILITY_CONTEXTUAL
 	_draw_duration = maxf(0.0, float(opts.get("draw_duration", _draw_duration)))
+	_viewport_safe_margins = opts.get("viewport_safe_margins", _viewport_safe_margins) as Vector4
 	var configured_mode := str(opts.get("feedback_mode", MODE_PREDICTED))
 	_feedback_mode = configured_mode if VALID_MODES.has(configured_mode) else MODE_PREDICTED
 	_reveal_started_msec = Time.get_ticks_msec()
@@ -112,7 +119,7 @@ func configure(source_node: Node3D, target_node: Node3D, tint: Color, opts: Dict
 
 
 func matches_source(candidate: Node) -> bool:
-	return candidate != null and candidate == source
+	return candidate != null and candidate == interaction_source
 
 
 func get_target_node() -> Node3D:
@@ -217,6 +224,7 @@ func get_feedback_state() -> Dictionary:
 		"planning": _planning_active,
 		"latched": _latched,
 		"source_name": str(source.name) if is_instance_valid(source) else "",
+		"interaction_source_name": str(interaction_source.name) if is_instance_valid(interaction_source) else "",
 		"target_name": str(target.name) if is_instance_valid(target) else "",
 		"label": _label_text,
 		"show_label": _show_label,
@@ -305,11 +313,14 @@ func _build_visuals() -> void:
 	_material = StandardMaterial3D.new()
 	_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	_material.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
-	_material.albedo_color = Color(_tint.r, _tint.g, _tint.b, 1.0)
+	# Additive, high-energy lines clipped to white on the compatibility renderer and
+	# made short cause/effect reads look like shader artifacts. Preserve the owning
+	# register's hue with a translucent mix plus restrained emission instead.
+	_material.blend_mode = BaseMaterial3D.BLEND_MODE_MIX
+	_material.albedo_color = Color(_tint.r, _tint.g, _tint.b, 0.88)
 	_material.emission_enabled = true
 	_material.emission = _tint
-	_material.emission_energy_multiplier = 7.0
+	_material.emission_energy_multiplier = 1.8
 	_material.no_depth_test = true
 	_material.cull_mode = BaseMaterial3D.CULL_DISABLED
 	# Planning feedback must compose after the fragment perception stack (priority 126),
@@ -480,7 +491,14 @@ func _update_visuals(now: float) -> void:
 	var camera := get_viewport().get_camera_3d()
 	var in_frame := camera != null and not camera.is_position_behind(start) and not camera.is_position_behind(finish)
 	if in_frame:
-		var safe_rect := get_viewport().get_visible_rect().grow(-36.0)
+		var viewport_rect := get_viewport().get_visible_rect()
+		var safe_rect := Rect2(
+			viewport_rect.position + Vector2(_viewport_safe_margins.x, _viewport_safe_margins.y),
+			viewport_rect.size - Vector2(
+				_viewport_safe_margins.x + _viewport_safe_margins.z,
+				_viewport_safe_margins.y + _viewport_safe_margins.w
+			)
+		)
 		in_frame = safe_rect.has_point(camera.unproject_position(start)) \
 			and safe_rect.has_point(camera.unproject_position(finish))
 	_set_visual_parts_visible(in_frame)
@@ -490,24 +508,31 @@ func _update_visuals(now: float) -> void:
 	var pulse_speed := 11.0 if _feedback_mode == MODE_WARNING else (15.0 if _feedback_mode == MODE_FAILED else 7.0)
 	var pulse := 0.5 + 0.5 * sin(now * pulse_speed)
 	var flashing := now_msec < _flash_until_msec
-	var energy := 2.2 + pulse * 0.75
+	var energy := 1.05 + pulse * 0.32
 	if _feedback_mode in [MODE_ACTIVE, MODE_READY]:
-		energy += 1.0
+		energy += 0.5
 	elif _feedback_mode in [MODE_WARNING, MODE_FAILED]:
-		energy += 1.65
+		energy += 0.82
 	if flashing:
-		energy += 2.2 * _flash_strength
+		energy += 1.1 * _flash_strength
 	var mode_tint := _mode_tint()
-	_material.albedo_color = Color(mode_tint.r, mode_tint.g, mode_tint.b, 1.0)
+	_material.albedo_color = Color(mode_tint.r, mode_tint.g, mode_tint.b, 0.88)
 	_material.emission = mode_tint
 	_material.emission_energy_multiplier = energy
 
-	var dash_span := 0.58 / float(_dash_count)
+	var planar_distance := Vector2(start.x - finish.x, start.z - finish.z).length()
+	# Nine full-width dashes across a two-metre relationship overlap into one bright
+	# candy-cane blob. Short relationships need fewer marks, not smaller gaps.
+	var active_dash_count := clampi(int(ceil(planar_distance / 0.8)), 3, _dashes.size())
+	var dash_span := 0.58 / float(active_dash_count)
 	var draw_progress := _route_draw_progress(now_msec)
 	var flow_speed := _flow_speed * _mode_flow_multiplier()
 	for i in range(_dashes.size()):
-		var sequence_t := (float(i) + 0.5) / float(_dashes.size())
 		var dash := _dashes[i]
+		if i >= active_dash_count:
+			dash.visible = false
+			continue
+		var sequence_t := (float(i) + 0.5) / float(active_dash_count)
 		if sequence_t > draw_progress:
 			dash.visible = false
 			continue
@@ -547,8 +572,9 @@ func _update_visuals(now: float) -> void:
 	_source_ring.rotation.y = now * 1.4
 	_target_ring.rotation.y = -now * 1.8
 	var anticipation_squeeze := 0.1 * sin(now * 13.0) if _feedback_mode == MODE_ACTIVE else 0.0
-	_source_ring.scale = Vector3.ONE * (0.9 + pulse * 0.16 + anticipation_squeeze)
-	_target_ring.scale = Vector3.ONE * (0.92 + pulse * (0.34 if flashing else 0.2))
+	var endpoint_scale := clampf(planar_distance / 3.5, 0.62, 1.0)
+	_source_ring.scale = Vector3.ONE * endpoint_scale * (0.9 + pulse * 0.16 + anticipation_squeeze)
+	_target_ring.scale = Vector3.ONE * endpoint_scale * (0.92 + pulse * (0.34 if flashing else 0.2))
 
 	var arrival_active := now_msec < _arrival_burst_until_msec and _arrival_burst_until_msec > _arrival_burst_started_msec
 	_arrival_ring.visible = arrival_active and _segment_is_perceived(finish, finish)

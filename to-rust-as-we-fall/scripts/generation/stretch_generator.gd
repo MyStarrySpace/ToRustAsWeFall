@@ -10,6 +10,8 @@ const GridStitcherScript := preload("res://scripts/generation/stretch_grid_stitc
 const BiomesScript := preload("res://scripts/generation/biomes.gd")
 const PoiDistributionScript := preload("res://scripts/generation/stretch_poi_distribution.gd")
 const SystemsCurriculumScript := preload("res://scripts/generation/stretch_systems_curriculum.gd")
+const BaseShapeScript := preload("res://scripts/generation/base_shape_builder.gd")
+const BuildingFillerScript := preload("res://scripts/generation/building_filler.gd")
 
 const SPEC_SCHEMA := "trawf_generated_stretch_spec_v1"
 const DEFAULT_SPEC_DIR := "res://data/generated_stretches"
@@ -175,7 +177,10 @@ static func generate(settings: Dictionary) -> Dictionary:
 	graybox["navigation_edge_count"] = routes.size()
 	graybox["spatial_feature_count"] = spatial_features.size()
 	var themed_landmarks := _build_themed_landmarks(nodes, navigation_grid, resolved)
+	var infrastructure := _build_infrastructure_composition(nodes, navigation_grid, resolved, themed_landmarks)
+	themed_landmarks.append_array(infrastructure.get("landmarks", []) as Array)
 	graybox["themed_landmark_count"] = themed_landmarks.size()
+	graybox["infrastructure_operation_count"] = (infrastructure.get("operations", []) as Array).size()
 	var themed_setpieces := _build_themed_route_setpieces(navigation_grid, resolved)
 	graybox["themed_setpiece_count"] = themed_setpieces.size()
 	var anchors := _build_anchors(nodes)
@@ -196,6 +201,7 @@ static func generate(settings: Dictionary) -> Dictionary:
 		"title": str(resolved.get("title", "Generated Stretch")),
 		"biome": str(resolved.get("biome", "")),
 		"area_theme": (resolved.get("area_theme", {}) as Dictionary).duplicate(true),
+		"zone_transition": (resolved.get("zone_transition", {}) as Dictionary).duplicate(true),
 		"source": {
 			"generator": "archetype_based_stretch_v2_systems",
 			"seed": int(resolved.get("seed", 0)),
@@ -213,6 +219,7 @@ static func generate(settings: Dictionary) -> Dictionary:
 		"spatial_features": spatial_features,
 		"themed_landmarks": themed_landmarks,
 		"themed_setpieces": themed_setpieces,
+		"infrastructure_operations": infrastructure.get("operations", []),
 		"nodes": nodes,
 		"routes": routes,
 		"archetype_chain": archetype_chain,
@@ -464,6 +471,7 @@ static func validate_area_theme(spec: Dictionary) -> Dictionary:
 	var theme: Dictionary = spec.get("area_theme", {})
 	var landmarks: Array = spec.get("themed_landmarks", [])
 	var setpieces: Array = spec.get("themed_setpieces", [])
+	var infrastructure_operations: Array = spec.get("infrastructure_operations", [])
 	if biome == "":
 		return {"valid": theme.is_empty() and landmarks.is_empty(), "errors": errors, "landmark_count": 0}
 	if theme.is_empty():
@@ -540,11 +548,44 @@ static func validate_area_theme(spec: Dictionary) -> Dictionary:
 		for field in ["primary_read", "leverage", "failure_prediction"]:
 			if str(setpiece.get(field, "")).strip_edges() == "":
 				errors.append("Theme route setpiece %s is missing %s" % [str(setpiece.get("id", "")), field])
+	if not (theme.get("infrastructure_pair", {}) as Dictionary).is_empty() and infrastructure_operations.is_empty():
+		errors.append("Biome '%s' emitted no typed infrastructure operation" % biome)
+	for operation_v in infrastructure_operations:
+		if not (operation_v is Dictionary):
+			errors.append("Biome '%s' emitted a malformed infrastructure operation" % biome)
+			continue
+		var operation := operation_v as Dictionary
+		if str(operation.get("contract_id", "")) != "generated_infrastructure_operation_v1":
+			errors.append("Infrastructure operation uses an unknown contract")
+		for action_field in ["source_action", "source_preview", "receiver_action", "receiver_preview",
+				"service_relationship", "effect_relationship"]:
+			if str(operation.get(action_field, "")).strip_edges() == "":
+				errors.append("Infrastructure operation lacks %s" % action_field)
+		for node_field in ["source_node_id", "receiver_node_id"]:
+			if not nodes_by_id.has(str(operation.get(node_field, ""))):
+				errors.append("Infrastructure operation references unknown %s" % node_field)
+	var transition: Dictionary = spec.get("zone_transition", {})
+	var previous_biome := str((spec.get("settings", {}) as Dictionary).get("previous_biome", ""))
+	if previous_biome != "" and previous_biome != biome:
+		if transition.is_empty():
+			errors.append("Biome '%s' has no entry transition from '%s'" % [biome, previous_biome])
+		else:
+			if str(transition.get("contract_id", "")) != "generated_zone_transition_v1":
+				errors.append("Zone transition uses an unknown contract")
+			if str(transition.get("from_id", "")) != previous_biome \
+					or str(transition.get("to_id", "")) != biome:
+				errors.append("Zone transition does not match %s -> %s" % [previous_biome, biome])
+			if str(transition.get("from_floor_tile", "")) == "" \
+					or str(transition.get("to_floor_tile", "")) == "" \
+					or int(transition.get("length_cells", 0)) < 3:
+				errors.append("Zone transition lacks enough surface blend data")
 	return {
 		"valid": errors.is_empty(),
 		"errors": errors,
 		"landmark_count": landmarks.size(),
 		"setpiece_count": setpieces.size(),
+		"infrastructure_operation_count": infrastructure_operations.size(),
+		"transition_count": 0 if transition.is_empty() else 1,
 	}
 
 
@@ -805,11 +846,14 @@ static func _resolve_settings(settings: Dictionary) -> Dictionary:
 	# limitations), restrict generation to that biome's slice of the palette via the existing
 	# limitations.allowed machinery. The biome id is preserved on the spec for downstream display.
 	var biome := str(settings.get("biome", ""))
+	var previous_biome := str(settings.get("previous_biome", ""))
 	var raw_limitations: Variant = settings.get("limitations", {})
 	if biome != "" and BiomesScript.has_biome(biome) and (not (raw_limitations is Dictionary) or (raw_limitations as Dictionary).is_empty()):
 		raw_limitations = BiomesScript.limitations_for(biome)
 	resolved["biome"] = biome
+	resolved["previous_biome"] = previous_biome
 	resolved["area_theme"] = BiomesScript.theme_contract_for(biome, seed) if biome != "" else {}
+	resolved["zone_transition"] = BiomesScript.transition_contract_for(previous_biome, biome)
 	resolved["limitations"] = _normalize_limitations(raw_limitations)
 	resolved["composition"] = _normalize_composition(settings.get("composition", {}))
 	resolved["roster"] = settings.get("roster", [])
@@ -2064,6 +2108,191 @@ static func _build_themed_landmarks(nodes: Array, navigation_grid: Dictionary, s
 	return result
 
 
+## Compose one directed supply/utility exchange into the roguelite stretch. Both buildings remain portable
+## authored assets outside navigation; their controls occupy distinct reachable cells, and the receiver's
+## consequence occupies a marked local risk cell. The pair is skipped unless its BaseShape ports prove the
+## declared commodity really can flow source -> receiver.
+static func _build_infrastructure_composition(
+		nodes: Array,
+		navigation_grid: Dictionary,
+		settings: Dictionary,
+		existing_landmarks: Array
+	) -> Dictionary:
+	var empty := {"landmarks": [], "operations": []}
+	var theme: Dictionary = settings.get("area_theme", {})
+	var pair: Dictionary = theme.get("infrastructure_pair", {})
+	var catalog: Dictionary = theme.get("infrastructure_catalog", {})
+	if pair.is_empty() or catalog.is_empty() or navigation_grid.is_empty():
+		return empty
+	var source_kind := str(pair.get("source", ""))
+	var receiver_kind := str(pair.get("receiver", ""))
+	var commodity := str(pair.get("commodity", ""))
+	if not catalog.has(source_kind) or not catalog.has(receiver_kind) \
+			or not _infrastructure_pair_matches(source_kind, receiver_kind, commodity):
+		return empty
+	var seed := int(settings.get("seed", 0))
+	var used_nodes := {}
+	var source_node := _infrastructure_anchor_node(nodes, catalog[source_kind] as Dictionary,
+		used_nodes, seed, "source")
+	if source_node.is_empty():
+		return empty
+	used_nodes[str(source_node.get("id", ""))] = true
+	var receiver_node := _infrastructure_anchor_node(nodes, catalog[receiver_kind] as Dictionary,
+		used_nodes, seed, "receiver")
+	if receiver_node.is_empty():
+		return empty
+
+	var grid = GridWorld.from_data(navigation_grid)
+	var occupied: Array[Vector3] = []
+	for existing_v in existing_landmarks:
+		if existing_v is Dictionary:
+			var existing_position := _array_to_vec3((existing_v as Dictionary).get("position", []), Vector3.INF)
+			if existing_position != Vector3.INF:
+				occupied.append(existing_position)
+	var landmarks: Array = []
+	var placements := [
+		{"kind": source_kind, "node": source_node, "definition": catalog[source_kind]},
+		{"kind": receiver_kind, "node": receiver_node, "definition": catalog[receiver_kind]},
+	]
+	for placement_v in placements:
+		var placement := placement_v as Dictionary
+		var node := placement["node"] as Dictionary
+		var definition := placement["definition"] as Dictionary
+		var anchor_position := _array_to_vec3(node.get("position", []), Vector3.ZERO)
+		var level := int(node.get("elevation_index", 0))
+		var kind := str(placement.get("kind", "infrastructure"))
+		var building_position := _themed_landmark_position(grid, anchor_position, level,
+			float(definition.get("clearance", 3.5)), seed, "infra_%s" % kind, occupied)
+		if building_position == Vector3.INF:
+			return empty
+		var toward_anchor := anchor_position - building_position
+		var actual_structures: Array = node.get("structures", [])
+		var landmark := definition.duplicate(true)
+		landmark.merge({
+			"id": "infrastructure_%s" % kind,
+			"kind": kind,
+			"contract_id": "generated_infrastructure_landmark_v1",
+			"theme_id": str(theme.get("id", "")),
+			"source_area": str(theme.get("source_area", "")),
+			"anchor_node_id": str(node.get("id", "")),
+			"anchor_structures": actual_structures.duplicate(),
+			"position": _vec3_to_array(building_position),
+			"elevation_index": level,
+			"rotation_y": atan2(toward_anchor.x, toward_anchor.z),
+			"primary_read": "%s supplies %s to %s." % [
+				kind.replace("_", " ").capitalize(), commodity.replace("_", " "),
+				receiver_kind.replace("_", " ").capitalize()],
+			"feedback_role": "Its service control draws a visible typed edge to the receiving plant and then to the affected route field.",
+		}, true)
+		landmarks.append(landmark)
+		occupied.append(building_position)
+
+	var source_control := _infrastructure_control_position(grid, source_node, seed, "source")
+	var receiver_control := _infrastructure_control_position(grid, receiver_node, seed, "receiver")
+	var effect_pos := _infrastructure_effect_position(grid, navigation_grid, receiver_node,
+		receiver_control, seed)
+	var raw_operation := BuildingFillerScript.service_operation_from_link({
+		"commodity": commodity, "from_kind": source_kind, "to_kind": receiver_kind,
+		"source_control_pos": source_control, "receiver_control_pos": receiver_control,
+		"effect_pos": effect_pos, "effect_half": Vector2(0.66, 0.66),
+	})
+	raw_operation["contract_id"] = "generated_infrastructure_operation_v1"
+	raw_operation["source_node_id"] = str(source_node.get("id", ""))
+	raw_operation["receiver_node_id"] = str(receiver_node.get("id", ""))
+	raw_operation["source_landmark_id"] = "infrastructure_%s" % source_kind
+	raw_operation["receiver_landmark_id"] = "infrastructure_%s" % receiver_kind
+	# Generated specs serialize to JSON, so keep vectors in the same numeric-array form as nodes/routes.
+	raw_operation["source_control_pos"] = _vec3_to_array(source_control)
+	raw_operation["receiver_control_pos"] = _vec3_to_array(receiver_control)
+	raw_operation["effect_pos"] = _vec3_to_array(effect_pos)
+	raw_operation["effect_half"] = [0.66, 0.66]
+	return {"landmarks": landmarks, "operations": [raw_operation]}
+
+
+static func _infrastructure_pair_matches(source_kind: String, receiver_kind: String, commodity: String) -> bool:
+	var source: Dictionary = BaseShapeScript.SPECS.get(source_kind, {})
+	var receiver: Dictionary = BaseShapeScript.SPECS.get(receiver_kind, {})
+	for source_port_v in source.get("service_ports", []):
+		var source_port := source_port_v as Dictionary
+		if str(source_port.get("flow", "")) != "out" \
+				or str(source_port.get("commodity", "")) != commodity:
+			continue
+		for receiver_port_v in receiver.get("service_ports", []):
+			var receiver_port := receiver_port_v as Dictionary
+			if str(receiver_port.get("flow", "")) == "in" \
+					and str(receiver_port.get("commodity", "")) == commodity:
+				return true
+	return false
+
+
+static func _infrastructure_anchor_node(
+		nodes: Array, definition: Dictionary, used: Dictionary, seed: int, endpoint: String
+	) -> Dictionary:
+	var wanted: Array = definition.get("anchor_structures", [])
+	var candidates: Array = []
+	for node_v in nodes:
+		if not (node_v is Dictionary):
+			continue
+		var node := node_v as Dictionary
+		var node_id := str(node.get("id", ""))
+		if used.has(node_id) or str(node.get("role", "")) in ["entry", "boundary", "shelter", "shelter_arrival"]:
+			continue
+		var matches := 0
+		for structure_v in node.get("structures", []):
+			if wanted.has(str(structure_v)):
+				matches += 1
+		candidates.append({"node": node, "score": matches * 1000 + posmod(int(hash(
+			"infra-anchor:%d:%s:%s" % [seed, endpoint, node_id])), 1000)})
+	candidates.sort_custom(func(a, b): return int(a.get("score", 0)) > int(b.get("score", 0)))
+	return (candidates[0] as Dictionary).get("node", {}) as Dictionary if not candidates.is_empty() else {}
+
+
+static func _infrastructure_control_position(
+		grid, node: Dictionary, seed: int, endpoint: String
+	) -> Vector3:
+	var center := _array_to_vec3(node.get("position", []), Vector3.ZERO)
+	var center_cell: Vector2i = grid.world_to_grid(center)
+	var level := int(node.get("elevation_index", 0))
+	var offsets: Array[Vector2i] = [Vector2i(-1, 0), Vector2i(1, 0), Vector2i(0, -1), Vector2i(0, 1),
+		Vector2i(-1, -1), Vector2i(1, 1), Vector2i(-1, 1), Vector2i(1, -1)]
+	var start := posmod(int(hash("infra-control:%d:%s:%s" % [seed, endpoint, str(node.get("id", ""))])), offsets.size())
+	for i in range(offsets.size()):
+		var cell: Vector2i = center_cell + offsets[(start + i) % offsets.size()]
+		if grid.is_walkable(cell.x, cell.y, {}, {}, level):
+			return grid.grid_to_world(cell, level) + Vector3(0.0, 0.12, 0.0)
+	return center + Vector3(0.0, 0.12, 0.0)
+
+
+static func _infrastructure_effect_position(
+		grid, navigation_grid: Dictionary, receiver_node: Dictionary, receiver_control: Vector3, seed: int
+	) -> Vector3:
+	var level := int(receiver_node.get("elevation_index", 0))
+	var receiver_center := _array_to_vec3(receiver_node.get("position", []), receiver_control)
+	var best := Vector3.INF
+	var best_distance: float = INF
+	var levels := _navigation_level_by_cell(navigation_grid)
+	for risk_v in navigation_grid.get("risk_cell_list", []):
+		if not (risk_v is Dictionary):
+			continue
+		var raw: Array = (risk_v as Dictionary).get("cell", [])
+		if raw.size() < 2:
+			continue
+		var cell := Vector2i(int(raw[0]), int(raw[1]))
+		var risk_level := int(levels.get("%d:%d" % [cell.x, cell.y], level))
+		var world: Vector3 = grid.grid_to_world(cell, risk_level) + Vector3(0.0, 0.05, 0.0)
+		var distance: float = world.distance_squared_to(receiver_center)
+		if distance < best_distance:
+			best_distance = distance
+			best = world
+	if best != Vector3.INF:
+		return best
+	# No authored risk cell: choose another reachable neighbour so the receiver and its consequence
+	# remain separate visible objects instead of one ambiguous click target.
+	var fallback_node := receiver_node.duplicate(true)
+	fallback_node["position"] = _vec3_to_array(receiver_control)
+	return _infrastructure_control_position(grid, fallback_node, seed + 17, "effect")
+
+
 ## Seat authored district hazards on the SAME risk cells the navigation layer exposes to route preview.
 ## This keeps the causal model honest: SAFE can price/avoid the deterrent lane before the click, while DIRECT
 ## visibly crosses it and pays continuous damage. The scene owns the fixture geometry; generation only chooses
@@ -2447,11 +2676,11 @@ static func _graybox_content_offset(category: String, slot_index: int, footprint
 	var stagger := float(slot_index % 3) - 1.0
 	match category:
 		"flora":
-			return Vector3(-footprint.x * 0.28 + stagger * 0.45, 0.0, -footprint.z * 0.22)
+			return Vector3(-footprint.x * 0.32 + stagger * 0.28, 0.0, -footprint.z * 0.28)
 		"enemies":
-			return Vector3(footprint.x * 0.24, 0.0, -footprint.z * 0.05 + stagger * 0.55)
+			return Vector3(footprint.x * 0.30, 0.0, footprint.z * 0.24 + stagger * 0.3)
 		"structures":
-			return Vector3(stagger * 0.55, 0.0, footprint.z * 0.18)
+			return Vector3(footprint.x * 0.26 + stagger * 0.28, 0.0, footprint.z * 0.28)
 		_:
 			return Vector3.ZERO
 

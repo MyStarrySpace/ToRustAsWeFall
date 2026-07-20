@@ -60,31 +60,26 @@ var _grated_platforms: Node3D
 var _grated_platform_signal_marker: Marker3D
 var _grated_platform_enemy_markers: Array[Marker3D] = []
 var _grated_platform_wall_openings: Array[Marker3D] = []
-var _wreckage_gate: Node3D
+var _wreckage_gate
 var _wreckage_interactable: Area3D
 var _wreckage_listeners: Array[Enemy] = []
 var _wreckage_armed := false
+var _wreckage_clear_in_progress := false
 var _wreckage_cleared := false
 var _wreckage_solo_attempted := false
 var _wreckage_failure_active := false
 var _wreckage_alert_target := ""
 
-# Endo-junction exploration. The plant is the transition out of exploration,
-# so it stays locked until the party has made three distinct reads with both
-# perspectives and chosen one useful preparation.
+# Endo-junction presentation. Its causal progress lives in a reusable
+# SurveyProtocolStoryBeat; this controller only binds authored world objects and
+# applies the scene-specific consequences of the selected preparation.
 var _junction_interactables: Dictionary = {}
-var _junction_inspections: Dictionary = {}
-var _junction_inspected_by := {"aster": false, "peris": false}
 var _junction_prep_interactables: Dictionary = {}
-var _junction_preparation := ""
 var _junction_plant_interactable: Node
 var _gauntlet_safe_window_bonus := 0.0
 var _junction_field_interactables: Dictionary = {}
-var _junction_field_evidence: Dictionary = {}
-var _junction_field_choices: Dictionary = {}
-var _junction_field_protocols_completed: Dictionary = {}
-var _junction_field_protocol := ""
-var _junction_field_findings: Array[String] = []
+var _junction_beat: SurveyProtocolStoryBeat
+var _junction_shelter_layout: AuthoredSpatialLayout3D
 
 var _hud  # GameHUD
 
@@ -193,13 +188,13 @@ const BRIDGE_BLOCKADE_X := BRIDGE_END_X + BRIDGE_END_LANDING_LENGTH
 # door opening + frame, ceiling light coffer, corner posts, control housing. Static; the sliding doors,
 # emergency light, and floor indicators stay procedural in Godot because they animate.
 const ELEVATOR_MODEL := preload("res://resources/models/elevator/elevator_car.glb")
-const ENDO_JUNCTION_MODEL := preload("res://resources/models/elevator/endo-junction.glb")
 const BRIDGE_LIGHTING_SCENE := preload("res://scenes/tutorial/elevator_bridge_lighting.tscn")
 const LOWER_ROUTE_LIGHTING_SCENE := preload("res://scenes/tutorial/elevator_lower_route_lighting.tscn")
 const LOWER_ROUTE_BLOCKADE_SCENE := preload("res://scenes/tutorial/elevator_lower_route_blockade.tscn")
 const EMP_FACEPLATE_SCENE := preload("res://scenes/tutorial/elevator_emp_faceplate.tscn")
 const GRATED_PLATFORMS_SCENE := preload("res://scenes/tutorial/elevator_grated_platforms.tscn")
 const WRECKAGE_GATE_SCENE := preload("res://scenes/tutorial/elevator_wreckage_gate.tscn")
+const JUNCTION_SHELTER_SCENE := preload("res://scenes/tutorial/elevator_junction_shelter.tscn")
 # Collapse debris physics layers (kept off every gameplay layer so debris never touches characters —
 # they move on the grid, not via physics). Pieces collide ONLY with their own catch-floor (no inter-
 # piece explosions from the initially-touching span).
@@ -224,13 +219,12 @@ const ROUTE_BEAT_COUNT := 3
 const GRATED_PLATFORM_ROUTE_BEAT := 1
 const GRATED_PLATFORM_POS := Vector3(FORK_POS.x + 33.0, BELOW_Y, -10.0)
 const WRECKAGE_GATE_POS := Vector3(ROUTES_CONVERGE.x + 5.0, BELOW_Y, 0.0)
-const WRECKAGE_ASSIST_RADIUS := 3.25
 const WRECKAGE_CLEAR_SECONDS := 1.15
 const LOWER_ROUTE_WEST_X := BRIDGE_COLLAPSE_X - 5.0
 
 # Endo junction and shelter
 const JUNCTION_POS := Vector3(ROUTES_CONVERGE.x + 10.0, BELOW_Y, 0)
-const SHELTER_SIZE := Vector3(6, 3, 5)
+const SHELTER_SIZE := Vector3(9, 3, 7)
 const JUNCTION_REQUIRED_INSPECTIONS := 3
 # Aster's schematics cover the main facility out through Endo's junction (and its
 # shelter); past this X the corridors are maintenance with no blueprints, so the
@@ -258,7 +252,6 @@ const JUNCTION_FIELD_PROTOCOLS := {
 			"power_storage": "power_storage_execution",
 			"power_bypass": "power_bypass_execution",
 		},
-		"next": "shelter_ecology",
 	},
 	"shelter_ecology": {
 		"label": "SHELTER ECOLOGY BALANCE",
@@ -268,7 +261,6 @@ const JUNCTION_FIELD_PROTOCOLS := {
 			"ecology_warm": "ecology_warm_execution",
 			"ecology_sealed": "ecology_sealed_execution",
 		},
-		"next": "relay_signal",
 	},
 	"relay_signal": {
 		"label": "FLURE RELAY CALIBRATION",
@@ -278,7 +270,6 @@ const JUNCTION_FIELD_PROTOCOLS := {
 			"relay_safe": "relay_safe_execution",
 			"relay_fast": "relay_fast_execution",
 		},
-		"next": "",
 	},
 }
 const JUNCTION_FIELD_SITES := {
@@ -343,9 +334,8 @@ func _build_chunk(chunk_name: String, parent: Node3D) -> void:
 			_decorate_below_chunk(parent)
 		"junction":
 			_build_junction_chunk(parent)
-			_apply_chunk_tiles(parent, "sand", "rock")
-			_add_junction_model(parent)
 			_build_junction_field_annex(parent)
+			_apply_chunk_tiles(parent, "sand", "rock")
 		"gauntlet":
 			_build_gauntlet_chunk(parent)
 			_apply_chunk_tiles(parent, "deck_metal", "facility_metal")
@@ -638,6 +628,24 @@ func _setup_ui() -> void:
 	_exit_button.interacted.connect(_on_exit_button_pressed)
 	_set_exit_button_interactable(false)
 
+
+func _configure_story_beats() -> void:
+	_junction_beat = SurveyProtocolStoryBeat.new(&"junction_arrive")
+	_junction_beat.configure(
+		JUNCTION_REQUIRED_INSPECTIONS,
+		["aster", "peris"],
+		["recover", "scout"],
+		JUNCTION_FIELD_PROTOCOL_ORDER,
+		JUNCTION_FIELD_PROTOCOLS,
+		JUNCTION_FIELD_SITES
+	)
+	if not _story_beat_runner.register_beat(_junction_beat):
+		push_error("Could not register the reusable Junction story beat.")
+	_junction_beat.preparation_unlocked.connect(_unlock_junction_preparation)
+	_junction_beat.preparation_selected.connect(_on_junction_preparation_selected)
+	_junction_beat.objectives_completed.connect(_unlock_junction_plant)
+	_junction_beat.changed.connect(_on_junction_beat_changed)
+
 func _build_elevator_overlay_ui() -> void:
 	_elevator_overlay_ui = preload("res://scenes/ui/perception_overlay.tscn").instantiate()
 	_elevator_overlay_ui.name = "ElevatorOverlayUI"
@@ -742,8 +750,7 @@ func _begin() -> void:
 			"wreckage":
 				_start_wreckage_focus()
 			"junction":
-				_player.global_position = Vector3(JUNCTION_POS.x, BELOW_Y + 0.5, 0)
-				_start_junction_arrive()
+				_start_junction_focus()
 			"gauntlet":
 				_player.global_position = Vector3(GAUNTLET_POS.x, BELOW_Y + 0.5, 0)
 				_start_gauntlet()
@@ -2078,6 +2085,30 @@ func _start_wreckage_focus() -> void:
 		_camera.call("_update_immediate")
 	_arm_wreckage_gate()
 
+
+## Focused browser/native probe for the shelter. Both party members start alive
+## and inside the authored entry lane so the checkpoint represents the state the
+## ordinary two-person wreckage gate guarantees.
+func _start_junction_focus() -> void:
+	var focus_center := _junction_anchor_position("Center", JUNCTION_POS + Vector3(0.5, 0.5, 0))
+	for entry_spec in [
+		["peris", focus_center + Vector3(-0.7, 0, -0.55)],
+		["aster", focus_center + Vector3(-0.7, 0, 0.55)],
+	]:
+		var character_id := str(entry_spec[0])
+		var position := entry_spec[1] as Vector3
+		_game_state.set_character_level(character_id, LEVEL_LOWER)
+		_game_state.snap_character_to(character_id, position)
+		_game_state.set_stat(character_id, "hp", PARTY_MAX_HP)
+		var character_node: Node3D = _peris_node if character_id == "peris" else _aster_node
+		character_node.global_position = position
+	_hud.set_portrait_status("aster", "")
+	_hud.set_portrait_stat("aster", "sta", 100)
+	_select_character("peris")
+	_start_junction_arrive()
+	if _camera != null:
+		_camera.call("_update_immediate")
+
 func _resolve_peris_overlay_route_read() -> void:
 	if bool(_route_reads_resolved.get("peris", false)):
 		return
@@ -2132,21 +2163,11 @@ func _start_route_choice() -> void:
 
 func _wreckage_interaction_anchor() -> Vector3:
 	if is_instance_valid(_wreckage_gate):
-		var marker := _wreckage_gate.get_node_or_null("Markers/InteractionAnchor") as Marker3D
-		if marker != null:
-			return marker.global_position
+		return _wreckage_gate.get_interaction_anchor()
 	return WRECKAGE_GATE_POS + Vector3(-2.3, 0.0, 0.0)
 
-func _wreckage_member_ready(character_id: String) -> bool:
-	if _game_state == null or not _game_state.characters.has(character_id) \
-			or _game_state.is_downed(character_id):
-		return false
-	var pos := _game_state.get_position(character_id)
-	var anchor := _wreckage_interaction_anchor()
-	return Vector2(pos.x - anchor.x, pos.z - anchor.z).length() <= WRECKAGE_ASSIST_RADIUS
-
 func _wreckage_party_ready() -> bool:
-	return _wreckage_member_ready("aster") and _wreckage_member_ready("peris")
+	return is_instance_valid(_wreckage_gate) and _wreckage_gate.is_satisfied()
 
 func _arm_wreckage_gate() -> void:
 	if _wreckage_armed or _wreckage_cleared or not is_instance_valid(_wreckage_interactable):
@@ -2166,7 +2187,7 @@ func _on_wreckage_interacted() -> void:
 		var recorded := str(_wreckage_interactable.get("active_character"))
 		if recorded != "":
 			interactor = recorded
-	if _wreckage_party_ready():
+	if is_instance_valid(_wreckage_gate) and _wreckage_gate.begin_open():
 		_clear_wreckage_together()
 	else:
 		_fail_wreckage_solo(interactor)
@@ -2179,29 +2200,36 @@ func _wreckage_animation(animation_name: String) -> void:
 		animation.play(animation_name)
 
 func _clear_wreckage_together() -> void:
-	_wreckage_cleared = true
+	_wreckage_clear_in_progress = true
 	_wreckage_failure_active = false
 	if is_instance_valid(_wreckage_interactable):
 		_wreckage_interactable.set_interaction_enabled(false)
 	_wreckage_animation("clear_together")
-	var blocker := _wreckage_gate.get_node_or_null("RubbleBlocker/BlockerShape") as CollisionShape3D \
-		if is_instance_valid(_wreckage_gate) else null
-	if blocker != null:
-		blocker.set_deferred("disabled", true)
-	if _grid != null:
-		_grid.allow_world_region_on_level(
-			Vector2(WRECKAGE_GATE_POS.x - 0.75, -6.0),
-			Vector2(WRECKAGE_GATE_POS.x + 0.75, 6.0),
-			LEVEL_LOWER
-		)
 	_tutorial_prompt.show_prompt("Both braces take the load. The passage to Endo is clear.")
 	_show_marker(WRECKAGE_GATE_POS + Vector3(0.0, 2.4, 0.0), "TWO BRACES  /  CLEAR")
 	_player.set_move_enabled(false)
 	_scheduler.schedule_after(WRECKAGE_CLEAR_SECONDS, _finish_wreckage_clear, "wreckage_clear")
 
 func _finish_wreckage_clear() -> void:
-	if _current_step != "route_choice" or not _wreckage_cleared:
+	if _current_step != "route_choice" or not _wreckage_clear_in_progress:
 		return
+	_wreckage_clear_in_progress = false
+	# The reusable gate performs a second authoritative check after the lift.
+	# A death or departure during presentation cannot inherit the earlier pass.
+	if not is_instance_valid(_wreckage_gate) or not _wreckage_gate.commit_open():
+		_player.set_move_enabled(true)
+		_wreckage_animation("RESET")
+		var remaining := ""
+		for member_id in ["aster", "peris"]:
+			if _game_state.characters.has(member_id) and not _game_state.is_downed(member_id):
+				remaining = member_id
+				break
+		if remaining != "":
+			_fail_wreckage_solo(remaining)
+		else:
+			_tutorial_prompt.show_prompt("Both brace marks require conscious party members.")
+		return
+	_wreckage_cleared = true
 	_tutorial_prompt.hide_prompt()
 	_start_junction_arrive()
 
@@ -2220,6 +2248,9 @@ func _fail_wreckage_solo(interactor: String) -> void:
 			or _game_state.is_downed(interactor):
 		return
 	_wreckage_solo_attempted = true
+	_wreckage_clear_in_progress = false
+	if is_instance_valid(_wreckage_gate):
+		_wreckage_gate.cancel_open()
 	_wreckage_failure_active = true
 	_wreckage_alert_target = interactor
 	if is_instance_valid(_wreckage_interactable):
@@ -2242,7 +2273,7 @@ func _fail_wreckage_solo(interactor: String) -> void:
 
 func _rearm_wreckage_after_solo_failure() -> void:
 	_wreckage_failure_active = false
-	if _wreckage_cleared or _current_step != "route_choice" \
+	if _wreckage_cleared or _wreckage_clear_in_progress or _current_step != "route_choice" \
 			or not is_instance_valid(_wreckage_interactable):
 		return
 	_wreckage_interactable.set_interaction_enabled(true)
@@ -2254,30 +2285,31 @@ func _rearm_wreckage_after_solo_failure() -> void:
 # --- Junction / Shelter ---
 
 func _junction_survey_ready() -> bool:
-	return _junction_inspections.size() >= JUNCTION_REQUIRED_INSPECTIONS \
-		and bool(_junction_inspected_by.get("aster", false)) \
-		and bool(_junction_inspected_by.get("peris", false))
+	return _junction_beat != null and _junction_beat.survey_ready()
 
 func _update_junction_survey_prompt() -> void:
-	if _junction_preparation != "":
+	if _junction_beat == null:
+		return
+	if _junction_beat.selected_preparation != "":
 		if _junction_fieldwork_complete():
 			_tutorial_prompt.show_prompt("The annex is secured. Return to the shelter and tend the dormant plant.")
-		elif _junction_field_protocol != "":
-			var protocol: Dictionary = JUNCTION_FIELD_PROTOCOLS.get(_junction_field_protocol, {})
-			var evidence: Dictionary = _junction_field_evidence.get(_junction_field_protocol, {})
+		elif _junction_beat.protocols.current_protocol() != "":
+			var protocol_id := _junction_beat.protocols.current_protocol()
+			var protocol: Dictionary = JUNCTION_FIELD_PROTOCOLS.get(protocol_id, {})
 			_tutorial_prompt.show_prompt("%s: %d/%d specialist reads, then choose and execute a plan." % [
-				str(protocol.get("label", _junction_field_protocol)), evidence.size(),
-				(protocol.get("evidence", []) as Array).size(),
+				str(protocol.get("label", protocol_id)),
+				_junction_beat.protocols.evidence_count(protocol_id),
+				_junction_beat.protocols.required_evidence_count(protocol_id),
 			])
 		return
 	if _junction_survey_ready():
 		_unlock_junction_preparation()
 		return
-	var count := mini(_junction_inspections.size(), JUNCTION_REQUIRED_INSPECTIONS)
+	var count := mini(_junction_beat.survey.observation_count(), JUNCTION_REQUIRED_INSPECTIONS)
 	var missing_perspective := ""
-	if not bool(_junction_inspected_by.get("aster", false)):
+	if not _junction_beat.survey.has_actor_participated("aster"):
 		missing_perspective = " Select Aster's portrait (or cycle) for his read."
-	elif not bool(_junction_inspected_by.get("peris", false)):
+	elif not _junction_beat.survey.has_actor_participated("peris"):
 		missing_perspective = " Select Peris's portrait (or cycle) for her read."
 	_tutorial_prompt.show_prompt(
 		"Survey Endo's shelter: %d/%d distinct stations.%s" % [
@@ -2293,10 +2325,7 @@ func _on_junction_inspection(label: String, interact: Node) -> void:
 		inspector = str(interact.get("active_character"))
 	if not (inspector in ["aster", "peris"]):
 		return
-	if not _junction_inspections.has(label):
-		_junction_inspections[label] = inspector
-	_junction_inspected_by[inspector] = true
-	_update_junction_survey_prompt()
+	_junction_beat.record_observation(label, inspector)
 
 func _unlock_junction_preparation() -> void:
 	for prep in _junction_prep_interactables.values():
@@ -2306,9 +2335,12 @@ func _unlock_junction_preparation() -> void:
 	_tutorial_prompt.show_prompt("Choose one preparation: RECOVER health, or SCOUT longer Flure windows.")
 
 func _choose_junction_preparation(choice: String) -> void:
-	if _current_step != "junction_arrive" or _junction_preparation != "" or not _junction_survey_ready():
+	if _current_step != "junction_arrive" or _junction_beat == null:
 		return
-	_junction_preparation = choice
+	_junction_beat.choose_preparation(choice)
+
+
+func _on_junction_preparation_selected(choice: String) -> void:
 	if choice == "recover":
 		for id in ["aster", "peris"]:
 			var hp := _game_state.get_stat(id, "hp")
@@ -2318,26 +2350,17 @@ func _choose_junction_preparation(choice: String) -> void:
 	for prep in _junction_prep_interactables.values():
 		if is_instance_valid(prep):
 			prep.set_interaction_enabled(false)
-	_start_junction_field_protocol(JUNCTION_FIELD_PROTOCOL_ORDER[0])
-	_update_junction_survey_prompt()
+	_sync_junction_field_sites()
 
 func _junction_fieldwork_complete() -> bool:
-	return _junction_field_protocols_completed.size() >= JUNCTION_FIELD_PROTOCOL_ORDER.size()
+	return _junction_beat != null and _junction_beat.objectives_are_complete()
 
-func _start_junction_field_protocol(protocol_id: String) -> void:
-	if not JUNCTION_FIELD_PROTOCOLS.has(protocol_id):
+func _sync_junction_field_sites() -> void:
+	if _junction_beat == null:
 		return
-	_junction_field_protocol = protocol_id
-	if not _junction_field_evidence.has(protocol_id):
-		_junction_field_evidence[protocol_id] = {}
 	for site_id_variant in JUNCTION_FIELD_SITES.keys():
 		var site_id := str(site_id_variant)
-		var spec: Dictionary = JUNCTION_FIELD_SITES[site_id]
-		var enabled := str(spec.get("protocol", "")) == protocol_id \
-			and str(spec.get("kind", "")) == "evidence" \
-			and not bool((_junction_field_evidence.get(protocol_id, {}) as Dictionary).get(site_id, false))
-		_set_junction_field_site_enabled(site_id, enabled)
-	_update_junction_survey_prompt()
+		_set_junction_field_site_enabled(site_id, _junction_beat.is_protocol_site_available(site_id))
 
 func _set_junction_field_site_enabled(site_id: String, enabled: bool) -> void:
 	var interact: Node = _junction_field_interactables.get(site_id)
@@ -2348,50 +2371,18 @@ func _set_junction_field_site_enabled(site_id: String, enabled: bool) -> void:
 		interact.call_deferred("show_tutorial_label")
 
 func _on_junction_field_site(site_id: String) -> void:
-	if _current_step != "junction_arrive" or not JUNCTION_FIELD_SITES.has(site_id):
+	if _current_step != "junction_arrive" or _junction_beat == null:
 		return
-	var spec: Dictionary = JUNCTION_FIELD_SITES[site_id]
-	var protocol_id := str(spec.get("protocol", ""))
-	if protocol_id != _junction_field_protocol or not JUNCTION_FIELD_PROTOCOLS.has(protocol_id):
-		return
-	var kind := str(spec.get("kind", ""))
-	var protocol: Dictionary = JUNCTION_FIELD_PROTOCOLS[protocol_id]
-	match kind:
-		"evidence":
-			var evidence: Dictionary = _junction_field_evidence.get(protocol_id, {})
-			if bool(evidence.get(site_id, false)):
-				return
-			evidence[site_id] = true
-			_junction_field_evidence[protocol_id] = evidence
-			_junction_field_findings.append(site_id)
-			_set_junction_field_site_enabled(site_id, false)
-			if evidence.size() >= (protocol.get("evidence", []) as Array).size():
-				for choice_variant in protocol.get("choices", []):
-					_set_junction_field_site_enabled(str(choice_variant), true)
-		"choice":
-			var evidence: Dictionary = _junction_field_evidence.get(protocol_id, {})
-			if evidence.size() < (protocol.get("evidence", []) as Array).size():
-				return
-			_junction_field_choices[protocol_id] = site_id
-			_junction_field_findings.append(site_id)
-			for choice_variant in protocol.get("choices", []):
-				_set_junction_field_site_enabled(str(choice_variant), false)
-			var resolution_id := str((protocol.get("resolution_sites", {}) as Dictionary).get(site_id, ""))
-			_set_junction_field_site_enabled(resolution_id, true)
-		"resolution":
-			var choice_id := str(_junction_field_choices.get(protocol_id, ""))
-			var expected := str((protocol.get("resolution_sites", {}) as Dictionary).get(choice_id, ""))
-			if expected != site_id:
-				return
-			_set_junction_field_site_enabled(site_id, false)
-			_junction_field_findings.append(site_id)
-			_junction_field_protocols_completed[protocol_id] = true
-			var next_id := str(protocol.get("next", ""))
-			if next_id == "":
-				_junction_field_protocol = "complete"
-				_unlock_junction_plant()
-			else:
-				_start_junction_field_protocol(next_id)
+	var interact: Node = _junction_field_interactables.get(site_id)
+	var actor_id := _active_character
+	if is_instance_valid(interact) and "active_character" in interact \
+			and str(interact.get("active_character")) != "":
+		actor_id = str(interact.get("active_character"))
+	_junction_beat.submit_protocol_site(site_id, actor_id)
+
+
+func _on_junction_beat_changed(_beat_id: StringName) -> void:
+	_sync_junction_field_sites()
 	_update_junction_survey_prompt()
 
 func _unlock_junction_plant() -> void:
@@ -2401,8 +2392,19 @@ func _unlock_junction_plant() -> void:
 	_junction_plant_interactable.call_deferred("show_tutorial_label")
 
 func _start_junction_arrive() -> void:
+	# Reset logical progress at the story boundary, never from chunk construction.
+	# Presentation assets may be streamed/rebuilt without changing beat lifecycle.
+	if _junction_beat != null and not _junction_beat.is_active():
+		_junction_beat.reset()
 	_enter_step("junction_arrive")
 	_set_junction_camera_bounds()
+	if _camera != null and _camera.has_method("apply_follow_profile"):
+		_camera.apply_follow_profile({
+			"follow_offset": Vector3(0, 5.8, 3.8),
+			"min_zoom": 0.75,
+			"max_zoom": 1.6,
+			"initial_zoom": 1.0,
+		}, true)
 	_clear_markers()
 	_load_chunk("junction")
 	_unload_chunk("below")
@@ -2417,12 +2419,14 @@ func _start_endo_enters() -> void:
 	_enter_step("endo_enters")
 	# Endo arrives from a side entrance
 	_endo.visible = true
-	_endo.position = Vector3(JUNCTION_POS.x + SHELTER_SIZE.x / 2.0 + 1.0, BELOW_Y + 0.5, 0)
+	_endo.position = _junction_anchor_position(
+		"EndoEntry", Vector3(JUNCTION_POS.x + SHELTER_SIZE.x / 2.0 + 1.0, BELOW_Y + 0.5, 0)
+	)
 	_register_gs_character("endo", _endo, 2.5)
 	# Endo walks into the junction
-	var junction_center := Vector3(JUNCTION_POS.x, BELOW_Y + 0.5, 0)
+	var junction_center := _junction_anchor_position("Center", JUNCTION_POS + Vector3(0, 0.5, 0))
 	_game_state.command_move_to_pos("endo", junction_center)
-	_show_marker(Vector3(JUNCTION_POS.x, BELOW_Y + 2.5, 0), "SHELTER")
+	_show_marker(junction_center + Vector3(0, 2.0, 0), "SHELTER")
 	_player.set_move_enabled(false)
 	_dialogue_chain([
 		"junction.endo.beckon",
@@ -2434,7 +2438,9 @@ func _start_endo_shelter() -> void:
 	_enter_step("endo_shelter")
 	_player.set_move_enabled(false)
 	# Endo walks to the drink container
-	var container_pos := Vector3(JUNCTION_POS.x + 1.5, BELOW_Y + 0.5, -1.0)
+	var container_pos := _junction_anchor_position(
+		"DrinkPickup", Vector3(JUNCTION_POS.x + 1.5, BELOW_Y + 0.5, -1.0)
+	)
 	_game_state.command_move_to_pos("endo", container_pos)
 	_game_state.character_arrived.connect(_on_endo_at_container, CONNECT_ONE_SHOT)
 
@@ -2456,9 +2462,13 @@ func _endo_pickup_drink() -> void:
 		_endo.add_child(_drink_mesh)
 		_drink_mesh.position = Vector3(0, 1.2, 0.3)
 	# WATER marker on the drink
-	_show_marker(Vector3(JUNCTION_POS.x + 1.5, BELOW_Y + 1.5, -1.0), "WATER")
+	_show_marker(_junction_anchor_position(
+		"DrinkPickup", Vector3(JUNCTION_POS.x + 1.5, BELOW_Y + 0.5, -1.0)
+	) + Vector3(0, 1.0, 0), "WATER")
 	# Endo walks back to the party
-	var party_pos := Vector3(JUNCTION_POS.x - SHELTER_SIZE.x / 2.0 + 1.0, BELOW_Y + 0.5, 0)
+	var party_pos := _junction_anchor_position(
+		"PartyRest", Vector3(JUNCTION_POS.x - SHELTER_SIZE.x / 2.0 + 1.0, BELOW_Y + 0.5, 0)
+	)
 	_game_state.command_move_to_pos("endo", party_pos)
 	_game_state.character_arrived.connect(_on_endo_delivered, CONNECT_ONE_SHOT)
 
@@ -3202,22 +3212,23 @@ func headless_get_state() -> Dictionary:
 		"route_flures_activated": _route_flures_activated.duplicate(),
 		"wreckage_armed": _wreckage_armed,
 		"wreckage_party_ready": _wreckage_party_ready(),
+		"wreckage_clear_in_progress": _wreckage_clear_in_progress,
 		"wreckage_cleared": _wreckage_cleared,
 		"wreckage_solo_attempted": _wreckage_solo_attempted,
 		"wreckage_failure_active": _wreckage_failure_active,
 		"wreckage_alert_target": _wreckage_alert_target,
-		"junction_inspection_ids": _junction_inspections.keys(),
-		"junction_inspection_count": _junction_inspections.size(),
-		"junction_inspected_by": _junction_inspected_by.duplicate(),
+		"junction_inspection_ids": _junction_beat.survey.observation_ids() if _junction_beat != null else [],
+		"junction_inspection_count": _junction_beat.survey.observation_count() if _junction_beat != null else 0,
+		"junction_inspected_by": _junction_beat.survey.actor_presence() if _junction_beat != null else {},
 		"junction_survey_ready": _junction_survey_ready(),
-		"junction_preparation": _junction_preparation,
-		"junction_field_protocol": _junction_field_protocol,
-		"junction_field_evidence": _junction_field_evidence.duplicate(true),
-		"junction_field_choices": _junction_field_choices.duplicate(),
-		"junction_field_protocols_completed": _junction_field_protocols_completed.duplicate(),
-		"junction_field_completed_count": _junction_field_protocols_completed.size(),
+		"junction_preparation": _junction_beat.selected_preparation if _junction_beat != null else "",
+		"junction_field_protocol": _junction_beat.protocols.current_protocol() if _junction_beat != null else "",
+		"junction_field_evidence": _junction_beat.protocols.evidence_snapshot() if _junction_beat != null else {},
+		"junction_field_choices": _junction_beat.protocols.choices_snapshot() if _junction_beat != null else {},
+		"junction_field_protocols_completed": _junction_beat.protocols.completed_protocols_snapshot() if _junction_beat != null else {},
+		"junction_field_completed_count": _junction_beat.protocols.completed_count() if _junction_beat != null else 0,
 		"junction_fieldwork_complete": _junction_fieldwork_complete(),
-		"junction_field_findings": _junction_field_findings.duplicate(),
+		"junction_field_findings": _junction_beat.protocols.findings() if _junction_beat != null else [],
 		"junction_plant_unlocked": is_instance_valid(_junction_plant_interactable) \
 			and bool(_junction_plant_interactable.get("interaction_enabled")),
 		"gauntlet_stage": _gauntlet_stage,
@@ -3563,6 +3574,7 @@ func _below_step_prepare(parent: Node3D) -> void:
 	_wreckage_interactable = null
 	_wreckage_listeners.clear()
 	_wreckage_armed = false
+	_wreckage_clear_in_progress = false
 	_wreckage_cleared = false
 	_wreckage_solo_attempted = false
 	_wreckage_failure_active = false
@@ -4147,14 +4159,10 @@ func _below_step_convergence(parent: Node3D) -> void:
 func _below_step_wreckage_gate(parent: Node3D, enemies_dormant := false) -> void:
 	if is_instance_valid(_wreckage_gate):
 		return
-	_wreckage_gate = WRECKAGE_GATE_SCENE.instantiate() as Node3D
+	_wreckage_gate = WRECKAGE_GATE_SCENE.instantiate()
 	_wreckage_gate.position = WRECKAGE_GATE_POS
 	parent.add_child(_wreckage_gate)
-	_block_level_walkable_region(
-		LEVEL_LOWER,
-		Vector2(WRECKAGE_GATE_POS.x - 0.75, -6.0),
-		Vector2(WRECKAGE_GATE_POS.x + 0.75, 6.0)
-	)
+	_wreckage_gate.setup(_game_state, _grid, LEVEL_LOWER, ["aster", "peris"])
 
 	var anchor := _wreckage_interaction_anchor()
 	_wreckage_interactable = _create_interactable(
@@ -4171,7 +4179,7 @@ func _below_step_wreckage_gate(parent: Node3D, enemies_dormant := false) -> void
 	_wreckage_interactable.set("description", "Unstable wreckage -- two braces required")
 	_wreckage_interactable.set_interaction_enabled(false)
 	_wreckage_interactable.interacted.connect(_on_wreckage_interacted)
-	var rubble := _wreckage_gate.get_node_or_null("Rubble")
+	var rubble: Node = _wreckage_gate.get_node_or_null("Rubble")
 	var outline_target := _outline_object_meshes(
 		parent,
 		"WreckageGateOutline",
@@ -4453,193 +4461,44 @@ func _build_below_chunk_one_shot_reference(parent: Node3D) -> void:
 	_add_corridor_section(parent, Vector3(conv_x, ground_y - 0.04, 0), Vector3(8, 0.08, 12), Color(0.06, 0.06, 0.08))
 
 func _build_junction_chunk(parent: Node3D) -> void:
-	var ground_y := BELOW_Y
-	var sx := JUNCTION_POS.x
-	var sw := SHELTER_SIZE.x
-	var sh := SHELTER_SIZE.y
-	var sd := SHELTER_SIZE.z
-	var wc := Color(0.12, 0.11, 0.1)
 	_junction_interactables.clear()
 	_junction_prep_interactables.clear()
 	_junction_field_interactables.clear()
-	_junction_field_evidence.clear()
-	_junction_field_choices.clear()
-	_junction_field_protocols_completed.clear()
-	_junction_field_protocol = ""
-	_junction_field_findings.clear()
+	# Spatial content is an authored scene. The elevator owns the story gates;
+	# the scene owns the model, visibility choices, collision, and editable anchors.
+	_junction_shelter_layout = JUNCTION_SHELTER_SCENE.instantiate() as AuthoredSpatialLayout3D
+	_junction_shelter_layout.name = "JunctionShelterLayout"
+	_junction_shelter_layout.position = JUNCTION_POS
+	parent.add_child(_junction_shelter_layout)
+	parent.set_meta("camera_occlusion_outline_safe_clip", true)
 
-	# Shelter floor
-	_add_corridor_section(parent, Vector3(sx, ground_y - 0.03, 0), Vector3(sw + 2, 0.06, sd + 2), Color(0.08, 0.08, 0.09))
+	_drink_mesh = _junction_shelter_layout.find_child("Drink", true, false) as MeshInstance3D
 
-	# Entry wall with door gap.
-	_add_wall(parent, Vector3(sx - sw / 2.0, ground_y + sh / 2.0, -sd * 0.35), Vector3(0.2, sh, sd * 0.3), wc)
-	_add_wall(parent, Vector3(sx - sw / 2.0, ground_y + sh / 2.0, sd * 0.35), Vector3(0.2, sh, sd * 0.3), wc)
-	_add_wall(parent, Vector3(sx + sw / 2.0, ground_y + sh / 2.0, 0), Vector3(0.2, sh, sd), wc)
-	# Window-gap walls.
-	_add_wall(parent, Vector3(sx, ground_y + 0.5, -sd / 2.0), Vector3(sw, 1.0, 0.2), wc)
-	_add_wall(parent, Vector3(sx, ground_y + sh - 0.3, -sd / 2.0), Vector3(sw, 0.6, 0.2), wc)
-	_add_wall(parent, Vector3(sx, ground_y + 0.5, sd / 2.0), Vector3(sw, 1.0, 0.2), wc)
-	_add_wall(parent, Vector3(sx, ground_y + sh - 0.3, sd / 2.0), Vector3(sw, 0.6, 0.2), wc)
-	_add_wall(parent, Vector3(sx, ground_y + sh, 0), Vector3(sw, 0.15, sd), Color(0.07, 0.07, 0.09))
-
-	# Window grating.
-	for z_side in [-sd / 2.0, sd / 2.0]:
-		for i in range(4):
-			var bar := MeshInstance3D.new()
-			var bb := BoxMesh.new()
-			bb.size = Vector3(0.03, 1.2, 0.03)
-			bar.mesh = bb
-			var bm := StandardMaterial3D.new()
-			bm.albedo_color = Color(0.15, 0.14, 0.13)
-			bar.material_override = bm
-			bar.position = Vector3(sx - sw / 2.0 + 1.0 + i * 1.2, ground_y + 1.6, z_side)
-			parent.add_child(bar)
-
-	var interior_light := OmniLight3D.new()
-	interior_light.name = "ShelterLight"
-	interior_light.position = Vector3(sx, ground_y + sh - 0.5, 0)
-	interior_light.light_color = Color(0.8, 0.6, 0.35)
-	interior_light.light_energy = 2.5
-	interior_light.omni_range = 6.0
-	parent.add_child(interior_light)
-
-	for i in range(2):
-		var crate := MeshInstance3D.new()
-		var cb := BoxMesh.new()
-		cb.size = Vector3(0.6, 0.5, 0.6)
-		crate.mesh = cb
-		var cm := StandardMaterial3D.new()
-		cm.albedo_color = Color(0.2, 0.18, 0.15)
-		crate.material_override = cm
-		crate.position = Vector3(sx + 1.0 - i * 2.0, ground_y + 0.25, 1.0)
-		parent.add_child(crate)
-
-	var container := MeshInstance3D.new()
-	container.name = "DrinkContainer"
-	var co := BoxMesh.new()
-	co.size = Vector3(0.8, 0.4, 0.5)
-	container.mesh = co
-	var cont_mat := StandardMaterial3D.new()
-	cont_mat.albedo_color = Color(0.18, 0.2, 0.18)
-	container.material_override = cont_mat
-	container.position = Vector3(sx + 1.5, ground_y + 0.2, -1.0)
-	parent.add_child(container)
-
-	_drink_mesh = MeshInstance3D.new()
-	_drink_mesh.name = "Drink"
-	var dc := CylinderMesh.new()
-	dc.top_radius = 0.06
-	dc.bottom_radius = 0.05
-	dc.height = 0.18
-	_drink_mesh.mesh = dc
-	var drink_mat := StandardMaterial3D.new()
-	drink_mat.albedo_color = Color(0.25, 0.3, 0.35)
-	drink_mat.metallic = 0.4
-	drink_mat.roughness = 0.3
-	_drink_mesh.material_override = drink_mat
-	_drink_mesh.position = Vector3(sx + 1.5, ground_y + 0.5, -1.0)
-	parent.add_child(_drink_mesh)
-
-	# --- Junction interactables (GDD: Endo's Junction) ---
-
-	# Workbench with tools
-	var workbench := MeshInstance3D.new()
-	var wb := BoxMesh.new()
-	wb.size = Vector3(1.5, 0.7, 0.6)
-	workbench.mesh = wb
-	var wbm := StandardMaterial3D.new()
-	wbm.albedo_color = Color(0.18, 0.15, 0.12)
-	workbench.material_override = wbm
-	workbench.position = Vector3(sx - 1.5, ground_y + 0.35, -1.8)
-	parent.add_child(workbench)
-	_add_junction_interactable("Workbench", Vector3(sx - 1.5, ground_y + 0.8, -1.8),
-		"junction.workbench", "aster")
-
-	# Monitoring station.
-	var monitor_panel := MeshInstance3D.new()
-	var mp := BoxMesh.new()
-	mp.size = Vector3(1.0, 0.8, 0.1)
-	monitor_panel.mesh = mp
-	var mpm := StandardMaterial3D.new()
-	mpm.albedo_color = Color(0.12, 0.14, 0.13)
-	mpm.emission_enabled = true
-	mpm.emission = Color(0.05, 0.08, 0.05)
-	mpm.emission_energy_multiplier = 0.3
-	monitor_panel.material_override = mpm
-	monitor_panel.position = Vector3(sx + SHELTER_SIZE.x / 2.0 - 0.15, ground_y + 1.5, -1.0)
-	parent.add_child(monitor_panel)
-	_add_junction_interactable("Monitor", Vector3(sx + SHELTER_SIZE.x / 2.0 - 0.5, ground_y + 1.5, -1.0),
-		"junction.monitor")
-
-	# Food cache.
-	var food_cache := MeshInstance3D.new()
-	var fc := BoxMesh.new()
-	fc.size = Vector3(0.5, 0.3, 0.4)
-	food_cache.mesh = fc
-	var fcm := StandardMaterial3D.new()
-	fcm.albedo_color = Color(0.2, 0.2, 0.15)
-	food_cache.material_override = fcm
-	food_cache.position = Vector3(sx - 2.0, ground_y + 0.8, 1.5)
-	parent.add_child(food_cache)
-	_add_junction_interactable("Food", Vector3(sx - 2.0, ground_y + 1.0, 1.5),
-		"junction.food", "peris")
-
-	_add_junction_interactable("Lookout", Vector3(sx + 1.0, ground_y + 1.0, -SHELTER_SIZE.z / 2.0 + 0.3),
-		"junction.lookout")
-
-	var heater := MeshInstance3D.new()
-	var hb := BoxMesh.new()
-	hb.size = Vector3(0.4, 0.5, 0.4)
-	heater.mesh = hb
-	var hm := StandardMaterial3D.new()
-	hm.albedo_color = Color(0.25, 0.15, 0.1)
-	hm.emission_enabled = true
-	hm.emission = Color(0.3, 0.15, 0.05)
-	hm.emission_energy_multiplier = 0.5
-	heater.material_override = hm
-	heater.position = Vector3(sx - SHELTER_SIZE.x / 2.0 + 0.3, ground_y + 0.25, 0)
-	parent.add_child(heater)
-	_add_junction_interactable("Heater", Vector3(sx - SHELTER_SIZE.x / 2.0 + 0.5, ground_y + 0.5, 0),
-		"junction.heater")
-
-	# Endo's barrier markings.
-	var markings := Label3D.new()
-	markings.text = "|| /// ||| // ||||| / ||"
-	markings.font_size = 24
-	markings.pixel_size = 0.008
-	markings.modulate = Color(0.5, 0.45, 0.35, 0.6)
-	markings.position = Vector3(sx + SHELTER_SIZE.x / 2.0 - 0.15, ground_y + 1.0, 1.0)
-	markings.rotation.y = -PI / 2.0
-	parent.add_child(markings)
-	_add_junction_interactable("Markings", Vector3(sx + SHELTER_SIZE.x / 2.0 - 0.5, ground_y + 1.0, 1.0),
-		"junction.markings")
-
-	# Hand-carved puzzle.
-	var game_piece := MeshInstance3D.new()
-	var gp := BoxMesh.new()
-	gp.size = Vector3(0.3, 0.1, 0.3)
-	game_piece.mesh = gp
-	var gpm := StandardMaterial3D.new()
-	gpm.albedo_color = Color(0.22, 0.18, 0.14)
-	gpm.roughness = 0.2
-	game_piece.material_override = gpm
-	game_piece.position = Vector3(sx - 1.2, ground_y + 0.75, -1.6)
-	parent.add_child(game_piece)
-	_add_junction_interactable("Game", Vector3(sx - 1.2, ground_y + 0.9, -1.6),
-		"junction.game")
+	var survey_specs := {
+		"Workbench": {"dialogue": "junction.workbench", "role": "aster"},
+		"Monitor": {"dialogue": "junction.monitor", "role": ""},
+		"Food": {"dialogue": "junction.food", "role": "peris"},
+		"Lookout": {"dialogue": "junction.lookout", "role": ""},
+		"Heater": {"dialogue": "junction.heater", "role": ""},
+		"Markings": {"dialogue": "junction.markings", "role": ""},
+		"Game": {"dialogue": "junction.game", "role": ""},
+	}
+	for label_variant in survey_specs:
+		var label := str(label_variant)
+		var spec: Dictionary = survey_specs[label]
+		_add_junction_interactable(
+			label,
+			_junction_anchor_position(label, JUNCTION_POS),
+			str(spec["dialogue"]),
+			str(spec["role"])
+		)
 
 	# Peris tends this plant to trigger dusk and Endo.
-	var plant_mesh := MeshInstance3D.new()
-	var pm := SphereMesh.new()
-	pm.radius = 0.2
-	pm.height = 0.3
-	plant_mesh.mesh = pm
-	var plant_mat := StandardMaterial3D.new()
-	plant_mat.albedo_color = Color(0.15, 0.12, 0.08)
-	plant_mat.roughness = 0.8
-	plant_mesh.material_override = plant_mat
-	plant_mesh.position = Vector3(sx + SHELTER_SIZE.x / 2.0 - 0.8, ground_y + 0.15, SHELTER_SIZE.z / 2.0 - 0.5)
-	parent.add_child(plant_mesh)
+	var plant_mesh := _junction_shelter_layout.find_child("DormantPlantVisual", true, false) as MeshInstance3D
+	var plant_mat: StandardMaterial3D = null
+	if plant_mesh != null and plant_mesh.get_active_material(0) is StandardMaterial3D:
+		plant_mat = (plant_mesh.get_active_material(0) as StandardMaterial3D).duplicate()
+		plant_mesh.material_override = plant_mat
 
 	var plant_interact := preload("res://scenes/game/interactable.tscn").instantiate()
 	plant_interact.name = "DormantPlant"
@@ -4654,7 +4513,7 @@ func _build_junction_chunk(parent: Node3D) -> void:
 	plant_interact.interactable_type = Interactable.InteractableType.TIMED_ACTION
 	plant_interact.one_shot = true
 	plant_interact.dwell_time = 2.0
-	plant_interact.position = plant_mesh.position + Vector3(0, 0.3, 0)
+	plant_interact.position = _junction_anchor_position("Plant", JUNCTION_POS)
 	add_child(plant_interact)
 	if plant_interact.has_method("set_scheduler"):
 		plant_interact.set_scheduler(_scheduler)
@@ -4662,23 +4521,22 @@ func _build_junction_chunk(parent: Node3D) -> void:
 	_junction_plant_interactable = plant_interact
 	plant_interact.set_interaction_enabled(false)
 	plant_interact.interacted.connect(func():
-		var bloom := create_tween()
-		bloom.tween_property(plant_mat, "albedo_color", Color(0.2, 0.5, 0.3), 1.5)
-		bloom.parallel().tween_property(plant_mat, "emission_enabled", true, 0.0)
-		plant_mat.emission_enabled = true
-		plant_mat.emission = Color(0.1, 0.3, 0.15)
-		bloom.parallel().tween_property(plant_mat, "emission_energy_multiplier", 0.8, 2.0)
-		bloom.parallel().tween_property(plant_mesh, "scale", Vector3(1.5, 1.8, 1.5), 2.0)
+		if plant_mesh != null and plant_mat != null:
+			plant_mat.emission_enabled = true
+			plant_mat.emission = Color(0.1, 0.3, 0.15)
+			var bloom := create_tween()
+			bloom.tween_property(plant_mat, "albedo_color", Color(0.2, 0.5, 0.3), 1.5)
+			bloom.parallel().tween_property(plant_mat, "emission_energy_multiplier", 0.8, 2.0)
+			bloom.parallel().tween_property(plant_mesh, "scale", Vector3(1.5, 1.8, 1.5), 2.0)
 		_start_dusk_from_plant()
 	)
 
 	# The survey earns one of two practical preparations. These are real timed
 	# work choices, remain disabled until the three-read/two-perspective gate, and
 	# never add a passive timer to the shelter.
-	_add_course_station_visual(parent, "JunctionRecoverStation", Vector3(sx - 0.6, ground_y, 1.75),
-		Color(0.42, 0.78, 0.48), "RECOVER")
+	var recover_pos := _junction_anchor_position("PrepRecover", JUNCTION_POS)
 	var recover := _create_interactable(
-		parent, Vector3(sx - 0.6, ground_y + 0.05, 1.75), "JunctionPrepRecover",
+		parent, recover_pos, "JunctionPrepRecover",
 		1.35, 2.5, "Prepare recovery", true, Interactable.InteractableType.TIMED_ACTION
 	)
 	recover.description = "Prepare Recovery"
@@ -4686,10 +4544,9 @@ func _build_junction_chunk(parent: Node3D) -> void:
 	recover.interacted.connect(_choose_junction_preparation.bind("recover"))
 	_junction_prep_interactables["recover"] = recover
 
-	_add_course_station_visual(parent, "JunctionScoutStation", Vector3(sx + 1.25, ground_y, -1.75),
-		Color(0.38, 0.68, 0.92), "SCOUT")
+	var scout_pos := _junction_anchor_position("PrepScout", JUNCTION_POS)
 	var scout := _create_interactable(
-		parent, Vector3(sx + 1.25, ground_y + 0.05, -1.75), "JunctionPrepScout",
+		parent, scout_pos, "JunctionPrepScout",
 		1.35, 2.5, "Map Flure windows", true, Interactable.InteractableType.TIMED_ACTION
 	)
 	scout.description = "Scout Flure Windows"
@@ -4697,10 +4554,18 @@ func _build_junction_chunk(parent: Node3D) -> void:
 	scout.interacted.connect(_choose_junction_preparation.bind("scout"))
 	_junction_prep_interactables["scout"] = scout
 
+
+func _junction_anchor_position(anchor_name: StringName, fallback: Vector3) -> Vector3:
+	if is_instance_valid(_junction_shelter_layout):
+		var marker := _junction_shelter_layout.anchor(anchor_name)
+		if marker != null:
+			return marker.global_position
+	return fallback
+
 func _build_junction_field_annex(parent: Node3D) -> void:
 	# A measured service hall extends beyond the modeled shelter. It is loaded only during the
 	# junction leg, so its footprint can overlap the later gauntlet chunk without coexisting with it.
-	var annex_x0 := JUNCTION_POS.x + 3.5
+	var annex_x0 := JUNCTION_POS.x + 5.0
 	var annex_x1 := JUNCTION_POS.x + 60.0
 	var annex_center := (annex_x0 + annex_x1) * 0.5
 	var annex_length := annex_x1 - annex_x0
@@ -4795,6 +4660,8 @@ func _build_junction_field_annex(parent: Node3D) -> void:
 	})
 
 func _start_dusk_from_plant() -> void:
+	if _junction_beat != null:
+		_junction_beat.complete({"preparation": _junction_beat.selected_preparation})
 	var env_node: Node = find_child("Environment", false, false)
 	if env_node:
 		for child in env_node.get_children():
@@ -5054,27 +4921,6 @@ func _apply_chunk_tiles(node: Node, floor_tile: String, wall_tile: String) -> vo
 			var tile := floor_tile if ab.size.y < 0.6 else wall_tile
 			if tile != "":
 				(c as MeshInstance3D).material_override = _tile_material(tile, 1.0)
-
-## Drop the modeled + textured Endo's-junction cave (Blender) in as the VISUAL backdrop for the junction
-## chunk. The procedural shelter keeps ALL its gameplay (collision, interactables, the plant->dusk
-## trigger, Endo's drink path, lights); only its plain floor slab + tall thin wall meshes are hidden so
-## the modeled cave (rock walls, bioluminescent flora, catwalk, workbench) is what reads. Pre-repaint;
-## fine alignment of the interactable zones to the model's features is a later pass.
-func _add_junction_model(parent: Node3D) -> void:
-	for c in parent.get_children():
-		if c is MeshInstance3D and (c as MeshInstance3D).mesh != null:
-			var ab: AABB = (c as MeshInstance3D).mesh.get_aabb()
-			# Only the big shell (the wide floor slab + the long tall thin walls) — NOT the small props
-			# (plant, drink, mugs) or the workbench, which stay as the interactables.
-			var is_floor := ab.size.y < 0.5 and (ab.size.x > 4.0 or ab.size.z > 4.0)
-			var is_wall := ab.size.y > 2.0 and (ab.size.x > 3.0 or ab.size.z > 3.0) and minf(ab.size.x, ab.size.z) < 1.0
-			if is_floor or is_wall:
-				(c as MeshInstance3D).visible = false
-	var m := ENDO_JUNCTION_MODEL.instantiate()
-	m.name = "EndoJunctionModel"
-	m.position = Vector3(JUNCTION_POS.x - 3.0, BELOW_Y, -3.1)
-	m.scale = Vector3(0.55, 0.55, 0.55)
-	parent.add_child(m)
 
 func _add_corridor_section(parent: Node3D, pos: Vector3, size: Vector3, color: Color) -> void:
 	var mesh := MeshInstance3D.new()

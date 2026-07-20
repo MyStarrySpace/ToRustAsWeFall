@@ -39,6 +39,7 @@ var _downed_body_manager                # DownedBodyManager: fallen members beco
 var _outline_mask_manager               # OutlineMaskManager: screen-space object outlines for all targets
 var _selection_controller               # SelectionController: RTS left-click / marquee character select
 var _playthrough_recorder               # normal-play deterministic tape / movie replay autoload
+var _story_beat_runner := StoryBeatRunner.new()
 var _current_step := ""
 var _fade_start_tick := 0.0
 
@@ -155,6 +156,10 @@ func _ready() -> void:
 	_downed_body_manager.name = "DownedBodyManager"
 	add_child(_downed_body_manager)
 	_downed_body_manager.setup(_game_state, self)
+	_story_beat_runner.setup(StoryBeatContext.new(
+		self, _game_state, _scheduler, _ui_scheduler, _story_beat_services()
+	))
+	_configure_story_beats()
 	_begin()
 
 func _process(delta: float) -> void:
@@ -208,6 +213,7 @@ func _process(delta: float) -> void:
 	# Subclass gameplay integration must consume SIMULATION time, not render time. This
 	# keeps planning pause free and makes fixed-FPS movie replay preserve live outcomes.
 	var gameplay_delta := gameplay_ticks_advanced / spd if spd > 0.000001 else 0.0
+	_story_beat_runner.update(gameplay_delta)
 	_on_process(gameplay_delta, spd)
 
 func _exit_tree() -> void:
@@ -234,6 +240,19 @@ func _begin() -> void:
 
 func _on_process(_delta: float, _spd: float) -> void:
 	pass
+
+## Register reusable StoryBeat instances here. The base runner synchronizes their
+## lifecycle with `_enter_step`; legacy steps continue to work unchanged.
+func _configure_story_beats() -> void:
+	pass
+
+## Optional typed capabilities made available to beats through StoryBeatContext.
+## Subclasses can merge additional services without exposing their whole controller.
+func _story_beat_services() -> Dictionary:
+	return {
+		&"dialogue": _dialogue,
+		&"tutorial_prompt": _tutorial_prompt,
+	}
 
 func _compute_speed() -> float:
 	return 10.0 if Input.is_action_pressed("fast_forward") else 1.0
@@ -267,6 +286,7 @@ func headless_advance(duration: float, step := 0.05) -> void:
 		_update_thought_fade()
 		_sync_perception_shader()
 		_update_data_identify()
+		_story_beat_runner.update(dt)
 		_on_process(dt, 1.0)
 		_headless_sync_scheduler_visuals()
 		_headless_sync_runtime(dt)
@@ -561,6 +581,7 @@ func _teardown_sequence() -> void:
 	if _did_teardown:
 		return
 	_did_teardown = true
+	_story_beat_runner.deactivate(&"scene_teardown")
 
 	# Prevent one last _process from touching torn-down state.
 	set_process(false)
@@ -1336,7 +1357,16 @@ func _update_thought_fade() -> void:
 func _enter_step(step_name: String) -> bool:
 	if _current_step == step_name:
 		return false
+	var previous_step := _current_step
 	_current_step = step_name
+	var beat_id := StringName(step_name)
+	if _story_beat_runner.has_beat(beat_id):
+		if not _story_beat_runner.transition_to(beat_id):
+			push_error("Story beat '%s' rejected its context." % step_name)
+			_current_step = previous_step
+			return false
+	else:
+		_story_beat_runner.deactivate(&"step_changed")
 	if _dialogue:
 		for conn in _dialogue.dialogue_finished.get_connections():
 			_dialogue.dialogue_finished.disconnect(conn.callable)

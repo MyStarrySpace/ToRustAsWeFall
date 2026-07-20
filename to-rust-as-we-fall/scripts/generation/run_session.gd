@@ -86,6 +86,9 @@ func branch() -> Dictionary:
 ## Descend by taking one option: apply its reward (recruit grows the roster, depth_skip deepens), then generate
 ## the next level WITH the (possibly grown) roster so it stays solvable by the current party. Returns the new spec.
 func choose(option: Dictionary) -> Dictionary:
+	# Capture the district being left before replacing `spec`. Authored chase
+	# interludes have no biome, so fall back to the last generated history entry.
+	var previous_biome := _latest_generated_biome()
 	var reward: Dictionary = option.get("reward", {})
 	if reward.has("recruit"):
 		var who := str(reward["recruit"])
@@ -102,7 +105,7 @@ func choose(option: Dictionary) -> Dictionary:
 	else:
 		var settings: Dictionary = (option.get("settings", {}) as Dictionary).duplicate(true)
 		settings["roster"] = roster.duplicate()
-		_apply_depth_theme(settings, depth)
+		_apply_depth_theme(settings, depth, previous_biome)
 		spec = GeneratorScript.generate(settings)
 	history.append({
 		"depth": depth, "choice": str(option.get("id", "")), "pattern": str(option.get("id", "")),
@@ -114,13 +117,25 @@ func choose(option: Dictionary) -> Dictionary:
 ## Theme is a property of the descended DEPTH, not of which risk/reward option happened to reach it. This gives
 ## the run a reproducible district sequence and guarantees adjacent generated stretches change area identity;
 ## branch choices still change topology, pressure, rewards, and seed without turning biome into hidden roulette.
-func _apply_depth_theme(settings: Dictionary, target_level_depth: int) -> void:
+func _apply_depth_theme(settings: Dictionary, target_level_depth: int, previous_biome := "") -> void:
 	var biome := BiomesScript.for_depth(seed, target_level_depth)
 	settings["biome"] = biome
+	settings["previous_biome"] = previous_biome if previous_biome != biome else ""
 	settings["title"] = "%s — Depth %d" % [BiomesScript.display_name(biome), target_level_depth + 1]
 
 ## Convenience for headless runs/tests: descend by a simple POLICY — "risky" takes the costly option, "safe" the
 ## other. Returns the next spec.
+func _latest_generated_biome() -> String:
+	var current := str(spec.get("biome", ""))
+	if current != "":
+		return current
+	for i in range(history.size() - 1, -1, -1):
+		var recorded := str((history[i] as Dictionary).get("biome", ""))
+		if recorded != "":
+			return recorded
+	return ""
+
+
 func descend(policy: String = "risky") -> Dictionary:
 	var b := branch()
 	var opts: Array = b.get("options", [])

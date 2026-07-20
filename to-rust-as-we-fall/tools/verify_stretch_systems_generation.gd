@@ -53,7 +53,8 @@ func _init() -> void:
 	check(JSON.stringify(platform_spec) == JSON.stringify(platform_spec_again),
 		"spatial feature selection and sockets are seed-deterministic")
 	var platform_features: Array = platform_spec.get("spatial_features", [])
-	check(platform_features.size() == 1, "standard tier emits one grated spatial composition")
+	check(platform_features.size() >= 2 and platform_features.size() <= 3,
+		"standard tier composes several bounded systems rooms instead of one exceptional platform")
 	if not platform_features.is_empty():
 		var platform := platform_features[0] as Dictionary
 		check(str(platform.get("kind", "")) == "grated_platform",

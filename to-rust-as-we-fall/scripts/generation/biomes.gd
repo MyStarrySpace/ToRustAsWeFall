@@ -10,6 +10,44 @@ extends RefCounted
 
 const BIOME_SEQUENCE := ["channels", "stacks", "garden", "cleanstreets", "deadzone"]
 
+## Portable measured infrastructure that may compose beside any district's systemic rooms. A biome
+## selects one directed pair below; the stretch generator still validates that the pair has a real
+## typed commodity edge before it emits either building or its interactions.
+const INFRASTRUCTURE_CATALOG := {
+	"fabrication_hall": {
+		"id": "fabrication_hall", "scene": "res://scenes/fragments/infrastructure/generated_fabrication_hall.tscn",
+		"asset_contract": "editable_3d_v1",
+		"editable_assets": ["res://resources/models/generated-architecture/fabrication_hall/fabrication_hall_seed_0.obj"],
+		"anchor_structures": ["carry_gear", "barrier", "junction", "terminal"], "clearance": 3.5,
+	},
+	"bonded_warehouse": {
+		"id": "bonded_warehouse", "scene": "res://scenes/fragments/infrastructure/generated_bonded_warehouse.tscn",
+		"asset_contract": "editable_3d_v1",
+		"editable_assets": ["res://resources/models/generated-architecture/bonded_warehouse/bonded_warehouse_seed_0.obj"],
+		"anchor_structures": ["carry_gear", "barrier", "junction", "terminal"], "clearance": 3.6,
+	},
+	"reclamation_works": {
+		"id": "reclamation_works", "scene": "res://scenes/fragments/infrastructure/generated_reclamation_works.tscn",
+		"asset_contract": "editable_3d_v1",
+		"editable_assets": ["res://resources/models/generated-architecture/reclamation_works/reclamation_works_seed_0.obj"],
+		"anchor_structures": ["water_control", "pipe", "terminal", "junction"], "clearance": 3.5,
+	},
+	"distribution_substation": {
+		"id": "distribution_substation", "scene": "res://scenes/fragments/infrastructure/generated_distribution_substation.tscn",
+		"asset_contract": "editable_3d_v1",
+		"editable_assets": ["res://resources/models/generated-architecture/distribution_substation/distribution_substation_seed_0.obj"],
+		"anchor_structures": ["terminal", "junction", "shortcut_gate", "class_gate"], "clearance": 3.5,
+	},
+}
+
+const INFRASTRUCTURE_PAIRS := {
+	"channels": {"source": "reclamation_works", "receiver": "fabrication_hall", "commodity": "process_water"},
+	"stacks": {"source": "fabrication_hall", "receiver": "bonded_warehouse", "commodity": "fabricated_goods"},
+	"garden": {"source": "distribution_substation", "receiver": "reclamation_works", "commodity": "electricity"},
+	"cleanstreets": {"source": "fabrication_hall", "receiver": "bonded_warehouse", "commodity": "fabricated_goods"},
+	"deadzone": {"source": "fabrication_hall", "receiver": "reclamation_works", "commodity": "wastewater"},
+}
+
 const BIOMES := {
 	"channels": {
 		"display": "Plumbing Power Project",
@@ -214,6 +252,8 @@ static func theme_contract_for(id: String, seed: int = 0) -> Dictionary:
 	theme["contract_id"] = "main_game_area_theme_v1"
 	theme["id"] = id
 	theme["display_name"] = display_name(id)
+	theme["infrastructure_catalog"] = INFRASTRUCTURE_CATALOG.duplicate(true)
+	theme["infrastructure_pair"] = (INFRASTRUCTURE_PAIRS.get(id, {}) as Dictionary).duplicate(true)
 	var landmarks: Array = theme.get("landmarks", [])
 	if landmarks.size() > 1:
 		var rotated: Array = []
@@ -222,6 +262,35 @@ static func theme_contract_for(id: String, seed: int = 0) -> Dictionary:
 			rotated.append((landmarks[(start + i) % landmarks.size()] as Dictionary).duplicate(true))
 		theme["landmarks"] = rotated
 	return theme
+
+
+## A procedural depth does not begin in a visual vacuum. This small serialized
+## contract lets the next stretch retain the surface/light language of the
+## district the party just left for a few cells, then blend into its own biome.
+## It is presentation-only: navigation, hazards, and puzzle state remain owned
+## by the destination stretch from the first cell.
+static func transition_contract_for(from_id: String, to_id: String) -> Dictionary:
+	if from_id == "" or to_id == "" or from_id == to_id:
+		return {}
+	var from_theme := theme_contract_for(from_id)
+	var to_theme := theme_contract_for(to_id)
+	if from_theme.is_empty() or to_theme.is_empty():
+		return {}
+	return {
+		"contract_id": "generated_zone_transition_v1",
+		"from_id": from_id,
+		"from_name": display_name(from_id),
+		"to_id": to_id,
+		"to_name": display_name(to_id),
+		"from_floor_tile": str(from_theme.get("floor_tile", "deck_metal")),
+		"to_floor_tile": str(to_theme.get("floor_tile", "deck_metal")),
+		"from_light_color": (from_theme.get("light_color", []) as Array).duplicate(),
+		"to_light_color": (to_theme.get("light_color", []) as Array).duplicate(),
+		# Long enough to read while walking, short enough that the destination
+		# district owns the first actual systems room.
+		"length_cells": 6,
+		"reason": "The prior district recedes through an entry threshold before the new zone takes over.",
+	}
 
 static func validate() -> Dictionary:
 	var errors: Array[String] = []
@@ -267,6 +336,19 @@ static func validate() -> Dictionary:
 			for causal_field in ["primary_read", "leverage", "failure_prediction"]:
 				if str(setpiece.get(causal_field, "")).strip_edges() == "":
 					errors.append("Biome '%s' route setpiece lacks %s" % [id, causal_field])
+		var pair: Dictionary = theme.get("infrastructure_pair", {})
+		for endpoint in ["source", "receiver"]:
+			var kind := str(pair.get(endpoint, ""))
+			if kind == "" or not INFRASTRUCTURE_CATALOG.has(kind):
+				errors.append("Biome '%s' infrastructure pair has no valid %s" % [id, endpoint])
+				continue
+			var definition := INFRASTRUCTURE_CATALOG[kind] as Dictionary
+			var scene_path := str(definition.get("scene", ""))
+			if scene_path == "" or not ResourceLoader.exists(scene_path):
+				errors.append("Biome '%s' infrastructure scene is missing: %s" % [id, scene_path])
+			_validate_editable_assets(id, "infrastructure", definition, errors)
+		if str(pair.get("commodity", "")).strip_edges() == "":
+			errors.append("Biome '%s' infrastructure pair has no typed commodity" % id)
 	return {"valid": errors.is_empty(), "errors": errors, "theme_count": BIOMES.size()}
 
 

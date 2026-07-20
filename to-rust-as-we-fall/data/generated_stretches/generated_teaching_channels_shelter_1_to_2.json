@@ -195,6 +195,7 @@
 			"variant": "short_rest"
 		}
 	],
+	"area_theme": {},
 	"biome": "",
 	"budget": {
 		"archetype_depth": 2,
@@ -284,6 +285,7 @@
 			0
 		],
 		"elevation_step": 0.72,
+		"infrastructure_operation_count": 0,
 		"layout_engine": "wfc_v1",
 		"navigation_contract_id": "unified_grid_v1",
 		"navigation_edge_count": 6,
@@ -301,6 +303,8 @@
 		"supports_multiple_elevations": false,
 		"supports_outline_targets": true,
 		"surface_y_base": 0.45,
+		"themed_landmark_count": 0,
+		"themed_setpiece_count": 0,
 		"unit_scale": 1.0
 	},
 	"headless": {
@@ -682,12 +686,16 @@
 			"chunk.generation.unsupported_placeholder_count",
 			"chunk.generation.navigation",
 			"chunk.generation.spatial_features",
+			"chunk.generation.area_theme",
+			"chunk.generation.themed_landmarks",
+			"chunk.generation.themed_setpieces",
 			"chunk.generation.active_loadout",
 			"chunk.generation.solution_path",
 			"chunk.generation.blocked_nodes"
 		]
 	},
 	"id": "generated_teaching_channels_shelter_1_to_2",
+	"infrastructure_operations": [],
 	"navigation_grid": {
 		"cell_size": 1.0,
 		"contract_id": "unified_grid_v1",
@@ -2681,14 +2689,14 @@
 					"id": "capbage",
 					"label": "capbage",
 					"local_offset": [
-						-1.57000005245209,
+						-1.55999994277954,
 						0.449999988079071,
-						-0.660000026226044
+						-0.839999973773956
 					],
 					"position": [
-						0.929999947547913,
+						0.940000057220459,
 						0.899999976158142,
-						0.839999973773956
+						0.660000026226044
 					],
 					"role": "resource",
 					"rotation_y_degrees": -11.0,
@@ -2706,14 +2714,14 @@
 					"id": "junction",
 					"label": "junction",
 					"local_offset": [
-						0.0,
+						1.03999996185303,
 						0.600000023841858,
-						0.540000021457672
+						0.839999973773956
 					],
 					"position": [
-						2.5,
+						3.53999996185303,
 						1.04999995231628,
-						2.03999996185303
+						2.33999991416931
 					],
 					"role": "structure",
 					"rotation_y_degrees": 26.0,
@@ -2823,14 +2831,14 @@
 					"id": "scarpet",
 					"label": "scarpet",
 					"local_offset": [
-						-1.28999996185303,
+						-1.24000000953674,
 						0.0799999982118607,
-						-0.660000026226044
+						-0.839999973773956
 					],
 					"position": [
-						14.210000038147,
+						14.2600002288818,
 						0.529999971389771,
-						0.839999973773956
+						0.660000026226044
 					],
 					"role": "cover",
 					"rotation_y_degrees": 0.0,
@@ -2848,14 +2856,14 @@
 					"id": "junction",
 					"label": "junction",
 					"local_offset": [
-						0.0,
+						0.779999971389771,
 						0.600000023841858,
-						0.540000021457672
+						0.839999973773956
 					],
 					"position": [
-						15.5,
+						16.2800006866455,
 						1.04999995231628,
-						2.03999996185303
+						2.33999991416931
 					],
 					"role": "structure",
 					"rotation_y_degrees": 37.0,
@@ -2992,14 +3000,14 @@
 					"id": "capbage",
 					"label": "capbage",
 					"local_offset": [
-						-1.28999996185303,
+						-1.24000000953674,
 						0.449999988079071,
-						-0.660000026226044
+						-0.839999973773956
 					],
 					"position": [
-						28.2099990844727,
+						28.2600002288818,
 						0.899999976158142,
-						0.839999973773956
+						0.660000026226044
 					],
 					"role": "resource",
 					"rotation_y_degrees": 11.0,
@@ -3017,14 +3025,14 @@
 					"id": "scarpet",
 					"label": "scarpet",
 					"local_offset": [
-						-0.839999973773956,
+						-0.959999978542328,
 						0.0799999982118607,
-						-0.660000026226044
+						-0.839999973773956
 					],
 					"position": [
-						28.6599998474121,
+						28.5400009155273,
 						0.529999971389771,
-						0.839999973773956
+						0.660000026226044
 					],
 					"role": "cover",
 					"rotation_y_degrees": 48.0,
@@ -3042,14 +3050,14 @@
 					"id": "hide_slot",
 					"label": "hide_slot",
 					"local_offset": [
-						0.550000011920929,
+						1.05999994277954,
 						0.699999988079071,
-						0.540000021457672
+						0.839999973773956
 					],
 					"position": [
-						30.0499992370605,
+						30.5599994659424,
 						1.14999997615814,
-						2.03999996185303
+						2.33999991416931
 					],
 					"role": "structure",
 					"rotation_y_degrees": 85.0,
@@ -3090,6 +3098,29 @@
 			"nested_archetypes": [],
 			"nested_depth": 0,
 			"optional": false,
+			"playable_section": {
+				"action": "SPEND ATP TO REST",
+				"after_state": "recovery increases and sleep deprivation clears",
+				"before_state": "rest is free or every cache must be collected",
+				"boundary": "the local room-piece, its route mouths, and the named cause/effect actors",
+				"completed_preview": "recovery increases and sleep deprivation clears",
+				"effect_category": "party",
+				"effect_role": "party recovery",
+				"failure_prediction": "If the relation is wrong, the named effect target will not enter the predicted state.",
+				"interacting_systems": [
+					"banked ATP",
+					"party recovery",
+					"party position",
+					"route topology"
+				],
+				"observable_evidence": "ATP spent, debt cleared, and capacity restored are visible",
+				"predicted_effect": "Spends banked ATP to restore party capacity and reduce debt",
+				"relationship_label": "ATP RESTORES",
+				"runtime_handler": "generated_section_state_transition_v1",
+				"schema": "trawf_playable_section_v1",
+				"source_category": "party",
+				"source_role": "banked ATP"
+			},
 			"position": [
 				29.5,
 				0.449999988079071,
@@ -3182,14 +3213,14 @@
 					"id": "scarpet",
 					"label": "scarpet",
 					"local_offset": [
-						-1.28999996185303,
+						-1.24000000953674,
 						0.0799999982118607,
-						-0.219999998807907
+						-0.280000001192093
 					],
 					"position": [
-						42.2099990844727,
+						42.2599983215332,
 						0.529999971389771,
-						0.280000001192093
+						0.219999998807907
 					],
 					"role": "cover",
 					"rotation_y_degrees": 0.0,
@@ -3207,14 +3238,14 @@
 					"id": "junction",
 					"label": "junction",
 					"local_offset": [
-						0.0,
+						0.779999971389771,
 						0.600000023841858,
-						0.180000007152557
+						0.280000001192093
 					],
 					"position": [
-						43.5,
+						44.2799987792969,
 						1.04999995231628,
-						0.680000007152557
+						0.779999971389771
 					],
 					"role": "structure",
 					"rotation_y_degrees": 37.0,
@@ -3254,6 +3285,29 @@
 			"nested_archetypes": [],
 			"nested_depth": 0,
 			"optional": false,
+			"playable_section": {
+				"action": "CROSS THE BOUNDARY",
+				"after_state": "the post-transition state becomes active",
+				"before_state": "the beat is flavor with no persistent state change",
+				"boundary": "the local room-piece, its route mouths, and the named cause/effect actors",
+				"completed_preview": "the post-transition state becomes active",
+				"effect_category": "party",
+				"effect_role": "carried state",
+				"failure_prediction": "If the relation is wrong, the named effect target will not enter the predicted state.",
+				"interacting_systems": [
+					"transition",
+					"carried state",
+					"party position",
+					"route topology"
+				],
+				"observable_evidence": "pre-state, transition, and post-state are recorded",
+				"predicted_effect": "Carries the declared party or world state into the next section",
+				"relationship_label": "PRESERVES",
+				"runtime_handler": "generated_section_state_transition_v1",
+				"schema": "trawf_playable_section_v1",
+				"source_category": "structures",
+				"source_role": "transition"
+			},
 			"position": [
 				43.5,
 				0.449999988079071,
@@ -3366,14 +3420,14 @@
 					"id": "capbage",
 					"label": "capbage",
 					"local_offset": [
-						-1.28999996185303,
+						-1.24000000953674,
 						0.449999988079071,
-						-0.660000026226044
+						-0.839999973773956
 					],
 					"position": [
-						56.2099990844727,
+						56.2599983215332,
 						0.899999976158142,
-						0.839999973773956
+						0.660000026226044
 					],
 					"role": "resource",
 					"rotation_y_degrees": 11.0,
@@ -3391,14 +3445,14 @@
 					"id": "scarpet",
 					"label": "scarpet",
 					"local_offset": [
-						-0.839999973773956,
+						-0.959999978542328,
 						0.0799999982118607,
-						-0.660000026226044
+						-0.839999973773956
 					],
 					"position": [
-						56.6599998474121,
+						56.5400009155273,
 						0.529999971389771,
-						0.839999973773956
+						0.660000026226044
 					],
 					"role": "cover",
 					"rotation_y_degrees": 48.0,
@@ -3416,14 +3470,14 @@
 					"id": "shortcut_gate",
 					"label": "shortcut_gate",
 					"local_offset": [
-						0.550000011920929,
+						1.05999994277954,
 						1.10000002384186,
-						0.540000021457672
+						0.839999973773956
 					],
 					"position": [
-						58.0499992370605,
+						58.560001373291,
 						1.54999995231628,
-						2.03999996185303
+						2.33999991416931
 					],
 					"role": "shortcut",
 					"rotation_y_degrees": 85.0,
@@ -3464,6 +3518,29 @@
 			"nested_archetypes": [],
 			"nested_depth": 0,
 			"optional": false,
+			"playable_section": {
+				"action": "SPEND ATP TO REST",
+				"after_state": "recovery increases and sleep deprivation clears",
+				"before_state": "rest is free or every cache must be collected",
+				"boundary": "the local room-piece, its route mouths, and the named cause/effect actors",
+				"completed_preview": "recovery increases and sleep deprivation clears",
+				"effect_category": "party",
+				"effect_role": "party recovery",
+				"failure_prediction": "If the relation is wrong, the named effect target will not enter the predicted state.",
+				"interacting_systems": [
+					"banked ATP",
+					"party recovery",
+					"party position",
+					"route topology"
+				],
+				"observable_evidence": "ATP spent, debt cleared, and capacity restored are visible",
+				"predicted_effect": "Spends banked ATP to restore party capacity and reduce debt",
+				"relationship_label": "ATP RESTORES",
+				"runtime_handler": "generated_section_state_transition_v1",
+				"schema": "trawf_playable_section_v1",
+				"source_category": "party",
+				"source_role": "banked ATP"
+			},
 			"position": [
 				57.5,
 				0.449999988079071,
@@ -3540,14 +3617,14 @@
 					"id": "gasafoetida",
 					"label": "gasafoetida",
 					"local_offset": [
-						-1.57000005245209,
+						-1.55999994277954,
 						0.675000011920929,
-						-0.660000026226044
+						-0.839999973773956
 					],
 					"position": [
-						70.9300003051758,
+						70.9400024414063,
 						1.125,
-						0.839999973773956
+						0.660000026226044
 					],
 					"role": "resource",
 					"rotation_y_degrees": -11.0,
@@ -3565,14 +3642,14 @@
 					"id": "shelter",
 					"label": "shelter",
 					"local_offset": [
-						0.0,
+						1.03999996185303,
 						1.20000004768372,
-						0.540000021457672
+						0.839999973773956
 					],
 					"position": [
-						72.5,
+						73.5400009155273,
 						1.65000009536743,
-						2.03999996185303
+						2.33999991416931
 					],
 					"role": "rest",
 					"rotation_y_degrees": 26.0,
@@ -5015,6 +5092,7 @@
 	],
 	"schema": "trawf_generated_stretch_spec_v1",
 	"settings": {
+		"area_theme": {},
 		"biome": "",
 		"budget": {
 			"archetype_depth": 2,
@@ -5096,6 +5174,7 @@
 				]
 			}
 		},
+		"previous_biome": "",
 		"progression_stage": 2,
 		"reasoning_budget_added_nodes": 0,
 		"roster": [],
@@ -5143,7 +5222,8 @@
 			"preview_party_preset": "full_party_full_health",
 			"region": "Channels",
 			"slot_id": "generated_teaching_channels_shelter_1_to_2"
-		}
+		},
+		"zone_transition": {}
 	},
 	"source": {
 		"complexity_tier": "teaching",
@@ -5157,6 +5237,45 @@
 	"systems_contract": {
 		"boundary": "the generated entry-to-shelter route and the states changed inside it",
 		"causal_links": [
+			{
+				"display": "hover_or_pause",
+				"effect_role": "party recovery",
+				"from": "node_02:cause",
+				"kind": "intervention_effect",
+				"node": "node_02",
+				"prediction": "Spends banked ATP to restore party capacity and reduce debt",
+				"source_role": "banked ATP",
+				"state": "recovery increases and sleep deprivation clears",
+				"state_label": "ATP RESTORES",
+				"to": "node_02:effect",
+				"visibility_policy": "party_visibility_union"
+			},
+			{
+				"display": "hover_or_pause",
+				"effect_role": "carried state",
+				"from": "node_03:cause",
+				"kind": "intervention_effect",
+				"node": "node_03",
+				"prediction": "Carries the declared party or world state into the next section",
+				"source_role": "transition",
+				"state": "the post-transition state becomes active",
+				"state_label": "PRESERVES",
+				"to": "node_03:effect",
+				"visibility_policy": "party_visibility_union"
+			},
+			{
+				"display": "hover_or_pause",
+				"effect_role": "party recovery",
+				"from": "node_04:cause",
+				"kind": "intervention_effect",
+				"node": "node_04",
+				"prediction": "Spends banked ATP to restore party capacity and reduce debt",
+				"source_role": "banked ATP",
+				"state": "recovery increases and sleep deprivation clears",
+				"state_label": "ATP RESTORES",
+				"to": "node_04:effect",
+				"visibility_policy": "party_visibility_union"
+			},
 			{
 				"display": "highlight_or_pause",
 				"from": "node_02",
@@ -5321,8 +5440,15 @@
 		"transfer_test_required": true
 	},
 	"teaching_chain": [],
+	"themed_landmarks": [],
+	"themed_setpieces": [],
 	"title": "Generated Teaching Channels: Shelter 1 -> Shelter 2",
 	"validation": {
+		"area_theme": {
+			"errors": [],
+			"landmark_count": 0,
+			"valid": true
+		},
 		"bare_pair_solvable": true,
 		"multi_solution": true,
 		"multi_solution_ok": true,
@@ -5372,5 +5498,6 @@
 		"preview_party_preset": "full_party_full_health",
 		"region": "Channels",
 		"slot_id": "generated_teaching_channels_shelter_1_to_2"
-	}
+	},
+	"zone_transition": {}
 }

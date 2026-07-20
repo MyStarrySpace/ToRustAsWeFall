@@ -40,7 +40,32 @@ func _init() -> void:
 	if bool(spec.get("success", false)):
 		var validation: Dictionary = Generator.validate_area_theme(spec)
 		check(bool(validation.get("valid", false)), "Cleanstreets area theme validates: %s" % str(validation.get("errors", [])))
-		check((spec.get("themed_landmarks", []) as Array).size() == 1, "one dominant toll pavilion is emitted")
+		var emitted_landmarks: Array = spec.get("themed_landmarks", [])
+		check(emitted_landmarks.size() == 3,
+			"one dominant toll pavilion plus a typed two-building infrastructure pair are emitted")
+		var operations: Array = spec.get("infrastructure_operations", [])
+		check(operations.size() == 1, "one bounded infrastructure operation is emitted")
+		if not operations.is_empty():
+			var operation := operations[0] as Dictionary
+			check(str(operation.get("commodity", "")) == "fabricated_goods",
+				"Cleanstreets supply-chain pair routes fabricated goods")
+			check(str(operation.get("source_action", "")) == "DISPATCH PARTS"
+					and str(operation.get("receiver_action", "")) == "CLEAR RECEIVING",
+				"service endpoints expose mechanical verbs rather than generic click copy")
+			check(str(operation.get("source_preview", "")) != ""
+					and str(operation.get("receiver_preview", "")) != "",
+				"both commits preview their exact consequence")
+		for landmark_v in emitted_landmarks:
+			var emitted := landmark_v as Dictionary
+			if str(emitted.get("contract_id", "")) != "generated_infrastructure_landmark_v1":
+				continue
+			var wrapper := load(str(emitted.get("scene", ""))) as PackedScene
+			check(wrapper != null, "%s authored wrapper loads" % str(emitted.get("kind", "infrastructure")))
+			if wrapper != null:
+				var instance := wrapper.instantiate() as Node3D
+				check(not _has_scene_local_primitive(instance),
+					"%s visible geometry comes from its portable OBJ" % str(emitted.get("kind", "infrastructure")))
+				instance.free()
 		var setpieces: Array = spec.get("themed_setpieces", [])
 		check(setpieces.size() >= 3, "several hostile-architecture cells create a repeated street system")
 		var risk_cells := {}
