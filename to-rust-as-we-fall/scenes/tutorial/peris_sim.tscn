@@ -1,4 +1,4 @@
-[gd_scene load_steps=22 format=3 uid="uid://csc01evf0v2uq"]
+[gd_scene load_steps=27 format=3 uid="uid://csc01evf0v2uq"]
 
 [ext_resource type="Script" uid="uid://b8srbcywmg4y8" path="res://scripts/tutorial/peris_sim_sequence.gd" id="1"]
 [ext_resource type="Script" path="res://scripts/editor/room_measurement_grid.gd" id="2_measure"]
@@ -19,6 +19,12 @@
 [ext_resource type="PackedScene" path="res://scenes/props/peris/strike_notice.tscn" id="17_strike"]
 [ext_resource type="PackedScene" path="res://scenes/props/peris/logbook_console.tscn" id="18_logbook"]
 [ext_resource type="PackedScene" path="res://scenes/props/peris/care_field_kit.tscn" id="19_kit"]
+[ext_resource type="PackedScene" path="res://resources/models/peris-sim/props/plant_displays/plantstandtall.gltf" id="20_standtall"]
+[ext_resource type="PackedScene" path="res://resources/models/peris-sim/props/plant_displays/plantstandshort.gltf" id="21_standshort"]
+[ext_resource type="PackedScene" path="res://resources/models/peris-sim/props/plant_displays/hangingbasket.gltf" id="22_basket"]
+[ext_resource type="PackedScene" path="res://resources/models/peris-sim/props/plant_displays/hangingarm.gltf" id="23_arm"]
+[ext_resource type="PackedScene" path="res://resources/models/peris-sim/props/plant_displays/floorplinth.gltf" id="24_plinth"]
+[ext_resource type="PackedScene" path="res://resources/models/peris-sim/props/plant_displays/shelftray.gltf" id="25_tray"]
 
 [sub_resource type="BoxShape3D" id="FloorCollisionShape"]
 size = Vector3(14, 0.02, 6)
@@ -72,132 +78,180 @@ metadata/editor_layout_root = true
 [node name="RoomShell" parent="PerisRoom" instance=ExtResource("3_room")]
 
 [node name="bench" parent="PerisRoom/RoomShell" index="1"]
-position = Vector3(5.5, 0.5, 1)
+position = Vector3(8.5, 0.5, 1)
 rotation = Vector3(0, 1.570796, 0)
 
 [node name="couch" parent="PerisRoom/RoomShell" index="2"]
+position = Vector3(5.4, 0.5, 1)
+rotation = Vector3(0, 1.570796, 0)
 
 [node name="RoomFurniture" parent="PerisRoom" instance=ExtResource("4_furniture")]
 
-[node name="Plush_Cat" parent="PerisRoom/RoomFurniture" index="0"]
-position = Vector3(3.864054, 1.02, 2.936607)
-rotation = Vector3(0, 1.134464, 0)
-
-[node name="Plush_Bear" parent="PerisRoom/RoomFurniture" index="1"]
+[node name="Armchair" parent="PerisRoom/RoomFurniture" index="0"]
+position = Vector3(7.5, 0, 3)
+rotation = Vector3(0, -1.570796, 0)
+scale = Vector3(1.75, 1.75, 1.75)
 visible = false
 
-[node name="PlantStand" parent="PerisRoom/RoomFurniture" index="2"]
-visible = false
+[node name="CoffeeTable" parent="PerisRoom/RoomFurniture" index="1"]
+position = Vector3(5.5, 0, 2.5)
+scale = Vector3(1.4, 1.4, 1.4)
 
-[node name="Photo" parent="PerisRoom/RoomFurniture" index="3"]
-position = Vector3(12.5, 2.06, 1)
+[node name="Bookshelf" parent="PerisRoom/RoomFurniture" index="2"]
+position = Vector3(12.5, 0, 1)
+scale = Vector3(1.75, 1.75, 1.75)
 
-[node name="Mug_Teal" parent="PerisRoom/RoomFurniture" index="4"]
-position = Vector3(6.6, 0.81, 2.75)
-
-[node name="Mug_Cream" parent="PerisRoom/RoomFurniture" index="5"]
-position = Vector3(7.45, 0.81, 3.15)
-
-[node name="Kiosk" parent="PerisRoom/RoomFurniture" index="6"]
+[node name="Kiosk" parent="PerisRoom/RoomFurniture" index="3"]
 position = Vector3(1.5, 0, 1)
 rotation = Vector3(0, 1.570796, 0)
+scale = Vector3(1.75, 1.75, 1.75)
 
-[node name="Jar" parent="PerisRoom/RoomFurniture" index="7"]
-position = Vector3(12.9, 1.3, 1)
-
-[node name="CupSaucer" parent="PerisRoom/RoomFurniture" index="8"]
-position = Vector3(6.9, 0.81, 3.35)
-
-[node name="CoffeeTable" parent="PerisRoom/RoomFurniture" index="9"]
-position = Vector3(7, 0, 3)
-
-[node name="BookStack" parent="PerisRoom/RoomFurniture" index="10"]
-position = Vector3(12.1, 1.3, 1)
-
-[node name="Bookshelf" parent="PerisRoom/RoomFurniture" index="11"]
-position = Vector3(12.5, 0, 1)
-
-[node name="Armchair" parent="PerisRoom/RoomFurniture" index="12"]
-position = Vector3(4, 0, 3)
-rotation = Vector3(0, 0, 0)
-
-[node name="Portal" parent="PerisRoom/RoomFurniture" index="13"]
+[node name="Portal" parent="PerisRoom/RoomFurniture" index="4"]
 position = Vector3(0.5, 2.5, 3)
 rotation = Vector3(0, 1.570796, 0)
+scale = Vector3(1.15, 1.15, 1.15)
 
-[node name="WallArtFrame" parent="PerisRoom/RoomFurniture" index="14"]
+[node name="Rug" parent="PerisRoom/RoomFurniture" index="5"]
+position = Vector3(5.5, 0.02, 3)
+scale = Vector3(1.4, 1, 1.4)
+
+[node name="WallArtFrame" parent="PerisRoom/RoomFurniture" index="6"]
 position = Vector3(8.5, 3.5, 0.1)
+scale = Vector3(1.75, 1.75, 1.75)
 
-[node name="WallArt" parent="PerisRoom/RoomFurniture" index="15"]
+[node name="WallArt" parent="PerisRoom/RoomFurniture" index="7"]
 position = Vector3(8.5, 3.5, 0.16)
+scale = Vector3(1.75, 1.75, 1.75)
 
-[node name="Rug" parent="PerisRoom/RoomFurniture" index="16"]
-position = Vector3(7, 0.03, 3)
+[node name="BookStack" parent="PerisRoom/RoomFurniture" index="8"]
+position = Vector3(12.15, 1.3, 0.98)
+scale = Vector3(1.75, 1.75, 1.75)
+
+[node name="Jar" parent="PerisRoom/RoomFurniture" index="9"]
+position = Vector3(12.7, 1.3, 1)
+scale = Vector3(1.75, 1.75, 1.75)
+
+[node name="Photo" parent="PerisRoom/RoomFurniture" index="10"]
+position = Vector3(12.15, 2.052, 1.05)
+scale = Vector3(1.75, 1.75, 1.75)
+
+[node name="Mug_Teal" parent="PerisRoom/RoomFurniture" index="11"]
+position = Vector3(5.3, 0.644, 2.35)
+scale = Vector3(1.75, 1.75, 1.75)
+
+[node name="Mug_Cream" parent="PerisRoom/RoomFurniture" index="12"]
+position = Vector3(5.8, 0.644, 2.3)
+scale = Vector3(1.75, 1.75, 1.75)
+
+[node name="CupSaucer" parent="PerisRoom/RoomFurniture" index="13"]
+position = Vector3(5.65, 0.644, 2.7)
+scale = Vector3(1.75, 1.75, 1.75)
+
+[node name="Plush_Cat" parent="PerisRoom/RoomFurniture" index="14"]
+position = Vector3(5, 1.02, 1.1)
+rotation = Vector3(0, 0.436332, 0)
+scale = Vector3(1.75, 1.75, 1.75)
+
+[node name="Plush_Bear" parent="PerisRoom/RoomFurniture" index="15"]
+position = Vector3(3, 0.608, 0.5)
+rotation = Vector3(0, 0.349066, 0)
+scale = Vector3(1.3, 1.3, 1.3)
+
+[node name="JStore_Pink" parent="PerisRoom/RoomFurniture" index="16"]
+position = Vector3(12.7, 2.052, 1)
+
+[node name="JStore_Purple" parent="PerisRoom/RoomFurniture" index="17"]
+position = Vector3(13.05, 2.052, 1)
 
 [node name="PlantDisplays" type="Node3D" parent="PerisRoom"]
 
-[node name="Plant1Table" parent="PerisRoom/PlantDisplays" instance=ExtResource("5_table")]
-position = Vector3(1, 0, 5)
+[node name="Plant1Table" parent="PerisRoom/PlantDisplays" instance=ExtResource("22_basket")]
+position = Vector3(6.5, 1.75, 0.5)
+rotation = Vector3(0, 3.141593, 0)
+scale = Vector3(1.3, 1.3, 1.3)
+
+[node name="Plant1Hanger" parent="PerisRoom/PlantDisplays" instance=ExtResource("23_arm")]
+position = Vector3(6.5, 1.75, 0.5)
+scale = Vector3(1.3, 1.3, 1.3)
 
 [node name="Plant1" type="Node3D" parent="PerisRoom/PlantDisplays"]
-position = Vector3(1, 0.6, 5)
+position = Vector3(6.5, 1.919, 0.5)
 metadata/species = "spider"
 metadata/care_group = "shelf"
+metadata/display = "hanging"
 
 [node name="Visual" parent="PerisRoom/PlantDisplays/Plant1" instance=ExtResource("6_spider")]
 scale = Vector3(0.139949, 0.139949, 0.139949)
 
-[node name="Plant2Table" parent="PerisRoom/PlantDisplays" instance=ExtResource("5_table")]
-position = Vector3(2.5, 0, 5)
+[node name="Plant2Table" parent="PerisRoom/PlantDisplays" instance=ExtResource("20_standtall")]
+position = Vector3(2, 0, 5)
+scale = Vector3(1.3, 1.3, 1.3)
 
 [node name="Plant2" type="Node3D" parent="PerisRoom/PlantDisplays"]
-position = Vector3(2.5, 0.6, 5)
+position = Vector3(2, 1.235, 5)
 metadata/species = "calathea"
 metadata/care_group = "shelf"
+metadata/display = "tall_stand"
 
 [node name="Visual" parent="PerisRoom/PlantDisplays/Plant2" instance=ExtResource("7_calathea")]
 scale = Vector3(0.150602, 0.150602, 0.150602)
 
-[node name="Plant3Table" parent="PerisRoom/PlantDisplays" instance=ExtResource("5_table")]
-position = Vector3(4, 0, 5)
+[node name="Plant3Table" parent="PerisRoom/PlantDisplays" instance=ExtResource("25_tray")]
+position = Vector3(13, 0.735, 1)
+rotation = Vector3(0, 3.141593, 0)
+scale = Vector3(1.3, 1.3, 1.3)
 
 [node name="Plant3" type="Node3D" parent="PerisRoom/PlantDisplays"]
-position = Vector3(4, 0.6, 5)
+position = Vector3(13, 0.774, 1)
 metadata/species = "haworthia"
 metadata/care_group = "client"
+metadata/display = "shelf"
 
 [node name="Visual" parent="PerisRoom/PlantDisplays/Plant3" instance=ExtResource("8_haworthia")]
 scale = Vector3(0.235294, 0.235294, 0.235294)
 
-[node name="Plant4Table" parent="PerisRoom/PlantDisplays" instance=ExtResource("5_table")]
-position = Vector3(5.5, 0, 5)
+[node name="Plant4Table" parent="PerisRoom/PlantDisplays" instance=ExtResource("21_standshort")]
+position = Vector3(13, 0, 5)
+rotation = Vector3(0, 1.570796, 0)
+scale = Vector3(1.3, 1.3, 1.3)
 
 [node name="Plant4" type="Node3D" parent="PerisRoom/PlantDisplays"]
-position = Vector3(5.5, 0.6, 5)
+position = Vector3(13, 0.364, 5)
 metadata/species = "jade"
 metadata/care_group = "survivor"
+metadata/display = "short_stand"
 
 [node name="Visual" parent="PerisRoom/PlantDisplays/Plant4" instance=ExtResource("9_jade")]
 scale = Vector3(0.241245, 0.241245, 0.241245)
 
-[node name="Plant5Table" parent="PerisRoom/PlantDisplays" instance=ExtResource("5_table")]
-position = Vector3(8.5, 0, 5)
+[node name="Plant5Table" parent="PerisRoom/PlantDisplays" instance=ExtResource("20_standtall")]
+position = Vector3(3, 0, 0.5)
+rotation = Vector3(0, 3.141593, 0)
+scale = Vector3(1.3, 1.3, 1.3)
 
 [node name="Plant5" type="Node3D" parent="PerisRoom/PlantDisplays"]
-position = Vector3(8.5, 0.6, 5)
+position = Vector3(3, 1.235, 0.5)
 metadata/species = "jasmine"
 metadata/care_group = "shelf"
+metadata/display = "tall_stand"
 
 [node name="Visual" parent="PerisRoom/PlantDisplays/Plant5" instance=ExtResource("10_jasmine")]
 scale = Vector3(0.204461, 0.204461, 0.204461)
 
-[node name="Plant6Table" parent="PerisRoom/PlantDisplays" instance=ExtResource("5_table")]
-position = Vector3(10, 0, 5)
+[node name="Plant6Table" parent="PerisRoom/PlantDisplays" instance=ExtResource("22_basket")]
+position = Vector3(10.5, 1.75, 0.5)
+rotation = Vector3(0, 3.141593, 0)
+scale = Vector3(1.3, 1.3, 1.3)
+
+[node name="Plant6Hanger" parent="PerisRoom/PlantDisplays" instance=ExtResource("23_arm")]
+position = Vector3(10.5, 1.75, 0.5)
+scale = Vector3(1.3, 1.3, 1.3)
 
 [node name="Plant6" type="Node3D" parent="PerisRoom/PlantDisplays"]
-position = Vector3(10, 0.6, 5)
+position = Vector3(10.5, 1.919, 0.5)
 metadata/species = "pothos"
 metadata/care_group = "survivor"
+metadata/display = "hanging"
 
 [node name="Visual" parent="PerisRoom/PlantDisplays/Plant6" instance=ExtResource("11_pothos")]
 scale = Vector3(0.19573, 0.19573, 0.19573)
@@ -209,28 +263,34 @@ position = Vector3(7, 0, 5)
 position = Vector3(7, 0.6, 5)
 metadata/species = "boston_fern"
 metadata/care_group = "fern"
+metadata/display = "table"
 
 [node name="Visual" parent="PerisRoom/PlantDisplays/Plant7" instance=ExtResource("12_fern")]
 scale = Vector3(0.306122, 0.306122, 0.306122)
 
-[node name="Plant8Table" parent="PerisRoom/PlantDisplays" instance=ExtResource("5_table")]
-position = Vector3(11.5, 0, 5)
+[node name="Plant8Table" parent="PerisRoom/PlantDisplays" instance=ExtResource("21_standshort")]
+position = Vector3(4.5, 0, 5)
+scale = Vector3(1.3, 1.3, 1.3)
 
 [node name="Plant8" type="Node3D" parent="PerisRoom/PlantDisplays"]
-position = Vector3(11.5, 0.6, 5)
+position = Vector3(4.5, 0.364, 5)
 metadata/species = "pilea"
 metadata/care_group = "client"
+metadata/display = "short_stand"
 
 [node name="Visual" parent="PerisRoom/PlantDisplays/Plant8" instance=ExtResource("13_pilea")]
 scale = Vector3(0.12069, 0.12069, 0.12069)
 
-[node name="Plant9Table" parent="PerisRoom/PlantDisplays" instance=ExtResource("5_table")]
-position = Vector3(13, 0, 5)
+[node name="Plant9Table" parent="PerisRoom/PlantDisplays" instance=ExtResource("24_plinth")]
+position = Vector3(0.5, 0, 5)
+rotation = Vector3(0, -1.570796, 0)
+scale = Vector3(1.3, 1.3, 1.3)
 
 [node name="Plant9" type="Node3D" parent="PerisRoom/PlantDisplays"]
-position = Vector3(13, 0.6, 5)
+position = Vector3(0.5, 0.169, 5)
 metadata/species = "peace_lily"
 metadata/care_group = "peace"
+metadata/display = "floor"
 
 [node name="Visual" parent="PerisRoom/PlantDisplays/Plant9" instance=ExtResource("14_lily")]
 scale = Vector3(0.305677, 0.305677, 0.305677)
@@ -238,7 +298,7 @@ scale = Vector3(0.305677, 0.305677, 0.305677)
 [node name="PortableProps" type="Node3D" parent="PerisRoom"]
 
 [node name="WateringCan" parent="PerisRoom/PortableProps" instance=ExtResource("15_can")]
-position = Vector3(11.5, 2.057, 1)
+position = Vector3(2.5, 0, 2)
 
 [node name="WellnessTerminal" parent="PerisRoom/PortableProps" instance=ExtResource("16_wellness")]
 position = Vector3(0, 1.5, 0.5)
@@ -272,20 +332,21 @@ position = Vector3(1.5, 0, 1)
 rotation = Vector3(0, 1.570796, 0)
 
 [node name="ArmchairAnchor" type="Marker3D" parent="ScenePlacement/FurnitureMarkers"]
-position = Vector3(4, 0, 3)
+position = Vector3(7.5, 0, 3)
+rotation = Vector3(0, -1.570796, 0)
 
 [node name="CoffeeTableAnchor" type="Marker3D" parent="ScenePlacement/FurnitureMarkers"]
-position = Vector3(7, 0, 3)
+position = Vector3(5.5, 0, 3)
 
 [node name="BookshelfAnchor" type="Marker3D" parent="ScenePlacement/FurnitureMarkers"]
 position = Vector3(12.5, 0, 1)
 
 [node name="BenchAnchor" type="Marker3D" parent="ScenePlacement/FurnitureMarkers"]
-position = Vector3(5.5, 0.5, 1)
+position = Vector3(8.5, 0.5, 1)
 rotation = Vector3(0, 1.570796, 0)
 
 [node name="RugAnchor" type="Marker3D" parent="ScenePlacement/FurnitureMarkers"]
-position = Vector3(7, 0.03, 3)
+position = Vector3(5.5, 0.03, 3)
 
 [node name="WallArtAnchor" type="Marker3D" parent="ScenePlacement/FurnitureMarkers"]
 position = Vector3(8.5, 3.5, 0.1)
@@ -304,7 +365,7 @@ position = Vector3(2.5, 0, 3)
 [node name="InteractableMarkers" type="Node3D" parent="ScenePlacement"]
 
 [node name="WateringCanAnchor" type="Marker3D" parent="ScenePlacement/InteractableMarkers"]
-position = Vector3(11.5, 2.057, 1)
+position = Vector3(2.5, 0, 2)
 
 [node name="PaintingZoneMarker" type="Marker3D" parent="ScenePlacement/InteractableMarkers"]
 position = Vector3(8.5, 0, 0.5)
@@ -341,58 +402,58 @@ position = Vector3(12.5, 0, 2.5)
 [node name="PlantTableMarkers" type="Node3D" parent="ScenePlacement"]
 
 [node name="Plant1TableAnchor" type="Marker3D" parent="ScenePlacement/PlantTableMarkers"]
-position = Vector3(1, 0, 5)
+position = Vector3(6.5, 1.75, 0.5)
 
 [node name="Plant2TableAnchor" type="Marker3D" parent="ScenePlacement/PlantTableMarkers"]
-position = Vector3(2.5, 0, 5)
+position = Vector3(2, 0, 5)
 
 [node name="Plant3TableAnchor" type="Marker3D" parent="ScenePlacement/PlantTableMarkers"]
-position = Vector3(4, 0, 5)
+position = Vector3(13, 0.735, 1)
 
 [node name="Plant4TableAnchor" type="Marker3D" parent="ScenePlacement/PlantTableMarkers"]
-position = Vector3(5.5, 0, 5)
+position = Vector3(13, 0, 5)
 
 [node name="Plant5TableAnchor" type="Marker3D" parent="ScenePlacement/PlantTableMarkers"]
-position = Vector3(8.5, 0, 5)
+position = Vector3(3, 0, 0.5)
 
 [node name="Plant6TableAnchor" type="Marker3D" parent="ScenePlacement/PlantTableMarkers"]
-position = Vector3(10, 0, 5)
+position = Vector3(10.5, 1.75, 0.5)
 
 [node name="Plant7TableAnchor" type="Marker3D" parent="ScenePlacement/PlantTableMarkers"]
 position = Vector3(7, 0, 5)
 
 [node name="Plant8TableAnchor" type="Marker3D" parent="ScenePlacement/PlantTableMarkers"]
-position = Vector3(11.5, 0, 5)
+position = Vector3(4.5, 0, 5)
 
 [node name="Plant9TableAnchor" type="Marker3D" parent="ScenePlacement/PlantTableMarkers"]
-position = Vector3(13, 0, 5)
+position = Vector3(0.5, 0, 5)
 
 [node name="Plant1Approach" type="Marker3D" parent="ScenePlacement/ApproachMarkers"]
-position = Vector3(1, 0, 4)
+position = Vector3(6.5, 0, 1.5)
 
 [node name="Plant2Approach" type="Marker3D" parent="ScenePlacement/ApproachMarkers"]
-position = Vector3(2.5, 0, 4)
+position = Vector3(2, 0, 4)
 
 [node name="Plant3Approach" type="Marker3D" parent="ScenePlacement/ApproachMarkers"]
-position = Vector3(4, 0, 4)
+position = Vector3(13, 0, 2)
 
 [node name="Plant4Approach" type="Marker3D" parent="ScenePlacement/ApproachMarkers"]
-position = Vector3(5.5, 0, 4)
+position = Vector3(12, 0, 5)
 
 [node name="Plant5Approach" type="Marker3D" parent="ScenePlacement/ApproachMarkers"]
-position = Vector3(8.5, 0, 4)
+position = Vector3(3, 0, 1.5)
 
 [node name="Plant6Approach" type="Marker3D" parent="ScenePlacement/ApproachMarkers"]
-position = Vector3(10, 0, 4)
+position = Vector3(10.5, 0, 1.5)
 
 [node name="Plant7Approach" type="Marker3D" parent="ScenePlacement/ApproachMarkers"]
 position = Vector3(7, 0, 4)
 
 [node name="Plant8Approach" type="Marker3D" parent="ScenePlacement/ApproachMarkers"]
-position = Vector3(11.5, 0, 4)
+position = Vector3(4.5, 0, 4)
 
 [node name="Plant9Approach" type="Marker3D" parent="ScenePlacement/ApproachMarkers"]
-position = Vector3(13, 0, 4)
+position = Vector3(1.5, 0, 5)
 
 [editable path="PerisRoom/RoomShell"]
 [editable path="PerisRoom/RoomFurniture"]

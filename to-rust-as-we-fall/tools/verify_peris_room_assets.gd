@@ -119,7 +119,10 @@ func _check_removed_composition(room: Node) -> void:
 	var secondary_couch := room.find_child("couch", true, false) as Node3D
 	_check(secondary_couch != null and secondary_couch.is_visible_in_tree(),
 		"the separate secondary couch remains in the live room composition")
-	for node_name in ["Plush_Bear", "PlantStand"]:
+	var bear := room.find_child("Plush_Bear", true, false) as Node3D
+	_check(bear != null and bear.is_visible_in_tree(),
+		"the plush bear decorates a tall plant stand shelf")
+	for node_name in ["PlantStand", "Armchair"]:
 		var obsolete := room.find_child(node_name, true, false) as Node3D
 		_check(obsolete == null or not obsolete.is_visible_in_tree(),
 			"%s is removed from the live room composition" % node_name)
@@ -161,9 +164,11 @@ func _check_portal_layer_separation(room: Node) -> void:
 	_check(glow != null and view != null, "Portal glow and live view surfaces exist")
 	if glow == null or view == null:
 		return
-	var glow_box := glow.global_transform * glow.mesh.get_aabb()
-	_check(view.global_position.x - glow_box.end.x >= 0.02,
-		"Portal live view keeps a depth gap from the transparent glow")
+	# Measured along the portal's face axis so the check survives the portal moving to any wall.
+	var face: Vector3 = room._portal_face()
+	var gap: float = (glow.global_position - view.global_position).dot(face)
+	_check(gap >= 0.02,
+		"Portal live view keeps a depth gap behind the glow layer along the portal face")
 
 
 func _node_aabb(root: Node3D) -> AABB:

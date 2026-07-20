@@ -12014,7 +12014,10 @@ func _test_peris_sim() -> void:
 		var secondary_couch := instance.find_child("couch", true, false) as Node3D
 		_assert_true(secondary_couch != null and secondary_couch.is_visible_in_tree(),
 			"the separate secondary couch remains in the live room composition")
-		for removed_name in ["Plush_Bear", "PlantStand"]:
+		var plush_bear := instance.find_child("Plush_Bear", true, false) as Node3D
+		_assert_true(plush_bear != null and plush_bear.is_visible_in_tree(),
+			"the plush bear decorates a tall plant stand shelf")
+		for removed_name in ["PlantStand", "Armchair"]:
 			var removed := instance.find_child(removed_name, true, false) as Node3D
 			_assert_true(removed == null or not removed.is_visible_in_tree(),
 				"%s is absent from the live room composition" % removed_name)
@@ -16408,6 +16411,14 @@ func _coop_run_swap(_label: String, step: float) -> Dictionary:
 		sched.advance_ticks(step)
 	return {"a": gs.get_position("a"), "b": gs.get_position("b"), "hash": gs.state_hash()}
 
+class _CountingPathCoordMap extends RefCounted:
+	var to_world_calls := 0
+	func to_world(point: Vector3) -> Vector3:
+		to_world_calls += 1
+		return Vector3(point.x, point.y + sin(point.x * 0.07) * 0.2, point.z)
+	func to_data(point: Vector3) -> Vector3:
+		return Vector3(point.x, point.y - sin(point.x * 0.07) * 0.2, point.z)
+
 # --- Test: reusable movement-path visual ---
 # PathRenderer is the shared path line: point it at a GameState character and it
 # builds the remaining-route geometry from the data layer. Render frames aren't
@@ -16445,6 +16456,20 @@ func _test_path_renderer() -> void:
 	if pr._line.mesh != null:
 		_assert_true(pr._line.mesh.get_surface_count() > 0,
 			"Path line mesh has a surface (vertices were added)")
+	# Stable frames reuse both the cached tail and the live-head mesh resource.
+	# The old implementation re-warped the whole path and SurfaceTool.commit()'d
+	# a brand-new head mesh on every one of these calls.
+	var cached_tail_builds: int = pr._tail_rebuild_count
+	var cached_head_updates: int = pr._head_update_count
+	var cached_head_mesh: Mesh = pr._line.mesh
+	for _frame in range(24):
+		pr._process(0.0)
+	_assert_equals(pr._tail_rebuild_count, cached_tail_builds,
+		"An unchanged committed route does not rebuild its static tail")
+	_assert_equals(pr._head_update_count, cached_head_updates,
+		"An unchanged scheduler tick does not rewrite live-head geometry")
+	_assert_true(pr._line.mesh == cached_head_mesh,
+		"Committed movement reuses one head mesh resource instead of allocating per frame")
 	pr.visible = false
 	pr._process(0.0)
 	_assert_true(not pr._line.visible and not pr._tail.visible,
@@ -16453,6 +16478,41 @@ func _test_path_renderer() -> void:
 	pr._process(0.0)
 	_assert_true(pr._line.visible and pr._tail.visible,
 		"Top-level path meshes return when their overlay is shown")
+
+	# A long warped route is the expensive production case. The initial frame may
+	# densify/map the tail, but unchanged frames may map only the live start point;
+	# they must never walk and warp the entire route again.
+	var long_path: Array[Vector3] = []
+	var long_ticks: Array[float] = []
+	var now := sched.get_current_tick()
+	for i in range(160):
+		long_path.append(Vector3(float(i) * 1.4, 0.0, sin(float(i) * 0.15) * 2.0))
+		long_ticks.append(now + float(i))
+	var long_cum: Array[float] = GameState._compute_cum_dist(long_path)
+	gs.characters["mover"].movement = {
+		"path": long_path,
+		"cum_dist": long_cum,
+		"arrival_ticks": long_ticks,
+		"total_distance": long_cum[-1],
+		"start_tick": now,
+		"duration": long_ticks[-1] - now,
+		"handle": 424242,
+	}
+	var counting_map := _CountingPathCoordMap.new()
+	gs.coord_map = counting_map
+	pr._process(0.0)
+	var calls_after_initial_build: int = counting_map.to_world_calls
+	var warped_tail_builds: int = pr._tail_rebuild_count
+	for _frame in range(24):
+		pr._process(0.0)
+	var steady_warp_calls: int = counting_map.to_world_calls - calls_after_initial_build
+	_assert_equals(pr._tail_rebuild_count, warped_tail_builds,
+		"A long warped route builds its dense tail once while its waypoint is unchanged")
+	_assert_true(steady_warp_calls <= 24,
+		"Stable warped frames map at most the live start, not all 160 route points (%d calls)"
+		% steady_warp_calls)
+	gs.characters["mover"].movement = null
+	gs.coord_map = null
 
 	# Running flips the line to the orange running tint.
 	pr.set_running(true)
@@ -16472,6 +16532,14 @@ func _test_path_renderer() -> void:
 	pr.set_explicit_path([Vector3(1.0, 0.0, 0.0), Vector3(2.0, 0.0, 1.0)])
 	pr._process(0.0)
 	_assert_true(pr._line.mesh != null, "Explicit path draws a line with no GameState move")
+	var explicit_builds: int = pr._preview_rebuild_count
+	var explicit_mesh: Mesh = pr._line.mesh
+	for _frame in range(24):
+		pr._process(0.0)
+	_assert_equals(pr._preview_rebuild_count, explicit_builds,
+		"An unchanged explicit route does not rebuild or re-warp its ribbon")
+	_assert_true(pr._line.mesh == explicit_mesh,
+		"An unchanged explicit route reuses its mesh resource")
 	pr.clear_explicit_path()
 	pr._process(0.0)
 	_assert_true(pr._line.mesh == null, "Cleared explicit path draws nothing")
@@ -16488,9 +16556,20 @@ func _test_path_render_manager() -> void:
 	gs.scheduler = sched
 	gs.register_character("a", Vector3.ZERO, 3.0, {})
 	gs.register_character("b", Vector3(5.0, 0.0, 0.0), 3.0, {})
+	gs.register_character("ambient", Vector3(9.0, 0.0, 0.0), 3.0, {})
 
 	var root := Node3D.new()
 	add_child(root)
+	var opt_out_script := GDScript.new()
+	opt_out_script.source_code = (
+		"extends Node3D\n"
+		+ "var char_id := 'ambient'\n"
+		+ "var show_movement_path := false\n"
+	)
+	opt_out_script.reload()
+	var ambient_node := Node3D.new()
+	ambient_node.set_script(opt_out_script)
+	root.add_child(ambient_node)
 	var mgr := PathRenderManager.new()
 	root.add_child(mgr)
 	mgr.setup(gs, root)
@@ -16501,7 +16580,9 @@ func _test_path_render_manager() -> void:
 	sched.advance_ticks(0.3)
 	mgr._process(0.0)
 	_assert_true(mgr._renderers.has("a") and mgr._renderers.has("b"),
-		"Manager makes a path renderer for every registered character (not just the player)")
+		"Manager makes a path renderer for every eligible character (not just the player)")
+	_assert_true(not mgr._renderers.has("ambient"),
+		"An opted-out ambient actor allocates no hidden renderer or materials")
 	var pr_a: PathRenderer = mgr._renderers.get("a")
 	var pr_b: PathRenderer = mgr._renderers.get("b")
 	_assert_true(pr_a != null and pr_a._remaining_points().size() >= 2,
@@ -34187,6 +34268,24 @@ func _test_selection_controller() -> void:
 	_assert_equals(sel.headless_classify_command_hold(
 		GameSettings.RALLY_HOLD_MAX, false, SelectionController.RALLY_CANCEL_DISTANCE * 8.0),
 		"rally", "Moving after the hold threshold relocates the rally instead of cancelling it")
+	# Grid rally previews are causally cell-based. Tiny ray-hit changes inside one
+	# cell must keep the same signature, while crossing a cell boundary invalidates.
+	var rally_grid := GridWorld.new()
+	rally_grid.create_room(12, 12)
+	gs.grid = rally_grid
+	var rally_cell_center := rally_grid.grid_to_world(Vector2i(6, 6))
+	var rally_members: Array[String] = ["aster", "peris", "endo"]
+	var cell_signature_a: String = sel._rally_preview_target_signature(
+		rally_cell_center + Vector3(0.05, 0.0, 0.05), "", rally_members)
+	var cell_signature_b: String = sel._rally_preview_target_signature(
+		rally_cell_center + Vector3(-0.05, 0.0, -0.05), "", rally_members)
+	var next_cell_signature: String = sel._rally_preview_target_signature(
+		rally_grid.grid_to_world(Vector2i(7, 6)), "", rally_members)
+	_assert_equals(cell_signature_a, cell_signature_b,
+		"Sub-cell pointer jitter keeps one rally-preview cache key (no repeated party A*)")
+	_assert_true(cell_signature_a != next_cell_signature,
+		"Crossing into a new grid cell invalidates the rally preview")
+	gs.grid = null
 
 	# The movable preview uses the same deterministic formation that release commits. Every exact
 	# final slot reaches the shared path manager before release, even while the prior rally is moving.

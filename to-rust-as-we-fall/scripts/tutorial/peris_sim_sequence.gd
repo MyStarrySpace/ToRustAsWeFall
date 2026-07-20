@@ -8,7 +8,7 @@ static var _visit_phase := 1
 
 const PLACEMENT_ROOT := "ScenePlacement"
 const ROOM_OCCUPANTS := [
-	"Portal", "Kiosk", "Armchair", "CoffeeTable", "Bookshelf", "bench", "couch",
+	"Portal", "Kiosk", "CoffeeTable", "Bookshelf", "bench", "couch",
 ]
 const REQUIRED_AUTHORED_ROOM_NODES := [
 	"RoomShell", "RoomFurniture", "bench", "couch", "Portal", "Kiosk", "Armchair",
@@ -17,6 +17,7 @@ const REQUIRED_AUTHORED_ROOM_NODES := [
 	"Plant1Table", "Plant1", "Plant2Table", "Plant2", "Plant3Table", "Plant3",
 	"Plant4Table", "Plant4", "Plant5Table", "Plant5", "Plant6Table", "Plant6",
 	"Plant7Table", "Plant7", "Plant8Table", "Plant8", "Plant9Table", "Plant9",
+	"Plant1Hanger", "Plant6Hanger",
 ]
 const REQUIRED_ROOM_MARKERS := [
 	"PortalAnchor", "KioskAnchor", "ArmchairAnchor",
@@ -55,9 +56,15 @@ var _attack_particles: OmniLight3D
 var _sanction_feed_label: Label3D
 var _portal_tween_active := false
 # Portal-view: a SubViewport with its own World3D renders the connected room (where Monos stands) onto the
-# portal surface, so the portal actually shows what's through it.
+# whole circular Portal_Surface disc. The viewport camera mirrors the live camera through the portal
+# each frame (rendering-only), so the disc reads as a real opening with parallax.
 var _portal_view_vp: SubViewport
 var _portal_view_surface: MeshInstance3D
+var _portal_view_cam: Camera3D
+const PORTAL_LENS_SHADER := preload("res://resources/portal_lens.gdshader")
+# Where the portal opening stands in the Monos room's own world: centre height matches the
+# Peris-side portal centre, so the two rooms line up like a doorway.
+const MONOS_ROOM_PORTAL_ANCHOR := Vector3(0.0, 2.5, 0.0)
 var _hud  # GameHUD
 
 # Watering beat (phase 1): the hand-inventory tutorial. Peris waters the Boston fern (Plant7) out of
@@ -74,10 +81,14 @@ var _fern_exploration_interactable
 var _fern_outline_target
 var _plant_watered := false
 var _explore_time_elapsed := false
-const WATERING_CAN_POS := Vector3(11.5, 2.057, 1.0)  # upper shelf, snapped in X/Z to the room plan
-const FERN_POS := Vector3(7.0, 0.0, 5.0)  # Plant7 anchors the ordered south care row
+const WATERING_CAN_POS := Vector3(2.5, 0.0, 2.0)  # floor by the kiosk, snapped in X/Z to the room plan
+const FERN_POS := Vector3(7.0, 0.0, 5.0)  # fallback when the authored fern table is absent
 # The watering beat drives the player to the dry fern; the input playthrough drives this point.
-const DRY_PLANT_POS := FERN_POS
+# It follows the authored fern table so moving the table in the editor moves the beat with it.
+var DRY_PLANT_POS: Vector3:
+	get:
+		var p := _authored_position("Plant7Table", "Plant7TableAnchor", FERN_POS)
+		return Vector3(p.x, 0.0, p.z)
 
 # Exploration beat (phase 1, pre-Monos-arrival)
 var _explore_logbook_gate  # Interactable at the logbook
@@ -513,6 +524,8 @@ func _on_process(delta: float, spd: float) -> void:
 	# Attack light flash
 	if _attack_particles and _attack_particles.visible:
 		_attack_particles.light_energy = 3.0 + sin(Time.get_ticks_msec() * 0.015) * 2.0  # @rendering_only: attack flash
+
+	_update_portal_view()  # @rendering_only: portal lens camera mirror
 
 	# Protect ability display from scheduler ticks
 	if _protect_end_tick > 0 and _hud:
@@ -2019,8 +2032,11 @@ func _build_portal() -> void:
 
 	_portal_visual = MeshInstance3D.new()
 	_portal_visual.name = "PortalGlowSurface"
-	var pv := BoxMesh.new()
-	pv.size = Vector3(0.9, 2.0, 0.06)
+	# The gameplay glow layer is a RING hugging the circular frame (the session/attack/sanction
+	# flash colour), leaving the whole disc inside it free for the live view.
+	var pv := TorusMesh.new()
+	pv.inner_radius = 1.2
+	pv.outer_radius = 1.42
 	_portal_visual.mesh = pv
 	var pvm := StandardMaterial3D.new()
 	pvm.albedo_color = Color(0.8, 0.5, 0.2, 0.25)
@@ -2030,7 +2046,9 @@ func _build_portal() -> void:
 	pvm.emission_energy_multiplier = 1.2
 	pvm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	_portal_visual.material_override = pvm
-	_portal_visual.global_transform = Transform3D(_portal_basis(), portal_surface)
+	# TorusMesh lies flat around Y; pitch it so the ring stands in the portal plane.
+	_portal_visual.global_transform = Transform3D(
+		_portal_basis() * Basis(Vector3.RIGHT, PI * 0.5), portal_surface)
 	add_child(_portal_visual)
 
 	_portal_light = OmniLight3D.new()
@@ -2058,7 +2076,7 @@ func _build_portal() -> void:
 	# grows over the entire room when the camera pulls back.
 	lbl.fixed_size = false
 	lbl.modulate = Color(0.7, 0.5, 0.3, 0.6)
-	lbl.position = portal_surface + Vector3(0, 1.4, 0)
+	lbl.position = portal_surface + Vector3(0, 1.95, 0)  # clear of the frame ring's top arc
 	lbl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	add_child(lbl)
 
@@ -2081,7 +2099,8 @@ func _build_portal() -> void:
 ## coupling to the main camera, no feedback, and Monos is visible through the portal before he steps through.
 func _build_portal_view() -> void:
 	_portal_view_vp = SubViewport.new()
-	_portal_view_vp.size = Vector2i(288, 600)   # portrait, ~ the portal panel's 0.9w x 2.0h aspect
+	_portal_view_vp.name = "PortalViewViewport"
+	_portal_view_vp.size = Vector2i(512, 512)    # resized to the live window each frame
 	_portal_view_vp.own_world_3d = true          # a separate space beyond the portal
 	_portal_view_vp.transparent_bg = false
 	_portal_view_vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
@@ -2089,32 +2108,60 @@ func _build_portal_view() -> void:
 	add_child(_portal_view_vp)
 	_build_monos_room(_portal_view_vp)
 
-	_portal_view_surface = MeshInstance3D.new()
-	_portal_view_surface.name = "PortalViewSurface"
-	var quad := QuadMesh.new()
-	quad.size = Vector2(0.85, 1.9)
-	_portal_view_surface.mesh = quad
-	var mat := StandardMaterial3D.new()
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mat.albedo_texture = _portal_view_vp.get_texture()
-	mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR
-	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-	_portal_view_surface.material_override = mat
-	# Just in front of the panel; the quad follows the visible portal's editor transform.
-	_portal_view_surface.global_transform = Transform3D(
-		_portal_basis(), _portal_panel_position() + _portal_face() * 0.16
-	)
-	add_child(_portal_view_surface)
+	# The modeled circular Portal_Surface disc IS the lens: the live view fills the whole
+	# portal opening instead of a pasted quad. SCREEN_UV sampling + the mirrored viewport
+	# camera make it read as a hole in the wall.
+	var lens: MeshInstance3D = null
+	var portal := _authored_room_node("Portal")
+	if portal != null:
+		for mi in portal.find_children("*", "MeshInstance3D", true, false):
+			if String(mi.name).begins_with("Portal_Surface"):
+				lens = mi
+				break
+	if lens == null:
+		# Stripped test scenes have no modeled portal; a disc stands in so the layer exists.
+		lens = MeshInstance3D.new()
+		var disc := CylinderMesh.new()
+		disc.top_radius = 1.14
+		disc.bottom_radius = 1.14
+		disc.height = 0.02
+		lens.mesh = disc
+		lens.global_transform = Transform3D(
+			_portal_basis() * Basis(Vector3.RIGHT, PI * 0.5),
+			_portal_panel_position() - _portal_face() * 0.02)
+		add_child(lens)
+	lens.name = "PortalViewSurface"
+	var mat := ShaderMaterial.new()
+	mat.shader = PORTAL_LENS_SHADER
+	mat.set_shader_parameter("view_texture", _portal_view_vp.get_texture())
+	lens.material_override = mat
+	_portal_view_surface = lens
+
+## Mirrors the live camera through the portal into the Monos-room world so the lens disc
+## shows the connected room with true parallax. Rendering-only: nothing gameplay reads it.
+func _update_portal_view() -> void:
+	if _portal_view_vp == null or _portal_view_cam == null:
+		return
+	var cam := get_viewport().get_camera_3d()
+	if cam == null:
+		return
+	var vp_size := Vector2i(get_viewport().get_visible_rect().size)
+	if vp_size.x > 0 and vp_size.y > 0 and _portal_view_vp.size != vp_size:
+		_portal_view_vp.size = vp_size
+	var portal_xf := Transform3D(_portal_basis(), _portal_panel_position())
+	var anchor := Transform3D(Basis(), MONOS_ROOM_PORTAL_ANCHOR)
+	_portal_view_cam.fov = cam.fov
+	_portal_view_cam.global_transform = anchor * (portal_xf.affine_inverse() * cam.global_transform)
 
 ## The space BEYOND the portal — a small graybox room with Monos standing in it, lit so it reads through
 ## the portal. Built into the SubViewport's own world. Stand-in geometry for now; swap for the real
 ## modeled facility room when it exists.
 func _build_monos_room(vp: SubViewport) -> void:
 	var cam := Camera3D.new()
-	cam.position = Vector3(0.0, 1.5, 5.4)
-	cam.fov = 52.0
+	cam.position = Vector3(0.0, 2.5, 6.0)
 	vp.add_child(cam)
-	cam.look_at(Vector3(0.0, 1.0, 0.0), Vector3.UP)   # orient AFTER it's in the tree (look_at needs a global xform)
+	cam.look_at(Vector3(0.0, 1.6, -2.0), Vector3.UP)   # orient AFTER it's in the tree (look_at needs a global xform)
+	_portal_view_cam = cam   # per-frame mirror of the live camera (rendering-only)
 	# Lighting for the fresh world (no scene env): cool ambient + a key light, matching Peris's room mood.
 	var env := WorldEnvironment.new()
 	var e := Environment.new()
@@ -2134,13 +2181,13 @@ func _build_monos_room(vp: SubViewport) -> void:
 	var visual := MONOS_PORTAL_ROOM_VISUAL_SCENE.instantiate() as Node3D
 	visual.name = "MonosPortalRoomVisual"
 	vp.add_child(visual)
-	# Monos — a standing figure in his color, so the portal reads as "Monos's room".
-	# A soft portal glow behind Monos (the connection back to Peris's portal).
+	# Monos stands at his console; a warm key over him makes the figure read
+	# through the lens from gameplay camera angles.
 	var glow := OmniLight3D.new()
-	glow.position = Vector3(0, 1.4, -2.0)
-	glow.light_color = Color(0.8, 0.5, 0.25)
-	glow.light_energy = 2.0
-	glow.omni_range = 6.0
+	glow.position = Vector3(0.9, 2.2, -2.0)
+	glow.light_color = Color(0.9, 0.62, 0.35)
+	glow.light_energy = 2.6
+	glow.omni_range = 5.0
 	vp.add_child(glow)
 
 func _show_sanction_feed_visual(title: String, body: String, color: Color) -> void:
@@ -2225,13 +2272,16 @@ func _build_peris_plants(parent: Node3D) -> void:
 		var target := _outline_object_meshes(parent, "Plant%dOutline" % plant_number,
 			_collect_mesh_instances(plant_node), "peris_plant_%d" % plant_number, 0.7)
 
+		# The zone lives on the floor under the display — an elevated support (hanging basket,
+		# bookshelf tray) must still meet the walking character's proximity dwell.
+		var zone_pos := Vector3(table_pos.x, ROOM_FLOOR_Y, table_pos.z)
 		var zone_name := "Plant%dZone" % plant_number
 		var zone: Area3D
 		if plant_number == 7:
-			zone = _make_exploration_sequence_zone(parent, table_pos, zone_name,
+			zone = _make_exploration_sequence_zone(parent, zone_pos, zone_name,
 				["peris.sim_expand.plant_7.line", "peris.sim_expand.plant_7.line_repeat"], 0.7, 0.6)
 		else:
-			zone = _make_exploration_zone(parent, table_pos, zone_name,
+			zone = _make_exploration_zone(parent, zone_pos, zone_name,
 				"peris.sim_expand.plant_%d.line" % plant_number, 0.7, 0.6)
 		zone.set_meta("interaction_target_position", _authored_floor_interaction_position(
 			"Plant%dTable" % plant_number,
@@ -2250,8 +2300,8 @@ func _build_peris_plants(parent: Node3D) -> void:
 ## The watering can is a REAL item (spawn_item + pick_up_item), not a flag: the beat teaches the
 ## hand-slot inventory. The dry fern's water spot only accepts a character actually HOLDING it.
 func _build_watering_beat(parent: Node3D) -> void:
-	# The can: a small kettle on the bookshelf, mirrored by a data-layer item. Separating it from
-	# the fern turns the beat back into an actual carry instead of two overlapping auto-dwells.
+	# The can sits on the floor beside Peris's kiosk, mirrored by a data-layer item. Separating it
+	# from the fern turns the beat back into an actual carry instead of two overlapping auto-dwells.
 	var can_pos := _authored_position("WateringCan", "WateringCanAnchor", WATERING_CAN_POS)
 	var fern_pos := _authored_position("Plant7Table", "Plant7TableAnchor", FERN_POS)
 	_watering_can_mesh = _authored_room_node("WateringCan")

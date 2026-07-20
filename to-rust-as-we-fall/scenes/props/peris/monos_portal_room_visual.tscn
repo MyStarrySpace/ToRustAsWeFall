@@ -1,14 +1,8 @@
-[gd_scene load_steps=7 format=3]
+[gd_scene load_steps=5 format=3]
 
-[ext_resource type="Mesh" path="res://resources/models/peris-sim/portal_room/monos_portal_room_shell.obj" id="1_shell_mesh"]
-[ext_resource type="Texture2D" path="res://resources/models/peris-sim/portal_room/monos_portal_room_shell.png" id="2_shell_texture"]
+[ext_resource type="PackedScene" path="res://resources/models/peris-sim/portal_room/monos-room.gltf" id="1_room"]
 [ext_resource type="Mesh" path="res://resources/models/peris-sim/portal_room/monos_portal_figure.obj" id="3_figure_mesh"]
 [ext_resource type="Texture2D" path="res://resources/models/peris-sim/portal_room/monos_portal_figure.png" id="4_figure_texture"]
-
-[sub_resource type="StandardMaterial3D" id="ShellMaterial"]
-albedo_texture = ExtResource("2_shell_texture")
-roughness = 0.88
-texture_filter = 0
 
 [sub_resource type="StandardMaterial3D" id="FigureMaterial"]
 albedo_texture = ExtResource("4_figure_texture")
@@ -18,10 +12,9 @@ texture_filter = 0
 [node name="MonosPortalRoomVisual" type="Node3D"]
 metadata/editable_asset_root = "res://resources/models/peris-sim/portal_room"
 
-[node name="Shell" type="MeshInstance3D" parent="."]
-material_override = SubResource("ShellMaterial")
-mesh = ExtResource("1_shell_mesh")
+[node name="MonosRoom" parent="." instance=ExtResource("1_room")]
 
 [node name="MonosFigure" type="MeshInstance3D" parent="."]
 material_override = SubResource("FigureMaterial")
 mesh = ExtResource("3_figure_mesh")
+position = Vector3(0.9, -0.2, -1)
