@@ -1169,6 +1169,15 @@ func _add_infrastructure_operation(spec: Dictionary) -> Dictionary:
 	var source_status := _add_label(operation, "SOURCE READY", source_pos + Vector3(0.0, 1.18, 0.0), tint)
 	var receiver_status := _add_label(operation, "AWAITING SERVICE", receiver_pos + Vector3(0.0, 1.18, 0.0),
 		Color(0.62, 0.65, 0.70))
+	for control_mesh in [source_mesh, receiver_mesh]:
+		control_mesh.set_meta("camera_occlusion_exempt", true)
+	for status_label in [source_status, receiver_status]:
+		status_label.no_depth_test = true
+		status_label.fixed_size = true
+		status_label.pixel_size = 0.006
+		status_label.font_size = 22
+		status_label.render_priority = 127
+		status_label.set_meta("camera_occlusion_exempt", true)
 
 	var source_name := str(spec.get("source_name", "source plant"))
 	var receiver_name := str(spec.get("receiver_name", "receiving plant"))

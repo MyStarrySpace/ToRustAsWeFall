@@ -56,6 +56,21 @@ func _run() -> void:
 	var field = runtime.get("field")
 	check(operation != null and source != null and receiver != null and field != null,
 		"runtime exposes source, receiver, and environmental field")
+	var source_status: Label3D = operation.get("source_status")
+	var receiver_status: Label3D = operation.get("receiver_status")
+	var service_link = runtime.get("service_link")
+	var effect_link = runtime.get("effect_link")
+	check(source_status != null and source_status.text.begins_with("1  ")
+			and str(operation_spec.get("source_action", "")) in source_status.text,
+		"first control states its actual verb in the world")
+	check(receiver_status != null and receiver_status.text.begins_with("2  WAITING:"),
+		"second control communicates its dependency before routing")
+	check(source_status.no_depth_test and source_status.fixed_size
+			and receiver_status.no_depth_test and receiver_status.fixed_size,
+		"operation instructions remain readable against generated architecture")
+	check(bool((service_link.call("get_feedback_state") as Dictionary).get("latched", false))
+			and not bool((effect_link.call("get_feedback_state") as Dictionary).get("latched", false)),
+		"only the next causal relationship is persistently marked")
 	check(str(source.call("get_action_verb")) == str(operation_spec.get("source_action", "")),
 		"source cursor uses the generated mechanical verb")
 	check(str(source.call("get_action_preview")) == str(operation_spec.get("source_preview", "")),
@@ -63,6 +78,11 @@ func _run() -> void:
 	check(not bool(receiver.call("is_interaction_enabled")),
 		"receiver cannot be committed before its typed input arrives")
 	check(bool(operation.call("route_service")), "source action routes the typed service")
+	check(not bool((service_link.call("get_feedback_state") as Dictionary).get("latched", true))
+			and bool((effect_link.call("get_feedback_state") as Dictionary).get("latched", false)),
+		"causal marker advances from source relationship to consequence relationship")
+	check(str(operation_spec.get("receiver_action", "")) in receiver_status.text,
+		"world instruction advances to the receiver's actual verb")
 	check(bool(receiver.call("is_interaction_enabled")),
 		"routing reveals the distinct receiver verb")
 	check(str(receiver.call("get_action_verb")) == str(operation_spec.get("receiver_action", "")),
@@ -72,11 +92,11 @@ func _run() -> void:
 	check(bool((field.call("get_state") as Dictionary).get("hazardous", false)),
 		"marked environmental cost remains active until receiver work completes")
 	check(bool(operation.call("complete_operation")), "receiver action completes after service routing")
+	check(not bool((effect_link.call("get_feedback_state") as Dictionary).get("latched", true)),
+		"solved operation does not leave a stale next-step marker")
 	check(bool((field.call("get_state") as Dictionary).get("resolved", false))
 			and not bool((field.call("get_state") as Dictionary).get("hazardous", true)),
 		"receiver work visibly resolves the environmental cost")
-	var service_link = runtime.get("service_link")
-	var effect_link = runtime.get("effect_link")
 	check(service_link != null and str(service_link.call("get_relationship_label")) != "",
 		"source and receiver have a named spatial connection marker")
 	check(effect_link != null and str(effect_link.call("get_relationship_label")) != "",

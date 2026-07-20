@@ -35,6 +35,7 @@ const HYDRAULIC_NEXT_HIGHLIGHT_REASON := "hydraulic_next_step"
 
 var _config: Dictionary = {}
 var _spec: Dictionary = {}
+var _generation_fallback: Dictionary = {}
 
 # When the level is warped onto a helix (the default for a generated stretch — the player walks a linear grid
 # while the WORLD spirals around a centre), this is the flat-data<->warped-world map. Null = flat render. The
@@ -191,6 +192,9 @@ func _build_chunk() -> void:
 	_ensure_spec_loaded()
 	_ensure_graybox_layout()
 	_ensure_navigation_layout()
+	# Tall generated architecture uses the shared camera fade. The outline-safe clip
+	# prevents its dissolve from feeding white speckles into the outline pass.
+	set_meta("camera_occlusion_outline_safe_clip", true)
 
 	_clear_experiment_food_items()
 	_cancel_scarcity_drain()
@@ -333,7 +337,7 @@ func _food_economy_help() -> String:
 			return "FOOD — Expedition: small route morsels guide travel; deeper green detour caches carry more ATP. Food occupies a hand until consumed, and shelter preserves ATP."
 		"scarcity":
 			return (
-				"FOOD — Scarcity: after moving, each character loses 1 ATP every %.0f seconds. Route morsels restore 0.5; riskier detour caches restore more. The final action pip is protected."
+				"FOOD — Scarcity: after moving, each character loses 1 ATP every %.0f seconds. Route morsels restore 0.5 when consumed; detour caches store more but occupy one hand. The final action pip is protected."
 				% _scarcity_drain_interval()
 			)
 		_:
@@ -651,6 +655,8 @@ func _warp_child(child: Node) -> void:
 
 func get_scene_title() -> String:
 	_ensure_spec_loaded()
+	if bool(_generation_fallback.get("active", false)):
+		return "GENERATION FALLBACK — %s" % str(_spec.get("title", "Generated Stretch"))
 	return str(_spec.get("title", "Generated Stretch"))
 
 
@@ -674,7 +680,19 @@ func get_scene_help() -> String:
 			"%s archetype stretch. Read the route markers: some branches are optional supplies, while others carry the path forward."
 			% tier
 		)
-	return "%s  %s%s%s" % [layout_help, _food_economy_help(), _hydraulic_help(), _theme_help()]
+	var fallback_help := ""
+	if bool(_generation_fallback.get("active", false)):
+		fallback_help = (
+			"GENERATION FALLBACK: requested %s seed %d; showing %s seed %d. %s  "
+			% [
+				str(_generation_fallback.get("requested_tier", "unknown")).capitalize(),
+				int(_generation_fallback.get("requested_seed", 0)),
+				str(_generation_fallback.get("actual_tier", "unknown")).capitalize(),
+				int(_generation_fallback.get("actual_seed", 0)),
+				str(_generation_fallback.get("error", "Generation failed.")),
+			]
+		)
+	return "%s%s  %s%s%s" % [fallback_help, layout_help, _food_economy_help(), _hydraulic_help(), _theme_help()]
 
 
 func get_default_character() -> String:
@@ -728,6 +746,10 @@ func get_world_slot() -> Dictionary:
 func get_generation_spec() -> Dictionary:
 	_ensure_spec_loaded()
 	return _spec.duplicate(true)
+
+
+func get_generation_fallback_state() -> Dictionary:
+	return _generation_fallback.duplicate(true)
 
 
 func get_graybox_state() -> Dictionary:
@@ -826,6 +848,7 @@ func _hydraulic_spillway_food_enabled() -> bool:
 func get_preview_state() -> Dictionary:
 	_ensure_spec_loaded()
 	var generation := {
+		"generation_fallback": get_generation_fallback_state(),
 		"game_mode": _game_mode_id(),
 		"food_test": _food_test_mode(),
 		"physical_food_spawned_count": _physical_food_spawned_count,
@@ -1898,6 +1921,8 @@ func handle_preview_ability(ability_id: String, _ability: Dictionary = {}) -> Di
 
 
 func _load_spec_from_config() -> void:
+	_spec.clear()
+	_generation_fallback.clear()
 	var raw_spec: Variant = _config.get("spec", {})
 	if raw_spec is Dictionary and not (raw_spec as Dictionary).is_empty():
 		_spec = (raw_spec as Dictionary).duplicate(true)
@@ -1915,7 +1940,20 @@ func _load_spec_from_config() -> void:
 			_ensure_graybox_layout()
 			_ensure_navigation_layout()
 			return
-		push_warning("generated_stretch: custom settings failed: %s" % str(generated.get("validation", generated.get("error", "unknown error"))))
+		_generation_fallback = {
+			"active": true,
+			"requested_seed": int(generation_settings.get("seed", 0)),
+			"requested_tier": str(generation_settings.get("complexity_tier", "unknown")),
+			"error": _generation_failure_summary(generated),
+		}
+		push_warning(
+			"generated_stretch: requested %s seed %d failed; loading an explicit fallback (%s)"
+			% [
+				str(_generation_fallback.get("requested_tier", "unknown")),
+				int(_generation_fallback.get("requested_seed", 0)),
+				str(_generation_fallback.get("error", "generation failed")),
+			]
+		)
 	var path := str(_config.get("spec_path", default_spec_path))
 	var loaded := StretchGeneratorScript.load_spec(path)
 	if not loaded.is_empty():
@@ -1929,10 +1967,52 @@ func _load_spec_from_config() -> void:
 			if bool(regenerated.get("success", false)):
 				loaded = regenerated
 			else:
-				push_warning("generated_stretch: seed variation failed, using saved spec: %s" % str(regenerated.get("validation", regenerated.get("error", "unknown error"))))
+				if _generation_fallback.is_empty():
+					_generation_fallback = {
+						"active": true,
+						"requested_seed": int(loaded_settings.get("seed", 0)),
+						"requested_tier": str(loaded_settings.get("complexity_tier", "unknown")),
+						"error": _generation_failure_summary(regenerated),
+					}
+				push_warning(
+					"generated_stretch: seed variation failed; saved fallback is visibly labeled (%s)"
+					% str(_generation_fallback.get("error", "generation failed"))
+				)
 		_spec = loaded
+		_record_generation_fallback_actual()
 		_ensure_graybox_layout()
 		_ensure_navigation_layout()
+
+
+func _record_generation_fallback_actual() -> void:
+	if _generation_fallback.is_empty() or _spec.is_empty():
+		return
+	_generation_fallback["active"] = true
+	_generation_fallback["actual_seed"] = int(
+		_spec.get("source", {}).get("seed", _spec.get("settings", {}).get("seed", 0))
+	)
+	_generation_fallback["actual_tier"] = str(
+		_spec.get("source", {}).get(
+			"complexity_tier", _spec.get("settings", {}).get("complexity_tier", "unknown")
+		)
+	)
+
+
+func _generation_failure_summary(result: Dictionary) -> String:
+	var direct_error := str(result.get("error", "")).strip_edges()
+	if direct_error != "":
+		return direct_error
+	var validation: Variant = result.get("validation", {})
+	if validation is Dictionary:
+		for key in (validation as Dictionary).keys():
+			var section: Variant = (validation as Dictionary)[key]
+			if section is Dictionary:
+				var errors: Variant = (section as Dictionary).get("errors", [])
+				if errors is Array and not (errors as Array).is_empty():
+					return str((errors as Array)[0])
+			elif key == "errors" and section is Array and not (section as Array).is_empty():
+				return str((section as Array)[0])
+	return "Generator validation failed."
 
 
 func _ensure_spec_loaded() -> void:
@@ -1952,6 +2032,7 @@ func _ensure_spec_loaded() -> void:
 				}
 			)
 		)
+	_record_generation_fallback_actual()
 	_ensure_graybox_layout()
 	_ensure_navigation_layout()
 
@@ -2547,10 +2628,13 @@ func _configure_food_branch_caches() -> void:
 		if physical_food and interactable != null:
 			var reward_atp := int(cache.get("food_atp", BRANCH_ATP))
 			interactable.set("one_shot", false)
-			interactable.set("tutorial_label", "TAKE +%d ATP" % reward_atp)
+			interactable.set("tutorial_label", "TAKE LYSATE")
 			interactable.set(
 				"description",
-				"Detour cache: %.1f risk, +%d ATP" % [float(cache.get("risk_score", 0.0)), reward_atp]
+				(
+					"Carryable Lysate (+%d ATP when consumed; occupies one hand). "
+					+ "Exposure score %.1f is route cost, not direct HP damage. R runs at stamina cost."
+				) % [reward_atp, float(cache.get("risk_score", 0.0))]
 			)
 		_set_branch_cache_available_visual(cache, not bool(cache.get("collected", false)))
 
@@ -2609,9 +2693,9 @@ func _build_guide_food_caches() -> void:
 		var interactable := _add_inspection_interactable(
 			self,
 			"GuideFoodZone_%d" % i,
-			"A small route morsel (+0.5 ATP)",
+			"Carry a route morsel: restores +0.5 ATP when consumed and occupies one hand.",
 			flat + Vector3(0.0, 0.10, 0.0),
-			"TAKE MORSEL +0.5",
+			"TAKE MORSEL",
 			"",
 			1.25,
 			false
@@ -2654,7 +2738,7 @@ func _build_branch_service_bay(index: int, flat: Vector3, reward_atp: int) -> vo
 	_add_box(bay, Vector3(0.0, 1.18, 0.62), Vector3(1.9, 0.12, 0.12), steel, signal_color, 0.48, "GaugeBeam")
 	_add_label(
 		bay,
-		"SIDE FEED %02d  //  +%d ATP" % [index + 1, reward_atp],
+		"LYSATE CACHE %02d  //  STORES +%d ATP" % [index + 1, reward_atp],
 		Vector3(0.0, 1.65, 0.62),
 		signal_color.lightened(0.22)
 	)
@@ -3802,7 +3886,7 @@ func _collect_guide_food(index: int) -> void:
 		var recipient := str(pickup.get("recipient", ""))
 		_last_outcome = "physical_food:guide:%s:%d" % [recipient, index]
 		_show_message(
-			"%s pocketed a route morsel (+%s ATP)." % [
+			"%s carries a route morsel (+%s ATP when consumed)." % [
 				recipient.capitalize(), _atp_amount_text(reward_atp)
 			],
 			2.0

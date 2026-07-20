@@ -1158,6 +1158,21 @@ func _choose_ability_slot(column_info: Dictionary, requested: int) -> int:
 
 ## Backward-compatible first five arguments; the optional metadata places this direct action in one of
 ## six party columns and one of two zero-based rows. Without owner metadata, portrait-id prefixes are inferred.
+func clear_abilities() -> void:
+	# Preview chunks can be regenerated in place. Ability ownership belongs to the
+	# current chunk, so remove both the registry and its generated columns before
+	# registering the next contract.
+	_abilities.clear()
+	_ability_columns.clear()
+	_ability_column_serial = 0
+	if _ability_drawer_columns != null:
+		for child in _ability_drawer_columns.get_children():
+			_ability_drawer_columns.remove_child(child)
+			child.queue_free()
+	_sync_ability_portrait_columns()
+	_refresh_ability_drawer()
+
+
 func add_ability(
 	id: String,
 	display_name: String,

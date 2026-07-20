@@ -109,7 +109,7 @@ func validate() -> Dictionary:
 			if str(feature.get("kind", "")) == "":
 				errs.append("%s: spatial_feature requires a kind" % id)
 			var scene_path := str(feature.get("scene", ""))
-			if scene_path == "" or not FileAccess.file_exists(scene_path):
+			if scene_path == "" or not ResourceLoader.exists(scene_path):
 				errs.append("%s: spatial_feature scene does not exist: %s" % [id, scene_path])
 			var content_sockets: Variant = feature.get("content_sockets", {})
 			if not (content_sockets is Dictionary) or (content_sockets as Dictionary).is_empty():

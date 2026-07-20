@@ -212,7 +212,7 @@ static func get_preview_stage(entry_id: String) -> int:
 
 const CHARACTER_IDS := ["aster", "peris", "endo"]
 const MAX_VISION_SOURCES := 64
-const PROCEDURAL_OCCLUSION_CHUNKS := ["channels_wash_intro", "wash_relay"]
+const PROCEDURAL_OCCLUSION_CHUNKS := ["channels_wash_intro", "wash_relay", "generated_stretch"]
 const NO_VISION_SOURCE := Vector3(0.0, 0.0, -9999.0)
 ## Members recruited later in the story. They exist in a preview ONLY when a chunk's
 ## presence map includes them: built hidden, registered + portraited on demand, and
@@ -612,6 +612,28 @@ func _regenerate_preview_variation() -> void:
 	var next_seed := current_seed + 1
 	preview_chunk_config = preview_chunk_config.duplicate()
 	preview_chunk_config["seed"] = next_seed
+	# The seed override already drives generation, but the authored settings title/id
+	# and picker entry also need to advance. Otherwise the world is seed N+1 while the
+	# header and restart contract continue claiming seed N.
+	var generation_settings: Dictionary = preview_chunk_config.get("settings", {}).duplicate(true)
+	if not generation_settings.is_empty():
+		var case_id := str(preview_chunk_config.get("seed_case_id", "custom"))
+		if case_id == "custom":
+			var tier := str(generation_settings.get("complexity_tier", "teaching"))
+			var stage := int(generation_settings.get("progression_stage", -1))
+			generation_settings = StretchSeedCatalogScript.custom_settings(next_seed, tier, stage)
+		else:
+			var case_settings := StretchSeedCatalogScript.settings_for_case(case_id, next_seed)
+			if not case_settings.is_empty():
+				generation_settings = case_settings
+		preview_chunk_config["settings"] = generation_settings
+		var case_status := str(preview_chunk_config.get("seed_case_status", "custom"))
+		scene_title_override = "%s  [seed %d, %s]" % [
+			str(generation_settings.get("title", "Generated Stretch")), next_seed, case_status
+		]
+		if not _active_preview_entry.is_empty():
+			_active_preview_entry["title"] = scene_title_override
+			_active_preview_entry["config"] = preview_chunk_config.duplicate(true)
 	_unload_chunk(preview_chunk)
 	_preview_interactables.clear()
 	_begin_chunk()
@@ -3166,6 +3188,8 @@ func _configure_preview_abilities(chunk_abilities: Array) -> void:
 	_ability_defs.clear()
 	_ability_runtime.clear()
 	_ability_order.clear()
+	if _hud != null and _hud.has_method("clear_abilities"):
+		_hud.call("clear_abilities")
 
 	var default_defs := _build_default_ability_definitions()
 	for ability_id in ["aster_focus", "peris_tune", "endo_patch"]:
@@ -3373,6 +3397,12 @@ func _apply_canonical_main_ability_binding(ability_id: String, ability: Dictiona
 
 func _apply_chunk_metadata() -> void:
 	var title := scene_title_override
+	var generation_fallback := {}
+	if _active_chunk != null and _active_chunk.has_method("get_generation_fallback_state"):
+		generation_fallback = _active_chunk.call("get_generation_fallback_state")
+	# A run-menu title must never hide that the requested generator settings failed.
+	if bool(generation_fallback.get("active", false)) and _active_chunk.has_method("get_scene_title"):
+		title = str(_active_chunk.call("get_scene_title"))
 	if title == "":
 		title = preview_chunk.capitalize() + " Fragment"
 		if _active_chunk != null and _active_chunk.has_method("get_scene_title"):

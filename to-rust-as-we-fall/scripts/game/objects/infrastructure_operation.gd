@@ -11,6 +11,8 @@ signal operation_completed(operation: InfrastructureOperation)
 
 var operation_id := "infrastructure_operation"
 var commodity := "service"
+var source_action := "ROUTE SERVICE"
+var receiver_action := "COMMISSION RECEIVER"
 var source_control: Node
 var receiver_control: Node
 var service_field: Node3D
@@ -25,6 +27,8 @@ var _completed := false
 func configure(spec: Dictionary) -> void:
 	operation_id = str(spec.get("operation_id", operation_id))
 	commodity = str(spec.get("commodity", commodity))
+	source_action = str(spec.get("source_action", source_action))
+	receiver_action = str(spec.get("receiver_action", receiver_action))
 
 
 func bind_runtime(
@@ -104,18 +108,25 @@ func _apply_state() -> void:
 	if receiver_control != null and receiver_control.has_method("set_interaction_enabled"):
 		receiver_control.call("set_interaction_enabled", _routed and not _completed)
 	if source_status != null:
-		source_status.text = "SERVICE ROUTED" if _routed else "SOURCE READY"
+		source_status.text = "1  %s%s" % [source_action, "  DONE" if _routed else ""]
 		source_status.modulate = Color(0.36, 0.91, 0.50) if _routed else Color(0.42, 0.72, 0.95)
 	if receiver_status != null:
 		if _completed:
-			receiver_status.text = "BAY SAFE"
+			receiver_status.text = "2  %s  DONE" % receiver_action
 			receiver_status.modulate = Color(0.36, 0.91, 0.50)
 		elif _routed:
-			receiver_status.text = "RECEIVER READY"
+			receiver_status.text = "2  %s" % receiver_action
 			receiver_status.modulate = Color(0.95, 0.64, 0.32)
 		else:
-			receiver_status.text = "AWAITING %s" % commodity.replace("_", " ").to_upper()
+			receiver_status.text = "2  WAITING: %s" % commodity.replace("_", " ").to_upper()
 			receiver_status.modulate = Color(0.62, 0.65, 0.70)
+	_set_link_latched(source_link, not _routed)
+	_set_link_latched(consequence_link, _routed and not _completed)
+
+
+func _set_link_latched(link: Node3D, active: bool) -> void:
+	if link != null and is_instance_valid(link) and link.has_method("set_latched"):
+		link.call("set_latched", active)
 
 
 func _set_link_state(link: Node3D, mode: String, flash_link: bool) -> void:

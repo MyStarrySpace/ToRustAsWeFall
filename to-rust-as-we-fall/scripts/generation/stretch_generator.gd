@@ -438,7 +438,10 @@ static func validate_spatial_features(spec: Dictionary) -> Dictionary:
 		if str(node.get("role", "")) in ["boundary", "shelter", "shelter_arrival"]:
 			errors.append("%s occupies a boundary/shelter node" % feature_id)
 		var scene_path := str(feature.get("scene", ""))
-		if scene_path == "" or not FileAccess.file_exists(scene_path):
+		# Exported resources live inside the PCK and are not ordinary filesystem files.
+		# ResourceLoader is the authoritative existence check for authored scenes in both
+		# editor/headless runs and Web exports.
+		if scene_path == "" or not ResourceLoader.exists(scene_path):
 			errors.append("%s has no authored scene" % feature_id)
 		var floor_cells: Array = feature.get("floor_cells", [])
 		if floor_cells.size() < 9:
