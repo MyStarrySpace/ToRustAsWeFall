@@ -43,8 +43,8 @@ const WORKSPACE_THREAD_REQUIRED := {
 # to three already-visible room objects, stages the LAST candidate he reviewed, and asks him to
 # commit that cause at the existing terminal. The discriminating third trace prevents a blind
 # two-object coin flip while keeping every clue on something the player already learned to inspect.
-const FAULT_EVIDENCE_WORK_SECONDS := 8.0
-const FAULT_COMMIT_ATP_COST := 3.0
+const FAULT_EVIDENCE_WORK_SECONDS := 2.4
+const FAULT_COMMIT_ATP_COST := 5.0
 const FAULT_WRONG_ATP_COST := 1.0
 const FAULT_DRINK_RECOVERY_SECONDS := 0.8
 const ASTER_ROUTE_SPEED_FALLBACK := 3.0
@@ -92,7 +92,7 @@ const FAULT_EVIDENCE_SOURCES := {
 const FAULT_REVIEW_CASES := [
 	{
 		"id": "normalization_recurrence",
-		"brief": "FAULT 1/3: recurrence follows normalization; a local connector loss should not repeat across barriers.",
+		"brief": "FAULT 1/2: recurrence follows normalization; a local connector loss should not repeat across barriers.",
 		"evidence": ["awards", "glass", "jstore"],
 		"candidates": ["glass", "jstore"],
 		"correct": "jstore",
@@ -105,7 +105,7 @@ const FAULT_REVIEW_CASES := [
 	},
 	{
 		"id": "thermal_band_drift",
-		"brief": "FAULT 2/3: only one visual band widens as the barrier temperature climbs.",
+		"brief": "FAULT 2/2: only one visual band widens as the barrier temperature climbs.",
 		"evidence": ["painting_teal", "glass", "painting_ash"],
 		"candidates": ["painting_teal", "painting_ash"],
 		"correct": "painting_ash",
@@ -116,39 +116,25 @@ const FAULT_REVIEW_CASES := [
 		},
 		"wrong_clue": "The teal trace stays flat. Recheck the heat-linked ash band, stage another candidate, then recommit.",
 	},
-	{
-		"id": "repair_attribution",
-		"brief": "FAULT 3/3: system credit and actual repair authorship disagree.",
-		"evidence": ["painting_teal", "awards", "jstore"],
-		"candidates": ["awards", "jstore"],
-		"correct": "jstore",
-		"clues": {
-			"painting_teal": "Maintenance trace: the support window predates the system's completion stamp.",
-			"awards": "Credit ledger: it names Aster but contains no repair-author record.",
-			"jstore": "Published signature: the adjustment matches support-crew work, not operator input.",
-		},
-		"wrong_clue": "Attribution is not repair evidence. Recheck the published signature, stage another candidate, then recommit.",
-	},
 ]
 
-# Three different spatial protocols follow diagnosis. They deliberately avoid adding more fault cases:
-# phase alignment is an ordered walk, load balance is an any-order survey followed by a three-station
-# physical branch, and authorship handoff is an information choice with a two-station persistent result.
+# Two transfer protocols follow diagnosis: a short ordered phase walk and an authorship
+# handoff. Each ends in one visible execution rather than another multi-station lap.
 # All pads are projected into open floor lanes; none changes the room model or drink-machine clearance.
-const WORKSPACE_PROTOCOL_ORDER := ["phase_alignment", "load_balance", "authorship_handoff"]
+const WORKSPACE_PROTOCOL_ORDER := ["phase_alignment", "authorship_handoff"]
 const WORKSPACE_PROTOCOLS := {
 	"phase_alignment": {
 		"step": "workspace_protocol_phase_alignment",
 		"label": "BARRIER PHASE WALK",
 		"tint": Color(0.28, 0.72, 1.0),
 		"ordered_evidence": true,
-		"evidence": ["phase_origin", "phase_north", "phase_mid", "phase_south", "phase_return"],
+		"evidence": ["phase_origin", "phase_mid", "phase_return"],
 		"choices": ["phase_sweep", "phase_isolate"],
 		"execution_sites": {
 			"phase_sweep": ["phase_sweep_execution"],
 			"phase_isolate": ["phase_isolate_execution"],
 		},
-		"next": "load_balance",
+		"next": "authorship_handoff",
 	},
 	"load_balance": {
 		"step": "workspace_protocol_load_balance",
@@ -171,23 +157,23 @@ const WORKSPACE_PROTOCOLS := {
 		"evidence": ["authorship_ledger", "authorship_signature", "authorship_support"],
 		"choices": ["authorship_name_crew", "authorship_publish_operator"],
 		"execution_sites": {
-			"authorship_name_crew": ["crew_context_execution", "crew_handoff_execution"],
-			"authorship_publish_operator": ["operator_signature_execution", "operator_handoff_execution"],
+			"authorship_name_crew": ["crew_handoff_execution"],
+			"authorship_publish_operator": ["operator_handoff_execution"],
 		},
 		"next": "",
 	},
 }
 
 const WORKSPACE_PROTOCOL_SITES := {
-	"phase_origin": {"protocol": "phase_alignment", "kind": "evidence", "pos": Vector3(2.0, 0.12, 12.0), "dwell": 5.0, "label": "READ ORIGIN PHASE", "display": "ORIGIN", "finding": "The barrier reference begins half a cycle ahead of Aster's forecast."},
+	"phase_origin": {"protocol": "phase_alignment", "kind": "evidence", "pos": Vector3(2.0, 0.12, 12.0), "dwell": 2.0, "label": "READ ORIGIN PHASE", "display": "ORIGIN", "finding": "The barrier reference begins half a cycle ahead of Aster's forecast."},
 	"phase_north": {"protocol": "phase_alignment", "kind": "evidence", "pos": Vector3(3.3, 0.12, 10.4), "dwell": 5.0, "label": "ALIGN NORTH NODE", "display": "NORTH", "finding": "The north node preserves the offset instead of accumulating it."},
-	"phase_mid": {"protocol": "phase_alignment", "kind": "evidence", "pos": Vector3(2.2, 0.12, 8.2), "dwell": 5.0, "label": "ALIGN MID NODE", "display": "MID", "finding": "The middle node exposes one recoverable discontinuity."},
+	"phase_mid": {"protocol": "phase_alignment", "kind": "evidence", "pos": Vector3(2.2, 0.12, 8.2), "dwell": 2.0, "label": "ALIGN MID NODE", "display": "MID", "finding": "The middle node exposes one recoverable discontinuity."},
 	"phase_south": {"protocol": "phase_alignment", "kind": "evidence", "pos": Vector3(3.1, 0.12, 6.0), "dwell": 5.0, "label": "ALIGN SOUTH NODE", "display": "SOUTH", "finding": "The south node can accept either a full sweep or a local isolate."},
-	"phase_return": {"protocol": "phase_alignment", "kind": "evidence", "pos": Vector3(2.0, 0.12, 3.9), "dwell": 5.0, "label": "CLOSE PHASE LOOP", "display": "RETURN", "finding": "The return pulse arrives inside tolerance and unlocks two valid calibrations."},
-	"phase_sweep": {"protocol": "phase_alignment", "kind": "choice", "pos": Vector3(4.0, 0.12, 4.6), "dwell": 3.2, "label": "PLAN FULL SWEEP", "display": "SWEEP", "finding": "A full sweep maximizes forecast fidelity but exposes the entire lattice."},
-	"phase_isolate": {"protocol": "phase_alignment", "kind": "choice", "pos": Vector3(4.0, 0.12, 6.2), "dwell": 3.2, "label": "PLAN LOCAL ISOLATE", "display": "ISOLATE", "finding": "A local isolate protects the room while accepting a narrower forecast."},
-	"phase_sweep_execution": {"protocol": "phase_alignment", "kind": "execution", "pos": Vector3(4.6, 0.12, 9.5), "dwell": 6.0, "label": "EXECUTE PHASE SWEEP", "display": "SWEEP", "finding": "The full lattice resolves into one high-fidelity forecast band."},
-	"phase_isolate_execution": {"protocol": "phase_alignment", "kind": "execution", "pos": Vector3(2.0, 0.12, 7.1), "dwell": 6.0, "label": "EXECUTE ISOLATE", "display": "ISOLATE", "finding": "The unstable segment is isolated without disturbing the room perimeter."},
+	"phase_return": {"protocol": "phase_alignment", "kind": "evidence", "pos": Vector3(2.0, 0.12, 3.9), "dwell": 2.0, "label": "CLOSE PHASE LOOP", "display": "RETURN", "finding": "The return pulse arrives inside tolerance and unlocks two valid calibrations."},
+	"phase_sweep": {"protocol": "phase_alignment", "kind": "choice", "pos": Vector3(4.0, 0.12, 4.6), "dwell": 1.0, "label": "PLAN FULL SWEEP", "display": "SWEEP", "finding": "A full sweep maximizes forecast fidelity but exposes the entire lattice."},
+	"phase_isolate": {"protocol": "phase_alignment", "kind": "choice", "pos": Vector3(4.0, 0.12, 6.2), "dwell": 1.0, "label": "PLAN LOCAL ISOLATE", "display": "ISOLATE", "finding": "A local isolate protects the room while accepting a narrower forecast."},
+	"phase_sweep_execution": {"protocol": "phase_alignment", "kind": "execution", "pos": Vector3(4.6, 0.12, 9.5), "dwell": 2.5, "label": "EXECUTE PHASE SWEEP", "display": "SWEEP", "finding": "The full lattice resolves into one high-fidelity forecast band."},
+	"phase_isolate_execution": {"protocol": "phase_alignment", "kind": "execution", "pos": Vector3(2.0, 0.12, 7.1), "dwell": 2.5, "label": "EXECUTE ISOLATE", "display": "ISOLATE", "finding": "The unstable segment is isolated without disturbing the room perimeter."},
 
 	"load_source": {"protocol": "load_balance", "kind": "evidence", "pos": Vector3(2.0, 0.12, 2.4), "dwell": 5.5, "label": "MEASURE SOURCE LOAD", "display": "SOURCE", "finding": "The source has enough margin for either reserve or throughput routing."},
 	"load_regulator": {"protocol": "load_balance", "kind": "evidence", "pos": Vector3(4.5, 0.12, 3.2), "dwell": 5.5, "label": "MEASURE REGULATOR", "display": "REGULATOR", "finding": "The regulator can hold a reserve only if the sink remains below threshold."},
@@ -202,15 +188,15 @@ const WORKSPACE_PROTOCOL_SITES := {
 	"throughput_bridge": {"protocol": "load_balance", "kind": "execution", "pos": Vector3(5.8, 0.12, 11.8), "dwell": 5.2, "label": "BRIDGE LOAD", "display": "BRIDGE", "finding": "A temporary bridge keeps the high-throughput band coherent."},
 	"throughput_lock": {"protocol": "load_balance", "kind": "execution", "pos": Vector3(3.5, 0.12, 10.2), "dwell": 5.2, "label": "LOCK FAST ROUTE", "display": "LOCK", "finding": "The route locks before its thermal margin collapses."},
 
-	"authorship_ledger": {"protocol": "authorship_handoff", "kind": "evidence", "pos": Vector3(7.0, 0.12, 13.2), "dwell": 6.0, "label": "READ CREDIT LEDGER", "display": "LEDGER", "finding": "The ledger credits Aster while omitting every support-crew identifier."},
-	"authorship_signature": {"protocol": "authorship_handoff", "kind": "evidence", "pos": Vector3(4.8, 0.12, 12.8), "dwell": 6.0, "label": "READ REPAIR SIGNATURE", "display": "SIGNATURE", "finding": "The repair signature still preserves the support team's method."},
-	"authorship_support": {"protocol": "authorship_handoff", "kind": "evidence", "pos": Vector3(2.2, 0.12, 12.0), "dwell": 6.0, "label": "READ SUPPORT CONTEXT", "display": "CONTEXT", "finding": "A private context channel can carry the names without exposing them publicly."},
-	"authorship_name_crew": {"protocol": "authorship_handoff", "kind": "choice", "pos": Vector3(2.5, 0.12, 9.0), "dwell": 3.2, "label": "PLAN CREW CONTEXT", "display": "CREW", "finding": "Aster preserves the support crew's names in the handoff context."},
-	"authorship_publish_operator": {"protocol": "authorship_handoff", "kind": "choice", "pos": Vector3(5.0, 0.12, 9.2), "dwell": 3.2, "label": "PLAN OPERATOR RECORD", "display": "OPERATOR", "finding": "Aster accepts the public operator record while retaining the repair signature."},
+	"authorship_ledger": {"protocol": "authorship_handoff", "kind": "evidence", "pos": Vector3(7.0, 0.12, 13.2), "dwell": 2.2, "label": "READ CREDIT LEDGER", "display": "LEDGER", "finding": "The ledger credits Aster while omitting every support-crew identifier."},
+	"authorship_signature": {"protocol": "authorship_handoff", "kind": "evidence", "pos": Vector3(4.8, 0.12, 12.8), "dwell": 2.2, "label": "READ REPAIR SIGNATURE", "display": "SIGNATURE", "finding": "The repair signature still preserves the support team's method."},
+	"authorship_support": {"protocol": "authorship_handoff", "kind": "evidence", "pos": Vector3(2.2, 0.12, 12.0), "dwell": 2.2, "label": "READ SUPPORT CONTEXT", "display": "CONTEXT", "finding": "A private context channel can carry the names without exposing them publicly."},
+	"authorship_name_crew": {"protocol": "authorship_handoff", "kind": "choice", "pos": Vector3(2.5, 0.12, 9.0), "dwell": 1.0, "label": "PLAN CREW CONTEXT", "display": "CREW", "finding": "Aster preserves the support crew's names in the handoff context."},
+	"authorship_publish_operator": {"protocol": "authorship_handoff", "kind": "choice", "pos": Vector3(5.0, 0.12, 9.2), "dwell": 1.0, "label": "PLAN OPERATOR RECORD", "display": "OPERATOR", "finding": "Aster accepts the public operator record while retaining the repair signature."},
 	"crew_context_execution": {"protocol": "authorship_handoff", "kind": "execution", "pos": Vector3(2.2, 0.12, 6.8), "dwell": 5.8, "label": "SEAL CREW CONTEXT", "display": "CONTEXT", "finding": "The crew context is sealed into the private maintenance record."},
-	"crew_handoff_execution": {"protocol": "authorship_handoff", "kind": "execution", "pos": Vector3(3.8, 0.12, 5.0), "dwell": 5.8, "label": "HAND OFF CREW RECORD", "display": "HANDOFF", "finding": "The signed handoff carries the crew's work forward."},
+	"crew_handoff_execution": {"protocol": "authorship_handoff", "kind": "execution", "pos": Vector3(3.8, 0.12, 5.0), "dwell": 2.5, "label": "HAND OFF CREW RECORD", "display": "HANDOFF", "finding": "The signed handoff carries the crew's work forward."},
 	"operator_signature_execution": {"protocol": "authorship_handoff", "kind": "execution", "pos": Vector3(6.3, 0.12, 6.0), "dwell": 5.8, "label": "SEAL OPERATOR RECORD", "display": "OPERATOR", "finding": "The operator record is sealed without erasing the underlying signature."},
-	"operator_handoff_execution": {"protocol": "authorship_handoff", "kind": "execution", "pos": Vector3(4.8, 0.12, 4.0), "dwell": 5.8, "label": "HAND OFF OPERATOR RECORD", "display": "HANDOFF", "finding": "The public handoff retains a verifiable link to the support repair."},
+	"operator_handoff_execution": {"protocol": "authorship_handoff", "kind": "execution", "pos": Vector3(4.8, 0.12, 4.0), "dwell": 2.5, "label": "HAND OFF OPERATOR RECORD", "display": "HANDOFF", "finding": "The public handoff retains a verifiable link to the support repair."},
 }
 var _explore_gate_unlocked := false
 var _explore_gate_fired := false
@@ -507,7 +493,7 @@ func get_playtime_contract() -> Dictionary:
 			"fault_case_synthesis": FAULT_SYNTHESIS_SECONDS_PER_CASE,
 			"protocol_synthesis": PROTOCOL_SYNTHESIS_SECONDS_PER_OPERATION,
 		},
-		"timing_basis": "exact shortest geometry from Aster's start through terminal, drink approach, all four workspace threads, three preserved fault cases, three distinct spatial protocols, and hallway; only authored timed work plus explicit observation/synthesis is active; dialogue, focus shots, fades, and idle are excluded from the active floor",
+		"timing_basis": "exact shortest geometry from Aster's start through terminal, drink approach, all four workspace threads, two preserved fault cases, two distinct spatial protocols, and hallway; only authored timed work plus explicit observation/synthesis is active; dialogue, focus shots, fades, and idle are excluded from the active floor",
 	}
 
 func _workspace_required_beat_count() -> int:
@@ -856,17 +842,17 @@ func _update_show_terminal() -> void:
 # --- Event-driven steps ---
 
 func _start_fade_in() -> void:
-	_current_step = "fade_in"
+	_enter_step("fade_in")
 	_player.set_move_enabled(false)
 	_fade_from(Color(0, 0, 0, 1), 2.5, _start_working, "working")
 
 func _start_working() -> void:
-	_current_step = "working"
+	_enter_step("working")
 	# Brief settle after the fade, then Ron warps in (no long dead-air idle).
 	_scheduler.schedule_after(0.5, _start_ron_warp_in, "ron_warp_in")
 
 func _start_ron_warp_in() -> void:
-	_current_step = "ron_warp_in"
+	_enter_step("ron_warp_in")
 	# Ron arrives through a portal: a cosmetic flash at his marker + his body materializing. The
 	# logical hand-off to the approach rides the scheduler (a tween never gates a step).
 	if _ron != null:
@@ -879,13 +865,13 @@ func _start_ron_warp_in() -> void:
 	_scheduler.schedule_after(1.3, _start_ron_approaches, "ron_approaches")
 
 func _start_ron_approaches() -> void:
-	_current_step = "ron_approaches"
+	_enter_step("ron_approaches")
 	_hide_thought()
 	_ron.walk_to(_player.global_position + Vector3(1.5, 0, 0.5))
 	_scheduler.schedule_after(3.0, _start_ron_greeting, "ron_greeting")
 
 func _start_ron_greeting() -> void:
-	_current_step = "ron_greeting"
+	_enter_step("ron_greeting")
 	_ron.stop()
 	DialogueData.say_to(_dialogue, "aster_sim.ron.greeting")
 	DialogueData.say_to(_dialogue, "aster_sim.ron.name")
@@ -895,7 +881,7 @@ func _start_ron_greeting() -> void:
 	)
 
 func _start_show_terminal() -> void:
-	_current_step = "show_terminal"
+	_enter_step("show_terminal")
 	# The TerminalInteract marker sits in FRONT of the monitor (the chair side), so the interaction walks
 	# Aster there to read it face-on instead of standing at the side of the desk.
 	if _terminal and _terminal.has_method("set_interaction_enabled"):
@@ -921,7 +907,7 @@ func _on_terminal_interacted() -> void:
 # Aster has reached the terminal's reading spot → frame the screen from the FRONT, swap in the detailed
 # readout, hold a beat, then continue. Scheduler-driven so it runs headless and respects F.
 func _start_terminal_focus() -> void:
-	_current_step = "terminal_focus"
+	_enter_step("terminal_focus")
 	_player.set_move_enabled(false)
 	_begin_terminal_screen_focus()
 	_scheduler.schedule_after(TERMINAL_FOCUS_DURATION, _end_terminal_focus, "terminal_focus")
@@ -1002,12 +988,12 @@ func _end_terminal_screen_focus() -> void:
 		_camera.unlock()
 
 func _start_terminal_data() -> void:
-	_current_step = "terminal_data"
+	_enter_step("terminal_data")
 	# Brief beat for the screen-focus camera to settle back before Ron pipes up.
 	_scheduler.schedule_after(0.4, _start_ron_drinks, "ron_drinks")
 
 func _start_ron_drinks() -> void:
-	_current_step = "ron_drinks"
+	_enter_step("ron_drinks")
 	# Ron points out the drink machine BEFORE the prompt appears, so grabbing a drink reads as a
 	# response to him rather than coming out of nowhere. The prompt opens as he finishes the line.
 	DialogueData.say_to(_dialogue, "aster_sim.ron.drinks")
@@ -1017,7 +1003,7 @@ func _start_ron_drinks() -> void:
 	)
 
 func _start_walk_to_drink() -> void:
-	_current_step = "walk_to_drink"
+	_enter_step("walk_to_drink")
 	if _drink_machine and _drink_machine.has_method("set_interaction_enabled"):
 		_drink_machine.set_interaction_enabled(true)
 	_drink_machine.show_tutorial_label()
@@ -1036,20 +1022,20 @@ func _on_drink_interacted() -> void:
 		_has_drunk = true
 		_scheduler.cancel_tag("drink_redirect")
 		_start_drink()
-	elif _has_drunk:
+	elif _has_drunk and _current_step == "drink":
 		# Already topped up — Aster waves it off, with a glance toward Tag Day.
 		_show_thought(DialogueData.text("aster_sim.drink_again.thought"))
 		_rearm_interactable(_drink_machine)
 
 func _start_drink() -> void:
-	_current_step = "drink"
+	_enter_step("drink")
 	_game_state.set_stat("aster", "atp", ATP_MAX)
 	_hide_thought()
 	_rearm_interactable(_drink_machine)  # stays usable; a second go gives the "all good on drinks" line
 	_scheduler.schedule_after(2.0, _start_ron_move_fast, "ron_move_fast")
 
 func _start_ron_move_fast() -> void:
-	_current_step = "ron_move_fast"
+	_enter_step("ron_move_fast")
 	var hallway_world := _grid.grid_to_world(HALLWAY_EXIT_CELL)
 	if _ron and _ron.has_method("walk_to"):
 		_ron.walk_to(_placement_or_position(
@@ -1064,7 +1050,7 @@ func _start_ron_move_fast() -> void:
 	], func(): _scheduler.schedule_after(0, _start_explore_workspace, "explore_workspace"))
 
 func _start_explore_workspace() -> void:
-	_current_step = "explore_workspace"
+	_enter_step("explore_workspace")
 	# The room itself is the active beat: each thread reveals a different part of Aster's relationship
 	# to work, status, and private pleasure. Time only drives a reminder; waiting can never open the exit.
 	_reset_workspace_progress()
@@ -1220,7 +1206,7 @@ func _start_fault_review_circuit() -> void:
 	_fault_circuit_started = true
 	_fault_circuit_complete = false
 	_fault_case_index = 0
-	_current_step = "fault_review"
+	_enter_step("fault_review")
 	_scheduler.cancel_tag("explore_progress_hint")
 	_build_fault_review_interactables()
 	_rearm_interactable(_terminal)
@@ -1257,6 +1243,7 @@ func _build_fault_review_interactables() -> void:
 		evidence.set("one_shot", false)
 		evidence.set("required_character", "aster")
 		evidence.set("description", "Fault Evidence: %s" % _fault_evidence_label(str(evidence_id)))
+		evidence.set("consequence_preview", "Add this trace to the current fault comparison.")
 		evidence.set_meta("fault_evidence_id", str(evidence_id))
 		evidence.interacted.connect(_on_fault_evidence_reviewed.bind(str(evidence_id)))
 		evidence.set_interaction_enabled(false)
@@ -1299,8 +1286,10 @@ func _set_fault_evidence_enabled(required: Array) -> void:
 			continue
 		if required.has(str(evidence_id)):
 			_rearm_interactable(evidence)
-			if evidence.has_method("show_tutorial_label"):
-				evidence.call_deferred("show_tutorial_label")
+			# Dense evidence sets identify themselves through the shared hover verb/readout.
+			# Keeping every fixed-size Label3D visible at once makes picking ambiguous.
+			if evidence.has_method("hide_tutorial_label_immediate"):
+				evidence.hide_tutorial_label_immediate()
 		else:
 			evidence.set_interaction_enabled(false)
 
@@ -1458,7 +1447,7 @@ func _start_workspace_protocol_operation(protocol_id: String) -> void:
 	_workspace_protocol_evidence[protocol_id] = {}
 	_workspace_protocol_execution_progress[protocol_id] = 0
 	var protocol: Dictionary = WORKSPACE_PROTOCOLS[protocol_id]
-	_current_step = str(protocol.get("step", "workspace_protocol"))
+	_enter_step(str(protocol.get("step", "workspace_protocol")))
 	if is_instance_valid(_workspace_protocol_layer):
 		_workspace_protocol_layer.visible = true
 	for group_id_variant in _workspace_protocol_groups:
@@ -1489,10 +1478,10 @@ func _set_workspace_protocol_site_enabled(site_id: String, enabled: bool, show_l
 		site.reset()
 	if site.has_method("set_interaction_enabled"):
 		site.set_interaction_enabled(enabled)
-	if enabled and show_label and site.has_method("show_tutorial_label"):
-		site.call_deferred("show_tutorial_label")
-	elif site.has_method("hide_tutorial_label"):
-		site.hide_tutorial_label()
+	# Protocol pads use hover/action feedback; never fill the room with simultaneous
+	# fixed-size labels. `show_label` remains in the API for compatibility with callers.
+	if site.has_method("hide_tutorial_label_immediate"):
+		site.hide_tutorial_label_immediate()
 
 func _on_workspace_protocol_site_interacted(site_id: String) -> void:
 	if not _workspace_protocol_started or _workspace_protocol_complete or not WORKSPACE_PROTOCOL_SITES.has(site_id):
@@ -1619,7 +1608,7 @@ func _complete_workspace_protocols() -> void:
 	_workspace_protocol_phase = "complete"
 	for site_id_variant in _workspace_protocol_sites:
 		_set_workspace_protocol_site_enabled(str(site_id_variant), false)
-	_current_step = "explore_workspace"
+	_enter_step("explore_workspace")
 	_update_workspace_protocol_readout()
 	_maybe_unlock_exploration_gate()
 
@@ -1627,9 +1616,10 @@ func _update_workspace_protocol_readout() -> void:
 	if _terminal_screen_readout == null:
 		return
 	if _workspace_protocol_complete:
-		_terminal_screen_readout.text = "WORKSPACE VALIDATION // CLEARED\n\n3/3 protocols executed.\nAlignment: %s\nLoad: %s\nAuthorship: %s" % [
+		_terminal_screen_readout.text = "WORKSPACE VALIDATION // CLEARED\n\n%d/%d protocols executed.\nAlignment: %s\nAuthorship: %s" % [
+			_workspace_protocol_completed.size(),
+			WORKSPACE_PROTOCOL_ORDER.size(),
 			str(_workspace_protocol_effects.get("alignment_mode", "recorded")),
-			str(_workspace_protocol_effects.get("load_mode", "recorded")),
 			str(_workspace_protocol_effects.get("authorship_mode", "recorded")),
 		]
 		return
@@ -1693,7 +1683,10 @@ func _update_fault_terminal_readout() -> void:
 		return
 	if _fault_circuit_complete:
 		_terminal_screen_readout.text = \
-			"FAULT REVIEW // CLEARED\n\n3/3 causes committed.\nWorkspace disconnect route released."
+			"FAULT REVIEW // CLEARED\n\n%d/%d causes committed.\nWorkspace disconnect route released." % [
+				_fault_correct_commits,
+				FAULT_REVIEW_CASES.size(),
+			]
 		return
 	var case_data := _current_fault_case()
 	if case_data.is_empty():
@@ -1723,7 +1716,7 @@ func _on_exploration_gate_interacted() -> void:
 	_start_tag_notify()
 
 func _start_tag_notify() -> void:
-	_current_step = "tag_notify"
+	_enter_step("tag_notify")
 	DialogueData.say_to(_dialogue, "aster_sim.device.tag_verify")
 	DialogueData.say_to(_dialogue, "aster_sim.ron.tag_notify")
 	_dialogue.dialogue_finished.connect(
@@ -1732,7 +1725,7 @@ func _start_tag_notify() -> void:
 	)
 
 func _start_walk_to_exit() -> void:
-	_current_step = "walk_to_exit"
+	_enter_step("walk_to_exit")
 	DialogueData.say_to(_dialogue, "aster_sim.tag_routine")
 	_dialogue.dialogue_finished.connect(
 		func(): _scheduler.schedule_after(0, _start_transition_out, "transition_out"),
@@ -1740,13 +1733,13 @@ func _start_walk_to_exit() -> void:
 	)
 
 func _start_transition_out() -> void:
-	_current_step = "transition_out"
+	_enter_step("transition_out")
 	_player.set_move_enabled(false)
 	_fade_start_tick = _scheduler.get_current_tick()
 	_scheduler.schedule_after(2.5, _complete, "complete")
 
 func _complete() -> void:
-	_current_step = "complete"
+	_enter_step("complete")
 	_change_scene_or_record("res://scenes/tutorial/peris_sim.tscn")
 
 # --- Environment ---
@@ -2229,6 +2222,13 @@ func _spawn_workspace_protocol_site(
 	site.set("dwell_time", float(spec.get("dwell", 5.0)))
 	site.set("one_shot", false)
 	site.set("required_character", "aster")
+	match kind:
+		"evidence":
+			site.set("consequence_preview", "Record this reading in the current model.")
+		"choice":
+			site.set("consequence_preview", "Select this intervention route.")
+		"execution":
+			site.set("consequence_preview", "Apply the selected route to the workspace system.")
 	site.set_meta("workspace_protocol_site_id", site_id)
 	_set_room_target_interaction_delegate(target, site)
 	_connect_interactable_outline_feedback(site)
@@ -2461,17 +2461,8 @@ func _build_awards_shelf(parent: Node3D) -> void:
 			0.9,
 			0.6
 		)
-		var model_journalism_zone := _make_exploration_zone(
-			parent,
-			_local_for_parent(parent, _placement_or_position("AwardsJournalismZoneMarker", world + Vector3(0, 0, 0.6))),
-			"AwardsJournalismZone",
-			"aster.sim_expand.awards.journalism_line",
-			0.9,
-			0.6
-		)
 		_set_room_target_interaction_delegate(model_target, model_center_zone)
 		_register_workspace_zone(model_center_zone, "awards", 2)
-		_register_workspace_zone(model_journalism_zone, "awards", 1)
 		return
 	var meshes: Array = []
 	var shelf := MeshInstance3D.new()
@@ -2510,17 +2501,8 @@ func _build_awards_shelf(parent: Node3D) -> void:
 		0.9,
 		0.6
 	)
-	var journalism_zone := _make_exploration_zone(
-		parent,
-		_local_for_parent(parent, _placement_or_position("AwardsJournalismZoneMarker", world + Vector3(0, 0, 0.6))),
-		"AwardsJournalismZone",
-		"aster.sim_expand.awards.journalism_line",
-		0.9,
-		0.6
-	)
 	_set_room_target_interaction_delegate(target, center_zone)
 	_register_workspace_zone(center_zone, "awards", 2)
-	_register_workspace_zone(journalism_zone, "awards", 1)
 
 func _build_jstore_shelf(parent: Node3D) -> void:
 	var shelf_cell := Vector2i(14, 5)

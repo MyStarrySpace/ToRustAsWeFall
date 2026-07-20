@@ -404,17 +404,104 @@ func capture_view_state() -> Dictionary:
 		"pan_offset": _pan_offset,
 		"view_yaw": _view_yaw,
 		"view_zoom": _view_zoom,
+		"global_transform": global_transform,
+		"locked": _locked,
+		"lock_position": _lock_position,
+		"lock_offset_override": _lock_offset_override,
 	}
 
 
 func restore_view_state(state: Dictionary) -> void:
-	unlock()
+	var was_locked := bool(state.get("locked", false))
+	if was_locked:
+		_locked = true
+		_lock_position = state.get("lock_position", _lock_position) as Vector3
+		_lock_offset_override = state.get("lock_offset_override", null)
+	else:
+		unlock()
 	var previous_target = state.get("target", null)
 	target = previous_target if previous_target == null or is_instance_valid(previous_target) else null
 	follow_offset = state.get("follow_offset", follow_offset) as Vector3
 	_pan_offset = state.get("pan_offset", Vector3.ZERO) as Vector3
 	_view_yaw = float(state.get("view_yaw", _view_yaw))
 	_view_zoom = float(state.get("view_zoom", _view_zoom))
+	# A focus shot is presentation-only. Restore the exact prior transform so leaving an
+	# inspection cannot produce a one-frame zoom/position jump before normal follow resumes.
+	if state.has("global_transform"):
+		global_transform = state["global_transform"]
+
+
+## Frame an inspected object from the already-visible room side. Authored FocusAnchor children win;
+## otherwise candidates are rejected when level collision lies between the camera and the object.
+## This is deliberately a camera service, not tutorial-scene geometry math, so every story scene gets
+## the same wall-safe behavior.
+func focus_on(focus_point: Vector3, focus_node: Node3D = null, options: Dictionary = {}) -> Dictionary:
+	var chosen := _choose_focus_position(focus_point, focus_node, options)
+	var camera_position: Vector3 = chosen.get("position", focus_point + Vector3(0.0, 4.2, 3.2))
+	lock_to(focus_point, camera_position - focus_point)
+	# Snap directly to the validated side. Lerping through a wall is just as unreadable as
+	# choosing a final position behind one.
+	global_position = camera_position
+	look_at(focus_point, Vector3.UP)
+	return chosen
+
+
+func _choose_focus_position(focus_point: Vector3, focus_node: Node3D, options: Dictionary) -> Dictionary:
+	var candidates: Array[Vector3] = []
+	var anchor := focus_node.find_child("FocusAnchor", true, false) as Node3D if focus_node != null else null
+	if anchor != null:
+		candidates.append(anchor.global_position)
+	if focus_node != null and focus_node.has_meta("focus_camera_position"):
+		var authored_position = focus_node.get_meta("focus_camera_position")
+		if authored_position is Vector3:
+			candidates.append(authored_position)
+
+	# The current camera is known to be on the player's readable side of the room. Pull that
+	# direction inward to inspection distance instead of switching to one global +Z offset.
+	var horizontal_distance := maxf(3.6, float(options.get("horizontal_distance", 4.8)))
+	var height := maxf(2.4, float(options.get("height", 3.8)))
+	var current_flat := global_position - focus_point
+	current_flat.y = 0.0
+	if current_flat.length_squared() > 0.01:
+		candidates.append(focus_point + current_flat.normalized() * horizontal_distance + Vector3.UP * height)
+
+	var preferred_position = options.get("preferred_world_position", Vector3.INF)
+	if preferred_position is Vector3 and preferred_position != Vector3.INF:
+		var preferred_flat: Vector3 = preferred_position - focus_point
+		preferred_flat.y = 0.0
+		if preferred_flat.length_squared() > 0.01:
+			candidates.append(focus_point + preferred_flat.normalized() * horizontal_distance + Vector3.UP * height)
+
+	# Fallbacks cover rooms entered from unusual angles and targets mounted on different walls.
+	for direction in [
+		Vector3.FORWARD, Vector3.BACK, Vector3.LEFT, Vector3.RIGHT,
+		(Vector3.FORWARD + Vector3.LEFT).normalized(),
+		(Vector3.FORWARD + Vector3.RIGHT).normalized(),
+		(Vector3.BACK + Vector3.LEFT).normalized(),
+		(Vector3.BACK + Vector3.RIGHT).normalized(),
+	]:
+		candidates.append(focus_point + direction * horizontal_distance + Vector3.UP * height)
+
+	for candidate in candidates:
+		if _focus_candidate_clear(focus_point, candidate):
+			return {"position": candidate, "occlusion_clear": true}
+	var fallback := candidates[0] if not candidates.is_empty() else focus_point + Vector3(0.0, height, horizontal_distance)
+	return {"position": fallback, "occlusion_clear": false}
+
+
+func _focus_candidate_clear(focus_point: Vector3, camera_position: Vector3) -> bool:
+	if not is_inside_tree() or get_world_3d() == null:
+		return true
+	var direction := camera_position - focus_point
+	if direction.length_squared() <= 0.01:
+		return false
+	# Begin just beyond the inspected object's own surface so its cabinet/wall-mounted
+	# collision does not reject every otherwise readable shot.
+	var ray_start := focus_point + direction.normalized() * 0.35
+	var query := PhysicsRayQueryParameters3D.create(ray_start, camera_position)
+	query.collide_with_areas = false
+	query.collide_with_bodies = true
+	return get_world_3d().direct_space_state.intersect_ray(query).is_empty()
 
 ## Lock camera to a world position (for scripted sequences). An optional `offset_override` frames the
 ## lock from a FIXED direction (camera sits at pos + offset, ignoring the gameplay view yaw/zoom) — use

@@ -110,12 +110,10 @@ const CARE_CONTEXT_PLANT_BRANCHES := [
 	"peace",
 ]
 
-# A first read now covers every distinct room-context station. The second pass is
-# a three-case, click-gated audit: an eight-record priority review, then two
-# six-record branch reviews, with one logbook decision per case. A review is
-# deliberately just under the project-wide five
-# second dead-gap ceiling; the progress ring and queued outline make the committed
-# work visible. No timer advances the audit without a right-clicked station.
+# The first read covers the room's characterization. The required audit then asks
+# one concise causal question: does care evidence or compliance pressure deserve
+# priority? It samples four distinct sources once; the later operation cashes that
+# decision out physically instead of demanding two more laps through the room.
 const CARE_AUDIT_WORK_SECONDS := 4.9
 const CARE_AUDIT_DIALOGUE_CPS := 30.0
 const CARE_AUDIT_RESPONSE_SECONDS_PER_LINE := 0.75
@@ -131,48 +129,8 @@ const CARE_AUDIT_FIXED_PRESENTATION_COMPONENTS := {
 const CARE_AUDIT_COMMON_CASE := {
 	"id": "priority",
 	"label": "PRIORITY",
-	"evidence": ["wellness", "strike", "fern", "painting", "stand", "bookshelf", "coffee", "peace"],
+	"evidence": ["wellness", "strike", "fern", "painting"],
 	"candidates": ["wellness", "strike"],
-}
-const CARE_AUDIT_BRANCH_CASES := {
-	"care": {
-		"id": "continuity",
-		"label": "CARE CONTINUITY",
-		"evidence": ["stand", "coffee", "peace", "painting", "bookshelf", "fern"],
-		"candidates": ["stand", "coffee"],
-	},
-	"compliance": {
-		"id": "continuity",
-		"label": "COMPLIANCE CONTINUITY",
-		"evidence": ["strike", "bookshelf", "coffee", "painting", "peace", "wellness"],
-		"candidates": ["strike", "wellness"],
-	},
-}
-const CARE_AUDIT_FINAL_CASES := {
-	"stand": {
-		"id": "disposition",
-		"label": "RITUAL DISPOSITION",
-		"evidence": ["wellness", "strike", "coffee", "peace", "painting", "fern"],
-		"candidates": ["wellness", "strike"],
-	},
-	"coffee": {
-		"id": "disposition",
-		"label": "CLIENT-MEMORY DISPOSITION",
-		"evidence": ["bookshelf", "stand", "coffee", "peace", "wellness", "strike"],
-		"candidates": ["wellness", "strike"],
-	},
-	"strike": {
-		"id": "disposition",
-		"label": "WARNING DISPOSITION",
-		"evidence": ["stand", "fern", "strike", "bookshelf", "coffee", "peace"],
-		"candidates": ["strike", "fern"],
-	},
-	"wellness": {
-		"id": "disposition",
-		"label": "SAFEGUARD DISPOSITION",
-		"evidence": ["painting", "fern", "wellness", "stand", "coffee", "peace"],
-		"candidates": ["wellness", "fern"],
-	},
 }
 const CARE_AUDIT_EVIDENCE_SOURCES := {
 	"bookshelf": {"zone": "Plant1Zone", "targets": ["Plant1Outline", "Plant2Outline", "Plant5Outline"], "label": "BOOKSHELF PLANTS"},
@@ -185,24 +143,14 @@ const CARE_AUDIT_EVIDENCE_SOURCES := {
 	"strike": {"zone": "StrikeWarningZone", "targets": ["StrikeWarningOutline"], "label": "STRIKE WARNING"},
 }
 
-# The audit establishes what Peris believes.  The operations circuit that
-# follows makes her turn that belief into a concrete care plan before Monos can
-# break through.  Every task id is unique: later phases revisit parts of the
-# room for a different verb (diagnose -> treat -> allocate -> verify), rather
-# than padding the route with identical inspections.  Both candidate records
-# are required, and whichever is reviewed last selects a different physical
-# resolution job before the logbook can be committed.
+# One transfer operation follows the audit. It checks the living system and both
+# competing pressures, then resolves the branch on a physical room object.
 const CARE_OPERATION_PHASES := [
 	{
-		"id": "diagnostics",
-		"label": "CONDITION DIAGNOSTICS",
+		"id": "priority_response",
+		"label": "PRIORITY RESPONSE",
 		"tasks": [
 			{"id": "probe_fern_moisture", "source": "fern", "label": "PROBE FERN MOISTURE"},
-			{"id": "scan_lily_roots", "source": "peace", "label": "SCAN LILY ROOTS"},
-			{"id": "count_shelf_canopies", "source": "bookshelf", "label": "COUNT SHELF CANOPIES"},
-			{"id": "check_stand_recovery", "source": "stand", "label": "CHECK STAND RECOVERY"},
-			{"id": "sample_table_soil", "source": "coffee", "label": "SAMPLE CLIENT SOIL"},
-			{"id": "meter_room_light", "source": "painting", "label": "METER ROOM LIGHT"},
 			{"id": "read_wellness_load", "source": "wellness", "label": "READ CARE LOAD"},
 			{"id": "read_strike_window", "source": "strike", "label": "READ STRIKE WINDOW"},
 		],
@@ -210,63 +158,6 @@ const CARE_OPERATION_PHASES := [
 		"resolutions": {
 			"read_wellness_load": {"id": "set_care_baseline", "source": "peace", "label": "SET CARE BASELINE"},
 			"read_strike_window": {"id": "freeze_compliance_clock", "source": "bookshelf", "label": "FREEZE COMPLIANCE CLOCK"},
-		},
-	},
-	{
-		"id": "treatment",
-		"label": "TREATMENT PASS",
-		"tasks": [
-			{"id": "flush_fern_drainage", "source": "fern", "label": "FLUSH FERN DRAINAGE"},
-			{"id": "wrap_lily_support", "source": "peace", "label": "WRAP LILY SUPPORT"},
-			{"id": "rotate_shelf_stock", "source": "bookshelf", "label": "ROTATE SHELF STOCK"},
-			{"id": "prune_stand_growth", "source": "stand", "label": "PRUNE SURVIVOR GROWTH"},
-			{"id": "mix_client_feed", "source": "coffee", "label": "MIX CLIENT FEED"},
-			{"id": "set_light_baffle", "source": "painting", "label": "SET LIGHT BAFFLE"},
-			{"id": "reserve_recovery_window", "source": "wellness", "label": "RESERVE RECOVERY WINDOW"},
-			{"id": "reserve_sanction_window", "source": "strike", "label": "RESERVE SANCTION WINDOW"},
-		],
-		"candidates": ["reserve_recovery_window", "reserve_sanction_window"],
-		"resolutions": {
-			"reserve_recovery_window": {"id": "stage_gentle_tools", "source": "stand", "label": "STAGE GENTLE TOOLS"},
-			"reserve_sanction_window": {"id": "stage_rapid_feed", "source": "coffee", "label": "STAGE RAPID FEED"},
-		},
-	},
-	{
-		"id": "allocation",
-		"label": "RESOURCE ALLOCATION",
-		"tasks": [
-			{"id": "dose_fern_minerals", "source": "fern", "label": "DOSE FERN MINERALS"},
-			{"id": "allocate_lily_mist", "source": "peace", "label": "ALLOCATE LILY MIST"},
-			{"id": "split_shelf_water", "source": "bookshelf", "label": "SPLIT SHELF WATER"},
-			{"id": "stage_stand_tools", "source": "stand", "label": "STAGE STAND TOOLS"},
-			{"id": "label_client_stock", "source": "coffee", "label": "LABEL CLIENT STOCK"},
-			{"id": "align_privacy_screen", "source": "painting", "label": "ALIGN PRIVACY SCREEN"},
-			{"id": "budget_rest_minutes", "source": "wellness", "label": "BUDGET REST MINUTES"},
-			{"id": "budget_overtime_minutes", "source": "strike", "label": "BUDGET OVERTIME MINUTES"},
-		],
-		"candidates": ["budget_rest_minutes", "budget_overtime_minutes"],
-		"resolutions": {
-			"budget_rest_minutes": {"id": "seal_rest_reserve", "source": "fern", "label": "SEAL REST RESERVE"},
-			"budget_overtime_minutes": {"id": "post_overtime_limit", "source": "painting", "label": "POST OVERTIME LIMIT"},
-		},
-	},
-	{
-		"id": "verification",
-		"label": "RELEASE VERIFICATION",
-		"tasks": [
-			{"id": "check_fern_runoff", "source": "fern", "label": "CHECK FERN RUNOFF"},
-			{"id": "check_lily_leaves", "source": "peace", "label": "CHECK LILY LEAVES"},
-			{"id": "verify_shelf_balance", "source": "bookshelf", "label": "VERIFY SHELF BALANCE"},
-			{"id": "verify_stand_rebound", "source": "stand", "label": "VERIFY STAND REBOUND"},
-			{"id": "verify_client_labels", "source": "coffee", "label": "VERIFY CLIENT LABELS"},
-			{"id": "verify_light_level", "source": "painting", "label": "VERIFY LIGHT LEVEL"},
-			{"id": "sign_care_release", "source": "wellness", "label": "SIGN CARE RELEASE"},
-			{"id": "sign_strike_release", "source": "strike", "label": "SIGN STRIKE RELEASE"},
-		],
-		"candidates": ["sign_care_release", "sign_strike_release"],
-		"resolutions": {
-			"sign_care_release": {"id": "witness_living_baseline", "source": "peace", "label": "WITNESS LIVING BASELINE"},
-			"sign_strike_release": {"id": "witness_logged_baseline", "source": "bookshelf", "label": "WITNESS LOGGED BASELINE"},
 		},
 	},
 ]
@@ -491,7 +382,7 @@ func _begin() -> void:
 	_add_screen_effect("ChromaticAberration", preload("res://resources/chromatic_aberration.gdshader"))
 	if start_phase > 0:
 		_visit_phase = start_phase
-	_current_step = "fade_in"
+	_enter_step("fade_in")
 	_player.set_move_enabled(false)
 	# The room is DRESSED from the first frame, in BOTH phases — plants on their furniture, the
 	# wall pieces, the logbook console (they used to pop in only when the workspace step fired,
@@ -552,7 +443,7 @@ func headless_get_state() -> Dictionary:
 		"care_audit_started": _care_audit_started,
 		"care_audit_complete": _care_audit_complete,
 		"care_audit_case_index": _care_audit_case_index,
-		"care_audit_case_total": _care_audit_cases().size() if _care_audit_started else 3,
+		"care_audit_case_total": _care_audit_cases().size() if _care_audit_started else 1,
 		"care_audit_branch": _care_audit_branch,
 		"care_audit_secondary_route": _care_audit_secondary_route,
 		"care_audit_outcome": _care_audit_outcome,
@@ -580,7 +471,7 @@ func get_playtime_contract() -> Dictionary:
 	var audit_route_meters := minf(care_route_meters, compliance_route_meters)
 	var operation_route_meters := _care_operation_minimum_route_meters()
 	var move_speed := maxf(float(_player.move_speed) if _player != null else GameState.WALK_SPEED, 0.1)
-	var audit_evidence_reviews := (CARE_AUDIT_COMMON_CASE.get("evidence", []) as Array).size() + 2 * 6
+	var audit_evidence_reviews := (CARE_AUDIT_COMMON_CASE.get("evidence", []) as Array).size()
 	var operation_task_reviews := 0
 	for raw_phase in CARE_OPERATION_PHASES:
 		operation_task_reviews += ((raw_phase as Dictionary).get("tasks", []) as Array).size()
@@ -663,8 +554,8 @@ func get_playtime_contract() -> Dictionary:
 		"mandatory_inventory_actions": 4,
 		"mandatory_logbook_commits": 3 + operation_logbook_commits,
 		"plant_group_branches": CARE_CONTEXT_PLANT_BRANCHES.duplicate(),
-		"decision_count": 3 + CARE_OPERATION_PHASES.size(),
-		"branch_count": 4 + CARE_OPERATION_PHASES.size() * 2,
+		"decision_count": 1 + CARE_OPERATION_PHASES.size(),
+		"branch_count": 2 + CARE_OPERATION_PHASES.size() * 2,
 		"hard_idle_lock_seconds": 0.0,
 		"basis": "live marker constrained-route minima + scheduler-backed unique care jobs + real carried inventory + authored normal-speed first reads + fixed scene transitions",
 	}
@@ -703,22 +594,8 @@ func _care_context_minimum_route_meters() -> float:
 		+ _care_minimum_route(fern, logbook, remaining)
 
 func _care_audit_branch_route_meters(branch: String) -> float:
-	var continuity: Dictionary = CARE_AUDIT_BRANCH_CASES.get(branch, {})
-	if continuity.is_empty():
-		return 0.0
 	var primary_selection := "wellness" if branch == "care" else "strike"
-	var common_distance := _care_audit_case_minimum_route_meters(CARE_AUDIT_COMMON_CASE, primary_selection)
-	var best := INF
-	for raw_secondary in (continuity.get("candidates", []) as Array):
-		var secondary := str(raw_secondary)
-		var final_case: Dictionary = CARE_AUDIT_FINAL_CASES.get(secondary, {})
-		if final_case.is_empty():
-			continue
-		var distance := common_distance \
-			+ _care_audit_case_minimum_route_meters(continuity, secondary) \
-			+ _care_audit_case_minimum_route_meters(final_case)
-		best = minf(best, distance)
-	return 0.0 if best == INF else best
+	return _care_audit_case_minimum_route_meters(CARE_AUDIT_COMMON_CASE, primary_selection)
 
 
 func _care_operation_minimum_route_meters() -> float:
@@ -924,7 +801,7 @@ func _show_correction(key: String) -> void:
 # --- Event-driven steps ---
 
 func _start_workspace() -> void:
-	_current_step = "workspace"
+	_enter_step("workspace")
 	_player.set_move_enabled(true)
 	# Phase 1 wanders the room while the new client's session stalls; the
 	# exploration gate is where the spoofed signal finally breaks through.
@@ -1099,7 +976,7 @@ func _start_care_audit_circuit() -> void:
 	_care_audit_branch = ""
 	_care_audit_secondary_route = ""
 	_care_audit_outcome = ""
-	_current_step = "care_audit"
+	_enter_step("care_audit")
 	_ui_scheduler.cancel_tag("care_context_hint")
 	_build_care_audit_interactables()
 	for interactable in _exploration_interactables:
@@ -1140,6 +1017,7 @@ func _build_care_audit_interactables() -> void:
 		evidence.set("one_shot", false)
 		evidence.set("required_character", "peris")
 		evidence.set("description", "Care Audit: %s" % str(config.get("label", evidence_id)))
+		evidence.set("consequence_preview", "Add this record to the care-versus-compliance comparison.")
 		evidence.set_meta("care_audit_evidence_id", evidence_id)
 		if source.has_meta("interaction_target_position"):
 			evidence.set_meta(
@@ -1167,19 +1045,7 @@ func _care_audit_cases() -> Array:
 	)
 
 func _care_audit_cases_for_branch(branch: String, secondary_route := "") -> Array:
-	var cases: Array = [CARE_AUDIT_COMMON_CASE]
-	var continuity: Dictionary = CARE_AUDIT_BRANCH_CASES.get(branch, {})
-	if not continuity.is_empty():
-		cases.append(continuity)
-	var route_id := secondary_route
-	if route_id == "":
-		var candidates: Array = continuity.get("candidates", [])
-		if not candidates.is_empty():
-			route_id = str(candidates[0])
-	var final_case: Dictionary = CARE_AUDIT_FINAL_CASES.get(route_id, {})
-	if not final_case.is_empty():
-		cases.append(final_case)
-	return cases
+	return [CARE_AUDIT_COMMON_CASE]
 
 func _current_care_audit_case() -> Dictionary:
 	var cases := _care_audit_cases()
@@ -1198,8 +1064,9 @@ func _start_care_audit_case() -> void:
 	if _explore_logbook_gate != null:
 		_explore_logbook_gate.set_interaction_enabled(false)
 	_show_care_audit_prompt(
-		"CARE AUDIT %d/3 · %s\nReview %s. PRIORITY CHOICE: %s. The last choice record reviewed is staged for the logbook." % [
+		"CARE AUDIT %d/%d · %s\nReview %s. PRIORITY CHOICE: %s. The last choice record reviewed is staged for the logbook." % [
 			_care_audit_case_index + 1,
+			_care_audit_cases().size(),
 			str(case_data.get("label", "CASE")),
 			_care_audit_evidence_labels(case_data.get("evidence", []) as Array),
 			_care_audit_evidence_labels(case_data.get("candidates", []) as Array),
@@ -1215,8 +1082,10 @@ func _set_care_audit_evidence_enabled(required: Array) -> void:
 			continue
 		if required.has(evidence_id):
 			_rearm_care_interactable(evidence)
-			if evidence.has_method("show_tutorial_label"):
-				evidence.call_deferred("show_tutorial_label")
+			# The hover verb already names the action. Persistent labels for every active
+			# record overlap in this small room and make the wrong object win the click.
+			if evidence.has_method("hide_tutorial_label_immediate"):
+				evidence.hide_tutorial_label_immediate()
 		else:
 			evidence.set_interaction_enabled(false)
 
@@ -1232,8 +1101,9 @@ func _on_care_audit_evidence_reviewed(evidence_id: String) -> void:
 	var candidates: Array = case_data.get("candidates", [])
 	if candidates.has(evidence_id):
 		_care_audit_selected_candidate = evidence_id
-	var message := "CARE AUDIT %d/3 · %s\nRECORDS %d/%d" % [
+	var message := "CARE AUDIT %d/%d · %s\nRECORDS %d/%d" % [
 		_care_audit_case_index + 1,
+		_care_audit_cases().size(),
 		str(case_data.get("label", "CASE")),
 		_care_audit_case_evidence.size(),
 		required.size(),
@@ -1277,6 +1147,7 @@ func _on_care_audit_logbook_interacted() -> void:
 		return
 	if _care_audit_case_index == 0:
 		_care_audit_branch = "care" if _care_audit_selected_candidate == "wellness" else "compliance"
+		_care_audit_outcome = _care_audit_selected_candidate
 	elif _care_audit_case_index == 1:
 		# The continuity decision selects a genuinely different final evidence
 		# route; it is not a cosmetic entry in the commit history.
@@ -1343,7 +1214,7 @@ func _care_audit_evidence_labels(ids: Array) -> String:
 func _start_care_operations() -> void:
 	if _current_step == "care_operations":
 		return
-	_current_step = "care_operations"
+	_enter_step("care_operations")
 	_care_operation_phase_index = 0
 	_care_operation_stage = "collect_kit"
 	_care_operation_completed_tasks.clear()
@@ -1358,7 +1229,7 @@ func _start_care_operations() -> void:
 	if _explore_logbook_gate != null:
 		_explore_logbook_gate.set_interaction_enabled(false)
 	_show_care_audit_prompt(
-		"CARE PLAN 0/4 · TAKE THE FIELD KIT\nCarry the diagnostic tools through four distinct operations before releasing the connection.",
+		"CARE PLAN 0/%d · TAKE THE FIELD KIT\nCarry the diagnostic tools through one priority-response operation before releasing the connection." % CARE_OPERATION_PHASES.size(),
 		9.0
 	)
 	if _care_kit_pickup_interactable != null:
@@ -1440,6 +1311,7 @@ func _build_care_operation_interactables() -> void:
 			task_interactable.set("one_shot", false)
 			task_interactable.set("required_character", "peris")
 			task_interactable.set("description", "Care Operation: %s" % str(task.get("label", task_id)))
+			task_interactable.set("consequence_preview", "Update the current priority response with this result.")
 			task_interactable.set_meta("care_operation_task_id", task_id)
 			task_interactable.set_meta("care_operation_source_id", source_id)
 			task_interactable.set_meta("care_operation_phase_id", str(phase.get("id", "")))
@@ -1474,8 +1346,9 @@ func _start_care_operation_phase() -> void:
 		_explore_logbook_gate.set_interaction_enabled(false)
 	_set_care_operation_tasks_enabled(phase.get("tasks", []) as Array)
 	_show_care_audit_prompt(
-		"CARE PLAN %d/4 · %s\nComplete eight unique jobs. The last highlighted policy record chooses the physical resolution." % [
+		"CARE PLAN %d/%d · %s\nCheck the living system and both pressures. The last policy record reviewed chooses the physical resolution." % [
 			_care_operation_phase_index + 1,
+			CARE_OPERATION_PHASES.size(),
 			str(phase.get("label", "OPERATION")),
 		],
 		9.0
@@ -1497,8 +1370,8 @@ func _set_care_operation_tasks_enabled(tasks: Array) -> void:
 		_rearm_care_interactable(interactable)
 		var source_id := str(interactable.get_meta("care_operation_source_id", ""))
 		_bind_care_operation_target(source_id, interactable)
-		if interactable.has_method("show_tutorial_label"):
-			interactable.call_deferred("show_tutorial_label")
+		if interactable.has_method("hide_tutorial_label_immediate"):
+			interactable.hide_tutorial_label_immediate()
 
 
 func _bind_care_operation_target(source_id: String, interactable: Node) -> void:
@@ -1535,8 +1408,9 @@ func _on_care_operation_task_completed(task_id: String) -> void:
 		_start_care_operation_resolution()
 	else:
 		_show_care_audit_prompt(
-			"CARE PLAN %d/4 · %s · JOBS %d/%d" % [
+			"CARE PLAN %d/%d · %s · JOBS %d/%d" % [
 				_care_operation_phase_index + 1,
+				CARE_OPERATION_PHASES.size(),
 				str(phase.get("label", "OPERATION")),
 				_care_operation_completed_tasks.size(),
 				task_ids.size(),
@@ -1579,6 +1453,7 @@ func _start_care_operation_resolution() -> void:
 	_care_operation_resolution_interactable.set("one_shot", false)
 	_care_operation_resolution_interactable.set("required_character", "peris")
 	_care_operation_resolution_interactable.set("description", "Care Resolution: %s" % str(resolution.get("label", "")))
+	_care_operation_resolution_interactable.set("consequence_preview", "Apply the chosen response to this room object.")
 	_care_operation_resolution_interactable.set_meta("care_operation_resolution_id", str(resolution.get("id", "")))
 	_care_operation_resolution_interactable.set_meta("care_operation_source_id", source_id)
 	if source.has_meta("interaction_target_position"):
@@ -1589,8 +1464,8 @@ func _start_care_operation_resolution() -> void:
 		_on_care_operation_resolution_completed.bind(str(resolution.get("id", "")))
 	)
 	_bind_care_operation_target(source_id, _care_operation_resolution_interactable)
-	if _care_operation_resolution_interactable.has_method("show_tutorial_label"):
-		_care_operation_resolution_interactable.show_tutorial_label()
+	if _care_operation_resolution_interactable.has_method("hide_tutorial_label_immediate"):
+		_care_operation_resolution_interactable.hide_tutorial_label_immediate()
 	_show_care_audit_prompt(
 		"%s · ROUTE SELECTED\nComplete %s, then return to the logbook." % [
 			str(phase.get("label", "OPERATION")),
@@ -1607,11 +1482,26 @@ func _on_care_operation_resolution_completed(resolution_id: String) -> void:
 	_care_operation_resolution_id = resolution_id
 	_care_operation_stage = "commit"
 	if _care_operation_resolution_interactable != null:
+		_apply_care_resolution_world_state(str(
+			_care_operation_resolution_interactable.get_meta("care_operation_source_id", "")))
 		_care_operation_resolution_interactable.set_interaction_enabled(false)
 	_rearm_care_interactable(_explore_logbook_gate)
 	if _explore_logbook_gate != null and _explore_logbook_gate.has_method("show_tutorial_label"):
 		_explore_logbook_gate.show_tutorial_label()
 	_show_care_audit_prompt("CARE PLAN · RESOLUTION COMPLETE · RETURN TO THE LOGBOOK TO COMMIT.", 7.0)
+
+
+func _apply_care_resolution_world_state(source_id: String) -> void:
+	var config: Dictionary = CARE_AUDIT_EVIDENCE_SOURCES.get(source_id, {})
+	for raw_target_name in (config.get("targets", []) as Array):
+		var target := find_child(str(raw_target_name), true, false)
+		if target == null:
+			continue
+		target.set_meta("care_resolution_active", true)
+		if target.has_method("play_interaction_result"):
+			target.play_interaction_result(true)
+		if target.has_method("set_external_highlight"):
+			target.set_external_highlight("care_resolution", true)
 
 
 func _on_care_operation_logbook_interacted() -> void:
@@ -1651,7 +1541,7 @@ func _complete_care_operations() -> void:
 	if _explore_logbook_gate != null and _explore_logbook_gate.has_method("show_tutorial_label"):
 		_explore_logbook_gate.show_tutorial_label()
 	_show_care_audit_prompt(
-		"CARE PLAN COMPLETE · 4/4 OPERATIONS COMMITTED\nReturn the field kit at the logbook before releasing the connection.",
+		"CARE PLAN COMPLETE · %d/%d OPERATION COMMITTED\nReturn the field kit at the logbook before releasing the connection." % [CARE_OPERATION_PHASES.size(), CARE_OPERATION_PHASES.size()],
 		9.0
 	)
 
@@ -1693,7 +1583,7 @@ func _face_peris_to_portal() -> void:
 		_player.look_at(target, Vector3.UP)
 
 func _start_monos_breakthrough() -> void:
-	_current_step = "monos_breakthrough"
+	_enter_step("monos_breakthrough")
 	_face_peris_to_portal()
 	_monos.visible = true
 	_portal_light.light_color = Color(0.9, 0.6, 0.3)
@@ -1712,7 +1602,7 @@ func _start_monos_breakthrough() -> void:
 	)
 
 func _start_session_begins() -> void:
-	_current_step = "session_begins"
+	_enter_step("session_begins")
 	_face_peris_to_portal()
 	_portal_tween_active = true
 	var t := create_tween()
@@ -1722,7 +1612,7 @@ func _start_session_begins() -> void:
 	_scheduler.schedule_after(2.0, _start_attack, "attack")
 
 func _start_attack() -> void:
-	_current_step = "attack"
+	_enter_step("attack")
 	_attack_particles.visible = true
 	_attack_particles.light_color = Color(0.9, 0.15, 0.05)
 	_attack_particles.light_energy = 5.0
@@ -1804,7 +1694,7 @@ func _start_confirm_protect() -> void:
 	_tutorial_prompt.show_action_prompt("pause", "Unpause", 0.0, "Space")
 
 func _start_executing() -> void:
-	_current_step = "executing"
+	_enter_step("executing")
 	_is_paused = false
 	if _hud:
 		_hud.set_paused(false)
@@ -1842,7 +1732,7 @@ func _fire_queued_protect() -> void:
 	_scheduler.schedule_after(0, _start_aftermath, "aftermath")
 
 func _start_aftermath() -> void:
-	_current_step = "aftermath"
+	_enter_step("aftermath")
 	_attack_particles.visible = false
 	_portal_light.light_color = Color(0.8, 0.6, 0.3)
 	_portal_light.light_energy = 2.0
@@ -1853,7 +1743,7 @@ func _start_aftermath() -> void:
 	)
 
 func _start_efficiency_log() -> void:
-	_current_step = "efficiency_log"
+	_enter_step("efficiency_log")
 	_efficiency_score = 62.0
 	DialogueData.say_to(_dialogue, "peris_sim.system.complete")
 	_monos.fade_out(1.5)
@@ -1869,7 +1759,7 @@ func _start_efficiency_log() -> void:
 	)
 
 func _start_sanction_notice() -> void:
-	_current_step = "sanction_notice"
+	_enter_step("sanction_notice")
 	_show_sanction_feed_visual(
 		"SANCTION MODE",
 		"CLIENT FEED DISCONNECTED\nCASELOAD REASSIGNED",
@@ -1882,7 +1772,7 @@ func _start_sanction_notice() -> void:
 	)
 
 func _start_sanction_feed() -> void:
-	_current_step = "sanction_feed"
+	_enter_step("sanction_feed")
 	_show_sanction_feed_visual(
 		"RESTORATIVE MODE",
 		"GEL LOOP\nSOAP LOOP\nPLANT TIMELAPSE",
@@ -1896,7 +1786,7 @@ func _start_sanction_feed() -> void:
 	)
 
 func _start_spiral_flash() -> void:
-	_current_step = "spiral_flash"
+	_enter_step("spiral_flash")
 	_show_sanction_feed_visual(
 		"FRAME DROP",
 		"SPIRAL SIGNAL DETECTED",
@@ -1909,7 +1799,7 @@ func _start_spiral_flash() -> void:
 	)
 
 func _start_retro() -> void:
-	_current_step = "retro"
+	_enter_step("retro")
 	_show_sanction_feed_visual(
 		"RESTORATIVE MODE",
 		"ARCHIVE FOOTAGE",
@@ -1922,7 +1812,7 @@ func _start_retro() -> void:
 	)
 
 func _start_sim_bay_exit() -> void:
-	_current_step = "sim_bay_exit"
+	_enter_step("sim_bay_exit")
 	_player.set_move_enabled(false)
 	if _sanction_feed_label:
 		_sanction_feed_label.visible = false
@@ -1934,13 +1824,13 @@ func _start_sim_bay_exit() -> void:
 	)
 
 func _start_transition_out() -> void:
-	_current_step = "transition_out"
+	_enter_step("transition_out")
 	_player.set_move_enabled(false)
 	_fade_start_tick = _scheduler.get_current_tick()
 	_scheduler.schedule_after(2.5, _complete, "complete")
 
 func _complete() -> void:
-	_current_step = "complete"
+	_enter_step("complete")
 	if _visit_phase == 1:
 		# First half opens the game, then hands off to Aster's sim.
 		_visit_phase = 2

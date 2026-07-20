@@ -8,7 +8,6 @@ const INTERACTABLE_SCENE := preload("res://scenes/game/interactable.tscn")
 const ItemData = preload("res://scripts/game/objects/item_data.gd")
 const EXPLORATION_RADIUS_SCALE := 1.35
 const EXPLORATION_MIN_RADIUS := 1.6
-const EXPLORATION_FOCUS_OFFSET := Vector3(0, 4.2, 3.2)
 const EXPLORATION_FOCUS_HEIGHT := 0.9
 const OUTLINE_POST_PROCESS_ENABLED := false
 const CHROMATIC_ABERRATION_SHADER := preload("res://resources/chromatic_aberration.gdshader")
@@ -103,6 +102,7 @@ var _exploration_focus_prev_camera_target: Node3D = null
 var _exploration_focus_prev_camera_state := {}
 var _exploration_focus_prev_scheduler_paused := false
 var _exploration_focus_prev_move_enabled := true
+var _story_step_generation := 0
 
 func _ready() -> void:
 	if Engine.is_editor_hint():
@@ -1315,8 +1315,13 @@ func _begin_exploration_focus(focus_node: Node3D) -> void:
 		_exploration_focus_prev_camera_target = _camera.target
 		_exploration_focus_prev_camera_state = _camera.capture_view_state() \
 			if _camera.has_method("capture_view_state") else {}
-		_camera.follow_offset = EXPLORATION_FOCUS_OFFSET
-		_camera.lock_to(_exploration_focus_point(focus_node))
+		var focus_point := _exploration_focus_point(focus_node)
+		if _camera.has_method("focus_on"):
+			_camera.focus_on(focus_point, focus_node, {
+				"preferred_world_position": _player.global_position if _player != null else Vector3.INF,
+			})
+		else:
+			_camera.lock_to(focus_point)
 
 func _finish_exploration_focus() -> void:
 	if not _exploration_focus_active:
@@ -1403,11 +1408,18 @@ func _update_thought_fade() -> void:
 
 # --- Step transition ---
 
-## Enter a step once and clear stale dialogue callbacks.
+## Enter a step once and retire presentation/input owned by the previous beat. The generation is
+## exposed for delayed callbacks that need a cheap stale-work guard; StoryBeatRunner remains the
+## typed lifecycle owner for beats registered as full StoryBeat objects.
 func _enter_step(step_name: String) -> bool:
 	if _current_step == step_name:
 		return false
 	var previous_step := _current_step
+	# A final inspection can complete an objective from inside its own `interacted` signal.
+	# Retire that focus before disconnecting dialogue callbacks, otherwise its finish callback
+	# is removed while the gameplay scheduler remains paused forever.
+	if _exploration_focus_active:
+		_finish_exploration_focus()
 	_current_step = step_name
 	var beat_id := StringName(step_name)
 	if _story_beat_runner.has_beat(beat_id):
@@ -1417,10 +1429,37 @@ func _enter_step(step_name: String) -> bool:
 			return false
 	else:
 		_story_beat_runner.deactivate(&"step_changed")
+	_story_step_generation += 1
+	_cancel_previous_step_interaction()
+	_clear_thought_immediate()
 	if _dialogue:
 		for conn in _dialogue.dialogue_finished.get_connections():
 			_dialogue.dialogue_finished.disconnect(conn.callable)
 	return true
+
+
+func _cancel_previous_step_interaction() -> void:
+	if _player == null:
+		return
+	if _player.has_method("cancel_interaction_target"):
+		_player.cancel_interaction_target()
+	# Preserve whether the beat had movement enabled, but stop any route/arrival callback that
+	# belonged to the previous step before the new step exposes its targets.
+	if _player.has_method("is_move_enabled") and _player.has_method("set_move_enabled"):
+		var was_enabled := bool(_player.is_move_enabled())
+		_player.set_move_enabled(false)
+		_player.set_move_enabled(was_enabled)
+
+
+func _clear_thought_immediate() -> void:
+	_thought_fade_active = false
+	if _thought_label != null:
+		_thought_label.text = ""
+		_thought_label.modulate.a = 0.0
+
+
+func _current_story_step_generation() -> int:
+	return _story_step_generation
 
 # --- Dialogue chain ---
 
