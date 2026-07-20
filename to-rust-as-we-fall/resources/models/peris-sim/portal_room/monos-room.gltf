@@ -76,13 +76,72 @@
 			},
 			"extensions":{
 				"KHR_materials_emissive_strength":{
-					"emissiveStrength":2
+					"emissiveStrength":1.600000023841858
 				}
 			},
-			"name":"MonosRoomAtlas",
+			"name":"MonosRoomShellTex",
 			"pbrMetallicRoughness":{
 				"baseColorTexture":{
 					"index":1
+				},
+				"metallicFactor":0,
+				"roughnessFactor":0.8999999761581421
+			}
+		},
+		{
+			"doubleSided":true,
+			"emissiveFactor":[
+				1,
+				1,
+				1
+			],
+			"emissiveTexture":{
+				"index":2
+			},
+			"extensions":{
+				"KHR_materials_emissive_strength":{
+					"emissiveStrength":1.600000023841858
+				}
+			},
+			"name":"MonosPortalTex",
+			"pbrMetallicRoughness":{
+				"baseColorTexture":{
+					"index":3
+				},
+				"metallicFactor":0,
+				"roughnessFactor":0.8999999761581421
+			}
+		},
+		{
+			"doubleSided":true,
+			"emissiveFactor":[
+				1,
+				1,
+				1
+			],
+			"emissiveTexture":{
+				"index":4
+			},
+			"extensions":{
+				"KHR_materials_emissive_strength":{
+					"emissiveStrength":2
+				}
+			},
+			"name":"MonosConsoleTex",
+			"pbrMetallicRoughness":{
+				"baseColorTexture":{
+					"index":5
+				},
+				"metallicFactor":0,
+				"roughnessFactor":0.8999999761581421
+			}
+		},
+		{
+			"doubleSided":true,
+			"name":"MonosShelfTex",
+			"pbrMetallicRoughness":{
+				"baseColorTexture":{
+					"index":6
 				},
 				"metallicFactor":0,
 				"roughnessFactor":0.8999999761581421
@@ -114,7 +173,7 @@
 						"TEXCOORD_0":6
 					},
 					"indices":7,
-					"material":0
+					"material":1
 				}
 			]
 		},
@@ -128,7 +187,7 @@
 						"TEXCOORD_0":10
 					},
 					"indices":11,
-					"material":0
+					"material":2
 				}
 			]
 		},
@@ -142,7 +201,7 @@
 						"TEXCOORD_0":14
 					},
 					"indices":15,
-					"material":0
+					"material":3
 				}
 			]
 		}
@@ -155,18 +214,63 @@
 		{
 			"sampler":0,
 			"source":1
+		},
+		{
+			"sampler":0,
+			"source":2
+		},
+		{
+			"sampler":0,
+			"source":3
+		},
+		{
+			"sampler":0,
+			"source":4
+		},
+		{
+			"sampler":0,
+			"source":5
+		},
+		{
+			"sampler":0,
+			"source":6
 		}
 	],
 	"images":[
 		{
 			"mimeType":"image/png",
-			"name":"monos-room-atlas_emissive",
-			"uri":"monos-room-atlas_emissive.png"
+			"name":"MonosRoomShell_emissive",
+			"uri":"MonosRoomShell_emissive.png"
 		},
 		{
 			"mimeType":"image/png",
-			"name":"monos-room-atlas",
-			"uri":"monos-room-atlas.png"
+			"name":"MonosRoomShell_tex",
+			"uri":"MonosRoomShell_tex.png"
+		},
+		{
+			"mimeType":"image/png",
+			"name":"MonosPortal_emissive",
+			"uri":"MonosPortal_emissive.png"
+		},
+		{
+			"mimeType":"image/png",
+			"name":"MonosPortal_tex",
+			"uri":"MonosPortal_tex.png"
+		},
+		{
+			"mimeType":"image/png",
+			"name":"MonosConsole_emissive",
+			"uri":"MonosConsole_emissive.png"
+		},
+		{
+			"mimeType":"image/png",
+			"name":"MonosConsole_tex",
+			"uri":"MonosConsole_tex.png"
+		},
+		{
+			"mimeType":"image/png",
+			"name":"MonosShelf_tex",
+			"uri":"MonosShelf_tex.png"
 		}
 	],
 	"accessors":[

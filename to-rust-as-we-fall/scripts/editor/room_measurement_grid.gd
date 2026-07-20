@@ -20,6 +20,12 @@ extends Node3D
 		major_step = maxf(value, 0.01)
 		_request_rebuild()
 @export var show_in_game := false
+## Uncheck to hide the guide while composing in the editor without deleting it.
+@export var show_in_editor := true:
+	set(value):
+		show_in_editor = value
+		if Engine.is_editor_hint():
+			visible = value
 @export var minor_color := Color(0.18, 0.72, 0.78, 0.22):
 	set(value):
 		minor_color = value
@@ -44,8 +50,12 @@ func _request_rebuild() -> void:
 
 
 func _ready() -> void:
+	if Engine.is_editor_hint():
+		visible = show_in_editor
+		_rebuild()
+		return
 	var runtime_visible := show_in_game or OS.get_environment("PERIS_LAYOUT_GUIDES") == "1"
-	if not Engine.is_editor_hint() and not runtime_visible:
+	if not runtime_visible:
 		visible = false
 		return
 	_rebuild()

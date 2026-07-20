@@ -168,21 +168,27 @@ func _process(delta: float) -> void:
 	# Scene changes can dispatch one final _process after teardown.
 	if _scheduler == null or _game_state == null:
 		return
+	var perf_started := PerformanceTrace.begin()
 	# Cosmetic: keep background chunk streams building a slice per frame (independent of the gameplay clock).
+	var chunks_started := PerformanceTrace.begin()
 	_advance_chunk_streams()
+	PerformanceTrace.end(&"update", &"sequence.chunk_streams", chunks_started, name, 1)
 	# Gameplay lane.
 	var spd := _compute_speed()
 	_scheduler.set_speed(spd)
 	var gameplay_scheduler: EventScheduler = _scheduler
 	var gameplay_tick_before := gameplay_scheduler.get_current_tick()
+	var recipients_started := PerformanceTrace.begin()
 	for node in _get_speed_recipients():
 		# A chunk reload (the roguelike loader) queue_frees the old chunk's recipients; skip any that a
 		# subclass list hasn't pruned yet rather than writing to a freed node.
 		if is_instance_valid(node):
 			node.speed_multiplier = spd
+	PerformanceTrace.end(&"update", &"sequence.speed_recipients", recipients_started, name, 1)
 	# A rendered deterministic playthrough may have input boundaries between fixed movie
 	# frames. Stop exactly on those ticks; the recorder injects the inputs next frame and
 	# ordinary gameplay continues. Live play keeps the scheduler's normal real-delta path.
+	var scheduler_started := PerformanceTrace.begin()
 	if _playthrough_recorder != null and _playthrough_recorder.has_method("constrain_playback_advance") \
 			and bool(_playthrough_recorder.call("is_playing_back")):
 		var requested_ticks := delta * spd
@@ -191,30 +197,49 @@ func _process(delta: float) -> void:
 		gameplay_scheduler.advance_ticks(allowed_ticks)
 	else:
 		gameplay_scheduler.advance(delta)
+	PerformanceTrace.end(&"update", &"sequence.gameplay_scheduler", scheduler_started, name, 1)
 	var gameplay_ticks_advanced := gameplay_scheduler.get_current_tick() - gameplay_tick_before
 	# advance() can fire a scheduled callback — e.g. a scene transition's _complete →
 	# change_scene_to_file → _teardown_sequence — that tears this sequence down synchronously,
 	# nulling both schedulers. The guard above only ran BEFORE advance, so re-check here before
 	# touching the (possibly torn-down) UI lane, or _ui_scheduler.get_current_tick() hits null.
 	if _scheduler == null or _ui_scheduler == null or _game_state == null:
+		PerformanceTrace.end(&"update", &"sequence.process", perf_started, "torn_down", 0)
 		return
 	# UI lane: dialogue + thought-fades advance here. F-scaled, but independent of
 	# gameplay pause, so pausing gameplay keeps narrative flowing.
 	var ui_before := _ui_scheduler.get_current_tick()
 	_ui_scheduler.set_speed(_compute_dialogue_speed())
+	var ui_scheduler_started := PerformanceTrace.begin()
 	_ui_scheduler.advance(delta)
+	PerformanceTrace.end(&"update", &"sequence.ui_scheduler", ui_scheduler_started, name, 1)
 	var ui_delta := _ui_scheduler.get_current_tick() - ui_before
 	if _dialogue:
+		var dialogue_started := PerformanceTrace.begin()
 		_dialogue.advance_ui_time(ui_delta)
+		PerformanceTrace.end(&"update", &"sequence.dialogue", dialogue_started, name, 1)
+	var animations_started := PerformanceTrace.begin()
 	_sync_scheduler_animations()
+	PerformanceTrace.end(&"draw", &"sequence.scheduler_animations", animations_started, name, 1)
+	var thought_started := PerformanceTrace.begin()
 	_update_thought_fade()
+	PerformanceTrace.end(&"draw", &"sequence.thought_fade", thought_started, name, 1)
+	var perception_started := PerformanceTrace.begin()
 	_sync_perception_shader()
+	PerformanceTrace.end(&"draw", &"sequence.perception_shader", perception_started, name, 1)
+	var identify_started := PerformanceTrace.begin()
 	_update_data_identify()
+	PerformanceTrace.end(&"update", &"sequence.data_identify", identify_started, name, 1)
 	# Subclass gameplay integration must consume SIMULATION time, not render time. This
 	# keeps planning pause free and makes fixed-FPS movie replay preserve live outcomes.
 	var gameplay_delta := gameplay_ticks_advanced / spd if spd > 0.000001 else 0.0
+	var beat_started := PerformanceTrace.begin()
 	_story_beat_runner.update(gameplay_delta)
+	PerformanceTrace.end(&"update", &"sequence.story_beats", beat_started, name, 1)
+	var scene_started := PerformanceTrace.begin()
 	_on_process(gameplay_delta, spd)
+	PerformanceTrace.end(&"update", &"sequence.scene_process", scene_started, name, 1)
+	PerformanceTrace.end(&"update", &"sequence.process", perf_started, name, 1)
 
 func _exit_tree() -> void:
 	if Engine.is_editor_hint():
@@ -430,6 +455,7 @@ func _init_ui() -> void:
 	_dev_console.register_command("chroma", _cmd_chroma, "chroma on|off — testing-mode ID-color overlay on every interactable")
 	_dev_console.register_command("photo", _cmd_photo, "photo on|off — screenshot mode: fog of war + UI hidden, restored on off")
 	_dev_console.register_command("events", _cmd_events, "events on|off — print every game event + note to the console (default on in play)")
+	_dev_console.register_command("grid", _cmd_grid, "grid on|off — floor measurement grid sized from this scene's grid")
 	# THE EVENT TRACE defaults ON for interactive play and OFF under the test runner/headless —
 	# a play session console always carries the WHY (catches, sweeps, teleports, damage), and
 	# ten thousand headless tests do not drown in it.
@@ -469,6 +495,30 @@ func _cmd_fog(args: Array) -> String:
 	if not args.is_empty():
 		fog_of_war_enabled = str(args[0]).to_lower() in ["on", "true", "1"]
 	return "fog of war: %s" % ("ON" if fog_of_war_enabled else "off (dev)")
+
+# The floor measurement guide is available in EVERY scene that has a grid — built lazily
+# from the live GridWorld's dimensions and toggled from the dev console, never baked in.
+var _measurement_grid: Node3D
+
+func _cmd_grid(args: Array) -> String:
+	var turn_on := args.is_empty() or str(args[0]).to_lower() in ["on", "true", "1"]
+	if _measurement_grid == null or not is_instance_valid(_measurement_grid):
+		if not turn_on:
+			return "measurement grid: off"
+		var grid = _game_state.grid if _game_state != null else null
+		if grid == null:
+			return "no grid in this scene"
+		var guide = preload("res://scripts/editor/room_measurement_grid.gd").new()
+		guide.name = "MeasurementGridOverlay"
+		guide.show_in_game = true
+		guide.room_size = Vector2(grid.width * grid.cell_size, grid.height * grid.cell_size)
+		guide.minor_step = grid.cell_size * 0.5
+		guide.major_step = grid.cell_size
+		add_child(guide)
+		guide.global_position = Vector3(grid.origin.x, grid.origin.y + 0.01, grid.origin.z)
+		_measurement_grid = guide
+	_measurement_grid.visible = turn_on
+	return "measurement grid: %s" % ("ON" if turn_on else "off")
 
 var _photo_mode := false
 var _photo_fog_prev := true

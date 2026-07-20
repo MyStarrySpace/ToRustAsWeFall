@@ -3,9 +3,6 @@
 		"generator":"Khronos glTF Blender I/O v5.1.19",
 		"version":"2.0"
 	},
-	"extensionsUsed":[
-		"KHR_materials_emissive_strength"
-	],
 	"scene":0,
 	"scenes":[
 		{
@@ -24,23 +21,10 @@
 	"materials":[
 		{
 			"doubleSided":true,
-			"emissiveFactor":[
-				1,
-				1,
-				1
-			],
-			"emissiveTexture":{
-				"index":0
-			},
-			"extensions":{
-				"KHR_materials_emissive_strength":{
-					"emissiveStrength":2
-				}
-			},
-			"name":"PerisFurnitureAtlas",
+			"name":"FloorPlinthTex",
 			"pbrMetallicRoughness":{
 				"baseColorTexture":{
-					"index":1
+					"index":0
 				},
 				"metallicFactor":0,
 				"roughnessFactor":0.8999999761581421
@@ -67,22 +51,13 @@
 		{
 			"sampler":0,
 			"source":0
-		},
-		{
-			"sampler":0,
-			"source":1
 		}
 	],
 	"images":[
 		{
 			"mimeType":"image/png",
-			"name":"peris-furniture-atlas_emissive",
-			"uri":"peris-furniture-atlas_emissive.png"
-		},
-		{
-			"mimeType":"image/png",
-			"name":"peris-furniture-atlas",
-			"uri":"peris-furniture-atlas.png"
+			"name":"FloorPlinth_tex",
+			"uri":"FloorPlinth_tex.png"
 		}
 	],
 	"accessors":[
