@@ -311,7 +311,7 @@
 		{
 			"bufferView":4,
 			"componentType":5126,
-			"count":792,
+			"count":608,
 			"max":[
 				1.5,
 				1.5,
@@ -327,13 +327,13 @@
 		{
 			"bufferView":5,
 			"componentType":5126,
-			"count":792,
+			"count":608,
 			"type":"VEC3"
 		},
 		{
 			"bufferView":6,
 			"componentType":5126,
-			"count":792,
+			"count":608,
 			"type":"VEC2"
 		},
 		{
@@ -438,74 +438,74 @@
 		},
 		{
 			"buffer":0,
-			"byteLength":9504,
+			"byteLength":7296,
 			"byteOffset":5180,
 			"target":34962
 		},
 		{
 			"buffer":0,
-			"byteLength":9504,
-			"byteOffset":14684,
+			"byteLength":7296,
+			"byteOffset":12476,
 			"target":34962
 		},
 		{
 			"buffer":0,
-			"byteLength":6336,
-			"byteOffset":24188,
+			"byteLength":4864,
+			"byteOffset":19772,
 			"target":34962
 		},
 		{
 			"buffer":0,
 			"byteLength":2436,
-			"byteOffset":30524,
+			"byteOffset":24636,
 			"target":34963
 		},
 		{
 			"buffer":0,
 			"byteLength":1200,
-			"byteOffset":32960,
+			"byteOffset":27072,
 			"target":34962
 		},
 		{
 			"buffer":0,
 			"byteLength":1200,
-			"byteOffset":34160,
+			"byteOffset":28272,
 			"target":34962
 		},
 		{
 			"buffer":0,
 			"byteLength":800,
-			"byteOffset":35360,
+			"byteOffset":29472,
 			"target":34962
 		},
 		{
 			"buffer":0,
 			"byteLength":300,
-			"byteOffset":36160,
+			"byteOffset":30272,
 			"target":34963
 		},
 		{
 			"buffer":0,
 			"byteLength":2016,
-			"byteOffset":36460,
+			"byteOffset":30572,
 			"target":34962
 		},
 		{
 			"buffer":0,
 			"byteLength":2016,
-			"byteOffset":38476,
+			"byteOffset":32588,
 			"target":34962
 		},
 		{
 			"buffer":0,
 			"byteLength":1344,
-			"byteOffset":40492,
+			"byteOffset":34604,
 			"target":34962
 		},
 		{
 			"buffer":0,
 			"byteLength":504,
-			"byteOffset":41836,
+			"byteOffset":35948,
 			"target":34963
 		}
 	],
@@ -517,7 +517,7 @@
 	],
 	"buffers":[
 		{
-			"byteLength":42340,
+			"byteLength":36452,
 			"uri":"monos-room.bin"
 		}
 	]
