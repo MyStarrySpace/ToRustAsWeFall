@@ -8,7 +8,15 @@ static var _visit_phase := 1
 
 const PLACEMENT_ROOT := "ScenePlacement"
 const ROOM_OCCUPANTS := [
-	"Portal", "Kiosk", "Armchair", "CoffeeTable", "Bookshelf", "bench",
+	"Portal", "Kiosk", "Armchair", "CoffeeTable", "Bookshelf", "bench", "couch",
+]
+const REQUIRED_AUTHORED_ROOM_NODES := [
+	"RoomShell", "RoomFurniture", "bench", "couch", "Portal", "Kiosk", "Armchair",
+	"CoffeeTable", "Bookshelf", "Rug", "WallArtFrame", "WallArt", "WateringCan",
+	"WellnessTerminal", "StrikeNotice", "CareLogbookConsole", "CareFieldKit",
+	"Plant1Table", "Plant1", "Plant2Table", "Plant2", "Plant3Table", "Plant3",
+	"Plant4Table", "Plant4", "Plant5Table", "Plant5", "Plant6Table", "Plant6",
+	"Plant7Table", "Plant7", "Plant8Table", "Plant8", "Plant9Table", "Plant9",
 ]
 const REQUIRED_ROOM_MARKERS := [
 	"PortalAnchor", "KioskAnchor", "ArmchairAnchor",
@@ -70,11 +78,6 @@ const WATERING_CAN_POS := Vector3(11.5, 2.057, 1.0)  # upper shelf, snapped in X
 const FERN_POS := Vector3(7.0, 0.0, 5.0)  # Plant7 anchors the ordered south care row
 # The watering beat drives the player to the dry fern; the input playthrough drives this point.
 const DRY_PLANT_POS := FERN_POS
-
-## Every plant owns a portable 0.6 m-high table and its own readable interaction
-## position. These runtime surfaces are refreshed from the authored table markers,
-## keeping the visual, interaction, and grid contracts on the same source of truth.
-var PERIS_SURFACES := {}
 
 # Exploration beat (phase 1, pre-Monos-arrival)
 var _explore_logbook_gate  # Interactable at the logbook
@@ -308,10 +311,8 @@ var _care_kit_returned := false
 var _is_paused := false
 var _efficiency_score := 100.0
 
-# The portal now sits on the WEST side wall facing the room (+X); the furniture turns to face it.
+# Fallback positions are used only when a stripped test scene omits the editor-authored nodes.
 const PORTAL_PANEL := Vector3(0.5, 2.5, 3.0)   # portal panel centre on the west wall
-const PORTAL_FACE := Vector3(1, 0, 0)          # the direction the portal faces (into the room)
-const DESK_POS := Vector3(1.5, 0, 1.0)  # north administration row, beside the portal
 const PORTAL_POS := Vector3(2.5, 0, 3.0)  # floor in front of the portal — clear space for Peris
 const MONOS_POS := Vector3(2.5, 0, 4.0)  # open circulation cell, separate from the protect stand
 const PROTECT_INPUT_ACTION := &"party_slot_2_ability_1"
@@ -330,17 +331,10 @@ var _room_layout_problems: Array[String] = []
 # The room model binding — model lookups / floor surface / occupancy flow through this (RoomModelBinder).
 var _room_binder := RoomModelBinder.new()
 
-# The composed room visuals (shell + sofas) and the authored furniture/portal/props, both authored in
-# the same Godot frame as the grid above.
-const ROOM_GLTF := preload("res://resources/models/peris-sim/peris-sim.gltf")
-const FURNITURE_GLTF := preload("res://resources/models/peris-sim/peris-furniture.gltf")
-const WATERING_CAN_SCENE := preload("res://scenes/props/peris/watering_can.tscn")
-const WELLNESS_TERMINAL_SCENE := preload("res://scenes/props/peris/wellness_terminal.tscn")
-const STRIKE_NOTICE_SCENE := preload("res://scenes/props/peris/strike_notice.tscn")
-const LOGBOOK_CONSOLE_SCENE := preload("res://scenes/props/peris/logbook_console.tscn")
-const CARE_FIELD_KIT_SCENE := preload("res://scenes/props/peris/care_field_kit.tscn")
+# The composed room visuals and portable props are authored directly in peris_sim.tscn so they are
+# visible, selectable, and movable in the editor. Only the separate live portal-view world is
+# instantiated at runtime.
 const MONOS_PORTAL_ROOM_VISUAL_SCENE := preload("res://scenes/props/peris/monos_portal_room_visual.tscn")
-const PLANT_TABLE_SCENE := preload("res://scenes/props/peris/plant_table.tscn")
 
 
 ## The scene's Marker3Ds are the editable floor plan. Constants above are only
@@ -354,37 +348,50 @@ func _layout_position(marker_name: String, fallback: Vector3) -> Vector3:
 	return marker.global_position if marker != null else fallback
 
 
-func _layout_yaw(marker_name: String, fallback_degrees: float) -> float:
-	var placement := find_child(PLACEMENT_ROOT, true, false)
-	if placement != null:
-		var marker := placement.find_child(marker_name, true, false) as Node3D
-		if marker != null:
-			return marker.global_transform.basis.get_euler().y
-	return deg_to_rad(fallback_degrees)
+func _authored_room_node(node_name: String) -> Node3D:
+	var room := find_child("PerisRoom", true, false) as Node3D
+	if room == null:
+		return null
+	return room.find_child(node_name, true, false) as Node3D
+
+
+func _authored_position(node_name: String, marker_name: String, fallback: Vector3) -> Vector3:
+	var authored := _authored_room_node(node_name)
+	return authored.global_position if authored != null else _layout_position(marker_name, fallback)
+
+
+func _portal_panel_position() -> Vector3:
+	return _authored_position("Portal", "PortalAnchor", PORTAL_PANEL)
+
+
+func _portal_basis() -> Basis:
+	var portal := _authored_room_node("Portal")
+	return portal.global_basis.orthonormalized() if portal != null else Basis(Vector3.UP, PI * 0.5)
+
+
+func _portal_face() -> Vector3:
+	return (_portal_basis() * Vector3.BACK).normalized()
+
+
+## Floor interaction points follow the visible node. `local_floor_offset` rotates with the prop,
+## so moving a wall fixture to another wall does not strand its clickable zone at the old marker.
+func _authored_floor_interaction_position(
+	node_name: String,
+	marker_name: String,
+	fallback: Vector3,
+	local_floor_offset: Vector3
+) -> Vector3:
+	var authored := _authored_room_node(node_name)
+	if authored == null:
+		return _layout_position(marker_name, fallback)
+	var point := authored.global_position
+	point.y = ROOM_FLOOR_Y
+	return point + authored.global_basis.orthonormalized() * local_floor_offset
 
 
 func _set_interaction_approach(interactable: Node, marker_name: String, fallback: Vector3) -> void:
 	if interactable != null:
 		interactable.set_meta("interaction_target_position", _layout_position(marker_name, fallback))
-
-
-func _refresh_peris_surfaces() -> void:
-	PERIS_SURFACES.clear()
-	var fallbacks := _plant_table_fallback_positions()
-	for i in range(9):
-		var table := _layout_position("Plant%dTableAnchor" % (i + 1), fallbacks[i])
-		PERIS_SURFACES["plant_%d" % (i + 1)] = {
-			"y": table.y + 0.6,
-			"rect": [table.x - 0.325, table.z - 0.325, table.x + 0.325, table.z + 0.325],
-		}
-
-
-func _plant_table_fallback_positions() -> Array[Vector3]:
-	return [
-		Vector3(1.0, 0.0, 5.0), Vector3(2.5, 0.0, 5.0), Vector3(4.0, 0.0, 5.0),
-		Vector3(5.5, 0.0, 5.0), Vector3(8.5, 0.0, 5.0), Vector3(10.0, 0.0, 5.0),
-		FERN_POS, Vector3(11.5, 0.0, 5.0), Vector3(13.0, 0.0, 5.0),
-	]
 
 
 # --- Virtual method overrides ---
@@ -675,7 +682,7 @@ func _care_audit_dialogue_model_seconds(keys: Array) -> float:
 
 func _care_context_minimum_route_meters() -> float:
 	var start := _layout_position("PerisStart", PERIS_START)
-	var can := _layout_position("WateringCanAnchor", WATERING_CAN_POS)
+	var can := _authored_position("WateringCan", "WateringCanAnchor", WATERING_CAN_POS)
 	var fern := _care_audit_evidence_contract_position("fern")
 	var logbook := _care_logbook_contract_position()
 	var remaining := ["bookshelf", "stand", "coffee", "peace", "painting", "wellness", "strike"]
@@ -1350,11 +1357,12 @@ func _start_care_operations() -> void:
 func _build_care_operation_kit() -> void:
 	if _care_kit_pickup_interactable != null and is_instance_valid(_care_kit_pickup_interactable):
 		return
-	var kit_pos := _care_logbook_contract_position() + Vector3(-0.35, 0.55, 0.0)
-	_care_kit_mesh = CARE_FIELD_KIT_SCENE.instantiate() as Node3D
-	_care_kit_mesh.name = "CareFieldKit"
-	_care_kit_mesh.position = kit_pos
-	add_child(_care_kit_mesh)
+	_care_kit_mesh = _authored_room_node("CareFieldKit")
+	if _care_kit_mesh == null:
+		push_warning("Peris room is missing its editor-authored CareFieldKit")
+		return
+	var kit_pos := _care_kit_mesh.global_position
+	_care_kit_mesh.visible = true
 	_care_kit_item_id = _game_state.spawn_item("peris_care_field_kit", kit_pos)
 	_care_kit_pickup_interactable = _create_interactable(
 		self, kit_pos, "CareKitPickup", 1.25, CARE_OPERATION_WORK_SECONDS,
@@ -1642,7 +1650,7 @@ func _return_care_operation_kit() -> void:
 	_care_kit_held = false
 	_care_kit_returned = true
 	if _care_kit_mesh != null:
-		_care_kit_mesh.position = _care_logbook_contract_position() + Vector3(-0.35, 0.55, 0.0)
+		_care_kit_mesh.global_position = _care_logbook_contract_position() + Vector3(-0.35, 0.55, 0.0)
 		_care_kit_mesh.visible = true
 	_care_operation_stage = "release"
 	_rearm_care_interactable(_explore_logbook_gate)
@@ -1666,7 +1674,7 @@ func _care_kit_is_held() -> bool:
 func _face_peris_to_portal() -> void:
 	if _player == null:
 		return
-	var panel := _layout_position("PortalAnchor", PORTAL_PANEL)
+	var panel := _portal_panel_position()
 	var target := Vector3(panel.x, _player.global_position.y, panel.z)
 	if target.distance_to(_player.global_position) > 0.1:
 		_player.look_at(target, Vector3.UP)
@@ -1933,70 +1941,8 @@ func _complete() -> void:
 
 # --- Environment ---
 
-## Re-lay-out the modeled room: portal onto the WEST side wall facing the room, the seating turned to
-## face it, the terminal beside it, decor along the far walls — leaving the floor in front of the portal
-## clear for Peris. The furniture are group nodes in the loaded model, so we set their transforms in the
-## gameplay frame (preserving each group's scale; yaw only).
-func _relayout_room(root: Node) -> void:
-	# Every movable cluster has one measured Marker3D. Props move with their furniture as an
-	# assembly, so a chair never leaves its plush behind and a future DCC re-export cannot quietly
-	# scatter the room. The imported models remain the visual skin; ScenePlacement owns layout.
-	_room_layout_problems.clear()
-	_place_assembly(root, "Portal", "PortalAnchor", PORTAL_PANEL, 90.0, ["Portal"])
-	_place_assembly(root, "Kiosk", "KioskAnchor", DESK_POS, 90.0, ["Kiosk"])
-	_place_assembly(root, "Armchair", "ArmchairAnchor", Vector3(4.0, 0.0, 3.0), 0.0,
-		["Armchair", "Plush_Cat"])
-	_place_assembly(root, "CoffeeTable", "CoffeeTableAnchor", Vector3(7.0, 0.0, 3.0), 0.0,
-		["CoffeeTable", "Mug_Teal", "Mug_Cream", "CupSaucer"])
-	_place_assembly(root, "Bookshelf", "BookshelfAnchor", Vector3(12.5, 0.0, 1.0), 0.0,
-		["Bookshelf", "Jar", "BookStack", "Photo"])
-	_place_assembly(root, "bench", "BenchAnchor", Vector3(5.5, 0.5, 1.0), 90.0, ["bench"])
-	# The purple couch and legacy plant stand fought the room's ordered layout. Keep
-	# their imported source editable, but remove them from this authored composition.
-	_hide_modeled_members(root, ["couch", "Plush_Bear", "PlantStand"])
-	_place_assembly(root, "Rug", "RugAnchor", Vector3(7.0, 0.03, 3.0), 0.0, ["Rug"])
-	_place_assembly(root, "WallArtFrame", "WallArtAnchor", Vector3(8.5, 3.5, 0.1), 0.0,
-		["WallArtFrame", "WallArt"])
-	_validate_room_plan()
-	for problem in _room_layout_problems:
-		push_warning("Peris room layout: %s" % problem)
-
-
-func _hide_modeled_members(root: Node, member_names: Array) -> void:
-	for raw_name in member_names:
-		var member := root.find_child(str(raw_name), true, false) as Node3D
-		if member != null:
-			member.visible = false
-
-
-func _place_assembly(
-		root: Node,
-		anchor_name: String,
-		marker_name: String,
-		fallback: Vector3,
-		yaw_deg: float,
-		member_names: Array
-) -> void:
-	var anchor := root.find_child(anchor_name, true, false) as Node3D
-	if anchor == null:
-		_room_layout_problems.append("missing modeled assembly anchor '%s'" % anchor_name)
-		return
-	var old_pivot := anchor.global_position
-	var old_yaw := anchor.global_transform.basis.get_euler().y
-	var yaw_delta := _layout_yaw(marker_name, yaw_deg) - old_yaw
-	var delta_basis := Basis(Vector3.UP, yaw_delta)
-	var target := _layout_position(marker_name, fallback)
-	for raw_name in member_names:
-		var member := root.find_child(str(raw_name), true, false) as Node3D
-		if member == null:
-			_room_layout_problems.append("assembly '%s' is missing member '%s'" % [anchor_name, str(raw_name)])
-			continue
-		var transform := member.global_transform
-		transform.origin = target + delta_basis * (transform.origin - old_pivot)
-		transform.basis = delta_basis * transform.basis
-		member.global_transform = transform
-
-
+## ScenePlacement retains measured fallback/approach markers. Visible placement is owned by the
+## editor-authored nodes under PerisRoom.
 func get_room_layout_problems() -> Array[String]:
 	return _room_layout_problems.duplicate()
 
@@ -2033,6 +1979,14 @@ func _validate_room_plan() -> void:
 			if absf(quarter_turns - roundf(quarter_turns)) > 0.001:
 				_room_layout_problems.append("furniture marker '%s' is not aligned to a 90-degree axis" % marker_name)
 
+	var room := find_child("PerisRoom", true, false) as Node3D
+	if room == null:
+		_room_layout_problems.append("authored PerisRoom node is missing")
+	else:
+		for node_name in REQUIRED_AUTHORED_ROOM_NODES:
+			if room.find_child(node_name, true, false) == null:
+				_room_layout_problems.append("missing editor-authored room node '%s'" % node_name)
+
 	var monos := placement.find_child("MonosStart", true, false) as Node3D
 	var protect := placement.find_child("PortalStand", true, false) as Node3D
 	if monos != null and protect != null:
@@ -2046,80 +2000,27 @@ func _is_room_grid_value(value: float) -> bool:
 	return absf(value / ROOM_GRID_STEP - roundf(value / ROOM_GRID_STEP)) <= 0.001
 
 func _build_environment() -> void:
-	var env := Node3D.new()
-	env.name = "Environment"
-	add_child(env)
-
-	# The modeled room is the scene's space: the Crocotile shell + sofas, and the authored
-	# furniture / portal frame / props, both authored in the grid frame (X[0,14] Z[0,6]).
-	var room := Node3D.new()
-	room.name = "PerisRoom"
-	add_child(room)
-	var shell := ROOM_GLTF.instantiate()
-	shell.name = "RoomShell"
-	room.add_child(shell)
-	var furniture := FURNITURE_GLTF.instantiate()
-	furniture.name = "RoomFurniture"
-	room.add_child(furniture)
-	_relayout_room(room)
-	_refresh_peris_surfaces()
-
-	# The gltf carries no collision; a thin static slab over the floor footprint gives the shared
-	# click-raycast a surface (layer 1, mask 0 — picked by the ground ray, collides with nothing).
-	var floor_body := StaticBody3D.new()
-	floor_body.name = "FloorCollision"
-	floor_body.position = Vector3(GRID_SIZE.x * 0.5, ROOM_FLOOR_Y - 0.01, GRID_SIZE.y * 0.5)
-	floor_body.collision_layer = 1
-	floor_body.collision_mask = 0
-	var fc := CollisionShape3D.new()
-	var fs := BoxShape3D.new()
-	fs.size = Vector3(GRID_SIZE.x, 0.02, GRID_SIZE.y)
-	fc.shape = fs
-	floor_body.add_child(fc)
-	env.add_child(floor_body)
-
-	# Cool key + cool ambient (the original peris_room.tscn palette) — a calm lavender daylight, not the
-	# warm/orange wash. The directional angle is unchanged; only the colours + glow match the old room.
-	var dir_light := DirectionalLight3D.new()
-	dir_light.rotation_degrees = Vector3(-40, -20, 0)
-	dir_light.light_color = Color(0.88, 0.9, 1.0)      # cool white
-	dir_light.light_energy = 0.95
-	dir_light.shadow_enabled = true
-	env.add_child(dir_light)
-
-	var room_fill := OmniLight3D.new()                 # gentle COOL fill so corners aren't black
-	room_fill.position = Vector3(7, 2.8, 3)
-	room_fill.light_color = Color(0.55, 0.6, 0.8)
-	room_fill.light_energy = 1.2
-	room_fill.omni_range = 12.0
-	env.add_child(room_fill)
-
-	var we := WorldEnvironment.new()
-	var e := Environment.new()
-	e.background_mode = Environment.BG_COLOR
-	e.background_color = Color(0.05, 0.05, 0.07)        # cool dark, not warm brown
-	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	e.ambient_light_color = Color(0.4527142, 0.37521115, 0.5201956)   # the old room's cool lavender ambient
-	e.ambient_light_energy = 0.6
-	e.glow_enabled = true
-	e.glow_intensity = 0.45
-	e.glow_bloom = 0.12
-	we.environment = e
-	env.add_child(we)
+	# Static geometry, props, collision, and lighting live in peris_sim.tscn. Runtime setup only
+	# validates and binds those authored nodes; it never creates a second invisible layout.
+	_room_layout_problems.clear()
+	_validate_room_plan()
+	for problem in _room_layout_problems:
+		push_warning("Peris room layout: %s" % problem)
 
 # --- Portal ---
 
 ## The modeled portal is the wall-mounted frame; this builds only the GAMEPLAY portal layer
 ## (the morphing glow/light/attack flash and labels the session steps drive), in front of it.
 func _build_portal() -> void:
-	# The modeled portal is on the WEST wall facing +X; the glow surface sits just in front of the panel.
-	var portal_panel := _layout_position("PortalAnchor", PORTAL_PANEL)
-	var portal_surface := portal_panel + PORTAL_FACE * 0.10
+	# The gameplay layers inherit the editor-authored portal transform.
+	var portal_panel := _portal_panel_position()
+	var portal_face := _portal_face()
+	var portal_surface := portal_panel + portal_face * 0.10
 
 	_portal_visual = MeshInstance3D.new()
 	_portal_visual.name = "PortalGlowSurface"
 	var pv := BoxMesh.new()
-	pv.size = Vector3(0.06, 2.0, 0.9)   # thin along X — the panel faces +X
+	pv.size = Vector3(0.9, 2.0, 0.06)
 	_portal_visual.mesh = pv
 	var pvm := StandardMaterial3D.new()
 	pvm.albedo_color = Color(0.8, 0.5, 0.2, 0.25)
@@ -2129,11 +2030,11 @@ func _build_portal() -> void:
 	pvm.emission_energy_multiplier = 1.2
 	pvm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	_portal_visual.material_override = pvm
-	_portal_visual.position = portal_surface
+	_portal_visual.global_transform = Transform3D(_portal_basis(), portal_surface)
 	add_child(_portal_visual)
 
 	_portal_light = OmniLight3D.new()
-	_portal_light.position = portal_panel + PORTAL_FACE * 0.5
+	_portal_light.position = portal_panel + portal_face * 0.5
 	_portal_light.light_color = Color(0.8, 0.5, 0.25)
 	_portal_light.light_energy = 1.5
 	_portal_light.omni_range = 5.0
@@ -2169,7 +2070,7 @@ func _build_portal() -> void:
 	_sanction_feed_label.modulate = Color(0.6, 0.85, 0.78, 0.95)
 	_sanction_feed_label.outline_modulate = Color(0.03, 0.04, 0.03, 0.8)
 	_sanction_feed_label.outline_size = 4
-	_sanction_feed_label.position = portal_surface + Vector3(0, 0, 0.1)
+	_sanction_feed_label.position = portal_surface + portal_face * 0.1
 	_sanction_feed_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	_sanction_feed_label.visible = false
 	add_child(_sanction_feed_label)
@@ -2199,9 +2100,10 @@ func _build_portal_view() -> void:
 	mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR
 	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 	_portal_view_surface.material_override = mat
-	# Just in front of the panel; the quad's +Z normal rotated to PORTAL_FACE (+X) faces the room.
-	_portal_view_surface.position = _layout_position("PortalAnchor", PORTAL_PANEL) + PORTAL_FACE * 0.16
-	_portal_view_surface.rotation = Vector3(0.0, deg_to_rad(90.0), 0.0)
+	# Just in front of the panel; the quad follows the visible portal's editor transform.
+	_portal_view_surface.global_transform = Transform3D(
+		_portal_basis(), _portal_panel_position() + _portal_face() * 0.16
+	)
 	add_child(_portal_view_surface)
 
 ## The space BEYOND the portal — a small graybox room with Monos standing in it, lit so it reads through
@@ -2275,6 +2177,10 @@ func _build_exploration_objects() -> void:
 	_build_peris_plants(env)
 	if _visit_phase == 1:
 		_build_watering_beat(env)
+	else:
+		var authored_can := _authored_room_node("WateringCan")
+		if authored_can != null:
+			authored_can.visible = false
 	_build_peris_painting(env)
 	_build_peris_wellness_feed(env)
 	_build_peris_strike_warning(env)
@@ -2301,64 +2207,21 @@ func _set_exploration_armed(armed: bool) -> void:
 				enable = armed and _care_context_ready
 			ia.set_interaction_enabled(enable)
 
-# The plant gltfs export at WILDLY different native scales (boston_fern ~2.9 tall, haworthia ~1.4),
-# all pot-at-Y0 and XZ-centered on their own origin. These are the measured native AABB heights — a
-# uniform scale of target/native normalizes each instance deterministically (no per-frame AABB read,
-# so movement/replay stay deterministic), and the pot lands on the floor at `pos`.
-const PLANT_NATIVE_HEIGHT := {
-	"boston_fern": 2.94, "calathea": 3.32, "haworthia": 1.36, "jade": 2.57,
-	"jasmine": 2.69, "peace_lily": 4.58, "pilea": 3.48, "pothos": 2.81, "spider": 3.93,
-}
-
-## Instance a plant gltf, normalized to `target_height` and grounded so its pot sits at `pos`.
-func _make_peris_plant(parent: Node3D, pos: Vector3, species: String, target_height: float) -> Node3D:
-	var root := Node3D.new()
-	root.position = pos
-	parent.add_child(root)
-	var native: float = float(PLANT_NATIVE_HEIGHT.get(species, 1.0))
-	var s := target_height / native if native > 0.0 else 1.0
-	var gltf: PackedScene = load("res://resources/models/peris-sim/plants/plant_%s.gltf" % species)
-	if gltf != null:
-		var inst := gltf.instantiate() as Node3D
-		inst.scale = Vector3(s, s, s)  # uniform — the pot stays at the model origin (Y=0)
-		root.add_child(inst)
-	return root
-
 func _build_peris_plants(parent: Node3D) -> void:
-	# Each plant now owns a portable, UV-mapped table and a distinct interaction
-	# point. The five semantic care records remain grouped so the tutorial teaches
-	# the causal categories without requiring nine repetitive reads.
-	var plants := [ # species, target height, semantic context group
-		["spider", 0.55, "shelf"],
-		["calathea", 0.50, "shelf"],
-		["haworthia", 0.32, "client"],
-		["jade", 0.62, "survivor"],
-		["jasmine", 0.55, "shelf"],
-		["pothos", 0.55, "survivor"],
-		["boston_fern", 0.90, "fern"],
-		["pilea", 0.42, "client"],
-		["peace_lily", 1.40, "peace"],
-	]
-	var fallbacks := _plant_table_fallback_positions()
-	for i in range(plants.size()):
+	# Visual plants and tables are scene-authored. Runtime creates only their verbs and derives
+	# collision/interaction positions from the movable nodes.
+	var care_groups := ["shelf", "shelf", "client", "survivor", "shelf", "survivor", "fern", "client", "peace"]
+	for i in range(care_groups.size()):
 		var plant_number := i + 1
-		var table_pos := _layout_position("Plant%dTableAnchor" % plant_number, fallbacks[i])
-		var table := PLANT_TABLE_SCENE.instantiate() as Node3D
-		table.name = "Plant%dTable" % plant_number
-		table.position = table_pos
-		parent.add_child(table)
+		var table := _authored_room_node("Plant%dTable" % plant_number)
+		var plant_node := _authored_room_node("Plant%d" % plant_number)
+		if table == null or plant_node == null:
+			push_warning("Peris room is missing editor-authored Plant%d/table nodes" % plant_number)
+			continue
+		var table_pos := table.global_position
 		if _grid != null:
 			_grid.add_dynamic_blocker(_grid.world_to_grid(table_pos), "peris_plant_table_%d" % plant_number)
 
-		var surface: Dictionary = PERIS_SURFACES["plant_%d" % plant_number]
-		var definition: Array = plants[i]
-		var plant_node := _make_peris_plant(
-			parent,
-			Vector3(table_pos.x, float(surface["y"]), table_pos.z),
-			str(definition[0]),
-			float(definition[1])
-		)
-		plant_node.name = "Plant%d" % plant_number
 		var target := _outline_object_meshes(parent, "Plant%dOutline" % plant_number,
 			_collect_mesh_instances(plant_node), "peris_plant_%d" % plant_number, 0.7)
 
@@ -2370,10 +2233,14 @@ func _build_peris_plants(parent: Node3D) -> void:
 		else:
 			zone = _make_exploration_zone(parent, table_pos, zone_name,
 				"peris.sim_expand.plant_%d.line" % plant_number, 0.7, 0.6)
-		_set_interaction_approach(zone, "Plant%dApproach" % plant_number,
-			Vector3(table_pos.x, 0.0, table_pos.z - 1.0))
+		zone.set_meta("interaction_target_position", _authored_floor_interaction_position(
+			"Plant%dTable" % plant_number,
+			"Plant%dApproach" % plant_number,
+			Vector3(table_pos.x, 0.0, table_pos.z - 1.0),
+			Vector3(0.0, 0.0, -1.0)
+		))
 		_exploration_interactables.append(zone)
-		_register_care_context_zone(zone, "plant", str(definition[2]))
+		_register_care_context_zone(zone, "plant", str(care_groups[i]))
 		_set_room_target_interaction_delegate(target, zone)
 		if plant_number == 7:
 			_fern_exploration_interactable = zone
@@ -2385,12 +2252,13 @@ func _build_peris_plants(parent: Node3D) -> void:
 func _build_watering_beat(parent: Node3D) -> void:
 	# The can: a small kettle on the bookshelf, mirrored by a data-layer item. Separating it from
 	# the fern turns the beat back into an actual carry instead of two overlapping auto-dwells.
-	var can_pos := _layout_position("WateringCanAnchor", WATERING_CAN_POS)
-	var fern_pos := _layout_position("Plant7TableAnchor", FERN_POS)
-	_watering_can_mesh = WATERING_CAN_SCENE.instantiate() as Node3D
-	_watering_can_mesh.name = "WateringCan"
-	_watering_can_mesh.position = can_pos
-	parent.add_child(_watering_can_mesh)
+	var can_pos := _authored_position("WateringCan", "WateringCanAnchor", WATERING_CAN_POS)
+	var fern_pos := _authored_position("Plant7Table", "Plant7TableAnchor", FERN_POS)
+	_watering_can_mesh = _authored_room_node("WateringCan")
+	if _watering_can_mesh == null:
+		push_warning("Peris room is missing its editor-authored WateringCan")
+		return
+	_watering_can_mesh.visible = true
 
 	_watering_can_item_id = _game_state.spawn_item("watering_can", can_pos)
 
@@ -2438,7 +2306,9 @@ func _on_plant_watered() -> void:
 	_plant_watered = true
 	_game_state.drop_item("peris", _watering_can_item_id)
 	if _watering_can_mesh != null:
-		_watering_can_mesh.position = _layout_position("Plant7TableAnchor", FERN_POS) + Vector3(0.5, 0.6, 0.3)
+		_watering_can_mesh.global_position = _authored_position(
+			"Plant7Table", "Plant7TableAnchor", FERN_POS
+		) + Vector3(0.5, 0.6, 0.3)
 		_watering_can_mesh.visible = true
 	# The watering ACTION narration — Peris's habitual motion over the fern.
 	_show_thought(DialogueData.text("peris.sim_expand.plant_7.look"))
@@ -2470,12 +2340,15 @@ func _build_peris_painting(parent: Node3D) -> void:
 	var visual_meshes: Array = _room_binder.object_meshes(["WallArtFrame", "WallArt"])
 	if visual_meshes.is_empty():
 		push_warning("Peris room is missing the portable WallArt/WallArtFrame asset")
+	var zone_pos := _authored_floor_interaction_position(
+		"WallArtFrame", "PaintingZoneMarker", Vector3(8.5, 0, 0.5), Vector3(0, 0, 0.4)
+	)
 	var zone := _make_exploration_zone(parent,
-		_layout_position("PaintingZoneMarker", Vector3(8.5, 0, 0.5)),
+		zone_pos,
 		"PaintingZone",
 		"peris.sim_expand.painting.line",
 		1.3, 0.6)
-	_set_interaction_approach(zone, "PaintingApproach", Vector3(9.0, 0, 1.5))
+	zone.set_meta("interaction_target_position", zone_pos + Vector3(0.5, 0, 1.0))
 	_exploration_interactables.append(zone)
 	_register_care_context_zone(zone, "painting", "PaintingZone")
 	var target := _outline_object_meshes(parent, "PaintingOutline",
@@ -2484,16 +2357,19 @@ func _build_peris_painting(parent: Node3D) -> void:
 
 func _build_peris_wellness_feed(parent: Node3D) -> void:
 	# Mounted on the modeled left wall (X~0), near the back corner.
-	var pos := _layout_position("WellnessTerminalAnchor", Vector3(0.0, 1.5, 0.5))
-	var terminal := WELLNESS_TERMINAL_SCENE.instantiate() as Node3D
-	terminal.position = pos
-	parent.add_child(terminal)
+	var terminal := _authored_room_node("WellnessTerminal")
+	if terminal == null:
+		push_warning("Peris room is missing its editor-authored WellnessTerminal")
+		return
+	var zone_pos := _authored_floor_interaction_position(
+		"WellnessTerminal", "WellnessZoneMarker", Vector3(0.5, 0, 0.5), Vector3(0.5, 0, 0)
+	)
 	var zone := _make_exploration_zone(parent,
-		_layout_position("WellnessZoneMarker", Vector3(0.5, 0, 0.5)),
+		zone_pos,
 		"WellnessZone",
 		"peris.sim_expand.wellness.line",
 		1.0, 0.6)
-	_set_interaction_approach(zone, "WellnessApproach", Vector3(2.5, 0, 1.5))
+	zone.set_meta("interaction_target_position", zone_pos + Vector3(2.0, 0, 1.0))
 	_exploration_interactables.append(zone)
 	_register_care_context_zone(zone, "wellness", "WellnessZone")
 	var target := _outline_object_meshes(parent, "WellnessOutline",
@@ -2502,16 +2378,19 @@ func _build_peris_wellness_feed(parent: Node3D) -> void:
 
 func _build_peris_strike_warning(parent: Node3D) -> void:
 	# Pinned to the modeled right wall (X~14), near the open front corner.
-	var pos := _layout_position("StrikeNoticeAnchor", Vector3(14.0, 2.0, 2.5))
-	var notice := STRIKE_NOTICE_SCENE.instantiate() as Node3D
-	notice.position = pos
-	parent.add_child(notice)
+	var notice := _authored_room_node("StrikeNotice")
+	if notice == null:
+		push_warning("Peris room is missing its editor-authored StrikeNotice")
+		return
+	var zone_pos := _authored_floor_interaction_position(
+		"StrikeNotice", "StrikeWarningZoneMarker", Vector3(13.5, 0, 2.5), Vector3(-0.5, 0, 0)
+	)
 	var area := _make_exploration_zone(parent,
-		_layout_position("StrikeWarningZoneMarker", Vector3(13.5, 0, 2.5)),
+		zone_pos,
 		"StrikeWarningZone",
 		"",
 		1.0, 0.8)  # re-inspectable: re-opening the warning replays the document + Peris's line
-	_set_interaction_approach(area, "StrikeWarningApproach", Vector3(12.5, 0.0, 2.5))
+	area.set_meta("interaction_target_position", zone_pos + Vector3(-1.0, 0, 0))
 	_exploration_interactables.append(area)
 	area.connect("interacted", func():
 		_play_focused_dialogue_keys([
@@ -2526,11 +2405,11 @@ func _build_peris_strike_warning(parent: Node3D) -> void:
 
 func _build_peris_logbook_gate(parent: Node3D) -> void:
 	# Logbook is the gate to Monos — by the modeled bookshelf on the right side.
-	var pos := _layout_position("LogbookConsoleAnchor", Vector3(13.0, 0.5, 3.5))
-	var console := LOGBOOK_CONSOLE_SCENE.instantiate() as Node3D
-	console.name = "CareLogbookConsole"
-	console.position = pos
-	parent.add_child(console)
+	var console := _authored_room_node("CareLogbookConsole")
+	if console == null:
+		push_warning("Peris room is missing its editor-authored CareLogbookConsole")
+		return
+	var pos := console.global_position
 	var label := Label3D.new()
 	label.name = "CareLogbookLabel"
 	label.text = "CARE LOGBOOK"
@@ -2542,7 +2421,9 @@ func _build_peris_logbook_gate(parent: Node3D) -> void:
 	label.position = pos + Vector3(0.0, 0.72, 0.0)
 	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	parent.add_child(label)
-	var gate_pos := _layout_position("LogbookGateMarker", Vector3(pos.x + 0.7, 0, pos.z))
+	var gate_pos := _authored_floor_interaction_position(
+		"CareLogbookConsole", "LogbookGateMarker", Vector3(12.5, 0, 3.5), Vector3(-0.5, 0, 0)
+	)
 	var gate := _create_interactable(parent, gate_pos, "LogbookGate", 1.6, 0.8,
 		"Continue", false, Interactable.InteractableType.HOLD_ACTION, "peris.logbook_gate")
 	gate.connect("interacted", _on_exploration_gate_interacted)

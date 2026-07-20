@@ -11984,8 +11984,8 @@ func _test_peris_sim() -> void:
 			_assert_true(not DialogueData.has_key(retired_key),
 				"Retired Peris sim dialogue key is absent: %s" % retired_key)
 
-		# The room is dressed from the first frame. Every plant has one portable,
-		# grid-authored table and rests on that table's measured mesh top.
+		# The room is dressed in the packed scene before the first frame. Every plant and portable
+		# table is an editor-movable node and the plant rests on the live table mesh.
 		for pi in range(1, 10):
 			var plant := instance.find_child("Plant%d" % pi, true, false) as Node3D
 			var table := instance.find_child("Plant%dTable" % pi, true, false) as Node3D
@@ -11994,26 +11994,27 @@ func _test_peris_sim() -> void:
 				"Plant%d has its own plant, portable table, and authored marker" % pi)
 			if plant == null or table == null or marker == null:
 				continue
-			var surf: Dictionary = instance.PERIS_SURFACES.get("plant_%d" % pi, {})
 			var table_bounds := _world_mesh_bounds(table)
-			_assert_true(not surf.is_empty() and not table_bounds.is_empty(),
+			_assert_true(not table_bounds.is_empty(),
 				"Plant%d table exposes a measured support surface" % pi)
-			if surf.is_empty() or table_bounds.is_empty():
+			if table_bounds.is_empty():
 				continue
 			var table_top := float((table_bounds["max"] as Vector3).y)
-			var rect: Array = surf["rect"]
-			_assert_true(table.global_position.is_equal_approx(marker.global_position),
-				"Plant%d table follows its authored grid marker" % pi)
-			_assert_true(absf(float(surf["y"]) - table_top) <= 0.015,
-				"Plant%d support height matches the live table top" % pi)
-			_assert_true(absf(plant.position.y - table_top) <= 0.015
-				and plant.position.x >= float(rect[0]) and plant.position.x <= float(rect[2])
-				and plant.position.z >= float(rect[1]) and plant.position.z <= float(rect[3]),
+			var table_min := table_bounds["min"] as Vector3
+			var table_max := table_bounds["max"] as Vector3
+			_assert_true(table.owner == instance and plant.owner == instance,
+				"Plant%d and its table belong to the editor-authored scene" % pi)
+			_assert_true(absf(plant.global_position.y - table_top) <= 0.015
+				and plant.global_position.x >= table_min.x and plant.global_position.x <= table_max.x
+				and plant.global_position.z >= table_min.z and plant.global_position.z <= table_max.z,
 				"Plant%d rests on its own table surface" % pi)
 			var table_cell: Vector2i = instance._grid.world_to_grid(table.global_position)
 			_assert_true(not instance._grid.is_walkable(table_cell.x, table_cell.y),
 				"Plant%d table blocks walking through its footprint" % pi)
-		for removed_name in ["couch", "Plush_Bear", "PlantStand"]:
+		var secondary_couch := instance.find_child("couch", true, false) as Node3D
+		_assert_true(secondary_couch != null and secondary_couch.is_visible_in_tree(),
+			"the separate secondary couch remains in the live room composition")
+		for removed_name in ["Plush_Bear", "PlantStand"]:
 			var removed := instance.find_child(removed_name, true, false) as Node3D
 			_assert_true(removed == null or not removed.is_visible_in_tree(),
 				"%s is absent from the live room composition" % removed_name)

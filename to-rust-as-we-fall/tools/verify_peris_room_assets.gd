@@ -26,6 +26,7 @@ func _init() -> void:
 		quit(1)
 		return
 	var room := packed.instantiate()
+	_check_scene_authored_nodes(room)
 	get_root().add_child(room)
 	for frame in range(8):
 		await process_frame
@@ -38,13 +39,63 @@ func _init() -> void:
 	_check_furniture_clearance(room)
 	_check_removed_composition(room)
 	_check_plant_tables(room)
+	_check_no_runtime_visual_duplicates(room)
 	_check_portal_layer_separation(room)
 	for scene_path in PORTABLE_SCENES:
 		_check_portable_scene(scene_path)
 	room.queue_free()
 	await process_frame
+	await _check_movable_authored_placement(packed)
 	print("[PERIS ASSETS] %s" % ("PASS" if failures == 0 else "FAIL (%d)" % failures))
 	quit(0 if failures == 0 else 1)
+
+
+func _check_scene_authored_nodes(room: Node) -> void:
+	var authored_room := room.find_child("PerisRoom", true, false) as Node3D
+	var environment := room.find_child("Environment", true, false) as Node3D
+	_check(authored_room != null and authored_room.owner == room,
+		"PerisRoom is present in the packed scene before runtime setup")
+	_check(environment != null and environment.owner == room,
+		"room collision and lighting are present in the packed scene")
+	for node_name in room.REQUIRED_AUTHORED_ROOM_NODES:
+		_check(authored_room != null and authored_room.find_child(node_name, true, false) != null,
+			"editor-authored room exposes movable node '%s'" % node_name)
+
+
+func _check_no_runtime_visual_duplicates(room: Node) -> void:
+	for i in range(1, 10):
+		_check(room.find_children("Plant%d" % i, "Node3D", true, false).size() == 1,
+			"Plant%d visual is not duplicated at runtime" % i)
+		_check(room.find_children("Plant%dTable" % i, "Node3D", true, false).size() == 1,
+			"Plant%d table is not duplicated at runtime" % i)
+	for node_name in ["WateringCan", "WellnessTerminal", "StrikeNotice", "CareLogbookConsole", "CareFieldKit"]:
+		_check(room.find_children(node_name, "Node3D", true, false).size() == 1,
+			"%s visual is not duplicated at runtime" % node_name)
+
+
+func _check_movable_authored_placement(packed: PackedScene) -> void:
+	# Simulate an editor transform override before _ready. The gameplay zone and approach point must
+	# follow the visible table, not the legacy marker left at the old position.
+	var moved := packed.instantiate()
+	var table := moved.find_child("Plant1Table", true, false) as Node3D
+	var plant := moved.find_child("Plant1", true, false) as Node3D
+	_check(table != null and plant != null, "movable placement fixture has Plant1 and its table")
+	if table == null or plant == null:
+		moved.free()
+		return
+	table.position.x += 0.5
+	plant.position.x += 0.5
+	get_root().add_child(moved)
+	for frame in range(8):
+		await process_frame
+	var zone := moved.find_child("Plant1Zone", true, false) as Node3D
+	_check(zone != null and is_equal_approx(zone.global_position.x, table.global_position.x),
+		"moving Plant1Table moves its runtime interaction zone")
+	var target: Vector3 = zone.get_meta("interaction_target_position", Vector3.ZERO) if zone != null else Vector3.ZERO
+	_check(is_equal_approx(target.x, table.global_position.x),
+		"moving Plant1Table moves its character approach point")
+	moved.queue_free()
+	await process_frame
 
 
 func _check_furniture_clearance(room: Node) -> void:
@@ -65,7 +116,10 @@ func _check_furniture_clearance(room: Node) -> void:
 
 
 func _check_removed_composition(room: Node) -> void:
-	for node_name in ["couch", "Plush_Bear", "PlantStand"]:
+	var secondary_couch := room.find_child("couch", true, false) as Node3D
+	_check(secondary_couch != null and secondary_couch.is_visible_in_tree(),
+		"the separate secondary couch remains in the live room composition")
+	for node_name in ["Plush_Bear", "PlantStand"]:
 		var obsolete := room.find_child(node_name, true, false) as Node3D
 		_check(obsolete == null or not obsolete.is_visible_in_tree(),
 			"%s is removed from the live room composition" % node_name)
@@ -78,11 +132,11 @@ func _check_plant_tables(room: Node) -> void:
 		var plant := room.find_child("Plant%d" % i, true, false) as Node3D
 		var marker := room.find_child("Plant%dTableAnchor" % i, true, false) as Node3D
 		_check(table != null and plant != null and marker != null,
-			"Plant%d has its own authored table and marker" % i)
+			"Plant%d has its own authored table plus a fallback marker" % i)
 		if table == null or plant == null or marker == null:
 			continue
-		_check(table.global_position.is_equal_approx(marker.global_position),
-			"Plant%d table follows its grid marker" % i)
+		_check(table.owner == room and plant.owner == room,
+			"Plant%d and its table are editor-authored nodes" % i)
 		var table_bounds := _node_aabb(table)
 		var plant_box := _node_aabb(plant)
 		plant_bounds.append(plant_box)
