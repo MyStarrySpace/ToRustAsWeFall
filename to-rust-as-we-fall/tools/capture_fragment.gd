@@ -2,6 +2,9 @@ extends SceneTree
 
 ## Capture a view of any PREVIEW_ENTRIES fragment (the whole chunk framed by its mesh AABB).
 ##   FRAG=boss_showcase [YAW=0.4] [ELEV=0.30] [DIST=1.6] [SEED=0] [OUT_DIR=<scratchpad>] \
+##     [FOG=off] [CLIP=<max dist from median mesh center — drops stray outliers from framing>] \
+##     [OCCL=off — freeze the see-through dissolve (top-down shots)] [LABELS=off — hide Label3D verbs] \
+##     [LIGHT=1 — add a key+fill directional rig for dark scenes] \
 ##     ../Godot_v4.7-stable_win64.exe --path "." --position 20000,20000 --script res://tools/capture_fragment.gd
 ## Writes <frag>_view.png to OUT_DIR (scratchpad) — NEVER the project tree.
 
@@ -21,6 +24,8 @@ func _init() -> void:
 		cfg["seed"] = int(OS.get_environment("SEED"))
 	scene.set("preview_chunk_config", cfg)
 	get_root().add_child(scene)
+	if OS.get_environment("FOG") == "off":
+		scene.set("fog_of_war_enabled", false)
 	for _i in range(120):
 		await process_frame
 	var chunk = scene.get("_active_chunk")
@@ -28,6 +33,13 @@ func _init() -> void:
 		(chunk as Node).set_process(false)
 	_defade(scene)
 	_hide_canvas(scene)
+	if OS.get_environment("OCCL") == "off":
+		var mgr = scene.get("_occlusion_mgr")
+		if mgr != null:
+			(mgr as Node).set_process(false)
+		RenderingServer.global_shader_parameter_set("player_world_pos", Vector3(0.0, -100000.0, 0.0))
+	if OS.get_environment("LABELS") == "off":
+		_hide_labels(chunk if chunk != null else scene)
 	var st = scene.get("_overlay_states")
 	if st is Dictionary:
 		for k in (st as Dictionary).keys():
@@ -39,6 +51,16 @@ func _init() -> void:
 	# frame the chunk's meshes
 	var meshes: Array = []
 	_collect_meshes(chunk if chunk != null else scene, meshes)
+	var clip := float(OS.get_environment("CLIP")) if OS.get_environment("CLIP") != "" else 0.0
+	if clip > 0.0 and meshes.size() > 2:
+		var med := _median_center(meshes)
+		var kept: Array = []
+		for m in meshes:
+			var mi := m as MeshInstance3D
+			if mi.mesh != null and (mi.global_transform * mi.mesh.get_aabb()).get_center().distance_to(med) <= clip:
+				kept.append(m)
+		if kept.size() > 0:
+			meshes = kept
 	var mn := Vector3(1e9, 1e9, 1e9)
 	var mx := Vector3(-1e9, -1e9, -1e9)
 	for m in meshes:
@@ -52,6 +74,15 @@ func _init() -> void:
 			mx = mx.max(c)
 	var center := (mn + mx) * 0.5
 	var span := maxf(mx.x - mn.x, maxf(mx.y - mn.y, mx.z - mn.z))
+	if OS.get_environment("LIGHT") != "":
+		var key := DirectionalLight3D.new()
+		key.rotation_degrees = Vector3(-62, -34, 0)
+		key.light_energy = 1.7
+		get_root().add_child(key)
+		var fill := DirectionalLight3D.new()
+		fill.rotation_degrees = Vector3(-20, 140, 0)
+		fill.light_energy = 0.6
+		get_root().add_child(fill)
 	var cam := Camera3D.new()
 	get_root().add_child(cam)
 	cam.global_position = center + Vector3(sin(yaw), elev, cos(yaw)).normalized() * span * dist_k
@@ -70,11 +101,35 @@ func _init() -> void:
 	print("[FRAGCAP] %s — span %.1f, %d meshes" % [path, span, meshes.size()])
 	quit()
 
+func _median_center(meshes: Array) -> Vector3:
+	var xs: Array[float] = []
+	var ys: Array[float] = []
+	var zs: Array[float] = []
+	for m in meshes:
+		var mi := m as MeshInstance3D
+		if mi.mesh == null:
+			continue
+		var c := (mi.global_transform * mi.mesh.get_aabb()).get_center()
+		xs.append(c.x)
+		ys.append(c.y)
+		zs.append(c.z)
+	xs.sort()
+	ys.sort()
+	zs.sort()
+	var mid := xs.size() / 2
+	return Vector3(xs[mid], ys[mid], zs[mid]) if xs.size() > 0 else Vector3.ZERO
+
 func _collect_meshes(n: Node, out: Array) -> void:
 	if n is MeshInstance3D:
 		out.append(n)
 	for c in n.get_children():
 		_collect_meshes(c, out)
+
+func _hide_labels(n: Node) -> void:
+	if n is Label3D:
+		(n as Label3D).visible = false
+	for c in n.get_children():
+		_hide_labels(c)
 
 func _hide_canvas(n: Node) -> void:
 	if n is CanvasLayer:
