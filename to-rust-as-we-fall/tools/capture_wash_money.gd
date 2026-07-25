@@ -28,7 +28,10 @@ func _init() -> void:
 	RenderingServer.global_shader_parameter_set("player_world_pos", Vector3(0.0, -100000.0, 0.0))
 	_defade(scene)
 	_hide_canvas(scene)
-	_hide_labels(scene)
+	# LABELS=keep leaves every Label3D visible — the scene annotates itself, which is the
+	# ground-truth mode for audits (what IS that thing in frame?). Default strips them.
+	if OS.get_environment("LABELS") != "keep":
+		_hide_labels(scene)
 	var st = scene.get("_overlay_states")
 	if st is Dictionary:
 		for k in (st as Dictionary).keys():
@@ -63,6 +66,8 @@ func _init() -> void:
 			"falls": 0.45, "fov": 60.0},
 		{"name": "summit_crown", "cam": Vector3(5.5, 18.5, 7.5), "at": Vector3(0.0, 15.5, 0.0),
 			"falls": 0.0, "fov": 50.0},
+		{"name": "neck_garden", "cam": Vector3(-1.16, 9.7, -0.75), "at": Vector3(-1.6, 7.1, -1.85),
+			"falls": 0.0, "fov": 62.0},
 	]
 	var dressing = chunk.get("_dressing") if chunk != null else null
 	for shot in shots:
