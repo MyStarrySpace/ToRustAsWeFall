@@ -205,16 +205,18 @@ static func _add_sign_labels(root: Node3D, sections: Array) -> void:
 	var signs := Node3D.new()
 	signs.name = "SignText"
 	root.add_child(signs)
+	# Positions mirror build_wash_dressing.py's RE-RECONCILED board spots (the survey
+	# moved them clear of every walkable spur) — keep in lockstep.
 	for i in range(sections.size()):
 		var tag: String = SECTION_TAGS.get(str(sections[i]["type"]), "")
-		_label(signs, float(sections[i]["x0"]) - 0.6, RIM_LANE,
+		_label(signs, float(sections[i]["x0"]) + 1.0, RIM_LANE,
 			"S-%02d %s" % [i + 1, tag], COL_STENCIL, true)
 	_label(signs, 4.6, INNER_RIM_LANE, "^ FLOW UP", COL_TERM_GREEN, false)
 	for mid in [12.5, 28.5, 54.5, 62.5, 72.5]:
-		_label(signs, float(mid) - 1.9, RIM_LANE, "MAINTENANCE", COL_STENCIL, true)
-	_label(signs, 78.2, RIM_LANE, "CAUTION // DRAIN", COL_CAUTION, true)
-	_label(signs, 61.6, INNER_RIM_LANE, "CAUTION // LEDGE", COL_CAUTION, false)
-	_label(signs, 2.9, INNER_RIM_LANE, "CURECUMIN ROUTE", COL_GOLD, false)
+		_label(signs, float(mid) - 3.0, RIM_LANE, "MAINTENANCE", COL_STENCIL, true)
+	_label(signs, 77.0, RIM_LANE, "CAUTION // DRAIN", COL_CAUTION, true)
+	_label(signs, 60.2, INNER_RIM_LANE, "CAUTION // LEDGE", COL_CAUTION, false)
+	_label(signs, 3.9, INNER_RIM_LANE, "CURECUMIN ROUTE", COL_GOLD, false)
 	# The sector-gate stencil numerals (the GLB carries the colored slabs; text stays crisp
 	# here). SECTOR + zero-padded index, big, pale — the plate's gate grammar.
 	for i in range(sections.size()):
