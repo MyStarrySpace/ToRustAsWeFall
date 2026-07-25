@@ -3,7 +3,17 @@ extends "res://scripts/scene_chunks/scene_chunk.gd"
 const LatheBuilderScript := preload("res://scripts/generation/lathe_builder.gd")
 const SdfMesherScript := preload("res://scripts/generation/sdf_mesher.gd")
 const InfrastructureBuilderScript := preload("res://scripts/generation/infrastructure_structure_builder.gd")
+const FixedCadenceScript := preload("res://scripts/system/core/fixed_cadence.gd")
 const GRIME_SHADER := preload("res://resources/tile_grime.gdshader")
+const WEAK_WALL_COLLAPSE_PIECE_SCENE := preload(
+	"res://scenes/game/weak_wall_collapse_piece.tscn")
+const DATA_FRAGMENT_AUTHORITY_VERSION := 4
+const DATA_FRAGMENT_AUTHORITY_PREFIX := "chunk:data_fragment:"
+const WEAK_WALL_CRUMBLE_DURATION := 0.9
+const WEAK_WALL_POSITION_TOLERANCE := 0.25
+const WEAK_WALL_HEIGHT_TOLERANCE := 1.25
+const CONCEALMENT_TICK := 0.1
+const EXIT_REST_PHASES := ["ready", "committing", "rested"]
 
 ## The DATA-DRIVEN fragment loader. Point it at a `Fragment` resource (the data) and it COMPOSES the scene from
 ## the shared modular classes — no bespoke build code per fragment. It reads the fragment's map (floors/walls/
@@ -42,6 +52,18 @@ var _infrastructure_operations: Array = [] # typed source -> receiver -> environ
 var _infrastructure_fields: Array = []     # shared hazard/concealment polling, like Candids/SpikeStrips
 var _hushblooms: Array = []      # Hushbloom stun flora (thigmonastic; pickable for the carried throw)
 var _fall_pos := Vector3.ZERO    # where the party last wiped (the runback decor pass grows here)
+var _candid_epoch := -1.0        # first absolute tick in the fixed Candid/Spike/service-field cadence
+var _concealment_epoch := -1.0   # first absolute spatial-cover sample in the fixed simulation cadence
+var _restart_deadline := -1.0    # full-wipe restart; absolute scheduler tick
+var _weak_wall_deadlines := {}   # wall index -> absolute crumble tick
+var _restoring_fragment_authority := false
+var _exit_rest_phase := "ready"
+var _exit_rest_shelter_name := ""
+var _exit_rest_members: Array[String] = []
+var _exit_rest_commit_tick := -1.0
+var _exit_rest_commit_day := 0
+var _exit_rest_before_atp: Dictionary = {}
+var _exit_rest_trigger_consumed := {} # exact shelter data id -> last accepted/retracted receipt
 
 func configure_chunk(config: Dictionary) -> void:
 	if config.has("fragment"):
@@ -59,12 +81,18 @@ func _build_chunk() -> void:
 	_apply_shelters()
 	for spec in fragment.objects:
 		_spawn_object(spec)
+	# THE portal look (docs/PORTALS.md): every spawned pad pair gets its arch + live
+	# destination lens; chained one-way pads get the arch alone. One call, every fragment.
+	PortalFixtures.dress_matching(_portals)
 	# Loader-owned failure wiring: a full party wipe restarts the fragment when the data asks for it.
 	var gs = _get_game_state()
 	if gs != null and bool(fragment.params.get("restart_on_wipe", false)):
 		if not gs.character_downed.is_connected(_on_fragment_character_downed):
 			gs.character_downed.connect(_on_fragment_character_downed)
 	_set_preview_step((fragment.id if fragment.id != "" else "data_fragment") + "_start")
+	# Install simulation cadence during construction when the host is already attached. `_process`
+	# retains a retry for unusual hosts which attach their scheduler after the chunk enters the tree.
+	_ensure_scheduled()
 
 # --- Environment ---
 
@@ -121,6 +149,25 @@ func _spawn_weak_wall(spec: Dictionary) -> void:
 	crack.global_position = foot + up * 2.2 + n * 0.1
 	if absf(n.dot(up)) < 0.99:
 		crack.global_transform.basis = Basis(n.cross(up).normalized(), up, n)
+	# Three independently moving, externally authored slabs make the committed interval visible. The
+	# root's local +Z axis follows the authored outward normal, so every generated landmark reuses the
+	# same UV-mapped model without baking its world orientation into the asset.
+	var facade := Node3D.new()
+	facade.name = "WeakWallFacade%d" % idx
+	add_child(facade)
+	facade.global_position = foot + n * 0.08
+	if absf(n.dot(up)) < 0.99:
+		facade.global_transform.basis = Basis(up.cross(n).normalized(), up, n)
+	var panels: Array[MeshInstance3D] = []
+	var panel_starts: Array[Vector3] = []
+	for panel_index in range(3):
+		var panel := WEAK_WALL_COLLAPSE_PIECE_SCENE.instantiate() as MeshInstance3D
+		panel.name = "WeakWallSlab%d_%d" % [idx, panel_index]
+		panel.position = Vector3((float(panel_index) - 1.0) * 0.82, 0.0, 0.0)
+		panel.scale = Vector3(0.92, 0.92 + 0.04 * float(panel_index % 2), 1.0)
+		facade.add_child(panel)
+		panels.append(panel)
+		panel_starts.append(panel.position)
 	# the rubble (revealed on crumble), centred on the kill zone
 	var kmin := _v3(spec, "kill_min")
 	var kmax := _v3(spec, "kill_max")
@@ -145,17 +192,138 @@ func _spawn_weak_wall(spec: Dictionary) -> void:
 		"PRY", "", 1.0, true, 1.5, Interactable.InteractableType.INSPECTION, false)
 	var iam := _add_box(ia, Vector3(0, 0.8, 0), Vector3(0.2, 1.6, 0.2), Color(0.5, 0.42, 0.3), Color(0.9, 0.6, 0.2), 0.5)
 	_outline_interactable_child(ia, iam, "WeakWall%d" % idx, 1.5)
-	var entry := {"crumbled": false, "kill_min": kmin, "kill_max": kmax, "crack": crack, "rubble": rubble}
+	var entry := {
+		"crumbled": false,
+		"source": ia,
+		"trigger_consumed": 0,
+		"kill_min": kmin,
+		"kill_max": kmax,
+		"crack": crack,
+		"rubble": rubble,
+		"facade": facade,
+		"panels": panels,
+		"panel_starts": panel_starts,
+	}
 	_weak_walls.append(entry)
-	ia.interacted.connect(func() -> void: _on_weak_wall_pried(idx))
+	ia.set_meta("weak_wall_index", idx)
+	ia.set_pre_trigger_validator(_validate_weak_wall_trigger.bind(idx, ia))
+	ia.interacted.connect(_on_weak_wall_pried.bind(idx, ia))
 
-func _on_weak_wall_pried(idx: int) -> void:
+## Retired source-less helper calls are deliberately inert. The wall only begins moving after its
+## own one-shot has accepted the exact nearby, ready party body and minted the next registry receipt.
+func _on_weak_wall_pried(idx: int, source: Node = null) -> bool:
 	var sched = _get_scheduler()
-	if sched == null or idx >= _weak_walls.size() or bool((_weak_walls[idx] as Dictionary)["crumbled"]):
-		return
-	sched.schedule_after(0.9, func() -> void: _commit_weak_wall(idx), "weak_wall_%d" % idx)
+	if sched == null or idx < 0 or idx >= _weak_walls.size() \
+			or bool((_weak_walls[idx] as Dictionary)["crumbled"]) \
+			or _weak_wall_deadlines.has(idx) \
+			or not _weak_wall_source_receipt_pending(idx, source):
+		return false
+	var entry := _weak_walls[idx] as Dictionary
+	entry["trigger_consumed"] = _weak_wall_source_trigger_count(source)
+	var deadline := float(sched.get_current_tick()) + WEAK_WALL_CRUMBLE_DURATION
+	_weak_wall_deadlines[idx] = deadline
+	_schedule_weak_wall_at(idx, deadline)
+	_sync_weak_wall_presenters()
+	_publish_fragment_authority()
+	return true
+
+
+func _validate_weak_wall_trigger(
+		source: Node, actor: String, idx: int, expected_source: Node) -> bool:
+	return idx >= 0 and idx < _weak_walls.size() \
+		and source == expected_source \
+		and source == (_weak_walls[idx] as Dictionary).get("source") \
+		and _get_scheduler() != null \
+		and not bool((_weak_walls[idx] as Dictionary).get("crumbled", false)) \
+		and not _weak_wall_deadlines.has(idx) \
+		and _weak_wall_actor_ready_at_source(source, actor)
+
+
+func _weak_wall_actor_ready_at_source(source: Node, actor: String) -> bool:
+	return _fragment_actor_ready_at_source(source, actor)
+
+
+func _fragment_actor_ready_at_source(source: Node, actor: String) -> bool:
+	var gs = _get_game_state()
+	if gs == null or not is_instance_valid(source) or not source is Node3D \
+			or actor == "" or not gs.characters.has(actor) or not gs.get_party().has(actor) \
+			or fragment == null or not fragment.party_ids.has(actor) \
+			or not gs.is_narratively_available(actor) or gs.is_downed(actor) \
+			or gs.is_knocked_down(actor) or gs.is_moving(actor) or gs.is_resting(actor) \
+			or gs.is_dodging(actor) or gs.is_endocytosing(actor) \
+			or gs.is_external_traversal_active(actor) or gs.is_dragging(actor) \
+			or gs.is_field_restoring(actor) or gs.is_pushing(actor):
+		return false
+	var source_position := _fragment_source_data_position(source)
+	if not source_position.is_finite():
+		return false
+	if gs.grid != null and gs.grid.level_count > 1 \
+			and int(gs.get_character_level(actor)) != int(gs.grid.level_for_y(source_position.y)):
+		return false
+	var actor_position: Vector3 = gs.get_position(actor)
+	return Vector2(actor_position.x, actor_position.z).distance_to(
+		Vector2(source_position.x, source_position.z)
+	) <= float(source.get("interaction_radius")) + WEAK_WALL_POSITION_TOLERANCE \
+		and absf(actor_position.y - source_position.y) <= WEAK_WALL_HEIGHT_TOLERANCE
+
+
+func _weak_wall_source_data_position(source: Node) -> Vector3:
+	return _fragment_source_data_position(source)
+
+
+func _fragment_source_data_position(source: Node) -> Vector3:
+	var gs = _get_game_state()
+	var data_id := str(source.get("data_id")) if is_instance_valid(source) else ""
+	if gs != null and data_id != "" and gs.has_interactable(data_id):
+		var saved_position: Variant = gs.get_interactable(data_id).get("position", Vector3.INF)
+		if saved_position is Vector3:
+			return saved_position
+	if source is Node3D:
+		var world_position := (source as Node3D).global_position
+		if gs != null and gs.coord_map != null and gs.coord_map.has_method("to_data"):
+			return gs.coord_map.to_data(world_position)
+		return world_position
+	return Vector3.INF
+
+
+func _weak_wall_source_trigger_count(source: Node) -> int:
+	return _fragment_source_trigger_count(source)
+
+
+func _fragment_source_trigger_count(source: Node) -> int:
+	var gs = _get_game_state()
+	var data_id := str(source.get("data_id")) if is_instance_valid(source) else ""
+	if gs == null or data_id == "" or not gs.has_interactable(data_id):
+		return -1
+	return int(gs.get_interactable(data_id).get("trigger_count", -1))
+
+
+func _weak_wall_source_receipt_pending(idx: int, source: Node) -> bool:
+	if idx < 0 or idx >= _weak_walls.size() or not is_instance_valid(source):
+		return false
+	var entry := _weak_walls[idx] as Dictionary
+	var actor := str(source.get("active_character"))
+	if not _validate_weak_wall_trigger(source, actor, idx, entry.get("source")) \
+			or not bool(source.get("one_shot")) or not bool(source.get("_used")) \
+			or bool(source.get("interaction_enabled")):
+		return false
+	var gs = _get_game_state()
+	var data_id := str(source.get("data_id"))
+	if gs == null or data_id == "" or not gs.has_interactable(data_id):
+		return false
+	var receipt: Dictionary = gs.get_interactable(data_id)
+	return int(receipt.get("trigger_count", -1)) \
+			== int(entry.get("trigger_consumed", 0)) + 1 \
+		and str(receipt.get("last_trigger_character", "")) == actor \
+		and bool(receipt.get("one_shot", false)) \
+		and bool(receipt.get("triggered", false)) \
+		and not bool(receipt.get("enabled", true))
 
 func _commit_weak_wall(idx: int) -> void:
+	_weak_wall_deadlines.erase(idx)
+	if idx < 0 or idx >= _weak_walls.size():
+		_publish_fragment_authority()
+		return
 	var entry := _weak_walls[idx] as Dictionary
 	if bool(entry["crumbled"]):
 		return
@@ -172,12 +340,8 @@ func _commit_weak_wall(idx: int) -> void:
 			if gs != null:
 				gs.command_stop(en.char_id)
 			en.take_damage(float(en.max_hp))
-	var crack := entry["crack"] as Node3D
-	if crack != null and is_instance_valid(crack):
-		crack.visible = false
-	var rubble := entry["rubble"] as Node3D
-	if rubble != null and is_instance_valid(rubble):
-		rubble.visible = true
+	_set_weak_wall_presenter(idx, true)
+	_publish_fragment_authority()
 
 ## ---- DISTRICT DETAIL RENDERERS (shared by the level loader and the architecture showcase;
 ## the showcase chunk extends this class) ----
@@ -1023,14 +1187,12 @@ func _spawn_object(spec: Dictionary) -> void:
 			_scarpets.append(mat)
 		"decorative_flora":
 			# {species:String, pos:Vector3, opts?:Dictionary} — ornamental invasive
-			# (docs/DECORATIVE_FLORA.md): pure scenery until Peris's HARVEST reveal lights it
-			# yellow. No gameplay value; the only verb it answers is CLEAR.
+			# (docs/DECORATIVE_FLORA.md): pure scenery with no interaction or stat value.
 			var deco := DecorativeFlora.new()
 			deco.name = _name(spec, "Deco")
 			deco.configure(str(spec.get("species", "curbelia")), _v3(spec, "pos"),
 				spec.get("opts", {}) as Dictionary)
 			add_child(deco)
-			_register_interactable(deco)
 			_decoratives.append(deco)
 		"spike_strip":
 			# {pos:Vector3, half:Vector2, dot:float} — anti-loiter studs (hostile architecture,
@@ -1094,28 +1256,37 @@ func _spawn_infrastructure_operation(spec: Dictionary) -> void:
 	var built := _add_infrastructure_operation(spec)
 	if built.is_empty():
 		return
-	_infrastructure_operations.append(built.get("operation"))
+	var operation = built.get("operation")
+	_infrastructure_operations.append(operation)
 	_infrastructure_fields.append(built.get("field"))
+	if is_instance_valid(operation) and operation.has_method("set_authority_publisher"):
+		operation.call(
+			"set_authority_publisher",
+			Callable(self, "_publish_fragment_authority")
+		)
+
 
 func _spawn_enemy(spec: Dictionary, gs) -> void:
 	if gs == null:
 		return
 	var enemy := (Naturalizer.new() as Enemy) if str(spec.get("class", "")) == "naturalizer" else EnemyScript.new()
 	var eid := str(spec.get("id", "enemy_%d" % _enemies.size()))
+	var already_registered: bool = bool(gs.characters.has(eid))
 	enemy.name = "Enemy_%s" % eid
-	enemy.position = _v3(spec, "pos")
+	enemy.position = gs.get_position(eid) if already_registered else _v3(spec, "pos")
 	enemy.move_speed = _f(spec, "speed", 2.4)
 	enemy.detection_range = _f(spec, "detect", 4.0)
 	enemy._detection_targets.assign(_str_arr(spec, "targets"))
 	add_child(enemy)
 	enemy.char_id = eid
 	enemy.game_state = gs
-	gs.register_character(eid, enemy.position, enemy.move_speed, {"detection_range": float(enemy.detection_range)})
-	if int(spec.get("level", 0)) > 0 and gs.has_method("set_character_level"):
+	if not already_registered:
+		gs.register_character(eid, enemy.position, enemy.move_speed, {"detection_range": float(enemy.detection_range)})
+	if not already_registered and int(spec.get("level", 0)) > 0 and gs.has_method("set_character_level"):
 		# a HIGH-LINE enemy: lives on an upper grid floor (deck sentries); same-floor moves ride
 		# its level's plane, and the detection vertical band keeps it blind to the ground below
 		gs.set_character_level(eid, int(spec["level"]))
-	if bool(spec.get("coop_exempt", false)) and gs.has_method("set_coop_exempt"):
+	if not already_registered and bool(spec.get("coop_exempt", false)) and gs.has_method("set_coop_exempt"):
 		gs.set_coop_exempt(eid)
 	if enemy.has_method("activate"):
 		enemy.activate()
@@ -1142,10 +1313,11 @@ func headless_process(delta: float) -> void:
 
 func _update(_delta: float) -> void:
 	_ensure_scheduled()
-	_update_shared_concealment()
+	_sync_weak_wall_presenters()
 
 ## The LOADER owns the hide-tier pass: Capbage = FULL beats Scarpet = MEDIUM beats exposed, from each
-## member's REAL position every frame. Chunks never re-implement hide logic.
+## member's REAL position on an explicit fixed simulation cadence. Chunks never re-implement hide
+## logic, and neither render frames nor headless presenter polling are allowed to commit this truth.
 func _update_shared_concealment() -> void:
 	if fragment == null or (_capbages.is_empty() and _scarpets.is_empty() and _candid_zones.is_empty() \
 			and _infrastructure_fields.is_empty()):
@@ -1190,33 +1362,351 @@ func _spawn_exit_shelter(spec: Dictionary) -> void:
 	if label != "":
 		_add_label(self, label, p + Vector3(0, 2.0, 0), Color(0.6, 0.9, 0.65))
 	var it := _add_object_interactable(self, _name(spec, "ExitShelter"), "Shelter", p + Vector3(0, 0.1, 0),
-		"Rest", [pad], "", 0.0, true, _f(spec, "radius", 1.2), Interactable.InteractableType.INSPECTION)
+		"REST PARTY", [pad], "", 0.0, false, _f(spec, "radius", 1.2), Interactable.InteractableType.INSPECTION)
+	# Keep the exact authored exit region on the control. GameState.is_at_shelter() answers whether a
+	# body is in any sanctuary; completion must prove every configured party member reached THIS one.
+	var shalf := maxf(_f(spec, "radius", 1.2) * 1.5, 1.8)
+	it.set_meta("exit_shelter_center", p)
+	it.set_meta("exit_shelter_half_size", Vector2(shalf, shalf))
+	it.set_pre_trigger_validator(_validate_exit_shelter_trigger.bind(it))
 	it.interacted.connect(_on_exit_shelter_rested.bind(it))
 	_exit_shelters.append(it)
+	_exit_rest_trigger_consumed[str(it.get("data_id"))] = maxi(
+		0, _fragment_source_trigger_count(it))
 	# A pad the game CALLS a shelter must BE one: register the sanctuary region around it — the
 	# detection gate, the strike gate, and the revive watch all read gs shelter regions, and a
 	# label alone registers nothing (the attacked-in-the-shelter report, 2026-07-12).
 	var gs = _get_game_state()
 	if gs != null and gs.has_method("add_shelter_region"):
-		var shalf := maxf(_f(spec, "radius", 1.2) * 1.5, 1.8)
 		gs.add_shelter_region(Vector2(p.x - shalf, p.z - shalf), Vector2(p.x + shalf, p.z + shalf))
 
-func _on_exit_shelter_rested(it: Node = null) -> void:
-	if _phase == "complete":
-		return
-	# A downed activator cannot rest the party home (the controller never dispatches one in real
-	# play; this guards the data-layer path to the same truth).
+
+func _on_exit_shelter_rested(it: Node = null) -> bool:
+	if _phase == "complete" or _exit_rest_phase == "committing" \
+			or not _exit_shelter_source_receipt_pending(it):
+		return false
+	_exit_rest_trigger_consumed[str(it.get("data_id"))] = _fragment_source_trigger_count(it)
+	_publish_fragment_authority()
+	_sync_host_clock_to_game_state()
+	var rest_outcome := _preflight_canonical_exit_shelter_rest(it)
+	if not bool(rest_outcome.get("complete", false)):
+		var blocked: Array = rest_outcome.get("blocked", [])
+		var reason := str(blocked[0]) if not blocked.is_empty() else "the party cannot settle yet"
+		_show_note("SHELTER WAITING // %s." % reason, 2.6)
+		_apply_exit_shelter_presenters()
+		return false
+	var rest_members: Array = rest_outcome.get("rest_members", []) as Array
+	if rest_members.is_empty():
+		_complete_exit_shelter_rest(rest_outcome, true)
+		_show_note("The full ready party secured the shelter. No recovery charge was needed.", 2.8)
+		return true
 	var gs = _get_game_state()
-	if it != null and gs != null and gs.is_downed(str(it.get("active_character"))):
+	_exit_rest_phase = "committing"
+	_phase = "committing"
+	_exit_rest_shelter_name = str(it.name)
+	_exit_rest_members.assign(rest_members)
+	_exit_rest_commit_tick = _get_scheduler_tick()
+	_exit_rest_commit_day = gs.get_game_day()
+	_exit_rest_before_atp = (
+		rest_outcome.get("before_atp", {}) as Dictionary).duplicate(true)
+	_apply_exit_shelter_presenters()
+	_publish_fragment_authority()
+	if not bool(gs.command_party_rest(_exit_rest_members)):
+		_retract_exit_rest_commit()
+		_show_note("SHELTER WAITING // the atomic party rest was rejected.", 2.6)
+		return false
+	_complete_exit_shelter_rest(rest_outcome, true)
+	_show_note("The full party settled in; canonical shelter recovery has started.", 2.8)
+	return true
+
+
+func _validate_exit_shelter_trigger(source: Node, actor: String, expected_source: Node) -> bool:
+	return source == expected_source and _exit_shelters.has(source) \
+		and _phase != "complete" and _exit_rest_phase != "committing" \
+		and _fragment_actor_ready_at_source(source, actor)
+
+
+func _exit_shelter_source_receipt_pending(source: Node) -> bool:
+	if not is_instance_valid(source) or not _exit_shelters.has(source):
+		return false
+	var actor := str(source.get("active_character"))
+	if not _validate_exit_shelter_trigger(source, actor, source) \
+			or bool(source.get("one_shot")) or bool(source.get("_used")) \
+			or not bool(source.get("interaction_enabled")):
+		return false
+	var gs = _get_game_state()
+	var data_id := str(source.get("data_id"))
+	if gs == null or data_id == "" or not gs.has_interactable(data_id):
+		return false
+	var receipt: Dictionary = gs.get_interactable(data_id)
+	return int(receipt.get("trigger_count", -1)) \
+			== int(_exit_rest_trigger_consumed.get(data_id, 0)) + 1 \
+		and str(receipt.get("last_trigger_character", "")) == actor \
+		and not bool(receipt.get("one_shot", true)) \
+		and bool(receipt.get("triggered", false)) \
+		and bool(receipt.get("enabled", false))
+
+
+## A subclass may reject an otherwise real shelter edge for encounter-specific reasons before the
+## shared rest owner runs. Consume that exact count and rearm the same presenter; never let the
+## rejected edge become credit for a later call.
+func _retract_exit_shelter_source_receipt(source: Node) -> void:
+	if not is_instance_valid(source) or not _exit_shelters.has(source):
 		return
+	var data_id := str(source.get("data_id"))
+	_exit_rest_trigger_consumed[data_id] = maxi(
+		int(_exit_rest_trigger_consumed.get(data_id, 0)),
+		maxi(0, _fragment_source_trigger_count(source)))
+	if source.has_method("reset"):
+		source.reset()
+	_publish_fragment_authority()
+
+
+func _reconcile_accepted_exit_shelter_source_receipts() -> bool:
+	var changed := false
+	for shelter_v in _exit_shelters:
+		var shelter := shelter_v as Node
+		if not is_instance_valid(shelter):
+			continue
+		var data_id := str(shelter.get("data_id"))
+		var source_count := maxi(0, _fragment_source_trigger_count(shelter))
+		var consumed := maxi(0, int(_exit_rest_trigger_consumed.get(data_id, 0)))
+		if source_count <= consumed:
+			continue
+		_exit_rest_trigger_consumed[data_id] = source_count
+		changed = true
+		# No owner phase means the snapshot landed after Interactable acceptance but before this
+		# callback. Retract that orphan edge; the player must deliberately inspect again.
+		if _exit_rest_phase == "ready" and _phase != "complete" \
+				and shelter.has_method("reset"):
+			shelter.reset()
+	return changed
+
+
+func _reset_exit_shelter_receipts_to_registry() -> void:
+	_exit_rest_trigger_consumed.clear()
+	for shelter_v in _exit_shelters:
+		var shelter := shelter_v as Node
+		if not is_instance_valid(shelter):
+			continue
+		var gs = _get_game_state()
+		var data_id := str(shelter.get("data_id"))
+		var receipt: Dictionary = gs.get_interactable(data_id) \
+			if gs != null and data_id != "" and gs.has_interactable(data_id) else {}
+		if bool(receipt.get("triggered", false)) or not bool(receipt.get("enabled", true)) \
+				or bool(shelter.get("_used")) \
+				or not bool(shelter.get("interaction_enabled")):
+			shelter.reset()
+		_exit_rest_trigger_consumed[data_id] = maxi(
+			0, _fragment_source_trigger_count(shelter))
+
+
+func _portable_fragment_int_map(raw: Dictionary) -> Dictionary:
+	var portable := {}
+	for key_v in raw.keys():
+		portable[str(key_v)] = maxi(0, int(raw[key_v]))
+	return portable
+
+
+func _validated_fragment_int_map(raw: Variant) -> Dictionary:
+	return _portable_fragment_int_map(raw as Dictionary) if raw is Dictionary else {}
+
+
+## Pure preflight for the exact authored exit. The subset that actually needs daytime recovery is
+## still one canonical party-rest batch; already-full members contribute spatial/conscious presence
+## without being charged. At night every settled member belongs to the paid batch.
+func _preflight_canonical_exit_shelter_rest(it: Node) -> Dictionary:
+	var outcome := {
+		"complete": false,
+		"rest_members": [],
+		"already_full": [],
+		"blocked": [],
+		"before_atp": {},
+	}
+	var gs = _get_game_state()
+	if fragment == null or fragment.party_ids.is_empty():
+		(outcome["blocked"] as Array).append("no party is assigned to this fragment")
+		return outcome
+	if gs == null or gs.scheduler == null:
+		(outcome["blocked"] as Array).append("shelter authority is unavailable")
+		return outcome
+	if it == null or not is_instance_valid(it):
+		(outcome["blocked"] as Array).append("the exit shelter is unavailable")
+		return outcome
+
+	var needs_rest: Array[String] = []
+	for char_id_v in fragment.party_ids:
+		var char_id := str(char_id_v)
+		if not gs.characters.has(char_id):
+			(outcome["blocked"] as Array).append("%s is not present" % char_id.capitalize())
+			continue
+		if gs.is_downed(char_id) or gs.is_knocked_down(char_id):
+			(outcome["blocked"] as Array).append("%s must be revived" % char_id.capitalize())
+			continue
+		if not _character_inside_exit_shelter(gs.get_position(char_id), it):
+			(outcome["blocked"] as Array).append("%s is outside this shelter" % char_id.capitalize())
+			continue
+		if not gs.is_at_shelter(char_id):
+			(outcome["blocked"] as Array).append("%s is outside sanctuary ground" % char_id.capitalize())
+			continue
+		if gs.is_resting(char_id):
+			(outcome["blocked"] as Array).append("%s is already resting" % char_id.capitalize())
+			continue
+		if gs.is_moving(char_id) or gs.is_dodging(char_id) or gs.is_endocytosing(char_id) \
+				or gs.is_external_traversal_active(char_id) or gs.is_dragging(char_id) \
+				or gs.is_field_restoring(char_id):
+			(outcome["blocked"] as Array).append(
+				"%s is committed to another action" % char_id.capitalize()
+			)
+			continue
+		var hp_full: bool = gs.get_stat(char_id, "hp") >= gs.get_stat_cap(char_id, "hp")
+		var stamina_full: bool = gs.get_stat(char_id, "stamina") \
+			>= gs.get_stat_cap(char_id, "stamina")
+		var needs_canonical_rest: bool = not hp_full or not stamina_full \
+			or gs.get_time_of_day() >= GameState.NIGHT_START
+		if not needs_canonical_rest:
+			(outcome["already_full"] as Array).append(char_id)
+			continue
+		if gs.get_stat(char_id, "atp") < 1.0:
+			(outcome["blocked"] as Array).append("%s cannot pay one ATP" % char_id.capitalize())
+			continue
+		needs_rest.append(char_id)
+	if not (outcome["blocked"] as Array).is_empty():
+		return outcome
+	if not needs_rest.is_empty() and not bool(gs.can_party_rest(needs_rest)):
+		(outcome["blocked"] as Array).append("the recovery party cannot settle yet")
+		return outcome
+	for char_id in needs_rest:
+		(outcome["before_atp"] as Dictionary)[char_id] = gs.get_stat(char_id, "atp")
+	(outcome["rest_members"] as Array).assign(needs_rest)
+	outcome["complete"] = true
+	return outcome
+
+
+func _complete_exit_shelter_rest(outcome := {}, update_step := false) -> void:
+	if _exit_rest_phase == "rested" and _phase == "complete":
+		return
+	_cancel_exit_rest_callback()
+	_exit_rest_phase = "rested"
 	_phase = "complete"
-	_show_note("Safe ground. Rest.", 2.5)
-	_set_preview_step((fragment.id if fragment != null and fragment.id != "" else "data_fragment") + "_complete")
+	_clear_exit_rest_commit_context()
+	_apply_exit_shelter_presenters()
+	_publish_fragment_authority()
+	if update_step:
+		_set_preview_step(
+			(fragment.id if fragment != null and fragment.id != "" else "data_fragment")
+			+ "_complete")
+
+
+func _retract_exit_rest_commit() -> void:
+	_cancel_exit_rest_callback()
+	_phase = "ready"
+	_exit_rest_phase = "ready"
+	_clear_exit_rest_commit_context()
+	_apply_exit_shelter_presenters()
+	_publish_fragment_authority()
+
+
+func _clear_exit_rest_commit_context() -> void:
+	_exit_rest_shelter_name = ""
+	_exit_rest_members.clear()
+	_exit_rest_commit_tick = -1.0
+	_exit_rest_commit_day = 0
+	_exit_rest_before_atp.clear()
+
+
+func _exit_rest_tag() -> String:
+	return "data_fragment_exit_rest:%s" % _fragment_authority_key().sha256_text().substr(0, 12)
+
+
+func _cancel_exit_rest_callback() -> void:
+	var scheduler = _get_scheduler()
+	if scheduler != null:
+		scheduler.cancel_tag(_exit_rest_tag())
+
+
+func _arm_exit_rest_callback() -> void:
+	var scheduler = _get_scheduler()
+	if scheduler == null or _exit_rest_phase != "committing":
+		return
+	scheduler.cancel_tag(_exit_rest_tag())
+	scheduler.schedule_at(
+		maxf(_get_scheduler_tick(), _exit_rest_commit_tick),
+		_resume_committed_exit_rest.bind(_exit_rest_commit_tick),
+		_exit_rest_tag())
+
+
+func _resume_committed_exit_rest(expected_tick: float) -> void:
+	if _exit_rest_phase != "committing" \
+			or not is_equal_approx(_exit_rest_commit_tick, expected_tick):
+		return
+	if _authored_party_rest_effect_matches(
+		_exit_rest_members, _exit_rest_before_atp, _exit_rest_commit_day):
+		_complete_exit_shelter_rest({}, true)
+		return
+	var shelter := _find_exit_rest_shelter(_exit_rest_shelter_name)
+	var preflight := _preflight_canonical_exit_shelter_rest(shelter)
+	if not _exit_rest_preflight_matches_commit(preflight):
+		_retract_exit_rest_commit()
+		return
+	var gs = _get_game_state()
+	if gs != null and bool(gs.command_party_rest(_exit_rest_members)):
+		_complete_exit_shelter_rest({}, true)
+	else:
+		_retract_exit_rest_commit()
+
+
+func _exit_rest_preflight_matches_commit(preflight: Dictionary) -> bool:
+	var gs = _get_game_state()
+	if gs == null or gs.get_game_day() != _exit_rest_commit_day \
+			or not bool(preflight.get("complete", false)) \
+			or (preflight.get("rest_members", []) as Array) != _exit_rest_members:
+		return false
+	for char_id in _exit_rest_members:
+		if not _exit_rest_before_atp.has(char_id) \
+				or not is_equal_approx(
+					gs.get_stat(char_id, "atp"),
+					float(_exit_rest_before_atp[char_id])):
+			return false
+	return true
+
+
+func _find_exit_rest_shelter(shelter_name: String) -> Node:
+	for shelter_v in _exit_shelters:
+		var shelter := shelter_v as Node
+		if is_instance_valid(shelter) and (
+				shelter_name.is_empty() or str(shelter.name) == shelter_name):
+			return shelter
+	return null
+
+
+func _character_inside_exit_shelter(world_position: Vector3, it: Node) -> bool:
+	var center_v: Variant = it.get_meta("exit_shelter_center", Vector3.INF)
+	var half_v: Variant = it.get_meta("exit_shelter_half_size", Vector2.ZERO)
+	if not center_v is Vector3 or not half_v is Vector2:
+		return false
+	var center := center_v as Vector3
+	var half := half_v as Vector2
+	return absf(world_position.x - center.x) <= half.x \
+		and absf(world_position.z - center.z) <= half.y
+
+
+func _apply_exit_shelter_presenters() -> void:
+	var completed := _phase == "complete"
+	var enabled := not completed and _exit_rest_phase != "committing"
+	for it in _exit_shelters:
+		if not is_instance_valid(it):
+			continue
+		if it.has_method("restore_one_shot_presenter"):
+			it.call("restore_one_shot_presenter", completed, enabled)
+		elif it.has_method("set_interaction_enabled"):
+			it.call("set_interaction_enabled", enabled)
 
 func _on_fragment_target_spotted(target_id: String) -> void:
 	if fragment == null or _phase == "complete" or not (target_id in Array(fragment.party_ids)):
 		return
 	_spotted_count += 1
+	_publish_fragment_authority()
 	_show_note("Spotted. It's coming.", 2.0)
 
 ## A member beaten to 0 hp stays where they fell (the engine owns the down). The loader's only job:
@@ -1236,7 +1726,9 @@ func _on_fragment_character_downed(cid: String) -> void:
 	var sched = _get_scheduler()
 	if sched != null:
 		sched.cancel_tag(_restart_tag())
-		sched.schedule_after(1.5, _restart_fragment, _restart_tag())
+		_restart_deadline = float(sched.get_current_tick()) + 1.5
+		_schedule_fragment_restart_at(_restart_deadline)
+	_publish_fragment_authority()
 
 func _restart_tag() -> String:
 	return "frag_restart_" + (fragment.id if fragment != null and fragment.id != "" else "data_fragment")
@@ -1244,6 +1736,7 @@ func _restart_tag() -> String:
 ## Full wipe -> restart from the entry: every member restored at their spawn (logged restore + snap,
 ## so the restart replays), every enemy re-posted, the flure re-armed.
 func _restart_fragment() -> void:
+	_restart_deadline = -1.0
 	var gs = _get_game_state()
 	if gs == null or fragment == null:
 		return
@@ -1263,6 +1756,8 @@ func _restart_fragment() -> void:
 	_apply_downed_at_start()
 	_apply_runback_decor()
 	_phase = "ready"
+	_apply_exit_shelter_presenters()
+	_publish_fragment_authority()
 	_set_preview_step((fragment.id if fragment.id != "" else "data_fragment") + "_restart")
 
 ## The runback decor pass (docs/DECORATIVE_FLORA.md): each wipe makes the level prettier and
@@ -1275,7 +1770,7 @@ func _apply_runback_decor() -> void:
 		return
 	for deco_v in _decoratives:
 		var deco := deco_v as DecorativeFlora
-		if deco == null or not is_instance_valid(deco) or deco.is_cleared():
+		if deco == null or not is_instance_valid(deco):
 			continue
 		if deco.species == "festoona":
 			deco.set_drooped(true)
@@ -1289,7 +1784,6 @@ func _apply_runback_decor() -> void:
 	patch.configure("verdanta", Vector3(_fall_pos.x, 0.0, _fall_pos.z) + off,
 		{"radius": 0.9, "wall": false})
 	add_child(patch)
-	_register_interactable(patch)
 	_decoratives.append(patch)
 	_spread_patches.append(patch)
 
@@ -1312,6 +1806,9 @@ func _exit_tree() -> void:
 		return
 	sched.cancel_tag(_restart_tag())
 	sched.cancel_tag(_candid_tag())
+	sched.cancel_tag(_concealment_tag())
+	for idx_v in _weak_wall_deadlines.keys():
+		sched.cancel_tag(_weak_wall_tag(int(idx_v)))
 	for fl in _flures:
 		if is_instance_valid(fl):
 			sched.cancel_tag("flure_reset_" + str(fl.name))
@@ -1321,13 +1818,42 @@ const CANDID_TICK := 0.5
 func _candid_tag() -> String:
 	return "candid_dot_" + (fragment.id if fragment != null and fragment.id != "" else "data_fragment")
 
+
+func _concealment_tag() -> String:
+	return "fragment_concealment_" + (
+		fragment.id if fragment != null and fragment.id != "" else "data_fragment")
+
+
+func _has_shared_concealment_sources() -> bool:
+	return not _capbages.is_empty() or not _scarpets.is_empty() \
+		or not _candid_zones.is_empty() or not _infrastructure_fields.is_empty()
+
+
+func _arm_concealment_tick() -> void:
+	var sched = _get_scheduler()
+	if sched == null or not _has_shared_concealment_sources():
+		return
+	if _concealment_epoch < 0.0:
+		_concealment_epoch = float(sched.get_current_tick()) + CONCEALMENT_TICK
+		_publish_fragment_authority()
+	_schedule_concealment_at(_next_fixed_tick(
+		_concealment_epoch, CONCEALMENT_TICK))
+
+
+func _on_concealment_tick() -> void:
+	_update_shared_concealment()
+	_arm_concealment_tick()
+
+
 func _arm_candid_tick() -> void:
 	var sched = _get_scheduler()
 	if sched == null or (_candid_zones.is_empty() and _spike_strips.is_empty() \
 			and _infrastructure_fields.is_empty()):
 		return
-	sched.cancel_tag(_candid_tag())
-	sched.schedule_after(CANDID_TICK, _on_candid_tick, _candid_tag())
+	if _candid_epoch < 0.0:
+		_candid_epoch = float(sched.get_current_tick()) + CANDID_TICK
+		_publish_fragment_authority()
+	_schedule_candid_at(_next_fixed_tick(_candid_epoch, CANDID_TICK))
 
 func _on_candid_tick() -> void:
 	var gs = _get_game_state()
@@ -1369,15 +1895,474 @@ func _ensure_scheduled() -> void:
 	if _scheduled:
 		return
 	if _channels.is_empty() and _candid_zones.is_empty() and _spike_strips.is_empty() \
-			and _infrastructure_fields.is_empty():
+			and _infrastructure_fields.is_empty() and not _has_shared_concealment_sources():
 		return
 	var sched = _get_scheduler()
 	if sched == null:
 		return
 	_scheduled = true
 	for ch in _channels:
-		ch.start(sched)
+		ch.start(sched, _get_game_state())
 	_arm_candid_tick()
+	_arm_concealment_tick()
+	_publish_fragment_authority()
+
+
+## Scene-local Callables are deliberately absent from EventScheduler snapshots. This record is the
+## fragment loader's portable gameplay truth: it keeps the shared damage cadence, wipe restart,
+## weak-wall commitments, and loader-owned progression on the same absolute simulation timeline.
+func _fragment_authority_key() -> String:
+	var stable_id := fragment.id if fragment != null and fragment.id != "" else fragment_path
+	if stable_id == "":
+		stable_id = chunk_name if chunk_name != "" else "data_fragment"
+	return DATA_FRAGMENT_AUTHORITY_PREFIX + stable_id
+
+
+func _fragment_authority_state() -> Dictionary:
+	var weak_walls: Array = []
+	for idx in range(_weak_walls.size()):
+		var wall: Dictionary = _weak_walls[idx]
+		weak_walls.append({
+			"crumbled": bool(wall.get("crumbled", false)),
+			"deadline": float(_weak_wall_deadlines.get(idx, -1.0)),
+			"trigger_consumed": maxi(0, int(wall.get("trigger_consumed", 0))),
+		})
+	var infrastructure: Dictionary = {}
+	for operation in _infrastructure_operations:
+		if not is_instance_valid(operation) or not operation.has_method("serialize_state"):
+			continue
+		var operation_state: Dictionary = operation.call("serialize_state")
+		var operation_id := str(operation_state.get("operation_id", ""))
+		if operation_id != "":
+			infrastructure[operation_id] = operation_state
+	return {
+		"version": DATA_FRAGMENT_AUTHORITY_VERSION,
+		"fragment_id": fragment.id if fragment != null else "",
+		"phase": _phase,
+		"scheduled": _scheduled,
+		"candid_epoch": _candid_epoch,
+		"concealment_epoch": _concealment_epoch,
+		"restart_deadline": _restart_deadline,
+		"spotted_count": _spotted_count,
+		"wipe_count": _wipe_count,
+		"fall_pos": [_fall_pos.x, _fall_pos.y, _fall_pos.z],
+		"exit_rest_phase": _exit_rest_phase,
+		"exit_rest_shelter_name": _exit_rest_shelter_name,
+		"exit_rest_members": _exit_rest_members.duplicate(),
+		"exit_rest_commit_tick": _exit_rest_commit_tick,
+		"exit_rest_commit_day": _exit_rest_commit_day,
+		"exit_rest_before_atp": _exit_rest_before_atp.duplicate(true),
+		"exit_rest_trigger_consumed": _portable_fragment_int_map(
+			_exit_rest_trigger_consumed),
+		"weak_walls": weak_walls,
+		"infrastructure": infrastructure,
+	}
+
+
+func _publish_fragment_authority() -> void:
+	if _restoring_fragment_authority:
+		return
+	var gs = _get_game_state()
+	if gs != null and gs.has_method("set_world_state"):
+		gs.set_world_state(_fragment_authority_key(), _fragment_authority_state())
+
+
+func _normalized_fragment_authority(raw: Variant) -> Dictionary:
+	if not (raw is Dictionary):
+		return {}
+	var saved := (raw as Dictionary).duplicate(true)
+	var saved_version := int(saved.get("version", 0))
+	if saved_version in [1, 2, 3]:
+		if saved_version in [1, 2]:
+			if saved_version == 1:
+				var legacy_complete := str(saved.get("phase", "")) == "complete"
+				saved["exit_rest_phase"] = "rested" if legacy_complete else "ready"
+				saved["exit_rest_shelter_name"] = ""
+				saved["exit_rest_members"] = []
+				saved["exit_rest_commit_tick"] = -1.0
+				saved["exit_rest_commit_day"] = 0
+				saved["exit_rest_before_atp"] = {}
+			var migrated_exit_counts := {}
+			for shelter_v in _exit_shelters:
+				var shelter := shelter_v as Node
+				var shelter_id := str(shelter.get("data_id"))
+				migrated_exit_counts[shelter_id] = maxi(
+					0, _fragment_source_trigger_count(shelter))
+			saved["exit_rest_trigger_consumed"] = migrated_exit_counts
+			# Legacy records predate exact weak-wall receipts. Preserve their physical endpoint/deadline,
+			# but consume only the registry count already visible at that saved tick; never infer a pry.
+			var migrated_walls: Array = []
+			var legacy_walls: Array = saved.get("weak_walls", []) as Array
+			for idx in range(_weak_walls.size()):
+				var wall_state: Dictionary = (
+					legacy_walls[idx] as Dictionary).duplicate(true) \
+					if idx < legacy_walls.size() and legacy_walls[idx] is Dictionary else {}
+				var source: Node = (_weak_walls[idx] as Dictionary).get("source")
+				wall_state["trigger_consumed"] = maxi(
+					0, _weak_wall_source_trigger_count(source))
+				migrated_walls.append(wall_state)
+			saved["weak_walls"] = migrated_walls
+		# V3 already owns exact interaction receipts, but predates the explicit spatial-cover clock.
+		# Start that new cadence from the restored scheduler tick rather than inventing a past sample.
+		saved["concealment_epoch"] = -1.0
+		saved["version"] = DATA_FRAGMENT_AUTHORITY_VERSION
+	if int(saved.get("version", 0)) != DATA_FRAGMENT_AUTHORITY_VERSION:
+		return {}
+	var expected_id := fragment.id if fragment != null else ""
+	if str(saved.get("fragment_id", expected_id)) != expected_id:
+		return {}
+	var concealment_epoch := float(saved.get("concealment_epoch", -1.0))
+	if not is_finite(concealment_epoch) or concealment_epoch < -1.0:
+		return {}
+	var exit_counts_v: Variant = saved.get("exit_rest_trigger_consumed", null)
+	if not exit_counts_v is Dictionary:
+		return {}
+	var exit_counts := exit_counts_v as Dictionary
+	for shelter_v in _exit_shelters:
+		var shelter := shelter_v as Node
+		var shelter_id := str(shelter.get("data_id"))
+		var saved_count := int(exit_counts.get(shelter_id, -1))
+		var source_count := _fragment_source_trigger_count(shelter)
+		if saved_count < 0 or source_count < 0 or saved_count > source_count:
+			return {}
+	var wall_states_v: Variant = saved.get("weak_walls", null)
+	if not wall_states_v is Array:
+		return {}
+	var wall_states := wall_states_v as Array
+	for idx in range(_weak_walls.size()):
+		if idx >= wall_states.size() or not wall_states[idx] is Dictionary:
+			return {}
+		var state := wall_states[idx] as Dictionary
+		var deadline := float(state.get("deadline", -1.0))
+		var consumed := int(state.get("trigger_consumed", -1))
+		var source: Node = (_weak_walls[idx] as Dictionary).get("source")
+		var source_count := _weak_wall_source_trigger_count(source)
+		if not is_finite(deadline) or deadline < -1.0 or consumed < 0 \
+				or source_count < 0 or consumed > source_count:
+			return {}
+	return saved
+
+
+## Production save restore clears opaque Callables before replacing GameState. Reattach exactly one
+## callback per committed deadline; never restart a full interval and never replay a consequence here.
+func on_game_state_snapshot_restored() -> void:
+	super.on_game_state_snapshot_restored()
+	# Restore each child registry mirror before projecting the chunk-owned wall phase. The owner
+	# override then survives a later generic presenter walk without reopening a committed collapse.
+	for wall_v in _weak_walls:
+		var source: Node = (wall_v as Dictionary).get("source")
+		if is_instance_valid(source) and source.has_method("on_game_state_snapshot_restored"):
+			source.on_game_state_snapshot_restored()
+	for shelter_v in _exit_shelters:
+		var shelter := shelter_v as Node
+		if is_instance_valid(shelter) and shelter.has_method("on_game_state_snapshot_restored"):
+			shelter.on_game_state_snapshot_restored()
+	var sched = _get_scheduler()
+	if sched != null:
+		sched.cancel_tag(_restart_tag())
+		sched.cancel_tag(_candid_tag())
+		sched.cancel_tag(_concealment_tag())
+		sched.cancel_tag(_exit_rest_tag())
+		for idx in range(_weak_walls.size()):
+			sched.cancel_tag(_weak_wall_tag(idx))
+	var gs = _get_game_state()
+	var raw: Variant = gs.get_world_state(_fragment_authority_key(), null) \
+			if gs != null and gs.has_method("get_world_state") else null
+	var saved := _normalized_fragment_authority(raw)
+	if saved.is_empty():
+		_retract_fragment_presenter_to_defaults()
+		return
+	var migrated := int((raw as Dictionary).get("version", 0)) \
+		!= DATA_FRAGMENT_AUTHORITY_VERSION
+
+	_restoring_fragment_authority = true
+	_phase = str(saved.get("phase", "ready"))
+	if _phase not in ["ready", "active", "failed", "committing", "complete"]:
+		_phase = "ready"
+	_scheduled = bool(saved.get("scheduled", false))
+	_candid_epoch = float(saved.get("candid_epoch", -1.0))
+	_concealment_epoch = float(saved.get("concealment_epoch", -1.0))
+	_restart_deadline = float(saved.get("restart_deadline", -1.0))
+	_spotted_count = maxi(0, int(saved.get("spotted_count", 0)))
+	_wipe_count = maxi(0, int(saved.get("wipe_count", 0)))
+	_fall_pos = _fragment_vec3(saved.get("fall_pos", []), Vector3.ZERO)
+	_exit_rest_phase = str(saved.get(
+		"exit_rest_phase", "rested" if _phase == "complete" else "ready"))
+	if _exit_rest_phase not in EXIT_REST_PHASES:
+		_exit_rest_phase = "ready"
+	_exit_rest_shelter_name = str(saved.get("exit_rest_shelter_name", ""))
+	_exit_rest_members.clear()
+	for member_v in saved.get("exit_rest_members", []) as Array:
+		var member_id := str(member_v)
+		if member_id != "" and not _exit_rest_members.has(member_id):
+			_exit_rest_members.append(member_id)
+	_exit_rest_commit_tick = float(saved.get("exit_rest_commit_tick", -1.0))
+	_exit_rest_commit_day = int(saved.get("exit_rest_commit_day", 0))
+	_exit_rest_before_atp = (
+		saved.get("exit_rest_before_atp", {}) as Dictionary).duplicate(true)
+	_exit_rest_trigger_consumed = _validated_fragment_int_map(
+		saved.get("exit_rest_trigger_consumed", {}))
+	if _exit_rest_phase == "committing" and (
+			_phase != "committing" or _exit_rest_members.is_empty()
+			or _exit_rest_commit_tick < 0.0 or _exit_rest_before_atp.is_empty()):
+		_exit_rest_phase = "ready"
+		_phase = "ready"
+		_clear_exit_rest_commit_context()
+	elif _exit_rest_phase == "rested":
+		_phase = "complete"
+	_weak_wall_deadlines.clear()
+	var wall_states: Array = saved.get("weak_walls", []) as Array
+	for idx in range(_weak_walls.size()):
+		var state: Dictionary = wall_states[idx] as Dictionary if idx < wall_states.size() \
+				and wall_states[idx] is Dictionary else {}
+		var wall := _weak_walls[idx] as Dictionary
+		wall["trigger_consumed"] = maxi(0, int(state.get("trigger_consumed", 0)))
+		var crumbled := bool(state.get("crumbled", false))
+		_set_weak_wall_presenter(idx, crumbled)
+		var deadline := float(state.get("deadline", -1.0))
+		if not crumbled and deadline >= 0.0:
+			_weak_wall_deadlines[idx] = deadline
+	var reconciled_weak_wall_receipt := _reconcile_accepted_weak_wall_source_receipts()
+	var reconciled_exit_receipt := _reconcile_accepted_exit_shelter_source_receipts()
+	_restore_infrastructure_presenters(saved.get("infrastructure", {}))
+	_apply_exit_shelter_presenters()
+	if sched != null and _scheduled and _concealment_epoch < 0.0 \
+			and _has_shared_concealment_sources():
+		_concealment_epoch = float(sched.get_current_tick()) + CONCEALMENT_TICK
+	_restoring_fragment_authority = false
+	if migrated or reconciled_weak_wall_receipt or reconciled_exit_receipt:
+		_publish_fragment_authority()
+
+	if sched == null:
+		return
+	if _scheduled and _candid_epoch >= 0.0 and (not _candid_zones.is_empty() \
+			or not _spike_strips.is_empty() or not _infrastructure_fields.is_empty()):
+		_schedule_candid_at(_next_fixed_tick(_candid_epoch, CANDID_TICK))
+	if _scheduled and _concealment_epoch >= 0.0 and _has_shared_concealment_sources():
+		_schedule_concealment_at(_next_fixed_tick(
+			_concealment_epoch, CONCEALMENT_TICK))
+	if _restart_deadline >= 0.0:
+		_schedule_fragment_restart_at(_restart_deadline)
+	if _exit_rest_phase == "committing":
+		_arm_exit_rest_callback()
+	for idx_v in _weak_wall_deadlines.keys():
+		_schedule_weak_wall_at(int(idx_v), float(_weak_wall_deadlines[idx_v]))
+	_sync_weak_wall_presenters()
+
+
+func _retract_fragment_presenter_to_defaults() -> void:
+	_restoring_fragment_authority = true
+	_phase = "ready"
+	_scheduled = false
+	_candid_epoch = -1.0
+	_concealment_epoch = -1.0
+	_restart_deadline = -1.0
+	_spotted_count = 0
+	_wipe_count = 0
+	_fall_pos = Vector3.ZERO
+	_exit_rest_phase = "ready"
+	_clear_exit_rest_commit_context()
+	_reset_exit_shelter_receipts_to_registry()
+	_weak_wall_deadlines.clear()
+	for idx in range(_weak_walls.size()):
+		_retract_weak_wall_source_to_ready(idx)
+		_set_weak_wall_presenter(idx, false)
+	_restore_infrastructure_presenters({})
+	_apply_exit_shelter_presenters()
+	_restoring_fragment_authority = false
+
+
+func _schedule_candid_at(deadline: float) -> void:
+	var sched = _get_scheduler()
+	if sched == null:
+		return
+	sched.cancel_tag(_candid_tag())
+	sched.schedule_after(maxf(0.0, deadline - float(sched.get_current_tick())),
+		_on_candid_tick, _candid_tag())
+
+
+func _schedule_concealment_at(deadline: float) -> void:
+	var sched = _get_scheduler()
+	if sched == null:
+		return
+	sched.cancel_tag(_concealment_tag())
+	sched.schedule_after(maxf(0.0, deadline - float(sched.get_current_tick())),
+		_on_concealment_tick, _concealment_tag())
+
+
+func _schedule_fragment_restart_at(deadline: float) -> void:
+	var sched = _get_scheduler()
+	if sched == null:
+		return
+	sched.cancel_tag(_restart_tag())
+	sched.schedule_after(maxf(0.0, deadline - float(sched.get_current_tick())),
+		_restart_fragment, _restart_tag())
+
+
+func _weak_wall_tag(idx: int) -> String:
+	return "%s:weak_wall:%d" % [_fragment_authority_key(), idx]
+
+
+func _schedule_weak_wall_at(idx: int, deadline: float) -> void:
+	var sched = _get_scheduler()
+	if sched == null:
+		return
+	var tag := _weak_wall_tag(idx)
+	sched.cancel_tag(tag)
+	sched.schedule_after(maxf(0.0, deadline - float(sched.get_current_tick())),
+		_commit_weak_wall.bind(idx), tag)
+
+
+## An accepted Interactable edge can be serialized synchronously before this owner callback begins.
+## At that seam the wall has not moved and no deadline exists, so loading consumes the orphan count
+## and re-arms the same source. It never grants a free collapse or leaves a permanently dead pry point.
+func _reconcile_accepted_weak_wall_source_receipts() -> bool:
+	var changed := false
+	for idx in range(_weak_walls.size()):
+		var wall := _weak_walls[idx] as Dictionary
+		var source: Node = wall.get("source")
+		var source_count := maxi(0, _weak_wall_source_trigger_count(source))
+		var consumed := maxi(0, int(wall.get("trigger_consumed", 0)))
+		if source_count > consumed:
+			wall["trigger_consumed"] = source_count
+			changed = true
+		if not bool(wall.get("crumbled", false)) and not _weak_wall_deadlines.has(idx):
+			var gs = _get_game_state()
+			var data_id := str(source.get("data_id")) if is_instance_valid(source) else ""
+			var receipt: Dictionary = gs.get_interactable(data_id) \
+				if gs != null and data_id != "" and gs.has_interactable(data_id) else {}
+			if bool(receipt.get("triggered", false)) \
+					or not bool(receipt.get("enabled", true)) \
+					or bool(source.get("_used")) \
+					or not bool(source.get("interaction_enabled")):
+				source.reset()
+				wall["trigger_consumed"] = maxi(
+					int(wall.get("trigger_consumed", 0)),
+					maxi(0, _weak_wall_source_trigger_count(source)))
+				changed = true
+		_project_weak_wall_source(idx)
+	return changed
+
+
+func _retract_weak_wall_source_to_ready(idx: int) -> void:
+	if idx < 0 or idx >= _weak_walls.size():
+		return
+	var wall := _weak_walls[idx] as Dictionary
+	var source: Node = wall.get("source")
+	if not is_instance_valid(source):
+		wall["trigger_consumed"] = 0
+		return
+	var gs = _get_game_state()
+	var data_id := str(source.get("data_id"))
+	var receipt: Dictionary = gs.get_interactable(data_id) \
+		if gs != null and data_id != "" and gs.has_interactable(data_id) else {}
+	if bool(receipt.get("triggered", false)) or not bool(receipt.get("enabled", true)) \
+			or bool(source.get("_used")) or not bool(source.get("interaction_enabled")):
+		source.reset()
+	wall["trigger_consumed"] = maxi(0, _weak_wall_source_trigger_count(source))
+
+
+func _project_weak_wall_source(idx: int) -> void:
+	if idx < 0 or idx >= _weak_walls.size():
+		return
+	var wall := _weak_walls[idx] as Dictionary
+	var source: Node = wall.get("source")
+	if not is_instance_valid(source):
+		return
+	var spent := bool(wall.get("crumbled", false)) or _weak_wall_deadlines.has(idx)
+	if source.has_method("restore_one_shot_presenter"):
+		source.restore_one_shot_presenter(spent, not spent)
+	else:
+		source.set("_used", spent)
+		source.set_interaction_enabled(not spent)
+
+
+func _next_fixed_tick(epoch: float, interval: float) -> float:
+	return FixedCadenceScript.next_strict_tick(epoch, interval, _get_scheduler_tick())
+
+
+func _set_weak_wall_presenter(idx: int, crumbled: bool) -> void:
+	if idx < 0 or idx >= _weak_walls.size():
+		return
+	var wall: Dictionary = _weak_walls[idx]
+	wall["crumbled"] = crumbled
+	_apply_weak_wall_visual_progress(idx, 1.0 if crumbled else 0.0)
+	var rubble = wall.get("rubble", null)
+	if is_instance_valid(rubble):
+		rubble.visible = crumbled
+	_project_weak_wall_source(idx)
+
+
+## The deadline is authority; slab transforms are a pure, reload-safe projection. Staggering the
+## three panels slightly gives the player a readable outward wave without adding hidden sub-timers.
+func _sync_weak_wall_presenters() -> void:
+	var now := _get_scheduler_tick()
+	for idx in range(_weak_walls.size()):
+		var wall: Dictionary = _weak_walls[idx]
+		if bool(wall.get("crumbled", false)):
+			_apply_weak_wall_visual_progress(idx, 1.0)
+			continue
+		var deadline := float(_weak_wall_deadlines.get(idx, -1.0))
+		var progress := 0.0
+		if deadline >= 0.0:
+			progress = clampf(
+				1.0 - (deadline - now) / WEAK_WALL_CRUMBLE_DURATION,
+				0.0,
+				1.0
+			)
+		_apply_weak_wall_visual_progress(idx, progress)
+
+
+func _apply_weak_wall_visual_progress(idx: int, progress: float) -> void:
+	if idx < 0 or idx >= _weak_walls.size():
+		return
+	var wall: Dictionary = _weak_walls[idx]
+	var panels: Array = wall.get("panels", [])
+	var starts: Array = wall.get("panel_starts", [])
+	for panel_index in range(mini(panels.size(), starts.size())):
+		var panel = panels[panel_index]
+		if not is_instance_valid(panel):
+			continue
+		var stagger := 0.045 * float(panel_index)
+		var local_progress := clampf((progress - stagger) / (1.0 - stagger), 0.0, 1.0)
+		var eased := local_progress * local_progress * (3.0 - 2.0 * local_progress)
+		var start: Vector3 = starts[panel_index]
+		panel.position = start + Vector3(
+			0.08 * (float(panel_index) - 1.0) * eased,
+			-0.12 * eased,
+			(1.35 + 0.12 * float(panel_index)) * eased
+		)
+		panel.rotation = Vector3(
+			-1.48 * eased,
+			0.08 * (float(panel_index) - 1.0) * eased,
+			0.035 * (1.0 - float(panel_index)) * eased
+		)
+		panel.visible = true
+	var crack = wall.get("crack", null)
+	if is_instance_valid(crack):
+		crack.visible = progress < 0.08
+
+
+func _restore_infrastructure_presenters(states: Variant) -> void:
+	for idx in range(_infrastructure_operations.size()):
+		var operation = _infrastructure_operations[idx]
+		if not is_instance_valid(operation):
+			continue
+		var state: Variant = {}
+		if states is Dictionary:
+			state = (states as Dictionary).get(str(operation.get("operation_id")), {})
+		elif states is Array and idx < (states as Array).size():
+			# Development saves from before stable-ID snapshots used construction ordering. The operation
+			# rejects those unversioned records to baseline rather than guessing at a different identity.
+			state = (states as Array)[idx]
+		if operation.has_method("restore_state"):
+			operation.call("restore_state", state)
+
+
+func _fragment_vec3(raw: Variant, fallback: Vector3) -> Vector3:
+	if raw is Array and raw.size() == 3:
+		return Vector3(float(raw[0]), float(raw[1]), float(raw[2]))
+	return fallback
 
 # --- SceneChunk interface (driven by the fragment data) ---
 
@@ -1434,6 +2419,7 @@ func get_preview_state() -> Dictionary:
 			lure_active = true
 	return {
 		"phase": _phase,
+		"exit_rest_phase": _exit_rest_phase,
 		"complete": _phase == "complete",
 		"downed": downed,
 		"spotted_count": _spotted_count,
@@ -1443,48 +2429,6 @@ func get_preview_state() -> Dictionary:
 
 func get_preview_abilities() -> Array:
 	return AbilityData.for_context("data_fragment")
-
-const HARVEST_REVEAL_RANGE := 8.0
-const HARVEST_REVEAL_SECS := 4.0
-
-## Peris's HARVEST read (docs/DECORATIVE_FLORA.md): light every ornamental within reach YELLOW
-## for the window — her worker's eye separating decoration from yield. The reveal is the only
-## thing that ever highlights a decorative; once revealed it stays clearable.
-func handle_preview_ability(ability_id: String, _ability: Dictionary = {}) -> Dictionary:
-	if ability_id != "peris_harvest":
-		return {}
-	return _pulse_harvest_reveal()
-
-func _pulse_harvest_reveal() -> Dictionary:
-	var gs = _get_game_state()
-	if gs == null or not gs.characters.has("peris"):
-		return {}
-	var origin: Vector3 = gs.get_position("peris")
-	var lit := 0
-	for deco_v in _decoratives:
-		var deco := deco_v as DecorativeFlora
-		if deco == null or not is_instance_valid(deco) or deco.is_cleared():
-			continue
-		if Vector2(deco.position.x - origin.x, deco.position.z - origin.z).length() <= HARVEST_REVEAL_RANGE:
-			deco.set_harvest_reveal(true)
-			lit += 1
-	var sched = _get_scheduler()
-	if sched != null:
-		sched.cancel_tag(_reveal_tag())
-		sched.schedule_after(HARVEST_REVEAL_SECS, _end_harvest_reveal, _reveal_tag())
-	if lit == 0:
-		# Override the xlsx line: nothing decorative answered the read.
-		return {"message": "Nothing ornamental in reach.", "note": ""}
-	return {}
-
-func _end_harvest_reveal() -> void:
-	for deco_v in _decoratives:
-		var deco := deco_v as DecorativeFlora
-		if deco != null and is_instance_valid(deco):
-			deco.set_harvest_reveal(false)
-
-func _reveal_tag() -> String:
-	return "deco_reveal_" + (fragment.id if fragment != null and fragment.id != "" else "data_fragment")
 
 ## A fragment can open with members ALREADY DOWN where they spawned (params.downed_at_start:
 ## ["aster", ...]) — the retrieve scenarios' opening state. Applied on every reset/restart so the
@@ -1505,6 +2449,18 @@ func _apply_downed_at_start() -> void:
 			gs.down_character(cid)
 
 func reset_preview_state() -> void:
+	var sched = _get_scheduler()
+	if sched != null:
+		sched.cancel_tag(_restart_tag())
+		sched.cancel_tag(_candid_tag())
+		sched.cancel_tag(_concealment_tag())
+		sched.cancel_tag(_exit_rest_tag())
+		for idx in range(_weak_walls.size()):
+			sched.cancel_tag(_weak_wall_tag(idx))
+	_restart_deadline = -1.0
+	_candid_epoch = -1.0
+	_concealment_epoch = -1.0
+	_weak_wall_deadlines.clear()
 	_apply_downed_at_start()
 	for fl in _flures:
 		if is_instance_valid(fl):
@@ -1513,13 +2469,16 @@ func reset_preview_state() -> void:
 		if is_instance_valid(ch):
 			ch.reset()
 	_phase = "ready"
+	_exit_rest_phase = "ready"
+	_clear_exit_rest_commit_context()
+	_reset_exit_shelter_receipts_to_registry()
 	_spotted_count = 0
 	_wipe_count = 0
 	for enemy in _enemies:
 		if is_instance_valid(enemy) and enemy.has_method("re_post") and _enemy_posts.has(enemy.char_id):
 			enemy.re_post(_enemy_posts[enemy.char_id])
-	# Decor back to the authored state: runback-grown Verdanta patches go away, everything else
-	# un-clears / un-droops / forgets it was revealed.
+	# Decor back to the authored state: runback-grown Verdanta patches go away and authored
+	# ornamentals return to their initial runback appearance.
 	for patch in _spread_patches:
 		if is_instance_valid(patch):
 			_decoratives.erase(patch)
@@ -1534,6 +2493,11 @@ func reset_preview_state() -> void:
 			operation.call("reset_operation")
 	_fall_pos = Vector3.ZERO
 	_scheduled = false
+	for idx in range(_weak_walls.size()):
+		_retract_weak_wall_source_to_ready(idx)
+		_set_weak_wall_presenter(idx, false)
+	_apply_exit_shelter_presenters()
+	_publish_fragment_authority()
 	_set_preview_step((fragment.id if fragment != null and fragment.id != "" else "data_fragment") + "_start")
 
 # Accessors so a test / the host can reach the composed objects.

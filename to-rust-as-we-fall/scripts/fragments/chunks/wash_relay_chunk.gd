@@ -1145,6 +1145,8 @@ func _build_pressure_bridge() -> void:
 	_add_warped_guidance_label(_transit_root, 'PressureRoomRead', 'VENT JETS // THEN EXIT CYAN',
 		PRESSURE_ROOM_CENTER.x, -7.45, Color(0.35, 0.9, 1.0))
 
+	# THE portal look (docs/PORTALS.md) on both reversible pressure pairs: arch + live lens.
+	PortalFixtures.dress_matching(_pressure_portals)
 	_pressure_valve = _add_interactable(self, 'PressureValve', 'Vent the jet manifold', PRESSURE_VALVE_POS,
 		'VENT JETS', '', 1.25, false, 1.65, Interactable.InteractableType.TIMED_ACTION, false)
 	_configure_wash_control(

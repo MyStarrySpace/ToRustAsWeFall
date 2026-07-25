@@ -21,6 +21,8 @@ var _vp: SubViewport
 var _cam: Camera3D
 var _surface: MeshInstance3D
 var _dest_xf := Transform3D.IDENTITY
+var _dest_node: Node3D = null   # tracking mode: the paired aperture is read LIVE each
+                                # frame, so warps/moves of either end stay correct
 
 ## `world` non-null: render THAT world from the destination (same-scene pairs pass their
 ## own World3D). Null: the viewport owns a private world (a true-elsewhere lens — the
@@ -55,9 +57,19 @@ func setup(src_xf: Transform3D, dest_xf: Transform3D, aperture_radius: float,
 	_surface.material_override = mat
 	add_child(_surface)
 
+## Tracking mode (PortalFixtures): this node must be a CHILD of the source aperture
+## (identity local transform — it rides the aperture through warps); the destination is
+## the paired aperture NODE, read live. Same viewport/lens surface as setup().
+func setup_tracking(dest_aperture: Node3D, aperture_radius: float, world: World3D = null) -> void:
+	_dest_node = dest_aperture
+	setup(Transform3D.IDENTITY, Transform3D.IDENTITY, aperture_radius, world)
+	transform = Transform3D.IDENTITY   # ride the parent aperture exactly
+
 func _process(_delta: float) -> void:
 	if _vp == null or _cam == null:
 		return
+	if _dest_node != null and is_instance_valid(_dest_node):
+		_dest_xf = _dest_node.global_transform
 	var live := get_viewport().get_camera_3d() if is_inside_tree() else null
 	if live == null:
 		_vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
