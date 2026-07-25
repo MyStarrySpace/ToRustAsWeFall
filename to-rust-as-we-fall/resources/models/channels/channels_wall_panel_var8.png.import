@@ -2,16 +2,19 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://hdsjlbkw37av"
-path="res://.godot/imported/CureArch_tex.png-4c118dacb50f5c8f65417e43585d6e16.ctex"
+uid="uid://cfjgyxiej15kh"
+path="res://.godot/imported/channels_wall_panel_var8.png-5485c12039b222b45b16d693c2587245.ctex"
 metadata={
 "vram_texture": false
+}
+generator_parameters={
+"md5": "7b09df3523926ab62889b74f22b567f7"
 }
 
 [deps]
 
-source_file="res://resources/models/channels/CureArch_tex.png"
-dest_files=["res://.godot/imported/CureArch_tex.png-4c118dacb50f5c8f65417e43585d6e16.ctex"]
+source_file="res://resources/models/channels/channels_wall_panel_var8.png"
+dest_files=["res://.godot/imported/channels_wall_panel_var8.png-5485c12039b222b45b16d693c2587245.ctex"]
 
 [params]
 
@@ -23,7 +26,7 @@ compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=false
+mipmaps/generate=true
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""

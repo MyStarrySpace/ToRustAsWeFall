@@ -1,0 +1,8 @@
+newmtl endo_return_grate
+Ka 0.080000 0.080000 0.075000
+Kd 0.720000 0.650000 0.460000
+Ks 0.120000 0.120000 0.100000
+Ns 24.000000
+d 1.000000
+illum 2
+map_Kd ../../elevator/endo-junction_grate.png

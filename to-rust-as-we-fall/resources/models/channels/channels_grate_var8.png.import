@@ -2,16 +2,19 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bqd2u7jk4gxmv"
-path="res://.godot/imported/CureArch_emissive.png-115941e4d9f5687971fd162d1ee6ec06.ctex"
+uid="uid://bql3gk0m321ed"
+path="res://.godot/imported/channels_grate_var8.png-9ff1ebceea0e044ea1c3323aeaca90e0.ctex"
 metadata={
 "vram_texture": false
+}
+generator_parameters={
+"md5": "ea973471721536d23c41895d2e786ab5"
 }
 
 [deps]
 
-source_file="res://resources/models/channels/CureArch_emissive.png"
-dest_files=["res://.godot/imported/CureArch_emissive.png-115941e4d9f5687971fd162d1ee6ec06.ctex"]
+source_file="res://resources/models/channels/channels_grate_var8.png"
+dest_files=["res://.godot/imported/channels_grate_var8.png-9ff1ebceea0e044ea1c3323aeaca90e0.ctex"]
 
 [params]
 
@@ -23,7 +26,7 @@ compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=false
+mipmaps/generate=true
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""
