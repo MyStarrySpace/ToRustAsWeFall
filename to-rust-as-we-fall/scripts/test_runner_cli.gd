@@ -579,9 +579,9 @@ func _ready() -> void:
 			"--test-occlusion-shader-capture":
 				ran_test = true
 				await _test_occlusion_shader_capture()
-			"--test-wash-relay-cadence-scan":
+			"--test-wash-relay-flow-terminal":
 				ran_test = true
-				await _test_wash_relay_cadence_scan()
+				await _test_wash_relay_flow_terminal()
 			"--test-wash-relay-playthrough":
 				ran_test = true
 				await _test_wash_relay_playthrough()
@@ -1388,7 +1388,7 @@ func _run_all_tests() -> void:
 	await _test_refuge_run_playthrough()
 	await _test_channels_textures()
 	await _test_wash_relay_flood_visual()
-	await _test_wash_relay_cadence_scan()
+	await _test_wash_relay_flow_terminal()
 	await _test_wash_relay_playthrough()
 	await _test_wash_relay_queued_glow()
 	await _test_wash_relay_telegraph_visible()
@@ -23751,26 +23751,23 @@ func _test_wash_relay_abilities() -> void:
 	_assert_true(instance.headless_activate_ability("emp"), "canonical EMP can be cast in Wash Relay")
 	_assert_true(instance.headless_activate_ability("wrap"), "canonical Wrap can be cast in Wash Relay")
 
-	# Aster's old timing job is now a read on the exact channel whose cadence it reveals.
-	var gauge: Node = chunk.find_child("FlowGauge1", true, false)
-	_assert_true(gauge != null, "the first timing channel has a contextual flow gauge")
-	if gauge != null:
-		_assert_equals(str(gauge.get("required_character")), "aster", "SCAN FLOW is Aster's contextual read")
-		_assert_equals(str(gauge.call("get_action_verb")), "SCAN FLOW", "the gauge advertises the actual verb")
-		_assert_true(str(gauge.call("get_action_preview")).find("surge period") != -1,
-			"the gauge predicts what scanning will reveal")
-		_assert_true(not _trigger_exact_interactable_source(gs, gauge, "peris"),
-			"nearby Peris cannot perform Aster's gauge scan")
-		_assert_true(_trigger_exact_interactable_source(gs, gauge, "aster"),
-			"nearby Aster can scan the physical gauge")
+	# Aster's timing job is THE flow terminal at the brutal current section: he logs the
+	# cadence once; crossings then wait out the surge on the scheduler.
+	var term: Node = chunk.find_child("FlowTerminal", true, false)
+	_assert_true(chunk.find_child("FlowGauge1", true, false) == null,
+		"the per-section SCAN FLOW gauges are gone")
+	_assert_true(term != null, "the narrow current section has the flow terminal")
+	if term != null:
+		_assert_equals(str(term.get("required_character")), "aster", "the terminal is Aster's")
+		_assert_equals(str(term.call("get_action_verb")), "LOG THE SURGE", "the terminal advertises the log verb")
+		_assert_true(not _trigger_exact_interactable_source(gs, term, "peris"),
+			"nearby Peris cannot parse the terminal")
+		_assert_true(_trigger_exact_interactable_source(gs, term, "aster"),
+			"nearby Aster logs the cadence")
 		await get_tree().process_frame
 		var read_state: Dictionary = chunk.get_preview_state()
-		_assert_equals(int(read_state.get("cadence_read_section", -1)), 1,
-			"the contextual scan reads the gauge's own channel")
-		_assert_true(is_equal_approx(float(read_state.get("cadence_read_period", -1.0)), 4.0),
-			"the gauge reports its real four-second scheduler cadence")
-		_assert_true(bool(read_state.get("surge_timing_learned", false)),
-			"the contextual scan unlocks paused surge-path timing")
+		_assert_true(bool(read_state.get("flow_logged", false)),
+			"logging arms the scheduled-crossing assist")
 
 	# Peris's old lighting job is now attached to one reachable plant beside the dark optional drain.
 	var flora: Node = chunk.find_child("DrainFlora", true, false)
@@ -23805,10 +23802,10 @@ func _test_wash_relay_abilities() -> void:
 	chunk.reset_preview_state()
 	await get_tree().process_frame
 	var reset_state: Dictionary = chunk.get_preview_state()
-	_assert_true(int(reset_state.get("cadence_read_section", -1)) == -1
+	_assert_true(not bool(reset_state.get("flow_logged", true))
 			and not bool(reset_state.get("drain_flora_tended", true))
 			and int(reset_state.get("flora_light_count", -1)) == 0,
-		"reset clears transient gauge + flora state")
+		"reset clears the logged cadence + flora state")
 	if flora != null:
 		_assert_true(bool(flora.call("is_interaction_enabled")), "reset re-arms the one-shot drain plant")
 	instance.queue_free()
@@ -26394,67 +26391,72 @@ func _test_wash_relay_checkpoint() -> void:
 
 ## Aster's contextual SCAN FLOW action reads the exact gauge it targets. The resulting planning overlay uses
 ## that section's real scheduled cadence, not a cast-local guess or a global reveal detached from the world.
-func _test_wash_relay_cadence_scan() -> void:
-	_test_name = "Wash Relay Contextual Cadence Scan"
+func _test_wash_relay_flow_terminal() -> void:
+	_test_name = "Wash Relay Flow Terminal"
 	var instance: Node = await _instantiate_preview_chunk_and_wait("wash_relay", 6)
+	_assert_true(instance != null, "wash_relay instantiates")
 	if instance == null:
-		_assert_true(false, "wash_relay instantiates"); return
+		return
 	var chunk: Node = instance.find_child("Chunk_wash_relay", true, false)
-	if chunk == null:
-		_assert_true(false, "chunk present"); instance.queue_free(); await get_tree().process_frame; return
 	var gs = instance.get("_game_state")
-	_assert_true(gs != null and gs.scheduler != null, "wash relay exposes its gameplay scheduler")
-	# Exact contextual controls require their actor to belong to the live selected
-	# party, just as they do in play. The preview defaults to one character and
-	# would otherwise make the physically correct Aster scan look invalid.
-	if instance.has_method("headless_set_selected_characters"):
-		instance.call(
-			"headless_set_selected_characters", ["aster", "peris", "endo"])
-	if gs != null and gs.scheduler != null:
-		# Before either observation or a gauge scan, pausing a queued crossing reveals no timing knowledge.
-		gs.command_move_to_pos("aster", Vector3(12.0, 0.5, 0.0))
-		gs.scheduler.pause()
-		_assert_equals(chunk.call("get_paused_path_feedback", "aster").size(), 0,
-			"queued water crossings stay unannotated until the surge timing has been learned")
-		gs.scheduler.resume()
-	# Section 1 ([14,19]) owns the fast 4.0s beat. Its approach gauge is a physical Aster-only target.
-	var gauge: Node = chunk.find_child("FlowGauge1", true, false)
-	_assert_true(gauge != null, "the fast-current approach has a flow gauge")
-	if gauge != null and gs != null:
-		var gauge_flat := Vector3(12.75, 0.5, -2.5)
-		if gs.coord_map != null:
-			_assert_true((gauge as Node3D).global_position.distance_to(gs.coord_map.to_world(gauge_flat)) < 0.05,
-				"the gauge is warped onto the same physical channel it reads")
-		_assert_true(_trigger_exact_interactable_source(gs, gauge, "aster"),
-			"Aster scans the current's exact physical gauge")
-	var read_state: Dictionary = chunk.get_preview_state()
-	_assert_equals(int(read_state.get("cadence_read_section", -1)), 1,
-		"SCAN FLOW reads the gauge's own current section")
-	_assert_true(bool(read_state.get("surge_timing_learned", false)),
-		"the gauge scan establishes persistent surge-timing knowledge")
-	_assert_true(is_equal_approx(float(read_state.get("cadence_read_period", -1.0)), 4.0),
-		"the contextual gauge reports the current's real 4.0s beat")
-	if gs != null and gs.scheduler != null:
-		gs.snap_character_to("aster", Vector3(12.0, 0.5, 0.0))
-		gs.command_move_to_pos("aster", Vector3(20.0, 0.5, 0.0))
-		gs.scheduler.pause()
-		var path_feedback: Array = chunk.call("get_paused_path_feedback", "aster")
-		_assert_true(not path_feedback.is_empty(),
-			"a learned queued crossing returns scheduler-derived coloured path spans")
-		if not path_feedback.is_empty():
-			var first_span: Dictionary = path_feedback[0]
-			_assert_true(str(first_span.get("risk", "")) in ["safe", "close", "danger"],
-				"each learned path span has green/amber/red risk semantics")
-			_assert_true(str(first_span.get("label", "")).find("ARRIVE") != -1,
-				"each learned path span billboards its arrival timing")
-		gs.scheduler.resume()
-		_assert_equals(chunk.call("get_paused_path_feedback", "aster").size(), 0,
-			"resuming hides the planning-only surge timing feedback")
+	if chunk == null or gs == null:
+		_assert_true(false, "chunk + game state present")
+		instance.queue_free(); await get_tree().process_frame; return
+	instance.headless_advance(0.2)
+	# The nine gauges are gone; one Aster-only terminal stands at the current section.
+	for gi in range(9):
+		if instance.find_child("FlowGauge%d" % gi, true, false) != null:
+			_assert_true(false, "gauge %d should not exist" % gi)
+	var term: Node = chunk.find_child("FlowTerminal", true, false)
+	_assert_true(term is Interactable and str(term.get("required_character")) == "aster",
+		"the flow terminal exists and is Aster-only")
+	_assert_true(term != null and term.interaction_rejected.get_connections().size() > 0,
+		"a non-Aster attempt barks through the rejection path")
+	# The window is genuinely too narrow to stroll: period - dur < crossing budget.
+	var s1: Dictionary = (chunk.get("SECTIONS") as Array)[1]
+	var window := float(s1.get("period", 6.0)) - float(s1.get("dur", 1.4))
+	_assert_true(window < (float(s1["x1"]) - float(s1["x0"]) + 2.6) / 6.0 + 0.35,
+		"the current section's safe window is narrower than the run budget (window %.2fs)" % window)
+	# Log it as Aster, then attempt the crossing mid-cadence: the assist must HOLD the
+	# party at the lip and carry them across in the computed window untouched.
+	instance.headless_set_selected_characters(["aster"])
+	_assert_true(_trigger_exact_interactable_source(gs, term, "aster"), "Aster logs the cadence")
+	instance.headless_advance(0.2)
+	_assert_true(bool(chunk.get_preview_state().get("flow_logged", false)), "the log sticks")
+	instance.headless_set_character_position("aster", Vector3(12.4, 0.5, 0.0))
+	# Create the DANGER deliberately: wait until the next surge is imminent, THEN commit.
+	for _sync in range(200):
+		var sections_state: Array = chunk.get_preview_state().get("sections", [])
+		var next_in := float((sections_state[1] as Dictionary).get("next_onset_in", 99.0))
+		if next_in < 0.9 and next_in > 0.0:
+			break
+		instance.headless_advance(0.05)
+	gs.command_move_to_pos("aster", Vector3(20.8, 0.5, 0.0))
+	var held := false
+	var washed := false
+	var max_x_while_flooding := -INF
+	for _step in range(160):
+		instance.headless_advance(0.1)
+		var p: Vector3 = gs.get_position("aster")
+		if p.x < 6.0:
+			washed = true
+		var flooding: bool = (chunk.get("_flooding") as Array)[1]
+		if flooding:
+			if p.x > float(s1["x0"]) - 0.2 and p.x < float(s1["x1"]):
+				max_x_while_flooding = maxf(max_x_while_flooding, p.x)
+			if p.x < float(s1["x0"]) + 0.4:
+				held = true
+		if p.x > float(s1["x1"]) + 0.3:
+			break
+	var final_x: float = gs.get_position("aster").x
+	_assert_true(held, "the assist held Aster at the lip while the section flooded")
+	_assert_true(max_x_while_flooding < float(s1["x0"]) + 1.2,
+		"Aster never stood in live water (max in-band x during flood %.1f)" % max_x_while_flooding)
+	_assert_true(not washed and final_x > float(s1["x1"]) + 0.3,
+		"the scheduler carried him across in the window (x %.1f)" % final_x)
 	instance.queue_free()
 	await get_tree().process_frame
 
-## Re-command any stopped member (a wash stops them) toward target_x until all arrive or it times out. Drives
-## the data layer the way real play does — moves + the live flood cadence + checkpoint-wash retries.
 func _wash_shepherd(instance: Node, chunk: Node, gs, ids: Array, target_x: float, max_secs: float) -> bool:
 	var t := 0.0
 	while t < max_secs:
@@ -27403,14 +27405,47 @@ func _test_wash_relay_playthrough() -> void:
 		_assert_true(false, "chunk + game state present"); instance.queue_free(); await get_tree().process_frame; return
 	instance.headless_advance(0.1)   # phase -> active, hazards scheduled
 	var ids := ["aster", "peris", "endo"]
-	# Front half (no guards): flush, current, jet, plate, sluice — the core run + the user's tight 'current'.
-	for i in range(2):
+	# Front half (no guards). Section 0 crosses by reading the water; section 1's window is
+	# deliberately too narrow to stroll — its presented solve is the FLOW TERMINAL.
+	for i in range(1):
 		var ok: bool = await _smart_cross(instance, chunk, gs, ids, i, 60.0)
 		var s: Dictionary = (chunk.get_preview_state().get("sections", []) as Array)[i]
 		_assert_true(ok, "a state-aware player crosses section %d (%s/%s) by reading + timing it" % [i, str(s.get("type", "")), str(s.get("disable", ""))])
 		if not ok:
 			print("  [smart] STALLED at section %d (%s): safe window=%.2fs, RUN needs ~%.2fs (x0=%.0f x1=%.0f) — balance bug" % [i, str(s.get("type", "")), float(s.get("period", 0)) - float(s.get("dur", 0)), (float(s.get("x1", 0)) - float(s.get("x0", 0)) + 2.7) / 6.0, float(s.get("x0", 0)), float(s.get("x1", 0))])
 			break
+	# Section 1 via the flow terminal: Aster logs the cadence, the party commits into the
+	# approach, and the scheduler holds + carries everyone through the narrow window.
+	var fterm: Node = instance.find_child("FlowTerminal", true, false)
+	# A wash during the section-0 crossing can leave a member STRANDED (out of the party);
+	# this leg tests the terminal, not the strand loop — reunite the fixture first.
+	gs.set_party(ids.duplicate())
+	var s1_ok := fterm != null and _trigger_exact_interactable_source(gs, fterm, "aster")
+	instance.headless_set_selected_characters(ids)
+	# Stage the party at the lip and commit while the surge is imminent — the honest worst
+	# case: without the assist this timing wipes the party; with it they hold and dash.
+	for idx in range(ids.size()):
+		instance.headless_set_character_position(str(ids[idx]), Vector3(12.3, 0.5, -1.2 + 1.2 * float(idx)))
+	for _sync in range(240):
+		var st_secs: Array = chunk.get_preview_state().get("sections", [])
+		var s1_next := float((st_secs[1] as Dictionary).get("next_onset_in", 99.0))
+		if s1_next < 0.9 and s1_next > 0.0:
+			break
+		instance.headless_advance(0.05)
+	for idx in range(ids.size()):
+		gs.command_move_to_pos(str(ids[idx]), Vector3(20.8, 0.5, -1.2 + 1.2 * float(idx)))
+	for _w in range(160):
+		instance.headless_advance(0.1)
+		var done := true
+		for id in ids:
+			if gs.get_position(str(id)).x <= 19.3:
+				done = false
+		if done:
+			break
+	for id in ids:
+		s1_ok = s1_ok and gs.get_position(str(id)).x > 19.3
+	_assert_true(s1_ok, "the logged terminal carries the party through the narrow current")
+
 	var portal_in: Node = instance.find_child("PressurePortalIn", true, false)
 	var portal_out: Node = instance.find_child("PressurePortalOut", true, false)
 	var valve: Node = instance.find_child("PressureValve", true, false)

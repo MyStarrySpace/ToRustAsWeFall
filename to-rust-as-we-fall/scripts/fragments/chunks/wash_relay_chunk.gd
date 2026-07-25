@@ -274,12 +274,18 @@ var _override_controls: Dictionary = {}   # section index -> held console (for c
 # their world targets: Aster SCANS a flow gauge, Peris TENDS the dormant drain flora, and the connect-back
 # devices only reunite stranded crew. Stat recovery belongs to a full shelter rest.
 const TELEGRAPH_LEAD := 1.2         # seconds before an onset the flow strip brightens (the surge tell)
-const CADENCE_READ_HOLD := 6.0      # how long a scanned gauge keeps its section strip surfaced
 const SURGE_CLOSE_MARGIN := 0.75     # amber when a crossing nearly touches an active-water window
-var _surge_timing_learned := false  # run knowledge: a visible surge/telegraph or gauge scan unlocks timing
-var _cadence_read_section := -1     # section whose gauge Aster last scanned (-1 = none)
-var _cadence_read_until := 0.0      # scheduler tick when the scan highlight expires
-var _cadence_readers: Dictionary = {} # timing section index -> SCAN FLOW interactable
+var _surge_timing_learned := false  # run knowledge: a visible surge/telegraph unlocks timing
+# THE FLOW TERMINAL + scheduled-crossing assist (director redesign; docs in the builder).
+const FLOW_ASSIST_SECTION := 1      # the "current" section — its window is too narrow to eyeball
+const FLOW_ASSIST_POLL := 0.25
+const FLOW_CROSS_SPEED := 6.0       # the run-speed budget the window math prices against
+const FLOW_CROSS_MARGIN := 0.35
+var _flow_terminal: Area3D = null
+var _flow_logged := false
+var _flow_assist_busy_until := -1.0
+var _flow_assist_prev_speeds := {}
+var _flow_barked := {}              # member id -> already barked at the terminal once
 var _drain_flora_interactable: Area3D
 var _drain_flora_tended := false
 var _flora_lights: Array = []       # persistent run lights: [{pos, node}]
@@ -361,7 +367,6 @@ func _build_chunk() -> void:
 
 	_strip_root = Node3D.new(); _strip_root.name = "FlowStrips"; add_child(_strip_root)
 	_override_controls.clear()
-	_cadence_readers.clear()
 	for i in range(SECTIONS.size()):
 		var s: Dictionary = SECTIONS[i]
 		var t := str(s["type"]); var x0: float = s["x0"]; var x1: float = s["x1"]; var cx := (x0 + x1) * 0.5; var w := x1 - x0
@@ -404,10 +409,11 @@ func _build_chunk() -> void:
 		var strip := _warped_box(_strip_root, cx, 0.0, Vector3(FLOOR_Z_HALF * 1.7, 0.06, w),
 			_section_color(t) * 0.6, _section_color(t), 0.4, 0.03)
 		_flow_strips.append(strip)
-		# Timing is a property of this physical channel, so Aster reads it at a gauge beside the approach instead
-		# of firing a renamed cast from the ability drawer. The gauge points at the exact strip it explains.
-		if str(s["disable"]) == "timing":
-			_build_cadence_reader(i, strip)
+		# ONE flow terminal, at the section whose safe window is deliberately too narrow to
+		# time by eye (director redesign 2026-07-25: the nine per-section SCAN FLOW gauges
+		# are gone — observation covers ordinary sections; the terminal owns the brutal one).
+		if i == FLOW_ASSIST_SECTION:
+			_build_flow_terminal(strip)
 		# the disable control: an override console past the section, or a held plate before it
 		if str(s["disable"]) == "override":
 			var ov := _add_interactable(self, "Override%d" % i, "Flow override", Vector3(x1 + 1.5, 0.5, 0.0),
@@ -457,29 +463,37 @@ func _build_chunk() -> void:
 		gs.character_restored.connect(_on_wash_relay_character_restored)
 	# Scene attachment is an explicit simulation boundary. Arm gameplay authority here so a render
 	# frame or a test-only headless presenter call is never required to start the truthful machine.
+	_quiet_interactable_labels()
 	_activate_wash_relay()
 
-func _build_cadence_reader(section_index: int, strip: Node3D) -> void:
-	var section: Dictionary = SECTIONS[section_index]
-	var reader_pos := Vector3(float(section["x0"]) - 1.25, 0.5, -2.5)
-	var reader := _add_interactable(self, "FlowGauge%d" % section_index, "Scan the channel flow gauge",
-		reader_pos, "SCAN FLOW", "aster", 0.8, false, 1.5,
+## THE FLOW TERMINAL (replaces the nine SCAN FLOW gauges). Aster-only: another member
+## clicking it barks that only Aster might parse it. Aster logs the channel's cadence on
+## his device; from then on, a crossing attempt at this section HOLDS the group at the
+## edge and the SCHEDULER computes the next safe window analytically and issues the
+## crossing moves at it (all real logged commands — replay + fast-forward invariant).
+func _build_flow_terminal(strip: Node3D) -> void:
+	var section: Dictionary = SECTIONS[FLOW_ASSIST_SECTION]
+	var pos := Vector3(float(section["x0"]) - 1.25, 0.5, -2.5)
+	var term := _add_interactable(self, "FlowTerminal", "Log the surge cadence", pos,
+		"LOG THE SURGE", "aster", 1.1, false, 1.5,
 		Interactable.InteractableType.INSPECTION, false)
-	reader.consequence_preview = "Reveals this channel's surge period and enables paused path timing."
-	var reader_mesh := _add_box(reader, Vector3(0.0, 0.18, 0.0), Vector3(0.55, 1.1, 0.4),
-		Color(0.08, 0.25, 0.32), Color(0.25, 0.9, 1.0), 1.4)
-	_outline_interactable_child(reader, reader_mesh, "FlowGauge%d" % section_index, 1.5)
+	term.consequence_preview = "Aster logs this channel's timing; crossings then wait out the surge automatically."
+	var body := _add_box(term, Vector3(0.0, 0.18, 0.0), Vector3(0.62, 1.15, 0.42),
+		Color(0.08, 0.25, 0.32), Color.BLACK, 0.0)
+	var screen := _add_box(term, Vector3(0.0, 0.62, 0.24), Vector3(0.44, 0.3, 0.06),
+		Color(0.05, 0.09, 0.06), LevelPalette.global_color("terminal_green"), 1.6)
+	_outline_interactable_child(term, body, "FlowTerminal", 1.5)
 	_configure_wash_control(
-		reader, "cadence:%d" % section_index, "cadence", section_index,
-		_on_cadence_read.bind(section_index, reader))
-	_cadence_readers[section_index] = reader
-	_add_causal_feedback_link(reader, strip, Color(0.29, 0.62, 1.0), {
-		"label": "READS THIS SURGE",
+		term, "flow_terminal", "flow_terminal", FLOW_ASSIST_SECTION,
+		_on_flow_terminal.bind(term))
+	term.interaction_rejected.connect(_on_flow_terminal_rejected)
+	_flow_terminal = term
+	_add_causal_feedback_link(term, strip, Color(0.29, 0.62, 1.0), {
 		"source_offset": Vector3(0.0, 0.9, 0.0),
 		"target_offset": Vector3(0.0, 0.35, 0.0),
 		"arc_height": 1.2,
 		"owner_character": "aster",
-		"name": "FlowGaugeLink%d" % section_index,
+		"name": "FlowTerminalLink",
 	})
 
 # A box pre-warped onto the helix under an arbitrary parent (generalises _add_warped_box, which targets the
@@ -493,6 +507,25 @@ func _warped_box(parent: Node3D, s: float, lane: float, size: Vector3, color: Co
 	mesh.transform = xf
 	parent.add_child(mesh)
 	return mesh
+
+## The flood surface as ONE world-space triangle strip riding the helix arc: two verts per
+## sample across the lane band, normals up, UV.u tiling along s (one tile per WATER_SEG).
+func _build_water_ribbon(x0: float, x1: float, half_lane: float, y_off: float) -> MeshInstance3D:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLE_STRIP)
+	var n := maxi(4, int(ceil((x1 - x0) / 0.75)))
+	for k in range(n + 1):
+		var sx := lerpf(x0, x1, float(k) / float(n))
+		var u := (sx - x0) / WATER_SEG
+		st.set_normal(Vector3.UP)
+		st.set_uv(Vector2(u, 0.0))
+		st.add_vertex(ChannelsArc.arc_pos(sx, -half_lane) + Vector3.UP * y_off)
+		st.set_normal(Vector3.UP)
+		st.set_uv(Vector2(u, 1.0))
+		st.add_vertex(ChannelsArc.arc_pos(sx, half_lane) + Vector3.UP * y_off)
+	var mi := MeshInstance3D.new()
+	mi.mesh = st.commit()
+	return mi
 
 # A ShaderMaterial running channels_water.gdshader — the animated, textured flood-water look. Each flood
 # segment gets its OWN instance so a per-segment surge accent can nudge its uniforms without affecting the
@@ -525,20 +558,14 @@ func _build_water_layer() -> void:
 	for i in range(SECTIONS.size()):
 		var s: Dictionary = SECTIONS[i]
 		var x0: float = s["x0"]; var x1: float = s["x1"]
-		var segs: Array = []
-		var n := maxi(2, int(ceil((x1 - x0) / WATER_SEG)))
-		for k in range(n):
-			var sc := lerpf(x0, x1, (k + 0.5) / float(n))
-			var seg := _warped_box(_water_root, sc, 0.0,
-				Vector3(FLOOR_Z_HALF * 1.8, WATER_THICK, (x1 - x0) / float(n) * 1.12),
-				Color(0.08, 0.3, 0.55), Color(0.22, 0.5, 1.0), 1.4, WATER_THICK * 0.45)
-			# Swap the flat box material for the animated, textured water shader (alternating tile per
-			# segment so the surface isn't perfectly tiled). The scheduler-driven `visible` toggle below
-			# is UNCHANGED — only the LOOK changes.
-			seg.material_override = _make_water_material(i + k)
-			seg.visible = false
-			segs.append(seg)
-		_section_water.append(segs)
+		# ONE arc-following ribbon per section (asset-autopsy ruling: the old overlapping
+		# box segments double-blended at every seam and showed their side walls — the
+		# "water is a bunch of rectangles" read). Top surface only, one draw, exact arc.
+		var seg := _build_water_ribbon(x0, x1, FLOOR_Z_HALF * 0.9, 0.42)
+		_water_root.add_child(seg)
+		seg.material_override = _make_water_material(i)
+		seg.visible = false
+		_section_water.append([seg])
 		if str(s["type"]) == "sluice":
 			# the gate stands across the threshold while closed (a visible, real blocker — not invisible)
 			var gate := _warped_box(_water_root, (x0 + x1) * 0.5, 0.0,
@@ -674,15 +701,10 @@ func _guidance_spec(i: int) -> Dictionary:
 
 
 func _add_warped_guidance_label(parent: Node3D, node_name: String, text: String,
-		s: float, lane: float, color: Color) -> Label3D:
-	var anchor := Node3D.new()
-	anchor.name = "%sAnchor" % node_name
-	anchor.transform = _branch_warp_xform(s, lane)
-	parent.add_child(anchor)
-	var label := _add_label(anchor, text, Vector3(0.0, 1.25, 0.0), color)
-	label.name = node_name
-	return label
-
+		_s: float = 0.0, _lane: float = 0.0, _color: Color = Color.WHITE, _y := 0.0) -> void:
+	# Wayfinding text is CUT (director ruling: light and color carry direction; text was
+	# noise). The signature stays so authored call sites remain as intent documentation.
+	return
 
 func _guidance_index_for_x(x: float) -> int:
 	if SECTIONS.is_empty():
@@ -1329,7 +1351,7 @@ func _build_drain_bait() -> void:
 	bait.authority_id = "wash_relay_drain_bait"
 	bait.configure(
 		_get_game_state(), bp, [DRAIN_GUARD_ID], 16.0, 1.4,
-		Color(0.82, 0.32, 0.96))
+		Color(1.0, 0.55, 0.12))   # flure species gold-orange — never magenta (palette law)
 	bait.one_shot = false
 	bait.lure_duration = DRAIN_BAIT_PULL
 	bait.settle_pos = lure_flat
@@ -1622,7 +1644,7 @@ func _wash_control_action_ready(action_id: String, actor := "") -> bool:
 		"override":
 			return index >= 0 and index < SECTIONS.size() \
 				and str(SECTIONS[index].get("disable", "")) == "override"
-		"cadence":
+		"flow_terminal":
 			return index >= 0 and index < SECTIONS.size() \
 				and str(SECTIONS[index].get("disable", "")) == "timing"
 		"branch_cache":
@@ -3813,30 +3835,120 @@ func _on_pressure_vent_closed() -> void:
 		_show_message('// PRESSURE RETURNING // the jet manifold is live again', 2.2)
 	_publish_wash_authority()
 
-func _on_cadence_read(section_index: int, source: Node = null) -> bool:
-	if not _accepts_gameplay_events() or section_index < 0 or section_index >= SECTIONS.size():
+## Aster logs the cadence at the terminal. From here on, the assist poll watches for a
+## crossing attempt at the assist section and lets the SCHEDULER do the waiting.
+func _on_flow_terminal(source: Node = null) -> bool:
+	if not _accepts_gameplay_events():
 		return false
-	if _consume_wash_control_receipt(
-			source, "cadence:%d" % section_index).is_empty():
+	if _consume_wash_control_receipt(source, "flow_terminal").is_empty():
 		return false
+	_flow_logged = true
 	_surge_timing_learned = true
-	_cadence_read_section = section_index
-	var sched = _get_scheduler()
-	_cadence_read_until = (sched.get_current_tick() if sched != null else 0.0) + CADENCE_READ_HOLD
-	_set_strip(section_index, 1.3)
-	var period := _period(section_index)
-	var label := str(SECTIONS[section_index]["type"]).to_upper()
-	var next_in := _section_next_onset_in(section_index)
-	var next_read := ""
-	if next_in >= 0.0:
-		next_read = " // next surge in %.1fs" % next_in
-	_show_message("// FLOW SCAN // %s surges every %.1fs%s" % [label, period, next_read], 3.2)
-	_set_preview_step("wash_relay_cadence_read")
-	var reader = _cadence_readers.get(section_index, null)
-	if is_instance_valid(reader):
-		_flash_causal_feedback(reader, 2.2, 1.45)
+	_set_strip(FLOW_ASSIST_SECTION, 1.3)
+	_show_message("// CADENCE LOGGED // CROSSINGS WILL WAIT FOR THE WINDOW", 3.2)
+	_set_preview_step("wash_relay_flow_logged")
+	if is_instance_valid(_flow_terminal):
+		_flash_causal_feedback(_flow_terminal, 2.2, 1.45)
+	_start_flow_assist_poll()
 	_publish_wash_authority()
 	return true
+
+func _on_flow_terminal_rejected(_interactable: Node, _required: String) -> void:
+	var who := str(_get_active_character())
+	if who == "" or who == "aster" or _flow_barked.get(who, false):
+		return
+	_flow_barked[who] = true
+	_show_note("Can't parse the console. Aster might.", 2.4)
+
+func _flow_assist_tag() -> String:
+	return "wash_flow_assist_cross"
+
+## `from_dispatch` matters: a self-reschedule during dispatch must NOT cancel its own tag
+## (the scheduler removes a dispatching callback; canceling then corrupts the pending
+## count and strands the recurrence — the _schedule_wash_at doc's exact warning).
+func _start_flow_assist_poll(from_dispatch := false) -> void:
+	var sched = _get_scheduler()
+	if sched == null or not _flow_logged:
+		return
+	_schedule_wash_at(float(sched.get_current_tick()) + FLOW_ASSIST_POLL,
+		_flow_assist_poll, "wash_flow_assist_poll", not from_dispatch)
+
+## Every poll tick: if Aster is approaching the assist section's water while a surge is
+## due, HOLD the group at the near lip and schedule the crossing at the computed window.
+## Pure tick arithmetic + real logged commands — deterministic, replayable, FF-invariant.
+func _flow_assist_poll() -> void:
+	if _phase != "active" or not _flow_logged:
+		return
+	_start_flow_assist_poll(true)
+	var sched = _get_scheduler()
+	var gs = _get_game_state()
+	if sched == null or gs == null:
+		return
+	var now := float(sched.get_current_tick())
+	if now < _flow_assist_busy_until:
+		return
+	var s: Dictionary = SECTIONS[FLOW_ASSIST_SECTION]
+	var x0 := float(s["x0"])
+	var x1 := float(s["x1"])
+	var p: Vector3 = _get_character_position("aster")
+	if p.x < x0 - 2.6 or p.x > x0 - 0.2 or absf(p.z) > 3.6:
+		return
+	if not gs.is_moving("aster"):
+		return
+	var own_speed := maxf(0.5, float((gs.characters.get("aster", {}) as Dictionary).get("move_speed", 3.2)))
+	var t_pass := (x1 - x0 + 2.6) / own_speed
+	var t_cross := (x1 - x0 + 2.6) / FLOW_CROSS_SPEED
+	var flooding: bool = _flooding[FLOW_ASSIST_SECTION]
+	var next_in := _section_next_onset_in(FLOW_ASSIST_SECTION)
+	if not flooding and (next_in < 0.0 or next_in > t_pass + FLOW_CROSS_MARGIN):
+		return   # genuinely safe at the walker's own pace — walk on
+	var dur := float(s.get("dur", FLOOD_DURATION))
+	var window_start: float
+	if flooding and float(_section_flood_until[FLOW_ASSIST_SECTION]) > now:
+		window_start = float(_section_flood_until[FLOW_ASSIST_SECTION]) + 0.15
+	else:
+		window_start = now + maxf(next_in, 0.0) + dur + 0.15
+	var ids := _flow_assist_group()
+	for id in ids:
+		gs.command_stop(id)
+		var hold_z := clampf(_get_character_position(id).z, -3.0, 3.0)
+		gs.command_move_to_pos(id, Vector3(x0 - 1.1, 0.5, hold_z))
+	_show_note("// LOGGED CADENCE // HOLDING FOR THE WINDOW", 2.4)
+	_schedule_wash_at(window_start, _flow_assist_cross, _flow_assist_tag())
+	_flow_assist_busy_until = window_start + t_cross + 1.0
+
+func _flow_assist_group() -> Array:
+	var sel: Array = _selected_party_ids()
+	return sel if sel.has("aster") else ["aster"]
+
+func _flow_assist_cross() -> void:
+	if _phase != "active" or not _flow_logged:
+		return
+	var gs = _get_game_state()
+	var sched = _get_scheduler()
+	if gs == null or sched == null:
+		return
+	var s: Dictionary = SECTIONS[FLOW_ASSIST_SECTION]
+	var hold_x := float(s["x0"]) - 1.1
+	var t_cross := (float(s["x1"]) - float(s["x0"]) + 2.6) / FLOW_CROSS_SPEED
+	for id in _flow_assist_group():
+		var p: Vector3 = _get_character_position(id)
+		if absf(p.x - hold_x) > 3.0:
+			continue   # wandered off — a newer intent supersedes the assist
+		# the dash is priced at run speed; each member's own pace comes back after the beat
+		_flow_assist_prev_speeds[id] = float((gs.characters.get(id, {}) as Dictionary).get("move_speed", 3.2))
+		gs.change_move_speed(id, FLOW_CROSS_SPEED)
+		gs.command_move_to_pos(id, Vector3(float(s["x1"]) + 0.55, 0.5, clampf(p.z, -3.0, 3.0)))
+	if not _flow_assist_prev_speeds.is_empty():
+		_schedule_wash_at(float(sched.get_current_tick()) + t_cross + 0.4,
+			_flow_assist_restore_speeds, "wash_flow_assist_restore")
+
+func _flow_assist_restore_speeds() -> void:
+	var gs = _get_game_state()
+	if gs != null:
+		for id in _flow_assist_prev_speeds:
+			gs.change_move_speed(str(id), float(_flow_assist_prev_speeds[id]))
+	_flow_assist_prev_speeds.clear()
 
 func _on_override(i: int, source: Node = null) -> bool:
 	# The override is a HELD console — the hold is positional (refreshed in _update like a plate), so arriving
@@ -4521,16 +4633,6 @@ func _update(delta := 0.0) -> void:
 	_debug_log_positions()
 	_update_pipe_splashes(delta)
 	_refresh_section_guidance()
-	# Aster's contextual gauge read: while active, pulse that section's strip so the scanned cause remains
-	# spatially tied to its effect. Cosmetic only — the cadence itself is unchanged.
-	var schd = _get_scheduler()
-	if _cadence_read_section >= 0 and schd != null:
-		var now: float = schd.get_current_tick()
-		if now >= _cadence_read_until:
-			_cadence_read_section = -1
-			_publish_wash_authority()
-		elif not _flooding[_cadence_read_section] and not _section_disabled(_cadence_read_section):
-			_set_strip(_cadence_read_section, 1.3)
 	# Flood WATER + sluice gate visibility — the in-game flood feedback. Driven by the scheduler-set _flooding /
 	# _sluice_blocked (so it's replay-safe + fast-forward invariant); the per-frame work is just the toggle, so
 	# the surging water you got washed by is always VISIBLE (and the sluice gate reads open vs closed).
@@ -4907,6 +5009,11 @@ func reset_preview_state() -> void:
 	_spatial_authority_epoch = -1.0
 	_next_spatial_authority_tick = -1.0
 	_wipe_restart_pending = false
+	# The logged cadence is world-action state: reset clears it (and the assist machinery).
+	_flow_logged = false
+	_flow_assist_busy_until = -1.0
+	_flow_assist_prev_speeds.clear()
+	_flow_barked.clear()
 	# A guard drowned in the drain loop was unregistered + freed — bring it (and any other missing spec guard) back
 	# before the re-snap below assumes every guard still exists.
 	_respawn_missing_enemies()
@@ -4939,8 +5046,6 @@ func reset_preview_state() -> void:
 	_run_hint_shown = false
 	_sloperope_deployed = false
 	# Contextual-read state is derived per run; clear the transient gauge highlight on retry.
-	_cadence_read_section = -1
-	_cadence_read_until = 0.0
 	# Learned cadence is player knowledge, not transient hazard state: keep it across an in-place retry.
 	for segs in _section_water:
 		for seg in segs:
@@ -4970,6 +5075,7 @@ func reset_preview_state() -> void:
 	for interactable in _interactables:
 		if is_instance_valid(interactable) and interactable.has_method("reset"):
 			interactable.reset()
+	_quiet_interactable_labels()
 	for flure in _flures:
 		if is_instance_valid(flure) and flure.has_method("reset_flure"):
 			flure.reset_flure()
@@ -5108,8 +5214,7 @@ func _wash_authority_state() -> Dictionary:
 		"sloperope_deployed": is_instance_valid(_climbvine_return) \
 				and _climbvine_return.is_deployed(),
 		"surge_timing_learned": _surge_timing_learned,
-		"cadence_read_section": _cadence_read_section,
-		"cadence_read_until": _cadence_read_until,
+		"flow_logged": _flow_logged,
 		"drain_flora_tended": _drain_flora_tended,
 		"branches": branches,
 		"drain_reward": _portable_reward_transaction(_drain_reward),
@@ -5223,8 +5328,9 @@ func on_game_state_snapshot_restored() -> void:
 	# ClimbvineReturn phase independently; old saves without that phase fail closed and can be tended again.
 	_sloperope_deployed = false
 	_surge_timing_learned = bool(saved.get("surge_timing_learned", false))
-	_cadence_read_section = int(saved.get("cadence_read_section", -1))
-	_cadence_read_until = float(saved.get("cadence_read_until", 0.0))
+	_flow_logged = bool(saved.get("flow_logged", false))
+	if _flow_logged:
+		_start_flow_assist_poll()
 	_drain_flora_tended = bool(saved.get("drain_flora_tended", false))
 	_drowned_count = maxi(0, int(saved.get("drowned_count", 0)))
 	_section_drowned_count = maxi(0, int(saved.get("section_drowned_count", 0)))
@@ -5418,8 +5524,9 @@ func _retract_wash_presenter_to_defaults() -> void:
 	_flush_hint_shown = false
 	_sloperope_deployed = false
 	_surge_timing_learned = false
-	_cadence_read_section = -1
-	_cadence_read_until = 0.0
+	_flow_logged = false
+	_flow_assist_busy_until = -1.0
+	_flow_barked.clear()
 	_drain_flora_tended = false
 	_drowned_count = 0
 	_section_drowned_count = 0
@@ -6069,9 +6176,8 @@ func get_preview_state() -> Dictionary:
 		"claimed_reward_atp": _claimed_reward_atp(),
 		"drain_reward": _preview_reward_state(_drain_reward),
 		"branch_guard_count": branch_guard_count,
-		"cadence_read_section": _cadence_read_section,
-		"cadence_read_period": _period(_cadence_read_section) if _cadence_read_section >= 0 else -1.0,
 		"surge_timing_learned": _surge_timing_learned,
+		"flow_logged": _flow_logged,
 		"drain_flora_tended": _drain_flora_tended, "flora_light_count": _flora_lights.size(),
 		"sweep_count": _sweep_count, "section_wash_counts": _section_wash_counts.duplicate(),
 		"flush_hint_shown": _flush_hint_shown,
@@ -6087,3 +6193,13 @@ func _water_shown_state() -> Array:
 	for segs in _section_water:
 		out.append(not segs.is_empty() and is_instance_valid(segs[0]) and segs[0].visible)
 	return out
+
+
+## Floating verb labels read as a wall of text from any deck position; this chunk
+## runs label-quiet — the hover outline + cursor verb own discovery (docs law).
+func _quiet_interactable_labels() -> void:
+	for interactable in _interactables:
+		if not is_instance_valid(interactable):
+			continue
+		for lbl in (interactable as Node).find_children("*", "Label3D", true, false):
+			(lbl as Label3D).visible = false

@@ -80,6 +80,7 @@ params = {
 "x1": 11.0
 }, {
 "disable": "timing",
+"dur": 2.6,
 "period": 4.0,
 "phase": 2.5,
 "type": "current",
