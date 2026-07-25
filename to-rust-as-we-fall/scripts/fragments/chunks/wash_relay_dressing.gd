@@ -43,10 +43,16 @@ const S_MAX := 87.0               # floor_max_x
 # Central drum (plate: unit D = 2 * DRUM_R; courses ~0.2 D; portholes; the spoked
 # wheel-window faces the start shelter). Radius clears the beat ledges (inner radius 3.6)
 # and the pressure-room band by necking between DRUM_NECK_Y0..Y1.
-const DRUM_R := 3.2
+const DRUM_R := 3.45
 const DRUM_NECK_Y0 := 3.0
 const DRUM_NECK_Y1 := 7.6
-const DRUM_TOP := 13.8
+const DRUM_TOP := 16.5
+
+# Sector gates (plate: giant color-coded slab doors at the perimeter, one per section;
+# the sluice's gate stands farther out — its outer tunnel bulge owns lanes 12-13).
+const GATE_LANE := 12.6
+const GATE_SLUICE_LANE := 14.6
+const GATE_NUMERAL_Y := 4.2
 
 # Rim outfalls (plate: fall width = its channel; here segmented like the flood water and
 # slaved to each section's splash intensity).
@@ -209,17 +215,26 @@ static func _add_sign_labels(root: Node3D, sections: Array) -> void:
 	_label(signs, 78.2, RIM_LANE, "CAUTION // DRAIN", COL_CAUTION, true)
 	_label(signs, 61.6, INNER_RIM_LANE, "CAUTION // LEDGE", COL_CAUTION, false)
 	_label(signs, 2.9, INNER_RIM_LANE, "CURECUMIN ROUTE", COL_GOLD, false)
+	# The sector-gate stencil numerals (the GLB carries the colored slabs; text stays crisp
+	# here). SECTOR + zero-padded index, big, pale — the plate's gate grammar.
+	for i in range(sections.size()):
+		var mid := (float(sections[i]["x0"]) + float(sections[i]["x1"])) * 0.5
+		var lane := GATE_SLUICE_LANE if str(sections[i]["type"]) == "sluice" else GATE_LANE
+		_label(signs, mid, lane - 0.45, "SECTOR\n%02d" % (i + 1), COL_STENCIL, true,
+			GATE_NUMERAL_Y, 0.011, 64)
 
 ## Flush (non-billboard) stencil text riding the GLB board at the same survey spot.
 static func _label(parent: Node3D, s: float, lane: float, text: String,
-		tint: Color, face_inward: bool) -> void:
+		tint: Color, face_inward: bool, y_off := 1.28, pix := 0.006, fsize := 40) -> void:
 	var label := Label3D.new()
 	label.text = text
 	label.modulate = tint
-	label.pixel_size = 0.006
-	label.font_size = 40
+	label.pixel_size = pix
+	label.font_size = fsize
 	label.outline_size = 6
-	var xf := _xf(s, lane, 1.28)
+	# Single-sided: a stencil read from behind must vanish, never render mirrored.
+	label.double_sided = false
+	var xf := _xf(s, lane, y_off)
 	xf.origin += xf.basis.x * (-0.06 if face_inward else 0.06)
 	label.transform = xf
 	label.rotate_object_local(Vector3.UP, PI * 0.5 if face_inward else -PI * 0.5)
@@ -230,8 +245,8 @@ static func _label(parent: Node3D, s: float, lane: float, text: String,
 static func _add_beat_lights(root: Node3D) -> void:
 	var warm := OmniLight3D.new()
 	warm.light_color = Color(1.0, 0.62, 0.25)
-	warm.light_energy = 1.2
-	warm.omni_range = 6.0
+	warm.light_energy = 1.6
+	warm.omni_range = 7.0
 	warm.position = ChannelsArc.arc_pos(FLURE_LEDGE_S, FLURE_POS_LANE) + Vector3(0.0, 1.0, 0.0)
 	root.add_child(warm)
 	var gold := OmniLight3D.new()
