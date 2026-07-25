@@ -22443,7 +22443,13 @@ func _test_chunk_interactable_outlines() -> void:
 		# proximity is the honest trigger (boss_showcase, SET_PIECES 12 lite).
 		"SummitSurvey": true,
 	}
-	var no_outline_ok := {}   # genuinely meshless zones — none today; add by exact name + justification
+	var no_outline_ok := {   # genuinely meshless zones — add by exact name + justification
+		# The dormant climbvine's lower mouth: its vine mesh (and the outline pick body that
+		# would wrap it) only exists once the upper anchor is tended — wiring at boot would
+		# float a hover StaticBody over empty deck and ghost the identify label. The deployed
+		# wiring is asserted in --test-spiral-drop-down.
+		"ClimbLine": true,
+	}
 	# EVERY chunk in the registry, not an allowlist — so a NEW chunk's interactables are enforced automatically
 	# and the outline/shift-reveal/queued-glow grammar can never be silently missed again (the recurring ask).
 	var chunks: Array = FragmentPreviewScript.CHUNK_SCENES.keys()
@@ -24250,6 +24256,11 @@ func _test_spiral_drop_down() -> void:
 			"deployment is a visible timed state rather than an instant portal")
 		gs.scheduler.advance_ticks(1.25)
 		_assert_true(bool(vine.call("is_deployed")), "the completed vine enables its lower mouth")
+		# The outline pick body arrives WITH the vine (dormant = meshless zone by design,
+		# exempted in the chunk outline sweep) — deployment must wire it.
+		await get_tree().process_frame
+		_assert_true(lower_source.get("_outline_target") != null,
+			"the deployed vine wires the lower mouth's outline")
 		lower_source.set("active_character", "peris")
 		_assert_true(not bool(lower_source.call("_trigger", false)),
 			"an upper-deck member cannot use the recovery route forward/down")
