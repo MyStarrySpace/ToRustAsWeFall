@@ -184,7 +184,6 @@ const BEAT_LEDGE_REGIONS := [
 static var CURE_PORTAL_COLOR: Color = LevelPalette.global_color("portal_route")   # portal law: no gold
 const CURE_DEST_POS := Vector3(42.5, 0.5, -8.6)
 const CURE_GATE_POS := Vector3(44.2, 0.5, -8.6)
-const CURE_ARCH_LIFT := 1.15
 const CURE_APERTURE_R := 0.77
 const NECK_GARDEN_REGION := {"min": [40.2, -9.9], "max": [44.8, -7.4]}
 
@@ -1408,7 +1407,9 @@ func _build_story_beats() -> void:
 	_curecumin_pad = pad
 	_cure_portals = [pad, back]
 	_build_neck_garden()
-	_build_cure_lenses()
+	# The contract fixtures (arch + live destination lens both ends) come from the one
+	# shared construction site; as pad children they ride the deck warp with the pads.
+	PortalFixtures.dress_matching(_cure_portals, CURE_APERTURE_R)
 
 ## The portal-only pocket inside the broken-coil neck: green growth in the break, wrapped
 ## around the well downpipe, ending at the sealed Greenfields gate. Ground collision comes
@@ -1439,17 +1440,9 @@ func _build_neck_garden() -> void:
 		Color(0.3, 0.24, 0.08), LevelPalette.global_color("curecumin_gold"), 2.0)
 	_outline_interactable_child(gate, seam, "SealedGreenfieldsGate", 1.4)
 	gate.interacted.connect(_on_greenfields_gate_read)
-	# the destination arch + its blue light
-	var t := ChannelsArc.tangent(CURE_DEST_POS.x)
-	var arch := MeshInstance3D.new()
-	var ring := TorusMesh.new()
-	ring.inner_radius = CURE_APERTURE_R
-	ring.outer_radius = CURE_APERTURE_R + 0.16
-	arch.mesh = ring
-	arch.material_override = _make_material(Color(0.10, 0.16, 0.3), CURE_PORTAL_COLOR, 2.2)
-	var apos := ChannelsArc.arc_pos(CURE_DEST_POS.x, CURE_DEST_POS.z) + Vector3(0.0, CURE_ARCH_LIFT, 0.0)
-	arch.global_transform = Transform3D(Basis(Vector3.UP.cross(t), t, Vector3.UP), apos)
-	garden.add_child(arch)
+	# the portal's blue light (the arch itself is a PortalFixtures child of the return pad)
+	var apos := ChannelsArc.arc_pos(CURE_DEST_POS.x, CURE_DEST_POS.z) \
+		+ Vector3(0.0, PortalFixtures.ARCH_LIFT, 0.0)
 	var glow := OmniLight3D.new()
 	glow.light_color = CURE_PORTAL_COLOR
 	glow.light_energy = 2.4
@@ -1463,27 +1456,6 @@ func _build_neck_garden() -> void:
 	gate_glow.omni_range = 5.0
 	gate_glow.position = ChannelsArc.arc_pos(44.2, -8.6) + Vector3(0.0, 1.6, 0.0)
 	garden.add_child(gate_glow)
-
-## Both apertures get the mirrored-camera lens: stand at the pad and SEE the garden
-## through the arch (and the ledge from inside). @rendering_only — headless no-ops.
-func _build_cure_lenses() -> void:
-	var pad_t := ChannelsArc.tangent(CURECUMIN_PAD_POS.x)
-	var pad_xf := Transform3D(
-		Basis(Vector3.UP.cross(pad_t), Vector3.UP, pad_t),
-		ChannelsArc.arc_pos(CURECUMIN_PAD_POS.x, CURECUMIN_PAD_POS.z) + Vector3(0.0, CURE_ARCH_LIFT, 0.0))
-	var dest_t := ChannelsArc.tangent(CURE_DEST_POS.x)
-	var dest_xf := Transform3D(
-		Basis(Vector3.UP.cross(dest_t), Vector3.UP, dest_t),
-		ChannelsArc.arc_pos(CURE_DEST_POS.x, CURE_DEST_POS.z) + Vector3(0.0, CURE_ARCH_LIFT, 0.0))
-	var world := get_world_3d()
-	var lens_out := PortalLens.new()
-	lens_out.name = "CureLensOut"
-	add_child(lens_out)
-	lens_out.setup(pad_xf, dest_xf, CURE_APERTURE_R, world)
-	var lens_back := PortalLens.new()
-	lens_back.name = "CureLensBack"
-	add_child(lens_back)
-	lens_back.setup(dest_xf, pad_xf, CURE_APERTURE_R, world)
 
 func _on_lonely_flure_lit(_pulled: int) -> void:
 	_show_note("The flure sings. Nothing answers.", 2.6)

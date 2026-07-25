@@ -23554,10 +23554,14 @@ func _test_wash_relay_story_beats() -> void:
 		var gate: Node = chunk.find_child("SealedGreenfieldsGate", true, false)
 		_assert_true(gate is Interactable and gate.interacted.get_connections().size() > 0,
 			"the sealed Greenfields gate exists and reading it surfaces the route")
-		# both apertures wear the destination lens
-		_assert_true(chunk.find_child("CureLensOut", true, false) != null
-			and chunk.find_child("CureLensBack", true, false) != null,
-			"both apertures carry a PortalLens")
+		# both pads wear the contract fixtures (PortalFixtures: aperture arch + live lens)
+		var cure_lensed := 0
+		for cp in (chunk.get("_cure_portals") as Array):
+			var cure_ap: Node = (cp as Node).find_child("PortalAperture", true, false)
+			if cure_ap != null and cure_ap.find_child("ApertureLens", true, false) is PortalLens:
+				cure_lensed += 1
+		_assert_equals(cure_lensed, 2,
+			"both cure pads carry the PortalFixtures aperture + live lens")
 	# Both ledges are REAL connected ground: the pad from the start shelter, the flure from
 	# the post-gap coil (the pressure break still severs start-to-end, asserted elsewhere).
 	var anchors: Dictionary = chunk.get_preview_anchors()
