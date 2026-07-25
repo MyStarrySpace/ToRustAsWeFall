@@ -527,6 +527,13 @@ func _reserved_hop_is_physically_applied(reservation: Dictionary) -> bool:
 	var arrival := _v3_from_value(reservation.get("arrival_data", []))
 	if _gs.has_method("get_destination"):
 		var planned: Vector3 = _gs.get_destination(who)
+		# A REJECTED walk-off (the arrival slot snapped somewhere unreachable, so the
+		# move plan doesn't exist) must not block finalization forever: the hop itself is
+		# applied the moment the body stands at the destination (or arrival). Otherwise a
+		# reserved hop wedges at index 0 and the rest of the queue never crosses.
+		if not planned.is_finite():
+			return _planar_distance(current, destination) <= HOP_POSITION_EPSILON \
+				or _planar_distance(current, arrival) <= HOP_POSITION_EPSILON
 		if _planar_distance(planned, arrival) <= HOP_POSITION_EPSILON \
 				and (_planar_distance(current, destination) <= HOP_POSITION_EPSILON \
 					or _planar_distance(current, arrival) <= HOP_POSITION_EPSILON \

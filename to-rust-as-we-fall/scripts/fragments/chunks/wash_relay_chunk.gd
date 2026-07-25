@@ -285,6 +285,7 @@ var _flow_terminal: Area3D = null
 var _flow_logged := false
 var _flow_assist_busy_until := -1.0
 var _flow_assist_prev_speeds := {}
+var _flow_assist_held: Array = []
 var _flow_barked := {}              # member id -> already barked at the terminal once
 var _drain_flora_interactable: Area3D
 var _drain_flora_tended := false
@@ -3895,6 +3896,11 @@ func _flow_assist_poll() -> void:
 		return
 	if not gs.is_moving("aster"):
 		return
+	# INTENT gate: only a genuine crossing order arms the assist — a move that stays on
+	# this side (the terminal, the override console, walking away) is never hijacked.
+	var move_dest: Vector3 = gs.get_destination("aster")
+	if not move_dest.is_finite() or move_dest.x <= x0 + 0.5:
+		return
 	var own_speed := maxf(0.5, float((gs.characters.get("aster", {}) as Dictionary).get("move_speed", 3.2)))
 	var t_pass := (x1 - x0 + 2.6) / own_speed
 	var t_cross := (x1 - x0 + 2.6) / FLOW_CROSS_SPEED
@@ -3908,11 +3914,15 @@ func _flow_assist_poll() -> void:
 		window_start = float(_section_flood_until[FLOW_ASSIST_SECTION]) + 0.15
 	else:
 		window_start = now + maxf(next_in, 0.0) + dur + 0.15
+	# Capture the group NOW (never re-read the live selection at fire time) and park each
+	# member on its own lane so cooperative pathfinding never stacks the hold.
 	var ids := _flow_assist_group()
+	_flow_assist_held = ids.duplicate()
+	var slot := 0
 	for id in ids:
 		gs.command_stop(id)
-		var hold_z := clampf(_get_character_position(id).z, -3.0, 3.0)
-		gs.command_move_to_pos(id, Vector3(x0 - 1.1, 0.5, hold_z))
+		gs.command_move_to_pos(id, Vector3(x0 - 1.1, 0.5, -1.6 + 1.6 * float(slot % 3)))
+		slot += 1
 	_show_note("// LOGGED CADENCE // HOLDING FOR THE WINDOW", 2.4)
 	_schedule_wash_at(window_start, _flow_assist_cross, _flow_assist_tag())
 	_flow_assist_busy_until = window_start + t_cross + 1.0
@@ -3931,17 +3941,27 @@ func _flow_assist_cross() -> void:
 	var s: Dictionary = SECTIONS[FLOW_ASSIST_SECTION]
 	var hold_x := float(s["x0"]) - 1.1
 	var t_cross := (float(s["x1"]) - float(s["x0"]) + 2.6) / FLOW_CROSS_SPEED
-	for id in _flow_assist_group():
-		var p: Vector3 = _get_character_position(id)
-		if absf(p.x - hold_x) > 3.0:
+	var gap := _period(FLOW_ASSIST_SECTION) - float(s.get("dur", FLOOD_DURATION))
+	var dashed := false
+	for id in _flow_assist_held:
+		var p: Vector3 = _get_character_position(str(id))
+		if absf(p.x - hold_x) > 2.0:
 			continue   # wandered off — a newer intent supersedes the assist
+		# only dash a member the WINDOW actually affords from where they stand; a
+		# straggler stays parked for the next window instead of being fed to the surge
+		if (float(s["x1"]) - p.x + 0.6) / FLOW_CROSS_SPEED + 0.15 > gap:
+			continue
 		# the dash is priced at run speed; each member's own pace comes back after the beat
-		_flow_assist_prev_speeds[id] = float((gs.characters.get(id, {}) as Dictionary).get("move_speed", 3.2))
-		gs.change_move_speed(id, FLOW_CROSS_SPEED)
-		gs.command_move_to_pos(id, Vector3(float(s["x1"]) + 0.55, 0.5, clampf(p.z, -3.0, 3.0)))
-	if not _flow_assist_prev_speeds.is_empty():
+		_flow_assist_prev_speeds[id] = float((gs.characters.get(str(id), {}) as Dictionary).get("move_speed", 3.2))
+		gs.change_move_speed(str(id), FLOW_CROSS_SPEED)
+		gs.command_move_to_pos(str(id), Vector3(float(s["x1"]) + 0.55, 0.5, clampf(p.z, -3.0, 3.0)))
+		dashed = true
+	_flow_assist_held = []
+	if dashed:
 		_schedule_wash_at(float(sched.get_current_tick()) + t_cross + 0.4,
 			_flow_assist_restore_speeds, "wash_flow_assist_restore")
+	else:
+		_flow_assist_busy_until = -1.0   # nothing crossed — re-arm the assist immediately
 
 func _flow_assist_restore_speeds() -> void:
 	var gs = _get_game_state()
@@ -4367,6 +4387,9 @@ func _cancel_wash_events() -> void:
 	sched.cancel_tag(SPATIAL_AUTHORITY_TAG)
 	sched.cancel_tag(WASH_CURRENT_RECONCILE_TAG)
 	sched.cancel_tag(WASH_ENEMY_CURRENT_RECONCILE_TAG)
+	sched.cancel_tag("wash_flow_assist_poll")
+	sched.cancel_tag("wash_flow_assist_cross")
+	sched.cancel_tag("wash_flow_assist_restore")
 	sched.cancel_tag(_restart_tag())
 	sched.cancel_tag('wash_pressure_vent')
 	sched.cancel_tag("wash_drain_onset")
@@ -5010,9 +5033,11 @@ func reset_preview_state() -> void:
 	_next_spatial_authority_tick = -1.0
 	_wipe_restart_pending = false
 	# The logged cadence is world-action state: reset clears it (and the assist machinery).
+	# Speeds restore FIRST — a reset mid-dash must never leave members at dash pace.
+	_flow_assist_restore_speeds()
 	_flow_logged = false
 	_flow_assist_busy_until = -1.0
-	_flow_assist_prev_speeds.clear()
+	_flow_assist_held = []
 	_flow_barked.clear()
 	# A guard drowned in the drain loop was unregistered + freed — bring it (and any other missing spec guard) back
 	# before the re-snap below assumes every guard still exists.
@@ -5240,6 +5265,11 @@ func on_game_state_snapshot_restored() -> void:
 	# this subclass record then replaces the shared phase and scheduling bit with relay-specific truth.
 	super.on_game_state_snapshot_restored()
 	_cancel_wash_events()
+	# Derived pacing state — never carried across a restore boundary (a stale future
+	# busy_until would silently gag the assist for its whole span).
+	_flow_assist_restore_speeds()
+	_flow_assist_busy_until = -1.0
+	_flow_assist_held = []
 	_pending_branch_guard_reposts.clear()
 	var gs = _get_game_state()
 	_ensure_wash_control_registry_shapes()
