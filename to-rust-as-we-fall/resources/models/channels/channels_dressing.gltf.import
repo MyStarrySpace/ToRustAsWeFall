@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://jbq6mloanlj7"
-path="res://.godot/imported/channels_dressing.glb-7316f4bca1819ec04851eb458778214d.scn"
+uid="uid://my12rpeoy3q"
+path="res://.godot/imported/channels_dressing.gltf-c81f22852756275eb974f2a451e58dbb.scn"
 
 [deps]
 
-source_file="res://resources/models/channels/channels_dressing.glb"
-dest_files=["res://.godot/imported/channels_dressing.glb-7316f4bca1819ec04851eb458778214d.scn"]
+source_file="res://resources/models/channels/channels_dressing.gltf"
+dest_files=["res://.godot/imported/channels_dressing.gltf-c81f22852756275eb974f2a451e58dbb.scn"]
 
 [params]
 

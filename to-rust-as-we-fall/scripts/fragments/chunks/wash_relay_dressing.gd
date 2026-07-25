@@ -18,9 +18,9 @@ extends RefCounted
 ##     DRIVEN by the chunk's splash-intensity ease, so the falls pour exactly when (and as
 ##     hard as) each section floods — dressing never keeps time and never lies about the
 ##     cadence;
-##   - the stencil sign TEXT (Label3D on the GLB's boards — crisp, data-side, wayfinding
-##     only: goal + danger, never the solve);
 ##   - the two story-beat OmniLights (the lonely flure's warm pool, the curecumin gold).
+## There is deliberately NO text in the dressing (director ruling: stencil signs read as
+## noise) — sector identity is the gates' color-coded sign bands, wordless.
 ## The beats' interactables (the target-less Flure, the dormant pad ring) are the chunk's.
 ##
 ## RECONCILIATION (plate -> helix), decided at the survey and baked into the build script:
@@ -31,7 +31,7 @@ extends RefCounted
 ## rim rails only span where nothing exits outward; plate worker figures and the walkable
 ## drum top were CUT (party frame / no-new-routes law).
 
-const DRESSING_SCENE := "res://resources/models/channels/channels_dressing.glb"
+const DRESSING_SCENE := "res://resources/models/channels/channels_dressing.gltf"
 
 # --- THE SURVEY: datums (mirrored by build_wash_dressing.py — keep in lockstep) ---------
 const DECK_OUT_LANE := 4.0        # walkable rim (measured: FLOOR_Z_HALF)
@@ -52,7 +52,6 @@ const DRUM_TOP := 16.5
 # the sluice's gate stands farther out — its outer tunnel bulge owns lanes 12-13).
 const GATE_LANE := 12.6
 const GATE_SLUICE_LANE := 14.6
-const GATE_NUMERAL_Y := 4.2
 
 # Rim outfalls (plate: fall width = its channel; here segmented like the flood water and
 # slaved to each section's splash intensity).
@@ -69,12 +68,9 @@ const FLURE_POS_LANE := -6.4
 const PAD_LEDGE_S := 1.6
 const PAD_POS_LANE := -6.2
 
-# Palette roles kept at runtime (labels + lights; the mesh palette lives in the .py).
-const COL_TERM_GREEN := Color(0.36, 0.91, 0.5)     # #5ce87f
+# Palette roles kept at runtime (fall material + beat lights; the mesh palette is the .py's).
 const COL_WATER_EM := Color(0.3, 0.75, 0.95)
 const COL_GOLD := Color(0.95, 0.75, 0.15)          # Curecumin turmeric
-const COL_STENCIL := Color(0.82, 0.8, 0.72)
-const COL_CAUTION := Color(0.95, 0.6, 0.2)
 
 static var _mat_cache: Dictionary = {}
 
@@ -101,7 +97,6 @@ static func build(chunk: Node3D, sections: Array) -> Dictionary:
 			model.name = "DressingModel"
 			root.add_child(model)
 			_collect_falls(model, sheets, foam, mats)
-	_add_sign_labels(root, sections)
 	_add_beat_lights(root)
 	return {"root": root, "falls": sheets, "foam": foam, "mats": mats}
 
@@ -193,56 +188,10 @@ static func _streak_texture() -> ImageTexture:
 	_mat_cache["streak_tex"] = tex
 	return tex
 
-# --- Runtime sign text (the GLB carries the boards; text stays data-side and crisp) -----
-
-const SECTION_TAGS := {
-	"flush": "FLUSH", "current": "CURRENT", "jet": "JET", "plate": "PLATE",
-	"sluice": "SLUICE", "patrol": "PATROL", "lure": "LURE", "basin": "BASIN",
-	"double_plate": "PLATES",
-}
-
-static func _add_sign_labels(root: Node3D, sections: Array) -> void:
-	var signs := Node3D.new()
-	signs.name = "SignText"
-	root.add_child(signs)
-	# Positions mirror build_wash_dressing.py's RE-RECONCILED board spots (the survey
-	# moved them clear of every walkable spur) — keep in lockstep.
-	for i in range(sections.size()):
-		var tag: String = SECTION_TAGS.get(str(sections[i]["type"]), "")
-		_label(signs, float(sections[i]["x0"]) + 1.0, RIM_LANE,
-			"S-%02d %s" % [i + 1, tag], COL_STENCIL, true)
-	_label(signs, 4.6, INNER_RIM_LANE, "^ FLOW UP", COL_TERM_GREEN, false)
-	for mid in [12.5, 28.5, 54.5, 62.5, 72.5]:
-		_label(signs, float(mid) - 3.0, RIM_LANE, "MAINTENANCE", COL_STENCIL, true)
-	_label(signs, 77.0, RIM_LANE, "CAUTION // DRAIN", COL_CAUTION, true)
-	_label(signs, 60.2, INNER_RIM_LANE, "CAUTION // LEDGE", COL_CAUTION, false)
-	_label(signs, 3.9, INNER_RIM_LANE, "CURECUMIN ROUTE", COL_GOLD, false)
-	# The sector-gate stencil numerals (the GLB carries the colored slabs; text stays crisp
-	# here). SECTOR + zero-padded index, big, pale — the plate's gate grammar.
-	for i in range(sections.size()):
-		var mid := (float(sections[i]["x0"]) + float(sections[i]["x1"])) * 0.5
-		var lane := GATE_SLUICE_LANE if str(sections[i]["type"]) == "sluice" else GATE_LANE
-		_label(signs, mid, lane - 0.45, "SECTOR\n%02d" % (i + 1), COL_STENCIL, true,
-			GATE_NUMERAL_Y, 0.011, 64)
-
-## Flush (non-billboard) stencil text riding the GLB board at the same survey spot.
-static func _label(parent: Node3D, s: float, lane: float, text: String,
-		tint: Color, face_inward: bool, y_off := 1.28, pix := 0.006, fsize := 40) -> void:
-	var label := Label3D.new()
-	label.text = text
-	label.modulate = tint
-	label.pixel_size = pix
-	label.font_size = fsize
-	label.outline_size = 6
-	# Single-sided: a stencil read from behind must vanish, never render mirrored.
-	label.double_sided = false
-	var xf := _xf(s, lane, y_off)
-	xf.origin += xf.basis.x * (-0.06 if face_inward else 0.06)
-	label.transform = xf
-	label.rotate_object_local(Vector3.UP, PI * 0.5 if face_inward else -PI * 0.5)
-	parent.add_child(label)
-
 # --- The two story-beat lights (the payoff glows; geometry + interactables elsewhere) ---
+# (No decorative text: director ruling 2026-07-25 — stencil signs read as noise in play.
+# Wayfinding is carried wordlessly: the gate sign bands are color-coded per section, and
+# the outline/cursor-verb grammar owns discovery.)
 
 static func _add_beat_lights(root: Node3D) -> void:
 	var warm := OmniLight3D.new()
@@ -257,10 +206,3 @@ static func _add_beat_lights(root: Node3D) -> void:
 	gold.omni_range = 5.5
 	gold.position = ChannelsArc.arc_pos(PAD_LEDGE_S, PAD_POS_LANE) + Vector3(0.0, 0.9, 0.0)
 	root.add_child(gold)
-
-# --- Placement (author FLAT (s, lane), warp through ChannelsArc) ------------------------
-
-static func _xf(s: float, lane: float, y_off := 0.0) -> Transform3D:
-	var xf := Transform3D(ChannelsArc.basis_at(s), ChannelsArc.arc_pos(s, lane))
-	xf.origin += xf.basis.y * y_off
-	return xf
