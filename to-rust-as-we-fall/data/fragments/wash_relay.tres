@@ -6,7 +6,7 @@
 script = ExtResource("1_uttmt")
 id = "wash_relay"
 title = "Wash Relay"
-help = "Read the shared surge, but expect the coil to break. At the first break, take the violet portal into the pressure room, vent the jet manifold, then leave through cyan. At the sluice, choose the fast exposed crossing or the slow concealed outer pipe; both rejoin at the collector. Held overrides and plates still need party coordination. Later, hide, lure guards into the wash, and explore only the salvage lobes that look worth the risk. Water or a guard hit sends a crew member to start; the terminal and sloperope recover them."
+help = "Read the shared surge, but expect the coil to break. At the first break, take the violet portal into the pressure room, vent the jet manifold, then leave through cyan. At the sluice, choose the fast exposed crossing or the slow concealed outer pipe; both rejoin at the collector. Held overrides and plates still need party coordination. Later, hide, lure guards into the wash, and weigh visible lysate sources against the danger protecting them. Water or a guard hit sends a crew member to start; Peris can tend the upper pothos into a return vine so they can physically climb back, while recovery waits for a full shelter rest."
 default_character = "endo"
 party_ids = PackedStringArray("aster", "peris", "endo")
 spawns = {
@@ -130,7 +130,5 @@ params = {
 "x0": 74.0,
 "x1": 79.0
 }],
-"sloperope_pos": Vector3(84, 0.5, -2.5),
-"start_pos": Vector3(3, 0.5, 0),
-"terminal_pos": Vector3(84, 0.5, 2.5)
+"start_pos": Vector3(3, 0.5, 0)
 }

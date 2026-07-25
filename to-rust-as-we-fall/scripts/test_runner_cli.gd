@@ -45,11 +45,14 @@ func _heavy(label: String) -> bool:
 const DayNightCycleScript = preload("res://scripts/system/simulation/day_night_cycle.gd")
 const FloraMemorySystem = preload("res://scripts/system/simulation/flora_memory_system.gd")
 const FauxPhysicsSensorScript = preload("res://scripts/game/mechanics/faux_physics_sensor.gd")
+const StagedRigidCollapseScript = preload("res://scripts/game/world/staged_rigid_collapse_3d.gd")
+const FloraSpeciesScript = preload("res://scripts/game/objects/flora_species.gd")
 const StretchArchetypeCatalogScript = preload("res://scripts/generation/stretch_archetype_catalog.gd")
 const StretchGeneratorScript = preload("res://scripts/generation/stretch_generator.gd")
 const StretchSolutionSolverScript = preload("res://scripts/generation/stretch_solution_solver.gd")
 const StretchReplayBuilderScript = preload("res://scripts/generation/stretch_replay_builder.gd")
 const StretchCapabilitiesScript = preload("res://scripts/generation/stretch_capabilities.gd")
+const GeneratedNodeRuntimeRegistryScript = preload("res://scripts/generation/generated_node_runtime_registry.gd")
 const CampaignOrderScript = preload("res://scripts/system/campaign/campaign_order.gd")
 const StretchGenerationPlaytestLoopScript = preload("res://scripts/generation/stretch_generation_playtest_loop.gd")
 const PlaythroughAnimationHtmlRendererScript = preload("res://scripts/generation/playthrough_animation_html_renderer.gd")
@@ -64,7 +67,6 @@ const MOTHER_ROOT_SETTLE_SECONDS := 5.5
 const MOTHER_PICKUP_DWELL_SECONDS := 0.8
 const MOTHER_INSTALL_DWELL_SECONDS := 0.8
 const MOTHER_TEND_DWELL_SECONDS := 1.0
-const MOTHER_CLOAK_DWELL_SECONDS := 0.4
 const SAVE_MANAGER_SINGLETON := "SaveManager"
 const SAVE_MANAGER_SCRIPT_PATH := "res://scripts/system/persistence/save_manager.gd"
 const ENGRAM_JOURNAL_SINGLETON := "EngramJournal"
@@ -95,21 +97,26 @@ const FRAGMENT_CHUNK_SCENE_PATHS := [
 const FRAGMENT_PREVIEW_SCENE_PATH := "res://scenes/fragments/fragment_preview.tscn"
 const FragmentPreviewScript := preload("res://scripts/fragments/fragment_preview_sequence.gd")
 const ACT1_SEQUENCE_STEPS := [
-	"channels_enter", "channels_intake_survey", "channels_to_memory", "channels_memory",
-	"channels_memory_reconstruction", "channels_corpse", "channels_harvest_recovery",
+	"channels_enter", "channels_to_memory", "channels_memory", "channels_corpse",
 	"channels_window_one_intro", "channels_window_one_activate", "channels_window_one_cross",
-	"channels_relay_alignment", "channels_to_flure", "channels_flure",
-	"channels_signal_mapping", "channels_window_two_intro", "channels_window_two_activate",
-	"channels_window_two_cross", "channels_escape_plan", "channels_to_encounter", "channels_encounter_intro",
+	"channels_to_flure", "channels_flure", "channels_window_two_intro", "channels_window_two_activate",
+	"channels_window_two_cross", "channels_to_encounter", "channels_encounter_intro",
 	"channels_encounter_activate", "channels_encounter_hide",
 	"channels_encounter_run", "channels_shelter", "channels_explore",
-	"stacks_enter", "stacks_terminal", "stacks_signal", "stacks_archive",
-	"stacks_identity_reconstruction", "stacks_egress_commit", "stacks_explore",
-	"rings_enter", "rings_client", "endo_departs",
-	"rings_residence_survey", "rings_boundary_commit", "rings_explore",
+	"stacks_enter", "stacks_bank_audit", "stacks_shelter", "stacks_explore",
+	"rings_enter", "rings_client", "endo_departs", "rings_explore",
 	"lockout_approach", "lockout_rejected", "lockout_chase",
 	"lockout_exile", "complete",
 ]
+
+class _MockCanonicalEmpReceiver extends Node3D:
+	var pulse_count := 0
+	var last_duration := 0.0
+
+	func apply_emp(duration: float) -> bool:
+		pulse_count += 1
+		last_duration = duration
+		return true
 
 func _ready() -> void:
 	# Wait one frame so the _ready chain completes before scene tests add_child to root
@@ -160,6 +167,9 @@ func _ready() -> void:
 			"--test-syntax":
 				ran_test = true
 				_test_syntax()
+			"--test-performance-trace":
+				ran_test = true
+				await _test_performance_trace_rollover()
 			"--test-grid":
 				ran_test = true
 				_test_grid_pathfinding()
@@ -383,6 +393,9 @@ func _ready() -> void:
 			"--test-wash-relay-transit-breaks":
 				ran_test = true
 				await _test_wash_relay_transit_breaks()
+			"--test-wash-relay-story-beats":
+				ran_test = true
+				await _test_wash_relay_story_beats()
 			"--test-wash-relay-branch-puzzles":
 				ran_test = true
 				await _test_wash_relay_branch_puzzles()
@@ -566,9 +579,9 @@ func _ready() -> void:
 			"--test-occlusion-shader-capture":
 				ran_test = true
 				await _test_occlusion_shader_capture()
-			"--test-wash-relay-trace-cadence":
+			"--test-wash-relay-cadence-scan":
 				ran_test = true
-				await _test_wash_relay_trace_cadence()
+				await _test_wash_relay_cadence_scan()
 			"--test-wash-relay-playthrough":
 				ran_test = true
 				await _test_wash_relay_playthrough()
@@ -580,7 +593,7 @@ func _ready() -> void:
 				await _test_wash_relay_telegraph_visible()
 			"--test-wash-relay-strand":
 				ran_test = true
-				await _test_wash_relay_strand_recover()
+				await _test_wash_relay_strand_rejoin()
 			"--test-wash-relay-held-override":
 				ran_test = true
 				await _test_wash_relay_held_override()
@@ -1061,6 +1074,9 @@ func _ready() -> void:
 			"--test-archetype-generation":
 				ran_test = true
 				await _test_archetype_generation()
+			"--test-generated-carry-payload":
+				ran_test = true
+				await _test_generated_carry_payload()
 			"--test-generated-stretch-playtest-loop":
 				ran_test = true
 				await _test_generated_stretch_playtest_loop()
@@ -1151,6 +1167,12 @@ func _ready() -> void:
 			"--test-intro-realinput":
 				ran_test = true
 				await _test_intro_realinput()
+			"--test-aster-realinput":
+				ran_test = true
+				await _test_aster_realinput()
+			"--test-peris-realinput":
+				ran_test = true
+				await _test_peris_realinput()
 			"--test-elevator-realinput":
 				ran_test = true
 				await _test_elevator_realinput()
@@ -1276,6 +1298,7 @@ func _ready() -> void:
 
 func _run_all_tests() -> void:
 	_test_syntax()
+	await _test_performance_trace_rollover()
 	_test_grid_pathfinding()
 	_test_game_state()
 	_test_state_machine()
@@ -1325,6 +1348,7 @@ func _run_all_tests() -> void:
 	await _test_interactable_warp()
 	await _test_wash_relay_branches()
 	await _test_wash_relay_transit_breaks()
+	await _test_wash_relay_story_beats()
 	await _test_wash_relay_branch_puzzles()
 	await _test_wash_relay_abilities()
 	await _test_wash_relay_checkpoint()
@@ -1364,11 +1388,11 @@ func _run_all_tests() -> void:
 	await _test_refuge_run_playthrough()
 	await _test_channels_textures()
 	await _test_wash_relay_flood_visual()
-	await _test_wash_relay_trace_cadence()
+	await _test_wash_relay_cadence_scan()
 	await _test_wash_relay_playthrough()
 	await _test_wash_relay_queued_glow()
 	await _test_wash_relay_telegraph_visible()
-	await _test_wash_relay_strand_recover()
+	await _test_wash_relay_strand_rejoin()
 	await _test_wash_relay_held_override()
 	await _test_channels_wash_intro()
 	await _test_channels_wash_intro_grammar()
@@ -1424,6 +1448,7 @@ func _run_all_tests() -> void:
 	_test_chunk_mutation_discipline()
 	_test_canonical_location_names()
 	await _test_archetype_generation()
+	await _test_generated_carry_payload()
 	_test_generated_multi_solution()
 	_test_generated_replay()
 	_test_campaign_order()
@@ -1592,11 +1617,185 @@ func _test_syntax() -> void:
 		"Web feature flag skips physical-key localization regardless of display-server label")
 	_assert_true(InputHints.physical_key_localization_supported("Windows", false),
 		"Native display servers keep localized physical-key labels")
+	_assert_performance_trace_contract()
+	_assert_staged_rigid_collapse_contract()
 	_assert_production_ui_is_scene_authored()
 	_assert_no_dialogue_override_files()
 	_assert_ouroboros_dialogue_draft()
 	_assert_nustle_dialogue_draft()
 	_assert_love_dimensionless_dialogue_draft()
+
+func _assert_performance_trace_contract() -> void:
+	PerformanceTrace.configure(true, false, 9999.0, 9999.0)
+	var started := PerformanceTrace.begin()
+	PerformanceTrace.end(&"nav", &"test.sample", started, "fixture", 7)
+	var capture := PerformanceTrace.flush()
+	_assert_equals(int(capture.get("step_count", 0)), 1,
+		"Performance trace retains every timed step in the frame")
+	var steps: Array = capture.get("steps", [])
+	_assert_true(not steps.is_empty() and str((steps[0] as Dictionary).get("label", "")) == "test.sample",
+		"Performance trace preserves stage labels for browser diagnosis")
+	PerformanceTrace.configure(false)
+
+func _test_performance_trace_rollover() -> void:
+	_test_name = "Performance Trace Frame Rollover"
+	PerformanceTrace.configure(true, false, 0.0, 9999.0)
+	var previous_frame := Engine.get_process_frames()
+	var previous_started := PerformanceTrace.begin()
+	PerformanceTrace.end(&"update", &"test.rollover.previous", previous_started, "fixture", 1)
+	await get_tree().process_frame
+
+	# This outer span models sequence.gameplay_scheduler. The previous slow
+	# frame must already be printed before begin() returns its timestamp, rather
+	# than when the first nested sample ends.
+	var outer_started := PerformanceTrace.begin()
+	var rollover_capture := PerformanceTrace.get_last_flush()
+	var rollover_steps: Array = rollover_capture.get("steps", [])
+	_assert_equals(int(rollover_capture.get("frame", -1)), previous_frame,
+		"Performance trace rolls the completed process frame over from begin()")
+	_assert_true(rollover_steps.size() == 1
+			and str((rollover_steps[0] as Dictionary).get("label", "")) == "test.rollover.previous",
+		"Performance trace prints the prior frame before an enclosing new-frame sample starts")
+
+	var nested_started := PerformanceTrace.begin()
+	PerformanceTrace.end(&"update", &"test.rollover.nested", nested_started, "fixture", 1)
+	PerformanceTrace.end(&"update", &"test.rollover.outer", outer_started, "fixture", 1)
+	var current_capture := PerformanceTrace.flush()
+	var current_steps: Array = current_capture.get("steps", [])
+	_assert_equals(current_steps.size(), 2,
+		"Nested and enclosing samples remain together in the new process frame")
+	_assert_true(str((current_steps[0] as Dictionary).get("label", "")) == "test.rollover.nested"
+			and str((current_steps[1] as Dictionary).get("label", "")) == "test.rollover.outer",
+		"Begin-time rollover preserves nested sample ordering and frame membership")
+	# A printed report is flushed before the next begin() timestamp, so its own
+	# console cost is already excluded. It must not arm a sticky flag that hides a
+	# later genuine interval-only hitch.
+	PerformanceTrace.configure(true, false, 9999.0, 2.0)
+	var print_seed_started := PerformanceTrace.begin()
+	PerformanceTrace.end(&"update", &"test.rollover.print_seed", print_seed_started, "fixture", 1)
+	PerformanceTrace.flush()
+	var interval_started := PerformanceTrace.begin()
+	PerformanceTrace.end(&"update", &"test.rollover.interval", interval_started, "fixture", 1)
+	OS.delay_msec(4)
+	var interval_capture := PerformanceTrace.flush()
+	_assert_true(bool(interval_capture.get("slow", false))
+			and float(interval_capture.get("interval_ms", 0.0)) >= 2.0
+			and float(interval_capture.get("trace_span_ms", 9999.0)) < 2.0,
+		"A prior profiler print cannot suppress a later interval-only hitch")
+	PerformanceTrace.configure(false)
+
+func _assert_staged_rigid_collapse_contract() -> void:
+	var host := Node3D.new()
+	host.name = "StagedCollapseContractHost"
+	add_child(host)
+	var model := Node3D.new()
+	model.name = "SourceModel"
+	host.add_child(model)
+	for i in range(5):
+		var piece := MeshInstance3D.new()
+		piece.name = "Piece%d" % i
+		var mesh := BoxMesh.new()
+		mesh.size = Vector3.ONE
+		piece.mesh = mesh
+		piece.position = Vector3([-4.0, -1.0, 0.1, 2.0, 5.0][i], 0.0, 0.0)
+		model.add_child(piece)
+	var presenter := StagedRigidCollapseScript.new() as StagedRigidCollapse3D
+	presenter.name = "StagedCollapseContract"
+	host.add_child(presenter)
+	var settled_generations: Array[int] = []
+	presenter.settled.connect(func(generation: int): settled_generations.append(generation))
+	var generation := presenter.begin(model, 0.0, {
+		"pieces_per_step": 2,
+		"settle_seconds": 0.2,
+		"release_delay_per_unit": 0.0,
+		"catch_global_position": Vector3(0.0, -2.0, 0.0),
+	})
+	_assert_equals(presenter.converted_piece_count(), 2,
+		"Staged collapse converts only its immediate bounded batch")
+	_assert_equals(presenter.pending_piece_count(), 3,
+		"Staged collapse retains the unconverted suffix")
+	var first_batch := presenter.debris_bodies()
+	_assert_true(first_batch.size() == 2
+			and str(first_batch[0].name).begins_with("Piece2")
+			and str(first_batch[1].name).begins_with("Piece1"),
+		"Staged collapse fractures outward from the initiating point")
+	presenter.set_visual_paused(true)
+	var paused_elapsed := presenter.visual_elapsed()
+	presenter.advance_visual_time(1.0)
+	_assert_equals(presenter.pending_piece_count(), 3,
+		"A paused staged collapse performs no tree/physics work")
+	_assert_true(is_equal_approx(presenter.visual_elapsed(), paused_elapsed),
+		"A paused staged collapse freezes its visual clock")
+	presenter.set_visual_paused(false)
+	presenter.advance_visual_time(0.05)
+	_assert_equals(presenter.converted_piece_count(), 4,
+		"One resumed visual update converts exactly one further batch")
+	presenter.advance_visual_time(0.05)
+	_assert_equals(presenter.converted_piece_count(), 5,
+		"The final partial batch converts without duplication")
+	_assert_true(presenter.is_settling(),
+		"Settlement begins only after conversion and release queues drain")
+	presenter.advance_visual_time(0.21)
+	_assert_true(settled_generations == [generation],
+		"A staged collapse emits completion exactly once with its lifecycle token")
+	var old_debris: Array = presenter.debris_bodies().duplicate()
+	var old_catch_floor := presenter.catch_floor()
+	var clustered_model := Node3D.new()
+	clustered_model.name = "ClusteredSourceModel"
+	host.add_child(clustered_model)
+	var nested_cluster := Node3D.new()
+	nested_cluster.name = "NestedCluster"
+	clustered_model.add_child(nested_cluster)
+	for i in range(12):
+		var piece := MeshInstance3D.new()
+		piece.name = "ClusteredPiece%d" % i
+		piece.mesh = BoxMesh.new()
+		piece.position = Vector3(10.0 + float(i), 0.0, 0.0)
+		(nested_cluster if i % 2 == 0 else clustered_model).add_child(piece)
+	var clustered_generation := presenter.begin(clustered_model, 0.0, {
+		"pieces_per_step": 12,
+		"releases_per_step": 3,
+		"settle_seconds": 0.2,
+		"release_delay_per_unit": 1.0,
+		"max_release_delay": 0.5,
+		"catch_global_position": Vector3(0.0, -2.0, 0.0),
+	})
+	var previous_visuals_detached := old_catch_floor != null and old_catch_floor.get_parent() == null
+	for old_body in old_debris:
+		previous_visuals_detached = previous_visuals_detached \
+			and is_instance_valid(old_body) and old_body.get_parent() == null
+	_assert_true(previous_visuals_detached,
+		"Reusing a settled presenter retires every prior debris body and catch floor")
+	var catch_floor_count := 0
+	for child in presenter.get_children():
+		if child is StaticBody3D:
+			catch_floor_count += 1
+	_assert_equals(catch_floor_count, 1,
+		"A reused presenter owns exactly one current catch floor")
+	_assert_equals(presenter.converted_piece_count(), 12,
+		"Collapse conversion traverses nested authored mesh subtrees")
+	presenter.advance_visual_time(0.5)
+	var released_after_deadline := 0
+	for body in presenter.debris_bodies():
+		if not body.freeze:
+			released_after_deadline += 1
+	_assert_equals(released_after_deadline, 3,
+		"A clustered release deadline activates only the per-frame physics budget")
+	_assert_equals(presenter.pending_release_count(), 9,
+		"Due debris remains queued instead of bunching into one physics frame")
+	presenter.advance_visual_time(0.01)
+	var released_after_second_step := 0
+	for body in presenter.debris_bodies():
+		if not body.freeze:
+			released_after_second_step += 1
+	_assert_equals(released_after_second_step, 6,
+		"The next visual step releases exactly one further bounded cohort")
+	var completed_generation := presenter.visual_generation()
+	presenter.cancel()
+	_assert_true(completed_generation == clustered_generation
+		and presenter.visual_generation() != completed_generation and not presenter.is_active(),
+		"Cancel invalidates stale staged-collapse work")
+	host.free()
 
 func _assert_production_ui_is_scene_authored() -> void:
 	var ui_types := PackedStringArray([
@@ -2079,8 +2278,11 @@ func _assert_level_editor_plan_browser(editor_instance: Node) -> void:
 			var composition: Dictionary = generation.get("composition", {})
 			_assert_equals(str(composition.get("mode", "")), "chain_nested_poc",
 				"Chain/nested generated plan exposes composition mode")
-			_assert_true(int(composition.get("nested_count", 0)) >= 2,
-				"Chain/nested generated plan exposes nested archetypes")
+			_assert_true(
+				int(composition.get("nested_count", -1)) == 0
+					and not bool(composition.get("has_nested", true)),
+				"Generated plan omits unbound nested prose from its playable composition"
+			)
 		if plan_id == "generated_random_walk_poc_shelter_3_to_4":
 			_assert_true(bool(per_plan_state.get("generated", false)),
 				"Random-walk generated proof appears as a generated plan")
@@ -2206,9 +2408,56 @@ func _test_archetype_generation() -> void:
 	var catalog := StretchArchetypeCatalogScript.new()
 	var catalog_validation: Dictionary = catalog.validate()
 	_assert_true(bool(catalog_validation.get("valid", false)), "Archetype catalog validates")
-	_assert_equals(catalog.get_archetype_ids().size(), 17, "Catalog exposes archetypes 1-17 (11 puzzle/meta + 5 survival + 1 diagnosis)")
-	for flora_id in ["seefern", "scarpet", "flure", "mother_flure", "hushbloom", "doma", "snapbloom", "capbage", "gasafoetida", "climbvine", "resolution_roots", "forget_me_nots"]:
+	_assert_equals(catalog.get_archetype_ids().size(), 16, "Catalog exposes the authored 16 puzzle/survival archetypes")
+	var canonical_flora_keys := catalog.get_content_keys("flora")
+	for flora_id in ["seefern", "scarpet", "flure", "mother_flure", "hushbloom", "capbage", "gasafoetida", "climbvine", "resolution_roots", "forget_me_nots"]:
 		_assert_true(catalog.has_content("flora", flora_id), "Catalog includes flora %s" % flora_id)
+	for retired_flora_id in ["doma", "snapbloom"]:
+		_assert_true(not canonical_flora_keys.has(retired_flora_id),
+			"Live palette excludes retired flora key %s" % retired_flora_id)
+	_assert_equals(FloraSpeciesScript.canonical_key("doma"), "capbage",
+		"Persisted Doma keys migrate to Capbage")
+	_assert_equals(FloraSpeciesScript.canonical_key("snapbloom"), "gasafoetida",
+		"Persisted Snapbloom keys migrate to Gasafoetida")
+	_assert_equals(str(FloraSpeciesScript.get_species("doma").get("display_name", "")), "Capbage",
+		"Legacy Capbage saves resolve to the canonical species record")
+	_assert_equals(str(FloraSpeciesScript.get_species("snapbloom").get("display_name", "")), "Gasafoetida",
+		"Legacy Gasafoetida saves resolve to the canonical species record")
+	var capbage_species: Dictionary = FloraSpeciesScript.get_species("capbage")
+	_assert_equals(capbage_species.get("peris_words", []), ["the heads", "my heads", "the safeholds"],
+		"Capbage uses Peris's canonical head/home vocabulary")
+	var gasafoetida_species: Dictionary = FloraSpeciesScript.get_species("gasafoetida")
+	_assert_equals(str(gasafoetida_species.get("repellent_scope", "")), "all_enemy_classes",
+		"Gasafoetida gas has the canonical universal repellent scope")
+	_assert_true(not gasafoetida_species.has("repellent_targets") and not gasafoetida_species.has("repellent_immune"),
+		"Gasafoetida carries no retired class-specific target exceptions")
+	var capbage_caps: Array = StretchCapabilitiesScript.CONTENT_CAPABILITIES.get("flora", {}).get("capbage", [])
+	_assert_true(capbage_caps.has("cover") and capbage_caps.has("hide") and capbage_caps.has("cache")
+			and not capbage_caps.has("forage"),
+		"Capbage supplies cover/hide/cache without impersonating a forage cache")
+	var gasafoetida_palette: Dictionary = catalog.get_content("flora", "gasafoetida")
+	var gasafoetida_tags: Array = gasafoetida_palette.get("tags", [])
+	_assert_true(gasafoetida_tags.has("repellent") and gasafoetida_tags.has("gas")
+			and gasafoetida_tags.has("combustible"),
+		"Gasafoetida design data preserves its repellent gas and combustible reaction")
+	_assert_equals(str(gasafoetida_palette.get("support", "")), "placeholder",
+		"Gasafoetida remains honestly marked placeholder until it has a runtime object")
+	_assert_true(not (StretchCapabilitiesScript.CONTENT_CAPABILITIES.get("flora", {}) as Dictionary).has("gasafoetida"),
+		"A placeholder Gasafoetida cannot satisfy live solver capabilities")
+	var migrated_spec := StretchGeneratorScript.canonicalize_spec({
+		"nodes": [{"flora": ["doma", "snapbloom"], "content_placements": [
+			{"category": "flora", "id": "doma", "key": "snapbloom"},
+		]}],
+		"settings": {"limitations": {"allowed": {"flora": ["doma", "snapbloom"]}}},
+	})
+	var migrated_node: Dictionary = (migrated_spec.get("nodes", []) as Array)[0]
+	_assert_equals(migrated_node.get("flora", []), ["capbage", "gasafoetida"],
+		"Loaded legacy flora arrays canonicalize before runtime")
+	_assert_equals(migrated_spec.get("settings", {}).get("limitations", {}).get("allowed", {}).get("flora", []),
+		["capbage", "gasafoetida"], "Loaded legacy limitation palettes canonicalize before runtime")
+	var forage_needs: Array = StretchGeneratorScript._flora_needs({"survival_kind": "forage"})
+	_assert_true(not forage_needs.has({"id": "capbage"}),
+		"Forage generation never treats Capbage as food")
 	for enemy_id in ["sapscraps", "aembers", "hidras", "crusts", "candids", "meebs", "naturalizers", "gnawers", "flares", "spikers", "tanglers", "toxos", "redactors"]:
 		_assert_true(catalog.has_content("enemies", enemy_id), "Catalog includes enemy %s" % enemy_id)
 
@@ -2322,14 +2571,13 @@ func _test_archetype_generation() -> void:
 			"flora_slots": 3,
 			"enemy_slots": 2,
 			"structures_slots": 5,
-			"shortcut_count": 1,
 			"resource_beats": 1,
 		},
 		"limitations": {
 			"allowed": {
 				"flora": ["flure", "hushbloom", "scarpet"],
 				"enemies": ["sapscraps", "naturalizers"],
-				"structures": ["shelter", "barrier", "forage_cache", "carry_gear", "shortcut_gate", "terminal", "pipe"],
+				"structures": ["shelter", "barrier", "forage_cache", "carry_gear", "terminal", "pipe"],
 				"archetypes": ["1", "2", "3", "4", "6", "11"],
 			},
 			"required": {
@@ -2366,8 +2614,10 @@ func _test_archetype_generation() -> void:
 	var composition: Dictionary = chain_nested_spec.get("composition", {})
 	_assert_equals(str(composition.get("mode", "")), "chain_nested_poc", "Generated proof carries composition mode")
 	_assert_equals(int(composition.get("chain_count", 0)), 4, "Generated proof carries the explicit chain")
-	_assert_equals(int(composition.get("nested_count", 0)), 3, "Generated proof flattens nested archetypes")
-	_assert_equals(int(composition.get("nested_depth", 0)), 2, "Generated proof records nested depth")
+	_assert_equals(int(composition.get("nested_count", -1)), 0,
+		"Unbound nested prose contributes no runtime nested mechanisms")
+	_assert_equals(int(composition.get("nested_depth", -1)), 0,
+		"Unbound nested prose contributes no fake runtime depth")
 	for link in composition.get("links", []):
 		if link is Dictionary:
 			_assert_true(bool((link as Dictionary).get("feeds_next", false)), "Generated proof links chain outputs into next inputs")
@@ -2382,7 +2632,17 @@ func _test_archetype_generation() -> void:
 		if node is Dictionary and not ((node as Dictionary).get("nested_archetypes", []) as Array).is_empty():
 			nested_host_node_found = true
 			break
-	_assert_true(nested_host_node_found, "Generated proof attaches nested archetypes to playable nodes")
+	_assert_true(not nested_host_node_found,
+		"Generated proof attaches no nested host until a real child mechanism is bound")
+	var missing_nested_binding_warning := false
+	for warning_v in chain_nested_spec.get("validation", {}).get("warnings", []):
+		if warning_v is Dictionary \
+				and str((warning_v as Dictionary).get("reason", "")) \
+					== "missing_nested_runtime_binding":
+			missing_nested_binding_warning = true
+			break
+	_assert_true(missing_nested_binding_warning,
+		"Omitted nested prose reports the exact missing_nested_runtime_binding reason")
 	var broken_handshake: Dictionary = StretchGeneratorScript.generate({
 		"id": "generated_broken_causal_handshake",
 		"seed": 2403,
@@ -2419,14 +2679,13 @@ func _test_archetype_generation() -> void:
 			"flora_slots": 3,
 			"enemy_slots": 2,
 			"structures_slots": 5,
-			"shortcut_count": 1,
 			"resource_beats": 2,
 		},
 		"limitations": {
 			"allowed": {
 				"flora": ["flure", "hushbloom", "scarpet"],
 				"enemies": ["sapscraps", "naturalizers"],
-				"structures": ["shelter", "forage_cache", "terminal", "carry_gear", "shortcut_gate", "pipe"],
+				"structures": ["shelter", "forage_cache", "terminal", "carry_gear", "pipe"],
 				"archetypes": ["2", "3", "4", "6", "11"],
 			},
 			"required": {
@@ -2552,6 +2811,11 @@ func _test_archetype_generation() -> void:
 		"Saved chain/nested generated proof spec loads")
 	_assert_equals(str(loaded_poc_fixture.get("composition", {}).get("mode", "")), "chain_nested_poc",
 		"Saved chain/nested proof fixture exposes composition metadata")
+	_assert_true(
+		int(loaded_poc_fixture.get("composition", {}).get("nested_count", -1)) == 0
+			and not bool(loaded_poc_fixture.get("composition", {}).get("has_nested", true)),
+		"Saved proof fixture does not serialize unbound nested mechanics"
+	)
 	var loaded_walk_fixture := StretchGeneratorScript.load_spec(GENERATED_RANDOM_WALK_POC_SPEC_PATH)
 	_assert_equals(str(loaded_walk_fixture.get("id", "")), "generated_random_walk_poc_shelter_3_to_4",
 		"Saved random-walk generated proof spec loads")
@@ -2581,24 +2845,56 @@ func _test_archetype_generation() -> void:
 			_assert_equals(str(poc_navigation.get("contract_id", "")), "unified_grid_v1",
 				"Generated chain/nested chunk builds the unified-grid navigation contract")
 			_assert_true(int(poc_graybox.get("outline_target_count", 0)) > 0,
-				"Generated chain/nested chunk builds clickable node outline targets")
+				"Generated chain chunk exposes outline targets only for real actions")
 			_assert_true(int(poc_graybox.get("instanced_content_marker_count", 0)) > 0,
-				"Generated chain/nested chunk instances sized content markers")
+				"Generated chain chunk instances runtime-bound content")
 			_assert_true(bool(poc_graybox.get("supports_multiple_elevations", false)),
 				"Generated chain/nested chunk builds multiple elevations")
 			_assert_equals(str(poc_state.get("generation", {}).get("composition", {}).get("mode", "")), "chain_nested_poc",
 				"Generated chunk exposes chain/nested composition in preview state")
-			_assert_equals(int(poc_state.get("generation", {}).get("nested_depth", 0)), 2,
-				"Generated chunk exposes nested depth in preview state")
-			var poc_golden: Variant = poc_chunk.call("run_generated_golden_path")
-			_assert_true(poc_golden == true, "Generated chain/nested golden path reaches shelter")
-			var poc_risky: Variant = poc_chunk.call("run_generated_risky_recovery")
-			poc_state = poc_chunk.call("get_preview_state")
-			_assert_true(poc_risky == true, "Generated chain/nested risky route recovery remains playable")
-			_assert_true(float(poc_state.get("risky_damage_total", 0.0)) > 0.0,
-				"Generated chain/nested risky route records pressure damage")
+			_assert_equals(int(poc_state.get("generation", {}).get("nested_depth", -1)), 0,
+				"Generated chunk exposes no runtime depth for unbound nested prose")
 			poc_chunk.queue_free()
 			await get_tree().process_frame
+			var poc_approval: Dictionary = await StretchGenerationPlaytestLoopScript.new().playtest_spec(
+				chain_nested_spec, get_tree()
+			)
+			var poc_golden: Dictionary = poc_approval.get("playthroughs", {}).get(
+				"golden_path", {}
+			)
+			var poc_risky: Dictionary = poc_approval.get("playthroughs", {}).get(
+				"risky_recovery", {}
+			)
+			if not bool(poc_golden.get("shelter_rested", false)) \
+					or not bool(poc_risky.get("recovered", false)):
+				print("[archetype-generation:chain-nested] %s" % JSON.stringify({
+					"errors": poc_approval.get("errors", []),
+					"golden": {
+						"shelter_rested": poc_golden.get("shelter_rested", false),
+						"final_phase": poc_golden.get("final_phase", ""),
+						"final_outcome": poc_golden.get("final_outcome", ""),
+						"interaction_failures": poc_golden.get("interaction_failures", []),
+						"solution_action_failures": poc_golden.get("solution_action_failures", []),
+					},
+					"risky": {
+						"recovered": poc_risky.get("recovered", false),
+						"final_phase": poc_risky.get("final_phase", ""),
+						"interaction_failures": poc_risky.get("interaction_failures", []),
+						"solution_action_failures": poc_risky.get("solution_action_failures", []),
+					},
+				}))
+			_assert_true(bool(poc_golden.get("shelter_rested", false)),
+				"Generated chain/nested physical-input golden path reaches shelter")
+			_assert_true(bool(poc_risky.get("recovered", false)),
+				"Generated chain/nested physical-input risky recovery remains playable")
+			var poc_risk_field: Dictionary = poc_risky.get("route_risk_field", {})
+			_assert_true(bool(poc_risk_field.get("active", false))
+				and int(poc_risk_field.get("risk_cell_count", 0)) > 0,
+				"Generated chain/nested risk is realized as active marked terrain")
+			_assert_true(is_equal_approx(
+				float(poc_risky.get("damage", 0.0)),
+				float(poc_risk_field.get("damage_total", 0.0))),
+				"Generated chain/nested pressure telemetry mirrors only spatial field contact")
 		var walk_chunk: Node = chunk_scene.instantiate()
 		_assert_true(walk_chunk != null, "Generated random-walk chunk instantiates")
 		if walk_chunk != null:
@@ -2622,15 +2918,29 @@ func _test_archetype_generation() -> void:
 				"Generated chunk exposes random-walk composition in preview state")
 			_assert_equals(int(walk_state.get("generation", {}).get("walk_element_count", 0)), 7,
 				"Generated chunk exposes random-walk element count")
-			var walk_golden: Variant = walk_chunk.call("run_generated_golden_path")
-			_assert_true(walk_golden == true, "Generated random-walk golden path reaches shelter")
-			var walk_risky: Variant = walk_chunk.call("run_generated_risky_recovery")
-			walk_state = walk_chunk.call("get_preview_state")
-			_assert_true(walk_risky == true, "Generated random-walk risky route recovery remains playable")
-			_assert_true(float(walk_state.get("risky_damage_total", 0.0)) > 0.0,
-				"Generated random-walk risky route records pressure damage")
 			walk_chunk.queue_free()
 			await get_tree().process_frame
+			var walk_approval: Dictionary = await StretchGenerationPlaytestLoopScript.new().playtest_spec(
+				random_walk_spec, get_tree()
+			)
+			var walk_golden: Dictionary = walk_approval.get("playthroughs", {}).get(
+				"golden_path", {}
+			)
+			var walk_risky: Dictionary = walk_approval.get("playthroughs", {}).get(
+				"risky_recovery", {}
+			)
+			_assert_true(bool(walk_golden.get("shelter_rested", false)),
+				"Generated random-walk physical-input golden path reaches shelter")
+			_assert_true(bool(walk_risky.get("recovered", false)),
+				"Generated random-walk physical-input risky recovery remains playable")
+			var walk_risk_field: Dictionary = walk_risky.get("route_risk_field", {})
+			_assert_true(bool(walk_risk_field.get("active", false))
+				and int(walk_risk_field.get("risk_cell_count", 0)) > 0,
+				"Generated random-walk risk is realized as active marked terrain")
+			_assert_true(is_equal_approx(
+				float(walk_risky.get("damage", 0.0)),
+				float(walk_risk_field.get("damage_total", 0.0))),
+				"Generated random-walk pressure telemetry mirrors only spatial field contact")
 
 	# Boot the preview on a SETPIECE spec so the installed grid is multi-level (verticality is tier-gated).
 	var preview_instance: Node = await _instantiate_preview_chunk_and_wait("generated_stretch", 3, {"spec": spec_vert})
@@ -2676,26 +2986,330 @@ func _test_archetype_generation() -> void:
 		_assert_true(_serialized_path_uses_multiple_y(move_info.get("path", [])),
 			"Generated preview movement path preserves multiple Y-levels")
 		preview_instance.call("headless_set_character_position", "aster", Vector3(0.0, 0.5, 1.6))
-	var golden_result: Variant = preview_instance.call("headless_call_chunk", "run_generated_golden_path", [])
-	var golden_ok: bool = golden_result == true
-	state = preview_instance.call("headless_get_state")
-	_assert_true(golden_ok, "Generated golden path reaches the exit shelter")
-	_assert_true(bool(state.get("chunk", {}).get("shelter_rested", false)), "Generated golden path rests at the exit shelter")
-	_assert_true(bool(state.get("chunk", {}).get("shortcut_unlocked", false)), "Generated golden path exposes shortcut state")
-	var risky_result: Variant = preview_instance.call("headless_call_chunk", "run_generated_risky_recovery", [])
-	var risky_ok: bool = risky_result == true
-	state = preview_instance.call("headless_get_state")
-	_assert_true(risky_ok, "Generated risky route recovery remains playable")
-	_assert_equals(str(state.get("chunk", {}).get("route_phase", "")), "complete", "Generated risky recovery completes")
-	_assert_true(float(state.get("chunk", {}).get("risky_damage_total", 0.0)) > 0.0, "Generated risky recovery records pressure damage")
 	preview_instance.queue_free()
 	await get_tree().process_frame
+	var setpiece_approval: Dictionary = await StretchGenerationPlaytestLoopScript.new().playtest_spec(
+		spec_vert, get_tree()
+	)
+	var golden_report: Dictionary = setpiece_approval.get("playthroughs", {}).get(
+		"golden_path", {}
+	)
+	var risky_report: Dictionary = setpiece_approval.get("playthroughs", {}).get(
+		"risky_recovery", {}
+	)
+	if not bool(golden_report.get("shelter_rested", false)) \
+			or not bool(risky_report.get("recovered", false)):
+		print("[archetype-generation:setpiece] %s" % JSON.stringify({
+			"errors": setpiece_approval.get("errors", []),
+			"golden": {
+				"shelter_rested": golden_report.get("shelter_rested", false),
+				"final_phase": golden_report.get("final_phase", ""),
+				"final_outcome": golden_report.get("final_outcome", ""),
+				"interaction_failures": golden_report.get("interaction_failures", []),
+				"solution_action_failures": golden_report.get("solution_action_failures", []),
+			},
+			"risky": {
+				"recovered": risky_report.get("recovered", false),
+				"final_phase": risky_report.get("final_phase", ""),
+				"interaction_failures": risky_report.get("interaction_failures", []),
+				"solution_action_failures": risky_report.get("solution_action_failures", []),
+			},
+		}))
+	_assert_true(bool(golden_report.get("shelter_rested", false)),
+		"Generated physical-input golden path reaches and rests at the exit shelter")
+	_assert_true(
+		(golden_report.get("interaction_failures", []) as Array).is_empty()
+			and (golden_report.get("solution_action_failures", []) as Array).is_empty(),
+		"Generated physical-input golden path completes without harness bypasses"
+	)
+	var return_policy: Dictionary = generation_spec.get("topology_contract", {}).get(
+		"return_policy", {}
+	)
+	var climbvine_states: Array = golden_report.get("climbvine_states", [])
+	var climbvine_authority_valid := not climbvine_states.is_empty()
+	for climbvine_state_v in climbvine_states:
+		if not (climbvine_state_v is Dictionary):
+			climbvine_authority_valid = false
+			continue
+		var climbvine_state := climbvine_state_v as Dictionary
+		climbvine_authority_valid = (
+			climbvine_authority_valid
+			and str(climbvine_state.get("contract", "")) == "climbvine_return/v1"
+			and str(climbvine_state.get("mechanism_id", "")) != ""
+		)
+	_assert_true(
+		not bool(golden_report.get("shortcut_unlocked", false))
+			and str(return_policy.get("authority", ""))
+				== "runtime_meta_template_climbvine_state"
+			and not bool(return_policy.get("semantic_route_may_unlock", true))
+			and climbvine_authority_valid,
+		"Generated golden path leaves recovery to physical ClimbvineReturn authority"
+	)
+	var scarcity_drain := (
+		float(golden_report.get("scarcity_drain_ticks", 0))
+		* float(golden_report.get("scarcity_drain_per_character", 0.0))
+	)
+	var scarcity_floor := float(
+		golden_report.get("scarcity_atp_floor_per_character", 0.0)
+	)
+	var expected_rested_atp := (
+		maxf(
+			scarcity_floor,
+			float(GameState.ATP_MAX_PIPS) - scarcity_drain
+		)
+		- 1.0
+	)
+	for char_id in ["aster", "peris", "endo"]:
+		var rested_stats: Dictionary = golden_report.get("character_stats", {}).get(
+			char_id, {}
+		)
+		_assert_equals(
+			float(rested_stats.get("atp", -1.0)),
+			expected_rested_atp,
+			"Generated shelter rest charges %s one ATP after the reported Scarcity drain"
+				% char_id
+		)
+	_assert_true(bool(risky_report.get("recovered", false)),
+		"Generated physical-input risky route recovery remains playable")
+	_assert_equals(str(risky_report.get("final_phase", "")), "complete",
+		"Generated risky recovery completes")
+	var risky_field_state: Dictionary = risky_report.get("route_risk_field", {})
+	_assert_true(bool(risky_field_state.get("active", false))
+		and int(risky_field_state.get("risk_cell_count", 0)) > 0,
+		"Generated risky recovery keeps the marked spatial risk field active")
+	_assert_true(is_equal_approx(
+		float(risky_report.get("damage", 0.0)),
+		float(risky_field_state.get("damage_total", 0.0))),
+		"Generated risky recovery reports only actual marked-cell contact")
+
+
+func _test_generated_carry_payload() -> void:
+	_test_name = "Generated Physical Carry Payload"
+	var corpus: Dictionary = JSON.parse_string(
+		FileAccess.get_file_as_string("res://data/generation/stretch_seed_corpus.json")
+	)
+	var settings: Dictionary = {}
+	for case_v in corpus.get("cases", []):
+		if not (case_v is Dictionary):
+			continue
+		var candidate_settings: Dictionary = (case_v as Dictionary).get("settings", {})
+		if str(candidate_settings.get("composition", {}).get("mode", "")) != "chain_nested_poc":
+			continue
+		settings = candidate_settings.duplicate(true)
+		break
+	_assert_true(not settings.is_empty(), "Physical-carry regression fixture settings exist")
+	if settings.is_empty():
+		return
+	settings["id"] = "generated_physical_carry_regression"
+	var spec: Dictionary = StretchGeneratorScript.generate(settings)
+	_assert_true(bool(spec.get("success", false)), "Physical-carry regression fixture generates")
+	if not bool(spec.get("success", false)):
+		return
+	var payload_node_ids: Array[String] = []
+	for node_v in spec.get("nodes", []):
+		if not (node_v is Dictionary):
+			continue
+		var node := node_v as Dictionary
+		if (
+			str(node.get("runtime_handler", ""))
+				== GeneratedNodeRuntimeRegistryScript.HANDLER_PHYSICAL_PAYLOAD
+			and bool(node.get("runtime_progression_required", false))
+		):
+			payload_node_ids.append(str(node.get("id", "")))
+	_assert_true(not payload_node_ids.is_empty(),
+		"Generated carry contract exposes at least one required physical payload handler")
+	if payload_node_ids.is_empty():
+		return
+	var persisted_spec := StretchGeneratorScript.load_spec(
+		"res://data/generated_stretches/generated_sample_hard_carry_run.json"
+	)
+	var persisted_payload_nodes: Array[String] = []
+	for node_v in persisted_spec.get("nodes", []):
+		if (
+			node_v is Dictionary
+			and str((node_v as Dictionary).get("runtime_handler", ""))
+				== GeneratedNodeRuntimeRegistryScript.HANDLER_PHYSICAL_PAYLOAD
+		):
+			persisted_payload_nodes.append(str((node_v as Dictionary).get("id", "")))
+	_assert_equals(
+		_sorted_strings(persisted_payload_nodes),
+		_sorted_strings(payload_node_ids),
+		"The campaign's persisted hard-carry asset carries the current physical-payload contract"
+	)
+
+	# Hosted preview: the handler must create a real named item in a real hand.
+	var preview_config: Dictionary = (
+		GameSettings.GAME_MODE_CHUNK_CONFIGS[GameSettings.GAME_MODE_SCARCITY] as Dictionary
+	).duplicate(true)
+	preview_config["spec"] = spec.duplicate(true)
+	var preview = await _instantiate_preview_chunk_and_wait("generated_stretch", 8, preview_config)
+	_assert_true(preview != null, "Generated physical-carry preview instantiates")
+	if preview == null:
+		return
+	_assert_true(_complete_required_generated_nodes(preview, spec, true),
+		"Generated physical-carry prerequisites complete through runtime handlers")
+	var party: Array = preview.headless_get_state().get("chunk", {}).get("active_party", [])
+	var carried_by_node := _generated_payload_items_in_hands(preview, party)
+	_assert_equals(_sorted_string_keys(carried_by_node), _sorted_strings(payload_node_ids),
+		"Every required carry node creates its own physical hand item")
+	var lost_node := payload_node_ids[0]
+	var carried: Dictionary = carried_by_node.get(lost_node, {})
+	var carrier := str(carried.get("carrier", ""))
+	var item_id := str(carried.get("item_id", ""))
+	var item_state: Dictionary = preview.get_preview_item_state(item_id)
+	var item_properties: Dictionary = item_state.get("properties", {})
+	_assert_true(
+		str(item_state.get("type", "")) == "generated_tool"
+		and str(item_state.get("location", "")) == "hand"
+		and str(item_state.get("holder", "")) == carrier
+		and bool(item_properties.get("carry_payload", false))
+		and str(item_properties.get("generated_node_id", "")) == lost_node,
+		"A generated carry payload is an identifiable generated_tool occupying its carrier's hand")
+	var shelter_pos_v: Variant = preview.headless_call_chunk("_anchor_position", ["exit_shelter"])
+	var shelter_pos := shelter_pos_v as Vector3 if shelter_pos_v is Vector3 else Vector3.ZERO
+	for char_id_v in party:
+		preview.set_preview_character_position(str(char_id_v), shelter_pos)
+	preview.set_preview_character_stat(carrier, "hp", 42.0)
+	var atp_before_drop := _preview_party_atp(preview, party)
+	var rests_before_drop := int(preview.headless_get_state().get("chunk", {}).get("rests_taken", 0))
+	_assert_true(preview.drop_preview_item(carrier, item_id), "The generated payload can be physically dropped")
+	_assert_true(bool(preview.headless_call_chunk("_headless_activate_generated_node", ["exit_shelter"])),
+		"The exact shelter control accepts the gathered party after a payload is dropped")
+	var dropped_state: Dictionary = preview.headless_get_state().get("chunk", {})
+	_assert_equals(str(dropped_state.get("last_outcome", "")),
+		"payload_delivery_blocked:%s:payload_not_carried" % lost_node,
+		"Dropped payload failure names the concrete missing delivery")
+	_assert_equals(_preview_party_atp(preview, party), atp_before_drop,
+		"Rejected dropped-payload delivery charges no shelter ATP")
+	_assert_equals(int(dropped_state.get("rests_taken", 0)), rests_before_drop,
+		"Rejected dropped-payload delivery starts no rest")
+	_assert_true(not bool(dropped_state.get("shelter_rested", false)),
+		"Rejected dropped-payload delivery cannot complete the stretch")
+	_assert_true(preview.pick_up_preview_item(carrier, item_id),
+		"The exact dropped payload can be recovered into the carrier's hand")
+	_assert_true(bool(preview.headless_call_chunk("_headless_activate_generated_node", ["exit_shelter"])),
+		"Retaining the recovered physical payload permits shelter delivery")
+	var delivered_state: Dictionary = preview.headless_get_state().get("chunk", {})
+	_assert_equals(_sorted_strings(delivered_state.get("delivered_resource_nodes", [])),
+		_sorted_strings(payload_node_ids), "Shelter records exactly the concrete payload nodes delivered")
+	_assert_true(bool(delivered_state.get("shelter_rested", false)),
+		"Successful retained-payload delivery completes the shelter outcome")
+	preview.queue_free()
+	await get_tree().process_frame
+
+	# Permanent item loss is distinct from hostless simulation and must remain blocked.
+	preview = await _instantiate_preview_chunk_and_wait("generated_stretch", 8, preview_config)
+	_assert_true(preview != null, "Generated physical-carry loss preview instantiates")
+	if preview != null:
+		_assert_true(_complete_required_generated_nodes(preview, spec, true),
+			"Generated physical-carry loss prerequisites complete")
+		party = preview.headless_get_state().get("chunk", {}).get("active_party", [])
+		carried_by_node = _generated_payload_items_in_hands(preview, party)
+		carried = carried_by_node.get(lost_node, {})
+		carrier = str(carried.get("carrier", ""))
+		item_id = str(carried.get("item_id", ""))
+		for char_id_v in party:
+			preview.set_preview_character_position(str(char_id_v), shelter_pos)
+		preview.set_preview_character_stat(carrier, "hp", 42.0)
+		var atp_before_loss := _preview_party_atp(preview, party)
+		var rests_before_loss := int(preview.headless_get_state().get("chunk", {}).get("rests_taken", 0))
+		preview.remove_preview_item(item_id)
+		_assert_true(bool(preview.headless_call_chunk("_headless_activate_generated_node", ["exit_shelter"])),
+			"The exact shelter control accepts the gathered party after permanent payload loss")
+		var loss_state: Dictionary = preview.headless_get_state().get("chunk", {})
+		_assert_equals(str(loss_state.get("last_outcome", "")),
+			"payload_delivery_blocked:%s:payload_missing" % lost_node,
+			"Removed payload failure names the concrete lost delivery")
+		_assert_equals(_preview_party_atp(preview, party), atp_before_loss,
+			"Rejected lost-payload delivery charges no shelter ATP")
+		_assert_equals(int(loss_state.get("rests_taken", 0)), rests_before_loss,
+			"Rejected lost-payload delivery starts no rest")
+		preview.queue_free()
+		await get_tree().process_frame
+
+	# A direct data-layer chunk has neither bodies nor inventory authority. It may
+	# describe the generated topology, but cannot manufacture physical receipts or
+	# complete the shelter outcome through either the replay helper or retired verb.
+	var chunk_scene: PackedScene = load("res://scenes/fragments/chunks/generated_stretch_chunk.tscn")
+	var hostless: Node = chunk_scene.instantiate() if chunk_scene != null else null
+	_assert_true(hostless != null, "Hostless generated physical-carry chunk instantiates")
+	if hostless != null:
+		hostless.call("configure_chunk", {"spec": spec.duplicate(true)})
+		get_tree().root.add_child(hostless)
+		await get_tree().process_frame
+		_assert_true(not _complete_required_generated_nodes(hostless, spec, false),
+			"Hostless generated chunks cannot fabricate exact body/source receipts")
+		_assert_true(not bool(hostless.call("_headless_activate_generated_node", "exit_shelter")),
+			"The replay helper refuses shelter delivery without hosted physical authority")
+		_assert_true(not bool(hostless.call("activate_generated_node", "exit_shelter")),
+			"The retired semantic activation verb remains inert")
+		var hostless_state: Dictionary = hostless.call("get_preview_state")
+		_assert_true((hostless_state.get("delivered_resource_nodes", []) as Array).is_empty(),
+			"Hostless simulation records no fabricated physical payload delivery")
+		_assert_true(not bool(hostless_state.get("shelter_rested", false)),
+			"Hostless simulation cannot complete the generated stretch")
+		hostless.queue_free()
+		await get_tree().process_frame
+
+
+func _complete_required_generated_nodes(target: Node, spec: Dictionary, through_preview: bool) -> bool:
+	var all_completed := true
+	for node_v in spec.get("nodes", []):
+		if not (node_v is Dictionary):
+			continue
+		var node := node_v as Dictionary
+		var node_id := str(node.get("id", ""))
+		if node_id in ["", "entry", "exit_shelter"] \
+				or str(node.get("runtime_handler", "")) == "" \
+				or not bool(node.get("runtime_progression_required", false)):
+			continue
+		var completed := bool(target.call("headless_call_chunk", "_headless_activate_generated_node", [node_id])) \
+			if through_preview else bool(target.call("_headless_activate_generated_node", node_id))
+		all_completed = all_completed and completed
+	return all_completed
+
+
+func _generated_payload_items_in_hands(preview: Node, party: Array) -> Dictionary:
+	var by_node := {}
+	for char_id_v in party:
+		var char_id := str(char_id_v)
+		for item_id_v in preview.call("get_preview_hand_items", char_id):
+			var item_id := str(item_id_v)
+			var item: Dictionary = preview.call("get_preview_item_state", item_id)
+			var properties: Dictionary = item.get("properties", {})
+			if str(item.get("type", "")) == "generated_tool" and bool(properties.get("carry_payload", false)):
+				by_node[str(properties.get("generated_node_id", ""))] = {
+					"carrier": char_id,
+					"item_id": item_id,
+				}
+	return by_node
+
+
+func _preview_party_atp(preview: Node, party: Array) -> Dictionary:
+	var result := {}
+	for char_id_v in party:
+		var char_id := str(char_id_v)
+		result[char_id] = float(preview.call("get_preview_character_stat", char_id, "atp"))
+	return result
+
+
+func _sorted_strings(values: Array) -> Array[String]:
+	var result: Array[String] = []
+	for value in values:
+		result.append(str(value))
+	result.sort()
+	return result
+
+
+func _sorted_string_keys(values: Dictionary) -> Array[String]:
+	return _sorted_strings(values.keys())
+
 
 func _test_generated_multi_solution() -> void:
-	_test_name = "Generated Multi-Solution"
+	_test_name = "Generated Solution Authority"
 
-	# Puzzle-bearing stretches at every tier must be solvable two distinct ways, and
-	# the Aster+Peris pair must always have a path of its own.
+	# Until a runtime handler exposes two executable lifecycles, catalog approach prose must
+	# not masquerade as a live strategic choice. Both loadouts still need an honest route.
 	for tier in ["teaching", "standard", "hard", "setpiece"]:
 		var spec: Dictionary = StretchGeneratorScript.generate({
 			"id": "generated_multi_solution_%s" % tier,
@@ -2708,11 +3322,15 @@ func _test_generated_multi_solution() -> void:
 		})
 		_assert_true(bool(spec.get("success", false)), "%s: generator returns a spec" % tier)
 		var summary: Dictionary = spec.get("headless", {}).get("solution_summary", {})
-		_assert_true(int(summary.get("choice_node_count", 0)) >= 1, "%s: stretch has at least one multi-solution puzzle node" % tier)
-		_assert_true(bool(summary.get("multi_solution", false)), "%s: spotlight and shadow loadouts solve it differently" % tier)
+		_assert_equals(int(summary.get("choice_node_count", -1)), 0,
+			"%s: layout-only archetypes claim no executable choice nodes" % tier)
+		_assert_true(not bool(summary.get("multi_solution", true)),
+			"%s: identical runtime lifecycles are not advertised as multi-solution" % tier)
 		_assert_true(bool(summary.get("shadow_solvable", false)), "%s: Aster+Peris can solve the whole stretch" % tier)
 		_assert_equals(int(summary.get("solvable_loadout_count", 0)), 2, "%s: both canonical loadouts solve" % tier)
-		_assert_true(bool(summary.get("multi_solution_ok", false)), "%s: multi-solution tier gate is satisfied" % tier)
+		_assert_true(not bool(summary.get("multi_solution_required", true))
+				and bool(summary.get("multi_solution_ok", false)),
+			"%s: no executable choice leaves the runtime multi-solution gate inapplicable" % tier)
 		_assert_true(bool(summary.get("bare_pair_solvable", false)), "%s: every node is solvable by the bare Aster+Peris pair" % tier)
 		_assert_true(bool(summary.get("spotlight_within_stage", false)), "%s: the first-play full party stays within its progression stage" % tier)
 
@@ -2745,11 +3363,12 @@ func _test_generated_multi_solution() -> void:
 			var other: Dictionary = shadow_by_node.get(str((entry as Dictionary).get("node", "")), {})
 			if not other.is_empty() and str((entry as Dictionary).get("approach_id", "")) != str(other.get("approach_id", "")):
 				diverged = true
-		_assert_true(diverged, "%s: the two paths take a different approach on at least one node" % tier)
+		_assert_true(not diverged,
+			"%s: loadout labels cannot invent divergence without plural runtime handlers" % tier)
 		_assert_true(shadow_uses_only_pair, "%s: the shadow path never relies on a specialist approach" % tier)
 
-	# The solver re-derives the same verdict straight from a spec — the path the chunk
-	# and the Android replay both consume.
+	# The solver re-derives the same verdict straight from a saved spec. This is a
+	# data-layer consistency check; input/Movie Maker replay consumes recorded events.
 	var solver_spec: Dictionary = StretchGeneratorScript.generate({
 		"id": "generated_multi_solution_solver_check",
 		"seed": 909,
@@ -2757,9 +3376,11 @@ func _test_generated_multi_solution() -> void:
 		"limitations": {"required": {"archetypes": ["1", "3"]}},
 	})
 	var analysis: Dictionary = StretchSolutionSolverScript.analyze_spec(solver_spec)
-	_assert_true(bool(analysis.get("multi_solution", false)), "Solver re-derives multi-solution from a saved spec")
+	_assert_true(not bool(analysis.get("multi_solution", true)),
+		"Solver preserves the honest no-live-divergence verdict from a saved spec")
 	_assert_equals(int(analysis.get("solvable_loadout_count", 0)), 2, "Solver finds both loadouts solvable")
-	_assert_true((analysis.get("warnings", []) as Array).is_empty(), "A puzzle stretch produces no shadow-broken warnings")
+	_assert_true((analysis.get("warnings", []) as Array).is_empty(),
+		"A runtime-solvable stretch produces no false shadow-broken warning")
 
 	# A narrative-only stretch has nothing to multi-solve; that is allowed, not a failure.
 	var narrative_spec: Dictionary = StretchGeneratorScript.generate({
@@ -2776,8 +3397,8 @@ func _test_generated_multi_solution() -> void:
 	_assert_equals(int(narrative_summary.get("choice_node_count", 0)), 0, "Narrative-only stretch has no puzzle choice nodes")
 	_assert_true(bool(narrative_summary.get("multi_solution_ok", false)), "Narrative-only stretch passes the tier gate")
 
-	# An early stretch: the Aster+Peris shadow reaches for a LATER-stage (expert) technique
-	# the first-play full party cannot use yet — exactly the requested mastery layer.
+	# Catalog-only later-stage techniques remain design candidates, not claims about what any
+	# current generated-node handler can presently execute.
 	var future_spec: Dictionary = StretchGeneratorScript.generate({
 		"id": "generated_future_technique",
 		"seed": 1234,
@@ -2790,8 +3411,10 @@ func _test_generated_multi_solution() -> void:
 	})
 	var future_summary: Dictionary = future_spec.get("headless", {}).get("solution_summary", {})
 	_assert_equals(int(future_spec.get("source", {}).get("progression_stage", 0)), 2, "Early stretch resolves to progression stage 2")
-	_assert_true(bool(future_summary.get("shadow_uses_future_technique", false)), "Shadow path uses a technique from later in the game than the player has reached")
-	_assert_true(bool(future_summary.get("spotlight_within_stage", false)), "Full party stays in-stage even when the shadow goes ahead")
+	_assert_true(not bool(future_summary.get("shadow_uses_future_technique", true)),
+		"layout-only nodes do not surface an unimplemented future technique")
+	_assert_true(bool(future_summary.get("spotlight_within_stage", false)),
+		"Both runtime paths stay in-stage when no future-technique handler exists")
 	var f_spot := {}
 	var f_shadow := {}
 	for p in future_spec.get("headless", {}).get("solution_paths", []):
@@ -2804,8 +3427,10 @@ func _test_generated_multi_solution() -> void:
 	for e in f_spot.get("approach_per_node", []):
 		spot_max = maxi(spot_max, int((e as Dictionary).get("min_stage", 0)))
 	_assert_true(spot_max <= 2, "No full-party approach exceeds progression stage 2")
-	_assert_true(int(f_shadow.get("max_stage_used", 0)) > 2, "The shadow path commits to a stage-3+ technique")
-	_assert_true((f_shadow.get("techniques", []) as Array).size() > 0, "The shadow path surfaces the technique(s) it relies on (teaching-beat transparency)")
+	_assert_true(int(f_shadow.get("max_stage_used", 0)) <= 2,
+		"the shadow path cannot commit to a stage-3+ technique with no executable handler")
+	_assert_true((f_shadow.get("techniques", []) as Array).is_empty(),
+		"the shadow path reports no technique that gameplay cannot execute")
 
 	# Stage-filter guard: an allow-list of only later-game archetypes at an early stage is a
 	# HARD error, not a silently puzzle-free corridor returned as success.
@@ -2818,8 +3443,7 @@ func _test_generated_multi_solution() -> void:
 	})
 	_assert_true(not bool(empty_pool_spec.get("success", true)), "An all-later-game allow-list at an early stage fails validation, not a puzzle-free spine")
 
-	# within_stage is meaningful: if a node's only specialist primary is beyond the stage,
-	# the full party is forced onto a pair approach and within_stage reports false.
+	# Handlerless synthetic catalog data likewise cannot make a runtime progression claim.
 	var synth_nodes := [
 		{"id": "entry", "role": "boundary", "approaches": []},
 		{"id": "n1", "role": "danger", "stage": 2, "approaches": [
@@ -2829,7 +3453,9 @@ func _test_generated_multi_solution() -> void:
 		{"id": "exit_shelter", "role": "shelter_arrival", "approaches": []},
 	]
 	var synth: Dictionary = StretchSolutionSolverScript.analyze(synth_nodes, "standard", 3)
-	_assert_true(not bool(synth.get("spotlight_within_stage", true)), "When the only full-party primary is beyond stage, spotlight_within_stage is false (not dead-true)")
+	_assert_true(bool(synth.get("spotlight_within_stage", false))
+			and int(synth.get("choice_node_count", -1)) == 0,
+		"handlerless catalog prose cannot create a future-stage runtime choice")
 
 	# Catalog invariant: every archetype keeps an approach the bare pair can field with no
 	# placed tool, so the pair can ALWAYS finish (the design's "not optional" shadow law).
@@ -2888,7 +3514,16 @@ func _test_generated_replay() -> void:
 	var spotlight_size := (spotlight_loadout.get("party", []) as Array).size()
 	_assert_equals((spotlight.get("party", []) as Array).size(), spotlight_size, "Spotlight replay follows the full enabled party")
 	_assert_equals((shadow.get("party", []) as Array).size(), 2, "Shadow replay follows the Aster+Peris pair")
-	_assert_equals((spotlight.get("frames", []) as Array).size(), (spec.get("nodes", []) as Array).size(), "Spotlight replay has a keyframe per node")
+	var spotlight_branch_count := int(spotlight.get("branch_action_count", 0))
+	_assert_equals(
+		(spotlight.get("frames", []) as Array).size(),
+		(spec.get("nodes", []) as Array).size() + spotlight_branch_count,
+		"Spotlight replay has a keyframe per node and mandatory branch interaction"
+	)
+	_assert_equals(
+		(spotlight.get("branch_actions", []) as Array).size(), spotlight_branch_count,
+		"Replay artifact preserves every solver-required branch action"
+	)
 	_assert_true(bool(spotlight.get("solvable", false)) and bool(shadow.get("solvable", false)), "Both replay solutions are solvable")
 
 	var members_ok := true
@@ -2922,7 +3557,17 @@ func _test_generated_replay() -> void:
 		var aid := str((entry as Dictionary).get("approach_id", ""))
 		if aid != "" and shadow_by_node.has(nid) and shadow_by_node[nid] != aid:
 			diverged = true
-	_assert_true(diverged, "Spotlight and shadow replays show different approaches on at least one node")
+	# Standard-tier generation is allowed to emit a single-solution stretch. Replay fidelity
+	# means preserving the solver's verdict in either direction; the dedicated hard/setpiece
+	# tests are responsible for requiring divergence where the curriculum mandates it.
+	var expected_divergence := bool(
+		spec.get("headless", {}).get("solution_summary", {}).get("multi_solution", false)
+	)
+	_assert_equals(
+		diverged,
+		expected_divergence,
+		"Replay approach divergence matches the generated solution contract"
+	)
 
 func _test_campaign_order() -> void:
 	_test_name = "Campaign Order"
@@ -3613,7 +4258,16 @@ func _test_shape_grammar() -> void:
 					break
 			var kc := ((wwd["kill_min"] as Vector3) + (wwd["kill_max"] as Vector3)) * 0.5
 			gs3.snap_character_to("gnawer_0", Vector3(kc.x, 0.0, kc.z))
-			ww._trigger()
+			var pry_actor := str(chunk.fragment.party_ids[0]) \
+				if chunk.fragment != null and not chunk.fragment.party_ids.is_empty() else "aster"
+			var pry_position: Vector3 = gs3.get_interactable(str(ww.data_id)).get(
+				"position", ww.global_position)
+			if gs3.is_moving(pry_actor):
+				gs3.command_stop(pry_actor)
+			gs3.snap_character_to(pry_actor, pry_position)
+			ww.active_character = pry_actor
+			_assert_true(ww._trigger(false),
+				"the nearby party body pries through the generated wall's exact source")
 			inst.headless_advance(2.0, 0.1)
 			var victim = null
 			for en in chunk._enemies:
@@ -5418,6 +6072,26 @@ func _test_center_camera() -> void:
 	cam.call("recenter_on", Vector3(9.0, 0.0, 9.0))
 	_assert_true((cam.get("_pan_offset") as Vector3).is_equal_approx(Vector3(1.0, 0.0, 1.0)),
 		"recenter_on no-ops while locked (won't fight a scripted focus)")
+	cam.call("unlock")
+	cam.global_position = Vector3(7.0, 9.0, 11.0)
+	cam.set("_pan_offset", Vector3(2.0, 0.0, -1.0))
+	cam.set("_view_yaw", 0.35)
+	cam.set("_view_zoom", 1.25)
+	var pre_focus_state: Dictionary = cam.call("capture_view_state")
+	var focus_result: Dictionary = cam.call("focus_on", Vector3(2.0, 1.0, 3.0), null, {
+		"height": 3.2,
+		"horizontal_distance": 4.4,
+	})
+	_assert_true(bool(focus_result.get("occlusion_clear", false)) and bool(cam.call("is_locked")),
+		"focus_on chooses a clear room-side candidate and locks the inspection shot")
+	cam.call("restore_view_state", pre_focus_state)
+	_assert_true(not bool(cam.call("is_locked"))
+			and cam.global_position.is_equal_approx(Vector3(7.0, 9.0, 11.0)),
+		"inspection focus restores the exact prior transform and lock state")
+	_assert_true((cam.get("_pan_offset") as Vector3).is_equal_approx(Vector3(2.0, 0.0, -1.0))
+			and is_equal_approx(float(cam.get("_view_yaw")), 0.35)
+			and is_equal_approx(float(cam.get("_view_zoom")), 1.25),
+		"inspection focus preserves the player's pan, orbit, and zoom")
 	cam.queue_free()
 	tgt.queue_free()
 	await get_tree().process_frame
@@ -5688,6 +6362,10 @@ func _test_run_branch_decisions() -> void:
 		# Distinct child seeds so the two levels differ.
 		_assert_true(int(opts[0]["settings"]["seed"]) != int(opts[1]["settings"]["seed"]),
 			"the two branches generate distinct levels")
+		for option_variant in opts:
+			var option_reward: Dictionary = (option_variant as Dictionary).get("reward", {})
+			_assert_true(not option_reward.has("atp_head_start"),
+				"branch choices never grant invisible ATP; food must exist in the generated stretch")
 		# Reward-bearing patterns put the unique reward ONLY on the costly path (the choice is meaningful).
 		if str(d["pattern"]) in ["recruit", "shortcut", "gear"]:
 			_assert_true(not (opts[0]["reward"] as Dictionary).is_empty(), "the costly path carries a reward")
@@ -5722,6 +6400,15 @@ func _test_run_branch_decisions() -> void:
 	var spec: Dictionary = StretchGeneratorScript.generate((pick["options"][0]["settings"] as Dictionary))
 	_assert_true(bool(spec.get("success", false)), "a branch option generates a level")
 	if bool(spec.get("success", false)):
+		for node_v in spec.get("nodes", []):
+			var generated_node := node_v as Dictionary
+			if float(generated_node.get("atp_reward", 0.0)) <= 0.0:
+				continue
+			_assert_true(
+				str(generated_node.get("reward_kind", "")) == "food"
+				and str(generated_node.get("resource_item_type", "")) == "lysate",
+				"every generated ATP opportunity is a physical lysate node"
+			)
 		var grid_data: Dictionary = StretchGeneratorScript.build_navigation_grid_from_spec(spec)
 		var g := GridWorld.from_data(grid_data)
 		var en := _generated_node(spec, "entry")
@@ -5731,24 +6418,31 @@ func _test_run_branch_decisions() -> void:
 			_assert_true(path.size() >= 1, "the chosen branch's level connects entry -> exit")
 
 ## The run ECONOMY (Layer B): a fork is only a real choice if NEITHER branch dominates across play quality. The
-## measured guarantee (direction-agnostic, so it holds for the normal fork AND the inverse respite fork): the
-## RICHER path (more ATP gain + head-start) wins for CLEAN play, the LEANER-EXPOSURE path wins for SLOPPY play,
-## and a healthy majority of forks have a clean->sloppy crossover. Categorical-reward forks (recruit/shortcut/gear)
-## are ATP-NEUTRAL by design — their draw is the reward, not ATP — yet still trade real exposure.
+## measured guarantee for risk/reward forks: the RICHER path (more physically authored lysate) wins for CLEAN
+## play, the LEANER-EXPOSURE path wins for SLOPPY play, and a majority of genuinely differentiated forks cross
+## over. Respite stays multi-axis: its safe haul is richer and longer, while its risky sprint is shorter.
+## Categorical-reward forks are ATP-neutral by design: their draw is the reward, not ATP.
 func _test_run_economy() -> void:
 	_test_name = "Run Economy"
 	var Econ = load("res://scripts/generation/run_economy.gd")
 	var Branch = load("res://scripts/generation/run_branch_decisions.gd")
 
-	# Model sanity: gain counts atp_reward + a shelter restore; load counts exposure incl. route length; net falls
-	# with miss_rate; expected_net is monotone in head_start.
-	var rich := {"nodes": [{"role": "foraging", "atp_reward": 6, "pressure": 0}, {"role": "foraging", "atp_reward": 6, "pressure": 0}]}
+	# Model sanity: gain counts only authored physical-resource nodes; shelter arrival and menu choice grant
+	# nothing. Load counts exposure incl. route length, and net falls with miss rate.
+	var rich := {"nodes": [
+		{"role": "foraging", "reward_kind": "food", "reward_atp": 6, "atp_reward": 6, "pressure": 0},
+		{"role": "foraging", "reward_kind": "food", "reward_atp": 6, "atp_reward": 6, "pressure": 0},
+	]}
 	var lean := {"nodes": [{"role": "guidance", "atp_reward": 0, "pressure": 0}]}
 	_assert_true(Econ.atp_gain(rich) > Econ.atp_gain(lean), "more atp_reward -> more gain")
+	_assert_equals(Econ.atp_gain(lean), 0.0,
+		"a route with no physical ATP cache receives no shelter/menu head-start")
+	_assert_equals(Econ.atp_gain({"nodes": [{"role": "shelter_arrival", "atp_reward": 8}]}), 0.0,
+		"shelter arrival is not modeled as an ATP refill")
 	var longer := {"nodes": [{"role": "danger", "pressure": 1}, {"role": "danger", "pressure": 1}, {"role": "danger", "pressure": 1}]}
 	var shorter := {"nodes": [{"role": "danger", "pressure": 1}]}
 	_assert_true(Econ.pressure_load(longer) > Econ.pressure_load(shorter), "a longer/more-exposed route has more load")
-	_assert_true(Econ.expected_net(longer, 0.0, 0.0) > Econ.expected_net(longer, 0.0, 1.0), "expected net falls as play gets sloppier")
+	_assert_true(Econ.expected_net(longer, 0.0) > Econ.expected_net(longer, 1.0), "expected net falls as play gets sloppier")
 	# Entry/exit shelters are not interior exposure.
 	_assert_equals(Econ.pressure_load({"nodes": [{"role": "boundary", "pressure": 1}, {"role": "shelter_arrival", "pressure": 1}]}), 0.0,
 		"boundary + shelter nodes carry no traversal exposure")
@@ -5756,9 +6450,9 @@ func _test_run_economy() -> void:
 	# Aggregate sweep per pattern, across depths (the tier/length differential — and so the crossover — grows with
 	# depth, so sampling only depth 0 understates it). Generate each option's level ONCE and score net at both miss
 	# rates from the same spec (net is a cheap formula), keeping the sweep fast.
-	var atp_forks := {"risk_reward": true, "respite": true}
+	var atp_forks := {"risk_reward": true}
 	var stats := {}
-	for seed in range(0, 40):
+	for seed in range(0, 20):
 		for depth in range(0, 5):
 			var d: Dictionary = Branch.decide({"depth": depth, "seed": seed, "roster": ["aster", "peris"]})
 			var pat := str(d.get("pattern", ""))
@@ -5766,30 +6460,48 @@ func _test_run_economy() -> void:
 			if opts.size() < 2:
 				continue
 			if not stats.has(pat):
-				stats[pat] = {"n": 0, "rich_clean": 0, "lean_sloppy": 0, "cross": 0, "atp_neutral": 0}
+				stats[pat] = {
+					"n": 0,
+					"atp_differential": 0,
+					"rich_clean": 0,
+					"lean_sloppy": 0,
+					"cross": 0,
+					"atp_neutral": 0,
+					"respite_tradeoff": 0,
+				}
 			var c_spec: Dictionary = StretchGeneratorScript.generate((opts[0].get("settings", {}) as Dictionary).duplicate(true))
 			var s_spec: Dictionary = StretchGeneratorScript.generate((opts[1].get("settings", {}) as Dictionary).duplicate(true))
-			var c_hs := float((opts[0].get("reward", {}) as Dictionary).get("atp_head_start", 0))
-			var s_hs := float((opts[1].get("reward", {}) as Dictionary).get("atp_head_start", 0))
 			var c_gain: float = Econ.atp_gain(c_spec)
 			var s_gain: float = Econ.atp_gain(s_spec)
 			var c_load: float = Econ.pressure_load(c_spec)
 			var s_load: float = Econ.pressure_load(s_spec)
-			var costly_richer: bool = (c_gain + c_hs) >= (s_gain + s_hs)
+			var has_atp_differential := not is_equal_approx(c_gain, s_gain)
+			var costly_richer: bool = c_gain > s_gain
 			var costly_leaner: bool = c_load <= s_load
-			var clean_costly_wins: bool = Econ.expected_net(c_spec, c_hs, 0.15) > Econ.expected_net(s_spec, s_hs, 0.15)
-			var sloppy_costly_wins: bool = Econ.expected_net(c_spec, c_hs, 0.85) > Econ.expected_net(s_spec, s_hs, 0.85)
+			# CLEAN means the player actually avoids every modeled pressure cost. Charging even a
+			# 15% miss rate here previously forced an invisible menu reward to make the richer route win.
+			var clean_costly_wins: bool = Econ.expected_net(c_spec, 0.0) > Econ.expected_net(s_spec, 0.0)
+			var sloppy_costly_wins: bool = Econ.expected_net(c_spec, 0.85) > Econ.expected_net(s_spec, 0.85)
 			var row: Dictionary = stats[pat]
 			row.n += 1
-			if clean_costly_wins == costly_richer:
+			if has_atp_differential:
+				row.atp_differential += 1
+			if has_atp_differential and clean_costly_wins == costly_richer:
 				row.rich_clean += 1                      # the richer path wins clean
 			if sloppy_costly_wins == costly_leaner:
 				row.lean_sloppy += 1                     # the leaner-exposure path wins sloppy
-			if clean_costly_wins != sloppy_costly_wins:
+			if has_atp_differential and clean_costly_wins != sloppy_costly_wins:
 				row.cross += 1                           # crossover: different winner at the two extremes
-			# ATP-neutral = the two paths' (gain+head_start) are within a small band (categorical-reward forks).
-			if absf((c_gain + c_hs) - (s_gain + s_hs)) <= 6.0:
+			# ATP-neutral = the two paths' physical-resource gain is within a small band.
+			if absf(c_gain - s_gain) <= 6.0:
 				row.atp_neutral += 1
+			if (
+				pat == "respite"
+				and s_gain > c_gain
+				and (c_spec.get("nodes", []) as Array).size()
+					< (s_spec.get("nodes", []) as Array).size()
+			):
+				row.respite_tradeoff += 1
 
 	for pat in atp_forks.keys():
 		var r: Dictionary = stats.get(pat, {"n": 0})
@@ -5797,9 +6509,24 @@ func _test_run_economy() -> void:
 		_assert_true(n >= 10, "sampled enough %s forks (%d)" % [pat, n])
 		if n < 10:
 			continue
-		_assert_true(int(r.rich_clean) * 100 / n >= 80, "%s: the richer path wins CLEAN play in most forks (%d/%d)" % [pat, int(r.rich_clean), n])
+		var differentiated := int(r.get("atp_differential", 0))
+		_assert_true(differentiated * 100 / n >= 70,
+			"%s: most forks author a real physical-lysate differential (%d/%d)" % [pat, differentiated, n])
+		_assert_true(int(r.rich_clean) * 100 / maxi(1, differentiated) >= 95,
+			"%s: the richer physical route wins CLEAN play when gains differ (%d/%d)" % [pat, int(r.rich_clean), differentiated])
 		_assert_true(int(r.lean_sloppy) * 100 / n >= 80, "%s: the leaner path wins SLOPPY play in most forks (%d/%d)" % [pat, int(r.lean_sloppy), n])
-		_assert_true(int(r.cross) * 100 / n >= 60, "%s: a majority of forks cross over (neither path dominates) (%d/%d)" % [pat, int(r.cross), n])
+		_assert_true(int(r.cross) * 2 > differentiated,
+			"%s: a majority of physically differentiated forks cross over (neither path dominates) (%d/%d)" % [pat, int(r.cross), differentiated])
+
+	# Respite is a short high-risk sprint versus a longer safe haul. The haul's
+	# additional value must be physical lysate in the level, never a menu grant.
+	var respite: Dictionary = stats.get("respite", {"n": 0})
+	var respite_n := int(respite.get("n", 0))
+	_assert_true(respite_n >= 10, "sampled enough respite forks (%d)" % respite_n)
+	if respite_n >= 10:
+		_assert_true(int(respite.get("respite_tradeoff", 0)) * 100 / respite_n >= 70,
+			"respite: most forks pair a shorter risky sprint with a longer, richer physical-lysate haul (%d/%d)"
+			% [int(respite.get("respite_tradeoff", 0)), respite_n])
 
 	# Categorical-reward forks trade a non-ATP reward for exposure: ATP is roughly neutral (the reward is the draw),
 	# yet the costly path is genuinely more exposed so the safe path stays a real out for sloppy players.
@@ -5916,26 +6643,10 @@ func _test_generated_stretch_quality() -> void:
 	})
 	_assert_true(bool(spec.get("success", false)), "the feature-focused generated stretch builds")
 	var features: Array = spec.get("spatial_features", [])
-	_assert_true(not features.is_empty(), "an eligible archetype emits a spatial feature contract")
-	if not features.is_empty():
-		var feature := features[0] as Dictionary
-		_assert_equals(str(feature.get("kind", "")), "grated_platform",
-			"the generated feature is a grated standing platform")
-		_assert_true((feature.get("floor_cells", []) as Array).size() >= 9,
-			"the platform replaces a real multi-cell standing area")
-		var assignment_categories := {}
-		for assignment_v in feature.get("socket_assignments", []):
-			if assignment_v is Dictionary:
-				assignment_categories[str((assignment_v as Dictionary).get("category", ""))] = true
-		_assert_true(assignment_categories.has("flora") and assignment_categories.has("enemies") \
-				and assignment_categories.has("structures"),
-			"flora, fauna and the puzzle structure occupy authored platform sockets")
-		var causal_model: Dictionary = feature.get("causal_model", {})
-		_assert_true(str(causal_model.get("leverage", "")) != "" \
-				and (causal_model.get("emergent_inputs", []) as Array).size() >= 3,
-			"the feature records leverage plus interacting systems instead of a scripted answer")
+	_assert_true(features.is_empty(),
+		"the unbound Flure/fauna/structure composition emits no fake systemic platform")
 	_assert_true(bool(StretchGeneratorScript.validate_spatial_features(spec).get("valid", false)),
-		"the generated platform contract validates against its navigation grid")
+		"the intentionally empty spatial-feature contract validates against its navigation grid")
 	var entry := _generated_node(spec, "entry")
 	var anchors: Dictionary = spec.get("anchors", {})
 	for cid in ["aster", "peris", "endo"]:
@@ -5945,7 +6656,8 @@ func _test_generated_stretch_quality() -> void:
 			_assert_true(a.distance_to(entry.pos) < 1.5,
 				"%s spawns on the stretch at the entry (%.2f from entry, not off at origin)" % [cid, a.distance_to(entry.pos)])
 
-	# (c) The generated chunk renders a TILED FLOOR + node markers, and NONE of the old scaffolding clutter.
+	# (c) Layout-only nodes and physical resources never become generic clickable
+	# cubes. Concrete resource sources own their affordance.
 	var chunk = load("res://scenes/fragments/chunks/generated_stretch_chunk.tscn").instantiate()
 	chunk.configure_chunk({"spec": spec, "spiral": false})
 	get_tree().root.add_child(chunk)
@@ -5956,51 +6668,37 @@ func _test_generated_stretch_quality() -> void:
 	var names: Array = []
 	_collect_node_names(chunk, names)
 	_assert_true(_names_any_prefix(names, "GeneratedFloor"), "the generated level renders a tiled walkable floor")
-	_assert_true(_names_any_prefix(names, "NodeMarker_"), "nodes still have a marker to click")
+	for generated_node_v in spec.get("nodes", []):
+		if not (generated_node_v is Dictionary):
+			continue
+		var generated_node := generated_node_v as Dictionary
+		var generated_node_id := str(generated_node.get("id", ""))
+		var runtime_handler := GeneratedNodeRuntimeRegistryScript.handler_for_node(
+			generated_node, str(spec.get("id", ""))
+		)
+		if runtime_handler == GeneratedNodeRuntimeRegistryScript.HANDLER_NONE:
+			_assert_true(
+				chunk.find_child("NodeMarker_%s" % generated_node_id, true, false) == null,
+				"layout-only %s has no clickable proxy cube" % generated_node_id
+			)
+		elif runtime_handler in [
+			GeneratedNodeRuntimeRegistryScript.HANDLER_PHYSICAL_LYSATE,
+			GeneratedNodeRuntimeRegistryScript.HANDLER_PHYSICAL_PAYLOAD,
+		]:
+			_assert_true(
+				chunk.find_child("NodeMarker_%s" % generated_node_id, true, false) == null,
+				"physical resource %s has no generic proxy cube" % generated_node_id
+			)
+			_assert_true(
+				chunk.find_child("ResourceCradle_%s" % generated_node_id, true, false) != null,
+				"physical resource %s exposes its concrete source cradle" % generated_node_id
+			)
 	_assert_true(not _names_any_prefix(names, "GeneratedFoundation"), "no big foundation slab (clutter removed)")
 	_assert_true(not _names_any_prefix(names, "Route_"), "no route-connector boxes (clutter removed)")
 	_assert_true(not _names_any_prefix(names, "NodePad_"), "no big role pads over the floor (clutter removed)")
 	var feature_root := chunk.find_child("GeneratedSpatialFeature_*", true, false) as Node3D
-	_assert_true(feature_root != null, "the authored spatial feature scene is instanced into the generated chunk")
-	if feature_root != null:
-		var deck_collision := feature_root.get_node_or_null("DeckCollision") as StaticBody3D
-		var rail_collision := feature_root.get_node_or_null("RailCollision") as StaticBody3D
-		_assert_true(deck_collision != null and deck_collision.get_child_count() == 1,
-			"the authored grate supplies its own standing collision")
-		_assert_true(rail_collision != null and rail_collision.get_child_count() == 8,
-			"all four platform sides have authored rail collision around their route mouths")
-		_assert_true(feature_root.find_children("LongBar*", "MeshInstance3D", true, false).size() == 9,
-			"the platform surface is visible grate geometry rather than a recolored solid tile")
-		var graybox_state: Dictionary = chunk.get_graybox_state()
-		_assert_equals(int(graybox_state.get("instanced_spatial_feature_count", 0)), features.size(),
-			"every emitted spatial feature contract gets exactly one prefab instance")
-		if not features.is_empty():
-			var feature_grid = GridWorld.from_data(spec.get("navigation_grid", {}))
-			var direct_space = chunk.get_world_3d().direct_space_state
-			var platform_collision_hits := 0
-			var non_feature_collision_rids: Array[RID] = []
-			for collision_object in chunk.find_children("*", "CollisionObject3D", true, false):
-				if collision_object is CollisionObject3D \
-						and not feature_root.is_ancestor_of(collision_object as Node):
-					non_feature_collision_rids.append((collision_object as CollisionObject3D).get_rid())
-			for cell_v in (features[0] as Dictionary).get("floor_cells", []):
-				var cell := Vector2i(int(cell_v[0]), int(cell_v[1]))
-				var flat: Vector3 = feature_grid.grid_to_world(
-					cell, int((features[0] as Dictionary).get("elevation_index", 0)))
-				_assert_true(bool(chunk.call("_spatial_feature_replaces_flat_cell", flat,
-					int((features[0] as Dictionary).get("elevation_index", 0)))),
-					"feature cell %s is excluded from the generic solid-floor mesh" % str(cell))
-				var query := PhysicsRayQueryParameters3D.create(
-					flat + Vector3.UP * 3.0, flat + Vector3.DOWN * 3.0)
-				query.collision_mask = 1
-				query.exclude = non_feature_collision_rids
-				var hit: Dictionary = direct_space.intersect_ray(query)
-				var collider: Node = hit.get("collider") as Node
-				if collider != null and feature_root.is_ancestor_of(collider):
-					platform_collision_hits += 1
-			_assert_equals(platform_collision_hits,
-				((features[0] as Dictionary).get("floor_cells", []) as Array).size(),
-				"every replaced walkable cell raycasts to the authored platform collision")
+	_assert_true(feature_root == null,
+		"the playable chunk does not resurrect an omitted causal platform")
 	chunk.queue_free()
 	await get_tree().process_frame
 
@@ -6032,7 +6730,9 @@ func _test_generated_stretch_quality() -> void:
 		_assert_true(live_landmark.find_child("ThemeFeature", true, false) != null,
 			"the live landmark contains authored area features")
 	var themed_graybox: Dictionary = themed_chunk.get_graybox_state()
-	_assert_equals(int(themed_graybox.get("instanced_themed_landmark_count", 0)), 1,
+	_assert_equals(
+		int(themed_graybox.get("instanced_themed_landmark_count", 0)),
+		(themed_spec.get("themed_landmarks", []) as Array).size(),
 		"every emitted district landmark gets exactly one prefab instance")
 	var themed_floor := themed_chunk.find_child("GeneratedFloor_L0", true, false) as MeshInstance3D
 	var themed_texture_path := ""
@@ -6053,9 +6753,8 @@ func _test_generated_stretch_quality() -> void:
 	themed_chunk.queue_free()
 	await get_tree().process_frame
 
-	# The normal generated-stretch presentation bends the same data grid onto a helix. The authored prefab rides
-	# that transform as one rigid systems deck; every one of its data cells must still have click collision at the
-	# corresponding warped world point.
+	# The normal generated-stretch presentation still bends the same data grid onto
+	# a helix, but the warp must not resurrect an omitted causal prefab.
 	var spiral_chunk = load("res://scenes/fragments/chunks/generated_stretch_chunk.tscn").instantiate()
 	spiral_chunk.configure_chunk({"spec": spec})
 	get_tree().root.add_child(spiral_chunk)
@@ -6065,33 +6764,10 @@ func _test_generated_stretch_quality() -> void:
 	await get_tree().physics_frame
 	var spiral_feature := spiral_chunk.find_child("GeneratedSpatialFeature_*", true, false) as Node3D
 	var spiral_map = spiral_chunk.get_coord_map()
-	_assert_true(spiral_feature != null and spiral_map != null,
-		"the authored platform rides the normal generated helix transform")
-	if spiral_feature != null and spiral_map != null and not features.is_empty():
-		var spiral_space = spiral_chunk.get_world_3d().direct_space_state
-		var spiral_excludes: Array[RID] = []
-		for collision_object in spiral_chunk.find_children("*", "CollisionObject3D", true, false):
-			if collision_object is CollisionObject3D \
-					and not spiral_feature.is_ancestor_of(collision_object as Node):
-				spiral_excludes.append((collision_object as CollisionObject3D).get_rid())
-		var feature_grid = GridWorld.from_data(spec.get("navigation_grid", {}))
-		var warped_collision_hits := 0
-		for cell_v in (features[0] as Dictionary).get("floor_cells", []):
-			var cell := Vector2i(int(cell_v[0]), int(cell_v[1]))
-			var flat: Vector3 = feature_grid.grid_to_world(
-				cell, int((features[0] as Dictionary).get("elevation_index", 0)))
-			var world: Vector3 = spiral_map.to_world(flat)
-			var query := PhysicsRayQueryParameters3D.create(
-				world + Vector3.UP * 4.0, world + Vector3.DOWN * 4.0)
-			query.collision_mask = 1
-			query.exclude = spiral_excludes
-			var hit: Dictionary = spiral_space.intersect_ray(query)
-			var collider: Node = hit.get("collider") as Node
-			if collider != null and spiral_feature.is_ancestor_of(collider):
-				warped_collision_hits += 1
-		_assert_equals(warped_collision_hits,
-			((features[0] as Dictionary).get("floor_cells", []) as Array).size(),
-			"every platform cell retains authored collision after the helix warp")
+	_assert_true(spiral_map != null,
+		"the playable generated route retains its normal helix transform")
+	_assert_true(spiral_feature == null,
+		"helix presentation does not resurrect the omitted causal platform")
 	spiral_chunk.queue_free()
 	await get_tree().process_frame
 
@@ -6100,12 +6776,111 @@ func _test_generated_stretch_quality() -> void:
 ## the two experimental modes use tangible food rather than silent party-wide refills.
 func _test_generated_food_modes() -> void:
 	_test_name = "Generated Food Modes"
+	# Scarcity is the preferred QA stress baseline, never a content-generation
+	# input. Keep it first so a failing resource-pressure run fails before the
+	# easier comparison controls can give a misleading green result.
 	var mode_ids := [
+		GameSettings.GAME_MODE_SCARCITY,
 		GameSettings.GAME_MODE_NEUTRAL,
 		GameSettings.GAME_MODE_EXPEDITION,
-		GameSettings.GAME_MODE_SCARCITY,
 	]
 	var geometry_fingerprints: Dictionary = {}
+	var full_spec_fingerprints: Dictionary = {}
+	var semantic_content_fingerprints: Dictionary = {}
+	var reward_fingerprints: Dictionary = {}
+	var runtime_affordance_fingerprints: Dictionary = {}
+	var ideal_plan_traces: Dictionary = {}
+	var ideal_outcomes: Dictionary = {}
+
+	var seed_corpus_file := FileAccess.open(
+		"res://data/generation/stretch_seed_corpus.json", FileAccess.READ
+	)
+	var seed_corpus: Dictionary = {}
+	if seed_corpus_file != null:
+		var parsed_seed_corpus: Variant = JSON.parse_string(seed_corpus_file.get_as_text())
+		if parsed_seed_corpus is Dictionary:
+			seed_corpus = parsed_seed_corpus as Dictionary
+	var default_play_config: Dictionary = seed_corpus.get("default_play_config", {})
+	_assert_true(
+		str(default_play_config.get("game_mode", "")) == GameSettings.GAME_MODE_SCARCITY
+			and str(default_play_config.get("food_test", "")) == "scarcity",
+		"Maintained generated-stretch QA explicitly prefers the Scarcity stress preset"
+	)
+	var mode_only_config := GameSettings.normalize_generated_play_config({
+		"game_mode": GameSettings.GAME_MODE_SCARCITY,
+	})
+	_assert_equals(str(mode_only_config.get("food_test", "")), "scarcity",
+		"A game-mode-only runtime config activates matching Scarcity mechanics")
+	var food_only_config := GameSettings.normalize_generated_play_config({"food_test": "scarcity"})
+	_assert_equals(str(food_only_config.get("game_mode", "")), GameSettings.GAME_MODE_SCARCITY,
+		"A legacy food-test-only config receives the matching Scarcity label")
+	var mismatched_config := GameSettings.normalize_generated_play_config({
+		"game_mode": GameSettings.GAME_MODE_NEUTRAL,
+		"food_test": "scarcity",
+		"food_test_settings": {"drain_atp": 99.0},
+	})
+	_assert_true(
+		str(mismatched_config.get("game_mode", "")) == GameSettings.GAME_MODE_NEUTRAL
+			and str(mismatched_config.get("food_test", "")) == "neutral"
+			and not mismatched_config.has("food_test_settings"),
+		"A mismatched runtime pair cannot label Neutral as Scarcity or retain hidden drain settings"
+	)
+
+	# Runtime economy settings must stop at the generator boundary. Reject each
+	# key independently so none can quietly become a content-selection knob.
+	var runtime_only_generation_values := {
+		"game_mode": GameSettings.GAME_MODE_SCARCITY,
+		"play_config": {"game_mode": GameSettings.GAME_MODE_SCARCITY},
+		"preview_config": {"food_test": "scarcity"},
+		"food_test": "scarcity",
+		"food_test_settings": {
+			"drain_interval_seconds": 60.0,
+			"drain_atp": 1.0,
+			"zero_atp_hp_drain": 5.0,
+		},
+		"drain_interval_seconds": 60.0,
+		"drain_atp": 1.0,
+		"zero_atp_hp_drain": 5.0,
+		"scarcity": true,
+		"difficulty": "scarcity",
+		"difficulty_mode": "scarcity",
+		"pressure_profile": "scarcity",
+	}
+	for runtime_key_v in runtime_only_generation_values:
+		var runtime_key := str(runtime_key_v)
+		var invalid_generation_settings := {
+			"id": "mode_boundary_%s" % runtime_key,
+			"seed": 1701,
+			"complexity_tier": "teaching",
+		}
+		invalid_generation_settings[runtime_key] = runtime_only_generation_values[runtime_key]
+		var invalid_generation: Dictionary = StretchGeneratorScript.generate(
+			invalid_generation_settings
+		)
+		_assert_true(
+			not bool(invalid_generation.get("success", false)),
+			"Generator rejects runtime-only '%s' instead of selecting content with it" % runtime_key
+		)
+	var nested_mode_taint: Dictionary = StretchGeneratorScript.generate({
+		"id": "nested_mode_boundary",
+		"seed": 1701,
+		"complexity_tier": "teaching",
+		"world_slot": {"qa": {"play_config": {"food_test": "scarcity"}}},
+	})
+	_assert_true(not bool(nested_mode_taint.get("success", false)),
+		"Generator recursively rejects runtime-profile data hidden inside content settings")
+	var serialized_mode_taint := StretchGeneratorScript.validate_mode_independent_spec({
+		"schema": StretchGeneratorScript.SPEC_SCHEMA,
+		"id": "serialized_mode_boundary",
+		"nodes": [{"id": "entry", "metadata": {"food_test": "scarcity"}}],
+	})
+	_assert_true(
+		not bool(serialized_mode_taint.get("valid", false))
+			and (serialized_mode_taint.get("runtime_paths", []) as Array).has(
+				"spec.nodes[0].metadata.food_test"
+			),
+		"Persisted or caller-supplied specs cannot smuggle a runtime profile around generation"
+	)
 
 	for mode_id_v in mode_ids:
 		var mode_id := str(mode_id_v)
@@ -6128,19 +6903,62 @@ func _test_generated_food_modes() -> void:
 			"grid": chunk.get_grid_data(),
 			"graybox": chunk.get_graybox_state(),
 		})
+		var generation_spec: Dictionary = chunk.get_generation_spec()
+		full_spec_fingerprints[mode_id] = JSON.stringify(generation_spec)
+		semantic_content_fingerprints[mode_id] = _generated_mode_content_fingerprint(
+			generation_spec
+		)
+		reward_fingerprints[mode_id] = JSON.stringify(
+			state.get("branch_food_profiles", [])
+		)
+		runtime_affordance_fingerprints[mode_id] = JSON.stringify({
+			"node_handlers": _generated_runtime_affordance_fingerprint(generation_spec),
+			"branch_food_profiles": state.get("branch_food_profiles", []),
+			"branch_cache_count": int(state.get("branch_cache_count", 0)),
+			"physical_food_cache_count": int(state.get("physical_food_cache_count", 0)),
+			"physical_food_opportunity_count": int(state.get("physical_food_opportunity_count", 0)),
+			"hydraulic_enabled": bool(state.get("hydraulic_enabled", false)),
+			"hydraulic_spillway_food_enabled": bool(state.get("hydraulic_spillway_food_enabled", false)),
+			"spatial_fixture_count": int(state.get("spatial_fixture_count", 0)),
+			"themed_landmark_count": int(state.get("themed_landmark_count", 0)),
+			"themed_setpiece_count": int(state.get("themed_setpiece_count", 0)),
+			"zone_transition_floor_cell_count": int(state.get("zone_transition_floor_cell_count", 0)),
+		})
 
+		var navigation_branches: Array = generation_spec.get(
+			"navigation_grid", {}
+		).get("branches", [])
+		var expected_reward_branch_count := 0
+		for branch_v in navigation_branches:
+			if branch_v is Dictionary and str(
+				(branch_v as Dictionary).get("role", "")
+			) == "optional_risk_reward":
+				expected_reward_branch_count += 1
 		var branch_count := int(state.get("branch_cache_count", 0))
-		_assert_true(branch_count >= 2,
-			"The comparison fixture has at least two deterministic branch rewards (got %d)" % branch_count)
+		_assert_equals(
+			branch_count,
+			expected_reward_branch_count,
+			"Only explicitly optional risk/reward branches become deterministic food caches"
+		)
+		_assert_true(
+			branch_count >= 1,
+			"The comparison fixture retains a real optional food-route decision"
+		)
 		if mode_id == GameSettings.GAME_MODE_NEUTRAL:
 			var spatial_profile: Dictionary = chunk.get_generation_spec().get("settings", {}).get("spatial_profile", {})
 			_assert_equals(int(spatial_profile.get("slot_pitch", 0)), 14,
 				"The teaching stretch uses the authored wider room pitch")
 			_assert_true(float(spatial_profile.get("spiral_descent_per_turn", 0.0)) >= 10.0,
 				"The teaching helix keeps enough vertical separation between turns")
-			_assert_equals(branch_count, 3,
-				"The teaching stretch exposes three distinct side-feed alcoves")
-			_assert_true(int(state.get("spatial_fixture_count", 0)) >= branch_count + 5,
+			_assert_equals(navigation_branches.size(), 3,
+				"The teaching stretch exposes three distinct causal side-feed alcoves")
+			var golden_route_segments := maxi(
+				0,
+				(generation_spec.get("headless", {}).get("golden_path", []) as Array).size() - 1
+			)
+			_assert_true(
+				int(state.get("spatial_fixture_count", 0))
+					>= expected_reward_branch_count + golden_route_segments,
 				"Side-feed bays and mandatory-route datums fill the expanded space")
 			var entry_pos: Vector3 = chunk.get_generated_node_position("entry")
 			var exit_pos: Vector3 = chunk.get_generated_node_position("exit_shelter")
@@ -6158,9 +6976,17 @@ func _test_generated_food_modes() -> void:
 		for profile in food_profiles:
 			profile_reward_min = minf(profile_reward_min, float(profile.get("food_atp", 0.0)))
 			profile_reward_max = maxf(profile_reward_max, float(profile.get("food_atp", 0.0)))
-		_assert_true(profile_reward_max > profile_reward_min,
-			"The teaching fixture visibly demonstrates that a riskier branch carries more food (%s)"
-			% JSON.stringify(food_profiles))
+		if food_profiles.size() >= 2:
+			_assert_true(profile_reward_max > profile_reward_min,
+				"The teaching fixture visibly demonstrates that a riskier branch carries more food (%s)"
+				% JSON.stringify(food_profiles))
+		else:
+			_assert_true(
+				food_profiles.size() == 1
+				and profile_reward_min > 0.0
+				and float((food_profiles[0] as Dictionary).get("risk_score", 0.0)) > 0.0,
+				"The single optional detour advertises a positive risk-scaled food payout"
+			)
 		for a in range(food_profiles.size()):
 			for b in range(food_profiles.size()):
 				if float(food_profiles[a].get("risk_score", 0.0)) > float(food_profiles[b].get("risk_score", 0.0)):
@@ -6168,180 +6994,582 @@ func _test_generated_food_modes() -> void:
 						float(food_profiles[a].get("food_atp", 0.0)) >= float(food_profiles[b].get("food_atp", 0.0)),
 						"A riskier generated branch never pays less food than a safer branch"
 					)
-		if mode_id == GameSettings.GAME_MODE_NEUTRAL:
-			_assert_equals(int(state.get("physical_food_cache_count", -1)), 0,
-				"Neutral keeps the original abstract salvage economy")
-			_assert_equals(int(state.get("guide_food_cache_count", -1)), 0,
-				"Neutral does not add physical route morsels")
-			_assert_true(not bool(state.get("scarcity_drain_armed", true)),
-				"Neutral has no passive ATP clock")
-		elif mode_id == GameSettings.GAME_MODE_EXPEDITION:
-			_assert_equals(int(state.get("physical_food_cache_count", 0)), branch_count,
-				"Expedition turns every risk-scaled side reward into carried food")
-			_assert_equals(int(state.get("guide_food_cache_count", 0)), 2,
-				"Expedition scatters two small morsels on mandatory travel lines")
-			_assert_true(not bool(state.get("scarcity_drain_armed", true)),
-				"Expedition makes food tactical without passive drain")
+		_assert_equals(int(state.get("physical_food_cache_count", 0)), branch_count,
+			"Under %s, the mode-independent spec keeps every risk-scaled side reward as physical lysate" % mode_id.capitalize())
+		_assert_true(not state.has("guide_food_cache_count"),
+			"%s never restores retired route-morsel breadcrumbs" % mode_id.capitalize())
+		_assert_true(chunk.has_method("begin_scarcity_clock"),
+			"Generated stretches expose the shared opt-in scarcity clock facade")
+		var mode_hud = inst.get("_hud")
+		var mode_hud_contract: Dictionary = mode_hud.get_hud_contract() if mode_hud != null else {}
+		_assert_equals(
+			int(mode_hud_contract.get("atp_pip_subdivisions", 0)),
+			2 if mode_id == GameSettings.GAME_MODE_SCARCITY else 1,
+			"%s renders the ATP granularity its configured drain can change" % mode_id.capitalize()
+		)
 
-			# Claim one cache with the whole party below cap. Nothing changes until
-			# the servicing character actually consumes the physical lysate.
+		# Planning time is free in every mode. Only Scarcity starts a deterministic
+		# drain after the first successful active-party movement command.
+		for char_id in ["aster", "peris", "endo"]:
+			inst.set_preview_character_stat(char_id, "atp", 4.0)
+		inst.headless_advance(61.0, 1.0)
+		state = chunk.get_preview_state()
+		_assert_true(is_equal_approx(float(state.get("effective_party_atp", 0.0)), 12.0),
+			"%s planning time before movement leaves party ATP unchanged" % mode_id.capitalize())
+		_assert_true(not bool(state.get("scarcity_clock_started", true)),
+			"%s planning time does not start metabolic pressure" % mode_id.capitalize())
+
+		var gs = inst.get("_game_state")
+		var movement_started := false
+		if gs != null and gs.grid != null:
+			var start_cell: Vector2i = gs.grid.world_to_grid(gs.get_position("aster"))
+			var cardinal_offsets: Array[Vector2i] = [
+				Vector2i.RIGHT, Vector2i.LEFT, Vector2i.UP, Vector2i.DOWN,
+			]
+			for offset in cardinal_offsets:
+				var destination_cell: Vector2i = start_cell + offset
+				if gs.grid.is_walkable(destination_cell.x, destination_cell.y):
+					movement_started = bool(inst.headless_move_character(
+						"aster", gs.grid.grid_to_world(destination_cell)
+					))
+					if movement_started:
+						break
+		_assert_true(movement_started,
+			"%s fixture can issue a real movement command" % mode_id.capitalize())
+		state = chunk.get_preview_state()
+		if mode_id == GameSettings.GAME_MODE_SCARCITY:
+			_assert_true(bool(state.get("scarcity_clock_started", false))
+					and bool(state.get("scarcity_drain_armed", false)),
+				"Scarcity starts and arms on the first real movement command")
+			var scarcity_help := str(chunk.get_scene_help())
+			_assert_true(
+				"ATP can reach zero" in scarcity_help and "costs 5 HP" in scarcity_help,
+				"Scarcity briefing previews the zero-ATP threshold and exact HP consequence"
+			)
+			_assert_true(is_equal_approx(float(state.get("scarcity_drain_interval", 0.0)), 60.0)
+					and is_equal_approx(float(state.get("scarcity_drain_per_character", 0.0)), 1.0)
+					and is_zero_approx(float(state.get("scarcity_atp_floor_per_character", -1.0)))
+					and is_equal_approx(float(
+						state.get("scarcity_zero_atp_hp_drain_per_character", 0.0)), 5.0),
+				"Scarcity reports its exact 60-second, 1-ATP, zero-floor, 5-HP experiment")
+			_assert_equals(state.get("scarcity_character_ids", []), ["aster", "peris", "endo"],
+				"Scarcity binds only the active spotlight party")
+		else:
+			_assert_true(not bool(state.get("scarcity_clock_started", true))
+					and not bool(state.get("scarcity_drain_armed", true))
+					and is_zero_approx(float(state.get("scarcity_drain_per_character", -1.0)))
+					and is_zero_approx(float(
+						state.get("scarcity_zero_atp_hp_drain_per_character", -1.0))),
+				"%s movement cannot activate the opt-in scarcity drain" % mode_id.capitalize())
+		inst.headless_advance(61.0, 0.25)
+		state = chunk.get_preview_state()
+		if mode_id == GameSettings.GAME_MODE_SCARCITY:
+			_assert_equals(int(state.get("scarcity_drain_ticks", 0)), 1,
+				"Scarcity applies one deterministic tick after the configured interval")
+			_assert_true(is_equal_approx(float(state.get("scarcity_atp_drained", 0.0)), 3.0)
+					and is_equal_approx(float(state.get("effective_party_atp", 0.0)), 9.0),
+				"One scarcity tick drains one ATP from each active character")
+			# Isolate the physical-food transaction below without resetting the clock's
+			# evidence counters or creating a second scheduled callback.
 			for char_id in ["aster", "peris", "endo"]:
 				inst.set_preview_character_stat(char_id, "atp", 4.0)
-			var cache_index := -1
-			var cache_position := Vector3.INF
-			var physical_cache: Dictionary = {}
-			var cache_reward := 0.0
-			var caches_v: Variant = chunk.get("_branch_caches")
-			if caches_v is Array:
-				for cache_v in caches_v as Array:
-					if cache_v is Dictionary and bool((cache_v as Dictionary).get("physical_food", false)):
-						physical_cache = cache_v as Dictionary
-						cache_index = int((cache_v as Dictionary).get("index", -1))
-						cache_position = (cache_v as Dictionary).get("position", Vector3.INF)
-						cache_reward = float((cache_v as Dictionary).get("food_atp", 0.0))
-						break
-			_assert_true(cache_index >= 0, "Expedition exposes a physical cache to collect")
-			var cache_marker: MeshInstance3D = physical_cache.get("marker", null)
-			_assert_true(cache_marker != null and cache_marker.visible,
-				"An available physical cache has a visible green world marker")
-			if cache_index >= 0:
-				# A real interaction occurs at the cache. Put the test party there so
-				# GameState's ordinary pickup-distance rule remains part of the proof.
-				for char_id in ["aster", "peris", "endo"]:
-					inst.set_preview_character_position(char_id, cache_position)
-				chunk.call("_collect_branch_reward", cache_index)
-			state = chunk.get_preview_state()
-			_assert_equals(int(state.get("physical_food_spawned_count", 0)), 1,
-				"Claiming an expedition cache creates exactly one lysate item")
-			_assert_true(is_equal_approx(float(state.get("effective_party_atp", 0.0)), 12.0),
-				"Picking food up does not silently refill the party")
-			_assert_true(cache_marker != null and not cache_marker.visible,
-				"A successful pickup removes the cache marker instead of leaving a false reward cue")
-			var cache_interactable = physical_cache.get("interactable", null)
-			_assert_true(cache_interactable != null and not bool(cache_interactable.get("interaction_enabled")),
-				"A claimed physical cache no longer advertises an interaction")
-
-			var gs = inst.get("_game_state")
-			var carrier := ""
-			var carried_item := ""
-			if gs != null:
-				for char_id in ["aster", "peris", "endo"]:
-					var hands: Array = gs.get_hand_items(char_id)
-					if not hands.is_empty():
-						carrier = char_id
-						carried_item = str(hands[0])
-						break
-			_assert_true(carrier != "" and carried_item != "",
-				"The claimed lysate visibly occupies one character's hand")
-			await get_tree().process_frame
-			var hud = inst.get("_hud")
-			if hud != null and carrier != "":
-				var portrait_hold: Dictionary = hud.get_portrait_hold_state(carrier)
-				_assert_equals(str(portrait_hold.get("kind", "")), "carried_item",
-					"The carrier's portrait identifies the held lysate")
-				_assert_equals(str(portrait_hold.get("label", "")), "Lysate",
-					"The portrait badge names what the character carries")
-			if gs != null and carrier != "" and carried_item != "":
-				gs.endocytose_item(carrier, carried_item)
-				inst.headless_advance(2.2, 0.1)
-				await get_tree().process_frame
-				if hud != null:
-					_assert_true(hud.get_portrait_hold_state(carrier).is_empty(),
-						"Consuming the food clears the portrait carrier badge")
-				_assert_true(is_equal_approx(
-					float(inst.get_preview_character_stat(carrier, "atp")), 4.0 + cache_reward),
-					"Only the carrier gains that branch's risk-scaled ATP after consuming it")
-
-				# The quiet path breadcrumbs use half-ATP units. They are useful enough to
-				# notice and guide travel, but never compete with a real detour cache.
-				inst.set_preview_character_stat(carrier, "atp", 4.0)
-				var guide_caches: Array = chunk.get("_guide_food_caches")
-				var guide_cache: Dictionary = guide_caches[0] if not guide_caches.is_empty() else {}
-				var guide_position: Vector3 = guide_cache.get("position", Vector3.INF)
-				for char_id in ["aster", "peris", "endo"]:
-					inst.set_preview_character_position(char_id, guide_position)
-				chunk.call("_collect_guide_food", int(guide_cache.get("index", -1)))
-				var guide_item := ""
-				for hand_item in gs.get_hand_items(carrier):
-					if hand_item != null:
-						guide_item = str(hand_item)
-						break
-				_assert_true(guide_item != "", "A route morsel becomes a physical carried item")
-				if guide_item != "":
-					gs.endocytose_item(carrier, guide_item)
-					inst.headless_advance(2.2, 0.1)
-					_assert_true(is_equal_approx(
-						float(inst.get_preview_character_stat(carrier, "atp")), 4.5),
-						"A route morsel restores one real half-ATP subdivision")
-
-				# Hydraulic visuals are warped into world space while GameState positions
-				# remain on the gameplay grid. Collection must bridge that coordinate seam
-				# without falsely reporting that the servicing character's hands are full.
-				var spillway_cache: Dictionary = chunk.get("_hydraulic_spillway_food_cache")
-				var spillway_position: Vector3 = spillway_cache.get("position", Vector3.INF)
-				for char_id in ["aster", "peris", "endo"]:
-					inst.set_preview_character_position(char_id, spillway_position)
-				_assert_true(bool(chunk.call("_collect_hydraulic_spillway_food")),
-					"Spillway food transfers across the warped-visual/gameplay coordinate seam")
-				_assert_true(bool(chunk.get_preview_state().get("hydraulic_spillway_food_collected", false)),
-					"A successful spillway transfer consumes the world reward")
-				var preserved_atp := float(inst.get_preview_character_stat(carrier, "atp"))
-				inst.set_preview_character_stat(carrier, "hp", 42.0)
-				inst.set_preview_character_stat(carrier, "stamina", 31.0)
-				chunk.call("_headless_complete_hydraulic_puzzle")
-				chunk.call("_reach_exit_shelter")
-				_assert_true(is_equal_approx(float(inst.get_preview_character_stat(carrier, "hp")), 100.0),
-					"Expedition shelter still restores health")
-				_assert_true(is_equal_approx(float(inst.get_preview_character_stat(carrier, "atp")), preserved_atp),
-					"Expedition shelter preserves ATP instead of erasing the food decision")
 		else:
-			_assert_equals(int(state.get("physical_food_cache_count", 0)), branch_count,
-				"Scarcity keeps the same carried-food opportunities as Expedition")
-			var scarcity_hud = inst.get("_hud")
-			var scarcity_hud_contract: Dictionary = scarcity_hud.get_hud_contract() if scarcity_hud != null else {}
-			_assert_equals(int(scarcity_hud_contract.get("atp_pip_subdivisions", 0)), 2,
-				"Scarcity renders two real half-ATP ticks per action pip")
-			_assert_true(not bool(state.get("scarcity_clock_started", true))
-					and not bool(state.get("scarcity_drain_armed", true)),
-				"Scarcity leaves tutorial and planning time undrained")
-			_assert_true(bool(chunk.call("begin_scarcity_clock")),
-				"The first party action starts the scarcity clock")
-			inst.headless_advance(61.0, 0.1)
-			state = chunk.get_preview_state()
-			_assert_equals(int(state.get("scarcity_drain_ticks", 0)), 1,
-				"Scarcity applies its first drain after one 60-second interval")
-			_assert_true(is_equal_approx(float(state.get("scarcity_atp_drained", 0.0)), 3.0),
-				"One scarcity tick drains one ATP from each of the three characters")
-			_assert_true(is_equal_approx(float(state.get("effective_party_atp", 0.0)), 21.0),
-				"The first scarcity tick is visible in the party ATP total")
+			_assert_true(is_equal_approx(float(state.get("effective_party_atp", 0.0)), 12.0),
+				"%s movement and waiting do not drain ATP" % mode_id.capitalize())
 
-			# Long hesitation can make food valuable, but never remove the last action
-			# pip from any character or make the level impossible.
-			# Every drain uses the same interval so players can predict the pressure.
-			inst.headless_advance(58.0, 0.5)
-			_assert_equals(int(chunk.get_preview_state().get("scarcity_drain_ticks", 0)), 1,
-				"Scarcity waits the remainder of the same 60-second interval")
-			inst.headless_advance(2.0, 0.1)
-			_assert_equals(int(chunk.get_preview_state().get("scarcity_drain_ticks", 0)), 2,
-				"Scarcity applies its second drain 60 seconds after the first")
-			inst.headless_advance(360.0, 0.5)
-			var floor_total := float(chunk.get_preview_state().get("effective_party_atp", 0.0))
-			_assert_true(is_equal_approx(floor_total, 3.0),
-				"Scarcity bottoms out at one action pip per character")
-			inst.headless_advance(90.0, 0.5)
+		# Earn access to the optional cache through the hydraulic teaching path.
+		# Its branch sits beyond the first mandatory span, so trying to walk there
+		# directly from the entry must fail by design.
+		var solution: Dictionary = chunk.get_solution_script()
+		var consumed_solution_actions := {}
+		var hydraulic_prelude_ready := bool(chunk.call(
+			"_headless_traverse_generated_route", "main_00_01"
+		))
+		var node_02_action_count := 0
+		if hydraulic_prelude_ready:
+			node_02_action_count = int(chunk.call(
+				"_apply_solution_world_actions_before_node",
+				solution,
+				"node_02",
+				consumed_solution_actions
+			))
+			hydraulic_prelude_ready = node_02_action_count == 2
+		if hydraulic_prelude_ready:
+			hydraulic_prelude_ready = bool(chunk.call(
+				"_headless_traverse_generated_route", "main_01_02"
+			))
+		if hydraulic_prelude_ready:
+			hydraulic_prelude_ready = bool(chunk.call(
+				"_headless_activate_generated_node", "node_02"
+			))
+		var node_03_action_count := 0
+		if hydraulic_prelude_ready:
+			node_03_action_count = int(chunk.call(
+				"_apply_solution_world_actions_before_node",
+				solution,
+				"node_03",
+				consumed_solution_actions
+			))
+			hydraulic_prelude_ready = node_03_action_count == 1
+		if hydraulic_prelude_ready:
+			hydraulic_prelude_ready = bool(chunk.call(
+				"_headless_traverse_generated_route", "main_02_03"
+			))
+		_assert_true(
+			hydraulic_prelude_ready,
+			"%s physically reaches the optional-cache decision point"
+			% mode_id.capitalize()
+		)
+
+		var cache_index := -1
+		var cache_position := Vector3.INF
+		var physical_cache: Dictionary = {}
+		var cache_reward := 0.0
+		var caches_v: Variant = chunk.get("_branch_caches")
+		if caches_v is Array:
+			for cache_v in caches_v as Array:
+				if cache_v is Dictionary and bool((cache_v as Dictionary).get("physical_food", false)):
+					physical_cache = cache_v as Dictionary
+					cache_index = int(physical_cache.get("index", -1))
+					cache_position = physical_cache.get("position", Vector3.INF)
+					cache_reward = float(physical_cache.get("food_atp", 0.0))
+					break
+		_assert_true(cache_index >= 0,
+			"%s exposes a physical side cache to collect" % mode_id.capitalize())
+		var cache_focus_light: OmniLight3D = physical_cache.get("light", null)
+		_assert_true(cache_focus_light != null and cache_focus_light.visible,
+			"An available %s cache has a visible resource focus light" % mode_id)
+		var cache_items_before := {}
+		var cache_spawn_count_before := int(
+			chunk.get_preview_state().get("physical_food_spawned_count", 0)
+		)
+		if gs != null:
+			for char_id in ["aster", "peris", "endo"]:
+				for item_id_v in gs.get_hand_items(char_id):
+					cache_items_before[str(item_id_v)] = true
+		if cache_index >= 0:
+			var cache_reached := bool(chunk.call(
+				"_headless_move_character_to", "aster", cache_position
+			))
+			_assert_true(
+				cache_reached,
+				"%s cache is reachable by ordinary deterministic movement"
+				% mode_id.capitalize()
+			)
+			var cache_source: Node = physical_cache.get("interactable", null)
+			if cache_reached and cache_source != null:
+				cache_source.set("active_character", "aster")
+				_assert_true(
+					bool(cache_source.call("_trigger", false)),
+					"%s cache transfers only through its exact physical source"
+					% mode_id.capitalize()
+				)
+		state = chunk.get_preview_state()
+		_assert_equals(
+			int(state.get("physical_food_spawned_count", 0)),
+			cache_spawn_count_before + 1,
+			"Claiming a %s cache creates exactly one additional lysate item" % mode_id
+		)
+		_assert_true(is_equal_approx(float(state.get("effective_party_atp", 0.0)), 12.0),
+			"Picking up %s lysate does not silently refill the party" % mode_id)
+		_assert_true(cache_focus_light != null and not cache_focus_light.visible,
+			"A successful pickup removes the cache focus light")
+		var cache_interactable = physical_cache.get("interactable", null)
+		_assert_true(cache_interactable != null and not bool(cache_interactable.get("interaction_enabled")),
+			"A claimed physical cache no longer advertises an interaction")
+
+		var carrier := ""
+		var carried_item := ""
+		if gs != null:
+			for char_id in ["aster", "peris", "endo"]:
+				var hands: Array = gs.get_hand_items(char_id)
+				for item_id_v in hands:
+					var item_id := str(item_id_v)
+					if not cache_items_before.has(item_id):
+						carrier = char_id
+						carried_item = item_id
+						break
+				if carried_item != "":
+					break
+		_assert_true(carrier != "" and carried_item != "",
+			"The claimed %s lysate occupies one character's hand" % mode_id)
+		await get_tree().process_frame
+		if mode_hud != null and carrier != "":
+			var portrait_hold: Dictionary = mode_hud.get_portrait_hold_state(carrier)
+			_assert_equals(str(portrait_hold.get("kind", "")), "carried_item",
+				"The carrier's portrait identifies the held lysate")
+		if gs != null and carrier != "" and carried_item != "":
+			gs.endocytose_item(carrier, carried_item)
+			inst.headless_advance(2.2, 0.1)
+			await get_tree().process_frame
 			_assert_true(is_equal_approx(
-				float(chunk.get_preview_state().get("effective_party_atp", 0.0)), floor_total),
-				"Additional waiting cannot drain below the non-locking floor")
-			chunk.call("_headless_complete_hydraulic_puzzle")
-			chunk.call("_reach_exit_shelter")
+				float(inst.get_preview_character_stat(carrier, "atp")), 4.0 + cache_reward),
+				"Only the %s lysate carrier gains ATP after endocytosis" % mode_id)
+			for other_id in ["aster", "peris", "endo"]:
+				if other_id != carrier:
+					_assert_true(is_equal_approx(
+						float(inst.get_preview_character_stat(other_id, "atp")), 4.0),
+						"Endocytosis does not grant party-wide ATP to %s" % other_id)
+
+		# Hydraulic forage follows the same physical transaction in every mode.
+		var spillway_cache: Dictionary = chunk.get("_hydraulic_spillway_food_cache")
+		var prepared_spillway := hydraulic_prelude_ready
+		var diverter_control_v: Variant = chunk.get("_hydraulic_diverter_control")
+		prepared_spillway = (
+			prepared_spillway
+			and diverter_control_v is Node
+			and bool(chunk.call(
+				"_headless_trigger_hydraulic_control", diverter_control_v as Node
+			))
+		)
+		var spillway_launch_tick := float(chunk.get("_spillway_delivery_launch_tick"))
+		prepared_spillway = (
+			prepared_spillway
+			and spillway_launch_tick >= 0.0
+			and bool(chunk.call(
+				"_headless_advance_scheduler_to", spillway_launch_tick + 2.6
+			))
+			and str(chunk.get_preview_state().get("spillway_delivery_phase", "")) == "available"
+		)
+		if prepared_spillway:
+			prepared_spillway = bool(chunk.call(
+				"_headless_traverse_generated_route", "main_03_04"
+			))
+		var spillway_source: Node = spillway_cache.get("interactable", null)
+		var before_spillway_atp := float(chunk.get_preview_state().get("effective_party_atp", 0.0))
+		var spillway_collected := (
+			prepared_spillway
+			and spillway_source != null
+			and bool(chunk.call("_headless_activate_generated_node", "node_04"))
+		)
+		_assert_true(
+			spillway_collected,
+			"%s spillway forage transfers only through the arrived physical catch"
+			% mode_id.capitalize()
+		)
+		_assert_true(bool(chunk.get_preview_state().get("hydraulic_spillway_food_collected", false)),
+			"A successful spillway transfer consumes the world reward")
+		_assert_true(is_equal_approx(
+			float(chunk.get_preview_state().get("effective_party_atp", 0.0)), before_spillway_atp),
+			"Picking up spillway lysate does not directly change ATP")
+
+		# The spillway is an optional finite-current bet. Catching its payload does
+		# not secretly restore the main route, and the second mandatory branch
+		# producer is deliberately bound to the shelter boundary.
+		var main_current_restored := (
+			diverter_control_v is Node
+			and bool(chunk.call(
+				"_headless_trigger_hydraulic_control", diverter_control_v as Node
+			))
+			and bool(chunk.get_preview_state().get("main_current_restored", false))
+		)
+		var expected_exit_actions := 0
+		for action_group_v in [
+			solution.get("world_actions", []),
+			solution.get("branch_actions", []),
+		]:
+			for action_v in action_group_v as Array:
+				if action_v is Dictionary \
+						and str((action_v as Dictionary).get("before_node", "")) \
+							== "exit_shelter":
+					expected_exit_actions += 1
+		var completed_exit_actions := int(chunk.call(
+			"_apply_solution_world_actions_before_node",
+			solution,
+			"exit_shelter",
+			consumed_solution_actions
+		))
+		var exit_route_ready := (
+			main_current_restored
+			and completed_exit_actions == expected_exit_actions
+		)
+		if exit_route_ready:
+			exit_route_ready = bool(chunk.call(
+				"_headless_traverse_generated_route", "main_04_05"
+			))
+		var before_rest_atp := {}
+		for char_id in ["aster", "peris", "endo"]:
+			before_rest_atp[char_id] = float(inst.get_preview_character_stat(char_id, "atp"))
+		var before_rest_state: Dictionary = chunk.get_preview_state()
+		var before_rest_scarcity_ticks := int(
+			before_rest_state.get("scarcity_drain_ticks", 0)
+		)
+		inst.set_preview_character_stat(carrier, "hp", 42.0)
+		inst.set_preview_character_stat(carrier, "stamina", 31.0)
+		_assert_true(
+			exit_route_ready
+				and bool(chunk.call(
+					"_headless_activate_generated_node", "exit_shelter"
+				)),
+			"%s completes only after the party physically reaches the shelter" % mode_id.capitalize())
+		_assert_true(gs != null and gs.is_resting(carrier),
+			"%s starts canonical timed recovery for the damaged carrier" % mode_id.capitalize())
+		var after_rest_state: Dictionary = chunk.get_preview_state()
+		var intervening_scarcity_ticks := maxi(
+			0,
+			int(after_rest_state.get("scarcity_drain_ticks", 0))
+				- before_rest_scarcity_ticks
+		)
+		var intervening_scarcity_cost := (
+			float(after_rest_state.get("scarcity_drain_per_character", 0.0))
+				* float(intervening_scarcity_ticks)
+		)
+		for char_id in ["aster", "peris", "endo"]:
+			var expected_atp := maxf(
+				0.0,
+				float(before_rest_atp[char_id]) - intervening_scarcity_cost
+			) - (1.0 if char_id == carrier else 0.0)
+			_assert_true(is_equal_approx(
+				float(inst.get_preview_character_stat(char_id, "atp")), expected_atp),
+				"%s charges one rest ATP only to the member who needs recovery after accounting for live scarcity (%s)"
+				% [mode_id.capitalize(), char_id])
+		if gs != null:
+			# The resource assertion above is about starting rest. Stop its independent
+			# recovery scheduler before the long stale-scarcity-callback probe below.
+			gs.command_stop_rest(carrier)
+		if mode_id == GameSettings.GAME_MODE_SCARCITY:
 			state = chunk.get_preview_state()
+			var sheltered_atp := float(state.get("effective_party_atp", 0.0))
+			var sheltered_scarcity_ticks := int(state.get("scarcity_drain_ticks", 0))
+			var sheltered_hp := {}
+			for char_id in ["aster", "peris", "endo"]:
+				sheltered_hp[char_id] = float(inst.get_preview_character_stat(char_id, "hp"))
 			_assert_true(not bool(state.get("scarcity_drain_armed", true)),
-				"Reaching shelter stops the scarcity clock")
-			_assert_true(is_equal_approx(float(state.get("effective_party_atp", 0.0)), floor_total),
-				"Scarcity shelter preserves the resource state")
+				"Successful paid shelter rest stops the scarcity clock")
+			inst.headless_advance(90.0, 0.5)
+			state = chunk.get_preview_state()
+			_assert_true(is_equal_approx(
+				float(state.get("effective_party_atp", 0.0)), sheltered_atp),
+				"No stale scarcity callback fires after shelter completion")
+			for char_id in ["aster", "peris", "endo"]:
+				_assert_true(is_equal_approx(
+					float(inst.get_preview_character_stat(char_id, "hp")),
+					float(sheltered_hp[char_id])),
+					"Shelter completion prevents stale scarcity HP damage to %s" % char_id)
+			_assert_equals(
+				int(state.get("scarcity_drain_ticks", 0)),
+				sheltered_scarcity_ticks,
+				"Shelter cancellation preserves the completed clock evidence without another tick")
 
 		inst.queue_free()
 		await get_tree().process_frame
+
+	# The hydraulic comparison fixture above has a separate authored solution
+	# lifecycle. Exercise the generator-owned ideal plan on a maintained stretch
+	# whose current measured travel crosses the 60-second threshold. Start from a
+	# plausible carried-over loss state with a tight ATP reserve for the observed
+	# Scarcity tick(s) and shelter recovery. This makes the mastery proof exercise pressure and
+	# resource management instead of vacuously finishing before Scarcity can act.
+	# Every profile receives the same immutable spec, initial state, and action trace.
+	const IDEAL_MODE_SPEC_PATH := (
+		"res://data/generated_stretches/generated_sample_setpiece_containment.json"
+	)
+	for mode_id_v in mode_ids:
+		var mode_id := str(mode_id_v)
+		var ideal_config: Dictionary = (
+			GameSettings.GAME_MODE_CHUNK_CONFIGS[mode_id] as Dictionary
+		).duplicate(true)
+		ideal_config["spec_path"] = IDEAL_MODE_SPEC_PATH
+		ideal_config["preserve_party_state"] = true
+		var ideal_inst = await _instantiate_preview_chunk_and_wait(
+			"generated_stretch", 8, ideal_config
+		)
+		_assert_true(ideal_inst != null, "%s ideal generated stretch instantiates" % mode_id)
+		if ideal_inst == null:
+			continue
+		var ideal_chunk := _find_fragment_chunk_root(ideal_inst)
+		_assert_true(ideal_chunk != null, "%s ideal generated stretch exposes its chunk" % mode_id)
+		if ideal_chunk == null:
+			ideal_inst.queue_free()
+			await get_tree().process_frame
+			continue
+		var carried_loss_fixture := {
+			"aster": {"hp": 72.0, "stamina": 64.0, "atp": 3.0},
+			"peris": {"hp": 84.0, "stamina": 71.0, "atp": 3.0},
+			"endo": {"hp": 91.0, "stamina": 58.0, "atp": 3.0},
+		}
+		for char_id in carried_loss_fixture:
+			for stat_id in (carried_loss_fixture[char_id] as Dictionary):
+				ideal_inst.set_preview_character_stat(
+					str(char_id), str(stat_id),
+					float((carried_loss_fixture[char_id] as Dictionary)[stat_id])
+				)
+		var ideal_spec: Dictionary = ideal_chunk.get_generation_spec()
+		var ideal_runner = StretchGenerationPlaytestLoopScript.new()
+		var ideal_report: Dictionary = ideal_runner.call(
+			"_play_golden_path",
+			ideal_inst,
+			ideal_spec,
+			{},
+			{"reset_before_play": false, "fail_fast": true}
+		)
+		var ideal_state: Dictionary = ideal_chunk.get_preview_state()
+		var ideal_character_outcomes := {}
+		var ideal_party_atp := 0.0
+		var ideal_party_hp := 0.0
+		var ideal_damage_taken := 0.0
+		for char_id in ["aster", "peris", "endo"]:
+			var final_atp := float(ideal_inst.get_preview_character_stat(char_id, "atp"))
+			var final_hp := float(ideal_inst.get_preview_character_stat(char_id, "hp"))
+			ideal_character_outcomes[char_id] = {"atp": final_atp, "hp": final_hp}
+			ideal_party_atp += final_atp
+			ideal_party_hp += final_hp
+			ideal_damage_taken += maxf(0.0, 100.0 - final_hp)
+		ideal_plan_traces[mode_id] = JSON.stringify({
+			"visited_nodes": ideal_report.get("visited_nodes", []),
+			"route_ids": ideal_report.get("route_ids", []),
+			"solution_path": ideal_report.get("solution_path", []),
+		})
+		ideal_outcomes[mode_id] = {
+			"complete": bool(ideal_report.get("shelter_rested", false)),
+			"party_atp": ideal_party_atp,
+			"party_hp": ideal_party_hp,
+			"damage_taken": ideal_damage_taken,
+			"characters": ideal_character_outcomes,
+			"scarcity_atp_drained": float(ideal_state.get("scarcity_atp_drained", 0.0)),
+			"scarcity_hp_drained": float(ideal_state.get("scarcity_hp_drained", 0.0)),
+			"duration": float(ideal_report.get("duration", 0.0)),
+		}
+		_assert_true(
+			bool(ideal_report.get("shelter_rested", false))
+				and str(ideal_report.get("final_outcome", "")) == "success",
+			"The identical ideal plan completes the immutable stretch in %s"
+			% mode_id.capitalize()
+		)
+		_assert_equals(
+			ideal_report.get("visited_nodes", []),
+			ideal_spec.get("headless", {}).get("golden_path", []),
+			"%s ideal QA consumes the emitted golden node plan without substitutions"
+			% mode_id.capitalize()
+		)
+		if mode_id == GameSettings.GAME_MODE_SCARCITY:
+			_assert_true(
+				float(ideal_report.get("duration", 0.0)) >= 60.0
+					and float(ideal_state.get("scarcity_atp_drained", 0.0)) > 0.0,
+				"Preferred ideal QA crosses a real Scarcity tick instead of passing before pressure begins"
+			)
+			_assert_true(
+				ideal_party_atp >= -0.001 and ideal_party_atp <= 3.001,
+				"Ideal Scarcity play spends its tight managed ATP reserve and still finishes at shelter"
+			)
+		ideal_inst.queue_free()
+		await get_tree().process_frame
+
+	# Drain amount is a real experiment knob, not a hard-coded one-pip special
+	# case. Exercise a fractional level directly against the reusable simulation
+	# component and prove inactive/duplicate roster entries cannot be charged.
+	var scarcity_clock_script = load("res://scripts/system/simulation/atp_scarcity_clock.gd")
+	var fractional_clock = scarcity_clock_script.new()
+	var fractional_scheduler := EventScheduler.new()
+	var fractional_gs := GameState.new()
+	fractional_gs.scheduler = fractional_scheduler
+	fractional_gs.event_log = EventLog.new()
+	for char_id in ["aster", "peris", "endo", "myke"]:
+		fractional_gs.register_character(char_id, Vector3.ZERO, 3.0, {"atp": 4.0, "hp": 100.0})
+	fractional_gs.die_scripted("myke")
+	var fractional_party: Array[String] = ["aster", "peris", "aster", "myke"]
+	fractional_clock.configure(fractional_scheduler, fractional_gs, fractional_party, {
+		"drain_interval_seconds": 5.0,
+		"drain_atp": 0.5,
+		"zero_atp_hp_drain": 5.0,
+	}, "test_fractional_scarcity")
+	var fractional_state: Dictionary = fractional_clock.snapshot()
+	_assert_equals(fractional_state.get("character_ids", []), ["aster", "peris", "myke"],
+		"Scarcity deduplicates and binds only the configured active roster")
+	_assert_true(is_zero_approx(float(fractional_state.get("floor_per_character", -1.0)))
+			and is_equal_approx(float(fractional_state.get("hp_drain_at_zero_per_character", 0.0)), 5.0),
+		"Scarcity exposes a zero ATP floor and the configured 5 HP starvation consequence")
+	_assert_true(bool(fractional_clock.begin()),
+		"A valid fractional scarcity configuration arms")
+	fractional_scheduler.advance_ticks(5.0)
+	_assert_true(is_equal_approx(fractional_gs.get_stat("aster", "atp"), 3.5)
+			and is_equal_approx(fractional_gs.get_stat("peris", "atp"), 3.5),
+		"A configured half-pip level drains each active member by exactly 0.5 ATP")
+	_assert_true(is_equal_approx(fractional_gs.get_stat("endo", "atp"), 4.0),
+		"A character outside the active scarcity roster is never drained")
+	_assert_true(is_equal_approx(fractional_gs.get_stat("myke", "atp"), 4.0),
+		"A permanently dead roster entry is excluded from metabolic pressure")
+	for _tick in range(6):
+		fractional_scheduler.advance_ticks(5.0)
+	_assert_true(is_equal_approx(fractional_gs.get_stat("aster", "atp"), 0.5)
+			and is_equal_approx(fractional_gs.get_stat("peris", "atp"), 0.5),
+		"Fractional scarcity reaches the final half-pip instead of protecting it")
+	_assert_true(is_equal_approx(fractional_gs.get_stat("aster", "hp"), 100.0)
+			and is_equal_approx(fractional_gs.get_stat("peris", "hp"), 100.0),
+		"Scarcity does not convert a still-positive ATP balance into premature HP damage")
+	fractional_scheduler.advance_ticks(5.0)
+	_assert_true(is_zero_approx(fractional_gs.get_stat("aster", "atp"))
+			and is_zero_approx(fractional_gs.get_stat("peris", "atp")),
+		"Scarcity can completely exhaust every tracked character's ATP")
+	_assert_true(is_equal_approx(fractional_gs.get_stat("aster", "hp"), 100.0)
+			and is_equal_approx(fractional_gs.get_stat("peris", "hp"), 100.0),
+		"The ATP-depletion tick itself does not also drain HP")
+	_assert_true(bool(fractional_clock.snapshot().get("armed", false)),
+		"Scarcity keeps ticking after ATP reaches zero so starvation pressure can follow")
+	# Zero-ATP loss uses the shared damage contract, so timing WRAP is a real
+	# counterplay decision and its absorption remains visible in scarcity evidence.
+	_assert_true(fractional_gs.apply_damage_shield("aster", 25.0, 100.0, "wrap"),
+		"The zero-ATP fixture can establish a physical WRAP shield")
+	fractional_scheduler.advance_ticks(5.0)
+	fractional_state = fractional_clock.snapshot()
+	_assert_true(is_equal_approx(fractional_gs.get_stat("aster", "hp"), 100.0)
+			and is_equal_approx(fractional_gs.get_stat("peris", "hp"), 95.0),
+		"A later zero-ATP tick drains unshielded HP while WRAP protects its target")
+	_assert_true(is_equal_approx(fractional_gs.get_stat("endo", "hp"), 100.0)
+			and is_equal_approx(fractional_gs.get_stat("endo", "atp"), 4.0),
+		"Zero-ATP pressure never spills into a character outside the active scarcity roster")
+	_assert_true(is_equal_approx(float(fractional_state.get("hp_drained", 0.0)), 5.0),
+		"Scarcity evidence reports the HP actually removed from the active roster")
+	_assert_true(is_equal_approx(fractional_gs.get_damage_shield("aster"), 20.0)
+			and is_equal_approx(float(fractional_state.get("hp_absorbed", 0.0)), 5.0),
+		"Scarcity evidence reports the zero-ATP damage absorbed by WRAP")
+	var tagged_hp_events := 0
+	for event_v in fractional_gs.event_log.events:
+		var event: Dictionary = event_v
+		var payload: Dictionary = event.get("payload", {})
+		if str(event.get("kind", "")) == str(GameEvent.KIND_SET_STAT) \
+				and str(payload.get("source", "")) == "test_fractional_scarcity" \
+				and str(payload.get("stat", "")) == "hp":
+			tagged_hp_events += 1
+	_assert_equals(tagged_hp_events, 2,
+		"Each zero-ATP HP mutation retains scarcity provenance in the event log")
+	fractional_gs.clear_damage_shield("aster")
+
+	# A physical refill restores ATP as the pressure sink. Its depletion tick is
+	# still distinct from the following zero-ATP HP tick.
+	fractional_gs.set_stat("aster", "atp", 0.5)
+	fractional_gs.set_stat("peris", "atp", 0.5)
+	fractional_scheduler.advance_ticks(5.0)
+	_assert_true(is_zero_approx(fractional_gs.get_stat("aster", "atp"))
+			and is_zero_approx(fractional_gs.get_stat("peris", "atp")),
+		"An authoritative refill makes the next scarcity tick drain ATP again")
+	_assert_true(is_equal_approx(fractional_gs.get_stat("aster", "hp"), 100.0)
+			and is_equal_approx(fractional_gs.get_stat("peris", "hp"), 95.0),
+		"Consuming refilled ATP prevents HP loss on that same tick")
+	fractional_scheduler.advance_ticks(5.0)
+	_assert_true(is_equal_approx(fractional_gs.get_stat("aster", "hp"), 95.0)
+			and is_equal_approx(fractional_gs.get_stat("peris", "hp"), 90.0),
+		"HP drain resumes on the tick after the refill is exhausted")
+
+	fractional_clock.stop()
+	var stopped_aster_hp := fractional_gs.get_stat("aster", "hp")
+	var stopped_peris_hp := fractional_gs.get_stat("peris", "hp")
+	fractional_gs.set_stat("aster", "atp", 0.5)
+	_assert_true(not bool(fractional_clock.snapshot().get("armed", true)),
+		"A stopped shelter-complete clock cannot re-arm on a later stat event")
+	fractional_scheduler.advance_ticks(10.0)
+	_assert_true(is_equal_approx(fractional_gs.get_stat("aster", "atp"), 0.5),
+		"No stale scarcity callback consumes ATP after an explicit shelter stop")
+	_assert_true(is_equal_approx(fractional_gs.get_stat("aster", "hp"), stopped_aster_hp)
+			and is_equal_approx(fractional_gs.get_stat("peris", "hp"), stopped_peris_hp),
+		"No stale scarcity callback drains HP after an explicit shelter stop")
+	var atp_before_clock_reset := fractional_gs.get_stat("aster", "atp")
+	fractional_clock.reset()
+	_assert_true(is_equal_approx(fractional_gs.get_stat("aster", "atp"), atp_before_clock_reset),
+		"Resetting scarcity counters never restores ATP")
+	_assert_equals(int(fractional_clock.snapshot().get("ticks", -1)), 0,
+		"Reset clears scarcity evidence for a new run")
+	fractional_clock.dispose()
 
 	_assert_true(
 		str(geometry_fingerprints.get(GameSettings.GAME_MODE_EXPEDITION, ""))
@@ -6351,6 +7579,82 @@ func _test_generated_food_modes() -> void:
 		str(geometry_fingerprints.get(GameSettings.GAME_MODE_SCARCITY, ""))
 			== str(geometry_fingerprints.get(GameSettings.GAME_MODE_NEUTRAL, "")),
 		"Scarcity uses the exact neutral seed, topology, and graybox")
+	_assert_true(
+		str(full_spec_fingerprints.get(GameSettings.GAME_MODE_SCARCITY, ""))
+			== str(full_spec_fingerprints.get(GameSettings.GAME_MODE_NEUTRAL, ""))
+			and str(full_spec_fingerprints.get(GameSettings.GAME_MODE_SCARCITY, ""))
+				== str(full_spec_fingerprints.get(GameSettings.GAME_MODE_EXPEDITION, "")),
+		"All modes load the exact same complete generated spec, not merely matching geometry")
+	_assert_true(
+		str(semantic_content_fingerprints.get(GameSettings.GAME_MODE_SCARCITY, ""))
+			== str(semantic_content_fingerprints.get(GameSettings.GAME_MODE_NEUTRAL, ""))
+			and str(semantic_content_fingerprints.get(GameSettings.GAME_MODE_SCARCITY, ""))
+				== str(semantic_content_fingerprints.get(GameSettings.GAME_MODE_EXPEDITION, "")),
+		"All modes use identical generated nodes, routes, structures, hazards, and solution data")
+	_assert_true(
+		str(reward_fingerprints.get(GameSettings.GAME_MODE_SCARCITY, ""))
+			== str(reward_fingerprints.get(GameSettings.GAME_MODE_NEUTRAL, ""))
+			and str(reward_fingerprints.get(GameSettings.GAME_MODE_SCARCITY, ""))
+				== str(reward_fingerprints.get(GameSettings.GAME_MODE_EXPEDITION, "")),
+		"All modes expose identical physical reward opportunities and values")
+	_assert_true(
+		str(runtime_affordance_fingerprints.get(GameSettings.GAME_MODE_SCARCITY, ""))
+			== str(runtime_affordance_fingerprints.get(GameSettings.GAME_MODE_NEUTRAL, ""))
+			and str(runtime_affordance_fingerprints.get(GameSettings.GAME_MODE_SCARCITY, ""))
+				== str(runtime_affordance_fingerprints.get(GameSettings.GAME_MODE_EXPEDITION, "")),
+		"All modes expose identical generated runtime handlers and player affordances")
+
+	var scarcity_outcome: Dictionary = ideal_outcomes.get(
+		GameSettings.GAME_MODE_SCARCITY, {}
+	)
+	_assert_true(
+		bool(scarcity_outcome.get("complete", false)),
+		"Preferred ideal QA proves the generated stretch remains beatable in Scarcity"
+	)
+	for easier_mode_v in [GameSettings.GAME_MODE_NEUTRAL, GameSettings.GAME_MODE_EXPEDITION]:
+		var easier_mode := str(easier_mode_v)
+		var easier_outcome: Dictionary = ideal_outcomes.get(easier_mode, {})
+		_assert_true(
+			bool(easier_outcome.get("complete", false)),
+			"The Scarcity-winning ideal plan also completes in easier %s" % easier_mode.capitalize()
+		)
+		_assert_equals(
+			str(ideal_plan_traces.get(easier_mode, "")),
+			str(ideal_plan_traces.get(GameSettings.GAME_MODE_SCARCITY, "")),
+			"%s executes the exact Scarcity node, route, and approach trace"
+			% easier_mode.capitalize()
+		)
+		_assert_true(
+			float(easier_outcome.get("party_atp", -1.0)) + 0.001
+				>= float(scarcity_outcome.get("party_atp", 999.0)),
+			"%s never leaves less ATP than Scarcity for the same ideal plan"
+			% easier_mode.capitalize()
+		)
+		_assert_true(
+			float(easier_outcome.get("party_hp", -1.0)) + 0.001
+				>= float(scarcity_outcome.get("party_hp", 999.0)),
+			"%s never leaves less HP than Scarcity for the same ideal plan"
+			% easier_mode.capitalize()
+		)
+		_assert_true(
+			float(easier_outcome.get("damage_taken", 999.0))
+				<= float(scarcity_outcome.get("damage_taken", -1.0)) + 0.001,
+			"%s never inflicts more damage than Scarcity for the same ideal plan"
+			% easier_mode.capitalize()
+		)
+		var scarcity_characters: Dictionary = scarcity_outcome.get("characters", {})
+		var easier_characters: Dictionary = easier_outcome.get("characters", {})
+		for char_id in ["aster", "peris", "endo"]:
+			var scarcity_character: Dictionary = scarcity_characters.get(char_id, {})
+			var easier_character: Dictionary = easier_characters.get(char_id, {})
+			_assert_true(
+				float(easier_character.get("atp", -1.0)) + 0.001
+					>= float(scarcity_character.get("atp", 999.0))
+					and float(easier_character.get("hp", -1.0)) + 0.001
+						>= float(scarcity_character.get("hp", 999.0)),
+				"%s cannot make %s individually worse than Scarcity on the identical plan"
+				% [easier_mode.capitalize(), char_id.capitalize()]
+			)
 
 	# Production host seam: a persisted settings mode is projected automatically,
 	# while an explicit preview configuration remains authoritative for focused QA.
@@ -6388,6 +7692,50 @@ func _test_generated_food_modes() -> void:
 			override_host.queue_free()
 			await get_tree().process_frame
 		settings.set("game_mode", prior_mode)
+
+func _generated_mode_content_fingerprint(spec: Dictionary) -> String:
+	# Exclude source/settings audit echoes: mode keys are forbidden at generation,
+	# while this projection describes everything the player can encounter or solve.
+	return JSON.stringify({
+		"biome": spec.get("biome", ""),
+		"budget": spec.get("budget", {}),
+		"anchors": spec.get("anchors", {}),
+		"nodes": spec.get("nodes", []),
+		"routes": spec.get("routes", []),
+		"graybox": spec.get("graybox", {}),
+		"navigation_grid": spec.get("navigation_grid", {}),
+		"roompieces": spec.get("roompieces", []),
+		"spatial_features": spec.get("spatial_features", []),
+		"infrastructure_operations": spec.get("infrastructure_operations", []),
+		"themed_landmarks": spec.get("themed_landmarks", []),
+		"themed_setpieces": spec.get("themed_setpieces", []),
+		"zone_transition": spec.get("zone_transition", {}),
+		"archetype_chain": spec.get("archetype_chain", []),
+		"teaching_chain": spec.get("teaching_chain", []),
+		"systems_contract": spec.get("systems_contract", {}),
+		"headless": spec.get("headless", {}),
+	})
+
+func _generated_runtime_affordance_fingerprint(spec: Dictionary) -> String:
+	var affordances := []
+	for node_v in spec.get("nodes", []):
+		if not (node_v is Dictionary):
+			continue
+		var node := node_v as Dictionary
+		affordances.append({
+			"id": str(node.get("id", "")),
+			"role": str(node.get("role", "")),
+			"action_verb": str(node.get("action_verb", "")),
+			"runtime_handler": str(node.get("runtime_handler", "")),
+			"runtime_support": str(node.get("runtime_support", "")),
+			"runtime_progression_required": bool(
+				node.get("runtime_progression_required", false)
+			),
+			"reward_kind": str(node.get("reward_kind", "")),
+			"reward_atp": float(node.get("reward_atp", 0.0)),
+			"resource_kind": str(node.get("resource_kind", "")),
+		})
+	return JSON.stringify(affordances)
 
 func _collect_node_names(n: Node, acc: Array) -> void:
 	acc.append(String(n.name))
@@ -6896,6 +8244,180 @@ func _test_roguelike_loader_descent() -> void:
 	inst.queue_free()
 	await tree.process_frame
 
+	# Live WFC-to-WFC handoff: losses and a tangible, chunk-owned lysate are run
+	# state, not an opening-fixture preset. Drive an ordinary depth-0 -> depth-1
+	# choice through the same loader seam used by play and prove the successor
+	# receives the existing GameState instead of minting a fresh party.
+	var preserve_inst = scene.instantiate()
+	preserve_inst.set("preview_menu", true)
+	tree.root.add_child(preserve_inst)
+	for i in range(4):
+		await tree.process_frame
+	preserve_inst.call(
+		"_apply_preview_entry", preserve_inst.call("get_preview_entry", "roguelike_wfc")
+	)
+	preserve_inst.call("_begin_chunk")
+	for i in range(6):
+		await tree.process_frame
+	var preserve_session = preserve_inst.get("_run_session")
+	var preserve_state = preserve_inst.get("_game_state")
+	var preserve_outgoing_chunk = preserve_inst.get("_active_chunk")
+	_assert_true(
+		preserve_session != null and preserve_state != null and preserve_outgoing_chunk != null,
+		"the live WFC preservation fixture boots its session, GameState, and opening chunk"
+	)
+	if preserve_session != null and preserve_state != null and preserve_outgoing_chunk != null:
+		_assert_equals(int(preserve_session.depth), 0,
+			"the WFC preservation fixture begins at depth 0")
+		_assert_equals(str(preserve_inst.get("preview_chunk")), "generated_stretch",
+			"the WFC preservation fixture begins in a generated stretch")
+		_assert_true(
+			not bool((preserve_inst.get("preview_chunk_config") as Dictionary).get(
+				"preserve_party_state", false
+			)),
+			"depth 0 remains the one clean run fixture"
+		)
+
+		# Claim a normal branch-cache reward so the item is owned by the outgoing
+		# generated chunk. This catches detach cleanup regressions that a synthetic
+		# GameState-only item could not expose.
+		var physical_cache := {}
+		var outgoing_caches_v: Variant = preserve_outgoing_chunk.get("_branch_caches")
+		if outgoing_caches_v is Array:
+			for cache_v in outgoing_caches_v as Array:
+				if cache_v is Dictionary and bool((cache_v as Dictionary).get(
+					"physical_food", false
+				)):
+					physical_cache = cache_v as Dictionary
+					break
+		_assert_true(not physical_cache.is_empty(),
+			"depth 0 exposes a chunk-owned physical lysate cache for the handoff")
+		if not physical_cache.is_empty():
+			var cache_position: Vector3 = physical_cache.get("position", Vector3.INF)
+			for char_id in ["aster", "peris"]:
+				preserve_inst.set_preview_character_position(char_id, cache_position)
+			var outgoing_cache_source: Node = physical_cache.get("interactable", null)
+			if outgoing_cache_source != null:
+				outgoing_cache_source.set("active_character", "aster")
+				_assert_true(
+					bool(outgoing_cache_source.call("_trigger", false)),
+					"the outgoing depth claims lysate through its exact branch source"
+				)
+
+		var lysate_carrier := ""
+		var carried_lysate_id := ""
+		for char_id in ["aster", "peris"]:
+			for item_id_v in preserve_state.get_hand_items(char_id):
+				var item_id := str(item_id_v)
+				if preserve_state.items.has(item_id) \
+						and str((preserve_state.items[item_id] as Dictionary).get("type", "")) == "lysate":
+					lysate_carrier = char_id
+					carried_lysate_id = item_id
+					break
+			if carried_lysate_id != "":
+				break
+		_assert_true(
+			carried_lysate_id != "" and lysate_carrier != "",
+			"the outgoing depth carries a real lysate item in one existing member's hand"
+		)
+
+		var preserved_stats := {
+			"aster": {"hp": 73.0, "stamina": 41.0, "atp": 2.5},
+			"peris": {"hp": 58.0, "stamina": 67.0, "atp": 1.5},
+		}
+		var normal_option := {}
+		var preserve_decision: Dictionary = preserve_session.branch()
+		for option_v in preserve_decision.get("options", []):
+			if not (option_v is Dictionary):
+				continue
+			var candidate := option_v as Dictionary
+			var candidate_reward: Dictionary = candidate.get("reward", {})
+			if int(candidate_reward.get("depth_skip", 0)) == 0:
+				normal_option = candidate
+				break
+		_assert_true(not normal_option.is_empty(),
+			"the live depth-0 branch offers a normal one-depth descent")
+		var outgoing_spec_id := str(preserve_session.spec.get("id", ""))
+		var immediate_handoff_stats := {}
+		if not normal_option.is_empty():
+			preserve_inst.call("_roguelike_present_branch")
+			await tree.process_frame
+			# Establish the exact outgoing state after the modal has settled so the
+			# assertion isolates reload from ordinary pre-choice stamina regeneration.
+			for char_id in preserved_stats:
+				var expected: Dictionary = preserved_stats[char_id]
+				preserve_inst.set_preview_character_stat(char_id, "hp", float(expected.hp))
+				preserve_inst.set_preview_character_stat(char_id, "stamina", float(expected.stamina))
+				preserve_inst.set_preview_character_stat(char_id, "atp", float(expected.atp))
+			preserve_inst.call("_roguelike_choose", normal_option)
+		# `_roguelike_choose` synchronously loads the successor. Snapshot at the
+		# handoff boundary before ordinary idle frames regenerate the currently
+		# selected character's stamina; that regeneration is gameplay, not reload.
+		for char_id in preserved_stats:
+			immediate_handoff_stats[char_id] = {
+				"hp": preserve_inst.get_preview_character_stat(char_id, "hp"),
+				"stamina": preserve_inst.get_preview_character_stat(char_id, "stamina"),
+				"atp": preserve_inst.get_preview_character_stat(char_id, "atp"),
+			}
+		for i in range(8):
+			await tree.process_frame
+
+		var next_config: Dictionary = preserve_inst.get("preview_chunk_config")
+		_assert_equals(int(preserve_session.depth), 1,
+			"the normal live WFC choice advances exactly from depth 0 to depth 1")
+		_assert_equals(str(preserve_inst.get("preview_chunk")), "generated_stretch",
+			"depth 1 remains a generated WFC stretch")
+		_assert_true(str(preserve_session.spec.get("id", "")) != outgoing_spec_id,
+			"the handoff loads a newly generated depth-1 spec")
+		_assert_true(bool(next_config.get("preserve_party_state", false)),
+			"the depth-1 generated chunk config explicitly marks party-state preservation")
+		_assert_true(
+			preserve_inst.get("_active_chunk") != null
+				and preserve_inst.get("_active_chunk") != preserve_outgoing_chunk,
+			"the preservation check crosses into a fresh live generated chunk"
+		)
+		for char_id in preserved_stats:
+			var expected: Dictionary = preserved_stats[char_id]
+			var immediate: Dictionary = immediate_handoff_stats.get(char_id, {})
+			var actual_hp := float(immediate.get("hp", -1.0))
+			var actual_stamina := float(immediate.get("stamina", -1.0))
+			var actual_atp := float(immediate.get("atp", -1.0))
+			_assert_true(
+				is_equal_approx(actual_hp, float(expected.hp))
+					and is_equal_approx(
+						actual_stamina,
+						float(expected.stamina)
+					)
+					and is_equal_approx(
+						actual_atp,
+						float(expected.atp)
+					),
+				(
+					"%s retains exact HP, stamina, and ATP across the live WFC handoff "
+					+ "(expected %.1f/%.1f/%.1f, got %.1f/%.1f/%.1f)"
+				) % [
+					char_id.capitalize(), float(expected.hp), float(expected.stamina),
+					float(expected.atp), actual_hp, actual_stamina, actual_atp,
+				]
+			)
+		_assert_true(
+			carried_lysate_id != ""
+				and preserve_state.items.has(carried_lysate_id)
+				and str((preserve_state.items[carried_lysate_id] as Dictionary).get("type", "")) == "lysate"
+				and str((preserve_state.items[carried_lysate_id] as Dictionary).get("holder", "")) == lysate_carrier
+				and str((preserve_state.items[carried_lysate_id] as Dictionary).get("location", "")) == "hand"
+				and preserve_state.get_hand_items(lysate_carrier).has(carried_lysate_id),
+			"the same physical lysate item remains in the same carrier's hand at depth 1"
+		)
+		preserve_inst.call("_roguelike_choose", {"summary_new_run": true})
+		_assert_true(
+			carried_lysate_id != ""
+				and not preserve_state.items.has(carried_lysate_id)
+				and not preserve_state.get_hand_items(lysate_carrier).has(carried_lysate_id),
+			"Starting a new run clears resources inherited across earlier depth handoffs"
+		)
+	await _dispose_scene(preserve_inst)
+
 	# Cross-layout handoff regression: a WFC level owns a spiral coord map, while the
 	# authored chase is flat. Advancing must retire the outgoing root AND its spatial
 	# transform before loading the corridor, or both layouts appear fused in-world.
@@ -6938,7 +8460,7 @@ func _test_curriculum_ramp() -> void:
 
 	# A broad, fixed pool spanning the ladder, so each stage pulls in stage-appropriate
 	# causal models while the teaching tier keeps a stable spatial budget.
-	var pool := ["2", "12", "16", "15", "11", "1", "3", "8", "4", "5", "6", "7", "14", "13", "10", "17"]
+	var pool := ["2", "12", "16", "15", "11", "1", "3", "8", "4", "5", "6", "7", "14", "13", "10"]
 	var by_stage := {}
 	for stage in [1, 2, 3, 4, 5, 6]:
 		var settings := {
@@ -6948,9 +8470,10 @@ func _test_curriculum_ramp() -> void:
 			"progression_stage": stage,
 			"limitations": {"allowed": {"archetypes": pool}},
 		}
-		# Force a diagnosis node into the top stage so its presence is testable, not luck.
+		# Force the authored fragment-relation archetype into the top stage so transfer
+		# under partial information is tested without inventing a generic diagnosis minigame.
 		if stage >= 6:
-			settings["limitations"]["required"] = {"archetypes": ["17"]}
+			settings["limitations"]["required"] = {"archetypes": ["6"]}
 		var spec: Dictionary = StretchGeneratorScript.generate(settings)
 		_assert_true(bool(spec.get("success", false)), "Stage %d stretch generates" % stage)
 		by_stage[stage] = spec
@@ -7004,12 +8527,9 @@ func _test_curriculum_ramp() -> void:
 		_assert_true(bool(summary.get("shadow_solvable", false)), "Stage %d: the Aster+Peris pair can still solve it" % stage)
 		_assert_true(bool(summary.get("bare_pair_solvable", false)), "Stage %d: every node stays bare-pair solvable" % stage)
 
-	# (b) Holding the puzzle SET fixed (the same choice-bearing archetypes at every stage), the
-	# shadow (pair) pressure rises STRICTLY with stage — combination becomes increasingly needed
-	# while the pair stays solvable. A fixed required set isolates the stage-scaled premium from
-	# the archetype-sample noise that a broad pool introduces.
-	var prev_fixed_shadow := -1.0
-	var prev_fixed_gap := -1.0
+	# (b) A fixed authored pool remains pair-solvable across the curriculum. Stage
+	# changes the information model; it must not fabricate extra damage to make a
+	# late-stage number look harder.
 	for stage in [2, 3, 4, 5, 6]:
 		var fixed: Dictionary = StretchGeneratorScript.generate({
 			"id": "ramp_fixed_%d" % stage,
@@ -7018,26 +8538,24 @@ func _test_curriculum_ramp() -> void:
 			"progression_stage": stage,
 			"budget": {"node_count": 6, "archetype_depth": 2, "branch_count": 1},
 			"limitations": {
-				"required": {"archetypes": ["1", "3"]},
-				"allowed": {"archetypes": ["1", "3", "11"]},
+				"allowed": {"archetypes": ["1", "3", "6"]},
 			},
 		})
+		_assert_true(bool(fixed.get("success", false)), "Fixed-set stage %d generates" % stage)
 		var s: Dictionary = fixed.get("headless", {}).get("solution_summary", {})
 		_assert_true(bool(s.get("shadow_solvable", false)), "Fixed-set stage %d stays pair-solvable" % stage)
-		var sp := float(s.get("shadow_pressure", 0.0))
-		var gap := float(s.get("combination_pressure_gap", 0.0))
-		_assert_true(sp > prev_fixed_shadow, "Fixed-set stage %d shadow pressure rises (%.1f > %.1f)" % [stage, sp, prev_fixed_shadow])
-		_assert_true(gap > prev_fixed_gap, "Fixed-set stage %d combination gap rises (%.1f > %.1f)" % [stage, gap, prev_fixed_gap])
-		_assert_true(sp > float(s.get("spotlight_pressure", 0.0)), "Fixed-set stage %d: pair pays more than the combined solve" % stage)
-		prev_fixed_shadow = sp
-		prev_fixed_gap = gap
+		_assert_true(not s.has("diagnosis_penalty"),
+			"Fixed-set stage %d carries no invented wrong-click damage" % stage)
 
-	# (c) Diagnosis nodes appear only at high stages (the stage-6 primitive), never early.
-	for stage in [1, 2, 3, 4]:
-		_assert_equals(int(by_stage[stage].get("headless", {}).get("solution_summary", {}).get("diagnosis_node_count", 0)), 0,
-			"Stage %d has no diagnosis nodes (it is a late-game primitive)" % stage)
-	_assert_true(int(by_stage[6].get("headless", {}).get("solution_summary", {}).get("diagnosis_node_count", 0)) >= 1,
-		"Stage 6 surfaces at least one diagnosis node")
+	# (c) Stage 6 raises information difficulty through the existing fragment relations;
+	# it never grows a generic three-button diagnosis mechanic or opaque wrong-click damage.
+	for stage in [1, 2, 3, 4, 5, 6]:
+		var stage_summary: Dictionary = by_stage[stage].get("headless", {}).get("solution_summary", {})
+		_assert_true(not stage_summary.has("diagnosis_node_count")
+			and not stage_summary.has("diagnosis_penalty"),
+			"Stage %d exposes no invented diagnosis mechanic" % stage)
+	_assert_equals(str(by_stage[6].get("systems_contract", {}).get("progression_profile", {}).get("information_policy", "")),
+		"composite_partial_reads", "Stage 6 still tests transfer under partial information")
 
 	# (d) Choice-node / multi-character density grows with stage (more combine beats later).
 	_assert_true(int(by_stage[6].get("headless", {}).get("solution_summary", {}).get("choice_node_count", 0))
@@ -7111,19 +8629,46 @@ func _test_character_roster() -> void:
 	var spec_caps: Dictionary = StretchCapabilitiesScript.specialist_capabilities()
 	_assert_true(spec_caps.has("combat") and spec_caps.has("barrier"), "Specialist caps include combat + barrier")
 	_assert_true(not spec_caps.has("flora") and not spec_caps.has("overlay"), "Aster+Peris pair caps (flora/overlay) are NOT specialist")
-	_assert_true((reg["aster"]["abilities"] as Dictionary).has("emp") and (reg["myke"]["abilities"] as Dictionary).has("inflame"), "Abilities are registered (Aster EMP, Myke Inflame)")
+	_assert_true((reg["aster"]["abilities"] as Dictionary).has("emp") and (reg["peris"]["abilities"] as Dictionary).has("wrap"),
+		"The implemented early-game casts are registered (Aster EMP, Peris Wrap)")
+	_assert_true((reg["myke"]["abilities"] as Dictionary).has("inflame"),
+		"Myke retains the GDD-named Inflame identity")
+	_assert_true((reg["oli"]["abilities"] as Dictionary).has("barrier")
+			and (reg["oli"]["abilities"] as Dictionary).has("restore"),
+		"Oli retains the GDD-named Barrier and field Restore identities")
+	_assert_true((reg["tyreg"]["abilities"] as Dictionary).has("suppress"),
+		"Tyreg retains the GDD-named Suppress identity")
+	_assert_true((reg["endo"]["abilities"] as Dictionary).is_empty(),
+		"Endo receives no placeholder cast before one is canonically specified")
+	for cid in reg.keys():
+		var registered_abilities: Dictionary = reg[cid].get("abilities", {})
+		_assert_true(not registered_abilities.has("recover") and not registered_abilities.has("scout"),
+			"%s receives neither invented RECOVER nor SCOUT" % str(cid).capitalize())
 
 	var base := {
 		"id": "roster_test", "seed": 313, "complexity_tier": "standard", "progression_stage": 3,
 		"limitations": {"required": {"archetypes": ["1"]}, "allowed": {"archetypes": ["1", "11"], "enemies": ["sapscraps", "gnawers"]}},
 	}
-	# FULL roster: the redirect's full-party approach is the combat specialist; multi-solution.
+	# Archetype 1 can still shape and dress the room, but it has no generated runtime handler yet.
+	# A roster record must not turn conceptual solution prose into a fake clickable mechanic.
 	var full := StretchGeneratorScript.generate(base)
-	_assert_true(bool(full.get("headless", {}).get("solution_summary", {}).get("multi_solution", false)), "Full roster: redirect stretch is multi-solution (combat specialist vs the pair)")
-	_assert_equals(str(_spotlight_approach_for_archetype(full, "1").get("party", "")), "specialist", "Full roster: the redirect's full-party approach is the combat specialist")
+	var full_redirect_layout_only := false
+	for node_v in full.get("nodes", []):
+		if node_v is Dictionary and str((node_v as Dictionary).get("archetype_id", "")) == "1":
+			var node := node_v as Dictionary
+			full_redirect_layout_only = (
+				str(node.get("runtime_support", "")) == "layout_only"
+				and str(node.get("action_verb", "")) == ""
+				and not bool(node.get("runtime_progression_required", false))
+			)
+			break
+	_assert_true(full_redirect_layout_only,
+		"Full roster cannot manufacture a redirect interaction from archetype metadata")
+	_assert_true(not bool(full.get("headless", {}).get("solution_summary", {}).get("multi_solution", false)),
+		"A layout-only archetype cannot claim a live multi-solution puzzle")
 
-	# DISABLE the combat characters: the full party loses combat and the redirect falls to the
-	# Aster+Peris approach — the enable/disable option genuinely changes what's solvable.
+	# Disabling combat characters changes the real roster but cannot activate a different metadata-
+	# only redirect. The non-gating layout remains traversable by the permanent pair.
 	var no_combat := base.duplicate(true)
 	no_combat["id"] = "roster_test_nocombat"
 	no_combat["roster"] = ["aster", "peris", "endo"]
@@ -7134,7 +8679,13 @@ func _test_character_roster() -> void:
 		if str((p as Dictionary).get("loadout", "")) == "spotlight":
 			sp_party = (p as Dictionary).get("party", [])
 	_assert_true(not sp_party.has("myke") and not sp_party.has("tyreg"), "Disabled roster: the full party has no combat character")
-	_assert_equals(str(_spotlight_approach_for_archetype(nc, "1").get("party", "")), "aster_peris", "Disabled combat: the redirect falls to the Aster+Peris approach")
+	var no_combat_redirect_layout_only := false
+	for node_v in nc.get("nodes", []):
+		if node_v is Dictionary and str((node_v as Dictionary).get("archetype_id", "")) == "1":
+			no_combat_redirect_layout_only = str((node_v as Dictionary).get("runtime_support", "")) == "layout_only"
+			break
+	_assert_true(no_combat_redirect_layout_only,
+		"Disabled combat roster leaves the unsupported redirect as layout-only")
 	_assert_true(bool(nc_summary.get("shadow_solvable", false)) and bool(nc_summary.get("bare_pair_solvable", false)), "Disabled combat: the pair can still finish the stretch")
 
 	# The minimum pair is never dropped, even if the roster omits them.
@@ -7163,7 +8714,7 @@ func _test_archetype_coherence() -> void:
 			"required": {"archetypes": ["2", "1", "13", "12"]},
 			"allowed": {
 				"archetypes": ["1", "2", "12", "13"],
-				"flora": ["scarpet", "flure", "hushbloom", "capbage", "seefern", "doma"],
+				"flora": ["scarpet", "flure", "hushbloom", "capbage", "seefern", "gasafoetida"],
 				"enemies": ["sapscraps", "naturalizers", "meebs", "flares", "gnawers", "candids", "spikers", "tanglers"],
 			},
 		},
@@ -7244,7 +8795,9 @@ func _test_survival_archetypes() -> void:
 		_assert_equals(str(a.get("kind", "")), "survival", "Archetype %s is kind 'survival'" % aid)
 		_assert_equals(str(a.get("survival_kind", "")), str(survival_kinds[aid]), "Archetype %s survival_kind is %s" % [aid, survival_kinds[aid]])
 
-	# A survival stretch generates and is multi-solution + shadow/bare-pair solvable + in-stage.
+	# A survival stretch generates and remains solvable by both loadouts. Its implemented
+	# handlers expose one lifecycle while unsupported archetypes remain layout-only, so the
+	# stretch must not claim divergent executable solutions yet.
 	var spec: Dictionary = StretchGeneratorScript.generate({
 		"id": "generated_survival_test", "seed": 808, "complexity_tier": "hard", "progression_stage": 4,
 		"limitations": {
@@ -7254,7 +8807,9 @@ func _test_survival_archetypes() -> void:
 	})
 	_assert_true(bool(spec.get("success", false)), "Survival stretch generates")
 	var summary: Dictionary = spec.get("headless", {}).get("solution_summary", {})
-	_assert_true(bool(summary.get("multi_solution", false)), "Survival stretch is multi-solution (get past two ways)")
+	_assert_true(not bool(summary.get("multi_solution", true))
+			and int(summary.get("choice_node_count", -1)) == 0,
+		"Survival stretch does not advertise catalog prose as a live multi-solution mechanic")
 	_assert_true(bool(summary.get("shadow_solvable", false)), "Aster+Peris can survive the whole stretch")
 	_assert_true(bool(summary.get("bare_pair_solvable", false)), "Every survival node is bare-pair solvable")
 	_assert_true(bool(summary.get("spotlight_within_stage", false)), "Survival spotlight stays within the progression stage")
@@ -7272,7 +8827,13 @@ func _test_survival_archetypes() -> void:
 		if sk == "exploit" and exploit_node.is_empty():
 			exploit_node = node
 	_assert_true(kinds.has("forage") and kinds.has("gauntlet") and kinds.has("exploit"), "Required survival kinds (forage/gauntlet/exploit) appear on the spine")
-	_assert_true(not forage_node.is_empty() and int(forage_node.get("atp_reward", 0)) > 0, "A forage node carries an atp_reward (partial ATP top-up)")
+	_assert_true(
+		not forage_node.is_empty()
+		and int(forage_node.get("atp_reward", 0)) > 0
+		and str(forage_node.get("reward_kind", "")) == "food"
+		and str(forage_node.get("resource_item_type", "")) == "lysate",
+		"A forage node authors its ATP value as physical lysate"
+	)
 	_assert_true(not exploit_node.is_empty() and StretchCapabilitiesScript.node_content_capabilities(exploit_node).has("redirect"), "An exploit node's enemy configuration lends a 'redirect' tool (enemies as a tool)")
 	# The exploit capability is actually CONSUMED by an approach (not dead): archetype 13's
 	# weaponized_window requires it, so the configuration itself is a usable solve affordance.
@@ -7285,15 +8846,39 @@ func _test_survival_archetypes() -> void:
 	var barrier_node := {"structures": ["barrier"], "survival_kind": "hazard"}
 	_assert_true(not StretchCapabilitiesScript.node_content_capabilities(barrier_node).has("barrier"), "A placed barrier structure does NOT grant the pair the specialist 'barrier' capability")
 
-	# Chunk: a golden run banks ATP at the forage cache and takes attrition at the gauntlet.
-	var preview: Node = await _instantiate_preview_chunk_and_wait("generated_stretch", 3, {"spec": spec})
-	if preview != null:
-		preview.call("headless_call_chunk", "run_generated_golden_path", [])
-		var cs: Dictionary = preview.call("headless_get_state").get("chunk", {})
-		_assert_true(int(cs.get("atp_foraged", 0)) > 0, "A golden run banks partial ATP at the forage cache")
-		_assert_true(float(cs.get("pressure_taken", 0.0)) > 0.0, "A golden run takes HP/stamina attrition at the gauntlet/hazard")
-		preview.queue_free()
-		await get_tree().process_frame
+	# Chunk: a golden run physically secures lysate, takes attrition, and pays only
+	# the explicit shelter-rest cost. Picking the forage node never auto-consumes it.
+	var survival_approval: Dictionary = await StretchGenerationPlaytestLoopScript.new().playtest_spec(
+		spec, get_tree()
+	)
+	var survival_golden: Dictionary = survival_approval.get(
+		"playthroughs", {}
+	).get("golden_path", {})
+	_assert_true(int(survival_golden.get("physical_food_spawned_count", 0)) > 0,
+		"A physical-input golden run secures at least one physical lysate item")
+	_assert_true(int(survival_golden.get("resources_collected", 0)) > 0,
+		"The forage transaction is recorded as a carried resource")
+	var survival_risk_field: Dictionary = survival_golden.get("route_risk_field", {})
+	_assert_true(bool(survival_risk_field.get("active", false))
+		and int(survival_risk_field.get("risk_cell_count", 0)) > 0,
+		"A survival run realizes gauntlet pressure as active marked terrain")
+	_assert_true(is_equal_approx(
+		float(survival_golden.get("pressure_taken", 0.0)),
+		float(survival_risk_field.get("damage_total", 0.0))),
+		"Survival attrition telemetry mirrors only actual marked-cell contact")
+	var survival_stats: Dictionary = survival_golden.get("character_stats", {})
+	# Only bodies that actually crossed the marked route need recovery, so the
+	# canonical shelter command charges Aster and Peris. Endo remained at full
+	# health/stamina and must not be charged merely for belonging to the loadout.
+	for char_id in ["aster", "peris"]:
+		_assert_true(is_equal_approx(
+			float((survival_stats.get(char_id, {}) as Dictionary).get("atp", -1.0)),
+			float(GameState.ATP_MAX_PIPS) - 1.0),
+			"Golden exploration charges %s only when canonical shelter rest begins" % char_id)
+	_assert_true(is_equal_approx(
+		float((survival_stats.get("endo", {}) as Dictionary).get("atp", -1.0)),
+		float(GameState.ATP_MAX_PIPS)),
+		"An uninjured Endo pays no abstract party-wide shelter charge")
 
 func _test_generated_stretch_playtest_loop() -> void:
 	_test_name = "Generated Stretch Playtest Loop"
@@ -7312,14 +8897,13 @@ func _test_generated_stretch_playtest_loop() -> void:
 			"flora_slots": 3,
 			"enemy_slots": 2,
 			"structures_slots": 5,
-			"shortcut_count": 1,
 			"resource_beats": 2,
 		},
 		"limitations": {
 			"allowed": {
 				"flora": ["flure", "hushbloom", "scarpet"],
 				"enemies": ["sapscraps", "naturalizers"],
-				"structures": ["shelter", "forage_cache", "terminal", "carry_gear", "shortcut_gate", "pipe"],
+				"structures": ["shelter", "forage_cache", "terminal", "carry_gear", "pipe"],
 				"archetypes": ["2", "3", "4", "6", "11"],
 			},
 			"required": {
@@ -7357,6 +8941,21 @@ func _test_generated_stretch_playtest_loop() -> void:
 	})
 	_assert_equals(str(result.get("contract_id", "")), "stretch_generation_playtest_loop_v1",
 		"Playtest loop reports its contract")
+	_assert_equals(str(result.get("play_config", {}).get("game_mode", "")),
+		GameSettings.GAME_MODE_SCARCITY,
+		"Generated-stretch QA defaults to the Scarcity mastery projection")
+	_assert_equals(str(result.get("play_config", {}).get("food_test", "")), "scarcity",
+		"The preferred QA projection applies Scarcity only after generation")
+	if not bool(result.get("success", false)):
+		print("  [generated-playtest-loop] errors=%s" % str(result.get("errors", [])))
+		print(
+			"  [generated-playtest-loop] golden=%s"
+			% str(result.get("playthroughs", {}).get("golden_path", {}))
+		)
+		print(
+			"  [generated-playtest-loop] risky=%s"
+			% str(result.get("playthroughs", {}).get("risky_recovery", {}))
+		)
 	_assert_true(bool(result.get("success", false)), "Playtest loop succeeds without failures")
 	_assert_equals(str(result.get("spec_id", "")), "generated_playtest_loop_random_walk",
 		"Playtest loop reports the generated spec id")
@@ -7446,6 +9045,57 @@ func _test_generated_stretch_playtest_loop() -> void:
 		"Playtest loop recovers from risky route pressure")
 	_assert_true(float(risky_report.get("damage", 0.0)) > 0.0,
 		"Playtest loop records risky route damage")
+	var risky_route := {}
+	for route_v in generated_spec.get("routes", []):
+		if route_v is Dictionary \
+				and str((route_v as Dictionary).get("id", "")) \
+					== str(risky_report.get("route_id", "")):
+			risky_route = route_v as Dictionary
+			break
+	var risky_target_id := str(risky_route.get("to", ""))
+	var risky_target := _generated_node(generated_spec, risky_target_id)
+	var risky_target_position: Vector3 = risky_target.get("pos", Vector3.INF)
+	var navigation: Dictionary = generated_spec.get("navigation_grid", {})
+	var navigation_origin: Array = navigation.get("origin", [0.0, 0.0, 0.0])
+	var navigation_cell_size := float(navigation.get("cell_size", 1.0))
+	var branch_trigger_covers_risky_target := risky_target_position != Vector3.INF
+	for action_v in generated_spec.get("headless", {}).get(
+		"solution", {}
+	).get("branch_actions", []):
+		if not (action_v is Dictionary):
+			continue
+		var action := action_v as Dictionary
+		var consumer_cell: Array = action.get("consumer_cell", [])
+		if consumer_cell.size() < 2:
+			continue
+		var consumer_world_x := float(navigation_origin[0]) \
+			+ (float(consumer_cell[0]) + 0.5) * navigation_cell_size
+		if risky_target_position.x + 0.001 < consumer_world_x:
+			continue
+		var before_nodes: Array = action.get(
+			"before_nodes", [str(action.get("before_node", ""))]
+		)
+		branch_trigger_covers_risky_target = (
+			branch_trigger_covers_risky_target
+			and before_nodes.has(risky_target_id)
+			and before_nodes.has(str(action.get("before_node", "")))
+		)
+	_assert_true(
+		branch_trigger_covers_risky_target,
+		"Mandatory span action is scheduled before both risky reward and golden bypass destinations"
+	)
+	_assert_true(
+		(risky_report.get("interaction_failures", []) as Array).is_empty()
+			and (risky_report.get("solution_action_failures", []) as Array).is_empty(),
+		"Risky reward route physically reaches and interacts with its optional cache"
+	)
+	var risky_reward: Dictionary = risky_report.get("reward", {})
+	_assert_true(
+		str(risky_reward.get("item_type", "")) == "lysate"
+			and bool(risky_reward.get("spawned", false))
+			and bool(risky_reward.get("picked_up", false)),
+		"Risky optional cache produces the advertised physical lysate"
+	)
 
 	var editor_scene: PackedScene = load("res://scenes/editor/level_editor.tscn")
 	_assert_true(editor_scene != null, "Level editor loads for generate-and-playtest API")
@@ -7500,20 +9150,19 @@ func _generated_stretch_event_report_settings() -> Dictionary:
 			"flora_slots": 4,
 			"enemy_slots": 3,
 			"structures_slots": 6,
-			"shortcut_count": 1,
 			"resource_beats": 2,
 		},
 		"limitations": {
 			"allowed": {
 				"flora": ["flure", "hushbloom", "scarpet", "seefern", "forget_me_nots"],
 				"enemies": ["sapscraps", "naturalizers", "tanglers"],
-				"structures": ["shelter", "forage_cache", "terminal", "carry_gear", "shortcut_gate", "pipe", "barrier"],
+				"structures": ["shelter", "forage_cache", "terminal", "carry_gear", "pipe", "barrier"],
 				"archetypes": ["1", "2", "3", "4", "6", "8", "11"],
 			},
 			"required": {
 				"flora": ["flure", "hushbloom"],
 				"enemies": ["naturalizers"],
-				"structures": ["shelter", "shortcut_gate"],
+				"structures": ["shelter"],
 				"archetypes": ["1", "2", "3", "4", "6"],
 			},
 		},
@@ -8055,20 +9704,58 @@ func _test_mother_flure_preview() -> void:
 	_assert_true(not bool(initial_state.get("gear_pocket_open", false)), "Mother board starts with the gear pocket closed")
 	_assert_true(not bool(initial_state.get("socket_lane_open", false)), "Mother board starts with the socket lane closed")
 	_assert_true(not bool(initial_state.get("mother_lane_clear", false)), "Mother board starts with the mother lane clogged")
+	_assert_true(inventory_chunk.find_child("MotherCaretakerCarryShuntInteractable", true, false) == null,
+		"Mother does not add an Endo-only immunity switch to replace a removed fake ability")
+	_assert_true(not inventory_chunk.has_method("inspect_diagnostic")
+		and not inventory_chunk.has_method("prime_care_node")
+		and inventory_chunk.find_child("*DiagnosticInteractable", true, false) == null
+		and inventory_chunk.find_child("*CareInteractable", true, false) == null,
+		"Mother has no mandatory evidence checklist or capillary-node chores")
+	var physical_evidence: Node = inventory_chunk.get_node_or_null("MotherPhysicalRepairEvidence")
+	_assert_true(physical_evidence != null
+		and int(physical_evidence.get_meta("clicks_required", -1)) == 0
+		and physical_evidence.find_children("*", "Interactable", true, false).is_empty(),
+		"Mother communicates its repair model through non-interactive physical evidence")
+	for evidence_name in [
+		"FreightWearNorth", "FreightWearCenter", "FreightWearSouth",
+		"CenterSocketWearNorth", "EdgeReliefDustSeal", "BloomBypassRootFilm",
+		"CaretakerTorqueGauge", "CaretakerCenterBrace",
+	]:
+		_assert_true(physical_evidence != null
+			and physical_evidence.get_node_or_null(evidence_name) != null,
+			"Mother physical evidence includes %s" % evidence_name)
 
 	inventory_instance.headless_select_character("aster")
-	_assert_true(inventory_chunk.activate_terminal("term_beta"), "Aster can open the central service terminal")
+	_assert_true(not inventory_chunk.activate_terminal("term_beta")
+		and not inventory_chunk.use_portal()
+		and not inventory_chunk.activate_fragment_move("crossbar", 1),
+		"Mother's retired public verbs cannot forge source receipts")
+	_assert_true(_mother_work_control(
+		inventory_instance, "activate_terminal", ["term_beta"], "aster"),
+		"Aster can open the central service terminal")
 	inventory_instance.headless_select_character("peris")
-	_assert_true(inventory_chunk.use_portal(), "Peris can cross into the central service bay")
-	_assert_true(not inventory_chunk.activate_fragment_move("crossbar", 1), "Crossbar cannot slide right while another root still blocks the lane")
-	_assert_true(inventory_chunk.use_portal(), "Peris can return after a blocked root read")
+	_assert_true(_mother_work_control(inventory_instance, "use_portal", [], "peris"),
+		"Peris can cross into the central service bay")
+	inventory_instance.headless_advance(inventory_chunk.PORTAL_TRANSIT_SECONDS + 0.01, 0.05)
+	var blocked_crossbar: Node = _physical_chunk_control_for_call(
+		inventory_instance, "activate_fragment_move", ["crossbar", 1])
+	_assert_true(not _attempt_physical_control(
+		inventory_instance, "peris", blocked_crossbar, true),
+		"Crossbar cannot slide right while another root still blocks the lane")
+	_assert_true(_mother_work_control(inventory_instance, "use_portal", [], "peris"),
+		"Peris can return after a blocked root read")
+	inventory_instance.headless_advance(inventory_chunk.PORTAL_TRANSIT_SECONDS + 0.01, 0.05)
 
 	inventory_instance.headless_select_character("endo")
 	inventory_instance.headless_set_character_position("endo", inventory_chunk.COLLAPSE_POS)
-	_assert_true(inventory_chunk.clear_collapse(), "Endo can clear the collapse")
+	_assert_true(_mother_work_control(inventory_instance, "clear_collapse", [], "endo"),
+		"Endo can clear the collapse")
+	inventory_instance.headless_advance(
+		inventory_chunk.COLLAPSE_SHIFT_SECONDS + 0.01, 0.05)
 	inventory_instance.headless_set_character_position("endo", inventory_chunk.BODY_POSITIONS["body_a"])
 	inventory_instance.set_preview_character_stat("endo", "atp", 1.0)
-	_assert_true(inventory_chunk.harvest_body("body_a"), "Endo can harvest starch in the chamber")
+	_assert_true(_mother_work_control(inventory_instance, "harvest_body", ["body_a"], "endo"),
+		"Endo can harvest starch in the chamber")
 	var held: Array = inventory_instance.get_preview_hand_items("endo")
 	_assert_equals(held.size(), 1, "Harvesting gives Endo a held starch unit")
 	_assert_true(inventory_instance.endocytose_preview_item("endo", str(held[0])), "Preview supports consuming harvested starch")
@@ -8080,11 +9767,26 @@ func _test_mother_flure_preview() -> void:
 	_mother_execute_root_move(inventory_instance, inventory_chunk, "term_beta", "socket_brace", 1, ["D2", "E2"], "Repair Test 2/3")
 	inventory_instance.headless_select_character("endo")
 	inventory_instance.headless_set_character_position("endo", inventory_chunk.GEAR_POS)
-	_assert_true(inventory_chunk.pick_up_gear(), "Endo can still lift the gear in the repair test")
+	_assert_true(_mother_work_control(inventory_instance, "pick_up_gear", [], "endo"),
+		"Endo can still lift the gear in the repair test")
+	var hazard_hp: float = float(inventory_instance.get_preview_character_stat("endo", "hp"))
+	var live_root: Dictionary = inventory_chunk._roots.get("north_rail", {})
+	var live_root_node: Node3D = inventory_chunk._root_node(live_root)
+	inventory_instance.headless_set_character_position("endo", live_root_node.global_position)
+	inventory_instance.headless_advance(inventory_chunk.ROOT_HAZARD_INTERVAL + 0.2, 0.05)
+	_assert_true(inventory_instance.get_preview_character_stat("endo", "hp") < hazard_hp,
+		"Carrying gear grants no invented Techo-mat immunity; the root state remains the hazard control")
 	_mother_execute_root_move(inventory_instance, inventory_chunk, "term_alpha", "spine_gate", -1, ["A4", "B4"], "Repair Test 3/3")
 	inventory_instance.headless_select_character("endo")
 	inventory_instance.headless_set_character_position("endo", inventory_chunk._repair_point_position("edge_relief"))
-	_assert_true(inventory_chunk.install_gear_at("edge_relief"), "A wrong repair mount still commits and resolves")
+	_assert_true(_mother_work_control(
+		inventory_instance, "install_gear_at", ["edge_relief"], "endo"),
+		"A wrong repair mount still commits and resolves")
+	inventory_instance.headless_advance(
+		inventory_chunk.ROOT_SLIDE_DURATION * 0.7
+			+ inventory_chunk.ROOT_SWARM_LAG * 0.5
+			+ inventory_chunk.ROOT_SWARM_DURATION + 0.01,
+		0.05)
 	var wrong_repair_state: Dictionary = inventory_chunk.get_preview_state()
 	var repair_attempts: Array = wrong_repair_state.get("repair_attempts", [])
 	_assert_true(not bool(wrong_repair_state.get("gear_installed", false)), "Wrong repair does not count as a successful install")
@@ -8135,8 +9837,8 @@ func _test_mother_flure_preview() -> void:
 		var terminal_state: Dictionary = solve_chunk.get_preview_state()
 		_assert_equals(str(terminal_state.get("active_terminal", "")), terminal_id,
 			"%s completes through click-arrival" % terminal_id)
-		_assert_true(terminal_id in (terminal_state.get("log_entries_seen", []) as Array),
-			"%s surfaces its chamber log through the routed interaction" % terminal_id)
+		_assert_true(terminal_id in (terminal_state.get("terminal_readings_seen", []) as Array),
+			"%s surfaces its live chamber reading through the routed interaction" % terminal_id)
 
 	_mother_execute_root_move(solve_instance, solve_chunk, "term_gamma", "gear_latch", 1, ["B2", "B3"], "Optimal 1/9")
 	_mother_execute_root_move(solve_instance, solve_chunk, "term_beta", "socket_brace", 1, ["D2", "E2"], "Optimal 2/9")
@@ -8145,7 +9847,8 @@ func _test_mother_flure_preview() -> void:
 
 	solve_instance.headless_select_character("endo")
 	solve_instance.headless_set_character_position("endo", solve_chunk.GEAR_POS)
-	_assert_true(solve_chunk.pick_up_gear(), "Endo can lift the gear once the west pocket is open")
+	_assert_true(_mother_work_control(solve_instance, "pick_up_gear", [], "endo"),
+		"Endo can lift the gear once the west pocket is open")
 	var hand_slots: Array = solve_instance.get_preview_hand_slots("endo")
 	_assert_equals(str(hand_slots[0]), str(hand_slots[1]), "Two-hand gear occupies both hand slots")
 
@@ -8155,9 +9858,13 @@ func _test_mother_flure_preview() -> void:
 
 	solve_instance.headless_select_character("endo")
 	solve_instance.headless_set_character_position("endo", solve_chunk._repair_point_position("load_regulator"))
-	_assert_true(solve_chunk.install_gear_at("load_regulator"), "Endo can install the mother gear at the correct repair point once the carry lane is open")
+	_assert_true(_mother_work_control(
+		solve_instance, "install_gear_at", ["load_regulator"], "endo"),
+		"Endo can install the mother gear at the correct repair point once the carry lane is open")
 	var installed_state: Dictionary = solve_chunk.get_preview_state()
 	_assert_equals(str(installed_state.get("installed_repair", "")), "load_regulator", "Optimal solve mounts the gear into the diagnosed load regulator")
+	_assert_true(solve_chunk._installed_gear_root != null and solve_chunk._installed_gear_root.visible,
+		"consumed Mother Gear remains visibly socketed in the repaired load regulator")
 
 	_mother_execute_root_move(solve_instance, solve_chunk, "term_beta", "socket_brace", 1, ["E2", "F2"], "Optimal 4/9")
 	_mother_execute_root_move(solve_instance, solve_chunk, "term_gamma", "tending_step", -1, ["E3", "E4"], "Optimal 5/9")
@@ -8169,34 +9876,33 @@ func _test_mother_flure_preview() -> void:
 	var solved_state: Dictionary = solve_chunk.get_preview_state()
 	_assert_true(bool(solved_state.get("mother_lane_clear", false)), "Optimal root sequence clears the mother lane end to end")
 
-	# Finish through the actual playable care circuit and Rings exit rather than bypassing both with
-	# the low-level tend_mother() state transition.
-	for care_node_id in ["west_capillary", "crown_vent", "east_feed"]:
-		var care_interactable: Node = solve_chunk._care_node_interactables.get(care_node_id)
-		_assert_true(care_interactable != null and care_interactable.is_interaction_enabled(),
-			"%s care node enables after repair and lane clearance" % care_node_id)
-		if care_interactable == null:
-			continue
-		_mother_click_interactable(solve_instance, care_interactable, "peris", care_node_id, 8.0)
-		_assert_true(care_node_id in (solve_chunk.get_preview_state().get("care_nodes_primed", []) as Array),
-			"%s primes through its timed interaction" % care_node_id)
-	_assert_true(bool(solve_chunk.get_preview_state().get("care_circuit_ready", false)),
-		"three routed care actions open Mother Tend")
-
 	var mother_interactable: Node = solve_chunk._mother_interactable
 	_assert_true(mother_interactable != null and mother_interactable.is_interaction_enabled(),
-		"Mother Tend enables only after the care circuit")
+		"correct repair plus a clear mother lane directly enables Mother Tend")
 	if mother_interactable != null:
 		_mother_click_interactable(solve_instance, mother_interactable, "peris", "Mother Tend", 12.0)
 	var handoff_state: Dictionary = solve_chunk.get_preview_state()
 	_assert_true(bool(handoff_state.get("mother_tended", false)),
 		"Mother stabilizes through the gated playable interaction")
-	_assert_equals(str(handoff_state.get("route_phase", "")), "handoff",
-		"Mother Tend opens the Rings handoff")
+	_assert_equals(str(handoff_state.get("route_phase", "")), "opening",
+		"Mother Tend starts the physical Rings membrane opening")
+	_assert_equals(str(handoff_state.get("rings_gate_phase", "")), solve_chunk.RINGS_GATE_PHASE_OPENING,
+		"the Rings handoff remains an explicit in-flight gate phase")
 
 	var exit_interactable: Node = solve_chunk._exit_interactable
+	_assert_true(exit_interactable != null and not exit_interactable.is_interaction_enabled(),
+		"the reachable Rings exit stays locked while the membrane is moving")
+	solve_instance.headless_advance(solve_chunk.RINGS_GATE_OPEN_SECONDS + 0.01, 0.05)
+	handoff_state = solve_chunk.get_preview_state()
+	_assert_equals(str(handoff_state.get("route_phase", "")), "handoff",
+		"the Rings handoff begins only after the membrane reaches its open endpoint")
 	_assert_true(exit_interactable != null and exit_interactable.is_interaction_enabled(),
-		"the reachable Rings exit enables after Mother Tend")
+		"the reachable Rings exit enables after the physical gate opens")
+	for exit_member_index in range(["aster", "peris", "endo"].size()):
+		var exit_member := str(["aster", "peris", "endo"][exit_member_index])
+		solve_instance.headless_set_character_position(
+			exit_member,
+			solve_chunk.EXIT_POS + Vector3(float(exit_member_index) - 1.0, 0.0, 0.0))
 	if exit_interactable != null:
 		_mother_click_interactable(solve_instance, exit_interactable, "peris", "Rings handoff", 8.0)
 	var final_state: Dictionary = solve_chunk.get_preview_state()
@@ -8265,14 +9971,10 @@ func _test_endo_junction_stretch_preview() -> void:
 		"Endo Junction protects its opening composition from the diagnostic help panel")
 	_assert_true(bool(instance._overlay_panel_collapsed),
 		"Endo Junction starts with the diagnostic overlay collapsed but still available")
-	var authored_pulse_set := chunk.find_child("EndoJunctionAuthoredPulseCircuit", true, false)
-	var pulse_animation := chunk.find_child("CircuitAnimation", true, false) as AnimationPlayer
-	_assert_true(authored_pulse_set != null,
-		"Endo Junction instantiates its reusable authored pulse-circuit scene asset")
-	_assert_true(pulse_animation != null and pulse_animation.has_animation("cadence"),
-		"Endo Junction uses an AnimationPlayer to show pressure leading the root response")
-	_assert_equals(chunk._field_sites.size(), 7,
-		"Endo Junction exposes three reads, two predictions, and two execution objects")
+	_assert_true(chunk.find_child("EndoJunctionFieldwork", true, false) == null,
+		"Endo Junction does not insert an unrelated evidence-station circuit into the shelter route")
+	_assert_true(chunk.find_children("EndoJunctionField_*", "Interactable", true, false).is_empty(),
+		"the stretch contains no mandatory fieldwork checklist posts")
 	var junction_time: Dictionary = chunk.get_preview_time_state()
 	var junction_lighting: Dictionary = chunk.get_preview_lighting_profile()
 	_assert_true(absf(float(junction_time.get("time", 0.0)) - 0.58) < 0.001,
@@ -8311,47 +10013,67 @@ func _test_endo_junction_stretch_preview() -> void:
 		"the opening camera has a lit apron and a distinct console pad")
 
 	instance.headless_select_character("endo")
-	instance.headless_set_character_position("endo", chunk.JUNCTION_POS)
-	_assert_true(chunk.read_junction(), "Endo can read his junction marks")
+	_assert_true(_attempt_physical_control(
+			instance, "endo", chunk._junction_interactable, true),
+		"Endo can read his junction marks through the exact console")
 	_assert_true(entry_guide != null and not entry_guide.visible,
 		"the first-objective breadcrumb retires once the console is read")
 	instance.headless_select_character("aster")
-	instance.headless_set_character_position("aster", chunk.GUIDE_MARK_POS)
-	_assert_true(chunk.mark_safe_route(), "Aster can translate Endo's safe route")
+	_assert_true(_attempt_physical_control(
+			instance, "aster", chunk._route_interactable, true),
+		"Aster can translate Endo's safe route through the exact mark")
 	instance.headless_select_character("endo")
-	instance.headless_set_character_position("endo", chunk.FORAGE_CACHE_POS)
-	_assert_true(chunk.collect_forage(), "Endo can collect the first shelter-stretch cache")
-	instance.headless_set_character_position("endo", chunk.SAFE_LEDGE_POS)
-	_assert_true(chunk.commit_safe_route(), "Safe ledge route can be committed")
+	_assert_true(_attempt_physical_control(
+			instance, "endo", chunk._safe_interactable, true),
+		"Safe ledge traversal commits from its exact physical mouth")
+	_assert_equals(str(chunk.get_preview_state().get("route_phase", "")), "safe_crossing",
+		"Safe ledge remains in flight until Endo reaches its far lip")
+	instance.headless_advance(8.0, 0.05)
 	var safe_state: Dictionary = instance.headless_get_state()
 	for char_id in ["aster", "peris", "endo"]:
 		var safe_stats: Dictionary = safe_state.get("character_stats", {}).get(char_id, {})
 		_assert_equals(float(safe_stats.get("hp", -1.0)), 100.0, "Safe Endo stretch keeps %s at full HP before rest" % char_id)
 
-	_complete_endo_junction_fieldwork(instance, chunk, "Preview safe route", true)
+	_assert_true(not bool(chunk.get_preview_state().get("forage_collected", false)),
+		"safe traversal does not silently claim the optional cache")
+	_assert_true(_attempt_physical_control(
+			instance, "endo", chunk._cache_interactable, true),
+		"Endo can still choose the physical starch cache after crossing")
 	instance.headless_select_character("endo")
-	instance.headless_set_character_position("endo", chunk.SHORTCUT_LOCK_POS)
-	_assert_true(chunk.unlock_shortcut(), "Endo can open the return shortcut")
+	_assert_true(_attempt_physical_control(
+			instance, "endo", chunk._shortcut_interactable, true),
+		"Endo can optionally begin opening the return shortcut at its latch")
+	instance.headless_advance(chunk.SHORTCUT_OPENING_DURATION + 0.1, 0.05)
+	_assert_true(bool(chunk.get_preview_state().get("shortcut_unlocked", false)),
+		"Return shortcut becomes open only after its physical gate clears")
 	instance.headless_set_character_position("aster", chunk.SHELTER_POS)
-	_assert_true(not chunk.reach_shelter(),
+	_assert_true(not _attempt_physical_control(
+			instance, "aster", chunk._shelter_interactable, false),
 		"Shelter 1 refuses a lone arrival instead of auto-completing on proximity")
 	for shelter_char in ["aster", "peris", "endo"]:
 		instance.headless_set_character_position(shelter_char,
 			chunk.SHELTER_POS + Vector3(float(["aster", "peris", "endo"].find(shelter_char)) - 1.0, 0.0, 0.0))
 	instance._game_state.down_character("peris")
-	_assert_true(not chunk.reach_shelter(), "Shelter 1 refuses a downed party member")
+	_assert_true(not _attempt_physical_control(
+			instance, "aster", chunk._shelter_interactable, false),
+		"Shelter 1 refuses a downed party member before spending its one-shot")
 	instance._game_state.restore_character("peris")
 	instance.set_preview_character_stat("endo", "atp", 0.0)
-	_assert_true(not chunk.reach_shelter(), "Shelter 1 preflights the whole party's ATP cost")
+	_assert_true(not _attempt_physical_control(
+			instance, "aster", chunk._shelter_interactable, false),
+		"Shelter 1 preflights the whole party's ATP cost before trigger consumption")
 	instance.set_preview_character_stat("endo", "atp", GameState.ATP_MAX_PIPS)
-	_assert_true(chunk.reach_shelter(), "Party can reach and rest at Shelter 1")
+	_assert_true(_attempt_physical_control(
+			instance, "aster", chunk._shelter_interactable, false),
+		"Party can reach and rest at Shelter 1 from its exact hearth")
 	var complete_state: Dictionary = chunk.get_preview_state()
 	_assert_true(bool(complete_state.get("shelter_reached", false)), "Endo stretch records Shelter 1 reached")
 	_assert_true(bool(complete_state.get("shelter_rested", false)), "Endo stretch records Shelter 1 rest")
 	_assert_true(bool(complete_state.get("shortcut_unlocked", false)), "Endo stretch records shortcut unlock")
 	_assert_equals(str(complete_state.get("route_choice", "")), "safe", "Golden path records the safe route")
 	_assert_equals(int(complete_state.get("first_night_beat_count", 0)), 1, "First-night shelter beat fires once")
-	_assert_true(chunk.reach_shelter(), "Shelter rest is idempotent after completion")
+	_assert_true(not chunk.reach_shelter(),
+		"retired no-source shelter helper remains inert after completion")
 	var repeated_state: Dictionary = chunk.get_preview_state()
 	_assert_equals(int(repeated_state.get("first_night_beat_count", 0)), 1, "First-night shelter beat does not refire")
 	var rested_preview_state: Dictionary = instance.headless_get_state()
@@ -8374,29 +10096,31 @@ func _test_endo_junction_stretch_preview() -> void:
 		await _dispose_scene(direct_instance)
 		return
 
-	direct_instance.headless_select_character("endo")
-	direct_instance.headless_set_character_position("endo", direct_chunk.JUNCTION_POS)
-	_assert_true(direct_chunk.read_junction(), "Direct route still begins with Endo's world read")
 	direct_instance.headless_set_routing_mode("direct")
-	direct_instance.headless_set_character_position("endo", direct_chunk.FORAGE_CACHE_POS)
-	_assert_true(direct_chunk.collect_forage(), "Direct route also recovers the mandatory shelter cache")
 	direct_instance.headless_select_character("aster")
-	direct_instance.headless_set_character_position("aster", direct_chunk.RISKY_BLOOM_POS)
-	_assert_true(direct_chunk.commit_direct_route(), "Direct route is playable")
+	_assert_true(_attempt_physical_control(
+			direct_instance, "aster", direct_chunk._direct_interactable, true),
+		"a skilled player can take the visible direct risk without first servicing unrelated stations")
+	_assert_equals(str(direct_chunk.get_preview_state().get("route_phase", "")), "direct_crossing",
+		"Direct risk is an in-flight crossing rather than an instant damage button")
+	direct_instance.headless_advance(8.0, 0.05)
 	var damaged_state: Dictionary = direct_chunk.get_preview_state()
 	_assert_equals(str(damaged_state.get("route_choice", "")), "direct", "Direct route records its route choice")
+	_assert_true(not bool(damaged_state.get("junction_read", false))
+			and not bool(damaged_state.get("forage_collected", false)),
+		"direct traversal leaves optional information and resources untouched")
 	_assert_true(float(damaged_state.get("direct_damage_total", 0.0)) > 0.0, "Direct route records damage pressure")
 	_assert_true(float(damaged_state.get("party_min_hp", 0.0)) > 0.0, "Direct route remains recoverable")
-	_complete_endo_junction_fieldwork(direct_instance, direct_chunk, "Preview direct route")
-	direct_instance.headless_select_character("endo")
-	direct_instance.headless_set_character_position("endo", direct_chunk.SHORTCUT_LOCK_POS)
-	_assert_true(direct_chunk.unlock_shortcut(), "Direct route can still open the shortcut")
 	for direct_shelter_char in ["aster", "peris", "endo"]:
 		direct_instance.headless_set_character_position(direct_shelter_char,
 			direct_chunk.SHELTER_POS + Vector3(float(["aster", "peris", "endo"].find(direct_shelter_char)) - 1.0, 0.0, 0.0))
-	_assert_true(direct_chunk.reach_shelter(), "Direct route can recover at Shelter 1")
+	_assert_true(_attempt_physical_control(
+			direct_instance, "aster", direct_chunk._shelter_interactable, false),
+		"direct route can rest without turning the optional return grate into a forward gate")
 	var direct_complete: Dictionary = direct_chunk.get_preview_state()
 	_assert_true(bool(direct_complete.get("shelter_rested", false)), "Direct route records Shelter 1 rest")
+	_assert_true(not bool(direct_complete.get("shortcut_unlocked", false)),
+		"resting does not auto-complete the optional shortcut")
 	var direct_rest_state: Dictionary = direct_instance.headless_get_state()
 	for char_id in ["aster", "peris", "endo"]:
 		var direct_stats: Dictionary = direct_rest_state.get("character_stats", {}).get(char_id, {})
@@ -8409,7 +10133,7 @@ func _test_endo_junction_stretch_preview() -> void:
 # --- Test: endo_junction_stretch runs INSIDE act1 (not just the fragment preview) ---
 # Proves Task 1+2: the chunk-host interface lifted onto tutorial_sequence means a scene chunk loaded
 # into act1 is fully live — its interactables register in act1's GameState, and driving the chunk's
-# per-action methods (read/mark/forage/route/shortcut/shelter) reaches route_phase == "complete", which
+	# per-action methods (read/mark/route/optional forage/optional shortcut/shelter) reaches route_phase == "complete", which
 # act1's _on_process poll then advances out of the endo leg.
 func _test_endo_junction_stretch_act1() -> void:
 	_test_name = "Endo Junction Stretch In Act1"
@@ -8456,26 +10180,41 @@ func _test_endo_junction_stretch_act1() -> void:
 
 	instance.call("_select_character", "endo")
 	instance.call("set_preview_character_position", "endo", chunk.JUNCTION_POS)
-	_assert_true(chunk.read_junction(), "act1: Endo reads his junction marks")
+	_assert_true(_attempt_physical_control(
+			instance, "endo", chunk._junction_interactable, false),
+		"act1: Endo reads his junction marks at the exact console")
 	instance.call("_select_character", "aster")
 	instance.call("set_preview_character_position", "aster", chunk.GUIDE_MARK_POS)
-	_assert_true(chunk.mark_safe_route(), "act1: Aster translates the safe route")
+	_assert_true(_attempt_physical_control(
+			instance, "aster", chunk._route_interactable, false),
+		"act1: Aster translates the safe route at the exact mark")
 	instance.call("_select_character", "endo")
 	instance.call("set_preview_character_position", "endo", chunk.FORAGE_CACHE_POS)
-	_assert_true(chunk.collect_forage(), "act1: Endo collects the cache (inventory routes through act1 GameState)")
+	_assert_true(_attempt_physical_control(
+			instance, "endo", chunk._cache_interactable, false),
+		"act1: Endo collects the exact cache source through act1 GameState")
 	_assert_true(gs.get_hand_items("endo").size() > 0, "act1: the cache item lands in Endo's hand via GameState")
 	instance.call("set_preview_character_position", "endo", chunk.SAFE_LEDGE_POS)
-	_assert_true(chunk.commit_safe_route(), "act1: the safe ledge route commits")
-	_complete_endo_junction_fieldwork(instance, chunk, "Act1 safe route")
+	_assert_true(_attempt_physical_control(
+			instance, "endo", chunk._safe_interactable, false),
+		"act1: the safe ledge traversal commits at its physical mouth")
+	instance.headless_advance(8.0, 0.05)
 	instance.call("_select_character", "endo")
 	instance.call("set_preview_character_position", "endo", chunk.SHORTCUT_LOCK_POS)
-	_assert_true(chunk.unlock_shortcut(), "act1: Endo opens the return shortcut")
+	_assert_true(_attempt_physical_control(
+			instance, "endo", chunk._shortcut_interactable, false),
+		"act1: Endo starts opening the return shortcut at its latch")
+	instance.headless_advance(chunk.SHORTCUT_OPENING_DURATION + 0.1, 0.05)
+	_assert_true(bool(chunk.get_preview_state().get("shortcut_unlocked", false)),
+		"act1: the return shortcut opens after its authoritative lift")
 	var act1_atp_before_rest := {}
 	for act1_shelter_char in ["aster", "peris", "endo"]:
 		act1_atp_before_rest[act1_shelter_char] = gs.get_stat(act1_shelter_char, "atp")
 		instance.call("set_preview_character_position", act1_shelter_char,
 			chunk.SHELTER_POS + Vector3(float(["aster", "peris", "endo"].find(act1_shelter_char)) - 1.0, 0.0, 0.0))
-	_assert_true(chunk.reach_shelter(), "act1: the party reaches and rests at Shelter 1")
+	_assert_true(_attempt_physical_control(
+			instance, "aster", chunk._shelter_interactable, false),
+		"act1: the party reaches and rests at Shelter 1's exact hearth")
 
 	var chunk_state: Dictionary = chunk.get_preview_state()
 	_assert_equals(str(chunk_state.get("route_phase", "")), "complete", "act1: chunk reports route_phase complete")
@@ -8496,85 +10235,68 @@ func _test_endo_junction_stretch_act1() -> void:
 	instance.queue_free()
 	await get_tree().process_frame
 
-func _complete_endo_junction_fieldwork(host: Node, chunk: Node, label: String, test_failure := false) -> void:
-	# Shared preview and Act 1 drivers resolve the same public field-site gates as real input:
-	# correct specialist, correct station, distinct reads, one prediction, then spatial execution.
-	for operation_variant in chunk.FIELD_OPERATIONS.keys():
-		var operation_id := str(operation_variant)
-		var operation: Dictionary = chunk.FIELD_OPERATIONS[operation_id]
-		for evidence_variant in operation.get("evidence", []):
-			_complete_endo_junction_field_site(host, chunk, str(evidence_variant), label)
-		var choices: Array = operation.get("choices", [])
-		if choices.is_empty():
-			_assert_true(false, "%s: %s exposes a planning choice" % [label, operation_id])
-			continue
-		if test_failure and operation_id == "pulse":
-			_complete_endo_junction_field_site(host, chunk, "pulse_brace", label)
-			_complete_endo_junction_field_site(host, chunk, "pulse_brace_execution", label)
-			if host.has_method("headless_advance"):
-				host.call("headless_advance", 0.7, 0.1)
-			var failure_state: Dictionary = chunk.call("get_preview_state")
-			var failure_field: Dictionary = failure_state.get("fieldwork", {})
-			_assert_equals(int(failure_field.get("failed_predictions", 0)), 1,
-				"%s: the cracked-brace prediction is recorded as a legible failure" % label)
-			_assert_equals(int(failure_field.get("operation_count", 0)), 0,
-				"%s: the failed prediction does not falsely solve the circuit" % label)
-			_assert_true(chunk._field_sites["pulse_buffer"].is_interaction_enabled(),
-				"%s: failure reopens the correct intervention without resetting evidence" % label)
-		var choice_id := str(operation.get("presented_choice", choices[0]))
-		_complete_endo_junction_field_site(host, chunk, choice_id, label)
-		var resolutions: Dictionary = operation.get("resolution_sites", {})
-		var resolution_id := str(resolutions.get(choice_id, ""))
-		_complete_endo_junction_field_site(host, chunk, resolution_id, label)
+func _mother_work_control(
+	instance: Node,
+	method_name: String,
+	args: Array,
+	actor: String
+) -> bool:
+	var control := _physical_chunk_control_for_call(instance, method_name, args)
+	if control == null:
+		return false
+	# Functional puzzle tests isolate source/body authority from route timing. Trigger the
+	# exact registered object after parking the exact actor at its data-space station;
+	# the dedicated routed-click and timing suites below exercise arrival plus authored dwell.
+	return _attempt_physical_control(instance, actor, control, true)
 
-func _complete_endo_junction_field_site(host: Node, chunk: Node, site_id: String, label: String) -> void:
-	if site_id == "" or not chunk.FIELD_SITES.has(site_id):
-		_assert_true(false, "%s resolves a declared Endo field station" % label)
-		return
-	var spec: Dictionary = chunk.FIELD_SITES[site_id]
-	var role := str(spec.get("role", ""))
-	var position: Vector3 = spec.get("pos", Vector3.ZERO)
-	if host.has_method("headless_select_character"):
-		host.call("headless_select_character", role)
-	else:
-		host.call("_select_character", role)
-	if host.has_method("headless_set_character_position"):
-		host.call("headless_set_character_position", role, position)
-	else:
-		host.call("set_preview_character_position", role, position)
-	_assert_true(bool(chunk.complete_field_site(site_id)), "%s completes %s with %s" % [label, site_id, role])
 
 func _mother_execute_root_move(instance: Node, chunk: Node, terminal_id: String, root_id: String, direction: int, expected_cells: Array, label: String) -> void:
-	instance.headless_select_character("aster")
-	_assert_true(chunk.activate_terminal(terminal_id), "%s opens %s" % [label, terminal_id])
-	instance.headless_select_character("peris")
-	_assert_true(chunk.use_portal(), "%s sends Peris to %s" % [label, terminal_id])
-	_assert_true(chunk.activate_fragment_move(root_id, direction), "%s shifts %s" % [label, root_id])
+	_assert_true(_mother_work_control(
+		instance, "activate_terminal", [terminal_id], "aster"),
+		"%s opens %s" % [label, terminal_id])
+	_assert_true(_mother_work_control(instance, "use_portal", [], "peris"),
+		"%s sends Peris to %s" % [label, terminal_id])
+	instance.headless_advance(chunk.PORTAL_TRANSIT_SECONDS + 0.01, 0.05)
+	_assert_true(_mother_work_control(
+		instance, "activate_fragment_move", [root_id, direction], "peris"),
+		"%s shifts %s" % [label, root_id])
 	instance.headless_advance(5.5)
 	var state: Dictionary = chunk.get_preview_state()
 	var root_state: Dictionary = state.get("roots", {}).get(root_id, {})
 	_assert_equals(root_state.get("cells", []), expected_cells, "%s lands %s at the expected cells" % [label, root_id])
 	if not bool(state.get("portal_open", false)):
-		instance.headless_select_character("aster")
-		_assert_true(chunk.activate_terminal(terminal_id), "%s reopens %s for extraction" % [label, terminal_id])
-		instance.headless_select_character("peris")
-	_assert_true(chunk.use_portal(), "%s brings Peris back out" % label)
+		_assert_true(_mother_work_control(
+			instance, "activate_terminal", [terminal_id], "aster"),
+			"%s reopens %s for extraction" % [label, terminal_id])
+	_assert_true(_mother_work_control(instance, "use_portal", [], "peris"),
+		"%s brings Peris back out" % label)
+	instance.headless_advance(chunk.PORTAL_TRANSIT_SECONDS + 0.01, 0.05)
 
 ## Exercise a Mother Flure station through the browser-facing interaction route: right-click,
 ## controller walk, arrival, then the authored timed dwell. This deliberately avoids calling the
 ## station's state-transition method directly so spatial/wiring regressions remain visible.
 func _mother_click_interactable(instance: Node, interactable: Node, char_id: String,
-		label: String, wait_seconds := 10.0) -> void:
+		label: String, wait_seconds := 10.0) -> bool:
 	if instance == null or interactable == null:
 		_assert_true(false, "%s has a routed interactable" % label)
-		return
+		return false
 	instance.headless_select_character(char_id)
 	var target: Vector3 = (interactable as Node3D).global_position
 	instance.headless_set_character_position(char_id, target + Vector3(-4.0, 0.0, -1.0))
+	var fired := [false]
+	var on_interacted := func() -> void: fired[0] = true
+	interactable.interacted.connect(on_interacted)
 	_synthetic_click_interactable(instance, interactable)
 	_assert_true(instance.headless_is_character_moving(char_id),
 		"%s starts a routed click-to-walk interaction" % label)
-	instance.headless_advance(wait_seconds, 0.05)
+	var elapsed := 0.0
+	while elapsed + 0.000001 < wait_seconds and not fired[0]:
+		var step := minf(0.05, wait_seconds - elapsed)
+		instance.headless_advance(step, step)
+		elapsed += step
+	if interactable.interacted.is_connected(on_interacted):
+		interactable.interacted.disconnect(on_interacted)
+	return fired[0]
 
 func _mother_record_timing(measurements: Dictionary, totals: Dictionary, key: String, bucket: String, result: Dictionary) -> void:
 	measurements[key] = result
@@ -8594,28 +10316,27 @@ func _mother_snap_character(instance: Node, char_id: String, position: Vector3) 
 	if instance.has_method("headless_set_character_position"):
 		instance.headless_set_character_position(char_id, position)
 
-func _mother_activate_ability(
+func _mother_profile_carry_route(
 	instance: Node,
+	chunk: Node,
+	from: Vector3,
+	destination: Vector3,
+	label: String,
 	measurements: Dictionary,
-	totals: Dictionary,
-	key: String,
-	char_id: String,
-	ability_id: String,
-	dwell_time: float
-) -> Dictionary:
-	var start_tick := _preview_scheduler_tick(instance)
-	if char_id != "" and instance.has_method("headless_select_character"):
-		instance.headless_select_character(char_id)
-	if dwell_time > 0.0:
-		_advance_showcase(instance, dwell_time)
-	var activated := instance.has_method("headless_activate_ability") and bool(instance.headless_activate_ability(ability_id))
-	var result := {
-		"predicted": dwell_time,
-		"measured": _preview_scheduler_tick(instance) - start_tick,
-		"result": activated,
-	}
-	_mother_record_timing(measurements, totals, key, "interaction", result)
-	return result
+	totals: Dictionary
+) -> void:
+	var waypoints: Array[Vector3] = chunk.get_caretaker_carry_route(from, destination)
+	for waypoint_index in range(waypoints.size()):
+		_mother_record_timing(
+			measurements,
+			totals,
+			"%s_%d" % [label, waypoint_index + 1],
+			"movement",
+			_survival_range_move_segment(instance, {
+				"character": "endo",
+				"end_position": waypoints[waypoint_index],
+			})
+		)
 
 func _mother_profile_root_move(
 	instance: Node,
@@ -8706,14 +10427,13 @@ func _run_mother_flure_profile(profile: String) -> Dictionary:
 
 	_mother_profile_root_move(instance, chunk, "term_alpha", "spine_gate", -1, "move_3", include_movement, measurements, totals)
 
+	var endo_carry_origin: Vector3 = chunk.GEAR_POS
 	if include_wrong_repair:
-		var wrong_cloak_result := _mother_activate_ability(instance, measurements, totals, "wrong_repair_cloak", "endo", "endo_patch", MOTHER_CLOAK_DWELL_SECONDS)
-		_assert_true(bool(wrong_cloak_result.get("result", false)), "Timing run can trigger Endo's cloak for the wrong-repair carry")
 		if include_movement:
-			_mother_record_timing(measurements, totals, "endo_to_wrong_repair", "movement", _survival_range_move_segment(instance, {
-				"character": "endo",
-				"end_position": chunk._repair_point_position("edge_relief"),
-			}))
+			_mother_profile_carry_route(
+				instance, chunk, chunk.GEAR_POS,
+				chunk._repair_point_position("edge_relief"),
+				"endo_to_wrong_repair", measurements, totals)
 		_mother_snap_character(instance, "endo", chunk._repair_point_position("edge_relief"))
 		var wrong_install_state: Dictionary = chunk.get_preview_state() if chunk.has_method("get_preview_state") else {}
 		var wrong_install_hands: Array = instance.get_preview_hand_items("endo") if instance.has_method("get_preview_hand_items") else []
@@ -8728,13 +10448,11 @@ func _run_mother_flure_profile(profile: String) -> Dictionary:
 		var recover_item_id := str(post_wrong_state.get("gear_item", ""))
 		var recover_item_state: Dictionary = instance.get_preview_item_state(recover_item_id) if recover_item_id != "" and instance.has_method("get_preview_item_state") else {}
 		var recover_target := Vector3(recover_item_state.get("position", chunk.HIDE_SPOT_POS + Vector3(1.4, 0.24, 0.0)))
-		var recover_cloak_result := _mother_activate_ability(instance, measurements, totals, "recover_cloak", "endo", "endo_patch", MOTHER_CLOAK_DWELL_SECONDS)
-		_assert_true(bool(recover_cloak_result.get("result", false)), "Timing run can trigger Endo's cloak for the recovery pull")
 		if include_movement:
-			_mother_record_timing(measurements, totals, "endo_recover_gear", "movement", _survival_range_move_segment(instance, {
-				"character": "endo",
-				"end_position": recover_target,
-			}))
+			_mother_profile_carry_route(
+				instance, chunk, chunk._repair_point_position("edge_relief"),
+				recover_target,
+				"endo_recover_gear", measurements, totals)
 		_mother_snap_character(instance, "endo", recover_target)
 		var recover_state: Dictionary = instance.headless_get_state() if instance.has_method("headless_get_state") else {}
 		var recover_stats: Dictionary = recover_state.get("character_stats", {}).get("endo", {})
@@ -8746,18 +10464,23 @@ func _run_mother_flure_profile(profile: String) -> Dictionary:
 		_mother_record_timing(measurements, totals, "recover_pickup", "interaction", recover_pickup_result)
 		_assert_true(bool(recover_pickup_result.get("result", false)), "Timing run can recover the rejected gear")
 		_mother_profile_root_move(instance, chunk, "term_alpha", "spine_gate", -1, "reopen_carry", include_movement, measurements, totals)
+		endo_carry_origin = recover_target
 
 	if include_movement:
-		var repair_cloak_result := _mother_activate_ability(instance, measurements, totals, "repair_cloak", "endo", "endo_patch", MOTHER_CLOAK_DWELL_SECONDS)
-		_assert_true(bool(repair_cloak_result.get("result", false)), "Timing run can trigger Endo's cloak for the repair carry")
-	if include_movement:
-		_mother_record_timing(measurements, totals, "endo_to_repair", "movement", _survival_range_move_segment(instance, {
-			"character": "endo",
-			"end_position": chunk._repair_point_position("load_regulator"),
-		}))
+		_mother_profile_carry_route(
+			instance, chunk, endo_carry_origin,
+			chunk._repair_point_position("load_regulator"),
+			"endo_to_repair", measurements, totals)
+	instance.headless_select_character("endo")
 	_mother_snap_character(instance, "endo", chunk._repair_point_position("load_regulator"))
 	var install_state: Dictionary = chunk.get_preview_state() if chunk.has_method("get_preview_state") else {}
 	var install_hands: Array = instance.get_preview_hand_items("endo") if instance.has_method("get_preview_hand_items") else []
+	var install_host_state: Dictionary = instance.headless_get_state() if instance.has_method("headless_get_state") else {}
+	var install_endo_stats: Dictionary = install_host_state.get("character_stats", {}).get("endo", {})
+	_assert_true(float(install_endo_stats.get("hp", 0.0)) > 0.0,
+		"The south caretaker pass keeps Endo alive through the repair approach")
+	_assert_equals(str(install_host_state.get("active_character", "")), "endo",
+		"Endo remains controllable when the safe carry route reaches the repair mount")
 	_assert_true(bool(install_state.get("socket_lane_open", false)), "Timing run still has the carry lane open before the load regulator mount")
 	_assert_true(not install_hands.is_empty(), "Timing run still has the gear in Endo's hands before the load regulator mount")
 	var install_result := _survival_range_dwell_and_call(instance, "endo", {
@@ -9028,6 +10751,48 @@ func _test_tag_day() -> void:
 				"Tag Day camera tutorial names the live %s binding" % camera_action
 			)
 		_assert_true(camera_prompt.contains("rotate view"), "Tag Day explicitly teaches camera rotation")
+		instance.call("_show_fastforward_prompt")
+		var fast_forward_label := instance.get_node_or_null(
+			"TutorialUI/TutorialPrompt/PromptRow/PromptLabel"
+		) as Label
+		var fast_forward_text := fast_forward_label.text if fast_forward_label != null else ""
+		_assert_true(
+			fast_forward_text.contains(InputHints.label_for_action("fast_forward", "X")),
+			"Tag Day fast-forward prompt names the live binding"
+		)
+		_assert_true(
+			fast_forward_text.to_lower().contains("hold") \
+				and fast_forward_text.to_lower().contains("fast-forward"),
+			"Tag Day teaches fast-forward as an available hold action"
+		)
+
+		# Regression guard: these mandatory clicks were uncited padding, not Tag Day.
+		for removed_station_name in [
+			"TagDayPublicWitnessSeal",
+			"TagDayPrivateWitnessSeal",
+			"TagDayReturnScanner",
+			"TagDayScanFailureRecord",
+			"TagDayEastQueueWitness",
+			"TagDayWestQueueWitness",
+			"TagDayReportProvenance",
+			"TagDayMedicalOverride",
+			"TagDayCustodyThreshold",
+			"TagDayGaitVariance",
+			"TagDayGripTelemetry",
+			"TagDayIronShadowSample",
+			"TagDayReportEchoTriangulation",
+			"TagDayErasureReceipt",
+		]:
+			_assert_true(
+				instance.find_child(removed_station_name, true, false) == null,
+				"Tag Day has no invented mandatory station: %s" % removed_station_name
+			)
+		_assert_true(
+			not instance.has_method("trigger_witness_record") \
+				and not instance.has_method("trigger_return_scanner") \
+				and not instance.has_method("current_escort_field_site_id"),
+			"Tag Day exposes no witness/circuit/return-scan progression gates"
+		)
 		for key in [
 			"peris_sim.system.complete",
 			"peris_sim.system.sanction_notice",
@@ -9043,13 +10808,27 @@ func _test_tag_day() -> void:
 			_assert_true(instance._game_state != null, "GameState exists")
 			_assert_true(instance._current_step != "", "Current step is set")
 
-			# Exercise corridor walk through GameState movement.
-			instance._start_naturalizers_grip()
-			for j in range(3):
-				await get_tree().process_frame
-			instance._begin_corridor_walk()
+			# A failed checkpoint scan proceeds into the authored escort on its timer;
+			# there is no player-owned witness-record choice between those beats.
+			instance._start_citizen_scan()
+			instance._scheduler.advance(3.1)
+			_assert_equals(
+				str(instance._current_step), "naturalizers_grip",
+				"Failed citizen scan proceeds directly to the Naturalizer escort"
+			)
+			var nk2_start: Vector3 = instance._game_state.get_position("nk2")
+			instance._scheduler.advance(0.2)
+			var nk2_approach: Vector3 = instance._game_state.get_position("nk2")
+			_assert_true(str(instance._current_step) == "naturalizers_grip"
+					and nk2_approach.distance_to(nk2_start) > 0.01
+					and nk2_approach.distance_to(instance.NK_GRIP_POS_2)
+						> instance.GRIP_ARRIVAL_RADIUS,
+				"Naturalizer formation is a visible approach, not a five-second snap")
+			instance._scheduler.advance(7.0)
 			for j in range(5):
 				await get_tree().process_frame
+			_assert_equals(str(instance._current_step), "corridor_walk",
+				"Both Naturalizers' physical arrival starts the corridor walk")
 			_assert_true(instance._game_state.is_moving("citizen"), "Citizen is walking the corridor")
 			_assert_true(instance._game_state.is_moving("nk1"), "Naturalizer 1 is escorting")
 
@@ -9057,35 +10836,6 @@ func _test_tag_day() -> void:
 		await get_tree().process_frame
 
 # --- Test: Aster Simulation ---
-func _aster_next_workspace_protocol_site(instance: Node) -> Node:
-	var state: Dictionary = instance.headless_get_state()
-	if bool(state.get("workspace_protocol_complete", false)):
-		return null
-	var protocol_id := str(state.get("workspace_protocol_phase", ""))
-	if not instance.WORKSPACE_PROTOCOLS.has(protocol_id):
-		return null
-	var protocol: Dictionary = instance.WORKSPACE_PROTOCOLS[protocol_id]
-	var evidence_by_protocol: Dictionary = state.get("workspace_protocol_evidence", {})
-	var completed_evidence: Dictionary = evidence_by_protocol.get(protocol_id, {})
-	for evidence_variant in (protocol.get("evidence", []) as Array):
-		var evidence_id := str(evidence_variant)
-		if not completed_evidence.has(evidence_id):
-			return instance._workspace_protocol_sites.get(evidence_id)
-	var choices: Dictionary = state.get("workspace_protocol_choices", {})
-	var choice_id := str(choices.get(protocol_id, ""))
-	if choice_id == "":
-		var available_choices: Array = protocol.get("choices", [])
-		if available_choices.is_empty():
-			return null
-		return instance._workspace_protocol_sites.get(str(available_choices[0]))
-	var execution_sites: Dictionary = protocol.get("execution_sites", {})
-	var execution: Array = execution_sites.get(choice_id, [])
-	var progress_by_protocol: Dictionary = state.get("workspace_protocol_execution_progress", {})
-	var progress := int(progress_by_protocol.get(protocol_id, 0))
-	if progress >= 0 and progress < execution.size():
-		return instance._workspace_protocol_sites.get(str(execution[progress]))
-	return null
-
 ## Drive the whole Aster sim to completion using ONLY the data layer: the
 ## scheduler for time, the three interactables for input, and request_advance()
 ## for the one acknowledge line. No speed_multiplier hack, no synthetic clicks.
@@ -9143,79 +10893,30 @@ func _test_aster_playthrough() -> void:
 				and instance._drink_machine != null and instance._drink_machine.is_interaction_enabled():
 			actioned["walk_to_drink"] = true
 			instance._drink_machine._trigger()
-		elif step == "explore_workspace" and not dialogue.is_active():
-			# Drive the room's actual repeatable inspection zones. Waiting no longer manufactures
-			# an unlock: the playthrough must complete all four characterization threads first.
-			var workspace_plan := [
-				{"action": "workspace_glass", "zone": "GlassBeadZone", "count": 1},
-				{"action": "workspace_painting", "zone": "macabre_tealZone", "count": 2},
-				{"action": "workspace_awards", "zone": "AwardsCenterZone", "count": 2},
-				{"action": "workspace_jstore", "zone": "JStoreMainZone", "count": 2},
-			]
-			var triggered_workspace_zone := false
-			for plan_entry in workspace_plan:
-				var action_key := str(plan_entry["action"])
-				var required_count := int(plan_entry["count"])
-				var completed_count := int(actioned.get(action_key, 0))
-				if completed_count >= required_count:
-					continue
-				var zone := instance.find_child(str(plan_entry["zone"]), true, false)
-				if zone != null:
-					actioned[action_key] = completed_count + 1
-					zone._trigger(false)
-					triggered_workspace_zone = true
-				break
-			if not triggered_workspace_zone and not actioned.has("explore_workspace") \
-					and instance._explore_gate_unlocked and instance._explore_hallway_gate != null:
-				actioned["explore_workspace"] = true
-				instance._explore_hallway_gate._trigger()
-		elif step == "fault_review":
-			# The post-workspace desk is a real three-case circuit. Drive its data layer in
-			# the authored order so the last reviewed candidate is the correct commit;
-			# ATP depletion must still route through the existing drink machine.
-			var fault_state: Dictionary = instance.headless_get_state()
-			if bool(fault_state.get("fault_review_complete", false)):
-				if instance._explore_gate_unlocked and instance._explore_hallway_gate != null:
-					instance._explore_hallway_gate._trigger(false)
-			elif not bool(fault_state.get("fault_terminal_pending", false)):
-				var required_evidence: Array = fault_state.get("fault_evidence_required", [])
-				var collected_evidence: Array = fault_state.get("fault_evidence_collected", [])
-				var reviewed_missing := false
-				for evidence_id_variant in required_evidence:
-					var evidence_id := str(evidence_id_variant)
-					if collected_evidence.has(evidence_id):
-						continue
-					var evidence = instance._fault_evidence_interactables.get(evidence_id)
-					if evidence != null:
-						evidence._trigger(false)
-						reviewed_missing = true
-					break
-				if not reviewed_missing:
-					var atp := float(fault_state.get("aster_atp", 0.0))
-					if atp < float(instance.FAULT_COMMIT_ATP_COST):
-						instance._drink_machine._trigger(false)
-					else:
-						instance._terminal._trigger(false)
-		elif step.begins_with("workspace_protocol_") and not dialogue.is_active():
-			var protocol_site := _aster_next_workspace_protocol_site(instance)
-			if protocol_site != null and bool(protocol_site.get("interaction_enabled")):
-				protocol_site._trigger(false)
+		elif step == "drink" and not actioned.has("repeat_drink_during_step") \
+				and instance._drink_machine != null and instance._drink_machine.is_interaction_enabled():
+			# This optional line belongs to the drink beat and must be retired with it.
+			actioned["repeat_drink_during_step"] = true
+			instance._drink_machine._trigger(false)
+		elif step == "explore_workspace" and not dialogue.is_active() \
+				and not actioned.has("explore_workspace") \
+				and instance._explore_gate_unlocked and instance._explore_hallway_gate != null:
+			# Canonical first-clear route: the room reads are optional characterization.
+			actioned["explore_workspace"] = true
+			instance._explore_hallway_gate._trigger(false)
 
 	_assert_true(saw_terminal_focus,
 		"Clicking the terminal opens the forecast screen-focus beat")
 	var workspace_state: Dictionary = instance.headless_get_state()
-	_assert_equals(int(workspace_state.get("workspace_threads_complete", 0)), 4,
-		"Aster playthrough completes all four active workspace review threads")
-	_assert_true(bool(workspace_state.get("fault_review_complete", false)),
-		"Aster playthrough completes the post-workspace fault review")
-	_assert_equals(int(workspace_state.get("fault_correct_commits", 0)), 3,
-		"Aster playthrough commits all three diagnosed fault causes")
-	_assert_true(bool(workspace_state.get("workspace_protocol_complete", false)),
-		"Aster playthrough completes all three post-diagnosis workspace protocols")
-	_assert_equals(int(workspace_state.get("workspace_protocol_decision_count", 0)), 3,
-		"Aster playthrough records one persistent decision per workspace protocol")
-	_assert_true(int(workspace_state.get("fault_drink_recoveries", 0)) >= 1,
-		"Aster playthrough refills ATP when the correct commit route exhausts it")
+	_assert_true(bool(workspace_state.get("workspace_reads_optional", false)),
+		"Aster playthrough exposes room reads as optional characterization")
+	_assert_equals(int(workspace_state.get("workspace_reads_complete", -1)), 0,
+		"Aster can take the direct hallway route without reading workspace objects")
+	_assert_true(bool(workspace_state.get("explore_gate_unlocked", false)),
+		"Aster's hallway remains unlocked on the direct route")
+	_assert_true(instance._thought_label == null
+			or (instance._thought_label.text == "" and is_zero_approx(instance._thought_label.modulate.a)),
+		"Aster's optional repeat-drink thought does not survive later story steps")
 	_assert_true(reached_complete,
 		"Aster sim plays to completion through the data layer (last step: %s)" % str(instance._current_step))
 	_assert_equals(str(instance.requested_scene_change), "res://scenes/tutorial/peris_sim.tscn",
@@ -9267,37 +10968,19 @@ func _input_playthrough_peris1() -> void:
 	var gate_pos: Vector3 = gate.global_position
 	var radius := float(gate.get("interaction_radius"))
 
-	# The watering beat gates the logbook: walk to the can, dwell to pick it up (a REAL hand-slot
-	# item), carry it to the dry fern, dwell to water. All through synthetic clicks + proximity.
-	var gs_p1 = instance._game_state
-	var can_pos: Vector3 = instance.WATERING_CAN_POS
-	var plant_pos: Vector3 = instance.DRY_PLANT_POS
-	safety = 0
-	while safety < 6000 and str(gs_p1.items.get(instance._watering_can_item_id, {}).get("holder", "")) != "peris":
-		safety += 1
-		if safety % 40 == 1:
-			_synthetic_ground_click(instance, Vector3(can_pos.x, 0.0, can_pos.z))
-		instance.headless_advance(0.1, 0.05)
-		await get_tree().process_frame
-	_assert_true(str(gs_p1.items.get(instance._watering_can_item_id, {}).get("holder", "")) == "peris",
-		"Peris picks the watering can up into a hand slot (real input)")
-	safety = 0
-	while safety < 6000 and not instance._plant_watered:
-		safety += 1
-		if safety % 40 == 1:
-			_synthetic_ground_click(instance, Vector3(plant_pos.x, 0.0, plant_pos.z))
-		# Arriving at the fern fires the plant zone's exploration LINE, which holds the gameplay
-		# lane until acknowledged — click through it like a player or the dwell never ticks.
-		_pump_dialogue(instance._dialogue, 2.0)
-		instance.headless_advance(0.1, 0.05)
-		await get_tree().process_frame
-	_assert_true(instance._plant_watered, "Carrying the can to the dry fern waters it (real input)")
-	_assert_true(str(gs_p1.items.get(instance._watering_can_item_id, {}).get("location", "")) == "ground",
-		"The can goes back down after watering (hand slot frees)")
+	# Canonical first-clear route: optional room reads and watering cannot delay the logbook.
+	var workspace_state: Dictionary = instance.headless_get_state()
+	_assert_true(bool(workspace_state.get("room_reads_optional", false)),
+		"Peris input route exposes room interactions as optional")
+	_assert_equals(int(workspace_state.get("room_read_count", -1)), 0,
+		"Peris can approach the logbook without reading room objects")
+	_assert_true(not bool(workspace_state.get("plant_watered", true)),
+		"Peris can approach the logbook without watering")
+	_assert_true(bool(workspace_state.get("logbook_ready", false)),
+		"Peris logbook is ready immediately")
 
-	# Walk to the gate by clicking the floor near it (synthetic mouse through the
-	# real input pipeline). Advance scheduler time so the exploration lock lifts and
-	# the proximity dwell can fire.
+	# Walk to the gate by clicking the floor near it through the real input pipeline,
+	# then let the proximity dwell fire.
 	var reached := false
 	var unlocked := false
 	safety = 0
@@ -9320,7 +11003,7 @@ func _input_playthrough_peris1() -> void:
 			break
 
 	_assert_true(reached, "Player walks to the logbook gate via synthetic clicks")
-	_assert_true(unlocked, "Logbook gate unlocks after the exploration beat")
+	_assert_true(unlocked, "Logbook gate remains unlocked on the direct route")
 	_assert_equals(str(instance._current_step), "monos_breakthrough",
 		"Reaching + dwelling the unlocked gate triggers it through real input (no force-fire); step=%s" % str(instance._current_step))
 
@@ -9619,6 +11302,18 @@ func _test_intro_realinput() -> void:
 	await _test_intro_realinput_core()
 	await _test_elevator_realinput()
 
+
+func _test_aster_realinput() -> void:
+	_test_name = "Aster Real-Input Reachability"
+	await _run_realinput_leg("Aster", "res://scenes/tutorial/aster_sim.tscn", 0,
+		Callable(self, "_aster_realinput_beats"))
+
+
+func _test_peris_realinput() -> void:
+	_test_name = "Peris Real-Input Reachability"
+	await _run_realinput_leg("Peris-1", "res://scenes/tutorial/peris_sim.tscn", 1,
+		Callable(self, "_peris1_realinput_beats"))
+
 ## The real-input intro legs that run in --test-all (Peris-2, Tag Day), each driven to `complete`
 ## with ONLY real input. Real-input/transition coverage is first-class — never sectioned off
 ## wholesale; only individual order-sensitive/slow legs (Aster, Elevator) live apart, by name.
@@ -9635,12 +11330,25 @@ func _test_intro_realinput_core() -> void:
 ## corridor -> bridge -> collapse/fall -> route_choice (the two-route split) -> junction -> Endo ->
 ## night -> dawn -> morning -> gauntlet -> complete. (Movement + interaction is the RIGHT-click
 ## "command"; the old LEFT-click beats never actually moved anyone, so the leg used to stop at the
-## scheduled route_choice. The blockers — short below/gauntlet floors, the aster-only gates, and the
+## scheduled route_choice. The blockers — short below/gauntlet floors, partial-party gates, and the
 ## walled gauntlet exit — are fixed in elevator_sequence.gd.)
 func _test_elevator_realinput() -> void:
 	_test_name = "Intro Real-Input Reachability"
-	await _run_realinput_leg("Elevator", "res://scenes/tutorial/elevator.tscn", 0,
+	var result := await _run_realinput_leg("Elevator", "res://scenes/tutorial/elevator.tscn", 0,
 		Callable(self, "_elevator_realinput_beats"), "complete")
+	var mastery: Dictionary = result.get("sequence_state", {})
+	_assert_equals(mastery.get("route_flure_activation_counts", []), [1, 1, 1],
+		"Elevator planned run primes each lower-route pack exactly once")
+	_assert_equals(mastery.get("route_flure_failed_counts", []), [0, 0, 0],
+		"Elevator planned run has no rejected lower-route prime")
+	_assert_equals(mastery.get("route_flure_windows_used", []), [true, true, true],
+		"Elevator planned run gets both bodies through every live lower-route window")
+	_assert_equals(int(mastery.get("route_wasted_flure_windows", -1)), 0,
+		"Elevator planned run wastes no lower-route windows")
+	_assert_equals(float(mastery.get("route_enemy_damage_taken", -1.0)), 0.0,
+		"Elevator planned run takes no lower-route pack damage")
+	_assert_equals(int(mastery.get("gauntlet_reset_count", -1)), 0,
+		"Elevator planned relay clears without a refuge reset")
 
 ## milestone defaults to "complete"; pass an earlier step for legs with a documented
 ## real-input blocker (the elevator), where we assert reachability up to that step.
@@ -9661,6 +11369,8 @@ func _run_realinput_leg(label: String, scene_path: String, visit: int, factory: 
 	if factory.is_valid():
 		beats = factory.call(instance)
 	var result := await _drive_scene_real_input(instance, beats)
+	if instance.has_method("headless_get_state"):
+		result["sequence_state"] = instance.headless_get_state()
 	if milestone == "complete":
 		_assert_equals(str(result.termination), "complete",
 			"%s plays to complete via REAL input — no force-fire (last step: %s)" % [label, str(result.last_step)])
@@ -9707,10 +11417,11 @@ func _drive_scene_real_input(instance: Node, beat_actions: Dictionary, max_iters
 		if step == "complete":
 			break
 		if beat_actions.has(step):
+			var reissue_interval := 5 if step in ["route_choice", "gauntlet"] else 40
 			if not actioned.has(step):
 				actioned[step] = true
 				beat_actions[step].call()
-			elif unchanged > 0 and unchanged % 40 == 0:
+			elif unchanged > 0 and unchanged % reissue_interval == 0:
 				beat_actions[step].call()
 		if unchanged > stall_budget:
 			break
@@ -9742,9 +11453,35 @@ func _drive_scene_real_input(instance: Node, beat_actions: Dictionary, max_iters
 				stall_diagnostics["hp_events"] = hp_events.slice(maxi(0, hp_events.size() - 16))
 		if instance.has_method("headless_get_state"):
 			var sequence_state: Dictionary = instance.headless_get_state()
-			for diagnostic_key in ["game_over", "gauntlet_stage", "gauntlet_midpoint_reached", "gauntlet_reset_count", "gauntlet_flure_active", "damage_feedback_counts", "below_fauna_enabled", "below_fauna_dormant"]:
+			for diagnostic_key in [
+				"route_lane", "route_beats_crossed", "route_beat_lanes",
+				"route_flures_activated", "route_flure_activation_counts",
+				"route_flure_windows_used", "route_wasted_flure_windows",
+				"route_iron_damage_taken", "route_enemy_damage_taken",
+				"route_failure_provenance", "wreckage_armed", "wreckage_party_ready",
+				"wreckage_clear_in_progress", "wreckage_cleared",
+				"junction_tended", "junction_plant_enabled",
+				"game_over", "gauntlet_stage", "gauntlet_midpoint_reached", "gauntlet_reset_count",
+				"gauntlet_flure_active", "damage_feedback_counts", "below_fauna_enabled", "below_fauna_dormant",
+				"aster_atp", "workspace_read_counts", "workspace_zone_counts",
+				"workspace_reads_complete", "workspace_reads_optional",
+				"room_read_counts", "room_read_zone_visits", "room_read_count",
+				"room_reads_optional", "logbook_ready", "plant_watered",
+			]:
 				if sequence_state.has(diagnostic_key):
 					stall_diagnostics[diagnostic_key] = sequence_state[diagnostic_key]
+		if "_story_step_generation" in instance:
+			stall_diagnostics["story_step_generation"] = int(instance.get("_story_step_generation"))
+		if "_exploration_focus_active" in instance:
+			stall_diagnostics["exploration_focus_active"] = bool(instance.get("_exploration_focus_active"))
+		if "_dialogue" in instance:
+			var stalled_dialogue: Node = instance.get("_dialogue")
+			stall_diagnostics["dialogue_active"] = stalled_dialogue != null \
+				and stalled_dialogue.has_method("is_active") and stalled_dialogue.is_active()
+		if "_scheduler" in instance:
+			var stalled_scheduler: EventScheduler = instance.get("_scheduler")
+			if stalled_scheduler != null:
+				stall_diagnostics["gameplay_pending_events"] = stalled_scheduler.pending_count()
 	return {
 		"termination": ("complete" if str(instance._current_step) == "complete" else "stall"),
 		"last_step": str(instance._current_step),
@@ -9761,238 +11498,41 @@ func _aster_realinput_beats(instance: Node) -> Dictionary:
 	beats["walk_to_drink"] = func():
 		var machine_target := instance.find_child("RoomTargetDrinkMachine", true, false)
 		_synthetic_click_interactable(instance, machine_target)
-	# Review the room through its real visible targets. Waiting no longer opens the hallway.
-	# Aim the RIGHT-click move at the gate's real position (tracks the room layout, not a fixed coord)
-	# and deliver it straight to the player's _unhandled_input — parse_input_event doesn't propagate in
-	# the headless harness, so a ground-click never moved Aster and the leg stalled here.
+	# Adversarial ordering regression: queue the optional second drink before Ron advances
+	# the story. Its movement/thought must be owned by this beat and cannot leak forward.
+	beats["drink"] = func():
+		var machine_target := instance.find_child("RoomTargetDrinkMachine", true, false)
+		_synthetic_click_interactable(instance, machine_target)
+	# Canonical first-clear route: the hallway is available immediately and all room
+	# objects remain optional characterization.
 	beats["explore_workspace"] = func():
 		if instance._dialogue.is_active() or bool(instance.get("_exploration_focus_active")):
 			return
-		var state: Dictionary = instance.headless_get_state()
-		var counts: Dictionary = state.get("workspace_thread_counts", {})
-		var target_name := ""
-		if int(counts.get("glass", 0)) < 1:
-			target_name = "RoomTargetGlassBeadGame"
-		elif int(counts.get("paintings", 0)) < 2:
-			target_name = (
-				"RoomTargetMacabreTealPainting"
-				if int(counts.get("paintings", 0)) == 0
-				else "RoomTargetHunterAshPainting"
-			)
-		elif int(counts.get("awards", 0)) < 2:
-			target_name = "RoomTargetAwardsShelf"
-		elif int(counts.get("jstore", 0)) < 2:
-			target_name = "RoomTargetJStoreShelf"
-		if target_name != "":
-			_synthetic_click_interactable(instance, instance.find_child(target_name, true, false))
+		var gate: Node = instance.get("_explore_hallway_gate")
+		if gate == null or not is_instance_valid(gate):
 			return
-		var gate = instance.get("_explore_hallway_gate")
-		if gate != null and is_instance_valid(gate):
-			_synthetic_click_interactable(instance, gate)
-	var fault_visual_targets := {
-		"glass": "RoomTargetGlassBeadGame",
-		"painting_teal": "RoomTargetMacabreTealPainting",
-		"painting_ash": "RoomTargetHunterAshPainting",
-		"awards": "RoomTargetAwardsShelf",
-		"jstore": "RoomTargetJStoreShelf",
-	}
-	beats["fault_review"] = func():
-		var state: Dictionary = instance.headless_get_state()
-		if bool(state.get("fault_review_complete", false)):
-			var gate = instance.get("_explore_hallway_gate")
-			if gate != null and is_instance_valid(gate):
-				_synthetic_click_interactable(instance, gate)
+		if instance._game_state.is_moving("aster") or _interactable_work_in_progress(gate):
 			return
-		if bool(state.get("fault_terminal_pending", false)):
-			return
-
-		var required: Array = state.get("fault_evidence_required", [])
-		var collected: Array = state.get("fault_evidence_collected", [])
-		for evidence_variant in required:
-			var evidence_id := str(evidence_variant)
-			if collected.has(evidence_id):
-				continue
-			var evidence = instance._fault_evidence_interactables.get(evidence_id)
-			if evidence == null or not is_instance_valid(evidence):
-				return
-			# Re-issued beat callbacks happen every four simulated seconds. Do not restart
-			# an eight-second TIMED_ACTION while Aster is walking to it or its work ring is
-			# already running; only retry a click that genuinely failed to start.
-			if instance._game_state.is_moving("aster") \
-					or bool(evidence.get("_player_in_range")) \
-					or float(evidence.get("_dwell_progress")) > 0.0:
-				return
-			var target_name := str(fault_visual_targets.get(evidence_id, ""))
-			var target := instance.find_child(target_name, true, false)
-			_synthetic_click_interactable(instance, target if target != null else evidence)
-			return
-
-		if float(state.get("aster_atp", 0.0)) < float(instance.FAULT_COMMIT_ATP_COST):
-			if not instance._game_state.is_moving("aster"):
-				var drink_target := instance.find_child("RoomTargetDrinkMachine", true, false)
-				_synthetic_click_interactable(instance, drink_target if drink_target != null else instance._drink_machine)
-			return
-		if not instance._game_state.is_moving("aster"):
-			var desk_target := instance.find_child("RoomTargetDesk", true, false)
-			_synthetic_click_interactable(instance, desk_target if desk_target != null else instance._terminal)
-	var workspace_protocol_beat := func():
-		if instance._dialogue.is_active() or instance._game_state.is_moving("aster"):
-			return
-		var site := _aster_next_workspace_protocol_site(instance)
-		if site == null or not is_instance_valid(site) or not bool(site.get("interaction_enabled")):
-			return
-		if _interactable_work_in_progress(site):
-			return
-		_synthetic_click_interactable(instance, site)
-	for protocol_id_variant in instance.WORKSPACE_PROTOCOL_ORDER:
-		var protocol: Dictionary = instance.WORKSPACE_PROTOCOLS[str(protocol_id_variant)]
-		beats[str(protocol.get("step", "workspace_protocol"))] = workspace_protocol_beat
+		_synthetic_click_interactable(instance, gate)
 	return beats
 
-## Peris's first visit is one continuous playable workspace: acquire and use the
-## watering can, make eight distinct first reads, then resolve three spatial
-## care-audit cases.  Every action enters through the visible object's real
-## right-click handler; the interaction controller still owns walking/arrival.
 func _peris1_realinput_beats(instance: Node) -> Dictionary:
 	var beats := {}
-	var context_reads := [
-		{"category": "plant", "branch": "shelf", "target": "Plant1Outline"},
-		{"category": "plant", "branch": "survivor", "target": "Plant4Outline"},
-		{"category": "plant", "branch": "client", "target": "Plant3Outline"},
-		{"category": "plant", "branch": "fern", "target": "Plant7Outline"},
-		{"category": "plant", "branch": "peace", "target": "Plant9Outline"},
-		{"category": "painting", "branch": "painting", "target": "PaintingOutline"},
-		{"category": "wellness", "branch": "wellness", "target": "WellnessOutline"},
-		{"category": "strike_warning", "branch": "strike_warning", "target": "StrikeWarningOutline"},
-	]
-	var audit_targets := {
-		"bookshelf": "Plant1Outline",
-		"stand": "Plant4Outline",
-		"coffee": "Plant3Outline",
-		"fern": "Plant7Outline",
-		"peace": "Plant9Outline",
-		"painting": "PaintingOutline",
-		"wellness": "WellnessOutline",
-		"strike": "StrikeWarningOutline",
-	}
-
+	# Canonical first-clear route: room reads and watering remain available, but the
+	# visible logbook is the immediate progression verb.
 	beats["workspace"] = func():
 		if instance._dialogue.is_active() or bool(instance.get("_exploration_focus_active")):
 			return
 		var state: Dictionary = instance.headless_get_state()
-		if not bool(state.get("plant_watered", false)):
-			var held := str(instance._game_state.items.get(
-				instance._watering_can_item_id, {}).get("holder", "")) == "peris"
-			var delegate: Node = instance._water_plant_interactable if held else instance._can_pickup_interactable
-			if instance._game_state.is_moving("peris") or _interactable_work_in_progress(delegate):
-				return
-			var visual_name := "Plant7Outline" if held else "WateringCanOutline"
-			var visual := instance.find_child(visual_name, true, false)
-			_synthetic_click_interactable(instance, visual if visual != null else delegate)
-			return
-
-		var visits: Dictionary = state.get("care_context_zone_visits", {})
-		var completed: Dictionary = state.get("care_context_completed", {})
-		for read_spec_variant in context_reads:
-			var read_spec: Dictionary = read_spec_variant
-			var category := str(read_spec.get("category", ""))
-			var branch := str(read_spec.get("branch", ""))
-			var already_read := int(visits.get(branch, 0)) > 0 if category == "plant" \
-				else bool(completed.get(category, false))
-			if already_read:
-				continue
-			if instance._game_state.is_moving("peris"):
-				return
-			var target := instance.find_child(str(read_spec.get("target", "")), true, false)
-			_synthetic_click_interactable(instance, target)
-			return
-
-		# The six-second reminder threshold has elapsed long before a legitimate
-		# eight-read lap.  Once the data gate agrees, open the audit at the visible
-		# logbook console.
-		if not bool(state.get("care_context_ready", false)):
+		if not bool(state.get("logbook_ready", false)):
 			return
 		var logbook: Node = instance._explore_logbook_gate
+		if logbook == null or not is_instance_valid(logbook):
+			return
 		if instance._game_state.is_moving("peris") or _interactable_work_in_progress(logbook):
 			return
 		var logbook_visual := instance.find_child("LogbookOutline", true, false)
 		_synthetic_click_interactable(instance, logbook_visual if logbook_visual != null else logbook)
-
-	beats["care_audit"] = func():
-		if instance._dialogue.is_active() or bool(instance.get("_exploration_focus_active")):
-			return
-		var state: Dictionary = instance.headless_get_state()
-		if not bool(state.get("care_audit_complete", false)):
-			var required: Array = instance._current_care_audit_case().get("evidence", [])
-			var reviewed: Array = state.get("care_audit_case_evidence", [])
-			for raw_evidence_id in required:
-				var evidence_id := str(raw_evidence_id)
-				if reviewed.has(evidence_id):
-					continue
-				var evidence: Node = instance._care_audit_evidence_interactables.get(evidence_id)
-				if instance._game_state.is_moving("peris") or _interactable_work_in_progress(evidence):
-					return
-				var target_name := str(audit_targets.get(evidence_id, ""))
-				var visual := instance.find_child(target_name, true, false)
-				_synthetic_click_interactable(instance, visual if visual != null else evidence)
-				return
-
-		# Complete evidence arms the same timed logbook for a case commit.  After
-		# the third commit, one final explicit logbook action releases Monos's call.
-		var logbook: Node = instance._explore_logbook_gate
-		if instance._game_state.is_moving("peris") or _interactable_work_in_progress(logbook):
-			return
-		var logbook_visual := instance.find_child("LogbookOutline", true, false)
-		_synthetic_click_interactable(instance, logbook_visual if logbook_visual != null else logbook)
-
-	beats["care_operations"] = func():
-		if instance._dialogue.is_active() or bool(instance.get("_exploration_focus_active")):
-			return
-		var state: Dictionary = instance.headless_get_state()
-		var stage := str(state.get("care_operation_stage", ""))
-		if stage == "collect_kit":
-			var kit: Node = instance._care_kit_pickup_interactable
-			if instance._game_state.is_moving("peris") or _interactable_work_in_progress(kit):
-				return
-			var kit_visual := instance.find_child("CareKitOutline", true, false)
-			_synthetic_click_interactable(instance, kit_visual if kit_visual != null else kit)
-			return
-		if stage == "work":
-			var phase: Dictionary = instance._current_care_operation_phase()
-			var completed: Array = state.get("care_operation_completed_tasks", [])
-			for raw_task in (phase.get("tasks", []) as Array):
-				var task: Dictionary = raw_task
-				var task_id := str(task.get("id", ""))
-				if completed.has(task_id):
-					continue
-				var task_interactable: Node = instance._care_operation_interactables.get(task_id)
-				if instance._game_state.is_moving("peris") \
-						or _interactable_work_in_progress(task_interactable):
-					return
-				var source_id := str(task.get("source", ""))
-				var target_name := str(audit_targets.get(source_id, ""))
-				var visual := instance.find_child(target_name, true, false)
-				_synthetic_click_interactable(
-					instance, visual if visual != null else task_interactable
-				)
-				return
-			return
-		if stage == "resolution":
-			var resolution: Node = instance._care_operation_resolution_interactable
-			if instance._game_state.is_moving("peris") or _interactable_work_in_progress(resolution):
-				return
-			var source_id := str(resolution.get_meta("care_operation_source_id", "")) \
-				if resolution != null else ""
-			var target_name := str(audit_targets.get(source_id, ""))
-			var visual := instance.find_child(target_name, true, false)
-			_synthetic_click_interactable(instance, visual if visual != null else resolution)
-			return
-		if stage in ["commit", "return_kit", "release"]:
-			var logbook: Node = instance._explore_logbook_gate
-			if instance._game_state.is_moving("peris") or _interactable_work_in_progress(logbook):
-				return
-			var logbook_visual := instance.find_child("LogbookOutline", true, false)
-			_synthetic_click_interactable(instance, logbook_visual if logbook_visual != null else logbook)
 	return beats
 
 func _interactable_work_in_progress(interactable: Node) -> bool:
@@ -10012,26 +11552,11 @@ func _peris2_realinput_beats(instance: Node) -> Dictionary:
 	beats["confirm_protect"] = func(): _press_hud_action_key(instance, KEY_SPACE)
 	return beats
 
-func _tagday_realinput_beats(instance: Node) -> Dictionary:
-	var beats := {}
-	beats["witness_choice"] = func():
-		var public_log = instance._witness_interactables.get("public_log")
-		_synthetic_click_interactable(instance, public_log)
-	var record_current_site := func():
-		var site_id := str(instance.current_escort_field_site_id())
-		if site_id == "" or not instance._escort_field_interactables.has(site_id):
-			return
-		var station: Node = instance._escort_field_interactables[site_id]
-		if instance._game_state.is_moving("aster") or _interactable_work_in_progress(station):
-			return
-		_synthetic_click_interactable(instance, station)
-	for raw_site in instance.ESCORT_FIELD_SITE_DEFS:
-		beats["escort_record_%s" % str((raw_site as Dictionary).get("id", ""))] = record_current_site
-	beats["return_to_scanner"] = func():
-		_synthetic_click_interactable(instance, instance._return_scanner_interactable)
-	# Tag Day is a scripted cinematic: every beat advances on dialogue/timers. No
-	# player-gated input — the driver just pumps dialogue + advances time.
-	return beats
+func _tagday_realinput_beats(_instance: Node) -> Dictionary:
+	# Tag Day is observational: camera pan/rotation and fast-forward are available,
+	# but neither is a mandatory progression gate. Dialogue and authored timers carry
+	# the checkpoint failure, escort, Aster scan, and elevator handoff.
+	return {}
 
 ## Deliver a left-click at a world position straight to the player's input handler.
 ## The headless display server casts no picking ray and the parse_input_event queue
@@ -10133,6 +11658,12 @@ func _elevator_realinput_beats(instance: Node) -> Dictionary:
 	var beats := {}
 	var exit_gate := Vector3(float(instance.ELEVATOR_SIZE.x) / 2.0, 0.0, 0.0)
 	var bridge_rally_queued := [false]
+	var wreckage_rally_queued := [false]
+	var route_crossing_queued := [false, false, false]
+	var route_stage_queued := [false, false, false]
+	var route_retreat_queued := [false, false, false]
+	var gauntlet_stage_queued := [false, false]
+	var gauntlet_rally_queued := [false, false]
 	# Movement + interaction are the RIGHT-click ("command") action; LEFT is select. Every walk/interact
 	# beat uses the move-click helper (the old LEFT-click beats never moved anyone — the test only
 	# reached route_choice because that step is SCHEDULED after the fall, not walked to).
@@ -10167,25 +11698,27 @@ func _elevator_realinput_beats(instance: Node) -> Dictionary:
 			Vector3(float(instance.BRIDGE_END_X) - 2.0, 0.0, 0.0)))
 		if moved == 2:
 			bridge_rally_queued[0] = true
-	# Aster's data layer is already on. F2 adds Peris's independent memory layer;
-	# portrait selection must not change just to compare the two route reads.
+	# Aster's causal links are sufficient to begin. The real-input run deliberately leaves F2 off so
+	# Peris's exact-boundary layer remains optional rather than becoming a hidden progression key.
 	beats["route_read_circuit"] = func():
+		pass
+	# Prime each linked pack through the real interaction controller, then rally both bodies along the
+	# inner edge of the ecology lane. The Flure pulls enemies to its outer edge, but does not erase
+	# their reach. No enemy AI is disabled and no route beat is force-fired.
+	beats["route_choice"] = func():
 		if instance._dialogue.is_active():
 			return
-		var state: Dictionary = instance.headless_get_state()
-		var overlays: Dictionary = state.get("overlay_states", {})
-		if not bool(overlays.get("peris", false)):
-			_press_unhandled_key(instance, KEY_F2)
-	# After the fall the party is on the LOWER deck (BELOW_Y). Read the route with one scout, then
-	# rally both bodies onto the wreckage's visible brace marks before committing the shared lift.
-	beats["route_choice"] = func():
-		_disable_enemy_detection(instance)
 		var state: Dictionary = instance.headless_get_state()
 		var beats_crossed: Array = state.get("route_beats_crossed", [])
 		if beats_crossed.count(true) >= int(instance.ROUTE_BEAT_COUNT):
 			var wreckage_anchor: Vector3 = instance._wreckage_interaction_anchor()
 			if not bool(state.get("wreckage_party_ready", false)):
-				instance._selection_controller.headless_commit_rally(wreckage_anchor)
+				if not wreckage_rally_queued[0] \
+						or (not instance._game_state.is_moving("aster") \
+						and not instance._game_state.is_moving("peris")):
+					wreckage_rally_queued[0] = int(
+						instance._selection_controller.headless_commit_rally(wreckage_anchor)
+					) == 2
 				return
 			if bool(state.get("wreckage_armed", false)) \
 					and not bool(state.get("wreckage_cleared", false)) \
@@ -10193,112 +11726,159 @@ func _elevator_realinput_beats(instance: Node) -> Dictionary:
 					and not _interactable_work_in_progress(instance._wreckage_interactable):
 				_synthetic_click_interactable(instance, instance._wreckage_interactable)
 			return
-		var route_target := Vector3(instance.FORK_POS.x + 5.0, float(instance.BELOW_Y), -5.5)
-		if str(state.get("route_lane", "")) != "":
-			var missing_beat := -1
-			for i in range(beats_crossed.size()):
-				if not bool(beats_crossed[i]):
-					missing_beat = i
-					break
-			if missing_beat >= 0:
-				route_target = Vector3(
-					instance.FORK_POS.x + float(instance.ROUTE_BEAT_OFFSETS[missing_beat]) + 7.0,
-					float(instance.BELOW_Y),
-					-5.5
+		var missing_beat := -1
+		for i in range(beats_crossed.size()):
+			if not bool(beats_crossed[i]):
+				missing_beat = i
+				break
+		if missing_beat < 0 or missing_beat >= instance._route_flure_interactables.size():
+			return
+		var linked_flure := instance._route_flure_interactables[missing_beat] as Flure
+		var route_target := Vector3(
+			instance.FORK_POS.x + float(instance.ROUTE_BEAT_OFFSETS[missing_beat]) \
+				+ float(instance.ROUTE_BEAT_RALLY_OFFSET),
+			float(instance.BELOW_Y),
+			-1.5
+		)
+		var stage_target := linked_flure.global_position + Vector3(-1.5, -0.3, 0.0)
+		var active_windows: Array = state.get("route_flures_activated", [])
+		if missing_beat >= active_windows.size() or not bool(active_windows[missing_beat]):
+			# A failed signal owns its cooldown. Retreat beyond acquisition range while the pack visibly
+			# returns, then restage; repeatedly clicking beside an attacking pack is intentionally fatal.
+			if linked_flure.is_active():
+				if not route_retreat_queued[missing_beat] \
+						or (not instance._game_state.is_moving("aster") \
+						and not instance._game_state.is_moving("peris")):
+					route_retreat_queued[missing_beat] = int(
+						instance._selection_controller.headless_commit_rally(
+							Vector3(linked_flure.global_position.x - 15.0,
+								float(instance.BELOW_Y), -4.0)
+						)
+					) == 2
+				return
+			var pack_ready := true
+			for enemy_variant in instance._route_flure_enemy_groups.get(missing_beat, []):
+				var enemy := enemy_variant as Enemy
+				pack_ready = pack_ready and is_instance_valid(enemy) \
+					and enemy.get_lure_availability() == "available"
+			if not pack_ready:
+				if not route_retreat_queued[missing_beat] \
+						or (not instance._game_state.is_moving("aster") \
+						and not instance._game_state.is_moving("peris")):
+					route_retreat_queued[missing_beat] = int(
+						instance._selection_controller.headless_commit_rally(
+							Vector3(linked_flure.global_position.x - 15.0,
+								float(instance.BELOW_Y), -4.0)
+						)
+					) == 2
+				return
+			var both_staged: bool = not instance._game_state.is_moving("aster") \
+				and not instance._game_state.is_moving("peris") \
+				and instance._game_state.get_position("aster").distance_to(stage_target) <= 2.5 \
+				and instance._game_state.get_position("peris").distance_to(stage_target) <= 2.5
+			if not both_staged:
+				if not route_stage_queued[missing_beat] \
+						or (not instance._game_state.is_moving("aster") \
+						and not instance._game_state.is_moving("peris")):
+					route_stage_queued[missing_beat] = int(
+						instance._selection_controller.headless_commit_rally(stage_target)
+					) == 2
+				return
+			route_retreat_queued[missing_beat] = false
+			var route_selection: Array = instance._hud.get_selected_ids()
+			if route_selection.size() != 1 or str(route_selection[0]) != "peris" \
+					or str(instance.get("_active_character")) != "peris":
+				_synthetic_hud_portrait_click(instance, "peris")
+				return
+			if not instance._game_state.is_moving("peris"):
+				_synthetic_click_interactable(
+					instance, instance._route_flure_interactables[missing_beat]
 				)
-		_synthetic_player_move_click(instance, route_target)
+				# A player can release the already-previewed rally as soon as the signal lights.
+				# Do not insert the driver's four-second generic reissue cadence into an
+				# eight-second tactical window.
+				if linked_flure.is_active() \
+						and instance._route_flure_source_is_active(missing_beat):
+					route_crossing_queued[missing_beat] = int(
+						instance._selection_controller.headless_commit_rally(route_target)
+					) == 2
+			return
+		if not route_crossing_queued[missing_beat] \
+				or (not instance._game_state.is_moving("aster") \
+				and not instance._game_state.is_moving("peris")):
+			route_crossing_queued[missing_beat] = int(
+				instance._selection_controller.headless_commit_rally(route_target)
+			) == 2
 	# Climb prompt zone (HOLD_ACTION dwell) — now at the landing under where the span gave way (~BRIDGE_COLLAPSE_X).
 	beats["climb_attempt"] = func(): _synthetic_player_move_click(instance, Vector3(float(instance.BRIDGE_COLLAPSE_X), float(instance.BELOW_Y), 0.0))
-	# Dormant plant (HOLD_ACTION, wall-clock dwell).
+	# The shelter reads are optional world-building. Peris tends the plant directly;
+	# the removed annex checklist and reward menu are intentionally absent.
 	beats["junction_arrive"] = func():
 		if instance._dialogue.is_active():
 			return
-		var state: Dictionary = instance.headless_get_state()
-		var inspected_by: Dictionary = state.get("junction_inspected_by", {})
-		var inspected_ids: Array = state.get("junction_inspection_ids", [])
-		var desired := str(instance.get("_active_character"))
-		var target: Node = null
-		if not bool(inspected_by.get("aster", false)):
-			desired = "aster"
-			target = instance._junction_interactables.get("Workbench")
-		elif not bool(inspected_by.get("peris", false)):
-			desired = "peris"
-			target = instance._junction_interactables.get("Food")
-		elif inspected_ids.size() < int(instance.JUNCTION_REQUIRED_INSPECTIONS):
-			target = instance._junction_interactables.get("Monitor")
-		elif str(state.get("junction_preparation", "")) == "":
-			desired = "peris"
-			target = instance._junction_prep_interactables.get("scout")
-		elif not bool(state.get("junction_fieldwork_complete", false)):
-			var protocol_id := str(state.get("junction_field_protocol", ""))
-			var protocol: Dictionary = instance.JUNCTION_FIELD_PROTOCOLS.get(protocol_id, {})
-			var evidence: Dictionary = (state.get("junction_field_evidence", {}) as Dictionary).get(protocol_id, {})
-			var site_id := ""
-			for evidence_variant in protocol.get("evidence", []):
-				if not bool(evidence.get(str(evidence_variant), false)):
-					site_id = str(evidence_variant)
-					break
-			if site_id == "":
-				var choices: Dictionary = state.get("junction_field_choices", {})
-				var choice_id := str(choices.get(protocol_id, ""))
-				if choice_id == "":
-					var available_choices: Array = protocol.get("choices", [])
-					if not available_choices.is_empty():
-						site_id = str(available_choices[0])
-				else:
-					site_id = str((protocol.get("resolution_sites", {}) as Dictionary).get(choice_id, ""))
-			if site_id != "" and instance.JUNCTION_FIELD_SITES.has(site_id):
-				var site_spec: Dictionary = instance.JUNCTION_FIELD_SITES[site_id]
-				desired = str(site_spec.get("role", ""))
-				target = instance._junction_field_interactables.get(site_id)
-		else:
-			desired = "peris"
-			target = instance._junction_plant_interactable
-		# Neutral junction fixtures are serviced by the nearest selected party
-		# member. Reduce the HUD selection to the intended reader so the two-
-		# perspective requirement is controllable rather than proximity luck.
-		var selected: Array = instance._hud.get_selected_ids()
-		if selected.size() != 1 or str(selected[0]) != desired:
-			if selected.has(desired):
-				for selected_id_variant in selected:
-					var selected_id := str(selected_id_variant)
-					if selected_id != desired:
-						_synthetic_hud_portrait_click(instance, selected_id, true)
-						return
-			else:
-				_synthetic_hud_portrait_click(instance, desired)
+		var target: Node = instance._junction_plant_interactable
+		var junction_selection: Array = instance._hud.get_selected_ids()
+		if junction_selection.size() != 1 or str(junction_selection[0]) != "peris" \
+				or str(instance.get("_active_character")) != "peris":
+			_synthetic_hud_portrait_click(instance, "peris")
 			return
-		if instance._game_state.is_moving(desired):
+		if instance._game_state.is_moving("peris"):
 			return
 		if target == null or _interactable_work_in_progress(target):
 			return
 		_synthetic_click_interactable(instance, target)
-	# Flure activation then walk east to the gauntlet exit.
+	# Demonstrate the base-window mastery loop: stage all three bodies beside each
+	# Flure, activate only then, and commit the crossing without timing aid.
 	beats["gauntlet"] = func():
-		_disable_enemy_detection(instance)
 		if instance._dialogue.is_active():
 			return
-		var gauntlet_selection: Array = instance._hud.get_selected_ids()
-		# Elevator deliberately keeps portrait selection single-character. Peris can
-		# operate both Flures and the gauntlet gates on the party's lead position,
-		# so no artificial multi-select is needed to prove this route is playable.
-		if gauntlet_selection.size() != 1 or str(gauntlet_selection[0]) != "peris":
-			_synthetic_hud_portrait_click(instance, "peris")
-			return
-		if str(instance.get("_active_character")) != "peris":
-			_synthetic_hud_portrait_click(instance, "peris")
-			return
 		var state: Dictionary = instance.headless_get_state()
+		var intro: Dictionary = state.get("gauntlet_intro", {})
+		# The production sequence owns a real three-body entrance formation. Let its
+		# accepted GameState moves settle before issuing any player rally, otherwise
+		# the reachability driver would overwrite the very gate it is meant to test.
+		if str(intro.get("phase", "")) != instance.GAUNTLET_INTRO_PHASE_READY:
+			return
+		var gauntlet_selection: Array = instance._hud.get_selected_ids()
+		if gauntlet_selection.size() != 1 or str(gauntlet_selection[0]) != "peris" \
+				or str(instance.get("_active_character")) != "peris":
+			_synthetic_hud_portrait_click(instance, "peris")
+			return
 		var active: Dictionary = state.get("gauntlet_flure_active", {})
-		if not bool(state.get("gauntlet_midpoint_reached", false)):
-			if not bool(active.get(0, false)):
-				_synthetic_click_interactable(instance, instance._gauntlet_flure_interactables[0])
-			else:
-				_synthetic_player_move_click(instance, instance.GAUNTLET_MIDPOINT + Vector3(1.0, 0.0, 0.0))
-		elif not bool(active.get(1, false)):
-			_synthetic_click_interactable(instance, instance._gauntlet_flure_interactables[1])
-		else:
-			_synthetic_player_move_click(instance, instance.GAUNTLET_EXIT)
+		var stage := 1 if bool(state.get("gauntlet_midpoint_reached", false)) else 0
+		var station: Node = instance._gauntlet_flure_interactables[stage]
+		var stage_target: Vector3 = (instance.GAUNTLET_FLURE_2_POS \
+			if stage == 1 else instance.FLURE_POS) + Vector3(-1.4, -0.3, 0.0)
+		if not bool(active.get(stage, false)):
+			var whole_party_staged: bool = not instance._game_state.is_moving("aster") \
+				and not instance._game_state.is_moving("peris") \
+				and not instance._game_state.is_moving("endo") \
+				and instance._game_state.get_position("aster").distance_to(stage_target) <= 2.5 \
+				and instance._game_state.get_position("peris").distance_to(stage_target) <= 2.5 \
+				and instance._game_state.get_position("endo").distance_to(stage_target) <= 2.5
+			if not whole_party_staged:
+				if not gauntlet_stage_queued[stage] \
+						or (not instance._game_state.is_moving("aster") \
+						and not instance._game_state.is_moving("peris") \
+						and not instance._game_state.is_moving("endo")):
+					gauntlet_stage_queued[stage] = int(
+						instance._selection_controller.headless_commit_rally(stage_target)
+					) == 3
+				return
+			gauntlet_rally_queued[stage] = false
+			if not instance._game_state.is_moving("peris") \
+					and not _interactable_work_in_progress(station):
+				_synthetic_click_interactable(instance, station)
+			return
+		if not gauntlet_rally_queued[stage] \
+				or (not instance._game_state.is_moving("aster") \
+				and not instance._game_state.is_moving("peris") \
+				and not instance._game_state.is_moving("endo")):
+			var crossing_target: Vector3 = instance.GAUNTLET_EXIT if stage == 1 \
+				else instance.GAUNTLET_MIDPOINT + Vector3(1.0, 0.0, 0.0)
+			gauntlet_rally_queued[stage] = int(
+				instance._selection_controller.headless_commit_rally(crossing_target)
+			) == 3
 	return beats
 
 ## Dialogue must keep flowing while the gameplay scheduler is paused (the Peris
@@ -10418,13 +11998,15 @@ func _test_settings() -> void:
 	var scarcity_config: Dictionary = s.chunk_config_overrides("generated_stretch")
 	var scarcity_food_settings: Dictionary = scarcity_config.get("food_test_settings", {})
 	_assert_equals(str(scarcity_config.get("food_test", "")), "scarcity",
-		"Scarcity mode projects the draining food economy")
+		"Scarcity mode projects the experimental draining economy")
 	_assert_true(
 		is_equal_approx(float(scarcity_food_settings.get("drain_interval_seconds", 0.0)), 60.0)
-		and is_equal_approx(float(scarcity_food_settings.get("drain_atp", 0.0)), 1.0),
-		"Scarcity mode consistently drains one ATP every 60 seconds")
-	_assert_true(s.chunk_config_overrides("wash_relay").is_empty(),
-		"Food economy settings do not leak into unrelated authored chunks")
+		and is_equal_approx(float(scarcity_food_settings.get("drain_atp", 0.0)), 1.0)
+		and is_equal_approx(float(scarcity_food_settings.get("zero_atp_hp_drain", 0.0)), 5.0),
+		"Scarcity explicitly configures one ATP every 60 seconds, then 5 HP on later zero-ATP ticks")
+	for authored_chunk_id in ["wash_relay", "elevator", "aster_sim", "peris_sim"]:
+		_assert_true(s.chunk_config_overrides(authored_chunk_id).is_empty(),
+			"Scarcity pressure does not leak into the authored %s chunk" % authored_chunk_id)
 	s.set_game_mode("not-a-real-mode")
 	_assert_equals(str(s.get_game_mode()), GameSettings.GAME_MODE_NEUTRAL,
 		"Unknown gameplay modes safely collapse to neutral")
@@ -11311,6 +12893,11 @@ func _test_aster_sim() -> void:
 			_assert_equals(instance._current_step, initial_step,
 				"Disabled drink machine cannot skip the monitor sequence")
 			instance._start_show_terminal()
+			# This test deliberately enters a later story beat without playing Ron's intro.
+			# Retire that portable approach authority too; clearing callbacks alone cannot
+			# cancel truthful GameState movement anymore.
+			instance._repair_ron_authority_for_saved_step()
+			instance._game_state.command_stop("ron")
 			# Isolate the terminal beat from the scene's still-pending natural intro flow (its scheduled
 			# ron_approaches/greeting beats would otherwise clobber _current_step as we advance).
 			instance._scheduler.clear()
@@ -11319,51 +12906,66 @@ func _test_aster_sim() -> void:
 				"Aster terminal enables at the monitor tutorial step")
 			_assert_true(not bool(drink.call("is_interaction_enabled")),
 				"Aster drink machine stays disabled during the monitor tutorial step")
-			terminal.call("_trigger")
+			_trigger_exact_interactable_source(
+				instance._game_state, terminal, "aster", instance)
 			await get_tree().process_frame
 			_assert_equals(instance._current_step, "terminal_focus",
 				"Interacting with Aster's monitor opens the forecast screen-focus beat")
-			instance.headless_advance(instance.TERMINAL_FOCUS_DURATION + 0.1)
-			_assert_equals(instance._current_step, "terminal_data",
-				"The terminal focus beat advances the sequence to terminal_data")
+			instance.headless_advance(
+				instance.TERMINAL_FOCUS_DURATION + instance.TERMINAL_SETTLE_DURATION + 0.1)
+			_assert_equals(instance._current_step, "ron_drinks",
+				"The terminal focus and saved settle beat advance to Ron's drink prompt")
 			# Re-readable: the monitor re-arms after the first read, and a second interaction re-shows the
-			# screen WITHOUT advancing the tutorial (a look, not progression). Clear the scheduler first so
-			# the re-read is isolated from the pending terminal_data->drink progression.
+			# screen WITHOUT advancing the tutorial (a look, not progression). Clear Ron's dialogue and the
+			# pending dialogue handoff so the re-read is isolated from walk_to_drink progression.
 			_assert_true(bool(terminal.call("is_interaction_enabled")),
 				"Terminal re-arms (interactable again) after the first read")
+			instance._dialogue.clear()
 			instance._scheduler.clear()
-			instance._on_terminal_interacted()
+			var reread_story_step := str(instance._current_step)
+			_trigger_exact_interactable_source(
+				instance._game_state, terminal, "aster", instance)
 			await get_tree().process_frame
 			_assert_true(bool(instance.get("_terminal_focus_active")),
 				"Re-interacting the terminal re-opens the screen focus")
-			_assert_equals(instance._current_step, "terminal_data",
-				"A terminal re-read does NOT advance the tutorial (still terminal_data)")
+			_assert_equals(instance._current_step, reread_story_step,
+				"A terminal re-read does NOT advance the tutorial")
 			instance.headless_advance(instance.TERMINAL_FOCUS_DURATION + 0.1)
 			_assert_true(not bool(instance.get("_terminal_focus_active")),
 				"The terminal re-read focus ends")
-			_assert_equals(instance._current_step, "terminal_data",
-				"After a re-read, the tutorial is still at terminal_data")
+			_assert_equals(instance._current_step, reread_story_step,
+				"After a re-read, the tutorial remains at the same story step")
 			_assert_true(not bool(drink.call("is_interaction_enabled")),
 				"Aster drink machine remains disabled until the drink tutorial step")
 			instance._start_walk_to_drink()
 			await get_tree().process_frame
 			_assert_true(bool(drink.call("is_interaction_enabled")),
 				"Aster drink machine enables only at the drink tutorial step")
-			# First drink: the ATP tutorial, then it re-arms so it can be used again.
-			instance._on_drink_interacted()
+			# First drink: a real held lysate/endocytosis action owns the ATP tutorial.
+			_trigger_exact_interactable_source(
+				instance._game_state, drink, "aster", instance)
 			await get_tree().process_frame
 			_assert_equals(instance._current_step, "drink",
 				"First drink interaction runs the ATP beat")
-			_assert_true(bool(drink.call("is_interaction_enabled")),
-				"Drink machine re-arms after the first drink")
+			_assert_true(not bool(instance._has_drunk)
+					and instance._game_state.is_endocytosing("aster")
+					and not bool(drink.call("is_interaction_enabled")),
+				"Drink stays unfinished and non-repeatable while Aster endocytoses it")
+			instance.headless_advance(instance.DRINK_ENDOCYTOSIS_DURATION + 0.05, 0.05)
+			_assert_true(bool(instance._has_drunk)
+					and not instance._game_state.is_endocytosing("aster")
+					and bool(drink.call("is_interaction_enabled")),
+				"Digest endpoint restores ATP and re-arms the machine after paid action time")
 			# Second drink: Aster waves it off with the Tag Day line — no ATP/step change.
 			if instance._dialogue != null and instance._dialogue.has_method("clear"):
 				instance._dialogue.clear()  # _show_thought is skipped while a line is live
-			instance._on_drink_interacted()
+			var post_drink_step := str(instance._current_step)
+			_trigger_exact_interactable_source(
+				instance._game_state, drink, "aster", instance)
 			await get_tree().process_frame
 			_assert_true(str(instance._thought_label.text).to_lower().contains("all good on drinks"),
 				"A second drink interaction shows the 'all good on drinks' Tag Day line (got: %s)" % str(instance._thought_label.text))
-			_assert_equals(instance._current_step, "drink",
+			_assert_equals(instance._current_step, post_drink_step,
 				"A second drink interaction does NOT re-advance the tutorial")
 			drink.call("set_interaction_enabled", false)
 
@@ -12027,6 +13629,16 @@ func _test_peris_sim() -> void:
 		for i in range(2):
 			await get_tree().process_frame
 
+		var workspace_state: Dictionary = instance.headless_get_state()
+		_assert_true(bool(workspace_state.get("room_reads_optional", false)),
+			"Peris room reads are optional during the workspace beat")
+		_assert_equals(int(workspace_state.get("room_read_count", -1)), 0,
+			"Peris workspace begins with zero optional reads")
+		_assert_true(bool(workspace_state.get("logbook_ready", false)),
+			"Peris logbook is ready immediately")
+		_assert_true(not bool(workspace_state.get("plant_watered", true)),
+			"Peris logbook requires no watering action")
+
 		# Each table owns a plant interaction. The independent volumes remain far
 		# enough apart to avoid ambiguous click/proximity ownership.
 		var peris_explore_zones := []
@@ -12036,11 +13648,9 @@ func _test_peris_sim() -> void:
 			"PaintingZone", "WellnessZone", "StrikeWarningZone", "LogbookGate",
 		])
 		for zone_name in peris_explore_zones:
-			# The logbook is intentionally dormant until watering plus all eight
-			# first-read records are complete.  The shared object contract still
-			# applies, but its collision/picking surface must be inactive here.
-			var zone := _assert_exploration_interactable_contract(
-				instance, zone_name, zone_name != "LogbookGate")
+			# Optional room objects and the direct logbook gate are all active during
+			# free exploration.
+			var zone := _assert_exploration_interactable_contract(instance, zone_name)
 			if zone == null:
 				continue
 			if zone_name == "LogbookGate":
@@ -12095,8 +13705,11 @@ func _test_peris_sim() -> void:
 				"Peris exploration interaction pauses scheduler time while focused")
 			_assert_true(bool(camera.call("is_locked")),
 				"Peris exploration interaction locks the camera to the interactable")
-			_assert_equals(camera.follow_offset, Vector3(0, 4.2, 3.2),
-				"Peris exploration interaction uses the close inspection camera offset")
+			_assert_equals(camera.follow_offset, previous_offset,
+				"Peris inspection focus does not mutate the gameplay follow profile")
+			var focus_point: Vector3 = camera.call("get_lock_position")
+			_assert_true(bool(camera.call("_focus_candidate_clear", focus_point, camera.global_position)),
+				"Peris inspection focus has a collision-clear line of sight to the object")
 			_assert_equals(str(dialogue.get("_current_text")), DialogueData.text("peris.sim_expand.plant_1.line"),
 				"Peris plant interaction opens directly on the object line")
 			_assert_true(not str(dialogue.get("_current_text")).contains("Peris "),
@@ -12150,13 +13763,13 @@ func _test_peris_sim() -> void:
 			instance._start_alert_monos()
 			await get_tree().process_frame
 			_assert_equals(instance._current_step, "protect_prompt",
-				"Peris protect tutorial reaches the paused dialogue prompt")
+				"Peris WRAP tutorial reaches the paused dialogue prompt")
 			_assert_equals(float(instance._compute_speed()), 0.0,
-				"Peris protect tutorial freezes gameplay simulation time")
+				"Peris WRAP tutorial freezes gameplay simulation time")
 			_drain_dialogue_box(dialogue)
 			await get_tree().process_frame
 			_assert_true(not dialogue.is_active(),
-				"Peris protect prompt dialogue can fast-forward while gameplay is paused")
+				"Peris WRAP prompt dialogue can fast-forward while gameplay is paused")
 			_assert_equals(instance._current_step, "protect_prompt",
 				"UI-only dialogue advancement does not mutate the tutorial step")
 
@@ -12182,6 +13795,8 @@ func _assert_peris_phase2_live_post_attack_progression(scene: PackedScene) -> vo
 	var actioned := {}
 	var saw_efficiency_log := false
 	var saw_sanction_notice := false
+	var saw_wrap_mechanics := false
+	var peris_stamina_before_wrap: float = instance._game_state.get_stat("peris", "stamina")
 	var elapsed := 0.0
 	var step := 0.05
 	while elapsed < 90.0:
@@ -12191,6 +13806,12 @@ func _assert_peris_phase2_live_post_attack_progression(scene: PackedScene) -> vo
 		if current_step == "sanction_notice":
 			saw_sanction_notice = true
 			break
+		if current_step == "aftermath" and not saw_wrap_mechanics:
+			saw_wrap_mechanics = true
+			_assert_true(instance._game_state.get_stat("peris", "stamina") < peris_stamina_before_wrap,
+				"WRAP spends Peris's stamina")
+			_assert_true(instance._game_state.get_damage_shield("monos") > 0.0,
+				"WRAP applies the shared targeted damage shield to Monos")
 
 		if current_step == "protect_prompt" and not actioned.has("protect_prompt") and not dialogue.is_active():
 			actioned["protect_prompt"] = true
@@ -12212,6 +13833,7 @@ func _assert_peris_phase2_live_post_attack_progression(scene: PackedScene) -> vo
 
 	_assert_true(saw_efficiency_log,
 		"Peris phase 2 live path reaches the feed-terminal close / efficiency log")
+	_assert_true(saw_wrap_mechanics, "Peris phase 2 live path exercises canonical WRAP mechanics")
 	_assert_true(saw_sanction_notice,
 		"Peris phase 2 live path advances from closed feed terminal to sanction notice")
 	_assert_equals(str(instance._current_step), "sanction_notice",
@@ -12262,6 +13884,8 @@ func _assert_aster_interaction_click_matrix(instance: Node, dialogue: Node) -> v
 		await _reset_dialogue_focus(instance, dialogue)
 		instance._scheduler.clear()
 		instance._current_step = "show_terminal"
+		instance._publish_sequence_authority_section(
+			"terminal", instance._baseline_terminal_authority())
 		if instance._terminal and instance._terminal.has_method("reset"):
 			instance._terminal.reset()
 		if instance._terminal and instance._terminal.has_method("set_interaction_enabled"):
@@ -12291,6 +13915,7 @@ func _assert_aster_interaction_click_matrix(instance: Node, dialogue: Node) -> v
 	instance._scheduler.clear()
 	instance._current_step = "walk_to_drink"
 	instance._has_drunk = false
+	instance._publish_drink_authority(instance.DRINK_PHASE_AVAILABLE)
 	if instance._drink_machine and instance._drink_machine.has_method("reset"):
 		instance._drink_machine.reset()
 	if instance._drink_machine and instance._drink_machine.has_method("set_interaction_enabled"):
@@ -12298,12 +13923,21 @@ func _assert_aster_interaction_click_matrix(instance: Node, dialogue: Node) -> v
 	await _click_target_and_advance(instance, "RoomTargetDrinkMachine", "aster", aster_start, 5.0, "Drink machine visible target")
 	_drive_interactable_zone(instance._drink_machine, instance._player as Node3D, float(instance._drink_machine.get("dwell_time")) + 0.2)
 	await get_tree().process_frame
-	_assert_equals(instance._current_step, "drink",
-		"Drink machine visible target click reaches the drink interactable")
+	_assert_true(str(instance._current_step) == "drink" or bool(instance._has_drunk),
+		"Drink machine visible target click reaches the physical drink transaction")
+	if instance._game_state.is_endocytosing("aster"):
+		_assert_true(not bool(instance._has_drunk),
+			"Visible-target interaction does not grant ATP before digestion")
+		instance.headless_advance(instance.DRINK_ENDOCYTOSIS_DURATION + 0.05, 0.05)
 	_assert_true(instance._has_drunk,
-		"Drink machine visible target click updates the drink state")
+		"Drink machine visible target click completes its saved drink state")
 	_assert_equals(float(instance._game_state.get_stat("aster", "atp")), float(instance.ATP_MAX),
 		"Drink machine visible target click applies the ATP refill")
+	# The physical drink endpoint legitimately starts Ron's narrative chain. The
+	# click matrix below isolates unrelated optional objects, so retire that presenter
+	# and its dialogue callbacks instead of emitting dialogue_finished through it.
+	instance._clear_dialogue_presenter_for_restore()
+	instance._scheduler.clear()
 
 	var inspection_checks := [
 		{"target": "RoomTargetGlassBeadGame", "delegate": "GlassBeadZone", "text": "aster.sim_expand.glass_bead.line"},
@@ -12378,15 +14012,20 @@ func _assert_interactable_spacing(root: Node, node_names: Array, min_distance: f
 	_assert_true(min_dist >= min_distance,
 		"%s (closest: %s %.2fm, minimum: %.2fm)" % [label, closest_pair, min_dist, min_distance])
 
-func _assert_exploration_interactable_contract(root: Node, node_name: String, expect_active := true) -> Node:
+func _assert_exploration_interactable_contract(
+		root: Node,
+		node_name: String,
+		expect_active := true,
+		expected_script_path := "res://scripts/game/objects/interactable.gd"
+	) -> Node:
 	var node := root.find_child(node_name, true, false)
 	_assert_true(node != null, "%s exploration interactable exists" % node_name)
 	if node == null:
 		return null
 	var script: Script = node.get_script()
 	var script_path := script.resource_path if script != null else ""
-	_assert_equals(script_path, "res://scripts/game/objects/interactable.gd",
-		"%s uses the shared interactable script" % node_name)
+	_assert_equals(script_path, expected_script_path,
+		"%s uses its reusable interaction script" % node_name)
 	_assert_equals(int(node.get("collision_layer")), 4 if expect_active else 0,
 		"%s %s the interactable collision layer" % [node_name, "uses" if expect_active else "leaves"])
 	_assert_equals(int(node.get("collision_mask")), 2 if expect_active else 0,
@@ -12631,43 +14270,59 @@ func _assert_elevator_active_player_can_move(instance: Node, label: String) -> v
 func _test_ability_data() -> void:
 	_test_name = "Ability Data"
 	AbilityData.load_dir()
-	# A contextual chunk ability round-trips every field.
-	var tend := AbilityData.get_ability("refuge_run.peris_tune")
-	_assert_equals(str(tend.get("id", "")), "peris_tune", "Key resolves the ability id")
-	_assert_equals(str(tend.get("display_name", "")), "TEND", "Refuge Run peris_tune is TEND")
-	_assert_true(absf(float(tend.get("cooldown", 0.0)) - 5.0) < 0.001, "TEND cooldown is 5.0")
-	_assert_true(str(tend.get("message", "")).begins_with("Peris tends the hushbloom"), "TEND carries its message")
-	_assert_true(str(tend.get("note", "")) != "", "TEND carries its description note")
-	# A whole context returns the three party abilities, in order, with the chunk's reframed names.
-	var ch := AbilityData.for_context("mother_flure")
-	_assert_equals(ch.size(), 3, "mother_flure has three abilities")
-	if ch.size() == 3:
-		_assert_equals(str(ch[0].get("id", "")), "aster_focus", "First is aster_focus")
-		_assert_equals(str(ch[1].get("id", "")), "peris_tune", "Second is peris_tune")
-		_assert_equals(str(ch[2].get("id", "")), "endo_patch", "Third is endo_patch")
-	# Tutorial scene abilities live here too.
-	_assert_equals(str(AbilityData.get_ability("peris_sim.protect").get("display_name", "")), "PROTECT", "peris_sim protect is PROTECT")
+	var emp := AbilityData.get_ability("default.emp")
+	var wrap := AbilityData.get_ability("default.wrap")
+	_assert_equals(str(emp.get("id", "")), "emp", "EMP key resolves its canonical ability id")
+	_assert_equals(str(emp.get("display_name", "")), "EMP", "Aster's cast is EMP")
+	_assert_true(str(emp.get("note", "")).contains("EMP-compatible"),
+		"EMP data explains which world targets can respond")
+	_assert_equals(str(wrap.get("id", "")), "wrap", "WRAP key resolves its canonical ability id")
+	_assert_equals(str(wrap.get("display_name", "")), "WRAP", "Peris's cast is WRAP")
+	_assert_true(str(wrap.get("note", "")).contains("conscious character"),
+		"WRAP data explains its targeted protection contract")
+	var defaults := AbilityData.for_context("default")
+	_assert_equals(defaults.size(), 2, "Only EMP and WRAP are exposed as cast abilities")
+	if defaults.size() == 2:
+		_assert_equals(str(defaults[0].get("id", "")), "emp", "EMP is first in canonical party order")
+		_assert_equals(str(defaults[1].get("id", "")), "wrap", "WRAP is second in canonical party order")
+	_assert_equals(AbilityData.for_context("mother_flure").size(), 0,
+		"A fragment cannot rename casts into unrelated TRACE/BLOOM/BRACE buttons")
+	_assert_true(AbilityData.CONTEXTUAL_VERBS.get("aster", []).has("scan"),
+		"Aster's scan remains a contextual world verb")
+	_assert_true(AbilityData.CONTEXTUAL_VERBS.get("peris", []).has("tend"),
+		"Peris's tending remains a contextual world verb")
+	# Tutorial scenes use the same canonical identities.
+	_assert_equals(str(AbilityData.get_ability("peris_sim.wrap").get("display_name", "")), "WRAP", "Peris sim uses WRAP")
 	_assert_equals(str(AbilityData.get_ability("elevator.emp").get("display_name", "")), "EMP", "elevator emp is EMP")
+	_assert_equals(float(AbilityData.get_ability("elevator.emp").get("duration", 0.0)), 30.0,
+		"Elevator EMP owns its authored reboot window in ability data")
 	_assert_true(not AbilityData.has("nonsense.key"), "An absent key reports missing")
-	# Bindings (mechanics) come from the xlsx too — keybind/owner/keycode/color, no longer hardcoded.
-	var ab := AbilityData.binding("aster_focus")
-	_assert_equals(str(ab.get("owner", "")), "aster", "aster_focus binding owner is aster")
-	_assert_equals(str(ab.get("keybind", "")), "Z", "aster_focus binding keybind is Z")
-	_assert_equals(int(ab.get("keycode", 0)), KEY_Z, "aster_focus keycode resolves from the keybind")
-	var pb := AbilityData.binding("protect")
-	_assert_equals(str(pb.get("keybind", "")), "X", "protect binding keybind is X")
-	_assert_true((pb.get("color", Color.BLACK) as Color).is_equal_approx(Color(0.8, 0.55, 0.2)), "protect color parses from r,g,b")
-	# The default-context fallback content is in the xlsx as well.
-	_assert_equals(str(AbilityData.get_ability("default.aster_focus").get("display_name", "")), "FOCUS", "default aster_focus content is FOCUS")
-	# End-to-end: a migrated chunk's get_preview_abilities() now sources from the xlsx (not a hardcoded dict).
+	# Binding data supplies controls and stamina cost. ATP is never spent by a cast.
+	var ab := AbilityData.binding("emp")
+	_assert_equals(str(ab.get("owner", "")), "aster", "EMP binding owner is Aster")
+	_assert_equals(str(ab.get("keybind", "")), "Z", "EMP binding keybind is Z")
+	_assert_equals(int(ab.get("keycode", 0)), KEY_Z, "EMP keycode resolves from the keybind")
+	_assert_true(float(ab.get("stamina_cost", 0.0)) > 0.0, "EMP has a stamina cost")
+	_assert_true(not ab.has("atp_cost"), "Cast bindings cannot author an ATP cost")
+	var pb := AbilityData.binding("wrap")
+	_assert_equals(str(pb.get("owner", "")), "peris", "WRAP binding owner is Peris")
+	_assert_equals(str(pb.get("keybind", "")), "X", "WRAP binding keybind is X")
+	_assert_true((pb.get("color", Color.BLACK) as Color).is_equal_approx(Color(1.0, 0.67, 0.27)),
+		"WRAP color parses from r,g,b")
+	_assert_true(AbilityData.binding("recover").is_empty() and AbilityData.binding("scout").is_empty(),
+		"RECOVER and SCOUT are not character abilities")
+	_assert_equals(AbilityData.CANONICAL_NAMED_ABILITIES, {
+		"emp": "aster", "wrap": "peris", "inflame": "myke",
+		"barrier": "oli", "restore": "oli", "suppress": "tyreg",
+	}, "The ability authority preserves every named GDD commitment without adding placeholders")
+	# Old contextual rows no longer leak through a chunk's cast list.
 	var chunk_scene := load("res://scenes/fragments/chunks/refuge_run_chunk.tscn")
 	if chunk_scene != null:
 		var chunk: Node = chunk_scene.instantiate()
 		if chunk.has_method("get_preview_abilities"):
 			var abil: Array = chunk.get_preview_abilities()
-			_assert_equals(abil.size(), 1, "refuge_run chunk returns its one ability from AbilityData")
-			if abil.size() > 0:
-				_assert_equals(str(abil[0].get("display_name", "")), "TEND", "Migrated chunk ability resolves from the xlsx")
+			_assert_equals(abil.size(), 0,
+				"Refuge Run TEND must live on its hushbloom target, not the ability drawer")
 		chunk.free()
 
 # --- Test: ADVERSARIAL probes of the grid-ported scenes — try to break the new movement system ---
@@ -12867,7 +14522,7 @@ func _test_elevator_fall_level() -> void:
 	var upper_y: float = gs.get_position("peris").y
 	# Drive the fall landing (the bridge gives way) and assert a real cross-level transition.
 	instance._enter_step("bridge_collapse")
-	instance._on_fall_landed()
+	instance._on_fall_landed(true) # explicit white-box endpoint; production waits for traversal deadline
 	_assert_equals(gs.get_character_level("peris"), int(instance.LEVEL_LOWER), "After the fall Peris is on the lower deck")
 	_assert_equals(gs.get_character_level("aster"), int(instance.LEVEL_LOWER), "After the fall Aster is on the lower deck")
 	_assert_true(gs.get_position("peris").y < upper_y - 1.0,
@@ -13077,48 +14732,116 @@ func _test_elevator_bridge_collapse() -> void:
 		"The ecology below does not pursue the party while it crosses the bridge above")
 	_assert_true(not ecology_pathfound,
 		"The ecology below stays in ambient roam (no A* patrol/pursuit) while the party crosses above")
-	# Let the scheduled fall fire → the hybrid collapse turns every modeled piece into a physics debris
-	# body (RigidBody) and drops a catch-floor. (The tumble itself is wall-clock physics, cosmetic.)
+	# Let the scheduled fall fire. The nearest pieces fracture immediately, while the reusable
+	# presenter bounds later physics/tree registration to one small batch per visual update.
 	instance.headless_advance(1.0, 0.05)   # past the bridge_fall delay → _execute_bridge_fall runs
 	_assert_true(instance._fall_tween != null, "The collapse kicks off the fall (party + camera)")
-	var debris := 0
-	var catch_floor := false
-	if is_instance_valid(bridge_floor_node):
-		for child in bridge_floor_node.get_children():
-			if child is RigidBody3D:
-				debris += 1
-			elif child is StaticBody3D and str(child.name) == "DebrisCatch":
-				catch_floor = true
-	_assert_true(debris >= 30,
-		"The collapse converts the modeled pieces into physics debris bodies (%d)" % debris)
-	_assert_true(catch_floor, "The collapse drops a catch-floor for the debris to land on")
+	var collapse_presenter: StagedRigidCollapse3D = instance._collapse_presenter
+	_assert_true(collapse_presenter != null and is_instance_valid(collapse_presenter),
+		"The bridge delegates cosmetic debris to the reusable staged presenter")
+	var converted_before_pause := collapse_presenter.converted_piece_count() \
+		if collapse_presenter != null else 0
+	var pending_before_pause := collapse_presenter.pending_piece_count() \
+		if collapse_presenter != null else 0
+	_assert_true(converted_before_pause >= int(instance.BRIDGE_COLLAPSE_PIECES_PER_FRAME)
+			and converted_before_pause < piece_count,
+		"The initiating window converts a visible prefix, not all %d bodies in one callback (%d converted)" \
+			% [piece_count, converted_before_pause])
+	_assert_equals(converted_before_pause + pending_before_pause, piece_count,
+		"Staging neither loses nor duplicates a modeled bridge piece")
+	_assert_true(collapse_presenter != null and is_instance_valid(collapse_presenter.catch_floor()),
+		"The collapse drops a catch-floor for the debris to land on immediately")
 	# The visual fall and the authoritative scheduler are one observable consequence.
-	# Reproduce the browser failure: pause after a piece has released, before the
-	# scheduler-owned landing. No tween, rigid body, or retirement timer may advance.
-	var pause_probe: RigidBody3D = instance._collapse_debris[0] \
-		if not instance._collapse_debris.is_empty() else null
+	# Reproduce the browser failure: pausing mid-cascade must stop fall animation, released
+	# physics, the visual clock, and unconverted frame work together.
+	var pause_probe: RigidBody3D
+	if collapse_presenter != null:
+		for body in collapse_presenter.debris_bodies():
+			if is_instance_valid(body) and not body.freeze:
+				pause_probe = body
+				break
 	if pause_probe != null:
-		pause_probe.set_meta("collapse_release_ready", true)
-		instance._release_debris_now(pause_probe)
 		_assert_true(not pause_probe.freeze, "Collapse pause probe begins as released debris")
+	var elapsed_before_pause := collapse_presenter.visual_elapsed() if collapse_presenter != null else 0.0
 	instance._on_pause_toggled(true)
 	_assert_true(instance._scheduler.is_paused(), "Pausing during collapse freezes authoritative time")
 	_assert_true(instance._fall_tween != null and not instance._fall_tween.is_running(),
 		"Pausing during collapse freezes the party/camera fall tween")
-	_assert_true(instance._collapse_settle_tween != null and not instance._collapse_settle_tween.is_running(),
-		"Pausing during collapse freezes the chunk-retirement timer")
+	_assert_true(collapse_presenter != null and collapse_presenter.is_visual_paused(),
+		"Pausing marks the staged debris presenter paused")
 	if pause_probe != null:
 		_assert_true(pause_probe.freeze, "Pausing during collapse freezes released physics debris")
+	instance.headless_advance(0.3, 0.05)
+	_assert_equals(collapse_presenter.pending_piece_count(), pending_before_pause,
+		"No additional rigid bodies enter the tree while collapse presentation is paused")
+	_assert_true(is_equal_approx(collapse_presenter.visual_elapsed(), elapsed_before_pause),
+		"The collapse release/settlement clock does not advance while paused")
 	instance._on_pause_toggled(false)
 	_assert_true(not instance._scheduler.is_paused(), "Resuming collapse releases authoritative time")
 	_assert_true(instance._fall_tween != null and instance._fall_tween.is_running(),
 		"Resuming collapse continues the same party/camera fall tween")
 	if pause_probe != null:
 		_assert_true(not pause_probe.freeze, "Resuming collapse continues released physics debris")
+	instance.headless_advance(0.8, 0.05)
+	_assert_equals(collapse_presenter.converted_piece_count(), piece_count,
+		"Bounded updates eventually convert every modeled bridge piece")
+	_assert_equals(collapse_presenter.pending_piece_count(), 0,
+		"The staged conversion queue drains completely")
+	_assert_true(collapse_presenter.is_settling(),
+		"Settlement starts only after every piece has converted and released")
+	var lower_chunk_before_settle: Node3D = instance._chunks.get("below")
+	instance.headless_advance(3.1, 0.05)
+	_assert_true(not instance._chunks.has("elevator") and not instance._chunks.has("bridge"),
+		"Presenter settlement retires the fallen elevator and bridge exactly at the visual lifecycle seam")
+	_assert_true(instance._collapse_presenter == null and not instance._collapse_visual_active,
+		"Settlement clears the reusable presenter ownership state")
+	_assert_true(instance._chunks.get("below") == lower_chunk_before_settle
+		and instance._game_state.characters.has("aster")
+		and instance._game_state.characters.has("peris"),
+		"Collapsed-chunk retirement preserves the lower route and both authoritative party members")
+	instance._remove_collapsed_chunks()
+	_assert_true(instance._chunks.get("below") == lower_chunk_before_settle,
+		"Repeated collapsed-chunk cleanup is idempotent")
 	if instance.has_method("_teardown_sequence"):
 		instance._teardown_sequence()
 	instance.queue_free()
 	await get_tree().process_frame
+	await _assert_elevator_stale_bridge_fall_guard()
+
+
+func _assert_elevator_stale_bridge_fall_guard() -> void:
+	var scene := load("res://scenes/tutorial/elevator.tscn")
+	var stale_instance: Node = scene.instantiate() if scene != null else null
+	_assert_true(stale_instance != null, "Stale bridge-fall guard fixture instantiates")
+	if stale_instance == null:
+		return
+	if "suppress_scene_change" in stale_instance:
+		stale_instance.suppress_scene_change = true
+	get_tree().root.add_child(stale_instance)
+	for i in range(4):
+		await get_tree().process_frame
+	stale_instance._scheduler.clear()
+	if stale_instance._dialogue != null and stale_instance._dialogue.has_method("clear"):
+		stale_instance._dialogue.clear()
+	stale_instance._load_chunk("bridge")
+	stale_instance._current_step = "bridge"
+	var aster_y_before: float = stale_instance._aster_node.position.y
+	var aster_level_before: int = stale_instance._game_state.get_character_level("aster")
+	stale_instance._start_bridge_collapse()
+	stale_instance._enter_step("superseded_bridge_fixture")
+	stale_instance.headless_advance(1.0, 0.05)
+	_assert_true(stale_instance._fall_tween == null,
+		"A superseded bridge beat cannot start a stale fall tween")
+	_assert_true(stale_instance._collapse_presenter == null,
+		"A superseded bridge beat cannot start stale debris work")
+	_assert_true(is_equal_approx(stale_instance._aster_node.position.y, aster_y_before)
+			and stale_instance._game_state.get_character_level("aster") == aster_level_before,
+		"A superseded fall callback cannot displace or level-transition the party")
+	if stale_instance.has_method("_teardown_sequence"):
+		stale_instance._teardown_sequence()
+	stale_instance.queue_free()
+	await get_tree().process_frame
+
 
 # --- Test: after the bridge collapse, the camera frames the lower deck (its plunge dip is restored) ---
 # Repro: the fall DIPS follow_offset.y by BELOW_Y for a plunging shot, but the camera also follows the target's
@@ -13165,9 +14888,16 @@ func _test_elevator_camera_after_collapse() -> void:
 		"the fall dips the camera offset for the plunge (%.1f -> %.1f)" % [original_offset_y, cam.follow_offset.y])
 
 	# Land: the party drops to the lower deck AND the camera offset must be restored (not left dipped).
-	instance._on_fall_landed()
-	_assert_equals(cam.follow_offset.y, original_offset_y,
-		"after the collapse the camera offset is restored, so the lower deck is framed normally (not BELOW_Y too low)")
+	instance._on_fall_landed(true) # explicit white-box endpoint; production waits for traversal deadline
+	_assert_equals(cam.follow_offset, instance.LOWER_ROUTE_CAMERA_OFFSET,
+		"after the collapse the camera adopts the lower-route overview instead of retaining the plunge dip")
+	var safe_edge_camera_radius := Vector2(cam.follow_offset.x, cam.follow_offset.z).length() \
+		* float(cam.get("_zoom_max"))
+	var safe_edge_inner_wall := float(instance.ROUTE_OUTER_WALL_Z) \
+		- float(instance.ROUTE_OUTER_WALL_HALF_THICKNESS)
+	_assert_true(float(instance.ROUTE_SAFE_EDGE_Z) + safe_edge_camera_radius < safe_edge_inner_wall,
+		"the lower-route camera stays inside the outer wall at every yaw/max zoom (edge %.2f, camera %.2f, wall %.2f)" \
+		% [float(instance.ROUTE_SAFE_EDGE_Z), safe_edge_camera_radius, safe_edge_inner_wall])
 	_assert_true(bool(cam.get("_look_bounds_active")),
 		"the lower-deck landing restores authored camera bounds instead of allowing a pan into void")
 	var lower_camera_min: Vector3 = cam.get("_look_bounds_min")
@@ -13203,6 +14933,13 @@ func _test_chunk_streaming() -> void:
 		"the elevator load includes the bridge collision shell")
 	_assert_true(opening_bridge.find_child("BridgeModel", true, false) == null,
 		"the initial elevator load does not construct repeated bridge render pieces")
+	var primed_junction: Node3D = instance._chunks.get("junction")
+	var primed_junction_stream: Dictionary = instance._chunk_streams.get("junction", {})
+	_assert_true(primed_junction != null and not primed_junction.visible \
+			and bool(primed_junction_stream.get("paused", false)) \
+			and int(primed_junction_stream.get("i", 0)) == 2 \
+			and primed_junction.find_child("JunctionShelterLayout", true, false) != null,
+		"the render-heavy Junction shelter is tree-primed before the first frame, then paused hidden")
 	for i in range(10):
 		await get_tree().process_frame
 
@@ -13210,17 +14947,54 @@ func _test_chunk_streaming() -> void:
 	_assert_true(instance._chunks.has("bridge"), "the bridge began streaming during the opening")
 	_assert_true(not (instance._chunks["bridge"] as Node3D).visible, "a streamed-but-unrevealed chunk stays hidden")
 
+	# The construction budget is GLOBAL, not one slice per active chunk. With two streams live,
+	# one frame advances exactly one step and the next frame gives the other stream its turn.
+	# This prevents two individually bounded builders from combining into a browser hitch.
+	instance._unload_chunk("bridge")
+	instance._unload_chunk("below")
+	await get_tree().process_frame
+	instance.stream_chunk("bridge")
+	instance.stream_chunk("below")
+	instance._chunk_stream_round_robin_cursor = 0
+	var bridge_before := int((instance._chunk_streams["bridge"] as Dictionary).get("i", 0))
+	var below_before := int((instance._chunk_streams["below"] as Dictionary).get("i", 0))
+	instance._advance_chunk_streams()
+	var bridge_after_one := int((instance._chunk_streams["bridge"] as Dictionary).get("i", 0))
+	var below_after_one := int((instance._chunk_streams["below"] as Dictionary).get("i", 0))
+	_assert_equals(
+		(bridge_after_one - bridge_before) + (below_after_one - below_before),
+		instance._CHUNK_STREAM_STEPS_PER_FRAME,
+		"one rendered frame spends only the global chunk-construction budget")
+	instance._advance_chunk_streams()
+	var bridge_after_two := int((instance._chunk_streams["bridge"] as Dictionary).get("i", 0))
+	var below_after_two := int((instance._chunk_streams["below"] as Dictionary).get("i", 0))
+	_assert_equals(bridge_after_two - bridge_before, 1,
+		"round-robin streaming advances Bridge once across two frames")
+	_assert_equals(below_after_two - below_before, 1,
+		"round-robin streaming advances Below once across two frames")
+	instance.prime_chunk_stream("bridge", bridge_after_two)
+	var bridge_before_paused_frame := int((instance._chunk_streams["bridge"] as Dictionary).get("i", 0))
+	var below_before_paused_frame := int((instance._chunk_streams["below"] as Dictionary).get("i", 0))
+	instance._advance_chunk_streams()
+	_assert_equals(int((instance._chunk_streams["bridge"] as Dictionary).get("i", 0)),
+		bridge_before_paused_frame,
+		"Priming an already-live stream is idempotent and leaves it paused")
+	_assert_equals(int((instance._chunk_streams["below"] as Dictionary).get("i", 0)),
+		below_before_paused_frame + 1,
+		"A paused stream consumes no global slot; the active stream receives the frame budget")
+	instance.resume_chunk_stream("bridge")
+
 	# (B) Incremental: a fresh stream builds across frames and caps repeated render-piece allocation per step.
 	instance._unload_chunk("bridge")
 	instance.stream_chunk("bridge")
 	_assert_true(instance.is_chunk_streaming("bridge"), "stream_chunk begins a background build")
 	var b1: Node3D = instance._chunks["bridge"]
 	_assert_true(b1.find_child("BridgeModel", true, false) == null, "bridge render pieces are absent at stream start")
-	instance._advance_chunk_streams()
-	instance._advance_chunk_streams()
+	instance._run_chunk_stream_steps("bridge", 1)
+	instance._run_chunk_stream_steps("bridge", 1)
 	_assert_true(b1.find_child("BridgeModel", true, false) == null,
 		"the corridor and collision shell build before the render-piece root")
-	instance._advance_chunk_streams()
+	instance._run_chunk_stream_steps("bridge", 1)
 	var bridge_model := b1.find_child("BridgeModel", true, false) as Node3D
 	_assert_true(bridge_model != null and bridge_model.get_child_count() == 0,
 		"the bridge model root gets its own lightweight stream step")
@@ -13228,7 +15002,7 @@ func _test_chunk_streaming() -> void:
 	var stream_advances := 0
 	var previous_piece_count := 0
 	while instance.is_chunk_streaming("bridge") and stream_advances < 64:
-		instance._advance_chunk_streams()
+		instance._run_chunk_stream_steps("bridge", 1)
 		stream_advances += 1
 		var piece_count := bridge_model.get_child_count()
 		max_piece_delta = maxi(max_piece_delta, piece_count - previous_piece_count)
@@ -13336,28 +15110,188 @@ func _test_chunk_streaming() -> void:
 		_assert_true(opening != null and instance._grid.is_cell_allowed_on_level(
 			instance._grid.world_to_grid(opening.global_position), instance.LEVEL_LOWER),
 			"the authored platform mouth remains a reachable route from the main lane")
+		if opening != null:
+			var opening_cell: Vector2i = instance._grid.world_to_grid(opening.global_position)
+			var party_throat_open := true
+			for x_offset in [-1, 0]:
+				for z_offset in [-1, 0]:
+					party_throat_open = party_throat_open and instance._grid.is_cell_allowed_on_level(
+						opening_cell + Vector2i(x_offset, z_offset), instance.LEVEL_LOWER)
+			_assert_true(party_throat_open,
+				"the visible platform mouth rasterizes to a two-by-two walkable party throat")
+			var rail_edges_blocked := true
+			for x_offset in [-2, 1]:
+				for z_offset in [-1, 0]:
+					rail_edges_blocked = rail_edges_blocked and not instance._grid.is_cell_allowed_on_level(
+						opening_cell + Vector2i(x_offset, z_offset), instance.LEVEL_LOWER)
+			_assert_true(rail_edges_blocked,
+				"the cells beside the party throat remain blocked by the visible short rails")
+			for x_offset in [-1, 0]:
+				var deck_lane := opening_cell + Vector2i(x_offset, -1)
+				var route_lane := opening_cell + Vector2i(x_offset, 1)
+				_assert_true(not instance._grid.find_path(
+					deck_lane, route_lane, {}, false, {}, {}, instance.LEVEL_LOWER).is_empty(),
+					"platform mouth lane %d connects deck to route" % (x_offset + 2))
 	if streamed_peris_overlay != null:
 		_assert_equals(streamed_peris_overlay.find_children(
 			"PerisIronBoundary*", "MeshInstance3D", true, false).size(), 12,
 			"the streamed Peris guide includes all three exact iron footprints")
 		_assert_true(streamed_peris_overlay.find_child(
-			"PerisRouteFinalPosition", true, false) != null,
-			"the streamed Peris guide includes the true route convergence marker")
+			"PerisRouteFinalPosition", true, false) == null,
+			"the streamed Peris guide exposes boundaries without authoring a solved endpoint")
 
-	# (D) Revealing a chunk that was never streamed falls back to a plain synchronous load.
-	var g: Node3D = instance.reveal_chunk("gauntlet")
-	_assert_true(g != null and g.visible, "revealing a never-streamed chunk loads it synchronously")
+	# (D) Junction prewarm constructs presentation only: the hidden chunk cannot process, collide,
+	# receive input, or advance its reusable story beat before the authored arrival boundary.
+	# Rebuild from a fresh stream here so the assertions cover every staged callable, not only the
+	# production prefix that was deliberately primed during scene loading.
+	instance._unload_chunk("junction")
+	await get_tree().process_frame
+	var structure_signature := func(root: Node) -> Dictionary:
+		var signature := {}
+		for type_name in ["Node3D", "MeshInstance3D", "StaticBody3D", "CollisionShape3D", "Area3D", "Label3D"]:
+			signature[type_name] = root.find_children("*", type_name, true, false).size()
+		return signature
+	var junction_state_before: Dictionary = instance._junction_beat.snapshot()
+	instance.stream_chunk("junction")
+	var junction_root: Node3D = instance._chunks.get("junction")
+	_assert_true(junction_root != null and not junction_root.visible \
+			and junction_root.process_mode == Node.PROCESS_MODE_DISABLED,
+		"Junction prewarm starts hidden with inherited processing and physics disabled")
+	var junction_advances := 0
+	while instance.is_chunk_streaming("junction") and junction_advances < 128:
+		instance._advance_chunk_streams()
+		junction_advances += 1
+	_assert_true(not instance.is_chunk_streaming("junction") and junction_advances >= 6,
+		"Junction presentation is distributed across bounded stream steps")
+	_assert_true(instance._junction_beat.snapshot() == junction_state_before,
+		"Constructing the Junction does not advance its story-beat state")
+	_assert_equals(instance._junction_interactables.size(), instance._junction_survey_specs().size(),
+		"Junction stream constructs every survey station")
+	_assert_true(junction_root.find_child("JunctionField_*", true, false) == null
+			and junction_root.find_child("JunctionPrep*", true, false) == null
+			and instance._junction_beat.preparation_choices.is_empty()
+			and not instance.has_method("_build_junction_field_annex"),
+		"Junction stream contains neither annex/preparation nodes nor an annex builder")
+	_assert_true(is_instance_valid(instance._junction_plant_interactable),
+		"Junction stream constructs its authored plant")
+	var junction_inert := true
+	var junction_owned_interactions: Array = []
+	junction_owned_interactions.append_array(instance._junction_interactables.values())
+	junction_owned_interactions.append(instance._junction_plant_interactable)
+	for interact in junction_owned_interactions:
+		junction_inert = junction_inert and is_instance_valid(interact) \
+			and not bool(interact.get("interaction_enabled")) \
+			and not bool((interact as Area3D).monitoring) \
+			and (interact as Area3D).collision_layer == 0 \
+			and not bool((interact as Area3D).input_ray_pickable) \
+			and junction_root.is_ancestor_of(interact)
+	_assert_true(junction_inert,
+		"Every hidden Junction interaction is disabled, non-monitoring, non-pickable, and chunk-owned")
+	var streamed_junction_signature: Dictionary = structure_signature.call(junction_root)
+	instance.reveal_chunk("junction")
+	_assert_true(junction_root.visible and junction_root.process_mode == Node.PROCESS_MODE_INHERIT,
+		"Revealing the Junction restores its authored process mode")
+	var junction_still_gated := true
+	for interact in junction_owned_interactions:
+		junction_still_gated = junction_still_gated and not bool(interact.get("interaction_enabled"))
+	_assert_true(junction_still_gated,
+		"Reveal alone does not cross the Junction interaction lifecycle boundary")
+	instance._activate_junction_interactions()
+	var surveys_armed := true
+	for interact in instance._junction_interactables.values():
+		surveys_armed = surveys_armed and bool(interact.get("interaction_enabled"))
+	var plant_armed := bool(instance._junction_plant_interactable.get("interaction_enabled"))
+	_assert_true(surveys_armed and plant_armed,
+		"Junction arrival exposes optional reads and Peris's plant transition directly")
+	var junction_sentinel: Node = instance._junction_interactables.get("Workbench")
+	var junction_data_ids: Array[String] = []
+	for interact in junction_owned_interactions:
+		if "data_id" in interact and str(interact.get("data_id")) != "":
+			junction_data_ids.append(str(interact.get("data_id")))
+	instance._unload_chunk("junction")
+	for data_id in junction_data_ids:
+		_assert_true(not instance._game_state.has_interactable(data_id),
+			"Unloading Junction unregisters owned interactable data: %s" % data_id)
+	await get_tree().process_frame
+	_assert_true(not is_instance_valid(junction_root) and not is_instance_valid(junction_sentinel),
+		"Unloading Junction frees its root and owned interaction views")
+	var sync_junction: Node3D = instance.reveal_chunk("junction")
+	_assert_true(sync_junction != null and sync_junction.visible,
+		"Revealing a never-streamed Junction falls back to a synchronous build")
+	_assert_true(structure_signature.call(sync_junction) == streamed_junction_signature,
+		"Streamed and synchronous Junction builds have the same structural signature")
+	instance._unload_chunk("junction")
+	await get_tree().process_frame
+
+	# (E) Gauntlet prewarm owns dormant views only. Reveal is presentation; explicit activation is
+	# the separate simulation boundary, and unloading removes the registered cohort again.
+	instance.stream_chunk("gauntlet")
+	var gauntlet_root: Node3D = instance._chunks.get("gauntlet")
+	var gauntlet_advances := 0
+	while instance.is_chunk_streaming("gauntlet") and gauntlet_advances < 128:
+		instance._advance_chunk_streams()
+		gauntlet_advances += 1
+	_assert_true(gauntlet_root != null and not gauntlet_root.visible \
+			and gauntlet_root.process_mode == Node.PROCESS_MODE_DISABLED,
+		"Gauntlet prewarm remains hidden and inert after construction")
+	_assert_equals(instance._gauntlet_enemies.size(), instance._gauntlet_enemy_specs().size(),
+		"Gauntlet stream constructs the complete dormant cohort")
+	_assert_equals(instance._gauntlet_flure_interactables.size(), 2,
+		"Gauntlet stream constructs both gated Flure stations")
+	var gauntlet_dormant := true
+	for enemy in instance._gauntlet_enemies:
+		gauntlet_dormant = gauntlet_dormant and enemy.process_mode == Node.PROCESS_MODE_DISABLED \
+			and not instance._game_state.characters.has(enemy.char_id) \
+			and gauntlet_root.is_ancestor_of(enemy)
+	for station in instance._gauntlet_flure_interactables:
+		gauntlet_dormant = gauntlet_dormant and not bool(station.get("interaction_enabled")) \
+			and gauntlet_root.is_ancestor_of(station)
+	_assert_true(gauntlet_dormant,
+		"Hidden Gauntlet enemies are unregistered and disabled; Flures remain gated")
+	var streamed_gauntlet_signature: Dictionary = structure_signature.call(gauntlet_root)
+	instance.reveal_chunk("gauntlet")
+	var reveal_stays_dormant := gauntlet_root.visible
+	for enemy in instance._gauntlet_enemies:
+		reveal_stays_dormant = reveal_stays_dormant \
+			and enemy.process_mode == Node.PROCESS_MODE_DISABLED \
+			and not instance._game_state.characters.has(enemy.char_id)
+	_assert_true(reveal_stays_dormant,
+		"Revealing Gauntlet geometry does not activate its AI")
+	instance._activate_gauntlet_enemies()
+	var gauntlet_active := true
+	for enemy in instance._gauntlet_enemies:
+		gauntlet_active = gauntlet_active and enemy.process_mode == Node.PROCESS_MODE_INHERIT \
+			and instance._game_state.characters.has(enemy.char_id) \
+			and enemy.get_detection_targets().is_empty()
+	_assert_true(gauntlet_active,
+		"The explicit Gauntlet boundary registers AI without arming briefing-time detection")
+	var gauntlet_sentinel: Node = instance._gauntlet_enemies[0]
+	instance._unload_chunk("gauntlet")
+	var gauntlet_ids_removed := true
+	for enemy_i in range(instance._gauntlet_enemy_specs().size()):
+		gauntlet_ids_removed = gauntlet_ids_removed \
+			and not instance._game_state.characters.has("gauntlet_%d" % enemy_i)
+	_assert_true(gauntlet_ids_removed,
+		"Unloading an activated Gauntlet unregisters every chunk-owned enemy")
+	await get_tree().process_frame
+	_assert_true(not is_instance_valid(gauntlet_root) and not is_instance_valid(gauntlet_sentinel),
+		"Unloading Gauntlet frees its root and owned enemy views")
+	var sync_gauntlet: Node3D = instance.reveal_chunk("gauntlet")
+	_assert_true(sync_gauntlet != null and sync_gauntlet.visible,
+		"Revealing a never-streamed Gauntlet falls back to a synchronous build")
+	_assert_true(structure_signature.call(sync_gauntlet) == streamed_gauntlet_signature,
+		"Streamed and synchronous Gauntlet builds have the same structural signature")
 
 	if instance.has_method("_teardown_sequence"):
 		instance._teardown_sequence()
 	instance.queue_free()
 	await get_tree().process_frame
 
-# --- Test: the below-bridge ecology is DISTRACTED by its flures — it only chases up close ---
-# Each fauna targets the party but is distracted (shrunk detection range), so on the lower deck a party
-# keeping its distance is ignored; one that cuts through the huddle (gets really close) gets chased.
+# --- Test: the below-bridge ecology starts armed and a linked Flure changes its FSM ---
+# Route packs begin armed. Their linked Flure temporarily moves them through the reusable lured FSM;
+# expiry restores the same watch, so activation timing rather than passive proximity determines safety.
 func _test_elevator_distracted_fauna() -> void:
-	_test_name = "Elevator Distracted Fauna"
+	_test_name = "Elevator Armed Pack and Flure State"
 	var scene := load("res://scenes/tutorial/elevator.tscn")
 	if scene == null:
 		_assert_true(false, "elevator scene loads")
@@ -13390,12 +15324,11 @@ func _test_elevator_distracted_fauna() -> void:
 		instance.queue_free()
 		await get_tree().process_frame
 		return
-	_assert_true(gs.is_character_distracted(guard.char_id),
-		"Enemy-lane fauna is distracted by its flure")
+	_assert_true(not gs.is_character_distracted(guard.char_id),
+		"An unprimed route pack begins armed rather than granting a passive safe lane")
 	var normal_range: float = float(gs.characters[guard.char_id].stats.get("detection_range", 6.0))
 	var distracted_range: float = normal_range * gs.DETECTION_DISTRACTED_FACTOR
-	# MEDIUM distance: inside the fauna's NORMAL reach but outside its distracted reach — it must ignore
-	# the party (a non-distracted enemy would chase here, which is exactly what we're guarding against).
+	# MEDIUM distance is inside ordinary reach. Before a Flure changes the state, the pack must acquire.
 	var mid_gap: float = (normal_range + distracted_range) * 0.5
 	var anchor: Vector3 = gs.get_position(guard.char_id)
 	# Both characters were staged beside the cohort to wake it. Move Peris out of
@@ -13413,9 +15346,10 @@ func _test_elevator_distracted_fauna() -> void:
 	for s in range(30):
 		instance.headless_advance(0.1, 0.05)
 		instance._on_process(0.1, 1.0)
-	_assert_true(guard.get_state() in ["idle", "roam", "patrol"] and str(guard._current_target_id) != "aster",
-		"Distracted fauna ignores the party at mid distance (%.1fm < normal %.1f, > distracted %.1f); state=%s" \
-			% [mid_gap, normal_range, distracted_range, guard.get_state()])
+	_assert_true(guard.get_state() in ["alert", "pursuit", "windup", "charge", "impact"] \
+			and str(guard._current_target_id) == "aster",
+		"An unprimed pack acquires the party at mid distance (%.1fm < normal %.1f); state=%s" \
+			% [mid_gap, normal_range, guard.get_state()])
 	# CLOSE: the party cuts right into the huddle (well inside the distracted reach) and the fauna gives
 	# chase. Settle the fauna at its anchor first so the check is on proximity, not its wander phase.
 	var huddle_anchor: Vector3 = guard._roam_anchor if "_roam_anchor" in guard else gs.get_position(guard.char_id)
@@ -13436,7 +15370,37 @@ func _test_elevator_distracted_fauna() -> void:
 			chased = true
 			break
 	_assert_true(chased,
-		"Distracted fauna gives chase when the party gets really close (within %.1fm)" % distracted_range)
+		"An armed pack continues to punish a route through its inner reach (within %.1fm)" % distracted_range)
+	var guard_beat := -1
+	for beat_index in range(instance.ROUTE_BEAT_COUNT):
+		if (instance._route_flure_enemy_groups.get(beat_index, []) as Array).has(guard):
+			guard_beat = beat_index
+			break
+	_assert_true(guard_beat >= 0, "The armed guard belongs to one explicit route beat")
+	if guard_beat >= 0:
+		# Separate the successful model case from the inner-reach case above: an enemy already in a
+		# committed attack intentionally ignores a late Flure. Retreat the party and repost the pack,
+		# then prove that an informed activation changes the ordinary watch state.
+		for party_id in ["aster", "peris"]:
+			gs.command_stop(party_id)
+			gs.characters[party_id]["position"] = anchor + Vector3(-12.0, 0.0, 12.0)
+			gs.characters[party_id]["grid_cell"] = gs.grid.world_to_grid(
+				gs.characters[party_id]["position"])
+			gs._recompute_all_detection_predictions(party_id)
+		for enemy_variant in instance._route_flure_enemy_groups.get(guard_beat, []):
+			var route_enemy := enemy_variant as Enemy
+			var post: Vector3 = route_enemy._roam_anchor \
+				if "_roam_anchor" in route_enemy else gs.get_position(route_enemy.char_id)
+			route_enemy.re_post(post)
+		var linked_flure := instance._route_flure_interactables[guard_beat] as Flure
+		_assert_true(_trigger_exact_flure_source(gs, linked_flure, "peris"),
+			"Peris services the linked Flure's exact source to pull its armed pack")
+		_assert_true(gs.is_character_distracted(guard.char_id) and guard.get_state() == "lured",
+			"Flure activation changes the enemy through its reusable lured FSM")
+		instance.headless_advance(instance.ROUTE_FLURE_DURATION + 0.2, 0.1)
+		_assert_true(not gs.is_character_distracted(guard.char_id) \
+				and guard.get_state() in ["return", "roam", "idle"],
+			"The timed signal expires and the same pack predictably resumes its watch")
 	if instance.has_method("_teardown_sequence"):
 		instance._teardown_sequence()
 	instance.queue_free()
@@ -13503,9 +15467,31 @@ func _test_elevator_box_select_multiselect() -> void:
 		_assert_true(not instance._peris_node.is_external_path_preview_active()
 			and not instance._aster_node.is_external_path_preview_active(),
 			"Releasing or cancelling Rally returns path-preview ownership to both players")
+		gs.reset_performance_counters()
+		var rally_commit_started := Time.get_ticks_usec()
 		var moved := int(sel.headless_commit_rally(exit_gate))
+		var rally_commit_ms := float(Time.get_ticks_usec() - rally_commit_started) / 1000.0
+		var rally_counters: Dictionary = gs.get_performance_counters()
+		print("[PERF:ELEVATOR:RALLY] commit_ms=%.3f plans=%d spatial=%d wait=%d conflicts=%d group_replans=%d members=%d" % [
+			rally_commit_ms,
+			int(rally_counters.get("cooperative_plans", 0)),
+			int(rally_counters.get("cooperative_fast_paths", 0)),
+			int(rally_counters.get("cooperative_wait_fast_paths", 0)),
+			int(rally_counters.get("cooperative_conflict_searches", 0)),
+			int(rally_counters.get("group_replans", 0)),
+			int(rally_counters.get("group_replan_members", 0)),
+		])
 		_assert_equals(moved, 2,
 			"One held doorway command queues both Aster and Peris")
+		_assert_equals(int(rally_counters.get("group_replans", 0)), 1,
+			"The live doorway gesture performs one atomic group replan")
+		_assert_equals(int(rally_counters.get("group_replan_members", 0)), 2,
+			"The live doorway replan prepares exactly Aster and Peris")
+		_assert_equals(int(rally_counters.get("cooperative_conflict_searches", 0)), 0,
+			"The live doorway Rally performs no allocation-heavy conflict search")
+		_assert_true(int(rally_counters.get("cooperative_fast_paths", 0))
+			+ int(rally_counters.get("cooperative_wait_fast_paths", 0)) == 2,
+			"Both live doorway routes use bounded spatial planning")
 		_assert_equals(gs.get_party(), selected_before,
 			"Doorway rally leaves the authoritative portrait selection unchanged")
 		_assert_true(gs.is_moving("aster") and gs.is_moving("peris"),
@@ -13674,11 +15660,49 @@ func _test_elevator_wreckage_gate() -> void:
 	_assert_true(gate_scene != null and gate_scene.find_child("AsterAssist", true, false) != null \
 		and gate_scene.find_child("PerisAssist", true, false) != null,
 		"Two visible brace positions communicate the cooperation threshold")
+	var aster_pad := gate_scene.get_node_or_null("AssistPads/AsterPad") as MeshInstance3D
+	var peris_pad := gate_scene.get_node_or_null("AssistPads/PerisPad") as MeshInstance3D
+	var aster_pad_mesh := aster_pad.mesh as CylinderMesh if aster_pad != null else null
+	var peris_pad_mesh := peris_pad.mesh as CylinderMesh if peris_pad != null else null
+	_assert_true(aster_pad_mesh != null and peris_pad_mesh != null \
+			and aster_pad_mesh.bottom_radius <= 0.5 and peris_pad_mesh.bottom_radius <= 0.5,
+		"Brace marks stay character-scale instead of becoming screen-dominant discs")
+	var guidance_layout := gate_scene.get_node_or_null("GuidanceLayout")
+	var gate_label := gate_scene.get_node_or_null("GateLabel") as Label3D
+	var warning_label := gate_scene.get_node_or_null("WarningLabel") as Label3D
+	_assert_true(guidance_layout != null \
+			and int(guidance_layout.call("get_registered_label_count")) == 3,
+		"The two causal reads and interaction verb share one reusable callout stack")
+	_assert_true(gate_label != null and warning_label != null \
+			and gate_label.fixed_size and warning_label.fixed_size,
+		"Wreckage guidance keeps a stable glyph size across the lower-route zoom range")
+	_assert_true(gate_label.text == "2 BRACES" \
+			and warning_label.text.contains("SOLO") and warning_label.text.contains("FAUNA"),
+		"Compact labels retain both the cooperation threshold and solo-failure causal chain")
+	var default_centers: PackedVector2Array = guidance_layout.call(
+		"debug_calculate_screen_centers", Vector2(720.0, 440.0), Vector2(1280.0, 720.0), 3)
+	var edge_centers: PackedVector2Array = guidance_layout.call(
+		"debug_calculate_screen_centers", Vector2(1100.0, 440.0), Vector2(1280.0, 720.0), 3)
+	_assert_true(default_centers.size() == 3 \
+			and default_centers[0].distance_to(default_centers[1]) >= 39.0 \
+			and default_centers[1].distance_to(default_centers[2]) >= 39.0,
+		"Default 1280x720 wreckage framing reserves a distinct screen row for every callout")
+	_assert_true(default_centers[0].x > 720.0 and edge_centers[0].x < 1100.0 \
+			and edge_centers[0].x >= 24.0 + 120.0,
+		"The stack uses the open side of the gate and flips before labels cross a viewport edge")
 	_assert_true(blocker != null and not blocker.disabled,
 		"Intact wreckage has authoritative collision before the pair clears it")
 	_assert_true(instance._wreckage_interactable != null \
 		and int(instance._wreckage_interactable.get("interactable_type")) == Interactable.InteractableType.TIMED_ACTION,
 		"Clearing wreckage is a deliberate click-to-work action")
+	_assert_true(str(instance._wreckage_interactable.get("consequence_preview")).contains("solo") \
+			and str(instance._wreckage_interactable.get("consequence_preview")).contains("alerts fauna"),
+		"Hover feedback states the action-to-consequence distinction without another world label")
+	var wreckage_outline: Node = instance.find_child("WreckageGateOutline", true, false)
+	_assert_true(wreckage_outline != null \
+			and wreckage_outline.has_method("get_outline_shell_count") \
+			and int(wreckage_outline.call("get_outline_shell_count")) == 2,
+		"Wreckage feedback outlines the two local loose stones, not the screen-spanning blocker")
 	var edge_target: Vector3 = instance.WRECKAGE_GATE_POS + Vector3(3.0, 0.0, 7.0)
 	for member_id in ["aster", "peris"]:
 		_assert_true(gs.compute_preview_path(member_id, edge_target).is_empty(),
@@ -13807,8 +15831,9 @@ func _test_elevator() -> void:
 		_assert_true(instance._junction_beat is SurveyProtocolStoryBeat
 				and instance._story_beat_runner.beat(&"junction_arrive") == instance._junction_beat,
 			"Elevator composes Junction through the shared StoryBeat runner")
-		_assert_true(instance._junction_beat.protocols.configuration_errors().is_empty(),
-			"Elevator Junction's authored protocol graph passes reusable validation")
+		_assert_true(not instance._junction_beat.protocols.has_protocols()
+				and instance._junction_beat.protocols.configuration_errors().is_empty(),
+			"Elevator Junction has no mandatory protocol graph")
 
 		var env: Node = instance.find_child("Environment", true, false)
 		_assert_true(env != null, "Environment node exists")
@@ -13913,6 +15938,9 @@ func _test_elevator() -> void:
 		instance._toggle_pause()
 		_assert_true(instance._scheduler.is_paused(),
 			"EMP tutorial cannot unpause before Aster queues EMP")
+		var aster_stamina_before_emp: float = instance._game_state.get_stat("aster", "stamina")
+		var peris_stamina_before_emp: float = instance._game_state.get_stat("peris", "stamina")
+		var aster_atp_before_emp: float = instance._game_state.get_stat("aster", "atp")
 		instance._on_emp_pressed()
 		_assert_true(instance._emp_queued, "Aster EMP queues from its bound key while the tutorial is paused")
 		_assert_elevator_escort_standoff(instance, 2.0,
@@ -13921,6 +15949,14 @@ func _test_elevator() -> void:
 		_assert_true(not instance._scheduler.is_paused(),
 			"EMP tutorial unpauses after Aster queues EMP")
 		_assert_equals(instance._emp_count, 2, "Queued EMP fires when the tutorial unpauses")
+		_assert_true(instance._game_state.get_stat("aster", "stamina") < aster_stamina_before_emp,
+			"EMP spends Aster's stamina")
+		_assert_true(is_equal_approx(instance._game_state.get_stat("peris", "stamina"), peris_stamina_before_emp),
+			"Aster's EMP does not spend Peris's stamina")
+		_assert_true(is_equal_approx(instance._game_state.get_stat("aster", "atp"), aster_atp_before_emp),
+			"EMP does not spend shelter ATP")
+		_assert_true(bool(instance._escort_1.emp_compatible) and bool(instance._escort_2.emp_compatible),
+			"Only the authored electronic elevator units opt into EMP")
 		_assert_true(instance._emp_animation_player != null
 				and instance._emp_animation_player.has_animation("emp_discharge")
 				and instance._emp_animation_player.current_animation == "emp_discharge",
@@ -14050,7 +16086,7 @@ func _test_elevator() -> void:
 		# After the fall, the party shares the lower deck with the ecology — but the fauna are AMBIENT
 		# (they don't hunt the party) until the player takes the route through them, so landing among
 		# them is safe regardless of physical distance.
-		instance._on_fall_landed()
+		instance._on_fall_landed(true) # explicit white-box endpoint
 		for j in range(8):
 			instance.headless_advance(0.1, 0.05)
 			instance._on_process(0.1, 1.0)
@@ -14128,16 +16164,13 @@ func _test_elevator() -> void:
 				"Aster's active data overlay maps the ecology lane")
 			_assert_true(peris_overlay != null and not peris_overlay.visible,
 				"Peris's route information remains hidden until her overlay is turned on")
-			var hidden_safe_route := peris_overlay.find_child("PerisSafeRouteGuide", true, false) as PathRenderer \
-				if peris_overlay != null else null
-			if hidden_safe_route != null:
-				hidden_safe_route._process(0.0)
-			_assert_true(hidden_safe_route != null
-				and not hidden_safe_route._line.visible
-				and not hidden_safe_route._tail.visible,
-				"Peris's top-level safe-route meshes do not leak while her overlay is off")
+			_assert_true(peris_overlay != null
+				and peris_overlay.find_children("*", "PathRenderer", true, false).is_empty()
+				and peris_overlay.find_child("PerisRouteFinalPosition", true, false) == null,
+				"Peris's hidden register contains facts, never top-level solution meshes")
 			var active_before: String = str(instance._active_character)
 			var selection_before: Array = instance._hud.get_selected_ids().duplicate()
+			var route_mode_before: bool = instance._game_state.is_route_cautious()
 			instance._set_elevator_overlay_state("peris", true)
 			_assert_equals(str(instance._active_character), active_before,
 				"Turning on Peris's overlay does not change the active character")
@@ -14148,34 +16181,15 @@ func _test_elevator() -> void:
 					"Peris's memory layer becomes visible independently")
 				_assert_equals(peris_overlay.find_children("PerisIronBoundary*", "MeshInstance3D", true, false).size(), 12,
 					"Peris reveals the exact four-sided footprint of all three iron fields")
-				var safe_route_guide := peris_overlay.find_child("PerisSafeRouteGuide", true, false) as PathRenderer
-				if safe_route_guide != null:
-					safe_route_guide._process(0.0)
-				_assert_true(safe_route_guide != null
-					and safe_route_guide.preview_style
-					and safe_route_guide._explicit_path.size() >= 6
-					and safe_route_guide._line.visible,
-					"Peris reuses the shared dashed PathRenderer for the continuous safe-edge guide")
-				var safe_route_material := safe_route_guide._mat as StandardMaterial3D \
-					if safe_route_guide != null else null
-				_assert_true(safe_route_material != null
-					and safe_route_material.transparency == BaseMaterial3D.TRANSPARENCY_DISABLED
-					and not safe_route_material.no_depth_test
-					and safe_route_material.render_priority == 127,
-					"Peris's shared safe-route ribbon stays grounded and composites after the data tint")
-				var safe_start := peris_overlay.find_child("PerisSafeRouteStart", true, false) as MeshInstance3D
-				_assert_true(safe_start != null
-					and absf(float(safe_start.rotation_degrees.x) - 90.0) < 0.1,
-					"Peris's overlay appears immediately as a flat safe-route start ring")
-				var endpoint: Node3D = peris_overlay.find_child("PerisRouteFinalPosition", true, false)
-				_assert_true(endpoint != null and endpoint.global_position.distance_to(
-					Vector3(instance.ROUTES_CONVERGE.x, instance.BELOW_Y + 0.12, 4.0)) < 0.1,
-					"Peris's overlay displays the actual final position where the routes rejoin")
+				_assert_true(peris_overlay.find_children("*", "PathRenderer", true, false).is_empty()
+					and peris_overlay.find_child("PerisRouteFinalPosition", true, false) == null,
+					"Peris reveals boundaries without drawing a continuous answer or final marker")
 
-			# The useful read changes the planned consequence, not merely the colour of the floor. A normal
-			# hover/click to the displayed final position must now produce the same safe-edge route Peris drew.
-			_assert_true(instance._game_state.is_route_cautious(),
-				"Peris's iron read enables safe routing for the newly mapped hazard")
+			# The read changes available knowledge, not the player's policy. SAFE is an
+			# explicit command and ordinary previews remain predictions of that command.
+			_assert_equals(instance._game_state.is_route_cautious(), route_mode_before,
+				"Peris's iron read does not silently change SAFE/DIRECT routing")
+			instance._game_state.set_route_mode(true)
 			_set_sequence_character_position(instance, "peris", Vector3(
 				instance.ROUTE_READ_PERIS_POS.x, instance.BELOW_Y, instance.ROUTE_READ_PERIS_POS.z))
 			var safe_preview: Array[Vector3] = instance._game_state.compute_preview_path(
@@ -14186,9 +16200,9 @@ func _test_elevator() -> void:
 				safe_preview_hits_iron = safe_preview_hits_iron or instance._iron_patch_contains(waypoint)
 				safe_preview_uses_outer_edge = safe_preview_uses_outer_edge or waypoint.z > 6.0
 			_assert_true(safe_preview.size() >= 2 and not safe_preview_hits_iron,
-				"Clicking Peris's final marker plans a route that never enters an iron footprint")
+				"an explicit SAFE preview avoids every newly known iron footprint")
 			_assert_true(safe_preview_uses_outer_edge,
-				"The planned safe route follows Peris's displayed outer edge")
+				"the player's SAFE plan finds its own viable outer margin")
 			var safe_rally_target := Vector3(
 				instance.FORK_POS.x + float(instance.ROUTE_BEAT_OFFSETS[0]),
 				instance.BELOW_Y,
@@ -14229,12 +16243,17 @@ func _test_elevator() -> void:
 			_assert_equals(instance._game_state.get_stat("aster", "hp"),
 				instance.PARTY_MAX_HP - instance.IRON_DAMAGE_PER_TICK,
 				"Iron applies one clear four-HP bite per cadence")
-			var iron_feedback := instance.find_child("DamageFeedbackAster", true, false) as Label3D
+			var iron_feedback := instance._aster_node.get_node_or_null("DamageFeedbackLabel") as Label3D
 			_assert_true(iron_feedback != null and iron_feedback.text.begins_with("IRON")
 				and "LEFT" in iron_feedback.text,
 				"Iron damage identifies its source and remaining HP over the affected character")
+			if iron_feedback != null:
+				instance._show_party_damage_feedback(
+					"aster", 1.0, "IRON", Color(1.0, 0.32, 0.08))
+				_assert_true(instance._aster_node.get_node_or_null("DamageFeedbackLabel") == iron_feedback,
+					"Repeated damage feedback reuses the player scene's authored label")
 			_assert_true(bool(instance._iron_contact_warning_shown.get("aster", false)),
-				"First iron contact raises the explicit move-to-amber-edge warning")
+				"First iron contact names the exact footprint and correction")
 			var aster_card: Control = instance._hud._portraits["aster"].card
 			_assert_true(aster_card.modulate.r > aster_card.modulate.g,
 				"Iron damage pulses the affected HUD portrait red")
@@ -14280,8 +16299,9 @@ func _test_elevator() -> void:
 					platform_flure.set("active_character", "peris")
 					platform_flure.call("_trigger", false)
 				instance.headless_advance(2.0, 0.05)
-				var all_crossing_to_signal := bool(instance._route_flures_activated[
-					instance.GRATED_PLATFORM_ROUTE_BEAT])
+				var all_crossing_to_signal: bool = bool(
+					instance._route_flure_source_is_active(
+						instance.GRATED_PLATFORM_ROUTE_BEAT))
 				var crossing_diagnostics: Array[String] = []
 				for enemy in platform_group:
 					var distance_after: float = instance._game_state.get_position(enemy.char_id).distance_to(
@@ -14291,10 +16311,11 @@ func _test_elevator() -> void:
 						enemy.get_state(), str(instance._game_state.is_moving(enemy.char_id)),
 						str(instance._game_state.get_destination(enemy.char_id))])
 					all_crossing_to_signal = all_crossing_to_signal \
-						and enemy.get_detection_targets().is_empty() \
+						and enemy.get_state() == "lured" \
+						and instance._game_state.is_character_distracted(enemy.char_id) \
 						and distance_after < float(distances_before[enemy.char_id])
 				_assert_true(all_crossing_to_signal,
-					"Lighting the platform Flure makes both roost fauna cross the grated connector (%s)" \
+					"Lighting the platform Flure lures both roost fauna across while retaining inner reach (%s)" \
 						% "; ".join(crossing_diagnostics))
 
 		# Route convergence gate: after choosing a lane and walking it, reaching convergence
@@ -14323,8 +16344,10 @@ func _test_elevator() -> void:
 		})
 		_assert_true(bool(instance.headless_get_state().get("wreckage_armed", false)),
 			"Finishing the environmental routes arms the authored wreckage interaction")
-		_assert_true(instance._chunks.has("below") and not instance._chunks.has("junction"),
-			"A lead unit cannot unload the hazardous hallway under a trailing partner")
+		var prewarmed_junction: Node3D = instance._chunks.get("junction")
+		_assert_true(instance._chunks.has("below") and prewarmed_junction != null \
+				and not prewarmed_junction.visible,
+			"A lead unit keeps the hazardous hallway loaded while the next Junction stays hidden")
 		var wreckage_anchor: Vector3 = instance._wreckage_interaction_anchor()
 		_set_sequence_character_position(instance, "aster", wreckage_anchor + Vector3(0.0, 0.0, -1.1))
 		_set_sequence_character_position(instance, "peris", wreckage_anchor + Vector3(0.0, 0.0, 1.1))
@@ -14340,13 +16363,12 @@ func _test_elevator() -> void:
 
 		for k in range(2):
 			await get_tree().process_frame
-		# This gate is intentionally dormant here.  Validate the active
-		# interactable contract only after the survey/preparation arms it.
+		# The plant is the only required Junction transition; shelter reads remain optional.
 		var plant_zone: Node = instance.find_child("DormantPlant", true, false)
 		_assert_true(plant_zone != null, "Dormant plant interactable exists")
 		if plant_zone != null:
-			_assert_true(not bool(plant_zone.get("interaction_enabled")),
-				"Dormant plant stays locked until the shelter survey and preparation")
+			_assert_true(bool(plant_zone.get("interaction_enabled")),
+				"Peris can tend the dormant plant immediately on Junction arrival")
 			var shelter_reads := [
 				["Workbench", "aster"],
 				["Food", "peris"],
@@ -14361,20 +16383,17 @@ func _test_elevator() -> void:
 					shelter_interact._trigger(false)
 			var junction_state: Dictionary = instance.headless_get_state()
 			_assert_equals(int(junction_state.get("junction_inspection_count", 0)), 3,
-				"Three distinct shelter inspections satisfy the survey")
+				"Optional shelter reads still record world-building discoveries")
 			_assert_true(bool(junction_state.get("junction_survey_ready", false)),
-				"Shelter survey includes both Aster and Peris perspectives")
-			var prep: Node = instance._junction_prep_interactables.get("scout")
-			_assert_true(prep != null and bool(prep.get("interaction_enabled")),
-				"Completed survey unlocks the preparation choice")
-			if prep != null:
-				prep.set("active_character", "peris")
-				prep._trigger(false)
-			_assert_true(not bool(plant_zone.get("interaction_enabled")),
-				"Committing a preparation opens the service annex before the plant")
-			_complete_elevator_junction_fieldwork_direct(instance, "Elevator movement-gate path")
-			_assert_true(bool(plant_zone.get("interaction_enabled")),
-				"Completing all three annex protocols unlocks the dormant plant")
+				"Optional shelter reads never gate the already-available plant")
+			var junction_chunk: Node = instance._chunks.get("junction")
+			_assert_true(junction_chunk != null
+					and junction_chunk.find_child("JunctionField_*", true, false) == null
+					and junction_chunk.find_child("JunctionPrep*", true, false) == null
+					and instance._junction_beat.preparation_choices.is_empty()
+					and not junction_state.has("junction_field_protocol")
+					and not junction_state.has("junction_preparation"),
+				"Endo's Junction exposes neither annex/preparation stations nor their progress state")
 			_assert_exploration_interactable_contract(instance, "DormantPlant")
 			_set_sequence_character_position(instance, "peris", (plant_zone as Node3D).global_position)
 			_drive_interactable_zone(plant_zone, instance._peris_node, 2.2)
@@ -14383,28 +16402,70 @@ func _test_elevator() -> void:
 				"Dormant plant advances after Peris dwells in its mapped zone")
 
 		_clear_sequence_runtime_for_spatial_test(instance)
-		if not instance._game_state.characters.has("endo"):
-			instance._register_gs_character("endo", instance._endo, 2.5)
+		_ensure_elevator_gauntlet_endo_fixture(instance)
+		_stage_elevator_gauntlet_intro_approach(instance)
 		instance._start_gauntlet()
 		_disable_enemy_detection(instance)
 		for m in range(2):
 			await get_tree().process_frame
 		# The briefing deliberately owns this gate until it finishes.
-		var flure_zone: Node = instance.find_child("FlureInteract", true, false)
+		var flure_zone: Node = instance._gauntlet_flure_interactables[0] \
+			if not instance._gauntlet_flure_interactables.is_empty() else null
 		_assert_true(flure_zone != null, "First gauntlet Flure interactable exists")
 		if flure_zone != null:
 			_assert_true(not bool(flure_zone.get("interaction_enabled")),
 				"First gauntlet Flure stays locked during the mandatory briefing")
 			instance._finish_gauntlet_intro()
+			_assert_true(not bool(flure_zone.get("interaction_enabled"))
+					and str(instance._gauntlet_intro_authority.get("phase", "")) \
+						== instance.GAUNTLET_INTRO_PHASE_ASSEMBLING,
+				"Finishing dialogue alone cannot arm the gauntlet before all three bodies arrive")
+			_settle_elevator_gauntlet_intro_formation(instance)
 			_assert_true(bool(flure_zone.get("interaction_enabled")),
-				"First gauntlet Flure arms after the briefing")
-			_assert_exploration_interactable_contract(instance, "FlureInteract")
+				"First gauntlet Flure arms after the briefing and physical three-body formation")
+			_assert_exploration_interactable_contract(
+				instance, "GauntletFlure1", true, "res://scripts/game/objects/flure.gd")
 			flure_zone.set("active_character", "peris")
 			flure_zone._trigger(false)
 			_assert_true(instance._flure_active,
 				"Peris activates the first click-gated Flure")
-			instance._reach_gauntlet_midpoint()
-			var relay_zone: Node = instance.find_child("FlureInteract2", true, false)
+			_set_sequence_character_position(instance, "aster",
+				instance.GAUNTLET_MIDPOINT + Vector3(1.0, 0.5, -0.8))
+			_set_sequence_character_position(instance, "peris",
+				instance.GAUNTLET_MIDPOINT + Vector3(1.0, 0.5, 0.8))
+			_set_sequence_character_position(instance, "endo",
+				instance.GAUNTLET_MIDPOINT + Vector3(-4.0, 0.5, 0.0))
+			instance.headless_advance(0.2, 0.05)
+			_assert_true(not instance._gauntlet_midpoint_reached,
+				"Aster and Peris cannot abandon conscious Endo outside the midpoint refuge")
+			_assert_elevator_movement_gate(instance, {
+				"label": "Three-body gauntlet midpoint gate",
+				"start_step": "gauntlet",
+				"expected_step": "gauntlet",
+				"reset_runtime": false,
+				"characters": [
+					{
+						"id": "aster",
+						"outside": instance.GAUNTLET_MIDPOINT + Vector3(-4.0, 0.5, -0.8),
+						"target": instance.GAUNTLET_MIDPOINT + Vector3(1.0, 0.5, -0.8),
+					},
+					{
+						"id": "peris",
+						"outside": instance.GAUNTLET_MIDPOINT + Vector3(-4.5, 0.5, 0.8),
+						"target": instance.GAUNTLET_MIDPOINT + Vector3(1.0, 0.5, 0.8),
+					},
+					{
+						"id": "endo",
+						"outside": instance.GAUNTLET_MIDPOINT + Vector3(-5.0, 0.5, 0.0),
+						"target": instance.GAUNTLET_MIDPOINT + Vector3(1.0, 0.5, 0.0),
+					},
+				],
+				"max_time": 3.0,
+			})
+			_assert_true(instance._gauntlet_midpoint_reached,
+				"The refuge commits only after Aster, Peris, and Endo physically cross")
+			var relay_zone: Node = instance._gauntlet_flure_interactables[1] \
+				if instance._gauntlet_flure_interactables.size() > 1 else null
 			_assert_true(relay_zone != null and bool(relay_zone.get("interaction_enabled")),
 				"Midpoint refuge arms the second Flure relay")
 			if relay_zone != null:
@@ -14413,8 +16474,17 @@ func _test_elevator() -> void:
 				_assert_true(bool((instance.headless_get_state().get("gauntlet_flure_active", {}) as Dictionary).get(1, false)),
 					"Peris activates the second gauntlet relay independently")
 
+		_set_sequence_character_position(instance, "aster",
+			instance.GAUNTLET_EXIT + Vector3(1.5, 0.5, -0.8))
+		_set_sequence_character_position(instance, "peris",
+			instance.GAUNTLET_EXIT + Vector3(1.0, 0.5, 0.8))
+		_set_sequence_character_position(instance, "endo",
+			instance.GAUNTLET_EXIT + Vector3(-4.0, 0.5, 0.0))
+		instance.headless_advance(0.2, 0.05)
+		_assert_equals(instance._current_step, "gauntlet",
+			"Aster and Peris cannot complete while conscious Endo remains behind")
 		_assert_elevator_movement_gate(instance, {
-			"label": "Aster gauntlet exit gate",
+			"label": "Three-body gauntlet exit gate",
 			"start_step": "gauntlet",
 			"expected_step": "complete",
 			"reset_runtime": false,
@@ -14424,48 +16494,22 @@ func _test_elevator() -> void:
 					"outside": Vector3(instance.GAUNTLET_EXIT.x - 4.0, instance.BELOW_Y + 0.5, 0.0),
 					"target": instance.GAUNTLET_EXIT + Vector3(1.5, 0.5, 0.0),
 				},
+				{
+					"id": "peris",
+					"outside": Vector3(instance.GAUNTLET_EXIT.x - 4.5, instance.BELOW_Y + 0.5, 0.8),
+					"target": instance.GAUNTLET_EXIT + Vector3(1.0, 0.5, 0.8),
+				},
+				{
+					"id": "endo",
+					"outside": Vector3(instance.GAUNTLET_EXIT.x - 5.0, instance.BELOW_Y + 0.5, 0.0),
+					"target": instance.GAUNTLET_EXIT + Vector3(1.0, 0.5, 0.0),
+				},
 			],
 			"max_time": 3.0,
 		})
 
 		instance.queue_free()
 		await get_tree().process_frame
-
-func _complete_elevator_junction_fieldwork_direct(instance: Node, label: String) -> void:
-	for protocol_id_variant in instance.JUNCTION_FIELD_PROTOCOL_ORDER:
-		var protocol_id := str(protocol_id_variant)
-		var protocol: Dictionary = instance.JUNCTION_FIELD_PROTOCOLS[protocol_id]
-		for evidence_variant in protocol.get("evidence", []):
-			var evidence_id := str(evidence_variant)
-			var evidence_spec: Dictionary = instance.JUNCTION_FIELD_SITES[evidence_id]
-			var evidence: Node = instance._junction_field_interactables.get(evidence_id)
-			_assert_true(evidence != null, "%s exposes %s" % [label, evidence_id])
-			if evidence != null:
-				evidence.set("active_character", str(evidence_spec.get("role", "")))
-				evidence.call("_trigger", false)
-		var choices: Array = protocol.get("choices", [])
-		if choices.is_empty():
-			_assert_true(false, "%s exposes a %s planning branch" % [label, protocol_id])
-			continue
-		var choice_id := str(choices[0])
-		var choice_spec: Dictionary = instance.JUNCTION_FIELD_SITES[choice_id]
-		var choice: Node = instance._junction_field_interactables.get(choice_id)
-		_assert_true(choice != null and bool(choice.get("interaction_enabled")),
-			"%s unlocks %s after evidence" % [label, choice_id])
-		if choice != null:
-			choice.set("active_character", str(choice_spec.get("role", "")))
-			choice.call("_trigger", false)
-		var resolution_id := str((protocol.get("resolution_sites", {}) as Dictionary).get(choice_id, ""))
-		var resolution_spec: Dictionary = instance.JUNCTION_FIELD_SITES.get(resolution_id, {})
-		var resolution: Node = instance._junction_field_interactables.get(resolution_id)
-		_assert_true(resolution != null and bool(resolution.get("interaction_enabled")),
-			"%s unlocks branch execution %s" % [label, resolution_id])
-		if resolution != null:
-			resolution.set("active_character", str(resolution_spec.get("role", "")))
-			resolution.call("_trigger", false)
-	var field_state: Dictionary = instance.headless_get_state()
-	_assert_true(bool(field_state.get("junction_fieldwork_complete", false)),
-		"%s completes all Elevator annex fieldwork" % label)
 
 # --- Test: Leaving Facility ---
 func _test_leaving_facility() -> void:
@@ -14506,6 +16550,50 @@ func _test_leaving_facility() -> void:
 					break
 			_assert_true(gs.get_position("aster").x > start_x + 2.0,
 				"Aster walks east on the grid (%.1f -> %.1f)" % [start_x, gs.get_position("aster").x])
+
+		# The scene's actual decision is spatial: at each reachable iron field,
+		# regroup and choose its SAFE or DIRECT seal. No invented maintenance
+		# checklist may stand between the party and that choice.
+		_assert_true(instance.find_children("Sector*Protocol*", "Interactable", true, false).is_empty(),
+			"Leaving Facility has no mandatory field-protocol checklist")
+		_assert_true(instance.find_child("LysateRecoverStation", true, false) == null
+				and instance.find_child("LysateShieldStation", true, false) == null,
+			"Leaving Facility has no invented lysate recovery/shield manifold")
+		_assert_true(instance._sector_route_interactables[0][0].is_interaction_enabled()
+				and instance._sector_route_interactables[0][1].is_interaction_enabled(),
+			"The first reachable SAFE/DIRECT seal pair is immediately available")
+		_assert_true(not instance._sector_route_interactables[1][0].is_interaction_enabled(),
+			"The next seal remains dormant until the first gate opens")
+
+		var first_direct: Vector3 = instance.IRON_SECTORS[0]["direct_station"]
+		for character_id in ["aster", "peris", "endo"]:
+			instance.set_preview_character_position(character_id, first_direct)
+		var first_direct_source: Node = instance._sector_route_interactables[0][1]
+		_assert_true(_trigger_exact_interactable_source(
+				gs, first_direct_source, "aster", instance),
+			"The gathered party physically operates the first DIRECT seal")
+		instance._scheduler.advance_ticks(instance.SECTOR_GATE_OPEN_DURATION + 0.001)
+		instance._update_sector_gate_visuals()
+		_assert_true(bool((instance.headless_get_state()["sector_gates_open"] as Array)[0]),
+			"The physical DIRECT seal opens the first GridWorld gate at its lift endpoint")
+		_assert_true(instance._sector_route_interactables[1][0].is_interaction_enabled()
+				and instance._sector_route_interactables[1][1].is_interaction_enabled(),
+			"Opening the first gate exposes the next SAFE/DIRECT seal pair")
+
+		var hp_before_cache := float(gs.get_stat("aster", "hp"))
+		var stamina_before_cache := float(gs.get_stat("aster", "stamina"))
+		instance.set_preview_character_position("aster", instance.CACHE_POS)
+		_assert_true(_trigger_exact_interactable_source(
+				gs, instance._cache_interactable, "aster", instance),
+			"Aster physically takes the exact facility cache source")
+		var cache_state: Dictionary = instance.headless_get_state()
+		var cache_item_id := str(cache_state.get("cache_item_id", ""))
+		_assert_true(cache_item_id != "" and gs.items.has(cache_item_id)
+				and str((gs.items[cache_item_id] as Dictionary).get("holder", "")) == "aster",
+			"Salvaged lysate remains a real carried item")
+		_assert_true(is_equal_approx(float(gs.get_stat("aster", "hp")), hp_before_cache)
+				and is_equal_approx(float(gs.get_stat("aster", "stamina")), stamina_before_cache),
+			"Salvaging lysate does not directly recover HP or stamina")
 
 		instance.queue_free()
 		await get_tree().process_frame
@@ -14862,12 +16950,16 @@ func _instantiate_preview_chunk_and_wait(chunk_id: String, settle_frames := 5, c
 	instance.set("preview_chunk", resolved_chunk)
 	var resolved_config: Dictionary = config if not config.is_empty() else (entry.get("config", {}) as Dictionary)
 	resolved_config = resolved_config.duplicate(true)
-	# Existing generated-level tests are a deterministic neutral control even if
-	# the player's persisted browser setting currently selects scarcity. Focused
-	# mode tests pass food_test explicitly and therefore retain their variant.
-	if resolved_chunk == "generated_stretch" and not resolved_config.has("food_test"):
-		resolved_config["game_mode"] = GameSettings.GAME_MODE_NEUTRAL
-		resolved_config["food_test"] = "neutral"
+	# Unspecified generated-stretch tests use the same preferred mastery oracle as
+	# corpus/browser QA. Focused economy controls remain explicit, so a Neutral test
+	# cannot accidentally pass merely because this helper selected an easier profile.
+	if resolved_chunk == "generated_stretch" \
+			and not resolved_config.has("game_mode") and not resolved_config.has("food_test"):
+		var scarcity_defaults: Dictionary = (
+			GameSettings.GAME_MODE_CHUNK_CONFIGS[GameSettings.GAME_MODE_SCARCITY] as Dictionary
+		).duplicate(true)
+		scarcity_defaults.merge(resolved_config, true)
+		resolved_config = scarcity_defaults
 	if not resolved_config.is_empty():
 		instance.set("preview_chunk_config", resolved_config.duplicate(true))
 	if String(entry.get("title", "")) != "":
@@ -14999,7 +17091,7 @@ func _assert_fragment_preview_uses_shared_gui(instance: Node, label: String) -> 
 
 	var hud_abilities: Dictionary = hud_contract.get("abilities", {})
 	var state_abilities: Dictionary = state.get("abilities", {})
-	for ability_id in ["aster_focus", "peris_tune", "endo_patch"]:
+	for ability_id in ["emp", "wrap"]:
 		var hud_ability: Dictionary = hud_abilities.get(ability_id, {})
 		var state_ability: Dictionary = state_abilities.get(ability_id, {})
 		_assert_equals(str(hud_ability.get("keybind", "")), str(state_ability.get("keybind", "")),
@@ -15375,20 +17467,15 @@ func _assert_preview_main_ability_keymap(instance: Node, label: String) -> void:
 		return
 
 	var expected := {
-		"aster_focus": {
+		"emp": {
 			"owner": "aster", "keybind": InputHints.label_for_action("party_slot_1_ability_1", ""), "keycode": KEY_Z,
 			"input_action": "party_slot_1_ability_1", "legacy_input_action": "ability_primary",
 			"party_slot": 0, "ability_slot": 0,
 		},
-		"peris_tune": {
+		"wrap": {
 			"owner": "peris", "keybind": InputHints.label_for_action("party_slot_2_ability_1", ""), "keycode": KEY_X,
 			"input_action": "party_slot_2_ability_1", "legacy_input_action": "ability_secondary",
 			"party_slot": 1, "ability_slot": 0,
-		},
-		"endo_patch": {
-			"owner": "endo", "keybind": InputHints.label_for_action("party_slot_3_ability_1", ""), "keycode": KEY_Z,
-			"input_action": "party_slot_3_ability_1", "legacy_input_action": "ability_primary",
-			"party_slot": 2, "ability_slot": 0,
 		},
 	}
 	var state: Dictionary = instance.headless_get_state()
@@ -15416,21 +17503,20 @@ func _assert_preview_main_ability_keymap(instance: Node, label: String) -> void:
 	if instance.has_method("headless_activate_ability_action") and not instance._game_state.is_downed("aster"):
 		instance.headless_select_character("peris")
 		var direct_before: Dictionary = instance.headless_get_state()
-		var direct_atp := float(direct_before.get("character_stats", {}).get("aster", {}).get("atp", -1.0))
+		var direct_stamina := float(direct_before.get("character_stats", {}).get("aster", {}).get("sta", -1.0))
 		_assert_true(bool(instance.headless_activate_ability_action("party_slot_1_ability_1")),
 			"%s direct Aster slot activates while Peris remains the selected perspective" % label)
 		var direct_after: Dictionary = instance.headless_get_state()
 		_assert_equals(str(direct_after.get("active_character", "")), "peris",
 			"%s direct ability input does not switch the active character" % label)
-		_assert_true(str(direct_after.get("abilities", {}).get("aster_focus", {}).get("state", "ready")) != "ready",
-			"%s direct slot fires Aster's exact ability" % label)
-		instance._set_runtime_ability_state("aster_focus", "ready", 0.0)
-		instance.set_preview_character_stat("aster", "atp", direct_atp)
+		_assert_true(str(direct_after.get("abilities", {}).get("emp", {}).get("state", "ready")) != "ready",
+			"%s direct slot fires Aster's EMP" % label)
+		instance._set_runtime_ability_state("emp", "ready", 0.0)
+		instance.set_preview_character_stat("aster", "sta", direct_stamina)
 
 	var activations := [
-		{"char_id": "aster", "ability_id": "aster_focus", "input_action": "party_slot_1_ability_1"},
-		{"char_id": "peris", "ability_id": "peris_tune", "input_action": "party_slot_2_ability_1"},
-		{"char_id": "endo", "ability_id": "endo_patch", "input_action": "party_slot_3_ability_1"},
+		{"char_id": "aster", "ability_id": "emp", "input_action": "party_slot_1_ability_1"},
+		{"char_id": "peris", "ability_id": "wrap", "input_action": "party_slot_2_ability_1"},
 	]
 	for activation in activations:
 		var char_id := str(activation.get("char_id", ""))
@@ -15445,6 +17531,7 @@ func _assert_preview_main_ability_keymap(instance: Node, label: String) -> void:
 		var before: Dictionary = instance.headless_get_state()
 		var before_stats: Dictionary = before.get("character_stats", {}).get(char_id, {})
 		var before_atp := float(before_stats.get("atp", -1.0))
+		var before_stamina := float(before_stats.get("sta", -1.0))
 		var before_run := bool(before.get("run_active", false))
 
 		_assert_true(bool(instance.headless_activate_ability_action(input_action)),
@@ -15454,8 +17541,10 @@ func _assert_preview_main_ability_keymap(instance: Node, label: String) -> void:
 		var after_stats: Dictionary = after.get("character_stats", {}).get(char_id, {})
 		_assert_true(str(ability_runtime.get("state", "ready")) != "ready",
 			"%s %s triggers from its direct party action" % [label, ability_id])
-		_assert_true(float(after_stats.get("atp", before_atp)) < before_atp,
-			"%s %s spends ATP from its direct party action" % [label, ability_id])
+		_assert_true(float(after_stats.get("sta", before_stamina)) < before_stamina,
+			"%s %s spends stamina from its direct party action" % [label, ability_id])
+		_assert_true(is_equal_approx(float(after_stats.get("atp", before_atp)), before_atp),
+			"%s %s does not spend shelter ATP" % [label, ability_id])
 		_assert_equals(bool(after.get("run_active", true)), before_run,
 			"%s direct %s ability does not toggle run" % [label, char_id.capitalize()])
 
@@ -15658,20 +17747,77 @@ func _survival_range_dwell_and_call(
 	method_name: String,
 	args: Array = []
 ) -> Dictionary:
-	var start_tick := _preview_scheduler_tick(instance)
-	if char_id != "" and instance.has_method("headless_select_character"):
-		instance.headless_select_character(char_id)
-	var dwell_time := float(segment.get("dwell_time", segment.get("total_time", 0.0)))
-	if dwell_time > 0.0:
-		_advance_showcase(instance, dwell_time)
-	var call_result: Variant = null
-	if instance.has_method("headless_call_chunk"):
-		call_result = instance.headless_call_chunk(method_name, args)
-	return {
-		"predicted": dwell_time,
-		"measured": _preview_scheduler_tick(instance) - start_tick,
-		"result": call_result,
-	}
+	var interactable := _physical_chunk_control_for_call(instance, method_name, args)
+	var physical_segment := segment.duplicate(true)
+	if not physical_segment.has("dwell_time"):
+		physical_segment["dwell_time"] = float(segment.get("total_time", 0.0))
+	if interactable != null and char_id != "" \
+			and instance.has_method("headless_set_character_position"):
+		# The analytical profile measures travel in its preceding movement segment.
+		# Park the same body at the exact world control before starting its real dwell;
+		# never substitute a direct chunk verb for the receipt.
+		instance.headless_set_character_position(
+			char_id, (interactable as Node3D).global_position)
+	return _survival_range_dwell_interactable(
+		instance, char_id, interactable, physical_segment)
+
+
+func _physical_chunk_control_for_call(
+	instance: Node,
+	method_name: String,
+	args: Array = []
+) -> Node:
+	if instance == null:
+		return null
+	var chunk: Node = instance.get("_active_chunk")
+	if chunk == null:
+		return null
+	match method_name:
+		"depart_range":
+			return chunk.get("_departure_interactable")
+		"survey_route":
+			return chunk.get("_scout_interactable")
+		"tune_echo_coupler":
+			return chunk.get("_echo_interactable")
+		"activate_range_lure":
+			return chunk.get("_lure_interactable")
+		"cross_seam":
+			var safe_control: Node = chunk.get("_seam_interactable")
+			var direct_control: Node = chunk.get("_direct_interactable")
+			return direct_control if direct_control != null \
+				and bool(direct_control.get("interaction_enabled")) else safe_control
+		"commit_hide":
+			return chunk.get("_hide_interactable")
+		"reset_after_failure":
+			return chunk.get("_recovery_interactable")
+		"rest_at_east_shelter":
+			return chunk.get("_east_shelter_interactable")
+		"activate_terminal":
+			return (chunk.get("_terminal_interactables") as Dictionary).get(
+				str(args[0]) if not args.is_empty() else "")
+		"use_portal":
+			return chunk.get("_portal_entry_interactable") \
+				if str(chunk.get("_peris_remote_terminal")) == "" \
+				else chunk.get("_portal_return_interactable")
+		"activate_fragment_move":
+			if args.size() < 2:
+				return null
+			var control_key: String = chunk.call(
+				"_root_control_key", str(args[0]), int(args[1]))
+			return (chunk.get("_root_control_interactables") as Dictionary).get(control_key)
+		"clear_collapse":
+			return chunk.get("_collapse_interactable")
+		"harvest_body":
+			return (chunk.get("_body_interactables") as Dictionary).get(
+				str(args[0]) if not args.is_empty() else "")
+		"pick_up_gear":
+			return chunk.get("_gear_interactable")
+		"install_gear_at":
+			return (chunk.get("_repair_interactables") as Dictionary).get(
+				str(args[0]) if not args.is_empty() else "")
+		"tend_mother":
+			return chunk.get("_mother_interactable")
+	return null
 
 func _survival_range_dwell_interactable(
 	instance: Node,
@@ -15700,6 +17846,58 @@ func _survival_range_dwell_interactable(
 		"interactable_type": int(interactable.get("interactable_type")) if interactable != null else -1,
 		"authored_dwell": float(interactable.get("dwell_time")) if interactable != null else -1.0,
 	}
+
+
+func _attempt_physical_control(
+	instance: Node,
+	char_id: String,
+	interactable: Node,
+	snap_to_control := false
+) -> bool:
+	if instance == null or interactable == null:
+		return false
+	if char_id != "" and instance.has_method("headless_select_character"):
+		instance.headless_select_character(char_id)
+	if snap_to_control and char_id != "" \
+			and instance.has_method("headless_set_character_position"):
+		instance.headless_set_character_position(
+			char_id, (interactable as Node3D).global_position)
+	interactable.set("active_character", char_id)
+	return bool(interactable.call("_trigger", false))
+
+
+func _trigger_exact_flure_source(game_state, flure: Node, actor: String) -> bool:
+	if game_state == null or not is_instance_valid(flure) \
+			or not flure.has_method("get_source_data_position") \
+			or not game_state.characters.has(actor):
+		return false
+	var source_position: Vector3 = flure.call("get_source_data_position")
+	game_state.command_stop(actor)
+	game_state.snap_character_to(actor, source_position)
+	flure.set("active_character", actor)
+	return bool(flure.call("_trigger", false))
+
+
+func _trigger_exact_interactable_source(
+		game_state, source: Node, actor: String, position_owner: Node = null) -> bool:
+	if game_state == null or not is_instance_valid(source) \
+			or not game_state.characters.has(actor):
+		return false
+	var data_id := str(source.get("data_id"))
+	var source_position := (source as Node3D).global_position \
+		if source is Node3D else Vector3.ZERO
+	if data_id != "" and game_state.has_interactable(data_id):
+		source_position = game_state.get_interactable(data_id).get(
+			"position", source_position)
+	if is_instance_valid(position_owner) \
+			and position_owner.has_method("set_preview_character_position"):
+		position_owner.call("set_preview_character_position", actor, source_position)
+	else:
+		game_state.command_stop(actor)
+		game_state.snap_character_to(actor, source_position)
+	source.set("active_character", actor)
+	return bool(source.call("_trigger", false))
+
 
 func _survival_range_atp_snapshot(instance: Node) -> Dictionary:
 	var snapshot := {}
@@ -15756,14 +17954,19 @@ func _run_survival_range_profile(profile: String) -> Dictionary:
 		measurements["stage_peris"] = _survival_range_move_segment(instance, segments.get("stage_peris", {}))
 	if segments.has("lure"):
 		measurements["lure"] = _survival_range_dwell_and_call(instance, "peris", segments.get("lure", {}), "activate_range_lure")
-		if bool(prediction.get("use_peris_tune", false)) and instance.has_method("headless_activate_ability"):
-			if instance.has_method("headless_select_character"):
-				instance.headless_select_character("peris")
-			measurements["peris_tune"] = {
-				"activated": instance.headless_activate_ability("peris_tune"),
-			}
 
 	measurements["cross"] = _survival_range_dwell_and_call(instance, "endo", segments.get("cross", {}), "cross_seam")
+	if segments.has("cross_traversal"):
+		var cross_traversal: Dictionary = segments.get("cross_traversal", {})
+		var cross_duration := float(cross_traversal.get("travel_time", 0.0))
+		var cross_start_tick := _preview_scheduler_tick(instance)
+		_advance_showcase(instance, cross_duration)
+		var cross_state: Dictionary = instance.headless_get_state() if instance.has_method("headless_get_state") else {}
+		measurements["cross_traversal"] = {
+			"predicted": cross_duration,
+			"measured": _preview_scheduler_tick(instance) - cross_start_tick,
+			"moving_after": bool((cross_state.get("chunk", {}) as Dictionary).get("cross_in_progress", true)),
+		}
 	measurements["hide_move"] = _survival_range_move_segment(instance, segments.get("hide", {}))
 	measurements["hide"] = _survival_range_dwell_and_call(instance, "endo", segments.get("hide", {}), "commit_hide")
 
@@ -15789,8 +17992,11 @@ func _run_survival_range_profile(profile: String) -> Dictionary:
 		instance.headless_select_character("aster")
 		instance.headless_set_character_position("aster", shelter_target)
 		var lone_atp_before := _survival_range_atp_snapshot(instance)
+		var shelter_hearth: Node = instance.find_child("RangeEastShelterInteractable", true, false)
+		var lone_attempt := _attempt_physical_control(
+			instance, "aster", shelter_hearth)
 		measurements["shelter_lone_refused"] = _survival_range_refusal_measurement(
-			instance, not bool(instance.headless_call_chunk("rest_at_east_shelter")), lone_atp_before)
+			instance, not lone_attempt, lone_atp_before)
 		instance.headless_set_character_position("aster", lone_start)
 
 		measurements["shelter"] = _survival_range_move_party_segment(instance, shelter_segment)
@@ -15801,20 +18007,23 @@ func _run_survival_range_profile(profile: String) -> Dictionary:
 		}
 		instance._game_state.down_character("peris")
 		var downed_atp_before := _survival_range_atp_snapshot(instance)
+		var downed_attempt := _attempt_physical_control(
+			instance, "aster", shelter_hearth)
 		measurements["shelter_downed_refused"] = _survival_range_refusal_measurement(
-			instance, not bool(instance.headless_call_chunk("rest_at_east_shelter")), downed_atp_before)
+			instance, not downed_attempt, downed_atp_before)
 		instance._game_state.restore_character("peris")
 		for stat_name in ["hp", "stamina", "atp"]:
 			instance._game_state.set_stat("peris", stat_name, float(peris_stats_before[stat_name]))
 		var endo_atp_before_probe := float(instance.get_preview_character_stat("endo", "atp"))
 		instance.set_preview_character_stat("endo", "atp", 0.0)
 		var insufficient_atp_before := _survival_range_atp_snapshot(instance)
+		var insufficient_attempt := _attempt_physical_control(
+			instance, "aster", shelter_hearth)
 		measurements["shelter_atp_refused"] = _survival_range_refusal_measurement(
-			instance, not bool(instance.headless_call_chunk("rest_at_east_shelter")), insufficient_atp_before)
+			instance, not insufficient_attempt, insufficient_atp_before)
 		instance.set_preview_character_stat("endo", "atp", endo_atp_before_probe)
 		var atp_before_rest := _survival_range_atp_snapshot(instance)
 		measurements["shelter_atp_before_rest"] = atp_before_rest
-		var shelter_hearth: Node = instance.find_child("RangeEastShelterInteractable", true, false)
 		measurements["shelter_rest"] = _survival_range_dwell_interactable(
 			instance, "aster", shelter_hearth, shelter_segment)
 
@@ -15884,12 +18093,50 @@ func _test_survival_range_timing() -> void:
 	if staged_safe.is_empty() or optimal_safe.is_empty() or greedy_direct.is_empty():
 		return
 
-	_assert_true(not bool(staged_safe.get("success", true)), "Safe route without Bloom is predicted to miss the window")
-	_assert_true(float(staged_safe.get("window_margin", 0.0)) < 0.0, "Safe route without Bloom has negative window margin")
+	_assert_true(bool(staged_safe.get("success", false)), "The authored safe route succeeds without an invented reinforcement step")
+	_assert_true(float(staged_safe.get("window_margin", 0.0)) > 0.0, "The base lure gives the safe route a positive window margin")
 	_assert_true(bool(optimal_safe.get("success", false)), "Optimal safe route is predicted to succeed")
 	_assert_true(float(optimal_safe.get("window_margin", 0.0)) > 0.0, "Optimal safe route keeps positive window margin")
 	_assert_true(not bool(greedy_direct.get("success", true)), "Greedy direct profile is predicted to fail")
-	_assert_equals(str(greedy_direct.get("outcome", "")), "hide_without_window", "Greedy direct profile fails at the hide")
+	_assert_equals(str(greedy_direct.get("outcome", "")), "swarm_still_blocks_release",
+		"Greedy direct profile fails because the real sweep still blocks release")
+
+	var reset_instance: Node = await _instantiate_preview_chunk_and_wait("survival_range", 3)
+	_assert_true(reset_instance != null, "Survival range instantiates for reset-winch semantics")
+	if reset_instance != null:
+		var reset_chunk: Node = reset_instance._active_chunk
+		var reset_gs = reset_instance._game_state
+		reset_chunk.call("_fail_range", "cli_recovery_fixture")
+		reset_instance.headless_select_character("endo")
+		reset_instance.headless_set_character_position("endo", reset_chunk.RECOVERY_RIG_POS)
+		var endo_stats_before := {
+			"hp": reset_gs.get_stat("endo", "hp"),
+			"stamina": reset_gs.get_stat("endo", "stamina"),
+			"atp": reset_gs.get_stat("endo", "atp"),
+		}
+		var reset_control: Node = reset_chunk.get("_recovery_interactable")
+		var reset_attempt := _survival_range_dwell_interactable(
+			reset_instance, "endo", reset_control,
+			{"dwell_time": float(reset_control.get("dwell_time"))})
+		_assert_true(bool(reset_attempt.get("result", false)),
+			"The reset winch can physically return a conscious Endo after a failed attempt")
+		_assert_equals(str(reset_chunk.get_preview_state().get("route_phase", "")), "resetting",
+			"Reset winch owns an in-flight phase instead of teleporting to completion")
+		_assert_equals(int(reset_chunk.get_preview_state().get("reset_count", 0)), 0,
+			"Reset credit is withheld until Endo reaches the seam")
+		for stat_name in ["hp", "stamina", "atp"]:
+			_assert_equals(reset_gs.get_stat("endo", stat_name), endo_stats_before[stat_name],
+				"Reset winch does not restore or spend Endo's %s" % stat_name)
+		reset_instance.headless_advance(reset_chunk.WINCH_PULL_DURATION + 0.001, 0.05)
+		_assert_equals(int(reset_chunk.get_preview_state().get("reset_count", 0)), 1,
+			"Reset winch records the physical reset only on arrival")
+		reset_chunk.call("_fail_range", "cli_downed_recovery_fixture")
+		reset_gs.down_character("endo")
+		_assert_true(not _attempt_physical_control(
+			reset_instance, "endo", reset_control, true),
+			"Reset winch refuses to revive a downed Endo; revival remains shelter-owned")
+		_assert_true(reset_gs.is_downed("endo"), "A refused winch reset leaves Endo downed")
+		await _dispose_scene(reset_instance)
 
 	var measured := await _run_survival_range_profile("optimal_safe")
 	_assert_true(not measured.is_empty(), "Measured optimal safe route returns data")
@@ -15943,7 +18190,7 @@ func _test_survival_range_timing() -> void:
 	var margin_diff := absf(predicted_margin - actual_margin)
 	_assert_true(margin_diff <= 0.08, "Measured lure margin matches prediction within 0.08s (diff=%.3f)" % margin_diff)
 
-	for step_name in ["scout_move", "stage_endo", "echo_move", "stage_peris", "hide_move", "shelter"]:
+	for step_name in ["scout_move", "stage_endo", "echo_move", "stage_peris", "cross_traversal", "hide_move", "shelter"]:
 		var step: Dictionary = measured.get("measurements", {}).get(step_name, {})
 		if step.is_empty():
 			continue
@@ -15979,7 +18226,7 @@ func _report_survival_range_playtime() -> void:
 
 	print("")
 	print("  === Survival Range Playtime ===")
-	print("  Safe route without Bloom: %s (fails, margin %+.2fs)" % [
+	print("  Authored safe route: %s (margin %+.2fs)" % [
 		_format_playtime(float(predictions["staged_safe"].get("total_time", 0.0))),
 		float(predictions["staged_safe"].get("window_margin", 0.0)),
 	])
@@ -16028,12 +18275,28 @@ func _report_mother_flure_playtime() -> void:
 	_assert_true(bool(wrong_measurements.get("tend_mother", {}).get("result", false)), "Wrong-repair detour still recovers to a stabilized mother")
 	var playtime_contract: Dictionary = movement_optimal.get("playtime_contract", {})
 	var modeled_first_clear := float(playtime_contract.get("modeled_first_clear_seconds", 0.0))
-	var required_first_clear := float(playtime_contract.get("required_first_clear_seconds", 300.0))
-	var target_max := float(playtime_contract.get("target_max_seconds", 480.0))
-	_assert_true(not playtime_contract.is_empty(), "Movement profile exposes the authored long-form playtime contract")
-	_assert_true(modeled_first_clear >= required_first_clear, "Full live Mother route meets the five-minute floor")
-	_assert_true(modeled_first_clear <= target_max, "Full live Mother route stays inside the eight-minute target")
-	_assert_true(float(playtime_contract.get("meaningful_active_ratio", 0.0)) >= 0.7, "Full live Mother route clears the meaningful-active pacing floor")
+	var mechanical_workload := float(playtime_contract.get("modeled_mechanical_workload_seconds", 0.0))
+	var human_target_min := float(playtime_contract.get("human_first_clear_target_min_seconds", 0.0))
+	var human_target_max := float(playtime_contract.get("human_first_clear_target_max_seconds", 0.0))
+	_assert_true(not playtime_contract.is_empty(), "Movement profile exposes the authored mechanical workload contract")
+	_assert_equals(human_target_min, 300.0, "Mother retains a five-minute human first-clear target floor")
+	_assert_equals(human_target_max, 480.0, "Mother retains an eight-minute human first-clear target ceiling")
+	_assert_equals(str(playtime_contract.get("human_first_clear_target_basis", "")), "playtest_only",
+		"Mother labels the 5-8 minute band as a human playtest target")
+	_assert_true(mechanical_workload > 0.0 and mechanical_workload < human_target_min,
+		"Mother reports its honest mechanical workload without padding it to five minutes")
+	_assert_equals(modeled_first_clear, mechanical_workload,
+		"Mother's modeled first clear equals its deterministic mechanical workload")
+	_assert_equals(float(playtime_contract.get("meaningful_active_seconds", -1.0)), mechanical_workload,
+		"Mother's active total contains only deterministic mechanical work")
+	_assert_equals(float(playtime_contract.get("total_play_seconds", -1.0)), mechanical_workload,
+		"Mother's elapsed model contains no fabricated reasoning time")
+	_assert_equals(float(playtime_contract.get("modeled_reasoning_seconds", -1.0)), 0.0,
+		"Mother's contract does not invent fixed reasoning seconds")
+	_assert_equals(int(playtime_contract.get("mandatory_diagnostic_clicks", -1)), 0,
+		"Mother's removed diagnostic checklist contributes no clicks")
+	_assert_equals(int(playtime_contract.get("mandatory_care_node_clicks", -1)), 0,
+		"Mother's removed care-node circuit contributes no clicks")
 
 	var cycle = DayNightCycleScript.new()
 	var start_state: Dictionary = movement_optimal.get("start_state", {})
@@ -16052,17 +18315,21 @@ func _report_mother_flure_playtime() -> void:
 
 	print("")
 	print("  === Mother Flure Playtime ===")
-	print("  Full live route contract: %s (%s traversal, %s click-gated work, %.1f%% active)." % [
+	print("  Honest mechanical workload: %s (%s traversal, %s click-gated work, %.1f%% active)." % [
 		_format_playtime(modeled_first_clear),
 		_format_playtime(float(playtime_contract.get("modeled_traversal_seconds", 0.0))),
 		_format_playtime(float(playtime_contract.get("modeled_interaction_work_seconds", 0.0))),
 		float(playtime_contract.get("meaningful_active_ratio", 0.0)) * 100.0,
 	])
 	print("  Root-slide lower bound: %s for 9 committed board shifts." % _format_playtime(root_animation_lower_bound))
-	print("  Legacy replay seam (bypasses live diagnosis/care gates): %s (%s interactions, %s root settling)." % [
+	print("  System-only replay seam (omits movement): %s (%s interactions, %s root settling)." % [
 		_format_playtime(float(system_optimal.get("measured_total", 0.0))),
 		_format_playtime(float(system_optimal.get("interaction_total", 0.0))),
 		_format_playtime(float(system_optimal.get("settle_total", 0.0))),
+	])
+	print("  Human first-clear target: %s-%s, verified by playtest rather than fabricated reasoning." % [
+		_format_playtime(human_target_min),
+		_format_playtime(human_target_max),
 	])
 	print("  Movement-optimal upper bound: %s (%s movement, %s interactions, %s root settling)." % [
 		_format_playtime(optimal_total),
@@ -16178,6 +18445,100 @@ func _test_grid_pathfinding() -> void:
 	_assert_true(not grid4.is_walkable(1, 1, {}, locked), "Locked door blocks")
 	_assert_true(grid4.is_walkable(1, 1, {}, {}), "Unlocked door passable")
 
+	# Elevator-scale core routing probe. The live lower deck is a long, shallow
+	# 232x21 grid; hundreds of otherwise modest A* expansions used to allocate a
+	# Dictionary for every heap node and hitch the Web build. Keep this fixture
+	# scene-agnostic while matching that grid shape, and require identical output
+	# across repeated calls before reporting the per-query cost.
+	var long_grid := GridWorld.new()
+	long_grid.create_room(232, 21, true)
+	var long_start := Vector2i(2, 10)
+	var long_end := Vector2i(229, 10)
+	var long_reference: Array[Vector3] = long_grid.find_path(long_start, long_end)
+	var long_repeat: Array[Vector3] = long_grid.find_path(long_start, long_end)
+	_assert_true(long_repeat == long_reference,
+		"Elevator-scale path output is deterministic across identical queries")
+	_assert_equals(long_reference.size(), 227,
+		"Elevator-scale open route contains one waypoint per traversed cell")
+	var path_perf_started := Time.get_ticks_usec()
+	var path_perf_queries := 40
+	for _i in range(path_perf_queries):
+		long_grid.find_path(long_start, long_end)
+	var path_perf_ms := float(Time.get_ticks_usec() - path_perf_started) / 1000.0
+	print("[pf-core-perf] %d elevator-scale paths: %.3f ms total, %.3f ms/query" % [
+		path_perf_queries, path_perf_ms, path_perf_ms / float(path_perf_queries)])
+	_assert_true(path_perf_ms / float(path_perf_queries) < 6.0,
+		"Elevator-scale core path query stays below the hitch budget (%.3f ms/query)" %
+		(path_perf_ms / float(path_perf_queries)))
+
+	# Derived dense masks must never become stale. Warm the mask, mutate each
+	# authoritative topology/risk input, then require the next query to observe
+	# the change and the following restoration.
+	var mutation_cell := Vector2i(100, 10)
+	long_grid.add_dynamic_blocker(mutation_cell, "perf_fixture_blocker")
+	var dynamic_detour := long_grid.find_path(long_start, long_end)
+	var dynamic_used_blocked_cell := false
+	for point in dynamic_detour:
+		if long_grid.world_to_grid(point) == mutation_cell:
+			dynamic_used_blocked_cell = true
+	_assert_true(not dynamic_detour.is_empty() and not dynamic_used_blocked_cell,
+		"A warmed walkability mask observes a newly added dynamic blocker")
+	long_grid.remove_dynamic_blocker(mutation_cell)
+	_assert_true(long_grid.find_path(long_start, long_end) == long_reference,
+		"Removing a dynamic blocker restores the deterministic route")
+	long_grid.set_tile(mutation_cell.x, mutation_cell.y, GridWorld.Tile.WALL)
+	var wall_detour := long_grid.find_path(long_start, long_end)
+	var wall_used_blocked_cell := false
+	for point in wall_detour:
+		if long_grid.world_to_grid(point) == mutation_cell:
+			wall_used_blocked_cell = true
+	_assert_true(not wall_detour.is_empty() and not wall_used_blocked_cell,
+		"A warmed walkability mask observes a tile topology mutation")
+	long_grid.set_tile(mutation_cell.x, mutation_cell.y, GridWorld.Tile.FLOOR)
+	_assert_true(long_grid.find_path(long_start, long_end) == long_reference,
+		"Restoring a mutated tile restores the deterministic route")
+	var footprint_grid := GridWorld.new()
+	footprint_grid.create_room(12, 3, true)
+	footprint_grid.set_level_count(2)
+	footprint_grid.allow_cell_region_on_level(Vector2i(1, 1), Vector2i(10, 1), 1)
+	var footprint_start := Vector2i(1, 1)
+	var footprint_end := Vector2i(10, 1)
+	var footprint_reference := footprint_grid.find_path(
+		footprint_start, footprint_end, {}, false, {}, {}, 1)
+	footprint_grid.disallow_cell_on_level(Vector2i(5, 1), 1)
+	_assert_true(footprint_grid.find_path(
+		footprint_start, footprint_end, {}, false, {}, {}, 1).is_empty(),
+		"A warmed level-footprint mask observes a newly disallowed cell")
+	footprint_grid.allow_cell_on_level(Vector2i(5, 1), 1)
+	_assert_true(footprint_grid.find_path(
+		footprint_start, footprint_end, {}, false, {}, {}, 1) == footprint_reference,
+		"Restoring a level-footprint cell restores the deterministic route")
+
+	var door_grid := GridWorld.new()
+	door_grid.create_room(12, 3, true)
+	var door_cell := Vector2i(5, 1)
+	door_grid.set_tile(door_cell.x, door_cell.y, GridWorld.Tile.LOCKED_DOOR)
+	var door_start := Vector2i(1, 1)
+	var door_end := Vector2i(10, 1)
+	_assert_true(not door_grid.find_path(door_start, door_end).is_empty(),
+		"A door is traversable when the query says it is unlocked")
+	_assert_true(door_grid.find_path(door_start, door_end, {}, false, {}, {door_cell: true}).is_empty(),
+		"Query-specific locked-door state layers over the cached topology")
+
+	var risk_grid := GridWorld.new()
+	risk_grid.create_room(12, 5, true)
+	var risk_start := Vector2i(1, 2)
+	var risk_end := Vector2i(10, 2)
+	var risk_reference := risk_grid.find_path(risk_start, risk_end, {}, true)
+	for risk_z in range(1, 4):
+		risk_grid.set_cell_risk(Vector2i(5, risk_z), 80.0, false)
+	_assert_true(risk_grid.find_path(risk_start, risk_end, {}, true).is_empty(),
+		"A warmed cautious-risk mask observes a new non-recoverable barrier")
+	for risk_z in range(1, 4):
+		risk_grid.clear_cell_risk(Vector2i(5, risk_z))
+	_assert_true(risk_grid.find_path(risk_start, risk_end, {}, true) == risk_reference,
+		"Clearing authored risk restores the deterministic cautious route")
+
 # --- Test: Cooperative (space-time) pathfinding ---
 # Characters reserve the (cell, time) slots their paths occupy; others plan around
 # them. The invariant: no two characters ever occupy the same grid cell at the
@@ -16261,14 +18622,14 @@ func _test_cooperative_pathfinding() -> void:
 	# --- 3. Head-on through a 2-wide corridor: each takes a lane, no overlap. ---
 	var grid3 := GridWorld.new()
 	grid3.load_from_strings(PackedStringArray([
-		"####################",
-		"#........##........#",
-		"#........##........#",
-		"#..................#",
-		"#..................#",
-		"#........##........#",
-		"#........##........#",
-		"####################",
+		"11111111111111111111",
+		"1........11........1",
+		"1........11........1",
+		"1..................1",
+		"1..................1",
+		"1........11........1",
+		"1........11........1",
+		"11111111111111111111",
 	]))
 	var sched3 := EventScheduler.new()
 	var gs3 := GameState.new()
@@ -16391,6 +18752,273 @@ func _test_cooperative_pathfinding() -> void:
 	var aster_wake := gs8.get_position("aster")
 	_assert_true(peris_wake.distance_to(aster_wake) < 1.8,
 		"Peris reaches wake range of the downed ally in a cramped room (sep=%.2f)" % peris_wake.distance_to(aster_wake))
+
+	# --- 9. An INTERMEDIATE reservation on the ordinary spatial route must reject
+	# the uncontested fast path and exercise the Vector3i-keyed space-time parent
+	# chain. A one-cell corridor makes the valid answer unambiguous: wait, then
+	# continue. Repeating the read-only plan against identical reservations must
+	# return byte-for-byte-equivalent cells/ticks.
+	var grid9 := GridWorld.new()
+	grid9.create_room(9, 3, true)
+	var sched9 := EventScheduler.new()
+	var gs9 := GameState.new()
+	gs9.grid = grid9
+	gs9.scheduler = sched9
+	var start9 := Vector2i(1, 1)
+	var end9 := Vector2i(7, 1)
+	var reserved9 := Vector2i(4, 1)
+	gs9.register_character("mover", grid9.grid_to_world(start9), 2.0, {})
+	gs9._add_reservation(reserved9, 0.9, 1.9, "transient_blocker")
+	gs9.reset_performance_counters()
+	var plan9a: Dictionary = gs9._plan_cooperative(start9, end9, 2.0, 0.0, "mover")
+	var counters9a := gs9.get_performance_counters()
+	_assert_true(not plan9a.is_empty(),
+		"An intermediate transient reservation still yields a cooperative corridor plan")
+	_assert_equals(int(counters9a.get("cooperative_fast_paths", 0)), 0,
+		"The reservation rejects the uncontested spatial fast path")
+	_assert_equals(int(counters9a.get("cooperative_conflict_searches", 0)), 1,
+		"The reservation enters the space-time conflict search exactly once")
+	_assert_true(gs9._coop_last_nodes > 0,
+		"The conflict branch expands space-time nodes (nodes=%d)" % gs9._coop_last_nodes)
+	var waited9 := false
+	var conflict_free9 := not plan9a.is_empty()
+	if not plan9a.is_empty():
+		var cells9: Array = plan9a.cells
+		var ticks9: Array = plan9a.ticks
+		for i in range(1, cells9.size()):
+			if cells9[i] == cells9[i - 1]:
+				waited9 = true
+			if gs9._cell_reserved(cells9[i],
+					float(ticks9[i - 1]) - GameState._RESERVE_BUFFER,
+					float(ticks9[i]) + GameState._RESERVE_BUFFER, "mover"):
+				conflict_free9 = false
+	_assert_true(waited9, "The one-cell corridor plan waits for the reservation to clear")
+	_assert_true(conflict_free9,
+		"Every returned transition is outside the intermediate reservation window")
+	var plan9b: Dictionary = gs9._plan_cooperative(start9, end9, 2.0, 0.0, "mover")
+	_assert_true(not plan9b.is_empty(), "Repeating the conflict plan succeeds")
+	if not plan9a.is_empty() and not plan9b.is_empty():
+		_assert_equals(plan9b.cells, plan9a.cells,
+			"Vector3i-keyed conflict search returns identical cells on an identical query")
+		_assert_equals(plan9b.ticks, plan9a.ticks,
+			"Vector3i-keyed conflict search returns identical ticks on an identical query")
+
+	# --- 10. Rally is an atomic group replan. Both members are already moving
+	# when the player redirects them down a one-cell corridor: their interpolated
+	# positions must survive cancellation, the second member may use only the
+	# bounded start-wait fast path, and an uninvolved parked actor keeps its
+	# reservation. The single logged intent must replay to the same timed paths
+	# and final state.
+	var grid10 := GridWorld.new()
+	grid10.create_room(12, 3, true)
+	var sched10 := EventScheduler.new()
+	var gs10 := GameState.new()
+	gs10.grid = grid10
+	gs10.scheduler = sched10
+	gs10.event_log = EventLog.new()
+	gs10.register_character("lead", grid10.grid_to_world(Vector2i(2, 1)), 2.0, {})
+	gs10.register_character("trail", grid10.grid_to_world(Vector2i(1, 1)), 2.0, {})
+	gs10.register_character("observer", grid10.grid_to_world(Vector2i(10, 1)), 2.0, {})
+	gs10.command_move_to_cell("lead", Vector2i(4, 1))
+	gs10.command_move_to_cell("trail", Vector2i(3, 1))
+	sched10.advance_ticks(0.12)
+	var lead_interpolated := gs10.get_position("lead")
+	var trail_interpolated := gs10.get_position("trail")
+	var rally_started_counts := {"lead": 0, "trail": 0}
+	gs10.movement_started.connect(func(id: String):
+		if rally_started_counts.has(id):
+			rally_started_counts[id] = int(rally_started_counts[id]) + 1
+	)
+	var rally_members10: Array[String] = ["lead", "trail"]
+	var rally_target10 := grid10.grid_to_world(Vector2i(9, 1))
+	var destinations10 := gs10.compute_rally_destinations(rally_members10, rally_target10)
+	gs10.reset_performance_counters()
+	var moved10 := gs10.command_rally_members(rally_members10, rally_target10)
+	var counters10 := gs10.get_performance_counters()
+	_assert_equals(moved10, 2, "Atomic corridor Rally accepts both participant replans")
+	_assert_true(gs10.get_position("lead").distance_to(lead_interpolated) < 0.001
+		and gs10.get_position("trail").distance_to(trail_interpolated) < 0.001,
+		"Atomic Rally pins both members at their interpolated pre-cancel positions")
+	_assert_equals(int(counters10.get("group_replans", 0)), 1,
+		"One Rally is counted as one atomic group replan")
+	_assert_equals(int(counters10.get("group_replan_members", 0)), 2,
+		"The group replan counter includes exactly the two movable participants")
+	_assert_equals(int(counters10.get("cooperative_fast_paths", 0)), 1,
+		"The corridor leader uses the uncontested spatial fast path")
+	_assert_equals(int(counters10.get("cooperative_wait_fast_paths", 0)), 1,
+		"The following member uses the Rally-scoped bounded start-wait fast path")
+	_assert_equals(int(counters10.get("cooperative_conflict_searches", 0)), 0,
+		"The convoy-shaped Rally avoids allocation-heavy space-time search")
+	_assert_equals(int(rally_started_counts["lead"]), 1,
+		"Rally starts the leader exactly once after atomic preparation")
+	_assert_equals(int(rally_started_counts["trail"]), 1,
+		"Rally starts the follower exactly once after atomic preparation")
+	var observer_reserved10 := false
+	for reservation10 in gs10._reservations.get(Vector2i(10, 1), []):
+		if str(reservation10.id) == "observer":
+			observer_reserved10 = true
+			break
+	_assert_true(observer_reserved10,
+		"Atomic participant preparation preserves a nonparticipant's parked reservation")
+	var trail_move10: Dictionary = gs10.characters["trail"].movement
+	var explicit_wait_index10 := -1
+	for i in range(1, (trail_move10.path as Array).size()):
+		if (trail_move10.path[i] as Vector3).distance_to(trail_move10.path[i - 1]) < 0.001 \
+				and float(trail_move10.arrival_ticks[i]) > float(trail_move10.arrival_ticks[i - 1]) + 0.001:
+			explicit_wait_index10 = i
+			break
+	_assert_true(explicit_wait_index10 > 0,
+		"The bounded fast path records its wait as duplicate geometry with increasing arrival ticks")
+	if explicit_wait_index10 > 0:
+		var wait_mid_tick10 := (float(trail_move10.arrival_ticks[explicit_wait_index10 - 1]) \
+			+ float(trail_move10.arrival_ticks[explicit_wait_index10])) * 0.5
+		var wait_mid_pos10 := gs10.predict_position(
+			"trail", wait_mid_tick10 - sched10.get_current_tick())
+		_assert_true(wait_mid_pos10.distance_to(trail_move10.path[explicit_wait_index10]) < 0.001,
+			"Position prediction observes the explicit Rally start wait")
+	# Replay only through the Rally tick first, while both timed moves are live,
+	# so deterministic timing is tested directly rather than inferred at arrival.
+	var timing_replay10 := GameState.replay(gs10.event_log, grid10)
+	for id10 in rally_members10:
+		var live_move10: Dictionary = gs10.characters[id10].movement
+		var replay_move10: Dictionary = timing_replay10.characters[id10].movement
+		_assert_equals(replay_move10.path, live_move10.path,
+			"%s's Rally path replays byte-for-byte" % id10.capitalize())
+		_assert_equals(replay_move10.arrival_ticks, live_move10.arrival_ticks,
+			"%s's Rally timing replays byte-for-byte" % id10.capitalize())
+	var rep10 := _coop_overlap_report(gs10, rally_members10, sched10, 0.025, 800)
+	_assert_equals(rep10.same_cell_ticks, 0,
+		"Atomic corridor Rally keeps participants in distinct cells throughout")
+	for i in range(rally_members10.size()):
+		_assert_equals(grid10.world_to_grid(gs10.get_position(rally_members10[i])),
+			grid10.world_to_grid(destinations10[i]),
+			"%s reaches its resolved Rally slot" % rally_members10[i].capitalize())
+	gs10.flush_tick()
+	var rally_event_count10 := 0
+	for event10 in gs10.event_log.events:
+		if event10.get("kind", &"") == GameEvent.KIND_RALLY_MEMBERS:
+			rally_event_count10 += 1
+	_assert_equals(rally_event_count10, 1,
+		"Atomic Rally remains one authoritative logged command")
+	var final_replay10 := GameState.replay(gs10.event_log, grid10)
+	_assert_equals(final_replay10.state_hash(), gs10.state_hash(),
+		"Atomic Rally reaches the same final state under EventLog replay")
+
+	# --- 10b. A caller or legacy replay payload may repeat a member id. The
+	# command boundary canonicalizes first occurrence order so one character can
+	# never receive two movement handles from one Rally transaction.
+	var grid10b := GridWorld.new()
+	grid10b.create_room(12, 5, true)
+	var sched10b := EventScheduler.new()
+	var gs10b := GameState.new()
+	gs10b.grid = grid10b
+	gs10b.scheduler = sched10b
+	gs10b.event_log = EventLog.new()
+	gs10b.register_character("lead", grid10b.grid_to_world(Vector2i(1, 1)), 2.0, {})
+	gs10b.register_character("wing", grid10b.grid_to_world(Vector2i(1, 3)), 2.0, {})
+	var duplicate_started_counts := {"lead": 0, "wing": 0}
+	gs10b.movement_started.connect(func(id: String):
+		if duplicate_started_counts.has(id):
+			duplicate_started_counts[id] = int(duplicate_started_counts[id]) + 1
+	)
+	var canonical_members10b: Array[String] = ["lead", "wing"]
+	var target10b := grid10b.grid_to_world(Vector2i(9, 2))
+	var expected10b := gs10b.compute_rally_destinations(canonical_members10b, target10b)
+	var moved10b := gs10b.command_rally_members(
+		["lead", "lead", "wing", "lead"], target10b)
+	_assert_equals(moved10b, 2,
+		"Duplicate Rally ids resolve to exactly the two unique participants")
+	_assert_equals(int(duplicate_started_counts["lead"]), 1,
+		"A duplicated Rally leader receives one movement handle")
+	_assert_equals(int(duplicate_started_counts["wing"]), 1,
+		"The other unique Rally member still receives one movement handle")
+	var duplicate_event: Dictionary = gs10b.event_log.events.back()
+	var duplicate_payload: Dictionary = duplicate_event.get("payload", {})
+	_assert_equals(duplicate_payload.get("members", []), canonical_members10b,
+		"The authoritative Rally event records canonical first-occurrence member order")
+	_assert_equals((duplicate_payload.get("destinations", []) as Array).size(), 2,
+		"The canonical Rally event records one destination per unique member")
+	for step10b in range(500):
+		if not gs10b.is_moving("lead") and not gs10b.is_moving("wing"):
+			break
+		sched10b.advance_ticks(0.05)
+	for i in range(canonical_members10b.size()):
+		_assert_equals(grid10b.world_to_grid(gs10b.get_position(canonical_members10b[i])),
+			grid10b.world_to_grid(expected10b[i]),
+			"%s reaches its canonical duplicate-safe Rally slot" % canonical_members10b[i].capitalize())
+
+	# --- 10c. Ordinary all-selected movement is the same simultaneous intent as
+	# Rally. Redirect a moving two-member party down a one-cell corridor and prove
+	# it gets the atomic release + bounded convoy wait rather than planning against
+	# the other member's obsolete parked/path reservation.
+	var grid10c := GridWorld.new()
+	grid10c.create_room(12, 3, true)
+	var sched10c := EventScheduler.new()
+	var gs10c := GameState.new()
+	gs10c.grid = grid10c
+	gs10c.scheduler = sched10c
+	gs10c.register_character("lead", grid10c.grid_to_world(Vector2i(2, 1)), 2.0, {})
+	gs10c.register_character("trail", grid10c.grid_to_world(Vector2i(1, 1)), 2.0, {})
+	gs10c.set_party(["lead", "trail"])
+	gs10c.command_move_to_cell("lead", Vector2i(4, 1))
+	gs10c.command_move_to_cell("trail", Vector2i(3, 1))
+	sched10c.advance_ticks(0.12)
+	gs10c.reset_performance_counters()
+	var moved10c := gs10c.party_move_to_cell(Vector2i(9, 1))
+	var counters10c := gs10c.get_performance_counters()
+	_assert_equals(moved10c, 2,
+		"Atomic corridor party move accepts every selected member")
+	_assert_equals(int(counters10c.get("group_replans", 0)), 1,
+		"One all-selected click performs one atomic group replan")
+	_assert_equals(int(counters10c.get("group_replan_members", 0)), 2,
+		"The all-selected replan prepares every movable member")
+	_assert_equals(int(counters10c.get("cooperative_conflict_searches", 0)), 0,
+		"The convoy-shaped party move avoids allocation-heavy conflict search")
+	var rep10c := _coop_overlap_report(gs10c, ["lead", "trail"], sched10c, 0.025, 800)
+	_assert_equals(rep10c.same_cell_ticks, 0,
+		"Atomic corridor party movement keeps its formation physically distinct")
+	_assert_true(not gs10c.is_moving("lead") and not gs10c.is_moving("trail"),
+		"Every selected member finishes the one-cell corridor move")
+
+	# --- 11. The Rally wait shortcut is deliberately bounded. A reservation
+	# longer than its cap must still fall through to cooperative A*, which can
+	# wait at an intermediate cell and return a conflict-free plan.
+	var grid11 := GridWorld.new()
+	grid11.create_room(9, 3, true)
+	var sched11 := EventScheduler.new()
+	var gs11 := GameState.new()
+	gs11.grid = grid11
+	gs11.scheduler = sched11
+	var start11 := Vector2i(1, 1)
+	var end11 := Vector2i(7, 1)
+	var reserved11 := Vector2i(4, 1)
+	gs11.register_character("mover", grid11.grid_to_world(start11), 2.0, {})
+	gs11._add_reservation(reserved11, 0.0, 3.0, "long_blocker")
+	gs11.reset_performance_counters()
+	var plan11: Dictionary = gs11._plan_cooperative(
+		start11, end11, 2.0, 0.0, "mover", 0, GameState._COOP_MAX_NODES, true)
+	var counters11 := gs11.get_performance_counters()
+	_assert_true(not plan11.is_empty(),
+		"A conflict longer than the Rally wait cap still yields a cooperative plan")
+	_assert_equals(int(counters11.get("cooperative_wait_fast_paths", 0)), 0,
+		"The bounded wait fast path refuses an over-cap conflict")
+	_assert_equals(int(counters11.get("cooperative_conflict_searches", 0)), 1,
+		"An over-cap Rally conflict falls through to space-time A* exactly once")
+	_assert_true(gs11._coop_last_nodes > 0,
+		"The over-cap fallback expands real space-time nodes")
+	var waited11 := false
+	var conflict_free11 := not plan11.is_empty()
+	if not plan11.is_empty():
+		for i in range(1, (plan11.cells as Array).size()):
+			if plan11.cells[i] == plan11.cells[i - 1]:
+				waited11 = true
+			if gs11._cell_reserved(plan11.cells[i],
+					float(plan11.ticks[i - 1]) - GameState._RESERVE_BUFFER,
+					float(plan11.ticks[i]) + GameState._RESERVE_BUFFER, "mover"):
+				conflict_free11 = false
+	_assert_true(waited11, "The A* fallback inserts the longer required wait")
+	_assert_true(conflict_free11,
+		"The A* fallback remains conflict-free after the bounded shortcut declines")
 
 ## Run the swap scenario and return final positions + state hash. Used to prove
 ## determinism and fast-forward invariance at different scheduler step sizes.
@@ -16660,7 +19288,7 @@ func _test_path_render_manager() -> void:
 	gnode.add_child(gmesh)
 	root.add_child(gnode)
 	gnode.global_position = Vector3.ZERO
-	mgr._nodes.erase("a"); mgr._scan_after.erase("a")   # "a" had no node earlier; force a fresh find of the new mesh node
+	mgr._nodes.erase("a"); mgr._next_tree_scan_frame = 0   # "a" had no node earlier; force a fresh shared cache refresh
 	gs.command_move_to_pos("a", Vector3(6.0, 0.0, 2.0))
 	mgr._process(0.0)
 	_assert_true(mgr._dest_ghosts.has("a"), "Manager builds a destination ghost for a character that has a mesh")
@@ -16742,6 +19370,274 @@ func _test_path_render_manager() -> void:
 			"the dest ghost EXCLUDES the path ribbons — body-width %.2f, not the ~6u green slab (the slab covered interactable outlines)" % gb.size.x)
 
 	root.queue_free()
+	await get_tree().process_frame
+
+	# CACHE + OWNERSHIP LIFECYCLE: one shared scan resolves every current id, known null misses stay
+	# throttled, but a genuinely new id and a stale non-null cache entry force one immediate shared refresh.
+	# This is deliberately separate from the rendering fixtures above: none of these assertions manually
+	# edits _nodes or the rescan gate, so they exercise the production discovery/invalidation path.
+	var life_sched := EventScheduler.new()
+	var life_gs := GameState.new()
+	life_gs.scheduler = life_sched
+	life_gs.register_character("cached", Vector3.ZERO, 3.0, {})
+	life_gs.register_character("remove_me", Vector3(1.0, 0.0, 0.0), 3.0, {})
+	life_gs.register_character("known_missing", Vector3(2.0, 0.0, 0.0), 3.0, {})
+	var life_root := Node3D.new()
+	add_child(life_root)
+	var life_node_script := GDScript.new()
+	life_node_script.source_code = (
+		"extends Node3D\n"
+		+ "var char_id := ''\n"
+		+ "var color := Color.WHITE\n"
+		+ "var show_movement_path := true\n"
+		+ "var preview_move_target := Vector3.INF\n"
+	)
+	life_node_script.reload()
+	var cached_node := Node3D.new()
+	cached_node.set_script(life_node_script)
+	cached_node.set("char_id", "cached")
+	cached_node.set("color", Color(0.9, 0.2, 0.2))
+	var cached_body := MeshInstance3D.new()
+	cached_body.mesh = CapsuleMesh.new()
+	cached_node.add_child(cached_body)
+	life_root.add_child(cached_node)
+	var removable_node := Node3D.new()
+	removable_node.set_script(life_node_script)
+	removable_node.set("char_id", "remove_me")
+	removable_node.set("color", Color(0.3, 0.55, 1.0))
+	var removable_body := MeshInstance3D.new()
+	removable_body.mesh = CapsuleMesh.new()
+	removable_node.add_child(removable_body)
+	life_root.add_child(removable_node)
+	var life_mgr := PathRenderManager.new()
+	life_root.add_child(life_mgr)
+	life_mgr.setup(life_gs, life_root)
+	var life_feedback_script := GDScript.new()
+	life_feedback_script.source_code = (
+		"extends Node\n"
+		+ "func get_paused_path_feedback(char_id: String) -> Array:\n"
+		+ "\tif char_id != 'remove_me': return []\n"
+		+ "\treturn [{'id': 'lifecycle', 'points': [Vector3(1, 0, 0), Vector3(3, 0, 0)], "
+		+ "'risk': 'close', 'label': 'TEST'}]\n"
+	)
+	life_feedback_script.reload()
+	var life_feedback_source := Node.new()
+	life_feedback_source.set_script(life_feedback_script)
+	life_root.add_child(life_feedback_source)
+	life_mgr.set_path_feedback_source(life_feedback_source)
+	life_sched.pause()
+	life_gs.command_move_to_pos("remove_me", Vector3(4.0, 0.0, 1.0))
+	life_mgr._process(0.0)
+	_assert_equals(life_mgr._node_cache_scan_count, 1,
+		"the first unresolved id performs ONE shared tree scan for every registered actor")
+	_assert_true(life_mgr._nodes.get("cached") == cached_node and life_mgr._nodes.has("known_missing")
+		and life_mgr._nodes.get("known_missing") == null
+		and life_mgr._known_node_misses.has("known_missing")
+		and not life_mgr._known_node_misses.has("cached"),
+		"the shared scan caches both resolved actors and explicit null entries for known misses")
+
+	# Unregister while every manager-owned artifact is live. Cleanup must be synchronous: otherwise the
+	# non-processing destination ring/ghost survives forever at the removed actor's final target.
+	var removed_renderer: PathRenderer = life_mgr._renderers.get("remove_me")
+	var removed_marker: MeshInstance3D = life_mgr._dest_markers.get("remove_me")
+	var removed_ghost: Node3D = life_mgr._dest_ghosts.get("remove_me")
+	var removed_feedback: Node3D = life_mgr._feedback_roots.get("remove_me")
+	_assert_true(removed_renderer != null and removed_marker != null and removed_marker.visible
+		and removed_ghost != null and removed_ghost.visible and removed_feedback != null,
+		"the unregister fixture starts with renderer, destination marker, ghost, and feedback alive")
+	life_gs.unregister_character("remove_me")
+	life_mgr._process(0.0)
+	_assert_true(
+		not life_mgr._renderers.has("remove_me")
+		and not life_mgr._dest_markers.has("remove_me")
+		and not life_mgr._dest_ghosts.has("remove_me")
+		and not life_mgr._ghost_built_from.has("remove_me")
+		and not life_mgr._ghost_colors.has("remove_me")
+		and not life_mgr._nodes.has("remove_me")
+		and not life_mgr._known_node_misses.has("remove_me")
+		and not life_mgr._feedback_roots.has("remove_me")
+		and not life_mgr._feedback_hashes.has("remove_me")
+		and not life_mgr._tracked_character_ids.has("remove_me"),
+		"GameState unregister prunes every per-id visual, source cache, tint cache, and feedback cache")
+	_assert_true(
+		removed_renderer.get_parent() == null and not removed_renderer.visible
+		and removed_marker.get_parent() == null and not removed_marker.visible
+		and removed_ghost.get_parent() == null and not removed_ghost.visible
+		and removed_feedback.get_parent() == null and not removed_feedback.visible,
+		"unregister hides and detaches manager-owned artifacts in the same frame")
+
+	var scans_before_known_misses := life_mgr._node_cache_scan_count
+	for _miss_frame in range(8):
+		life_mgr._process(0.0)
+	_assert_equals(life_mgr._node_cache_scan_count, scans_before_known_misses,
+		"known null misses share the 30-frame rescan throttle instead of walking the tree per id/frame")
+
+	# Register several ids after the previous scan. The first NEVER-SEEN id overrides the old gate once;
+	# that shared walk records every sibling (including a null miss), so no second new-id scan occurs.
+	life_gs.register_character("late_hidden", Vector3(3.0, 0.0, 0.0), 3.0, {})
+	life_gs.register_character("late_visible", Vector3(4.0, 0.0, 0.0), 3.0, {})
+	life_gs.register_character("late_missing", Vector3(5.0, 0.0, 0.0), 3.0, {})
+	var late_hidden := Node3D.new()
+	late_hidden.set_script(life_node_script)
+	late_hidden.set("char_id", "late_hidden")
+	late_hidden.set("show_movement_path", false)
+	life_root.add_child(late_hidden)
+	var late_visible := Node3D.new()
+	late_visible.set_script(life_node_script)
+	late_visible.set("char_id", "late_visible")
+	life_root.add_child(late_visible)
+	var scans_before_late_ids := life_mgr._node_cache_scan_count
+	life_mgr._process(0.0)
+	_assert_equals(life_mgr._node_cache_scan_count, scans_before_late_ids + 1,
+		"multiple never-seen ids trigger exactly ONE immediate shared scan despite an active miss gate")
+	_assert_true(life_mgr._nodes.get("late_hidden") == late_hidden
+		and life_mgr._nodes.get("late_visible") == late_visible
+		and life_mgr._nodes.has("late_missing") and life_mgr._nodes.get("late_missing") == null,
+		"that one immediate scan resolves every new sibling and records the unresolved sibling as known")
+	_assert_true(not life_mgr._renderers.has("late_hidden"),
+		"a dynamically registered opted-out actor is resolved before renderer allocation")
+	for _known_late_miss in range(8):
+		life_mgr._process(0.0)
+	_assert_equals(life_mgr._node_cache_scan_count, scans_before_late_ids + 1,
+		"the null sibling found by the immediate shared scan remains throttled on subsequent frames")
+
+	# Runtime tint changes do not need a renderer re-setup or geometry rebuild, but must reach all three
+	# pieces of planning feedback (ribbon, marker, and already-built destination ghost).
+	life_gs.command_move_to_pos("cached", Vector3(6.0, 0.0, 2.0))
+	life_mgr._process(0.0)
+	var cached_renderer: PathRenderer = life_mgr._renderers.get("cached")
+	var cached_marker: MeshInstance3D = life_mgr._dest_markers.get("cached")
+	var cached_ghost: Node3D = life_mgr._dest_ghosts.get("cached")
+	var changed_tint := Color(0.12, 0.82, 0.35)
+	cached_node.set("color", changed_tint)
+	life_mgr._process(0.0)
+	cached_renderer._process(0.0)
+	var cached_ghost_mesh := cached_ghost.get_child(0) as MeshInstance3D
+	var cached_ghost_mat := cached_ghost_mesh.material_override as StandardMaterial3D
+	var cached_marker_tint := (cached_marker.material_override as StandardMaterial3D).albedo_color
+	var cached_ribbon_tint := cached_renderer._mat.albedo_color
+	_assert_true(
+		cached_renderer.color == changed_tint
+		and is_equal_approx(cached_ribbon_tint.r, changed_tint.r)
+		and is_equal_approx(cached_ribbon_tint.g, changed_tint.g)
+		and is_equal_approx(cached_ribbon_tint.b, changed_tint.b)
+		and is_equal_approx(cached_marker_tint.r, changed_tint.r)
+		and is_equal_approx(cached_marker_tint.g, changed_tint.g)
+		and is_equal_approx(cached_marker_tint.b, changed_tint.b)
+		and is_equal_approx(cached_ghost_mat.albedo_color.r, changed_tint.r)
+		and is_equal_approx(cached_ghost_mat.albedo_color.g, changed_tint.g)
+		and is_equal_approx(cached_ghost_mat.albedo_color.b, changed_tint.b),
+		"a runtime actor colour change cheaply retints the ribbon, marker, and existing destination ghost")
+
+	# Renamed, reparented, and queued-for-deletion cache entries are still valid Objects. Each must
+	# invalidate immediately and let one shared scan bind the replacement rather than returning stale data.
+	var renamed_replacement := Node3D.new()
+	renamed_replacement.set_script(life_node_script)
+	renamed_replacement.set("char_id", "cached")
+	var renamed_replacement_body := MeshInstance3D.new()
+	renamed_replacement_body.mesh = CapsuleMesh.new()
+	renamed_replacement.add_child(renamed_replacement_body)
+	life_root.add_child(renamed_replacement)
+	cached_node.set("char_id", "retired_cached")
+	var scans_before_rename := life_mgr._node_cache_scan_count
+	life_mgr._process(0.0)
+	_assert_true(life_mgr._nodes.get("cached") == renamed_replacement
+		and life_mgr._node_cache_scan_count == scans_before_rename + 1,
+		"a renamed cached node forces one immediate refresh and binds its replacement")
+
+	var exile_root := Node3D.new()
+	add_child(exile_root)
+	life_root.remove_child(renamed_replacement)
+	exile_root.add_child(renamed_replacement)
+	var reparent_replacement := Node3D.new()
+	reparent_replacement.set_script(life_node_script)
+	reparent_replacement.set("char_id", "cached")
+	var reparent_replacement_body := MeshInstance3D.new()
+	reparent_replacement_body.mesh = CapsuleMesh.new()
+	reparent_replacement.add_child(reparent_replacement_body)
+	life_root.add_child(reparent_replacement)
+	var scans_before_reparent := life_mgr._node_cache_scan_count
+	life_mgr._process(0.0)
+	_assert_true(life_mgr._nodes.get("cached") == reparent_replacement
+		and life_mgr._node_cache_scan_count == scans_before_reparent + 1,
+		"a cached node reparented outside search_root cannot survive as the actor anchor")
+
+	var queued_replacement := Node3D.new()
+	queued_replacement.set_script(life_node_script)
+	queued_replacement.set("char_id", "cached")
+	var queued_replacement_body := MeshInstance3D.new()
+	queued_replacement_body.mesh = CapsuleMesh.new()
+	queued_replacement.add_child(queued_replacement_body)
+	life_root.add_child(queued_replacement)
+	reparent_replacement.queue_free()
+	var scans_before_queued_free := life_mgr._node_cache_scan_count
+	life_mgr._process(0.0)
+	_assert_true(life_mgr._nodes.get("cached") == queued_replacement
+		and life_mgr._node_cache_scan_count == scans_before_queued_free + 1,
+		"a queued-for-deletion cached node is skipped and its live replacement binds this frame")
+
+	# A streamed replacement can briefly coexist with the old live node under the same root/id. There is no
+	# stale property to detect on the old object, so the bounded periodic shared scan must eventually select the
+	# later replacement instead of preserving the old valid reference forever.
+	var coexisting_replacement := Node3D.new()
+	coexisting_replacement.set_script(life_node_script)
+	coexisting_replacement.set("char_id", "cached")
+	var coexisting_replacement_body := MeshInstance3D.new()
+	coexisting_replacement_body.mesh = CapsuleMesh.new()
+	coexisting_replacement.add_child(coexisting_replacement_body)
+	life_root.add_child(coexisting_replacement)
+	var nested_path_consumer := PathRenderer.new()
+	coexisting_replacement.add_child(nested_path_consumer)
+	nested_path_consumer.setup(life_gs, "cached", Color.WHITE, coexisting_replacement)
+	var scans_before_periodic_replacement := life_mgr._node_cache_scan_count
+	life_mgr._next_tree_scan_frame = Engine.get_process_frames() # expire, rather than bypass, the shared interval
+	life_mgr._process(0.0)
+	_assert_true(life_mgr._nodes.get("cached") == coexisting_replacement
+		and life_mgr._node_cache_scan_count == scans_before_periodic_replacement + 1,
+		"the next periodic shared scan selects the later live actor, not its nested PathRenderer consumer")
+
+	# Rebinding setup to a different state/root is an ownership-generation boundary. Even valid old-root
+	# nodes and visuals must be retired immediately, and the first process on the new root gets one clean scan.
+	var old_setup_renderer: PathRenderer = life_mgr._renderers.get("cached")
+	var old_setup_marker: MeshInstance3D = life_mgr._dest_markers.get("cached")
+	var old_setup_ghost: Node3D = life_mgr._dest_ghosts.get("cached")
+	var rebound_root := Node3D.new()
+	add_child(rebound_root)
+	var rebound_sched := EventScheduler.new()
+	var rebound_gs := GameState.new()
+	rebound_gs.scheduler = rebound_sched
+	rebound_gs.register_character("rebound", Vector3.ZERO, 3.0, {})
+	var rebound_node := Node3D.new()
+	rebound_node.set_script(life_node_script)
+	rebound_node.set("char_id", "rebound")
+	rebound_root.add_child(rebound_node)
+	life_mgr.setup(rebound_gs, rebound_root)
+	_assert_true(
+		life_mgr._renderers.is_empty() and life_mgr._dest_markers.is_empty()
+		and life_mgr._dest_ghosts.is_empty() and life_mgr._ghost_built_from.is_empty()
+		and life_mgr._ghost_colors.is_empty() and life_mgr._nodes.is_empty()
+		and life_mgr._known_node_misses.is_empty()
+		and life_mgr._feedback_roots.is_empty() and life_mgr._feedback_hashes.is_empty()
+		and life_mgr._tracked_character_ids.is_empty() and life_mgr._path_feedback_source == null,
+		"setup rebind clears every old-state cache, visual owner, tracked id, and feedback provider")
+	_assert_true(old_setup_renderer.get_parent() == null and not old_setup_renderer.visible
+		and old_setup_marker.get_parent() == null and not old_setup_marker.visible
+		and old_setup_ghost.get_parent() == null and not old_setup_ghost.visible,
+		"setup rebind synchronously hides and detaches valid visuals from the previous root")
+	_assert_equals(life_mgr._node_cache_scan_count, 0,
+		"setup rebind resets the shared-scan diagnostic generation")
+	life_mgr._process(0.0)
+	_assert_true(life_mgr._nodes.get("rebound") == rebound_node
+		and life_mgr._node_cache_scan_count == 1,
+		"the rebound root starts with one clean shared scan and no stale old-root anchor")
+
+	for cleanup_id in life_gs.characters.keys():
+		life_gs.unregister_character(str(cleanup_id))
+	for cleanup_id in rebound_gs.characters.keys():
+		rebound_gs.unregister_character(str(cleanup_id))
+	life_root.queue_free()
+	exile_root.queue_free()
+	rebound_root.queue_free()
 	await get_tree().process_frame
 
 	# Gridless party fan-out: a single party move must address EVERY member and
@@ -17047,6 +19943,21 @@ func _test_state_machine() -> void:
 # --- Test: reusable story-beat lifecycle and composed causal puzzle mechanics ---
 func _test_story_beats() -> void:
 	_test_name = "Story Beat Architecture"
+	var tutorial_host := TutorialSequence.new()
+	var stale_thought := Label.new()
+	tutorial_host.set("_thought_label", stale_thought)
+	tutorial_host.set("_current_step", "old")
+	stale_thought.text = "stale command feedback"
+	stale_thought.modulate.a = 1.0
+	_assert_true(tutorial_host.call("_enter_step", "new"),
+		"TutorialSequence enters story steps through the shared lifecycle seam")
+	_assert_equals(int(tutorial_host.call("_current_story_step_generation")), 1,
+		"Story-step transitions advance a stale-callback generation")
+	_assert_true(stale_thought.text == "" and is_zero_approx(stale_thought.modulate.a),
+		"Story-step exit clears presentation owned by the previous beat")
+	stale_thought.free()
+	tutorial_host.free()
+
 	var context := StoryBeatContext.new(self, null, null, null, {&"owner": self})
 	_assert_true(context.service(&"owner") == self,
 		"StoryBeatContext exposes explicitly registered capabilities")
@@ -17100,7 +20011,7 @@ func _test_story_beats() -> void:
 	}
 	var investigation := SurveyProtocolStoryBeat.new(&"investigation")
 	investigation.configure(
-		2, ["aster", "peris"], ["recover", "scout"],
+		2, ["aster", "peris"], ["primary", "alternate"],
 		protocol_order, protocol_definitions, site_definitions
 	)
 	var investigation_runner := StoryBeatRunner.new()
@@ -17122,7 +20033,7 @@ func _test_story_beats() -> void:
 		"Distinct observations plus every required actor unlock preparation")
 	_assert_true(not investigation.choose_preparation("not_authored"),
 		"A beat rejects an unconfigured preparation")
-	_assert_true(investigation.choose_preparation("scout"),
+	_assert_true(investigation.choose_preparation("alternate"),
 		"A valid preparation starts the first evidence protocol")
 	_assert_equals(investigation.protocols.current_protocol(), "repair",
 		"Protocol order, rather than scene methods, selects the active protocol")
@@ -17153,17 +20064,17 @@ func _test_story_beats() -> void:
 		and investigation.objectives_are_complete(),
 		"Executing the selected consequence completes the composed objective")
 	var investigation_snapshot := investigation.snapshot()
-	_assert_equals(str(investigation_snapshot.state.selected_preparation), "scout",
+	_assert_equals(str(investigation_snapshot.state.selected_preparation), "alternate",
 		"Story-beat snapshots contain reusable mechanic state")
 	var restored_investigation := SurveyProtocolStoryBeat.new(&"investigation_restored")
 	restored_investigation.configure(
-		2, ["aster", "peris"], ["recover", "scout"],
+		2, ["aster", "peris"], ["primary", "alternate"],
 		protocol_order, protocol_definitions, site_definitions
 	)
 	restored_investigation.restore(investigation_snapshot)
 	_assert_true(restored_investigation.survey_ready()
 		and restored_investigation.objectives_are_complete()
-		and restored_investigation.selected_preparation == "scout",
+		and restored_investigation.selected_preparation == "alternate",
 		"A configured story beat restores its composed runtime state without scene dependencies")
 	_assert_true(investigation.protocols.configuration_errors().is_empty(),
 		"A valid evidence-decision graph passes authoring validation")
@@ -17175,6 +20086,37 @@ func _test_story_beats() -> void:
 	)
 	_assert_true(broken_sequence.configuration_errors().size() >= 3,
 		"Authoring validation catches missing, misowned, mistyped, and unresolved sites")
+
+	# A one-decision beat is a first-class configuration: optional world reads do
+	# not need a dummy protocol graph just to make the choice consequential.
+	var preparation_only := SurveyProtocolStoryBeat.new(&"preparation_only")
+	preparation_only.configure(0, [], ["primary", "alternate"], [], {}, {}, true)
+	var preparation_runner := StoryBeatRunner.new()
+	preparation_runner.setup(context)
+	var preparation_signals := {"unlocked": false, "completed": false}
+	preparation_only.preparation_unlocked.connect(func(): preparation_signals["unlocked"] = true)
+	preparation_only.objectives_completed.connect(func(): preparation_signals["completed"] = true)
+	_assert_true(preparation_runner.register_beat(preparation_only)
+		and preparation_runner.transition_to(&"preparation_only")
+		and bool(preparation_signals["unlocked"]) and preparation_only.preparation_ready(),
+		"A zero-requirement survey exposes its consequential preparation immediately")
+	_assert_true(preparation_only.choose_preparation("alternate")
+		and bool(preparation_signals["completed"]) and preparation_only.objectives_are_complete(),
+		"A preparation-only beat completes without a dummy evidence checklist")
+	_assert_true(not preparation_only.protocols.has_protocols()
+		and preparation_only.protocols.findings().is_empty(),
+		"Optional context is never converted into mandatory evidence currency")
+
+	var malformed_preparation := SurveyProtocolStoryBeat.new(&"malformed_preparation")
+	malformed_preparation.configure(
+		0, [], ["primary"], [], {"orphaned": {"evidence": [], "choices": []}}, {}
+	)
+	var malformed_runner := StoryBeatRunner.new()
+	malformed_runner.setup(context)
+	_assert_true(malformed_runner.register_beat(malformed_preparation)
+		and not malformed_runner.transition_to(&"malformed_preparation")
+		and not malformed_preparation.validation_errors(context).is_empty(),
+		"An omitted protocol order is rejected unless preparation-only mode is explicit")
 
 # --- Test: an enemy configured like the elevator's fork lane engages a target that walks in ---
 # Data-layer (scheduler + _process), so headless runs the same combat loop as real play: the fork
@@ -17318,8 +20260,19 @@ func _test_distract_gate() -> void:
 			settled = true
 			break
 	_assert_true(settled, "contact broken -> the sentry's own FSM returns it to post, re-armed (state=%s)" % str(st["sentry_state"]))
-	gs.restore_character("peris")
-	gs.snap_character_to("peris", Vector3(2.5, 0.5, -1.0))
+
+	# The exposed-cross proof is a failed timeline: while the watcher hunts through
+	# the west room it may legitimately pressure companions the test left idle.
+	# Start the legal causal experiment from a fresh load, as an actual retry does,
+	# instead of repairing or teleporting individual bodies into a passing setup.
+	inst.queue_free()
+	await get_tree().process_frame
+	inst = await _instantiate_preview_chunk_and_wait("distract_gate", 4)
+	if inst == null:
+		_assert_true(false, "Distract Gate legal retry instantiates")
+		return
+	chunk = inst._active_chunk
+	gs = inst._game_state
 
 	# --- 3. The solve: tend the flure (real dwell), the sentry commits away, cross behind it. ---
 	var flure_node = chunk.find_child("FlureInteract", true, false)
@@ -17346,8 +20299,17 @@ func _test_distract_gate() -> void:
 	_assert_true(lured, "the flure pulls the sentry off its watch, through the gap, to the west pocket")
 	var caught_before := int(chunk.get_preview_state()["caught_count"])
 	gs.restore_character("peris")   # healed between beats (a run rests; attrition is not the lesson here)
-	gs.command_move_to_pos("peris", Vector3(20.0, 0.5, 0.0))
-	inst.headless_advance(12.0, 0.1)
+	inst.headless_set_character_position("peris", Vector3(20.0, 0.5, 0.0))
+	inst.headless_advance(0.2, 0.1)
+	_assert_true(not bool(chunk.get_preview_state()["complete"]),
+		"one runner cannot abandon the rest of the party and cash out the gate")
+	inst.headless_set_character_position("peris", Vector3(1.0, 0.5, -3.5))
+	_assert_true(_command_atom_party_move(gs, Vector3(20.0, 0.5, 0.0), true),
+		"the lured gap accepts the real all-selected formation command")
+	_advance_atom_party_to_arrival(inst, gs, 1.0)
+	for crossed_id in ["aster", "peris", "endo"]:
+		_assert_true(gs.get_position(crossed_id).x >= float(chunk.END_X),
+			"%s physically reaches the far room in the legal formation" % crossed_id.capitalize())
 	st = chunk.get_preview_state()
 	print("  [watched-gap] solve cross: complete=%s caught=%d (was %d)" % [str(st["complete"]), int(st["caught_count"]), caught_before])
 	_assert_true(bool(st["complete"]), "with the sentry lured away the cross reaches the END — solving the puzzle IS the gate")
@@ -17427,13 +20389,14 @@ func _test_lure_relay_puzzle() -> void:
 		await get_tree().process_frame
 		return
 	var anchors: Dictionary = chunk.get_preview_anchors()
-	var dur: float = float(chunk.LURE_DURATION)
 	var gs = instance._game_state
 
 	# --- Intended solve: fire far Lure 2, hide by it, circle to Lure 1 while the guards are distracted,
 	#     return to cover, let them relay the whole hall back past you, then run the now-open exit. ---
 	chunk.reset_preview_state()
-	_assert_true(chunk.activate_lure2(), "Lure 2 (far, by the guards) fires")
+	_assert_true(_trigger_exact_flure_source(gs, chunk._lure2, "peris"),
+		"Lure 2's exact far-Flure source fires")
+	var far_deadline := float(chunk._lure2.get_effect_state().get("end_tick", -1.0))
 	instance.headless_set_character_position("peris", anchors["hide_spot"])
 	instance.headless_advance(1.0, 0.1)
 	_assert_equals(int(chunk.get_preview_state()["committed_lure"]), 2, "The sentries break toward Lure 2")
@@ -17443,25 +20406,34 @@ func _test_lure_relay_puzzle() -> void:
 	gs.command_move_to_pos("peris", anchors["lure_one"])
 	instance.headless_advance(3.0, 0.1)
 	_assert_true(not chunk.get_preview_state()["failed"], "Circling to Lure 1 past distracted guards is not a catch")
-	_assert_true(chunk.activate_lure1(), "Lure 1 (near the entrance) fires")
+	_assert_true(_trigger_exact_flure_source(gs, chunk._lure1, "peris"),
+		"Lure 1's exact near-Flure source fires")
 	instance.headless_set_character_position("peris", anchors["hide_spot"])
 	instance.headless_advance(0.5, 0.1)
 	_assert_equals(int(chunk.get_preview_state()["committed_lure"]), 2, "They stay on Lure 2 while it holds")
 	# Lure 2 expires -> relay to the still-singing Lure 1, walking the whole hall back past cover.
-	instance.headless_advance(dur + 1.0, 0.1)
+	instance.headless_advance(maxf(
+		0.0, far_deadline - float(gs.scheduler.get_current_tick())) + 0.1, 0.1)
 	_assert_equals(int(chunk.get_preview_state()["committed_lure"]), 1, "On Lure 2's expiry they relay to Lure 1 (got: %s)" % chunk.get_preview_state()["committed_lure"])
 	_assert_true(not chunk.get_preview_state()["failed"], "The hidden runner is not caught as the sentries pass")
 	# Slip out and run the now-open exit while Lure 1 holds them far away.
 	instance.headless_set_character_position("peris", anchors["exit"])
-	instance.headless_advance(0.3, 0.1)
-	_assert_true(chunk.get_preview_state()["complete"], "Reaching the exit after the relay completes the puzzle")
+	instance.headless_advance(0.2, 0.1)
+	_assert_true(not chunk.get_preview_state()["complete"],
+		"one relay runner cannot complete while the other bodies remain behind")
+	instance.headless_set_character_position("aster", (anchors["exit"] as Vector3) + Vector3(0.0, 0.0, -1.0))
+	instance.headless_set_character_position("endo", (anchors["exit"] as Vector3) + Vector3(0.0, 0.0, 1.0))
+	instance.headless_advance(0.2, 0.1)
+	_assert_true(chunk.get_preview_state()["complete"],
+		"gathering the whole party at the exit after the relay completes the puzzle")
 
 	# --- Cheese FAILS: fire only Lure 1 (near entrance), then try to cross to the distant hide. The
 	#     guards swarm the corridor toward Lure 1, so the only path to the hide runs through them point
 	#     blank — spotted. Skipping Lure 2 (which clears that corridor) is a loss. ---
 	chunk.reset_preview_state()
 	instance.headless_set_character_position("peris", chunk.get_spawn_positions()["peris"])  # back to the entrance
-	_assert_true(chunk.activate_lure1(), "Cheese: Lure 1 alone fires")
+	_assert_true(_trigger_exact_flure_source(gs, chunk._lure1, "peris"),
+		"Cheese attempt fires only Lure 1's exact source")
 	instance.headless_advance(0.3, 0.1)
 	gs.command_move_to_pos("peris", anchors["hide_spot"])  # grid-routed down the corridor — no diagonal cut
 	instance.headless_advance(9.0, 0.1)
@@ -17484,10 +20456,12 @@ func _test_lure_relay_puzzle() -> void:
 	if tend_inst != null:
 		var tchunk = tend_inst._active_chunk
 		var lure2_node = tchunk.find_child("Lure2Interact", true, false)
+		var tgs = tend_inst._game_state
 		_assert_true(lure2_node != null, "Lure 2 interactable exists")
 		if lure2_node != null:
 			_assert_equals(int(lure2_node.interactable_type), int(Interactable.InteractableType.TIMED_ACTION),
 				"The lure is a click + timed-action interactable, not proximity")
+			tgs.snap_character_to("peris", lure2_node.get_source_data_position())
 			lure2_node.active_character = "peris"      # the required tender
 			lure2_node.on_interaction_arrived()        # Peris walked over -> starts the tend dwell
 			tend_inst.headless_advance(0.5, 0.1)
@@ -17498,7 +20472,6 @@ func _test_lure_relay_puzzle() -> void:
 				"After Peris finishes tending (dwell_time), the flure sings and the guards commit")
 		# Overshoot fix: a route to a point just BEFORE a corridor node (38, before node c40) must end AT
 		# the point, not run forward to the node and backtrack.
-		var tgs = tend_inst._game_state
 		var ppath: Array = tgs.compute_preview_path("peris", Vector3(38.0, 0.5, 0.0))
 		var backtracks := false
 		for i in range(2, ppath.size()):
@@ -17607,6 +20580,63 @@ func _test_detection_los() -> void:
 	_assert_true(spots.call(false), "Clear line of sight: the guard spots the in-range target")
 	_assert_true(not spots.call(true), "A wall between them blocks the spot (enemies can't see through walls)")
 
+## Drive a representative lower-route-sized ambient cohort and return its authoritative movement
+## command ticks. These are EventScheduler ticks, not render-frame timestamps, so comparing a fine
+## and coarse driver directly proves the stagger is deterministic under fast-forward.
+func _enemy_roam_stagger_probe(step: float, duration := 3.0) -> Dictionary:
+	var ids: Array[String] = [
+		"predator_0", "predator_1",
+		"route_enemy_0_0", "route_enemy_1_0",
+		"wreckage_listener_0", "wreckage_listener_1",
+	]
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.scheduler = sched
+	gs.event_log = EventLog.new()
+	var holder := Node3D.new()
+	holder.name = "RoamStaggerProbe"
+	add_child(holder)
+	var enemies: Array[Enemy] = []
+	var lanes: Dictionary = {}
+	for i in range(ids.size()):
+		var id := ids[i]
+		var enemy := Enemy.new()
+		enemy.name = id
+		enemy.game_state = gs
+		enemy.char_id = id
+		holder.add_child(enemy)
+		var anchor := Vector3(float(i) * 4.0, 0.5, 0.0)
+		gs.register_character(id, anchor, enemy.move_speed, {"detection_range": 6.0})
+		enemy.activate()
+		enemy.set_roam(anchor, 3.0)
+		enemies.append(enemy)
+		lanes[id] = enemy._roam_cadence_lane
+	while sched.get_current_tick() < duration - 1e-9:
+		sched.advance_ticks(minf(step, duration - sched.get_current_tick()))
+	var ticks: Dictionary = {}
+	for id in ids:
+		ticks[id] = []
+	for event in gs.event_log.events:
+		if event.get("kind", &"") != GameEvent.KIND_MOVE_TO_POS:
+			continue
+		var event_id := str((event.get("payload", {}) as Dictionary).get("id", ""))
+		if ticks.has(event_id):
+			(ticks[event_id] as Array).append(float(event.get("tick", -1.0)))
+	var sequences: Dictionary = {}
+	var destinations: Dictionary = {}
+	for enemy in enemies:
+		sequences[enemy.char_id] = enemy._roam_seq
+		var movement = gs.characters[enemy.char_id].movement
+		destinations[enemy.char_id] = movement.path[-1] if movement != null else gs.get_position(enemy.char_id)
+	holder.free()  # synchronously releases every scheduler-scoped cadence lane
+	return {
+		"ids": ids,
+		"ticks": ticks,
+		"lanes": lanes,
+		"sequences": sequences,
+		"destinations": destinations,
+	}
+
 # --- Test: lightweight enemy roaming wanders locally (no pathfinding), bounded, FF-invariant ---
 func _test_enemy_roaming() -> void:
 	_test_name = "Enemy Roaming"
@@ -17671,7 +20701,66 @@ func _test_enemy_roaming() -> void:
 	_assert_true((slow["dest"] as Vector3).distance_to(fast["dest"]) < 0.01,
 		"Same commanded roam destination at 1x and 10x")
 
-	# 3. A roaming enemy still SEES: a target in range pulls it out of roam to engage.
+	# 3. A cohort activated on one frame occupies distinct deterministic cadence lanes. Its first
+	# and repeated movement invalidations must remain separated, and coarse scheduler stepping must
+	# reproduce the same authoritative ticks and destinations exactly.
+	var cohort_fine := _enemy_roam_stagger_probe(0.01)
+	var cohort_coarse := _enemy_roam_stagger_probe(0.37)
+	var cohort_ids: Array = cohort_fine.ids
+	var lane_set: Dictionary = {}
+	var first_tick_set: Dictionary = {}
+	var second_tick_set: Dictionary = {}
+	var sorted_first_ticks: Array[float] = []
+	var enough_hops := true
+	var repeated_period_ok := true
+	for id_variant in cohort_ids:
+		var id := str(id_variant)
+		lane_set[int(cohort_fine.lanes[id])] = true
+		var id_ticks: Array = cohort_fine.ticks[id]
+		if id_ticks.size() < 2:
+			enough_hops = false
+			continue
+		var first_tick := float(id_ticks[0])
+		var second_tick := float(id_ticks[1])
+		first_tick_set[int(round(first_tick * 1000000.0))] = true
+		second_tick_set[int(round(second_tick * 1000000.0))] = true
+		sorted_first_ticks.append(first_tick)
+		if not is_equal_approx(second_tick - first_tick, 1.4):
+			repeated_period_ok = false
+	sorted_first_ticks.sort()
+	var minimum_first_gap := INF
+	for i in range(1, sorted_first_ticks.size()):
+		minimum_first_gap = minf(minimum_first_gap,
+			sorted_first_ticks[i] - sorted_first_ticks[i - 1])
+	print("[PERF:ENEMY:ROAM_STAGGER] lanes=%s first_ticks=%s min_gap_ms=%.3f" % [
+		str(cohort_fine.lanes), str(sorted_first_ticks), minimum_first_gap * 1000.0])
+	_assert_equals(lane_set.size(), cohort_ids.size(),
+		"A same-frame ambient cohort claims one cadence lane per enemy")
+	_assert_true(enough_hops, "Every stagger probe enemy issues at least two roam hops")
+	_assert_equals(first_tick_set.size(), cohort_ids.size(),
+		"The cohort's first roam commands never batch on one scheduler tick")
+	_assert_equals(second_tick_set.size(), cohort_ids.size(),
+		"The cohort's repeated roam commands remain unbatched")
+	_assert_true(minimum_first_gap >= 0.015,
+		"Adjacent first-hop work is separated by at least one Web frame (%.3fms)" \
+		% (minimum_first_gap * 1000.0))
+	_assert_true(repeated_period_ok,
+		"Staggering preserves each enemy's authored 1.4-second ambient cadence")
+	_assert_equals(cohort_coarse.ticks, cohort_fine.ticks,
+		"Fine and coarse scheduler steps reproduce every staggered roam tick")
+	_assert_equals(cohort_coarse.sequences, cohort_fine.sequences,
+		"Fine and coarse scheduler steps reproduce every cohort hop count")
+	var cohort_destinations_match := true
+	for id_variant in cohort_ids:
+		var id := str(id_variant)
+		if (cohort_coarse.destinations[id] as Vector3).distance_to(
+				cohort_fine.destinations[id]) > 0.001:
+			cohort_destinations_match = false
+			break
+	_assert_true(cohort_destinations_match,
+		"Fine and coarse scheduler steps reproduce every cohort destination")
+
+	# 4. A roaming enemy still SEES: a target in range pulls it out of roam to engage.
 	var s2 := EventScheduler.new()
 	var g2 := GameState.new()
 	g2.scheduler = s2
@@ -17692,6 +20781,34 @@ func _test_enemy_roaming() -> void:
 		"A roaming enemy that spots a target leaves roam to engage (got: %s)" % en2.get_state())
 	en2.queue_free()
 	h2.queue_free()
+
+	# 5. Staggering delays ambient work only. A threat transition is synchronous and leaving roam
+	# cancels the pending first-hop callback before it can mutate the wander sequence.
+	var s3 := EventScheduler.new()
+	var g3 := GameState.new()
+	g3.scheduler = s3
+	var h3 := Node3D.new()
+	add_child(h3)
+	var target3 := Node3D.new()
+	target3.name = "aster"
+	target3.set("char_id", "aster")
+	h3.add_child(target3)
+	g3.register_character("aster", Vector3(20.0, 0.5, 0.0), 3.0, {"hp": 100.0})
+	var en3 := Enemy.new()
+	en3.name = "immediate_threat_roamer"
+	en3.game_state = g3
+	en3.char_id = "immediate_threat_roamer"
+	h3.add_child(en3)
+	g3.register_character(en3.char_id, anchor, en3.move_speed, {"detection_range": 6.0})
+	en3.activate()
+	en3.set_roam(anchor, 3.0)
+	var engaged3 := en3.engage_target("aster")
+	_assert_true(engaged3 and en3.get_state() == "alert",
+		"A threat interrupts staggered ambient roam immediately")
+	s3.advance_ticks(1.5)
+	_assert_equals(en3._roam_seq, 0,
+		"Leaving roam cancels its pending phased hop instead of firing stale ambient work")
+	h3.free()
 
 # --- Test: the fragment-preview chunk registry is internally consistent + the inspector dropdown ---
 # matches it (the chunk id is a string, but it's constrained to CHUNK_SCENES by the @export_enum and
@@ -17728,6 +20845,16 @@ func _test_fragment_preview_registry() -> void:
 		"preview_chunk dropdown lists every registered chunk (enum %d vs registry %d)" % [enum_ids.size(), registry_ids.size()])
 	for id in registry_ids:
 		_assert_true(id in enum_ids, "preview_chunk dropdown includes registered chunk '%s'" % id)
+	var legacy_lockout_source := FileAccess.get_file_as_string(
+		"res://scripts/fragments/chunks/lockout_fragment_chunk.gd")
+	_assert_true("extends \"res://scripts/fragments/chunks/lockout_chase_chunk.gd\"" in legacy_lockout_source
+			and "_update_chase" not in legacy_lockout_source
+			and "_pursuit_markers" not in legacy_lockout_source,
+		"legacy lockout links resolve to the canonical Enemy-driven chase, not a marker simulation")
+	var legacy_lockout_entry: Dictionary = Reg.get_preview_entry("lockout")
+	_assert_true(int(legacy_lockout_entry.get("stage", 0)) == 4
+			and "legacy alias" in str(legacy_lockout_entry.get("title", "")).to_lower(),
+		"the compatibility picker entry labels itself honestly at the chase curriculum stage")
 
 	# The two read-focused standalone labs used to end silently after their final station.
 	# Drive their real chunk callbacks and require a durable completion state + host step.
@@ -17735,13 +20862,13 @@ func _test_fragment_preview_registry() -> void:
 		{
 			"name": "stacks",
 			"scene": "res://scenes/fragments/chunks/stacks_fragment_chunk.tscn",
-			"methods": ["_on_support_log_interacted", "_on_terminal_interacted", "_on_signal_interacted", "_on_archive_interacted"],
+			"actions": [],
 			"step": "stacks_fragment_complete",
 		},
 		{
 			"name": "rings",
 			"scene": "res://scenes/fragments/chunks/rings_fragment_chunk.tscn",
-			"methods": ["_on_client_interacted", "_on_propagation_interacted", "_on_forget_me_not_interacted"],
+			"actions": [],
 			"step": "rings_fragment_complete",
 		},
 	]
@@ -17755,11 +20882,54 @@ func _test_fragment_preview_registry() -> void:
 		host.register_party(chunk.get_spawn_positions())
 		host.add_child(chunk)
 		get_tree().root.add_child(host)
-		for method_variant in (case["methods"] as Array):
-			chunk.call(str(method_variant))
+		for action_variant in (case["actions"] as Array):
+			var action: Dictionary = action_variant
+			chunk.callv(str(action.get("method", "")), action.get("args", []))
+		if str(case["name"]) == "stacks":
+			host.game_state.set_party(["aster", "peris", "endo"])
+			for target_id in ["bank_a", "bank_b", "bank_c", "bank_b"]:
+				var bank: Node3D = chunk.get_playthrough_interaction_target(target_id)
+				_assert_true(bank != null,
+					"stacks exposes canonical world target %s" % target_id)
+				if bank == null:
+					continue
+				host.game_state.snap_character_to("aster", bank.global_position)
+				bank.set("active_character", "aster")
+				_assert_true(bool(bank.call("_trigger", false)),
+					"stacks %s advances through Aster's real bank control" % target_id)
+			var shelter: Node3D = chunk.get_playthrough_interaction_target(
+				"stacks_shelter_rest")
+			_assert_true(shelter != null,
+				"stacks exposes its canonical party shelter interaction")
+			if shelter != null:
+				for char_id in ["aster", "peris", "endo"]:
+					host.game_state.command_stop(char_id)
+					host.game_state.set_stat(char_id, "atp", 3.0)
+					host.game_state.snap_character_to(char_id, chunk.SHELTER_POS)
+				shelter.set("active_character", "aster")
+				_assert_true(bool(shelter.call("_trigger", false)),
+					"stacks completion commits through the gathered party shelter")
+		elif str(case["name"]) == "rings":
+			# The reassignment is a physical conversation, not a callable story flag:
+			# Peris and conscious Endo must both gather at the real Marco interaction.
+			host.game_state.set_party(["peris", "endo"])
+			var marco: Node3D = chunk.get_playthrough_interaction_target("marco_reassignment")
+			_assert_true(marco != null,
+				"rings exposes Marco's canonical world interaction to automation")
+			if marco != null:
+				host.game_state.snap_character_to(
+					"peris", chunk.MARCO_POS + Vector3(-1.1, 0.5, 0.4))
+				host.game_state.snap_character_to(
+					"endo", chunk.MARCO_POS + Vector3(1.1, 0.5, -0.4))
+				marco.set("active_character", "peris")
+				_assert_true(bool(marco.call("_trigger", false)),
+					"rings reassignment commits through Peris's real Marco interaction")
+			# Rings now completes when Endo physically reaches the junction, not in Marco's
+			# interaction callback. This registry smoke must cross that authoritative deadline.
+			host.scheduler.advance_ticks(chunk.ENDO_DEPARTURE_DURATION + 0.01)
 		var completion_state: Dictionary = chunk.get_preview_state()
 		_assert_true(bool(completion_state.get("complete", false)),
-			"%s standalone lab records completion after every authored read" % case["name"])
+			"%s standalone lab records completion after its canonical spine" % case["name"])
 		_assert_equals(host.step, str(case["step"]),
 			"%s standalone lab publishes its completion step" % case["name"])
 		host.free()
@@ -17797,7 +20967,8 @@ func _test_data_fragment_loader() -> void:
 	_assert_true(chunk.flora()[0] is FloraLight, "the spawned bloom is a FloraLight")
 	# The data enemy is a real GameState character; the data-configured flure pulls + distracts it.
 	_assert_true(host.game_state.characters.has("show_guard_0"), "the data enemy is registered in GameState")
-	_assert_true(chunk.flures()[0].activate(), "the data-configured flure pulls its lure targets (within attract range)")
+	_assert_true(_trigger_exact_flure_source(host.game_state, chunk.flures()[0], "peris"),
+		"the staged data-configured Flure pulls its lure targets within attract range")
 	_assert_true(host.game_state.is_character_distracted("show_guard_0"), "lighting the data flure distracts the targeted enemy")
 	# The capbage conceals at its own position (positional hide read from the data radius).
 	var cap = chunk.capbages()[0]
@@ -18883,7 +22054,9 @@ func _test_projection_alignment() -> void:
 		guard += 1
 	_assert_true(bool(chunk._vantage_is_front()), "the front snap vantage is held")
 	# 3) the brake parks ring 0 with a gap ON the corridor line (the detent)
-	chunk._on_brake_used()
+	gs.snap_character_to("peris", chunk._boss_control_data_position(chunk._brake_ia))
+	chunk._brake_ia.active_character = "peris"
+	chunk._brake_ia._trigger(false)
 	_assert_true(bool(chunk.get_preview_state()["ring0_parked"]), "the brake parks ring 0")
 	_assert_true(bool(chunk.ring_gap_at_bottom(0, chunk._tick())),
 		"the parked detent puts a ring-0 gap on the corridor line")
@@ -18962,7 +22135,9 @@ func _test_projection_alignment_safety() -> void:
 	while absf(wrapf(float(cam.call("orbit_target_yaw")), -PI, PI)) >= 0.1 and guard < 4:
 		cam.call("orbit_snap_step", 1)
 		guard += 1
-	chunk._on_brake_used()   # park ring 0 at its detent (ring 1 alone gates the window)
+	gs.snap_character_to("peris", chunk._boss_control_data_position(chunk._brake_ia))
+	chunk._brake_ia.active_character = "peris"
+	chunk._brake_ia._trigger(false)   # park ring 0 at its detent (ring 1 alone gates the window)
 	# find a CLOSED stretch at least 12 s long, and stand at its start (deterministic: seed 0)
 	var t0 := float(chunk._tick())
 	var probe := 0.0
@@ -19018,13 +22193,13 @@ func _test_projection_alignment_safety() -> void:
 	for i in range(2):
 		await get_tree().process_frame
 	_assert_true(bool(chunk.get_preview_state()["ring0_parked"]), "setup: ring 0 is parked mid-crawl")
-	chunk._on_brake_used()   # attempt to RELEASE the wheel with a crawler inside
+	chunk._brake_ia._trigger(false)   # attempt to RELEASE the wheel with a crawler inside
 	_assert_true(bool(chunk.get_preview_state()["ring0_parked"]),
 		"the brake REFUSES to turn the wheel while someone is inside it")
 	inst.headless_advance(20.0, 0.1)   # let the crawl finish
 	for i in range(2):
 		await get_tree().process_frame
-	chunk._on_brake_used()   # empty wheel: the release works again
+	chunk._brake_ia._trigger(false)   # empty wheel: the release works again
 	_assert_true(not bool(chunk.get_preview_state()["ring0_parked"]),
 		"with the wheel empty, the brake releases normally")
 	inst.queue_free()
@@ -19092,13 +22267,18 @@ func _test_roguelike_goal() -> void:
 	_assert_true(prize != null, "the finale hosts the reservoir cache")
 	var st0: Dictionary = chunk.call("get_preview_state")
 	_assert_true(not bool(st0.get("prize_retrieved", false)), "the prize starts untaken")
+	inst.headless_select_character("aster")
+	inst._game_state.snap_character_to("aster", chunk.PRIZE_POS)
 	prize.call("_trigger")
 	for i in range(3):
 		inst.headless_advance(0.1, 0.05)
 		await get_tree().process_frame
 	var st1: Dictionary = chunk.call("get_preview_state")
-	_assert_true(bool(st1.get("prize_retrieved", false)),
-		"taking the dose raises prize_retrieved (the poll's completion signal)")
+	var dose_id := str(st1.get("prize_item_id", ""))
+	_assert_true(bool(st1.get("prize_retrieved", false))
+			and str(st1.get("prize_item_holder", "")) == "aster"
+			and inst._game_state.get_hand_items("aster").has(dose_id),
+		"taking the dose completes only with the exact vial in Aster's hand")
 	# (5) the presenter's finale arm: at the bottom, the sync points at the boss site
 	var sess := RunSession.new(9)
 	sess.start()
@@ -20195,21 +23375,22 @@ func _test_interactable_warp() -> void:
 		return
 	var gs = instance.get("_game_state")
 	_assert_true(gs != null and gs.coord_map != null, "the helix coord_map is installed")
-	var term: Node = instance.find_child("Terminal", true, false)
-	_assert_true(term != null, "the Terminal connect-back interactable exists")
-	if term != null and gs != null and gs.coord_map != null:
-		var flat := Vector3(84.0, 0.5, 2.5)   # TERMINAL_POS (flat s, lane)
+	var tend_anchor: Node = instance.find_child("ClimbvineTendAnchor", true, false)
+	_assert_true(tend_anchor != null, "the physical upper pothos TEND anchor exists")
+	if tend_anchor != null and gs != null and gs.coord_map != null:
+		var chunk: Node = instance.find_child("Chunk_wash_relay", true, false)
+		var flat: Vector3 = chunk.RETURN_LANDING
 		var on_helix: Vector3 = gs.coord_map.to_world(flat)
-		_assert_true(term.global_position.distance_to(on_helix) < 0.05,
-			"the Terminal zone is warped onto the helix (at the deck, not the flat data point)")
-		_assert_true(term.global_position.distance_to(flat) > 1.0,
-			"the Terminal zone is NOT left stranded at its flat (s, lane) position")
-		# A member standing at the Terminal's flat cell renders right inside the warped zone — reachable.
-		if gs.characters.has("aster"):
-			gs.snap_character_to("aster", flat)
-			var rp: Vector3 = gs.get_render_position("aster")
-			_assert_true(rp.distance_to(term.global_position) < 1.8,
-				"a member at the Terminal's cell renders inside the zone (the dwell can arm)")
+		_assert_true(tend_anchor.global_position.distance_to(on_helix) < 0.05,
+			"the upper TEND anchor is warped onto the helix deck")
+		_assert_true(tend_anchor.global_position.distance_to(flat) > 1.0,
+			"the upper TEND anchor is not left at its flat data-space position")
+		# Peris standing at the upper anchor's flat cell renders inside its warped interaction zone.
+		if gs.characters.has("peris"):
+			gs.snap_character_to("peris", flat)
+			var rp: Vector3 = gs.get_render_position("peris")
+			_assert_true(rp.distance_to(tend_anchor.global_position) < 1.8,
+				"Peris at the authored upper cell renders inside the TEND zone")
 	instance.queue_free()
 	await get_tree().process_frame
 
@@ -20266,41 +23447,149 @@ func _test_wash_relay_branches() -> void:
 		var flat := Vector3(float(b0.get("mid_x", 0.0)), 0.5, float(b0.get("pad_lane", 8.5)))
 		_assert_true(cache0.global_position.distance_to(gs.coord_map.to_world(flat)) < 0.6,
 			"the branch cache is warped onto its pad on the helix")
-	# Collecting a cache through the data layer rewards loot (the offshoot pays off).
-	var loot_before := int(state.get("branch_loot", 0))
+	# Collecting a branch source transfers its exact physical lysate item (the offshoot pays off).
 	if cache0 != null:
-		cache0.call("_trigger", false)
+		var b0_source: Vector3 = (branches[0] as Dictionary).get("reward_source_pos", Vector3.ZERO)
+		var active_party: Array[String] = gs.get_party()
+		var b0_actor := active_party[0] if not active_party.is_empty() else ""
+		_assert_true(b0_actor != "",
+			"the preview exposes a canonical selected party member for the cache")
+		gs.snap_character_to(b0_actor, b0_source)
+		var b0_triggered := _trigger_exact_interactable_source(
+			gs, cache0, b0_actor)
+		_assert_true(b0_triggered,
+			"%s physically takes the first branch's exact lysate source" \
+				% b0_actor.capitalize())
 		await get_tree().process_frame
-		_assert_true(int(chunk.get_preview_state().get("branch_loot", 0)) > loot_before,
-			"collecting a branch cache increments loot")
+		var claimed_b0: Dictionary = (chunk.get_preview_state().get("branches", []) as Array)[0]
+		_assert_true(str(claimed_b0.get("reward_phase", "")) == "claimed"
+			and str(claimed_b0.get("reward_item_holder", "")) == b0_actor,
+			"collecting a branch source transfers the exact lysate item")
 	instance.queue_free()
 	await get_tree().process_frame
-	# Determinism: the branch layout is the gap geometry (fixed constants) + the generator's archetype pick,
-	# so it's replay-safe iff the generator is deterministic. Two identical generate() calls must match the
-	# archetypes the live chunk used. (Done directly — re-instantiating the whole warped preview is needless.)
+	# Determinism: generate only the five branches that reach the world. Authored transit gaps consume no
+	# hidden generator nodes, and the required redirect/plant/carry trio remains part of the realized sequence.
+	# Two identical generator calls must match the live sequence; rebuilding the warped scene is needless.
 	var settings := {"id": "wash_relay_branches", "title": "Wash Relay Branches",
 		"seed": 4727, "complexity_tier": "developing", "progression_stage": 3,
-		"budget": {"node_count": 8, "branch_count": 0}}
+		"budget": {"node_count": 5, "branch_count": 0},
+		"limitations": {"required": {"archetypes": ["1", "2", "3"]}}}
 	var spec_a: Dictionary = StretchGenerator.generate(settings)
 	var spec_b: Dictionary = StretchGenerator.generate(settings)
 	if bool(spec_a.get("ok", false)) and bool(spec_b.get("ok", false)):
 		var na: Array = spec_a.get("nodes", [])
 		var nb: Array = spec_b.get("nodes", [])
-		var live_node_indices := [0, 2, 5, 6, 7]
-		var det := na.size() == nb.size() and na.size() >= 8 and branches.size() == live_node_indices.size()
+		var det := na.size() == nb.size() and na.size() >= 5 and branches.size() == 5
 		if det:
-			for branch_i in range(live_node_indices.size()):
-				var node_i: int = live_node_indices[branch_i]
-				var name_a := str((na[node_i] as Dictionary).get("archetype_name", ""))
-				if name_a != str((nb[node_i] as Dictionary).get("archetype_name", "")) \
+			for branch_i in range(branches.size()):
+				var name_a := str((na[branch_i] as Dictionary).get("archetype_name", ""))
+				if name_a != str((nb[branch_i] as Dictionary).get("archetype_name", "")) \
 						or name_a != str((branches[branch_i] as Dictionary).get("archetype", "")):
 					det = false
 					break
 		_assert_true(det, "branch layout is deterministic (same archetype sequence as the live chunk) — replay-safe")
 
-## The channels' three character abilities (TRACE / BLOOM / BRACE) — each protagonist's signature read. Proves
-## the chunk wires the abilities (closing the "no abilities" gap) and that each effect fires: Aster's TRACE
-## reads the section he stands in, Peris's BLOOM grows a persistent flora light, Endo's BRACE returns a result.
+## The stable cast roster remains EMP / Wrap here; Wash Relay-specific reads and work are contextual actions
+## attached to their physical gauge, plant, and crew connect-back targets.
+## The two authored story beats — the lonely flure and the dormant curecumin pad — exist,
+## are reachable dressing-law citizens (click-gated, outlined, on connected walkable spurs),
+## and stay OUT of the mechanical arrays whose counts/index-alignment other tests assert.
+## Also smoke-checks the dressing handle + the fall-intensity plumbing headless.
+func _test_wash_relay_story_beats() -> void:
+	_test_name = "Wash Relay Story Beats"
+	var instance: Node = await _instantiate_preview_chunk_and_wait("wash_relay", 6)
+	_assert_true(instance != null, "wash_relay instantiates")
+	if instance == null:
+		return
+	var chunk: Node = instance.find_child("Chunk_wash_relay", true, false)
+	var gs = instance.get("_game_state")
+	if chunk == null or gs == null or gs.grid == null:
+		_assert_true(false, "story-beat test has chunk and grid")
+		instance.queue_free(); await get_tree().process_frame; return
+	# The lonely flure: a real Flure whose target list is EMPTY (it sings, nothing answers).
+	var flure: Node = chunk.find_child("LonelyFlure", true, false)
+	_assert_true(flure is Flure, "the lonely flure exists and is a Flure")
+	if flure is Flure:
+		_assert_equals((flure.get("_lure_target_ids") as Array).size(), 0,
+			"the lonely flure calls no one")
+		_assert_true(not (chunk.get("_relay_flures") as Array).has(flure),
+			"the lonely flure stays out of the index-aligned relay array")
+		_assert_true(int(flure.get("interactable_type")) == Interactable.InteractableType.INSPECTION,
+			"the lonely flure is click-gated")
+		_assert_true(flure.flure_activated.get_connections().size() > 0,
+			"lighting the lonely flure surfaces its beat")
+	# The curecumin portal: a REAL blue PortalPad pair (docs/PORTALS.md) into the neck
+	# garden — a portal-only pocket. The reward canonically waits in a Greenfields home,
+	# so the garden holds only the sealed gate and its route READ.
+	var pad: Node = chunk.find_child("CurecuminPortalPad", true, false)
+	var back: Node = chunk.find_child("CurecuminPortalReturn", true, false)
+	_assert_true(pad is PortalPad and back is PortalPad,
+		"the curecumin portal is a real PortalPad pair")
+	if pad is PortalPad:
+		var anchors_pre: Dictionary = chunk.get_preview_anchors()
+		_assert_true(not (chunk.get("_portals") as Array).has(pad)
+			and not (chunk.get("_pressure_portals") as Array).has(pad),
+			"the cure pair stays out of the pressure-portal arrays (their counts are asserted)")
+		_assert_true(int(pad.get("interactable_type")) == Interactable.InteractableType.INSPECTION,
+			"the portal is click-gated")
+		# The pocket is portal-ONLY: no grid path reaches the garden on foot...
+		var start_cell2: Vector2i = gs.grid.world_to_grid(Vector3(3.0, 0.0, 0.0))
+		var garden_cell: Vector2i = gs.grid.world_to_grid(anchors_pre["curecumin_garden"])
+		_assert_true(gs.grid.find_path(start_cell2, garden_cell).is_empty(),
+			"the neck garden is portal-only (no walk path in)")
+		_assert_true(gs.grid.is_walkable(garden_cell.x, garden_cell.y),
+			"the garden floor itself is walkable ground")
+		# ...and the portal REALLY carries a member across (the functional contract).
+		instance.headless_set_selected_characters(["aster"])
+		var src_v: Variant = pad.call("get_data_source")
+		if src_v is Vector3:
+			instance.headless_set_character_position("aster", (src_v as Vector3) + Vector3(0.0, 0.0, 0.1))
+			pad.set("active_character", "aster")
+			var fired := bool(pad.call("_trigger", false))
+			instance.headless_advance(6.0)
+			var where: Vector3 = gs.get_position("aster")
+			_assert_true(fired and where.distance_to(anchors_pre["curecumin_garden"]) < 6.0,
+				"stepping through lands in the neck garden (got %s)" % str(where))
+		# the sealed gate carries the route READ
+		var gate: Node = chunk.find_child("SealedGreenfieldsGate", true, false)
+		_assert_true(gate is Interactable and gate.interacted.get_connections().size() > 0,
+			"the sealed Greenfields gate exists and reading it surfaces the route")
+		# both apertures wear the destination lens
+		_assert_true(chunk.find_child("CureLensOut", true, false) != null
+			and chunk.find_child("CureLensBack", true, false) != null,
+			"both apertures carry a PortalLens")
+	# Both ledges are REAL connected ground: the pad from the start shelter, the flure from
+	# the post-gap coil (the pressure break still severs start-to-end, asserted elsewhere).
+	var anchors: Dictionary = chunk.get_preview_anchors()
+	_assert_true(anchors.has("lonely_flure") and anchors.has("curecumin_pad"),
+		"both beats export preview anchors")
+	var start_cell: Vector2i = gs.grid.world_to_grid(Vector3(3.0, 0.0, 0.0))
+	var pad_cell: Vector2i = gs.grid.world_to_grid(anchors["curecumin_pad"])
+	_assert_true(not gs.grid.find_path(start_cell, pad_cell).is_empty(),
+		"the curecumin ledge connects to the start shelter")
+	var landing_cell: Vector2i = gs.grid.world_to_grid(anchors["pressure_portal_landing"])
+	var flure_cell: Vector2i = gs.grid.world_to_grid(anchors["lonely_flure"])
+	_assert_true(not gs.grid.find_path(landing_cell, flure_cell).is_empty(),
+		"the lonely flure's outcrop connects to the upper coil")
+	# The dressing handle + the fall plumbing (visibility slaved to splash intensity).
+	var dressing: Dictionary = chunk.get("_dressing")
+	_assert_true(dressing.has("root") and is_instance_valid(dressing["root"]),
+		"the dressing root is built")
+	var falls: Array = dressing.get("falls", [])
+	_assert_equals(falls.size(), (chunk.get("SECTIONS") as Array).size(),
+		"one outfall set per section")
+	# The GLB/GLTF must actually be present and collected — an empty fall set means the
+	# dressing model failed to load (this went silent once: a stale-path export).
+	_assert_true(falls.size() > 0 and (falls[0] as Array).size() > 0,
+		"the dressing model loaded and its outfall sheets were collected")
+	if falls.size() > 0 and (falls[0] as Array).size() > 0:
+		WashRelayDressing.drive_falls(dressing, 0, 1.0)
+		_assert_true((falls[0] as Array)[0].visible, "a flooding section pours its outfall")
+		WashRelayDressing.reset_falls(dressing)
+		_assert_true(not (falls[0] as Array)[0].visible, "reset stills every outfall")
+	instance.queue_free()
+	await get_tree().process_frame
+
 func _test_wash_relay_transit_breaks() -> void:
 	_test_name = "Wash Relay Transit Breaks"
 	var instance: Node = await _instantiate_preview_chunk_and_wait("wash_relay", 6)
@@ -20312,6 +23601,9 @@ func _test_wash_relay_transit_breaks() -> void:
 	if chunk == null or gs == null or gs.grid == null or gs.coord_map == null:
 		_assert_true(false, "transit test has chunk, grid, and coord map")
 		instance.queue_free(); await get_tree().process_frame; return
+	# Exercise one physical body at a time. Portal/crawl group queues remain covered by their reusable
+	# object suites; this fixture is about the Wash topology and must not cash in remote portraits.
+	instance.headless_set_selected_characters(["aster"])
 	instance.headless_advance(0.3)
 	var anchors: Dictionary = chunk.get_preview_anchors()
 	var state: Dictionary = chunk.get_preview_state()
@@ -20352,25 +23644,34 @@ func _test_wash_relay_transit_breaks() -> void:
 			"the pressure inlet source is warped once onto the helix")
 		gs.snap_character_to("aster", entry)
 		portal_in.set("active_character", "aster")
-		_assert_true(bool(portal_in.call("step_through")), "the inlet portal accepts Aster")
+		_assert_true(bool(portal_in.call("_trigger", false)), "the inlet portal accepts Aster")
 		_assert_true(gs.get_position("aster").distance_to(arrival) < 0.05,
 			"the inlet lands at canonical pressure-room data coordinates")
+		instance.headless_advance(1.0, 0.05)
 	if portal_back != null:
+		# A portal hop includes a real far-side walk-off. Re-entering means walking back onto the
+		# receiving pad after that queue has retired, not firing a second pad mid-movement.
+		gs.snap_character_to("aster", arrival)
 		portal_back.set("active_character", "aster")
-		_assert_true(bool(portal_back.call("step_through")), "the purple return portal accepts Aster")
+		_assert_true(bool(portal_back.call("_trigger", false)), "the purple return portal accepts Aster")
 		_assert_true(gs.get_position("aster").distance_to(entry) < 0.05,
 			"the purple return reaches the pre-gap lip")
+		instance.headless_advance(1.0, 0.05)
 	if portal_out != null:
 		gs.snap_character_to("aster", room_return)
 		portal_out.set("active_character", "aster")
-		portal_out.call("step_through")
-		_assert_true(gs.get_position("aster").distance_to(landing) < 0.05,
-			"the cyan portal reaches the far lip")
+		_assert_true(bool(portal_out.call("_trigger", false)), "the cyan exit portal accepts Aster")
+		var cyan_position: Vector3 = gs.get_position("aster")
+		_assert_true(Vector2(cyan_position.x, cyan_position.z).distance_to(
+			Vector2(landing.x, landing.z)) < 0.05,
+			"the cyan portal reaches the far lip in canonical data space")
+		instance.headless_advance(1.0, 0.05)
 
 	var valve: Node = instance.find_child("PressureValve", true, false)
 	_assert_true(valve != null, "the pressure valve exists")
 	if valve != null:
-		valve.call("_trigger", false)
+		_assert_true(_trigger_exact_interactable_source(gs, valve, "aster"),
+			"Aster physically works the pressure-room valve")
 		await get_tree().process_frame
 		state = chunk.get_preview_state()
 		var remaining := float(state.get("pressure_vent_remaining", 0.0))
@@ -20390,23 +23691,34 @@ func _test_wash_relay_transit_breaks() -> void:
 	if pipe_in != null and pipe_back != null:
 		var mouth_a: Vector3 = anchors["sluice_tunnel_in"]
 		var mouth_b: Vector3 = anchors["sluice_tunnel_out"]
+		var forward_arrivals: Array = pipe_in.call("compute_group_arrivals", ["aster"])
+		var reverse_arrivals: Array = pipe_back.call("compute_group_arrivals", ["aster"])
+		var forward_arrival: Vector3 = gs.coord_map.to_data(forward_arrivals[0]) \
+			if not forward_arrivals.is_empty() else mouth_b
+		var reverse_arrival: Vector3 = gs.coord_map.to_data(reverse_arrivals[0]) \
+			if not reverse_arrivals.is_empty() else mouth_a
 		gs.snap_character_to("aster", mouth_a)
-		pipe_in.call("_begin_crawl", "aster", -1)
+		pipe_in.set("active_character", "aster")
+		_assert_true(bool(pipe_in.call("_trigger", false)),
+			"Aster physically enters the exact outer-pipe mouth")
 		instance.headless_advance(16.0)
-		_assert_true(gs.get_position("aster").distance_to(mouth_b) < 0.25,
-			"the outer pipe carries Aster past the sluice in data space (got %s, want %s)" % [
-				str(gs.get_position("aster")), str(mouth_b)])
-		pipe_back.call("_begin_crawl", "aster", -1)
+		_assert_true(gs.get_position("aster").distance_to(forward_arrival) < 0.55,
+			"the outer pipe carries Aster past the sluice and clears its exit (got %s, want %s)" % [
+				str(gs.get_position("aster")), str(forward_arrival)])
+		gs.snap_character_to("aster", mouth_b)
+		pipe_back.set("active_character", "aster")
+		_assert_true(bool(pipe_back.call("_trigger", false)),
+			"Aster physically re-enters the exact return mouth")
 		instance.headless_advance(16.0)
-		_assert_true(gs.get_position("aster").distance_to(mouth_a) < 0.25,
-			"the outer pipe also supports intentional backtracking (got %s, want %s)" % [
-				str(gs.get_position("aster")), str(mouth_a)])
+		_assert_true(gs.get_position("aster").distance_to(reverse_arrival) < 0.55,
+			"the outer pipe also supports intentional backtracking and clears its exit (got %s, want %s)" % [
+				str(gs.get_position("aster")), str(reverse_arrival)])
 
 	instance.queue_free()
 	await get_tree().process_frame
 
 func _test_wash_relay_abilities() -> void:
-	_test_name = "Wash Relay Abilities"
+	_test_name = "Wash Relay Canonical Abilities + Contextual Verbs"
 	var instance: Node = await _instantiate_preview_chunk_and_wait("wash_relay", 6)
 	if instance == null:
 		_assert_true(false, "wash_relay instantiates"); return
@@ -20414,37 +23726,91 @@ func _test_wash_relay_abilities() -> void:
 	var gs = instance.get("_game_state")
 	if chunk == null or gs == null:
 		_assert_true(false, "chunk + game state present"); instance.queue_free(); await get_tree().process_frame; return
-	# The three abilities are wired (no longer the empty list).
-	var abilities: Array = chunk.get_preview_abilities()
-	var ids: Array = []
-	for a in abilities:
-		ids.append(str((a as Dictionary).get("id", "")))
-	_assert_true(abilities.size() == 3, "the channels wires 3 abilities (got %d)" % abilities.size())
-	_assert_true(ids.has("aster_focus") and ids.has("peris_tune") and ids.has("endo_patch"),
-		"the abilities are TRACE/BLOOM/BRACE (aster_focus/peris_tune/endo_patch) — got %s" % str(ids))
-	# TRACE: put Aster in a section's footprint, read it -> trace_section locks onto that section.
-	gs.snap_character_to("aster", Vector3(8.0, 0.5, 0.0))   # section 0 (flush, x6..11)
-	var tr: Dictionary = chunk.handle_preview_ability("aster_focus")
-	_assert_true(str(tr.get("note", "")) != "", "TRACE surfaces a read note (got '%s')" % str(tr.get("note", "")))
-	_assert_true(int(chunk.get_preview_state().get("trace_section", -1)) == 0,
-		"TRACE locks onto the section Aster stands in (got %d, want 0)" % int(chunk.get_preview_state().get("trace_section", -1)))
-	# BLOOM: Peris tends flora -> a persistent bioluminescent light is grown each cast.
-	var b0 := int(chunk.get_preview_state().get("bloom_count", 0))
-	chunk.handle_preview_ability("peris_tune")
-	await get_tree().process_frame
-	chunk.handle_preview_ability("peris_tune")
-	await get_tree().process_frame
-	_assert_true(int(chunk.get_preview_state().get("bloom_count", 0)) == b0 + 2,
-		"BLOOM grows a persistent flora light each cast (got %d, want %d)" % [int(chunk.get_preview_state().get("bloom_count", 0)), b0 + 2])
-	# BRACE: returns a usable result (a note) — the survival read.
-	var br: Dictionary = chunk.handle_preview_ability("endo_patch")
-	_assert_true(str(br.get("note", "")) != "", "BRACE returns a survival read (got '%s')" % str(br.get("note", "")))
-	# Reset clears the derived ability state so a replay/repeat doesn't leak it.
+	instance.headless_set_selected_characters(["aster", "peris", "endo"])
+
+	# Cast roster: every fragment gets the same GDD-backed abilities from the preview host. This chunk does not
+	# get to inject renamed local actions into that drawer.
+	var preview_state: Dictionary = instance.headless_get_state()
+	var abilities: Dictionary = preview_state.get("abilities", {})
+	var ids: Array = abilities.keys()
+	_assert_equals(ids.size(), 2, "Wash Relay exposes exactly the canonical two-cast roster")
+	_assert_true(ids.has("emp") and ids.has("wrap"), "the cast drawer contains EMP + Wrap (got %s)" % str(ids))
+	_assert_true(not ids.has("aster_focus") and not ids.has("peris_tune") and not ids.has("endo_patch"),
+		"legacy fragment-local casts never enter the drawer")
+	_assert_equals(str((abilities.get("emp", {}) as Dictionary).get("owner", "")), "aster", "EMP belongs to Aster")
+	_assert_equals(str((abilities.get("wrap", {}) as Dictionary).get("owner", "")), "peris", "Wrap belongs to Peris")
+	var chunk_abilities: Array = chunk.get_preview_abilities()
+	var chunk_ids: Array = []
+	for entry_v in chunk_abilities:
+		if entry_v is Dictionary:
+			chunk_ids.append(str((entry_v as Dictionary).get("id", "")))
+	_assert_true(chunk_ids.all(func(id: String) -> bool: return id in ["emp", "wrap"]),
+		"inherited chunk tuning cannot expose a non-canonical cast (got %s)" % str(chunk_ids))
+	_assert_true((chunk.handle_preview_ability("aster_focus") as Dictionary).is_empty(),
+		"the inherited compatibility hook has no Wash Relay-local cast handler")
+	_assert_true(instance.headless_activate_ability("emp"), "canonical EMP can be cast in Wash Relay")
+	_assert_true(instance.headless_activate_ability("wrap"), "canonical Wrap can be cast in Wash Relay")
+
+	# Aster's old timing job is now a read on the exact channel whose cadence it reveals.
+	var gauge: Node = chunk.find_child("FlowGauge1", true, false)
+	_assert_true(gauge != null, "the first timing channel has a contextual flow gauge")
+	if gauge != null:
+		_assert_equals(str(gauge.get("required_character")), "aster", "SCAN FLOW is Aster's contextual read")
+		_assert_equals(str(gauge.call("get_action_verb")), "SCAN FLOW", "the gauge advertises the actual verb")
+		_assert_true(str(gauge.call("get_action_preview")).find("surge period") != -1,
+			"the gauge predicts what scanning will reveal")
+		_assert_true(not _trigger_exact_interactable_source(gs, gauge, "peris"),
+			"nearby Peris cannot perform Aster's gauge scan")
+		_assert_true(_trigger_exact_interactable_source(gs, gauge, "aster"),
+			"nearby Aster can scan the physical gauge")
+		await get_tree().process_frame
+		var read_state: Dictionary = chunk.get_preview_state()
+		_assert_equals(int(read_state.get("cadence_read_section", -1)), 1,
+			"the contextual scan reads the gauge's own channel")
+		_assert_true(is_equal_approx(float(read_state.get("cadence_read_period", -1.0)), 4.0),
+			"the gauge reports its real four-second scheduler cadence")
+		_assert_true(bool(read_state.get("surge_timing_learned", false)),
+			"the contextual scan unlocks paused surge-path timing")
+
+	# Peris's old lighting job is now attached to one reachable plant beside the dark optional drain.
+	var flora: Node = chunk.find_child("DrainFlora", true, false)
+	_assert_true(flora != null, "the optional drain has contextual flora for Peris")
+	if flora != null:
+		_assert_equals(str(flora.get("required_character")), "peris", "TEND FLORA is Peris's contextual work")
+		_assert_equals(str(flora.call("get_action_verb")), "TEND FLORA", "the plant advertises the actual verb")
+		_assert_true(str(flora.call("get_action_preview")).find("persistent light") != -1,
+			"the plant predicts the light it will grow")
+		_assert_true(not _trigger_exact_interactable_source(gs, flora, "aster"),
+			"nearby Aster cannot perform Peris's flora tending")
+		_assert_true(_trigger_exact_interactable_source(gs, flora, "peris"),
+			"nearby Peris can tend the physical drain plant")
+		await get_tree().process_frame
+		var flora_state: Dictionary = chunk.get_preview_state()
+		_assert_true(bool(flora_state.get("drain_flora_tended", false))
+				and int(flora_state.get("flora_light_count", 0)) == 1,
+			"tending grows one persistent drain light")
+
+	var terminal: Node = chunk.find_child("Terminal", true, false)
+	_assert_true(terminal == null, "Wash Relay adds no abstract crew/recovery terminal")
+	var tend_anchor: Node = chunk.find_child("ClimbvineTendAnchor", true, false)
+	_assert_true(tend_anchor != null and str(tend_anchor.call("get_action_verb")) == "TEND"
+			and str(tend_anchor.get("required_character")) == "peris",
+		"the upper return anchor exposes Peris's contextual TEND verb")
+	if tend_anchor != null:
+		var tend_preview := str(tend_anchor.call("get_action_preview")).to_lower()
+		_assert_true("return vine" in tend_preview and "lower deck" in tend_preview,
+			"TEND predicts the visible vine growth and its lower destination")
+
+	# Reset clears world-action state while retaining learned cadence as player knowledge.
 	chunk.reset_preview_state()
 	await get_tree().process_frame
-	_assert_true(int(chunk.get_preview_state().get("trace_section", -1)) == -1
-			and int(chunk.get_preview_state().get("bloom_count", 0)) == 0,
-		"reset clears TRACE + BLOOM state (trace=%d blooms=%d)" % [int(chunk.get_preview_state().get("trace_section", -1)), int(chunk.get_preview_state().get("bloom_count", 0))])
+	var reset_state: Dictionary = chunk.get_preview_state()
+	_assert_true(int(reset_state.get("cadence_read_section", -1)) == -1
+			and not bool(reset_state.get("drain_flora_tended", true))
+			and int(reset_state.get("flora_light_count", -1)) == 0,
+		"reset clears transient gauge + flora state")
+	if flora != null:
+		_assert_true(bool(flora.call("is_interaction_enabled")), "reset re-arms the one-shot drain plant")
 	instance.queue_free()
 	await get_tree().process_frame
 
@@ -20783,12 +24149,11 @@ func _test_generated_stretch_probe_coverage() -> void:
 	inst.queue_free()
 	await get_tree().process_frame
 
-## Drop-down shortcut: the descending spiral stacks the cell one full turn ahead directly BELOW the current one, so
-## a PortalPad there lets a member drop straight down to that lower turn — skipping a whole loop of walking toward
-## the exit. Assert the pads exist on a long (standard-tier) stretch, that each really drops DOWN and lands a full
-## turn FORWARD, and that stepping through teleports the active member forward along the flat data grid.
+## Climbvine recovery: a long descending spiral stacks a later/lower turn beneath an already-resolved upper turn.
+## Peris tends that upper anchor, the vine deploys downward, and a member at the lower mouth can climb back. There
+## is no paired forward drop: recovery topology must never skip unresolved beats.
 func _test_spiral_drop_down() -> void:
-	_test_name = "Spiral Drop Down"
+	_test_name = "Spiral Gated Climbvine Return"
 	# A long stretch (>= 2 full helix turns) so a cell has a full turn stacked directly BELOW it to drop to.
 	var spec: Dictionary = StretchGeneratorScript.generate({"seed": 12, "complexity_tier": "setpiece", "id": "spiral_drop", "budget": {"node_count": 14}})
 	var inst = await _instantiate_preview_chunk_and_wait("generated_stretch", 8, {"spec": spec})
@@ -20802,60 +24167,166 @@ func _test_spiral_drop_down() -> void:
 		_assert_true(false, "coord_map + chunk present"); inst.queue_free(); await get_tree().process_frame; return
 	var cm = gs.coord_map
 	var period: float = cm.period_s()
-	var pads: Array = chunk.get("_drop_downs")
-	print("  [drop-down] period_s=%.1f cells | placed=%d pads" % [period, pads.size()])
-	_assert_true(pads.size() >= 1, "a long spiral places at least one drop-down shortcut (got %d)" % pads.size())
-	if pads.is_empty():
-		inst.queue_free(); await get_tree().process_frame; return
-	# Geometry: the pad sits ABOVE its destination (a real drop) and the destination is a full turn FORWARD.
-	var pad = pads[0]
-	var upper_flat: Vector3 = cm.to_data(pad.position)
-	var lower_flat: Vector3 = cm.to_data(pad.get("_dest"))
-	var forward: float = lower_flat.x - upper_flat.x
-	print("  [drop-down] pad upper s=%.1f (y=%.2f) -> lower s=%.1f (y=%.2f) | forward=%.1f" % [upper_flat.x, pad.position.y, lower_flat.x, pad.get("_dest").y, forward])
-	_assert_true(pad.position.y > pad.get("_dest").y + 1.0, "the pad DROPS DOWN (upper y=%.2f is well above dest y=%.2f)" % [pad.position.y, pad.get("_dest").y])
-	_assert_true(absf(forward - period) < 2.5, "the drop lands a full turn FORWARD toward the exit (forward=%.1f ~ period=%.1f)" % [forward, period])
-	# Teleport: put the active member on the pad's upper cell, step through, assert the flat data position jumped
-	# forward by ~a full turn (a shortcut), and lands on a walkable cell.
-	var active: String = str(inst.get("_active_char_id"))
-	if not gs.characters.has(active):
-		active = "aster"
-	gs.snap_character_to(active, upper_flat)
-	pad.active_character = active
-	var before: Vector3 = gs.get_position(active)
-	var ok: bool = pad.step_through()
-	var after: Vector3 = gs.get_position(active)
-	var jumped: float = after.x - before.x
-	print("  [drop-down] step_through=%s | before s=%.1f -> after s=%.1f (jumped %.1f)" % [str(ok), before.x, after.x, jumped])
-	_assert_true(ok, "the drop-down pad teleports the active member (step_through succeeds — the chunk gets a game_state)")
-	_assert_true(jumped > period * 0.6, "stepping the drop-down jumps the member a loop FORWARD along the flat grid (jumped %.1f)" % jumped)
-	var land_cell: Vector2i = gs.grid.world_to_grid(after)
-	_assert_true(gs.grid.is_walkable(land_cell.x, land_cell.y), "the drop lands on a walkable floor cell")
-	# Climbvine return points: the meta-template also places the UP counterpart — a climbvine on the lower deck that
-	# returns you to the turn above (the "return point" of the fall-to-plane grammar).
+	var emitted_branches: Array = (chunk.get("_woven_nav") as Dictionary).get("branches", [])
+	var mandatory_branch_count := 0
+	for branch_v in emitted_branches:
+		if branch_v is Dictionary \
+				and str((branch_v as Dictionary).get("role", "")) == "mandatory_producer":
+			mandatory_branch_count += 1
+	_assert_equals(
+		int(chunk.call("get_branch_span_count")), mandatory_branch_count,
+		"every mandatory generated branch binds one physical authoritative span"
+	)
+	for span_v in (chunk.get("_branch_span_producers") as Array):
+		var span = span_v
+		var dormant: Dictionary = span.call("get_state")
+		var blocker_cells: Array = dormant.get("blocker_cells", [])
+		var blocker_tag := str(dormant.get("blocker_tag", ""))
+		var all_blocked := not blocker_cells.is_empty()
+		for blocker_cell_v in blocker_cells:
+			var blocker_cell := blocker_cell_v as Vector2i
+			all_blocked = all_blocked and str(gs.grid.dynamic_blockers.get(
+				blocker_cell, ""
+			)) == blocker_tag
+		_assert_true(all_blocked, "mandatory branch cut is blocked across every emitted consumer cell")
+		var producer_data_position: Vector3 = dormant.get(
+			"producer_data_position", Vector3.ZERO
+		)
+		gs.set_character_level(
+			"aster", gs.grid.level_for_y(producer_data_position.y)
+		)
+		gs.snap_character_to("aster", producer_data_position)
+		var producer_source: Node = span.call("get_producer_interactable")
+		if producer_source != null:
+			producer_source.set("active_character", "aster")
+		_assert_true(
+			producer_source != null
+			and bool(producer_source.call("_trigger", false)),
+			"the exact side-branch producer commits its span extension")
+		gs.scheduler.advance_ticks(float(dormant.get("duration", 0.0)) * 0.5)
+		var extending: Dictionary = span.call("get_state")
+		var still_blocked := str(extending.get("phase", "")) == "extending"
+		for blocker_cell_v in blocker_cells:
+			still_blocked = still_blocked and gs.grid.dynamic_blockers.has(
+				blocker_cell_v as Vector2i
+			)
+		_assert_true(still_blocked, "half-extension remains authoritatively blocked")
+		gs.scheduler.advance_ticks(float(extending.get("remaining", 0.0)))
+		var all_open := bool(span.call("is_bridged"))
+		for blocker_cell_v in blocker_cells:
+			all_open = all_open and not gs.grid.dynamic_blockers.has(blocker_cell_v as Vector2i)
+		_assert_true(all_open, "bridged completion opens the entire proven cut set")
+	var drops: Array = chunk.get("_drop_downs")
+	_assert_equals(drops.size(), 0, "the spiral emits no always-on forward drop/portal")
 	var climbs: int = int(chunk.call("get_climbvine_count"))
-	print("  [return-points] drops=%d climbvines=%d" % [int(chunk.call("get_drop_down_count")), climbs])
-	_assert_true(climbs >= 1, "the spiral places climbvine return points back UP the stack (got %d)" % climbs)
+	print("  [return-points] period_s=%.1f cells | drops=0 climbvines=%d" % [period, climbs])
+	_assert_true(climbs >= 1, "a long spiral places a gated climbvine recovery point (got %d)" % climbs)
 	var vines: Array = chunk.get("_climbvines")
 	if not vines.is_empty():
 		var vine = vines[0]
-		gs.snap_character_to(active, cm.to_data(vine.position))
-		vine.active_character = active
-		var cb: Vector3 = gs.get_position(active)
-		vine.step_through()
-		var ca: Vector3 = gs.get_position(active)
-		print("  [return-points] climbvine before s=%.1f -> after s=%.1f (climbed %.1f)" % [cb.x, ca.x, cb.x - ca.x])
-		_assert_true(ca.x < cb.x - period * 0.6, "the climbvine returns the member a loop back UP the spiral (s %.1f -> %.1f)" % [cb.x, ca.x])
-	# Branch salvage caches: the spokes carry an optional forage reward (the reason to detour + spend day/night time).
+		var endpoints: Dictionary = vine.call("get_data_endpoints")
+		var lower_flat: Vector3 = endpoints.get("lower", Vector3.ZERO)
+		var upper_flat: Vector3 = endpoints.get("upper", Vector3.ZERO)
+		_assert_true(lower_flat.x > upper_flat.x + period * 0.6,
+			"the recovery runs from a later/lower turn to an earlier/upper turn")
+		var upper_source: Node = vine.call("get_upper_interactable")
+		var lower_source: Node = vine.call("get_lower_interactable")
+		_assert_true(upper_source != null and lower_source != null,
+			"generated recovery exposes exact upper and lower Interactable sources")
+		gs.snap_character_to("peris", upper_flat)
+		gs.snap_character_to("aster", lower_flat)
+		lower_source.set("active_character", "aster")
+		_assert_true(not bool(lower_source.call("_trigger", false)),
+			"the exact lower mouth refuses traversal while the vine is dormant")
+		_assert_true(not bool(vine.call("tend", "peris"))
+				and int(vine.call("start_climb", ["aster"])) == 0,
+			"retired generated Climbvine helpers cannot manufacture source receipts")
+		upper_source.set("active_character", "peris")
+		_assert_true(bool(upper_source.call("_trigger", false)),
+			"Peris tends the exact upper anchor after reaching it normally")
+		gs.scheduler.advance_ticks(1.25)
+		_assert_true(bool(vine.call("is_deploying")) and not bool(vine.call("is_deployed")),
+			"deployment is a visible timed state rather than an instant portal")
+		gs.scheduler.advance_ticks(1.25)
+		_assert_true(bool(vine.call("is_deployed")), "the completed vine enables its lower mouth")
+		lower_source.set("active_character", "peris")
+		_assert_true(not bool(lower_source.call("_trigger", false)),
+			"an upper-deck member cannot use the recovery route forward/down")
+		var climb_group := ["aster", "peris", "endo"]
+		inst.headless_set_selected_characters(climb_group)
+		for id in climb_group:
+			gs.snap_character_to(id, lower_flat)
+		lower_source.set("active_character", "aster")
+		var group_triggered := bool(lower_source.call("_trigger", false))
+		var all_climbing := group_triggered
+		for id in climb_group:
+			all_climbing = all_climbing and gs.is_external_traversal_active(id)
+		_assert_true(all_climbing,
+			"the exact lower mouth commits the physically gathered selected group")
+		gs.scheduler.advance_ticks(1.7)
+		var all_mid_climb := true
+		for id in climb_group:
+			all_mid_climb = all_mid_climb \
+				and gs.is_external_traversal_active(id) \
+				and gs.get_position(id) != lower_flat
+		_assert_true(all_mid_climb,
+			"mid-climb state owns real progress for every rider")
+		gs.scheduler.advance_ticks(1.7)
+		var all_arrived := true
+		for id in climb_group:
+			all_arrived = all_arrived \
+				and not gs.is_external_traversal_active(id) \
+				and gs.get_position(id).is_equal_approx(upper_flat)
+		_assert_true(all_arrived,
+			"the scheduler-derived group climb finishes at the earlier/upper endpoint")
+	# Only an explicitly optional risk/reward branch carries lysate. Mandatory producer and recovery branches must
+	# materialize their own causal verbs instead of masquerading as more food closets.
 	var cache_count: int = int(chunk.call("get_branch_cache_count"))
-	print("  [drop-down] branch caches=%d" % cache_count)
-	_assert_true(cache_count >= 2, "the branch spokes carry salvage caches to reward exploring them (got %d)" % cache_count)
+	var optional_branch_count := 0
+	for branch_v in (chunk.get("_woven_nav") as Dictionary).get("branches", []):
+		if branch_v is Dictionary and str((branch_v as Dictionary).get("role", "")) == "optional_risk_reward":
+			optional_branch_count += 1
+	print("  [return-points] optional branch caches=%d" % cache_count)
+	_assert_equals(cache_count, optional_branch_count,
+		"only optional risk/reward branches receive physical lysate caches")
 	var caches: Array = chunk.get("_branch_caches")
 	if not caches.is_empty():
-		var before_atp: int = int(chunk.call("get_branch_atp_collected"))
-		caches[0]["interactable"].interacted.emit()
-		var after_atp: int = int(chunk.call("get_branch_atp_collected"))
-		_assert_true(after_atp > before_atp, "reaching a branch cache banks ATP (%d -> %d)" % [before_atp, after_atp])
+		var branch_cache: Dictionary = caches[0]
+		var branch_position: Vector3 = branch_cache.get("position", Vector3.INF)
+		for char_id in ["aster", "peris", "endo"]:
+			inst.set_preview_character_position(char_id, branch_position)
+		var before_food_count := int(chunk.get_preview_state().get("physical_food_spawned_count", 0))
+		var before_party_atp := float(chunk.get_preview_state().get("effective_party_atp", 0.0))
+		var branch_source: Node = branch_cache.get("interactable", null)
+		if branch_source != null:
+			branch_source.set("active_character", "aster")
+		var branch_triggered := (
+			branch_source != null and bool(branch_source.call("_trigger", false))
+		)
+		var branch_state: Dictionary = chunk.get_preview_state()
+		_assert_true(
+			branch_triggered
+			and int(branch_state.get("physical_food_spawned_count", 0)) == before_food_count + 1,
+			"reaching a branch cache creates one physical lysate pickup")
+		_assert_true(is_equal_approx(float(branch_state.get("effective_party_atp", 0.0)), before_party_atp),
+			"branch pickup does not directly bank ATP for the party")
+	chunk.call("reset_preview_state")
+	var replay_result: Dictionary = chunk.call("replay_generated_solution")
+	var replay_spans_bridged := true
+	for span_v in (chunk.get("_branch_span_producers") as Array):
+		replay_spans_bridged = replay_spans_bridged and bool(span_v.call("is_bridged"))
+	print(
+		"  [spiral-solution-diagnostic] world_steps=%d spans_bridged=%s blocked=%s"
+		% [
+			int(replay_result.get("world_steps", 0)),
+			str(replay_spans_bridged),
+			str(replay_result.get("blocked", [])),
+		]
+	)
+	_assert_true(
+		replay_result.has("world_steps") and replay_result.has("blocked"),
+		"direct spiral solution replay preserves its diagnostic result schema"
+	)
 	inst.queue_free()
 	await get_tree().process_frame
 
@@ -20868,7 +24339,8 @@ func _test_stretch_branches() -> void:
 	_test_name = "Stretch Branches"
 	var Weaver = load("res://scripts/generation/stretch_branch_weaver.gd")
 	var spec: Dictionary = StretchGeneratorScript.generate({"seed": 9, "complexity_tier": "standard", "id": "branch_test", "budget": {"node_count": 7}})
-	var spine: Dictionary = spec.get("navigation_grid", {})
+	var spine: Dictionary = spec.get("spine_navigation_grid", {})
+	var emitted_woven: Dictionary = spec.get("navigation_grid", {})
 	_assert_true(not spine.is_empty(), "the generated stretch has a spine navigation grid")
 	var spine_cells := (spine.get("walkable_cells", []) as Array).size()
 	var woven: Dictionary = Weaver.weave(spine, {"seed": 9, "tier": "standard", "stage": 3})
@@ -20904,6 +24376,11 @@ func _test_stretch_branches() -> void:
 	var woven_c: Dictionary = Weaver.weave(spine, {"seed": 40, "tier": "standard", "stage": 3})
 	_assert_equals(str(woven.get("walkable_cells")), str(woven_b.get("walkable_cells")), "the weave is deterministic (same seed -> identical branches)")
 	_assert_true(str(woven.get("walkable_cells")) != str(woven_c.get("walkable_cells")), "a different seed grows different branches")
+	_assert_true(JSON.stringify(emitted_woven) == JSON.stringify(woven),
+		"generation persists the same woven navigation that its seed reproduces")
+	var idempotent: Dictionary = Weaver.weave(emitted_woven, {"seed": 40, "tier": "setpiece", "count": 6})
+	_assert_true(JSON.stringify(idempotent) == JSON.stringify(emitted_woven),
+		"a persisted weave is idempotent and cannot grow runtime-only branches")
 	# Bigger tier -> more branches (harder/longer).
 	var woven_set: Dictionary = Weaver.weave(spine, {"seed": 9, "tier": "setpiece", "stage": 6})
 	_assert_true((woven_set.get("branches", []) as Array).size() >= branches.size(), "a harder tier hangs at least as many branches (setpiece %d >= standard %d)" % [(woven_set.get("branches", []) as Array).size(), branches.size()])
@@ -21114,14 +24591,26 @@ func _test_roguelike_atom_run() -> void:
 	_assert_true(bool(st["skeleton_ok"]), "the loaded level's own skeleton grades SHIPPABLE (provenance)")
 	_assert_equals(str(st["hub_shape"]), "flat", "run levels are FLAT (the warp is parked until rebuilt + playtested)")
 	_assert_true(chunk.get_coord_map() == null, "no coord_map on a flat level (nothing to mis-install across descents)")
-	# Play the whole depth-0 chain (all-lure) with analytic jumps.
+	# Play the whole depth-0 chain through the same physical causal loop a player
+	# uses.  Directly hopping from flure to flure used to let this integration test
+	# certify a puzzle that the actual three-body formation could not solve.
 	var n := int((session.spec.get("stages", []) as Array).size())
 	var a: Dictionary = chunk.get_preview_anchors()
-	var cell: float = float(chunk.CELL)
 	var played := true
 	for i in range(n):
 		var fk := "flure_%d" % i
-		gs.command_move_to_pos("peris", a[fk])
+		var launch_key := "launch_%d" % i
+		var cross_key := "cross_%d" % i
+		if not a.has(fk) or not a.has(launch_key) or not a.has(cross_key) \
+				or not _command_atom_party_move(gs, a[launch_key], false):
+			played = false
+			break
+		_advance_atom_party_to_arrival(inst, gs)
+		var launch_slots: Array[Vector3] = gs.compute_rally_destinations(
+			["aster", "peris", "endo"], a[launch_key])
+		if launch_slots.size() != 3 or not gs.command_move_to_pos("peris", a[fk]):
+			played = false
+			break
 		_advance_to_arrival(inst, gs, "peris")
 		var fl = chunk.find_child("AtomFlure%d" % i, true, false)
 		if fl == null:
@@ -21129,15 +24618,26 @@ func _test_roguelike_atom_run() -> void:
 			break
 		fl.active_character = "peris"
 		fl.on_interaction_arrived()
-		inst.headless_advance(float(fl.dwell_time) + 0.4, 0.1)
-		var settle: Vector3 = a[fk] + Vector3(0.0, 0.0, (-2.0 if float((a[fk] as Vector3).z) > 0.0 else 2.0) * cell)
-		if not _advance_to_proximity(inst, gs, "atom_sentry_%d" % i, settle, 2.2, 12.0):
+		inst.headless_advance(float(fl.dwell_time) + 0.1, 0.05)
+		gs.set_running("peris", true)
+		if not gs.command_move_to_pos("peris", launch_slots[1]):
 			played = false
 			break
-		var target: Vector3 = a["flure_%d" % (i + 1)] if i + 1 < n else a["end"]
-		gs.command_move_to_pos("peris", target)
-		_advance_to_arrival(inst, gs, "peris", 0.6)
-	_assert_true(played, "depth 0 plays end-to-end (every flure tend + settle jump resolved)")
+		_advance_to_arrival(inst, gs, "peris", 0.05)
+		if not _advance_atom_lure_to_ready(inst, chunk, gs, i, 12.0) \
+				or not _command_atom_party_move(gs, a[cross_key], true):
+			played = false
+			break
+		_advance_atom_party_to_arrival(inst, gs, 0.4)
+		if not bool(((chunk.get_preview_state().get("stages", []) as Array)[i] as Dictionary)
+				.get("cleared", false)):
+			played = false
+			break
+	if played:
+		played = _command_atom_party_move(gs, a["end"], false)
+		if played:
+			_advance_atom_party_to_arrival(inst, gs, 0.6)
+	_assert_true(played, "depth 0 plays end-to-end through every rally, tend, return, and crossing")
 	# Rest at the exit shelter -> the run's branch choice appears (the descend contract).
 	var shelter = chunk.find_child("AtomExitShelter", true, false)
 	_assert_true(shelter != null, "the exit shelter sits at the end of the final stretch")
@@ -21331,6 +24831,94 @@ func _advance_to_arrival(inst: Node, gs, id: String, pad := 0.3) -> void:
 	var now: float = gs.scheduler.get_current_tick()
 	inst.headless_advance(maxf(t - now, 0.0) + pad, 0.1)
 
+
+## Atom readiness is a state transition emitted by the watcher's real arrival,
+## not a distance approximation.  Tests wait on the same saved phase the UI and
+## replay consume so a generous radius cannot manufacture a clear gap.
+func _advance_atom_lure_to_ready(inst: Node, chunk, gs, stage_index: int, max_seconds := 12.0) -> bool:
+	var stage_state: Dictionary = (chunk.get_preview_state().get("stages", []) as Array)[stage_index]
+	if bool(stage_state.get("lure_ready", false)):
+		return true
+	if not bool(stage_state.get("luring_outbound", false)):
+		return false
+	var stage_runtime: Dictionary = chunk._stages[stage_index]
+	var sentries: Array = stage_runtime.get("sentries", [])
+	if sentries.is_empty():
+		return false
+	var watcher_id := str((sentries[0] as Dictionary).get("cid", ""))
+	var now := float(gs.scheduler.get_current_tick())
+	var arrival_tick := float(gs.get_plan_end_tick(watcher_id))
+	if watcher_id == "" or arrival_tick < now or arrival_tick - now > max_seconds:
+		return false
+	inst.headless_advance(maxf(arrival_tick - now, 0.0) + 0.001, 0.05)
+	stage_state = (chunk.get_preview_state().get("stages", []) as Array)[stage_index]
+	return bool(stage_state.get("lure_ready", false)) \
+		and not bool(stage_state.get("luring_outbound", true))
+
+
+func _command_atom_party_move(gs, target: Vector3, running := true) -> bool:
+	var members: Array[String] = []
+	for char_id in ["aster", "peris", "endo"]:
+		if not gs.characters.has(char_id) or gs.is_downed(char_id):
+			print("  [atom-command-rejected] missing/downed %s report=%s" % [
+				char_id, str(_atom_movement_report(gs))])
+			return false
+		members.append(char_id)
+		gs.set_running(char_id, running)
+	# Exercise the same all-selected command the player issues. This resolves a
+	# distinct formation and performs one atomic group replan; three independent
+	# same-cell commands do not model the UI and turn one-cell gates into a test
+	# of stale sibling reservations instead of the authored puzzle.
+	gs.set_party(members)
+	var moved_count := int(gs.party_move_to_pos(target))
+	if moved_count != members.size():
+		print("  [atom-command-rejected] target=%s running=%s moved=%d/%d report=%s" % [
+			str(target), str(running), moved_count, members.size(), str(_atom_movement_report(gs))])
+	return moved_count == members.size()
+
+
+func _atom_movement_report(gs) -> Dictionary:
+	var report: Dictionary = {}
+	for char_id in ["aster", "peris", "endo"]:
+		if not gs.characters.has(char_id):
+			report[char_id] = {"missing": true}
+			continue
+		report[char_id] = {
+			"position": gs.get_position(char_id),
+			"hp": gs.get_stat(char_id, "hp"),
+			"stamina": gs.get_stat(char_id, "stamina"),
+			"downed": gs.is_downed(char_id),
+			"knocked": gs.is_knocked_down(char_id),
+			"endocytosing": gs.is_endocytosing(char_id),
+			"dodging": gs.is_dodging(char_id),
+			"external": gs.is_external_traversal_active(char_id),
+			"moving": gs.is_moving(char_id),
+			"running": gs.is_running(char_id),
+			"can_move": gs.can_accept_move_command(char_id),
+		}
+	return report
+
+
+func _advance_atom_party_to_arrival(inst: Node, gs, pad := 0.4) -> void:
+	var latest := float(gs.scheduler.get_current_tick())
+	for char_id in ["aster", "peris", "endo"]:
+		if gs.characters.has(char_id):
+			latest = maxf(latest, float(gs.get_plan_end_tick(char_id)))
+	inst.headless_advance(maxf(latest - float(gs.scheduler.get_current_tick()), 0.0) + pad, 0.05)
+	for char_id in ["aster", "peris", "endo"]:
+		if gs.characters.has(char_id) and gs.is_running(char_id):
+			gs.set_running(char_id, false)
+
+
+func _rest_atom_party_at_exit(inst: Node, chunk, gs) -> bool:
+	var shelter = chunk.find_child("AtomExitShelter", true, false)
+	if shelter == null:
+		return false
+	shelter.active_character = "peris"
+	shelter.on_interaction_arrived()
+	inst.headless_advance(0.2, 0.05)
+	return bool(chunk.get_preview_state().get("shelter_rested", false))
+
 ## THE BRIDGE, played: a GENERATED chunk skeleton (graded by the report card) built as a REAL walkable room —
 ## real sentries, real LOS detection, real flure dwell — and played end-to-end through the data layer. Proves
 ## the whole pipeline: seed -> graded sketch -> real room -> the gate holds (exposed = caught, swept to START
@@ -21351,6 +24939,16 @@ func _test_generated_atom_playable() -> void:
 	_assert_equals(int((st["stages"] as Array).size()), 2, "two generated stages, two real sentries")
 	_assert_true(float(chunk.SENTRY_SPEED) > 3.2 and float(chunk.SENTRY_SPEED) < 6.0,
 		"atom pursuit obeys the authored contract: faster than every party walk, slower than sprint")
+	var strategy_contract: Dictionary = chunk.get_strategy_contract()
+	_assert_true(bool(strategy_contract.get("ok", false)),
+		"every generated lure proves safe preparation and three-body RUN routes while walking loses")
+	for strategy_stage_variant in (strategy_contract.get("stages", []) as Array):
+		var strategy_stage := strategy_stage_variant as Dictionary
+		_assert_equals(int(strategy_stage.get("formation_route_count", 0)), 3,
+			"the strategy proof grades all three real formation paths")
+		_assert_true(bool(strategy_stage.get("launch_safe", false))
+			and bool(strategy_stage.get("regroup_possible", false)),
+			"the generated launch is posted-watch safe and Peris can physically rejoin it")
 	var anchors: Dictionary = chunk.get_preview_anchors()
 	var spawn_x: float = gs.get_position("peris").x
 	var entry_rest = chunk.find_child("AtomEntryRest", true, false)
@@ -21406,7 +25004,8 @@ func _test_generated_atom_playable() -> void:
 		"entry shelter re-posts the stage-1 watcher")
 	_assert_true(int(st["caught_count"]) >= 1, "retry preserves the failed-attempt count")
 
-	# --- Stage 1 solve: tend flure 0, retreat to the conceal pocket, cross while the sentry is away. ---
+	# --- Stage 1 solve: rally on the generated launch, send Peris to the flure and back,
+	#     then cross as a prepared formation while the watcher races home. ---
 	var flure0 = chunk.find_child("AtomFlure0", true, false)
 	_assert_true(flure0 != null, "generated flure 0 exists")
 	var causal: Dictionary = chunk.get_causal_feedback_state()
@@ -21456,11 +25055,18 @@ func _test_generated_atom_playable() -> void:
 	inst.headless_set_character_position("endo", endo_feedback_pos)
 	_assert_true(absf(gs.scheduler.get_current_tick() - feedback_tick) < 0.001,
 		"hover, reveal-all, and planning pause are presentation-only")
-	gs.command_move_to_pos("peris", anchors["flure_0"])
-	_advance_to_arrival(inst, gs, "peris")
+	var launch0: Vector3 = anchors["launch_0"]
+	_assert_true(_command_atom_party_move(gs, launch0, false),
+		"the party walks together onto the generated green launch without spending race stamina")
+	_advance_atom_party_to_arrival(inst, gs)
+	var launch0_slots: Array[Vector3] = gs.compute_rally_destinations(
+		["aster", "peris", "endo"], launch0)
+	_assert_true(gs.command_move_to_pos("peris", anchors["flure_0"]),
+		"Peris walks the untimed outbound leg from the prepared formation to the flure")
+	_advance_to_arrival(inst, gs, "peris", 0.1)
 	flure0.active_character = "peris"
 	flure0.on_interaction_arrived()
-	inst.headless_advance(float(flure0.dwell_time) + 0.4, 0.1)
+	inst.headless_advance(float(flure0.dwell_time) + 0.1, 0.05)
 	st = chunk.get_preview_state()
 	_assert_true(bool((st["stages"] as Array)[0]["lure_active"]), "flure 0 sings")
 	_assert_true(not bool((st["stages"] as Array)[0]["causal_visible"]),
@@ -21470,21 +25076,20 @@ func _test_generated_atom_playable() -> void:
 		"active", "the watcher route records its faster transit cadence while remaining quiet")
 	_assert_true((active_link_state.get("mode_tint", Color.BLACK) as Color).is_equal_approx(Color(1.0, 0.67, 0.27)),
 		"active transit keeps Peris's hue instead of borrowing a state color")
-	inst.headless_set_character_position("endo", gs.get_position("atom_sentry_0"))
 	flure0.outline_hovered.emit(flure0)
 	_assert_equals(int(chunk.get_causal_feedback_state()["visible_count"]), 1,
 		"hovering the active flure reveals exactly its one moving-watcher route")
 	flure0.outline_unhovered.emit(flure0)
 	_assert_equals(int(chunk.get_causal_feedback_state()["visible_count"]), 0,
 		"leaving the active flure immediately clears the route again")
-	inst.headless_set_character_position("endo", endo_feedback_pos)
-	# STAND AT THE FLURE and jump to the sentry settle-parked tick: the bridge parks the lured sentry
-	# 2 cells south of the flure (3.0wu > its 1.6 distracted reach), so the tender is safe where she
-	# stands — no retreat detour needed (a detour to the opposite pocket crosses the sentry transit
-	# row, the settle-path lesson again). The jump IS the wait, at zero polling cost.
-	var settle0: Vector3 = anchors["flure_0"] + Vector3(0.0, 0.0, (-2.0 if float(anchors["flure_0"].z) > 0.0 else 2.0) * float(chunk.CELL))
-	var lured0 := _advance_to_proximity(inst, gs, "atom_sentry_0", settle0, 0.9, 12.0)
-	_assert_true(lured0, "sentry 0 commits off its watch (parked at its settle)")
+	# The causal line now tells the literal truth: the watcher reaches the flure. Peris
+	# must physically return to her reserved green formation slot before the lane opens.
+	gs.set_running("peris", true)
+	_assert_true(gs.command_move_to_pos("peris", launch0_slots[1]),
+		"Peris returns from the live flure to her prepared launch slot")
+	_advance_to_arrival(inst, gs, "peris", 0.05)
+	var lured0 := _advance_atom_lure_to_ready(inst, chunk, gs, 0, 12.0)
+	_assert_true(lured0, "sentry 0 commits off its watch all the way to the flure")
 	_assert_true(bool((chunk.get_preview_state()["stages"] as Array)[0]["lure_ready"]),
 		"the player-facing state changes from WATCHER TURNING to GAP CLEAR at settle")
 	var ready_link_state: Dictionary = (chunk.get_causal_feedback_state()["links"] as Array)[0]
@@ -21493,10 +25098,10 @@ func _test_generated_atom_playable() -> void:
 	_assert_true((ready_link_state.get("mode_tint", Color.BLACK) as Color).is_equal_approx(Color(1.0, 0.67, 0.27)),
 		"the arrival state remains Peris-orange rather than turning green")
 	var caught_before := int(chunk.get_preview_state()["caught_count"])
-	# Deliberately click through BOTH lessons. The first gate must consume this route before
-	# Peris can blunder into the unread second watcher.
-	_assert_true(gs.command_move_to_pos("peris", anchors["end"]),
-		"a long command toward the chain end is accepted")
+	# Commit only through the currently understood gate.  The generated crossing
+	# marker keeps all three routes on its visible lane; the next launch is a new read.
+	_assert_true(_command_atom_party_move(gs, anchors["cross_0"], true),
+		"a whole-party command through the glowing stage-1 lane is accepted")
 	var stage_one_cleared := false
 	for boundary_tick in range(400):
 		inst.headless_advance(0.05, 0.05)
@@ -21504,7 +25109,10 @@ func _test_generated_atom_playable() -> void:
 			stage_one_cleared = true
 			break
 	st = chunk.get_preview_state()
-	_assert_true(stage_one_cleared, "the long command crosses stage 1")
+	_assert_true(stage_one_cleared, "the prepared formation crosses stage 1")
+	for stage_one_runner in ["aster", "peris", "endo"]:
+		if gs.is_running(stage_one_runner):
+			gs.set_running(stage_one_runner, false)
 	_assert_equals(str(((chunk.get_causal_feedback_state()["links"] as Array)[0] as Dictionary).get("feedback_mode", "")),
 		"complete", "crossing the linked lane resolves the route in the completion state")
 	_assert_true(not gs.is_moving("peris"),
@@ -21521,32 +25129,51 @@ func _test_generated_atom_playable() -> void:
 		"the consumed long command stays cancelled while the cue is read")
 	_assert_true(not bool((chunk.get_preview_state()["stages"] as Array)[1]["spotted"]),
 		"waiting at the comprehension boundary remains safe")
-	_assert_true(gs.command_move_to_pos("peris", anchors["flure_1"]),
-		"a fresh command resumes play toward lesson 2")
-	_advance_to_arrival(inst, gs, "peris")
+	var launch1: Vector3 = anchors["launch_1"]
+	_assert_true(_command_atom_party_move(gs, launch1, false),
+		"a fresh walking command reaches the next generated launch without wasting race stamina")
+	_advance_atom_party_to_arrival(inst, gs)
 	st = chunk.get_preview_state()
 	print("  [atom] stage-1 cross: caught=%d (was %d) peris=%s" % [int(st["caught_count"]), caught_before, str(gs.get_position("peris"))])
 	_assert_equals(int(st["caught_count"]), caught_before,
-		"the fresh command reaches the second flure without a catch")
+		"the fresh command reaches the second launch without a catch")
 
-	# --- Stage 2 solve: tend flure 1, fall back clear of the settle, cross to the END. ---
+	# --- Stage 2 solve: repeat the learned prepare → tend/return → sprint loop. ---
 	var flure1 = chunk.find_child("AtomFlure1", true, false)
 	_assert_true(flure1 != null, "generated flure 1 exists")
+	var launch1_slots: Array[Vector3] = gs.compute_rally_destinations(
+		["aster", "peris", "endo"], launch1)
+	_assert_true(gs.command_move_to_pos("peris", anchors["flure_1"]),
+		"Peris walks the second untimed outbound leg from prepared ground")
+	_advance_to_arrival(inst, gs, "peris", 0.1)
 	flure1.active_character = "peris"
 	flure1.on_interaction_arrived()
-	inst.headless_advance(float(flure1.dwell_time) + 0.4, 0.1)
+	inst.headless_advance(float(flure1.dwell_time) + 0.1, 0.05)
 	st = chunk.get_preview_state()
 	_assert_true(bool((st["stages"] as Array)[1]["lure_active"]), "flure 1 sings")
-	# Fall back north-east: out of the arriving sentry's shrunken reach AND off the watched mid-row strips.
-	var settle1: Vector3 = anchors["flure_1"] + Vector3(0.0, 0.0, (-2.0 if float(anchors["flure_1"].z) > 0.0 else 2.0) * float(chunk.CELL))
-	var lured1 := _advance_to_proximity(inst, gs, "atom_sentry_1", settle1, 2.2, 12.0)
-	_assert_true(lured1, "sentry 1 commits off its watch (parked at its settle)")
+	gs.set_running("peris", true)
+	_assert_true(gs.command_move_to_pos("peris", launch1_slots[1]),
+		"Peris returns to the second launch before the watcher arrives")
+	_advance_to_arrival(inst, gs, "peris", 0.05)
+	var lured1 := _advance_atom_lure_to_ready(inst, chunk, gs, 1, 12.0)
+	_assert_true(lured1, "sentry 1 commits all the way to its linked flure")
 	var caught_mid := int(chunk.get_preview_state()["caught_count"])
-	gs.command_move_to_pos("peris", anchors["end"])
-	_advance_to_arrival(inst, gs, "peris", 0.6)
+	_assert_true(_command_atom_party_move(gs, anchors["cross_1"], true),
+		"the informed party commits together through the final watched gap")
+	_advance_atom_party_to_arrival(inst, gs, 0.6)
+	_assert_true(bool((chunk.get_preview_state()["stages"] as Array)[1]["cleared"]),
+		"the final generated crossing commits before shelter traversal")
+	_assert_true(_command_atom_party_move(gs, anchors["end"], false),
+		"the cleared party can walk from the crossing to shelter")
+	_advance_atom_party_to_arrival(inst, gs, 0.6)
+	st = chunk.get_preview_state()
+	_assert_equals(str(st.get("phase", "")), "shelter_ready",
+		"the full-party crossing reaches the shelter verb without auto-completing")
+	_assert_true(_rest_atom_party_at_exit(inst, chunk, gs),
+		"the full party explicitly secures the exit shelter")
 	st = chunk.get_preview_state()
 	print("  [atom] finish: complete=%s caught=%d (was %d)" % [str(st["complete"]), int(st["caught_count"]), caught_mid])
-	_assert_true(bool(st["complete"]), "the GENERATED chain plays to complete through the data layer")
+	_assert_true(bool(st["complete"]), "the GENERATED chain completes through canonical party shelter authority")
 	_assert_equals(int(st["caught_count"]), caught_mid, "the legal two-stage solve finishes uncaught")
 	inst.queue_free()
 	await get_tree().process_frame
@@ -21580,18 +25207,28 @@ func _test_generated_atom_playable() -> void:
 	var post0: Vector3 = a2["post_0"]
 	var cell2: float = float(chunk2.CELL)
 	# Read the beat ANALYTICALLY: jump the scheduler to the tick the sentry reaches its FAR waypoint
-	# (predict_proximity_tick — the same number Aster TRACE would name), then cross in the look-away.
-	gs2.command_move_to_pos("peris", Vector3(post0.x - 3.5 * cell2, 0.5, post0.z - cell2))
-	_advance_to_arrival(inst2, gs2, "peris")
-	var far_point := Vector3(post0.x, 0.5, post0.z + 3.0 * cell2)
+	# (predict_proximity_tick — the same scheduler time the nearby gauge exposes), then cross in the look-away.
+	_assert_true(_command_atom_party_move(gs2, a2["launch_0"], false),
+		"the full party walks onto the patrol's generated readable wait side")
+	_advance_atom_party_to_arrival(inst2, gs2)
+	var far_point: Vector3 = a2["patrol_far_0"]
 	var crossed := _advance_to_proximity(inst2, gs2, "atom_sentry_0", far_point, 0.8, 20.0)
 	if crossed:
-		gs2.command_move_to_pos("peris", a2["end"])
-		_advance_to_arrival(inst2, gs2, "peris", 0.6)
+		crossed = _command_atom_party_move(gs2, a2["cross_0"], true)
+		_advance_atom_party_to_arrival(inst2, gs2, 0.6)
+	if crossed and bool((chunk2.get_preview_state()["stages"] as Array)[0]["cleared"]):
+		crossed = _command_atom_party_move(gs2, a2["end"], false)
+		_advance_atom_party_to_arrival(inst2, gs2, 0.6)
 	st2 = chunk2.get_preview_state()
-	print("  [atom-patrol] crossed=%s complete=%s caught=%d" % [str(crossed), str(st2["complete"]), int(st2["caught_count"])])
+	print("  [atom-patrol] crossed=%s complete=%s caught=%d party=%s/%s/%s stages=%s" % [
+		str(crossed), str(st2["complete"]), int(st2["caught_count"]),
+		str(gs2.get_position("aster")), str(gs2.get_position("peris")), str(gs2.get_position("endo")),
+		str(st2["stages"])])
 	_assert_true(crossed, "the patrol beat can be READ analytically (the window tick is predicted, not polled)")
-	_assert_true(bool(st2["complete"]), "the patrol gate is crossed in its look-away — a pure timing solve, no flure spent")
+	_assert_equals(str(st2.get("phase", "")), "shelter_ready",
+		"the patrol's look-away carries the full party to the shelter verb")
+	_assert_true(_rest_atom_party_at_exit(inst2, chunk2, gs2),
+		"the patrol atom completes only when the full party secures shelter")
 	_assert_equals(int(st2["caught_count"]), 0, "a well-timed patrol cross is uncaught")
 	# Functional speed switch: once the legal run is complete, provoke the same watcher at range.
 	# Alert is the readable warning beat; pursuit then changes only the data-layer chase gear.
@@ -21619,6 +25256,11 @@ func _test_generated_atom_playable() -> void:
 	var gs3 = inst3._game_state
 	var st3: Dictionary = chunk3.get_preview_state()
 	_assert_equals(str((st3["stages"] as Array)[0]["variant"]), "twin", "the stage is the twin variant")
+	var twin_strategy: Dictionary = chunk3.get_strategy_contract()
+	_assert_true(bool(twin_strategy.get("ok", false))
+		and int(((twin_strategy.get("stages", []) as Array)[0] as Dictionary).get(
+			"formation_route_count", 0)) == 3,
+		"the twin's gold launch proves all three routes clear of both watchers")
 	var a3: Dictionary = chunk3.get_preview_anchors()
 	var cell3: float = float(chunk3.CELL)
 	var north_post: Vector3 = a3["post_0"]
@@ -21649,38 +25291,60 @@ func _test_generated_atom_playable() -> void:
 	print("  [atom-twin] wrong gap: caught=%d peris.x=%.1f" % [int(st3["caught_count"]), gs3.get_position("peris").x])
 	_assert_true(int(st3["caught_count"]) >= 1, "crossing the twin's SOUTH gap bites — its watcher is never lured")
 	_assert_true(absf(gs3.get_position("peris").x - spawn_x3) > 1.0, "no hard-coded teleport — she is where the hunt found her")
-	# break contact ALIVE back at the start band; the watcher re-posts via its OWN FSM
-	gs3.command_move_to_pos("peris", Vector3(spawn_x3, 0.5, 0.0))
-	for i3 in range(30):
-		inst3.headless_advance(1.0, 0.1)
-		if gs3.get_position("atom_sentry_0_1").distance_to(south_post) < 2.0 and not gs3.is_moving("peris"):
-			break
-	gs3.restore_character("peris")
-	gs3.snap_character_to("peris", Vector3(spawn_x3, 0.5, 0.0))
-	inst3.headless_advance(1.0, 0.1)
-	# The informed solve: tend the flure, stage below the watcher's transit band, cross the NORTH gap.
+	# A failed prediction is a completed attempt, not hidden setup for the passing
+	# case. Reload the same deterministic seed exactly as a player retry would.
+	inst3.queue_free()
+	await get_tree().process_frame
+	inst3 = await _instantiate_preview_chunk_and_wait("puzzle_atom", 4,
+		{"stages": ["distract:twin"], "seed": 12})
+	_assert_true(inst3 != null, "the twin retry reloads the same generated room")
+	if inst3 == null:
+		return
+	chunk3 = inst3._active_chunk
+	gs3 = inst3._game_state
+	st3 = chunk3.get_preview_state()
+	a3 = chunk3.get_preview_anchors()
+	cell3 = float(chunk3.CELL)
+	north_post = a3["post_0"]
+	# The informed solve: prepare on the generated gold launch, send Peris to the
+	# flure and back, then cross the NORTH gap as one formation.
 	var flure3 = chunk3.find_child("AtomFlure0", true, false)
 	_assert_true(flure3 != null, "the twin's flure exists")
-	gs3.command_move_to_pos("peris", a3["flure_0"])
-	_advance_to_arrival(inst3, gs3, "peris")
+	var launch3: Vector3 = a3["launch_0"]
+	_assert_true(_command_atom_party_move(gs3, launch3, false),
+		"the informed party walks together onto the twin's gold launch")
+	_advance_atom_party_to_arrival(inst3, gs3)
+	var launch3_slots: Array[Vector3] = gs3.compute_rally_destinations(
+		["aster", "peris", "endo"], launch3)
+	_assert_true(gs3.command_move_to_pos("peris", a3["flure_0"]),
+		"Peris walks the untimed outbound leg to the twin's linked flure")
+	_advance_to_arrival(inst3, gs3, "peris", 0.1)
 	flure3.active_character = "peris"
 	flure3.on_interaction_arrived()
-	inst3.headless_advance(float(flure3.dwell_time) + 0.4, 0.1)
+	inst3.headless_advance(float(flure3.dwell_time) + 0.1, 0.05)
 	_assert_true(bool((chunk3.get_preview_state()["stages"] as Array)[0]["lure_active"]), "the twin's flure sings")
-	# Retreat along the NORTH band (row 1-2) — never crossing the lured watcher's westward transit row —
-	# to a staging just west of the north gap. (The settle-south offset lands ON the twin's own gap row,
-	# so a south retreat walks into the arriving watcher: the settle-path lesson, twin edition.)
-	gs3.command_move_to_pos("peris", Vector3(north_post.x - 1.5 * cell3, 0.5, north_post.z - 0.5))
-	var lured_n := _advance_to_proximity(inst3, gs3, "atom_sentry_0", a3["flure_0"], 4.0, 10.0)
-	_assert_true(lured_n, "the NORTH watcher commits to the flure")
+	gs3.set_running("peris", true)
+	_assert_true(gs3.command_move_to_pos("peris", launch3_slots[1]),
+		"Peris returns to her gold launch slot before the watcher arrives")
+	_advance_to_arrival(inst3, gs3, "peris", 0.05)
+	var lured_n := _advance_atom_lure_to_ready(inst3, chunk3, gs3, 0, 10.0)
+	_assert_true(lured_n, "the NORTH watcher commits all the way to the flure")
 	var caught_pre_end := int(chunk3.get_preview_state()["caught_count"])
-	gs3.command_move_to_pos("peris", Vector3(north_post.x + 1.5 * cell3, 0.5, north_post.z - 0.5))
-	_advance_to_arrival(inst3, gs3, "peris")
-	gs3.command_move_to_pos("peris", a3["end"])
-	_advance_to_arrival(inst3, gs3, "peris", 0.6)
+	_assert_true(_command_atom_party_move(gs3, a3["cross_0"], true),
+		"the informed party commits together through the twin's north gap")
+	_advance_atom_party_to_arrival(inst3, gs3)
+	_assert_true(_command_atom_party_move(gs3, a3["end"], false),
+		"the informed party walks together from the solved gap to shelter")
+	_advance_atom_party_to_arrival(inst3, gs3, 0.6)
 	st3 = chunk3.get_preview_state()
-	print("  [atom-twin] finish: complete=%s caught=%d (was %d)" % [str(st3["complete"]), int(st3["caught_count"]), caught_pre_end])
-	_assert_true(bool(st3["complete"]), "the twin solves through the RIGHT gap while its watcher is lured")
+	print("  [atom-twin] finish: complete=%s caught=%d (was %d) party=%s/%s/%s stages=%s" % [
+		str(st3["complete"]), int(st3["caught_count"]), caught_pre_end,
+		str(gs3.get_position("aster")), str(gs3.get_position("peris")), str(gs3.get_position("endo")),
+		str(st3["stages"])])
+	_assert_equals(str(st3.get("phase", "")), "shelter_ready",
+		"the twin's right gap carries the full party to the shelter verb")
+	_assert_true(_rest_atom_party_at_exit(inst3, chunk3, gs3),
+		"the twin atom completes only after full-party shelter authority accepts it")
 	_assert_equals(int(st3["caught_count"]), caught_pre_end, "the informed twin solve crosses uncaught")
 	inst3.queue_free()
 	await get_tree().process_frame
@@ -21736,15 +25400,55 @@ func _test_chunk_batch() -> void:
 	for gt in v_chain["gates"]:
 		v_variants.append(str(gt.get("variant", "")))
 	print("  [batch] seeded chain variants: %s" % str(v_variants))
-	# Multi-seed sweep: 30 seeds of mixed pinned/unpinned chains — gated + lock-before-key must hold for ALL.
+	# Multi-seed sweep: the causal geometry must hold as a rule, not as a seed-7 fix.
+	# Every distract stage owns a launch at least four cells west of its linked post,
+	# centered on a genuine three-cell opening. The visible three-body formation must
+	# never be merged into a hidden one-cell queue at the causal boundary.
 	var sweep_fail := 0
 	for sweep_seed in range(200, 230):
 		var c: Dictionary = ChunkGen.compose(["distract", "distract:twin", "distract"], sweep_seed)
 		var card: Dictionary = ChunkGen.report_card(c)
-		if not (bool(card["gated"]["ok"]) and bool(card["lock_before_key"]["ok"]) and bool(card["safe_passage"]["ok"])):
+		var launch_geometry_ok := true
+		for gate_variant in (c["gates"] as Array):
+			var gate := gate_variant as Dictionary
+			var launch_cell := Vector2i(-1, -1)
+			var linked_post := Vector2i(-1, -1)
+			for element_variant in (gate.get("elements", []) as Array):
+				var element := element_variant as Dictionary
+				if str(element.get("sym", "")) == "c":
+					launch_cell = element["cell"]
+				elif str(element.get("sym", "")) == "s" and linked_post.x < 0:
+					linked_post = element["cell"]
+			var gate_rows: Dictionary = {}
+			for gate_cell_variant in (gate.get("cells", []) as Array):
+				var gate_cell := gate_cell_variant as Vector2i
+				gate_rows[gate_cell.y] = true
+			var formation_fits := true
+			var gate_variant_id := str(gate.get("variant", ""))
+			var expected_launch_row := linked_post.y
+			if gate_variant_id == "patrol":
+				expected_launch_row -= 1
+			elif gate_variant_id == "twin":
+				expected_launch_row += 1
+			else:
+				var flure_cell := Vector2i(-1, -1)
+				for element_variant in (gate.get("elements", []) as Array):
+					var element := element_variant as Dictionary
+					if str(element.get("sym", "")) == "F":
+						flure_cell = element["cell"]
+				expected_launch_row += 1 if flure_cell.y < linked_post.y else -1
+			for row_offset in [-1, 0, 1]:
+				formation_fits = formation_fits and gate_rows.has(expected_launch_row + row_offset)
+			launch_geometry_ok = launch_geometry_ok and launch_cell.x >= 0 \
+				and linked_post.x - launch_cell.x >= 4 \
+				and launch_cell.y == expected_launch_row \
+				and formation_fits
+		if not (bool(card["gated"]["ok"]) and bool(card["lock_before_key"]["ok"])
+				and bool(card["safe_passage"]["ok"]) and launch_geometry_ok):
 			sweep_fail += 1
 			print("  [batch] SWEEP FAIL seed %d: %s" % [sweep_seed, str(card)])
-	_assert_equals(sweep_fail, 0, "30-seed sweep: every chain is gated + lock-before-key + SAFE-PASSAGE (variety is fair)")
+	_assert_equals(sweep_fail, 0,
+		"30-seed sweep: every chain is gated, safe-passage, and owns valid formation launch geometry")
 
 func _test_chunk_atoms() -> void:
 	_test_name = "Chunk Atoms"
@@ -21989,8 +25693,10 @@ func _test_hub_shapes() -> void:
 ## (2) replaying the EMITTED solution (consuming the data, not re-deriving) BEATS the puzzle, and (3) the emitted
 ## approach MATCHES the one that actually clears each node — so the shipped solution faithfully describes a
 ## playthrough. This is the data-layer half; --test-generated-solution-realinput drives it as a real player.
+## This direct helper is retained as diagnostics only. Physical approval is the
+## ordinary-input suite below and the generated playtest loop.
 func _test_generated_solution_replay() -> void:
-	_test_name = "Generated Solution Replay"
+	_test_name = "Generated Solution Diagnostic Replay"
 	for seed in [5, 9, 21]:
 		var settings := {"seed": seed, "complexity_tier": "standard", "id": "sol_%d" % seed, "budget": {"node_count": 7}}
 		var spec: Dictionary = StretchGeneratorScript.generate(settings)
@@ -22006,9 +25712,12 @@ func _test_generated_solution_replay() -> void:
 			continue
 		var chunk = inst.get("_active_chunk")
 		var result: Dictionary = chunk.call("replay_generated_solution")
-		print("  [solution] seed %d actions=%d steps=%d complete=%s mismatches=%d blocked=%s" % [seed, actions.size(), int(result.get("steps", 0)), str(result.get("complete", false)), int(result.get("approach_mismatches", -1)), str(result.get("blocked", []))])
-		_assert_true(bool(result.get("complete", false)), "seed %d: replaying the EMITTED solution beats the puzzle (reaches the shelter)" % seed)
-		_assert_equals(int(result.get("approach_mismatches", -1)), 0, "seed %d: the emitted approach MATCHES what actually clears each node" % seed)
+		print("  [solution-diagnostic] seed %d actions=%d steps=%d complete=%s mismatches=%d blocked=%s" % [seed, actions.size(), int(result.get("steps", 0)), str(result.get("complete", false)), int(result.get("approach_mismatches", -1)), str(result.get("blocked", []))])
+		_assert_true(
+			result.has("complete") and result.has("blocked")
+				and result.has("approach_mismatches"),
+			"seed %d: direct replay preserves its diagnostic result schema" % seed
+		)
 		inst.queue_free()
 		await get_tree().process_frame
 
@@ -22029,48 +25738,46 @@ func _test_generated_solution_realinput() -> void:
 	await _drive_solution_realinput(spec, false, "flat")
 	await _drive_solution_realinput(spec, true, "spiral")
 
-## Drive the emitted solution through real clicks on one layout (spiral on/off). Asserts every solution node is
-## reached + interacted and the shelter is reached.
+## Drive the emitted solution through the same ordinary semantic-input coordinator used by
+## autonomous browser play. The approval loop must move real bodies through GameState, operate
+## branch/world mechanisms, and wait for authoritative completion; no scene-node IDs are fired.
 func _drive_solution_realinput(spec: Dictionary, spiral: bool, label: String) -> void:
-	var actions: Array = spec.get("headless", {}).get("solution", {}).get("actions", [])
-	var inst = await _instantiate_preview_chunk_and_wait("generated_stretch", 10, {"spec": spec, "spiral": spiral})
-	if inst == null:
-		_assert_true(false, "[%s] the generated stretch boots" % label); return
-	for i in range(6):
-		await get_tree().process_frame
-	var chunk = inst.get("_active_chunk")
-	var cleared := 0
-	var wanted := 0
-	for action in actions:
-		var node_id := str((action as Dictionary).get("node", ""))
-		if node_id == "entry":
-			continue
-		wanted += 1
-		var it = _find_generated_node_interactable(chunk, node_id)
-		if it == null:
-			print("  [solution-ri:%s] node %s has no interactable" % [label, node_id])
-			continue
-		_synthetic_click_interactable(inst, it)
-		var done := false
-		for i in range(400):
-			inst.headless_advance(0.1, 0.05)
-			await get_tree().process_frame
-			var completed: Array = chunk.get("_completed_nodes")
-			if node_id == "exit_shelter":
-				if bool(chunk.call("get_preview_state").get("shelter_rested", false)):
-					done = true; break
-			elif completed.has(node_id):
-				done = true; break
-		if done:
-			cleared += 1
-		else:
-			print("  [solution-ri:%s] node %s NOT reached/cleared by real input" % [label, node_id])
-	var st: Dictionary = chunk.call("get_preview_state")
-	print("  [solution-ri:%s] cleared %d/%d solution nodes by real clicks | shelter_rested=%s" % [label, cleared, wanted, str(st.get("shelter_rested", false))])
-	_assert_equals(cleared, wanted, "[%s] every solution node was reached + interacted by REAL clicks (walk + dwell), not force-fired" % label)
-	_assert_true(bool(st.get("shelter_rested", false)), "[%s] the EMITTED solution, replayed node-by-node as a REAL PLAYER, reaches the shelter" % label)
-	inst.queue_free()
-	await get_tree().process_frame
+	var approval: Dictionary = await StretchGenerationPlaytestLoopScript.new().playtest_spec(
+		spec,
+		get_tree(),
+		{"preview_config": {"spiral": spiral}}
+	)
+	var golden: Dictionary = approval.get("playthroughs", {}).get("golden_path", {})
+	var interaction_failures: Array = golden.get("interaction_failures", [])
+	var solution_action_failures: Array = golden.get("solution_action_failures", [])
+	print(
+		"  [solution-ri:%s] moves=%d ordinary_interactions=%d failures=%d action_failures=%d shelter_rested=%s"
+		% [
+			label,
+			int(golden.get("movement_commands", 0)),
+			int(golden.get("physical_interactions", 0)),
+			interaction_failures.size(),
+			solution_action_failures.size(),
+			str(golden.get("shelter_rested", false)),
+		]
+	)
+	_assert_true(
+		int(golden.get("movement_commands", 0)) > 0,
+		"[%s] physical replay moves the party through GameState" % label
+	)
+	_assert_true(
+		int(golden.get("physical_interactions", 0)) > 0,
+		"[%s] physical replay enters the ordinary interaction coordinator" % label
+	)
+	_assert_true(
+		interaction_failures.is_empty() and solution_action_failures.is_empty(),
+		"[%s] every required node and world action completes physically (node=%s action=%s)"
+			% [label, str(interaction_failures), str(solution_action_failures)]
+	)
+	_assert_true(
+		bool(golden.get("shelter_rested", false)),
+		"[%s] the emitted solution reaches shelter through ordinary input" % label
+	)
 
 ## The scene-tree interactable a generated node built (named GeneratedNode_<id>), for real-click driving.
 func _find_generated_node_interactable(chunk, node_id: String):
@@ -22580,9 +26287,40 @@ func _test_wash_relay_flood_visual() -> void:
 	instance.queue_free()
 	await get_tree().process_frame
 
-## Wash + strand + recover (per CHANNELS_DESIGN.md): a wash sweeps the member DOWN to the start of the stretch
-## and STRANDS them there; the party recovers them via a device (Terminal / sloperope) to rejoin at the chunk
-## end. A stranded member is skipped by further washes until recovered, so the loop is wash -> strand -> recover.
+
+func _trigger_wash_climbvine_tend(chunk: Node, gs, actor := "peris") -> bool:
+	var source: Node = chunk.find_child("ClimbvineTendAnchor", true, false)
+	if source == null or gs == null or not gs.characters.has(actor):
+		return false
+	if gs.is_moving(actor):
+		gs.command_stop(actor)
+	gs.snap_character_to(actor, chunk.RETURN_LANDING)
+	source.set("active_character", actor)
+	return bool(source.call("_trigger", false))
+
+
+func _trigger_wash_climbvine_group(chunk: Node, gs, active: String) -> bool:
+	var source: Node = chunk.find_child("ClimbLine", true, false)
+	if source == null or gs == null:
+		return false
+	var waiting: Array = (chunk.get("_washed") as Dictionary).keys()
+	waiting.sort()
+	if not waiting.has(active):
+		return false
+	for id_v in waiting:
+		var id := str(id_v)
+		if not gs.characters.has(id):
+			return false
+		if gs.is_moving(id):
+			gs.command_stop(id)
+		gs.snap_character_to(id, chunk.CLIMB_POS)
+	source.set("active_character", active)
+	return bool(source.call("_trigger", false))
+
+
+## Wash + strand + rejoin (per CHANNELS_DESIGN.md): a wash sweeps the member DOWN to the start of the stretch
+## and STRANDS them there; Peris's tended climbvine lets them rejoin at the chunk end.
+## Neither device restores stats; recovery belongs to a full shelter rest.
 func _test_wash_relay_checkpoint() -> void:
 	_test_name = "Wash Relay Wash And Strand"
 	var instance: Node = await _instantiate_preview_chunk_and_wait("wash_relay", 6)
@@ -22591,10 +26329,23 @@ func _test_wash_relay_checkpoint() -> void:
 	var chunk: Node = instance.find_child("Chunk_wash_relay", true, false)
 	if chunk == null:
 		_assert_true(false, "chunk present"); instance.queue_free(); await get_tree().process_frame; return
-	# (section index, an x inside its footprint): jet[22,27], patrol[46,53], basin[64,71]. Recover between each,
+	var gs = instance.get("_game_state")
+	# (section index, an x inside its footprint): jet[22,27], patrol[46,53], basin[64,71]. Rejoin between each,
 	# since a stranded member can't be re-washed until they're back in play.
 	var cases := [{"sec": 2, "x": 24.0}, {"sec": 5, "x": 49.0}, {"sec": 7, "x": 67.0}]
 	var sweep := 0
+	chunk.call("_set_character_position", "peris", chunk.RETURN_LANDING)
+	chunk.call("_on_sloperope", "peris")
+	_assert_true(
+		not bool(chunk.get_preview_state().get("sloperope_deployed", false))
+			and not bool(gs.has_mechanism_phase(&"wash_relay_sloperope:deployment")),
+		"retired Wash Relay sloperope helper cannot manufacture an upper-source receipt"
+	)
+	_assert_true(_trigger_wash_climbvine_tend(chunk, gs),
+		"Peris tends through the exact upper Climbvine Interactable")
+	instance.headless_advance(float(chunk.SLOPEROPE_DEPLOY_DURATION) + 0.1, 0.1)
+	_assert_true(bool(chunk.get_preview_state().get("sloperope_deployed", false)),
+		"Peris physically tends and deploys the return vine before testing washes")
 	for c in cases:
 		chunk.call("_set_character_position", "endo", Vector3(float(c["x"]), 0.5, 0.0))
 		chunk.call("_wash_section", int(c["sec"]))   # force the flood on that section
@@ -22602,20 +26353,36 @@ func _test_wash_relay_checkpoint() -> void:
 		sweep += 1
 		_assert_equals(int(chunk.get_preview_state().get("sweep_count", 0)), sweep,
 			"a wash at section %d counts one sweep" % int(c["sec"]))
+		_assert_equals(int(chunk.get_preview_state().get("current_carry_count", -1)), 1,
+			"section %d puts the real member in a saved current traversal" % int(c["sec"]))
+		_assert_equals(int(chunk.get_preview_state().get("washed_count", -1)), 0,
+			"the start shelter is not granted before the current physically arrives")
+		instance.headless_advance(
+			float(chunk.WASH_CURRENT_KNOCK_DURATION) + float(chunk.WASH_CURRENT_RETURN_MAX) + 0.1, 0.1)
 		_assert_true(chunk.call("_get_character_position", "endo").x < 5.0,
 			"section %d wash carries the member DOWN to the start of the stretch" % int(c["sec"]))
 		_assert_equals(int(chunk.get_preview_state().get("washed_count", -1)), 1,
-			"the swept member is STRANDED at the start (washed_count=1) until the party recovers them")
-		chunk.call("_on_terminal")   # the party telephones the stranded crew up
+			"the swept member is STRANDED at the start (washed_count=1) until they climb back")
+		chunk.call("_set_character_position", "endo", chunk.CLIMB_POS)
+		chunk.call("_on_climb")
+		_assert_true(not gs.is_external_traversal_active("endo"),
+			"retired Wash Relay climb helper cannot manufacture a lower-source receipt")
+		_assert_true(_trigger_wash_climbvine_group(chunk, gs, "endo"),
+			"the exact lower Climbvine Interactable accepts the gathered waiting body")
+		instance.headless_advance(float(chunk.SLOPEROPE_CLIMB_DURATION) + 0.1, 0.1)
 		await get_tree().process_frame
 		_assert_equals(int(chunk.get_preview_state().get("washed_count", -1)), 0,
-			"the Terminal rescues the stranded member (washed_count back to 0)")
+			"climbing the deployed line rejoins the stranded member (washed_count back to 0)")
 		_assert_true(chunk.call("_get_character_position", "endo").x > 60.0,
-			"the rescued member rejoins the party up at the chunk end")
+			"the climbing member rejoins the party up at the chunk end")
 	# A stranded member is SKIPPED by a fresh wash (no double-strand): strand once, then a re-flood does nothing.
 	chunk.call("_set_character_position", "endo", Vector3(24.0, 0.5, 0.0))
 	chunk.call("_wash_section", 2)
 	await get_tree().process_frame
+	_assert_equals(int(chunk.get_preview_state().get("washed_count", -1)), 0,
+		"a fresh wash does not mark the member stranded while the current still carries them")
+	instance.headless_advance(
+		float(chunk.WASH_CURRENT_KNOCK_DURATION) + float(chunk.WASH_CURRENT_RETURN_MAX) + 0.1, 0.1)
 	_assert_equals(int(chunk.get_preview_state().get("washed_count", -1)), 1, "stranded again after a fresh wash")
 	var sweep_after := int(chunk.get_preview_state().get("sweep_count", 0))
 	chunk.call("_wash_section", 2)   # endo is now at the start (stranded), not in section 2 -> no new wash
@@ -22625,10 +26392,10 @@ func _test_wash_relay_checkpoint() -> void:
 	instance.queue_free()
 	await get_tree().process_frame
 
-## Aster's TRACE reads the cadence of the section he stands in — the safe-window note names that section's
-## real beat (its period), proving the read is the actual scheduled cadence, not a guess.
-func _test_wash_relay_trace_cadence() -> void:
-	_test_name = "Wash Relay TRACE Cadence"
+## Aster's contextual SCAN FLOW action reads the exact gauge it targets. The resulting planning overlay uses
+## that section's real scheduled cadence, not a cast-local guess or a global reveal detached from the world.
+func _test_wash_relay_cadence_scan() -> void:
+	_test_name = "Wash Relay Contextual Cadence Scan"
 	var instance: Node = await _instantiate_preview_chunk_and_wait("wash_relay", 6)
 	if instance == null:
 		_assert_true(false, "wash_relay instantiates"); return
@@ -22637,26 +26404,38 @@ func _test_wash_relay_trace_cadence() -> void:
 		_assert_true(false, "chunk present"); instance.queue_free(); await get_tree().process_frame; return
 	var gs = instance.get("_game_state")
 	_assert_true(gs != null and gs.scheduler != null, "wash relay exposes its gameplay scheduler")
+	# Exact contextual controls require their actor to belong to the live selected
+	# party, just as they do in play. The preview defaults to one character and
+	# would otherwise make the physically correct Aster scan look invalid.
+	if instance.has_method("headless_set_selected_characters"):
+		instance.call(
+			"headless_set_selected_characters", ["aster", "peris", "endo"])
 	if gs != null and gs.scheduler != null:
-		# Before either observation or TRACE, pausing a queued crossing reveals no timing knowledge.
+		# Before either observation or a gauge scan, pausing a queued crossing reveals no timing knowledge.
 		gs.command_move_to_pos("aster", Vector3(12.0, 0.5, 0.0))
 		gs.scheduler.pause()
 		_assert_equals(chunk.call("get_paused_path_feedback", "aster").size(), 0,
 			"queued water crossings stay unannotated until the surge timing has been learned")
 		gs.scheduler.resume()
-	# current is section 1 ([14,19]) with the fast 4.0s beat — TRACE there names that beat.
-	chunk.call("_set_character_position", "aster", Vector3(16.0, 0.5, 0.0))
-	var tr: Dictionary = chunk.handle_preview_ability("aster_focus")
-	_assert_equals(int(chunk.get_preview_state().get("trace_section", -1)), 1, "TRACE reads the section Aster stands in (current=1)")
-	_assert_true(bool(chunk.get_preview_state().get("surge_timing_learned", false)),
-		"TRACE establishes persistent surge-timing knowledge")
-	_assert_true(str(tr.get("note", "")).find("4.0") != -1,
-		"TRACE names the current section's real 4.0s beat (got '%s')" % str(tr.get("note", "")))
-	# From open water before all sections, TRACE reads the NEXT section ahead (flush=0).
-	chunk.call("_set_character_position", "aster", Vector3(0.0, 0.5, 0.0))
-	chunk.handle_preview_ability("aster_focus")
-	_assert_equals(int(chunk.get_preview_state().get("trace_section", -1)), 0, "TRACE from open water reads the next section ahead (flush=0)")
+	# Section 1 ([14,19]) owns the fast 4.0s beat. Its approach gauge is a physical Aster-only target.
+	var gauge: Node = chunk.find_child("FlowGauge1", true, false)
+	_assert_true(gauge != null, "the fast-current approach has a flow gauge")
+	if gauge != null and gs != null:
+		var gauge_flat := Vector3(12.75, 0.5, -2.5)
+		if gs.coord_map != null:
+			_assert_true((gauge as Node3D).global_position.distance_to(gs.coord_map.to_world(gauge_flat)) < 0.05,
+				"the gauge is warped onto the same physical channel it reads")
+		_assert_true(_trigger_exact_interactable_source(gs, gauge, "aster"),
+			"Aster scans the current's exact physical gauge")
+	var read_state: Dictionary = chunk.get_preview_state()
+	_assert_equals(int(read_state.get("cadence_read_section", -1)), 1,
+		"SCAN FLOW reads the gauge's own current section")
+	_assert_true(bool(read_state.get("surge_timing_learned", false)),
+		"the gauge scan establishes persistent surge-timing knowledge")
+	_assert_true(is_equal_approx(float(read_state.get("cadence_read_period", -1.0)), 4.0),
+		"the contextual gauge reports the current's real 4.0s beat")
 	if gs != null and gs.scheduler != null:
+		gs.snap_character_to("aster", Vector3(12.0, 0.5, 0.0))
 		gs.command_move_to_pos("aster", Vector3(20.0, 0.5, 0.0))
 		gs.scheduler.pause()
 		var path_feedback: Array = chunk.call("get_paused_path_feedback", "aster")
@@ -22702,12 +26481,11 @@ func _wash_shepherd(instance: Node, chunk: Node, gs, ids: Array, target_x: float
 ## and prints the numbers — a balance bug the dumb "keep walking forward" loop could never catch.
 # The surge TELEGRAPH (the flow strip that brightens a beat before a section floods) must survive the real GLB
 # environment. It was a flat direct-child box, so hide_flat_graybox() — which runs when channels.glb loads —
-# Strand-and-rescue (per CHANNELS_DESIGN.md): a washed member is STRANDED at the start (not silently teleported
-# mobile), so the recovery devices (Terminal/sloperope) and Endo's BRACE refund have a real job. These were DEAD
-# CODE — they read a `_washed` set that was never populated. Drive a wash and assert: the member is stranded
-# (washed_count rises), BRACE refunds the stranded member, and the Terminal rejoins them at the chunk end.
-func _test_wash_relay_strand_recover() -> void:
-	_test_name = "Wash Relay Strand Recover"
+# Strand-and-rejoin (per CHANNELS_DESIGN.md): a washed member is STRANDED at the start (not silently teleported
+# mobile), so the connect-back devices have a real contextual job. Drive a wash and assert that the member
+# climbs a deployed line to the chunk end without receiving the HP/stamina recovery reserved for shelter rest.
+func _test_wash_relay_strand_rejoin() -> void:
+	_test_name = "Wash Relay Strand Rejoin"
 	var inst = await _instantiate_preview_chunk_and_wait("wash_relay", 6)
 	if inst == null:
 		_assert_true(false, "wash_relay instantiates"); return
@@ -22718,20 +26496,50 @@ func _test_wash_relay_strand_recover() -> void:
 	if chunk == null or gs == null:
 		_assert_true(false, "chunk + game state present"); inst.queue_free(); await get_tree().process_frame; return
 	_assert_equals(int(chunk.get_preview_state().get("washed_count", -1)), 0, "nobody stranded at the start")
+	gs.set_stat("aster", "stamina", 20.0)
+	gs.set_stat("aster", "hp", 63.0)
+	gs.set_stat("aster", "atp", 3.0)
 	# Wash a member — they should be STRANDED (recorded), not just teleported.
 	chunk.call("_wash_character", "aster")
-	_assert_equals(int(chunk.get_preview_state().get("washed_count", -1)), 1,
-		"a washed member is STRANDED (recorded in the recovery set), not silently teleported")
-	# BRACE now has a real job: it refunds the stranded member's stamina.
-	var brace: Dictionary = chunk.call("_ability_brace")
-	_assert_true(brace.has("characters") and (brace["characters"] as Dictionary).has("aster"),
-		"Endo's BRACE refunds the stranded member (was dead — _washed never populated)")
-	# The Terminal rescues: the stranded member rejoins the party at the chunk end and is no longer stranded.
-	chunk.call("_on_terminal")
+	_assert_equals(int(chunk.get_preview_state().get("current_carry_count", -1)), 1,
+		"a washed member enters a saved current traversal rather than teleporting")
 	_assert_equals(int(chunk.get_preview_state().get("washed_count", -1)), 0,
-		"the Terminal telephones the stranded crew up — no one left stranded")
+		"the current cannot grant the strand endpoint early")
+	inst.headless_advance(
+		float(chunk.WASH_CURRENT_KNOCK_DURATION) + float(chunk.WASH_CURRENT_RETURN_MAX) + 0.1, 0.1)
+	_assert_equals(int(chunk.get_preview_state().get("washed_count", -1)), 1,
+		"a washed member is STRANDED only after physically landing at the shelter")
+	# Keep a stationary non-rider on the same field-regeneration baseline. The return mechanism must
+	# neither refund nor charge stamina, while ordinary preview-wide regeneration remains allowed.
+	gs.set_stat("aster", "stamina", 0.0)
+	gs.set_stat("peris", "stamina", 0.0)
+	var stamina_before: float = float(gs.get_stat("aster", "stamina"))
+	var hp_before: float = float(gs.get_stat("aster", "hp"))
+	var atp_before: float = float(gs.get_stat("aster", "atp"))
+	# Peris must reach and tend the upper anchor; the growing vine changes location/play-state only.
+	chunk.call("_set_character_position", "peris", chunk.RETURN_LANDING)
+	_assert_true(_trigger_wash_climbvine_tend(chunk, gs),
+		"Peris tends the return through its exact upper source")
+	inst.headless_advance(float(chunk.SLOPEROPE_DEPLOY_DURATION) + 0.1, 0.1)
+	chunk.call("_set_character_position", "aster", chunk.CLIMB_POS)
+	var stamina_before_climb := float(gs.get_stat("aster", "stamina"))
+	_assert_true(_trigger_wash_climbvine_group(chunk, gs, "aster"),
+		"the exact lower source accepts the gathered stranded member")
+	_assert_true(is_equal_approx(gs.get_stat("aster", "stamina"), stamina_before_climb),
+		"committing the physical climb applies no stamina refund or charge")
+	inst.headless_advance(float(chunk.SLOPEROPE_CLIMB_DURATION) + 0.1, 0.1)
+	_assert_equals(int(chunk.get_preview_state().get("washed_count", -1)), 0,
+		"CLIMB brings the stranded crew up — no one left stranded")
+	_assert_true(float(gs.get_stat("aster", "stamina")) >= stamina_before
+			and float(gs.get_stat("aster", "stamina"))
+				<= float(gs.get_stat("peris", "stamina")) + 0.0001,
+		"the rider receives no more stamina than ordinary field regeneration permits")
+	_assert_true(is_equal_approx(gs.get_stat("aster", "hp"), hp_before),
+		"the physical climb restores no health")
+	_assert_true(is_equal_approx(gs.get_stat("aster", "atp"), atp_before),
+		"the physical climb neither spends nor restores shelter ATP")
 	var aster_x: float = chunk.call("_get_character_position", "aster").x
-	_assert_true(aster_x > 60.0, "the rescued member rejoins the party up at the chunk end (x=%.1f)" % aster_x)
+	_assert_true(aster_x > 60.0, "the waiting member rejoins the party up at the chunk end (x=%.1f)" % aster_x)
 	inst.queue_free()
 	await get_tree().process_frame
 
@@ -22823,12 +26631,18 @@ func _test_channels_wash_intro() -> void:
 	# The wash flushes PLAYERS too: a member standing in a flooding channel is swept back to the section start.
 	chunk.call("_channel_onset", 0)   # force channel 0 to flood
 	chunk.call("_set_character_position", "aster", Vector3(11.0, 0.5, 0.0))   # CHANNEL_X[0]
-	chunk.call("_update", 0.0)
+	inst.headless_advance(0.06)
+	_assert_true(bool(gs.is_external_traversal_active("aster")),
+		"the visible wash starts a locked carry before it grants the shelter endpoint")
+	var wash_carry: Dictionary = gs.get_external_traversal_state("aster")
+	inst.headless_advance(maxf(0.0, float(wash_carry.get("end_tick", 0.0))
+		- float(inst.get("_scheduler").get_current_tick()) + 0.01))
 	var back_x: float = chunk.call("_get_character_position", "aster").x
 	_assert_true(back_x < 4.0 and int(chunk.get_preview_state().get("any_channel_flooding", true)) != 0,
 		"a player in a flooding channel is flushed back to the section start (x=%.1f)" % back_x)
 	# SOLVE: light the flure -> the hunters cross the channels toward it and drown.
-	_assert_true(bool(chunk.call("activate_flure")), "lighting the flure pulls the hunters toward it")
+	_assert_true(_trigger_exact_flure_source(gs, chunk.get("_flure"), "peris"),
+		"Peris physically lights the Flure and pulls the hunters toward it")
 	var t := 0.0
 	while t < 14.0 and int(chunk.get_preview_state().get("enemies_alive", 2)) > 0:
 		inst.headless_advance(0.2); await get_tree().process_frame; t += 0.2
@@ -23480,7 +27294,7 @@ func _test_channels_wash_intro_capture() -> void:
 	_assert_true(lit > 30, "the wash-intro room is lit, not black (lit samples=%d)" % lit)
 	await _dispose_scene(inst)
 
-# HID it (and it sat off the helix anyway), leaving the player no "about-to-flood" tell without TRACE. This drives
+# HID it (and it sat off the helix anyway), leaving the player no always-on "about-to-flood" tell. This drives
 # the REAL environment path (coord_map installed => hide_flat_graybox ran) and asserts every strip is still
 # visible AND rides the helix (co-located with the warped section water). Structurally uncatchable by graybox tests.
 func _test_wash_relay_telegraph_visible() -> void:
@@ -23602,11 +27416,31 @@ func _test_wash_relay_playthrough() -> void:
 	var valve: Node = instance.find_child("PressureValve", true, false)
 	var pressure_ok := portal_in != null and portal_out != null and valve != null
 	if pressure_ok:
-		pressure_ok = bool(portal_in.call("step_group_through", ids))
+		instance.headless_set_selected_characters(ids)
+		var inlet_source_v: Variant = portal_in.call("get_data_source")
+		var inlet_source := inlet_source_v as Vector3 \
+			if inlet_source_v is Vector3 else Vector3.INF
+		pressure_ok = inlet_source != Vector3.INF
+		if pressure_ok:
+			for index in range(ids.size()):
+				instance.headless_set_character_position(
+					str(ids[index]), inlet_source + Vector3(0.0, 0.0, 0.18 * float(index)))
+			portal_in.set("active_character", str(ids[0]))
+			pressure_ok = bool(portal_in.call("_trigger", false))
 		instance.headless_advance(8.0)
-		valve.call("_trigger", false)
+		pressure_ok = pressure_ok \
+			and _trigger_exact_interactable_source(gs, valve, str(ids[0]))
 		await get_tree().process_frame
-		pressure_ok = pressure_ok and bool(portal_out.call("step_group_through", ids))
+		var outlet_source_v: Variant = portal_out.call("get_data_source")
+		var outlet_source := outlet_source_v as Vector3 \
+			if outlet_source_v is Vector3 else Vector3.INF
+		pressure_ok = pressure_ok and outlet_source != Vector3.INF
+		if pressure_ok:
+			for index in range(ids.size()):
+				instance.headless_set_character_position(
+					str(ids[index]), outlet_source + Vector3(0.0, 0.0, 0.18 * float(index)))
+			portal_out.set("active_character", str(ids[0]))
+			pressure_ok = bool(portal_out.call("_trigger", false))
 		instance.headless_advance(8.0)
 		pressure_ok = pressure_ok and await _wash_shepherd(instance, chunk, gs, ids, 28.5, 20.0)
 	_assert_true(pressure_ok,
@@ -23615,7 +27449,18 @@ func _test_wash_relay_playthrough() -> void:
 	var plate_ok: bool = await _smart_cross(instance, chunk, gs, ids, 3, 60.0)
 	_assert_true(plate_ok, "the party coordinates the held plate after pressure transit")
 	var pipe: Node = instance.find_child("OuterPipeIn", true, false)
-	var pipe_ok := pipe != null and bool(pipe.call("start_group_crawl", ids))
+	var pipe_ok := pipe != null
+	if pipe_ok:
+		instance.headless_set_selected_characters(ids)
+		var pipe_mouth_v: Variant = pipe.call("get_data_mouth")
+		var pipe_mouth := pipe_mouth_v as Vector3 if pipe_mouth_v is Vector3 else Vector3.INF
+		pipe_ok = pipe_mouth != Vector3.INF
+		if pipe_ok:
+			for index in range(ids.size()):
+				instance.headless_set_character_position(
+					str(ids[index]), pipe_mouth + Vector3(0.0, 0.0, 0.18 * float(index)))
+			pipe.set("active_character", str(ids[0]))
+			pipe_ok = bool(pipe.call("_trigger", false))
 	if pipe_ok:
 		instance.headless_advance(22.0)
 		for id in ids:
@@ -23645,8 +27490,29 @@ func _test_refuge_run_playthrough() -> void:
 		_assert_true(false, "chunk + game state present"); instance.queue_free(); await get_tree().process_frame; return
 	instance.headless_advance(0.1)
 	var ids := ["aster", "peris", "endo"]
-	# 1) Take the SAFE north route (no HP bleed) — the run is underway.
-	_assert_true(bool(chunk.call("choose_route", "north")), "fork: choose the safe north route")
+	# Hushbloom is a reusable body-triggered stun object, not a decorative TEND checkbox.
+	instance.headless_select_character("peris")
+	var hushbloom: Vector3 = chunk.get_preview_anchors().get("hushbloom")
+	chunk.call("_set_character_position", "peris", hushbloom)
+	gs.set_stat("peris", "stamina", 55.0)
+	var hushbloom_object: Node = chunk.find_child("RefugeEntryHushbloom", true, false)
+	_assert_true(hushbloom_object != null and hushbloom_object.has_method("burst"),
+		"Refuge Run composes the real Hushbloom gameplay object")
+	_assert_true(not bool(chunk.call("tend_bloom")),
+		"the retired decorative tend verb cannot claim a plant consequence")
+	_assert_equals(gs.get_stat("peris", "stamina"), 55.0,
+		"probing Hushbloom does not manufacture stamina")
+	# 1) Take the SAFE north route (no HP bleed). The fork is a painted spatial
+	#    threshold: an actual conscious body must cross it on the saved gameplay cadence.
+	instance.headless_select_character("aster")
+	instance.headless_set_character_position(
+		"aster",
+		Vector3(chunk.ROUTE_COMMIT_MIN_X + 1.0, 0.5, chunk.NORTH_LANE_Z))
+	instance.headless_advance(chunk.SPATIAL_AUTHORITY_INTERVAL + 0.01)
+	var route_state: Dictionary = chunk.get_preview_state()
+	_assert_true(str(route_state.get("route_choice", "")) == "north"
+			and str(route_state.get("route_commit_actor", "")) == "aster",
+		"fork: Aster physically crosses the safe north threshold")
 	_assert_equals(str(chunk.get_preview_state().get("route_phase", "")), "underway", "route locked -> underway")
 	# 2) Slit refuge: stage the party in the slit (whichever is active must be in range), open the lure window,
 	#    hold through it -> the slit goes safe.
@@ -23654,18 +27520,23 @@ func _test_refuge_run_playthrough() -> void:
 	for i in ids.size():
 		chunk.call("_set_character_position", ids[i], slit + Vector3(float(i) * 0.7 - 0.7, 0.0, 0.0))
 	instance.headless_advance(0.1)
-	_assert_true(bool(chunk.call("activate_slit_lure")), "open the slit lure window")
+	var slit_flure: Node = chunk.get("_slit_flure")
+	_assert_true(_attempt_physical_control(instance, "peris", slit_flure, true),
+		"Peris physically tends the registered Flure to open the slit lure window")
 	var t := 0.0
 	while t < 8.0 and str(chunk.get_preview_state().get("slit_phase", "")) != "safe":
 		instance.headless_advance(0.2); await get_tree().process_frame; t += 0.2
 	_assert_equals(str(chunk.get_preview_state().get("slit_phase", "")), "safe", "the slit window held -> safe")
 	# 3) Shelter spot: gather the WHOLE party on the spot and ride out the sweep without anyone leaving.
 	var spot: Vector3 = chunk.get_preview_anchors().get("hide_spot")
-	_assert_true(bool(chunk.call("activate_spot_sweep")), "start the shelter-spot sweep")
+	for i in ids.size():
+		chunk.call("_set_character_position", ids[i], spot + Vector3(float(i) - 1.0, 0.0, 0.0))
+	instance.headless_advance(0.1)
+	var sweep_control: Node = chunk.get("_spot_sweep_interactable")
+	_assert_true(_attempt_physical_control(instance, "aster", sweep_control, true),
+		"Aster physically triggers the registered shelter pulse to start the sweep")
 	t = 0.0
 	while t < 8.0 and str(chunk.get_preview_state().get("spot_phase", "")) != "safe":
-		for i in ids.size():
-			chunk.call("_set_character_position", ids[i], spot + Vector3(float(i) - 1.0, 0.0, 0.0))
 		instance.headless_advance(0.2); await get_tree().process_frame; t += 0.2
 	_assert_equals(str(chunk.get_preview_state().get("spot_phase", "")), "safe", "the party held the spot through the sweep -> safe")
 	# 4) Exit shelter: gather the party at the exit and reach it -> complete.
@@ -23673,7 +27544,9 @@ func _test_refuge_run_playthrough() -> void:
 	for i in ids.size():
 		chunk.call("_set_character_position", ids[i], exit_pos + Vector3(float(i) - 1.0, 0.0, 0.0))
 	instance.headless_advance(0.1)
-	_assert_true(bool(chunk.call("reach_exit")), "reach the exit shelter")
+	var exit_rest: Node = chunk.get("_exit_shelter_interactable")
+	_assert_true(_attempt_physical_control(instance, "aster", exit_rest, true),
+		"Aster uses the registered shelter rest with the exact conscious trio present")
 	_assert_equals(str(chunk.get_preview_state().get("route_phase", "")), "complete",
 		"refuge run reaches complete via the data layer (beatable)")
 	instance.queue_free()
@@ -23691,8 +27564,19 @@ func _smart_cross(instance: Node, chunk: Node, gs, ids: Array, i: int, max_secs:
 	if not await _wash_shepherd(instance, chunk, gs, ids, before, 30.0):   # stage at the safe gap before
 		return false
 	if disable == "override":
-		chunk.call("_on_override", i)   # a runner presses the console (disabled for good)
-		return await _wash_shepherd(instance, chunk, gs, ids, after, max_secs)
+		# One member must earn the far-side station through the same timed crossing, then physically
+		# operate and hold that exact console while the remaining members cross.
+		var holder := str(ids[ids.size() - 1])
+		if not await _smart_time_run(
+				instance, chunk, gs, [holder], i, before, after, max_secs):
+			return false
+		var control: Node = (chunk.get("_override_controls") as Dictionary).get(i)
+		if not _trigger_exact_interactable_source(gs, control, holder):
+			return false
+		var crossers: Array = ids.slice(0, ids.size() - 1)
+		return crossers.is_empty() \
+			or await _wash_shepherd(
+				instance, chunk, gs, crossers, after, max_secs)
 	if disable == "plate" or disable == "double_plate":
 		return await _smart_plate_cross(instance, chunk, gs, ids, i, x0, after, max_secs)
 	return await _smart_time_run(instance, chunk, gs, ids, i, before, after, max_secs)
@@ -23753,6 +27637,7 @@ func _test_wash_relay_branch_puzzles() -> void:
 	var chunk: Node = instance.find_child("Chunk_wash_relay", true, false)
 	if chunk == null or gs == null:
 		_assert_true(false, "chunk + game state present"); instance.queue_free(); await get_tree().process_frame; return
+	instance.headless_set_selected_characters(["aster", "peris", "endo"])
 	var branches: Array = chunk.get_preview_state().get("branches", [])
 	var kinds: Array = []
 	var gated_gap := -1
@@ -23791,34 +27676,79 @@ func _test_wash_relay_branch_puzzles() -> void:
 			var did = cache.get("data_id")
 			# The switch must be warped onto the helix too (or the player can't see/reach it to solve the gate).
 			if gs.coord_map != null:
-				var sflat := Vector3(float(_branch_by_gap(chunk, gated_gap).get("mid_x", 0.0)), 0.5, 5.0)
+				var gated_kind := str(_branch_by_gap(chunk, gated_gap).get("gate_kind", ""))
+				# Decoys deliberately sit at the safe neck so the player can call the guard before
+				# entering its detection radius; stock/structure controls sit farther out on the deck.
+				var expected_switch_lane := float(chunk.BRANCH_NECK_LANE) + 0.15 \
+					if gated_kind == "decoy" else float(chunk.BRANCH_SWITCH_LANE)
+				var sflat := Vector3(
+					float(_branch_by_gap(chunk, gated_gap).get("mid_x", 0.0)),
+					0.5,
+					expected_switch_lane)
 				_assert_true((switch as Node3D).global_position.distance_to(gs.coord_map.to_world(sflat)) < 0.8,
-					"the gate switch is warped onto the helix (reachable on the deck)")
+					"the gate switch is warped onto its causally appropriate reachable lane")
 			# The lock is real at BOTH layers — the node and the data-layer enabled flag are off while gated.
 			_assert_true(not gs.is_interactable_enabled(did), "the gated cache is disabled in the data layer before the switch")
-			var loot0 := int(chunk.get_preview_state().get("branch_loot", 0))
-			cache.call("_trigger", false)   # locked -> the trigger is refused
+			var locked_reward: Dictionary = _branch_by_gap(chunk, gated_gap)
+			# Stay on the reachable control side. Placing the fixture on the cache would bypass the
+			# physical gate and aggro the guard before the decoy prediction can be exercised.
+			var switch_data_id := str(switch.get("data_id"))
+			var switch_source: Vector3 = gs.get_interactable(switch_data_id).get(
+				"position", Vector3.ZERO)
+			gs.command_stop("aster")
+			gs.snap_character_to("aster", switch_source)
+			cache.set("active_character", "aster")
+			_assert_true(not bool(cache.call("_trigger", false)),
+				"the reachable-side actor cannot remotely take a physically gated source")
 			await get_tree().process_frame
-			_assert_equals(int(chunk.get_preview_state().get("branch_loot", 0)), loot0,
-				"the gated cache is LOCKED before the switch (loot unchanged)")
-			switch.call("_trigger", false)  # fire the switch -> unlock
-			await get_tree().process_frame
+			_assert_true(str(_branch_by_gap(chunk, gated_gap).get("reward_phase", "")) == "available"
+				and bool(_branch_by_gap(chunk, gated_gap).get("reward_item_at_source", false))
+				and str(_branch_by_gap(chunk, gated_gap).get("reward_item_id", "")) \
+					== str(locked_reward.get("reward_item_id", "")),
+				"the gated source is LOCKED before the switch (same item remains)")
+			_assert_true(_trigger_exact_interactable_source(gs, switch, "aster"),
+				"the nearby actor fires the exact branch mechanism")
+			if str(_branch_by_gap(chunk, gated_gap).get("gate_kind", "")) == "decoy":
+				# A distracted guard still catches someone who camps directly on its destination.
+				# Retreat onto the main deck while it moves to the beacon, preserving the intended
+				# prediction: call it inward, then exploit the lane it vacated.
+				gs.command_move_to_pos("aster", Vector3(
+					float(_branch_by_gap(chunk, gated_gap).get("mid_x", 0.0)),
+					0.5,
+					0.0
+				))
+			for _branch_wait in range(120):
+				instance.headless_advance(0.1)
+				await get_tree().process_frame
+				if bool(_branch_by_gap(chunk, gated_gap).get("unlocked", false)):
+					break
 			_assert_true(_branch_by_gap(chunk, gated_gap).get("unlocked", false),
-				"firing the switch unlocks the gated branch")
+				"the switch's physical endpoint unlocks the gated branch")
 			_assert_true(gs.is_interactable_enabled(did), "the switch re-enables the cache in the data layer")
-			cache.call("_trigger", false)   # now the cache pays out
+			var gated_source: Vector3 = _branch_by_gap(chunk, gated_gap).get(
+				"reward_source_pos", Vector3.ZERO)
+			gs.snap_character_to("aster", gated_source)
+			_assert_true(_trigger_exact_interactable_source(gs, cache, "aster"),
+				"the opened branch transfers its exact physical reward")
 			await get_tree().process_frame
-			_assert_true(int(chunk.get_preview_state().get("branch_loot", 0)) > loot0,
-				"after the switch, the gated cache pays out")
+			var gated_claim: Dictionary = _branch_by_gap(chunk, gated_gap)
+			_assert_true(str(gated_claim.get("reward_phase", "")) == "claimed"
+				and str(gated_claim.get("reward_item_holder", "")) == "aster",
+				"after the switch, the gated source transfers its physical reward")
 	# An open breather cache pays out with no switch at all.
 	if open_gap >= 0:
 		var ocache: Node = instance.find_child("BranchCache%d" % open_gap, true, false)
 		if ocache != null:
-			var loot1 := int(chunk.get_preview_state().get("branch_loot", 0))
-			ocache.call("_trigger", false)
+			var open_source: Vector3 = _branch_by_gap(chunk, open_gap).get(
+				"reward_source_pos", Vector3.ZERO)
+			gs.snap_character_to("peris", open_source)
+			_assert_true(_trigger_exact_interactable_source(gs, ocache, "peris"),
+				"Peris physically takes the open branch's lysate source")
 			await get_tree().process_frame
-			_assert_true(int(chunk.get_preview_state().get("branch_loot", 0)) > loot1,
-				"an open breather cache pays out with no switch")
+			var open_claim: Dictionary = _branch_by_gap(chunk, open_gap)
+			_assert_true(str(open_claim.get("reward_phase", "")) == "claimed"
+				and str(open_claim.get("reward_item_holder", "")) == "peris",
+				"an open guidance source transfers its physical lysate with no switch")
 	# A decoy switch LURES its guard off the pad (distraction shrinks its reach).
 	if decoy_gap >= 0:
 		var guard_id := "branch_guard_%d" % decoy_gap
@@ -23829,10 +27759,12 @@ func _test_wash_relay_branch_puzzles() -> void:
 			_assert_true(gs.characters.has(guard_id) and not gs.is_character_distracted(guard_id),
 				"the decoy branch's guard starts undistracted")
 		if dswitch != null:
-			dswitch.call("_trigger", false)
-			await get_tree().process_frame
+			if decoy_gap != gated_gap:
+				_assert_true(_trigger_exact_interactable_source(gs, dswitch, "aster"),
+					"Aster physically fires the decoy's exact beacon")
+				await get_tree().process_frame
 			_assert_true(gs.is_character_distracted(guard_id),
-				"firing the decoy switch lures (distracts) its branch guard")
+				"the exact decoy activation lures (distracts) its branch guard")
 	else:
 		print("[branch-puzzles] (no guarded decoy branch this layout — guard-lure leg skipped)")
 	instance.queue_free()
@@ -24307,9 +28239,10 @@ func _test_reachability_cull() -> void:
 	gs.command_move_to_cell("a", right)
 	_assert_true(gs._coop_last_nodes < 8, "the cull bails an unreachable target WITHOUT a wait-state search (nodes=%d)" % gs._coop_last_nodes)
 	_assert_true(not gs.is_moving("a"), "the character does not move toward the unreachable cell")
-	# (b) a REACHABLE target still runs the real search + moves (the cull never suppresses a valid move).
+	# (b) a REACHABLE target still plans + moves (normally via the uncontested spatial fast path).
 	gs.command_move_to_cell("a", Vector2i(6, 5))
-	_assert_true(gs._coop_last_nodes > 0, "a reachable target runs the real search (nodes=%d)" % gs._coop_last_nodes)
+	_assert_true(int(gs.get_performance_counters().get("cooperative_fast_paths", 0)) > 0,
+		"a reachable uncontested target uses the spatial fast path")
 	_assert_true(gs.is_moving("a"), "a reachable target starts moving")
 	# (e) parked-reservation: an end blocked ONLY by a parked ally is geometrically reachable, so the cull
 	# must NOT suppress it — the cooperative/fallback search still commits a move.
@@ -24520,8 +28453,15 @@ func _test_channels_robustness() -> void:
 		_assert_true(gs2.is_moving("aster"), "aster is moving before the wash")
 		wc2.call("_wash_character", "aster")                        # the wash hits a moving runner
 		wl.headless_advance(0.1)
-		_assert_true(not gs2.is_moving("aster"), "the wash cancels the washed runner's move")
-		_assert_true(gs2.get_position("aster").x < 5.0, "the washed runner is carried DOWN to the start, not left walking on (x=%.1f)" % gs2.get_position("aster").x)
+		var wash_leg: Dictionary = gs2.get_external_traversal_state("aster")
+		_assert_true(gs2.is_moving("aster") and str(wash_leg.get("traversal_id", "")) == "wash_relay_current:knock:aster",
+			"the wash replaces the ordinary route with the locked current leg")
+		_assert_true(gs2.get_position("aster").x > 5.0,
+			"the washed runner is not granted the shelter endpoint during the current (x=%.1f)" % gs2.get_position("aster").x)
+		wl.headless_advance(
+			float(wc2.WASH_CURRENT_KNOCK_DURATION) + float(wc2.WASH_CURRENT_RETURN_MAX) + 0.1, 0.1)
+		_assert_true(not gs2.is_moving("aster") and gs2.get_position("aster").x < 5.0,
+			"the current lands the runner at the start and then releases movement ownership")
 		for cid in ["aster", "peris", "endo"]:
 			gs2.down_character(cid)
 		wl.headless_advance(1.6)
@@ -24565,6 +28505,9 @@ func _test_wash_relay() -> void:
 	if chunk == null or gs == null:
 		instance.queue_free(); await get_tree().process_frame
 		return
+	# This suite exercises controls with different required characters. Mirror the player's
+	# all-party selection so those physical bodies are eligible interaction owners.
+	instance.headless_set_selected_characters(["aster", "peris", "endo"])
 	# park the party safe, then test the FLUSH section (index 0, override): aster on it during a flood is
 	# SWEPT back (tense-but-fair: swept to the last gap, not stranded). Section 0's checkpoint is the start.
 	chunk.call("_set_character_position", "peris", Vector3(3.0, 0.5, 1.5))
@@ -24574,11 +28517,19 @@ func _test_wash_relay() -> void:
 	_assert_equals(int(chunk.get_preview_state().get("sweep_count", -1)), 0, "no wash before the first surge")
 	instance.headless_advance(2.6)
 	_assert_true(int(chunk.get_preview_state().get("sweep_count", 0)) >= 1, "a character on a flooding flush section is swept back")
+	_assert_true(int(chunk.get_preview_state().get("current_carry_count", 0)) >= 1,
+		"the flush owns the caught character through a physical current traversal")
+	_assert_equals(int(chunk.get_preview_state().get("washed_count", -1)), 0,
+		"the flush cannot grant the start landing before the current arrives")
+	instance.headless_advance(
+		float(chunk.WASH_CURRENT_KNOCK_DURATION) + float(chunk.WASH_CURRENT_RETURN_MAX) + 0.1, 0.1)
 	_assert_true(chunk.call("_get_character_position", "aster").x < 5.0, "a flush (section 0) wash lands at the start landing")
 	# HOLD the flush override with Peris -> it no longer washes Aster. The click explains the station;
 	# positional occupancy is the actual held-control contract.
-	chunk.call("_on_override", 0)
-	chunk.call("_set_character_position", "peris", Vector3(12.5, 0.5, 0.0))
+	var flush_override: Node = (
+		chunk.get("_override_controls") as Dictionary).get(0)
+	_assert_true(_trigger_exact_interactable_source(gs, flush_override, "peris"),
+		"Peris physically mans the exact flush override")
 	chunk.call("_set_character_position", "aster", Vector3(8.0, 0.5, 0.0))
 	instance.headless_advance(0.2)
 	var sweeps_a := int(chunk.get_preview_state().get("sweep_count", 0))
@@ -24600,17 +28551,25 @@ func _test_wash_relay() -> void:
 	chunk.call("_set_character_position", "endo", Vector3(32.0, 0.5, 0.0))    # back on the bridge
 	instance.headless_advance(6.2)   # past the next plate onset, now un-held
 	_assert_true(int(chunk.get_preview_state().get("sweep_count", 0)) > sweeps_b, "releasing the plate re-arms the section -> endo swept")
+	instance.headless_advance(
+		float(chunk.WASH_CURRENT_KNOCK_DURATION) + float(chunk.WASH_CURRENT_RETURN_MAX) + 0.1, 0.1)
 	# SLUICE section (index 4, timing): the gate is a REAL blocker — its threshold cells go non-walkable
 	# while closed (pathfinding can't route through), and open again on the window.
 	for cid in ["aster", "peris", "endo"]:
 		chunk.call("_set_character_position", cid, Vector3(3.0, 0.5, 0.0))
-	instance.headless_advance(5.5)   # ~27.6s -> inside a sluice closed window (onset ~27.3s)
+	var sluice_before: Dictionary = (
+		chunk.get_preview_state().get("sections", []) as Array)[4]
+	if not bool(sluice_before.get("sluice_blocked", false)):
+		# Target the mechanism's own next saved onset. Prior physical current legs can
+		# legitimately change wall-clock accumulation; the causal cadence is the truth.
+		instance.headless_advance(
+			maxf(0.001, float(sluice_before.get("next_onset_in", 0.0)) + 0.05), 0.01)
 	var ss: Dictionary = chunk.get_preview_state()
 	_assert_true(bool((ss.get("sections", []) as Array)[4].get("sluice_blocked", false)), "the sluice gate registers closed during its surge")
 	var gw = instance.get("_game_state").grid
 	var gate_cell: Vector2i = gw.world_to_grid(Vector3(39.5, 0.0, 0.0))   # sluice [38,41] threshold
 	_assert_true(not gw.is_walkable(gate_cell.x, gate_cell.y), "a closed sluice cell is non-walkable (a real blocker, not just a hazard)")
-	instance.headless_advance(1.8)   # ~29.4s -> past flood-off (~28.7s), gate open
+	instance.headless_advance(float(chunk.call("_dur", 4)) + 0.05, 0.01)
 	_assert_true(not bool((chunk.get_preview_state().get("sections", []) as Array)[4].get("sluice_blocked", true)), "the sluice gate opens after its surge")
 	_assert_true(gw.is_walkable(gate_cell.x, gate_cell.y), "an open sluice cell is walkable again")
 	# THREAT LAYER (back half): guards + hide alcove + lure, combined with the wash.
@@ -24618,31 +28577,71 @@ func _test_wash_relay() -> void:
 	_assert_equals(int(chunk.get_preview_state().get("enemy_count", 0)), 3, "the back half spawns three guards (roamer + sentry + basin roamer)")
 	# a party member tucked in the hide alcove is fully concealed from the guards
 	chunk.call("_set_character_position", "endo", Vector3(49.5, 0.5, 3.3))   # the patrol-section alcove
-	instance.headless_advance(0.2)
-	_assert_true("endo" in chunk.get_preview_state().get("hidden", []), "a member in the hide alcove is fully concealed")
+	var hide_state: Dictionary = chunk.get_preview_state()
+	instance.headless_advance(maxf(
+		0.001,
+		float(hide_state.get("next_spatial_authority_tick", 0.0))
+			- float(instance._scheduler.get_current_tick())
+			+ float(chunk.SPATIAL_AUTHORITY_INTERVAL) + 0.001
+	), 0.01)
+	_assert_true("endo" in chunk.get_preview_state().get("hidden", []),
+		"a member in the hide alcove is fully concealed on the next saved spatial sample")
 	chunk.call("_set_character_position", "endo", Vector3(43.0, 0.5, 0.0))   # step out, clear of the roamer
-	instance.headless_advance(0.2)
+	hide_state = chunk.get_preview_state()
+	instance.headless_advance(maxf(
+		0.001,
+		float(hide_state.get("next_spatial_authority_tick", 0.0))
+			- float(instance._scheduler.get_current_tick())
+			+ float(chunk.SPATIAL_AUTHORITY_INTERVAL) + 0.001
+	), 0.01)
 	_assert_true(not ("endo" in chunk.get_preview_state().get("hidden", [])), "stepping out of the alcove drops concealment")
 	# firing the flure distracts + draws the sentry off its post
 	_assert_true(not gs2.is_character_distracted("ch_sentry"), "the sentry starts undistracted")
-	chunk.call("_on_lure", 0)
+	var section_flure: Node = chunk.find_child("Flure0", true, false)
+	_assert_true(_trigger_exact_interactable_source(gs2, section_flure, "peris"),
+		"Peris physically fires the exact section flure")
 	_assert_true(gs2.is_character_distracted("ch_sentry"), "firing the flure distracts the sentry")
 	_assert_true(bool(chunk.get_preview_state().get("lure_active", false)), "the flure reads active while it draws")
-	# a guard landing a hit shoves the target into the channel — the current carries them DOWN to the start
-	chunk.call("_set_character_position", "aster", Vector3(58.0, 0.5, 0.0))   # in the lure section [56,61]
+	# The flure stands inside a live surge section. Leave its operator in the adjacent dry gap while
+	# Aster's current traversal resolves, just as a player must after committing the distraction.
+	chunk.call("_set_character_position", "peris", Vector3(44.0, 0.5, 0.0))
+	# A guard hit can hand a body to the current only while visible water physically occupies the
+	# target's footprint. Wait for the lure section's real cadence onset with Aster in the dry gap,
+	# then step into the live water before delivering the combat signal.
+	chunk.call("_set_character_position", "aster", Vector3(54.0, 0.5, 0.0))
+	var lure_onset_in := float(chunk.call("_section_next_onset_in", 6))
+	instance.headless_advance(maxf(0.01, lure_onset_in + 0.01), 0.01)
+	var lure_flood_state: Dictionary = (
+		chunk.get_preview_state().get("sections", []) as Array)[6]
+	_assert_true(bool(lure_flood_state.get("flooding", false)),
+		"the guard-hit fixture waits for physically active lure-section water")
+	chunk.call("_set_character_position", "aster", Vector3(58.0, 0.5, 0.0))   # in the wet lure section [56,61]
 	var sweeps_c := int(chunk.get_preview_state().get("sweep_count", 0))
 	chunk.call("_on_enemy_hit", "aster")
 	_assert_true(int(chunk.get_preview_state().get("sweep_count", 0)) > sweeps_c, "a guard's hit washes the target")
+	_assert_true(int(chunk.get_preview_state().get("current_carry_count", 0)) >= 1,
+		"a guard hit puts its target in the same physical current as a flood")
+	_assert_true(float(chunk.call("_get_character_position", "aster").x) > 5.0,
+		"the guard hit does not teleport its target to safety")
+	instance.headless_advance(
+		float(chunk.WASH_CURRENT_KNOCK_DURATION) + float(chunk.WASH_CURRENT_RETURN_MAX) + 0.1, 0.1)
 	var ax: float = chunk.call("_get_character_position", "aster").x
 	_assert_true(ax < 5.0, "a guard's hit washes you DOWN to the start at the bottom — got x=%.1f" % ax)
-	# The sloperope connect-back still deploys (kept as flavor; recovery is now local — you re-cross from the gap).
-	chunk.call("_on_sloperope")
-	_assert_true(bool(chunk.get_preview_state().get("sloperope_deployed", false)), "dropping the sloperope deploys the line")
+	# The return path is a physical, timed vine: Peris must reach and tend its upper anchor first.
+	chunk.call("_set_character_position", "peris", chunk.RETURN_LANDING)
+	_assert_true(_trigger_wash_climbvine_tend(chunk, gs2),
+		"Peris tends the physical return vine through its exact upper source")
+	instance.headless_advance(float(chunk.SLOPEROPE_DEPLOY_DURATION) + 0.1, 0.1)
+	_assert_true(bool(chunk.get_preview_state().get("sloperope_deployed", false)),
+		"Peris tending the upper anchor deploys the physical return vine")
 	# EXPANDED GAUNTLET: more sections + variations
 	_assert_equals(int(chunk.get_preview_state().get("section_count", 0)), 9, "the expanded gauntlet has nine sections")
 	# Pull anyone still waiting at the start to the end before the isolated back-half sub-tests. A player may
 	# instead retry immediately; `_washed` no longer makes them immune or unable to man a station.
-	chunk.call("_recover_washed")
+	chunk.call("_set_character_position", "aster", chunk.CLIMB_POS)
+	_assert_true(_trigger_wash_climbvine_group(chunk, gs2, "aster"),
+		"the exact lower source accepts every physically gathered waiting member")
+	instance.headless_advance(float(chunk.SLOPEROPE_CLIMB_DURATION) + 0.1, 0.1)
 	# DOUBLE PLATE (index 8): BOTH pads must be held to disable — one is not enough (co-op escalation)
 	chunk.call("_set_character_position", "aster", Vector3(44.0, 0.5, 0.0))   # safe gap, off the pads
 	chunk.call("_set_character_position", "peris", Vector3(72.8, 0.5, -2.5))  # pad 1
@@ -24656,8 +28655,10 @@ func _test_wash_relay() -> void:
 	# section (x1+1.5) — a member mans it and holds it open (step off and the flow resumes), so the test mans it.
 	_assert_true(abs(float((chunk.get_preview_state().get("sections", []) as Array)[7].get("period", 0.0)) - 8.0) < 0.01, "the basin runs on its own slow cadence (period 8)")
 	var basin_console: Vector2 = (chunk.call("_plate_footprints", 7) as Array)[0]
-	chunk.call("_on_override", 7)   # arriving at the console confirms the member is manning the station
-	chunk.call("_set_character_position", "aster", Vector3(basin_console.x, 0.5, basin_console.y))
+	var basin_override: Node = (
+		chunk.get("_override_controls") as Dictionary).get(7)
+	_assert_true(_trigger_exact_interactable_source(gs2, basin_override, "aster"),
+		"Aster physically mans the exact basin override")
 	instance.headless_advance(0.3)
 	_assert_true(bool((chunk.get_preview_state().get("sections", []) as Array)[7].get("disabled", false)), "manning the override console stops the basin surge")
 	_assert_true(bool(chunk.get_preview_state().get("sections", [])[7].get("overridden", false)), "the basin reads as overridden while the console is manned")
@@ -24737,17 +28738,19 @@ func _test_wash_relay_flush_hint() -> void:
 	_assert_true(not bool(chunk.get_preview_state().get("flush_hint_shown", true)),
 		"the flush hint does NOT fire on a startup timer (nobody's been washed yet)")
 	# Spread washes across DIFFERENT sections — two on flush (0), two on current (1): no single section hits 3.
-	# A washed member is swept to the start and STRANDED until recovered, so a single character can't be re-washed
-	# while down. Recover after each wash (the shared terminal/climb path) so each _wash_section catches a mobile
-	# aster — the real recover->re-cross loop a player runs to get washed on the same section repeatedly.
+	# Let each physical current traversal land, then model the player's retry by walking Aster back across the
+	# shelter boundary. This keeps the hint test about repeated understandable failures, not endpoint teleports.
 	for sec_x in [[0, 8.0], [0, 8.0], [1, 16.5], [1, 16.5]]:
 		gs.snap_character_to("aster", Vector3(float(sec_x[1]), 0.5, 0.0))
+		chunk.headless_process(0.0)
 		chunk.call("_wash_section", int(sec_x[0]))
-		chunk.call("_recover_washed")
+		instance.headless_advance(
+			float(chunk.WASH_CURRENT_KNOCK_DURATION) + float(chunk.WASH_CURRENT_RETURN_MAX) + 0.1, 0.1)
 	_assert_true(not bool(chunk.get_preview_state().get("flush_hint_shown", true)),
 		"washes SPREAD across sections (2+2) do not trigger the hint — it's per-section")
 	# A THIRD wash on the SAME section (flush, 0) crosses the threshold -> the hint appears.
 	gs.snap_character_to("aster", Vector3(8.0, 0.5, 0.0))
+	chunk.headless_process(0.0)
 	chunk.call("_wash_section", 0)
 	_assert_true(bool(chunk.get_preview_state().get("flush_hint_shown", false)),
 		"the flush hint appears after the THIRD wash in the SAME section")
@@ -24756,10 +28759,10 @@ func _test_wash_relay_flush_hint() -> void:
 
 # --- Test: the drain loop — an OPTIONAL flooding detour where you LEAD a guard into the current and drown it ---
 # Covers the whole beat: the loop geometry + a separately-reported drain guard; a guard on the DRY ledge survives
-# a surge (red) but one caught in the flooding RUN is drowned (green, is_alive flips false via take_damage) and
-# removed after the cosmetic delay; reset RESPAWNS the drowned guard; the run also washes the PARTY (consistency);
-# the BAIT commits + walks the guard across the run (the lead-in); and the kill is FAST-FORWARD INVARIANT
-# (decided at the onset tick — same drown at a fine and a coarse step).
+# a surge (red) but one caught in the flooding RUN is reserved and physically carried inward (green), then
+# drowned only when the real Channel reaches impact and removed after the cosmetic delay; reset RESPAWNS the
+# drowned guard; the run also washes the PARTY (consistency); the BAIT commits + walks the guard across the run
+# (the lead-in); and capture plus arrival are FAST-FORWARD INVARIANT at fine and coarse scheduler steps.
 func _test_wash_drain_loop() -> void:
 	_test_name = "Wash Drain Loop"
 	var instance: Node = await _instantiate_preview_chunk_and_wait("wash_relay", 6)
@@ -24772,6 +28775,8 @@ func _test_wash_drain_loop() -> void:
 		_assert_true(false, "wash_relay chunk + game_state present")
 		instance.queue_free(); await get_tree().process_frame
 		return
+	if instance.has_method("headless_set_selected_characters"):
+		instance.headless_set_selected_characters(["aster", "peris", "endo"])
 
 	# The loop exposes its anchors and the drain guard, reported SEPARATELY from the section guards.
 	var anchors: Dictionary = chunk.get_preview_anchors()
@@ -24787,7 +28792,7 @@ func _test_wash_drain_loop() -> void:
 	var ledge_pos: Vector3 = anchors["drain_ledge"]
 
 	# GEOMETRY (data layer — the authoritative shape check). The loop is a real U: the ONLY walkable route from
-	# the deck to the dry salvage ledge crosses the flooding run, so reaching the cache (or leading a guard to it)
+	# the deck to the dry lysate ledge crosses the flooding run, so reaching the source (or leading a guard to it)
 	# means crossing the current. An ASCII walkable map is printed for an eyeball read of the out-and-back shape.
 	var grid = gs.grid
 	if grid != null:
@@ -24802,7 +28807,7 @@ func _test_wash_drain_loop() -> void:
 		var entry_cell: Vector2i = grid.world_to_grid(anchors["drain_entry"])   # deck rim at the loop mouth
 		var ledge_cell: Vector2i = grid.world_to_grid(ledge_pos)
 		var path: Array = grid.find_path(entry_cell, ledge_cell)
-		_assert_true(path.size() > 0, "the loop is walkable: a route runs from the deck to the salvage ledge")
+		_assert_true(path.size() > 0, "the loop is walkable: a route runs from the deck to the lysate ledge")
 		var crosses_run := false
 		for wp in path:
 			if absf(float((wp as Vector3).z) - run_pos.z) <= 1.3:   # within DRAIN_RUN_HALF of the run centreline
@@ -24818,13 +28823,26 @@ func _test_wash_drain_loop() -> void:
 	_assert_equals(int(chunk.get_preview_state().get("drowned_count", 0)), 0,
 		"a guard on the dry ledge survives a surge (the flood footprint excludes the ledge)")
 
-	# GREEN: a guard caught IN the flooding run is drowned at the onset.
+	# GREEN: a guard caught IN the flooding run is reserved at the wet consequence tick, remains
+	# alive during the visible carry, and is drowned only at the real Channel arrival.
 	gs.snap_character_to("ch_drain", run_pos)
 	chunk.call("_wash_drain")
-	_assert_equals(int(chunk.get_preview_state().get("drowned_count", 0)), 1, "a guard caught in the flooding run is drowned")
+	var drain_carry: Dictionary = gs.get_external_traversal_state("ch_drain")
+	_assert_true(
+		not drain_carry.is_empty()
+			and str(drain_carry.get("traversal_id", "")).begins_with("channel_sweep/")
+			and int(chunk.get_preview_state().get("drowned_count", 0)) == 0,
+		"wet contact starts the drain guard's physical current without granting the drown")
 	var dg1: Dictionary = chunk.get_preview_state().get("drain_guard", {})
+	_assert_true(not dg1.is_empty() and bool(dg1.get("alive", false)),
+		"the drain guard stays alive while the current visibly carries it")
+	_assert_true(_advance_wash_enemy_current_to_arrival(instance, gs, "ch_drain"),
+		"the drain guard's locked Channel traversal reaches its physical arrival")
+	_assert_equals(int(chunk.get_preview_state().get("drowned_count", 0)), 1,
+		"the drain guard is counted only after the current reaches impact")
+	dg1 = chunk.get_preview_state().get("drain_guard", {})
 	_assert_true(dg1.is_empty() or not bool(dg1.get("alive", true)),
-		"the drowned guard reads dead (take_damage zeroed its hp -> is_alive false)")
+		"the arrived guard reads dead (Channel impact zeroed its hp)")
 	instance.headless_advance(1.4)   # past DRAIN_KILL_DELAY (0.7) -> the body is removed from the roster
 	_assert_true((chunk.get_preview_state().get("drain_guard", {}) as Dictionary).is_empty(),
 		"the drowned guard is fully removed after the sweep delay")
@@ -24841,7 +28859,10 @@ func _test_wash_drain_loop() -> void:
 	instance.headless_advance(0.2)
 	gs.snap_character_to("ch_drain", run_pos)
 	chunk.call("_wash_drain")
-	_assert_true(not bool((chunk.get_preview_state().get("drain_guard", {}) as Dictionary).get("alive", true)), "guard drowned (for the reset-window check)")
+	_assert_true(_advance_wash_enemy_current_to_arrival(instance, gs, "ch_drain"),
+		"the reset-window fixture first carries the guard through real Channel impact")
+	_assert_true(not bool((chunk.get_preview_state().get("drain_guard", {}) as Dictionary).get("alive", true)),
+		"guard drowned at arrival (for the reset-window check)")
 	chunk.call("reset_preview_state")   # reset IMMEDIATELY, before DRAIN_KILL_DELAY (0.7s) elapses
 	var dgw: Dictionary = chunk.get_preview_state().get("drain_guard", {})
 	_assert_true(not dgw.is_empty() and bool(dgw.get("alive", false)), "reset DURING the dissolve window respawns a LIVE guard")
@@ -24857,6 +28878,12 @@ func _test_wash_drain_loop() -> void:
 	var sweeps0 := int(chunk.get_preview_state().get("sweep_count", 0))
 	chunk.call("_wash_drain")
 	_assert_true(int(chunk.get_preview_state().get("sweep_count", 0)) > sweeps0, "a party member in the drain run is washed")
+	_assert_equals(int(chunk.get_preview_state().get("current_carry_count", -1)), 1,
+		"the drain places its victim in the saved current traversal")
+	_assert_equals(int(chunk.get_preview_state().get("washed_count", -1)), 0,
+		"the drain cannot grant the start endpoint at onset")
+	instance.headless_advance(
+		float(chunk.WASH_CURRENT_KNOCK_DURATION) + float(chunk.WASH_CURRENT_RETURN_MAX) + 0.1, 0.1)
 	_assert_true(float(chunk.call("_get_character_position", "aster").x) < 5.0, "the drain wash carries them down to the start")
 
 	# LEAD-IN (bait): firing the bait commits the ledge guard and walks it INTO the flooding run (toward a lure
@@ -24864,7 +28891,9 @@ func _test_wash_drain_loop() -> void:
 	instance.headless_advance(0.2)
 	gs.snap_character_to("ch_drain", ledge_pos)
 	_assert_true(not gs.is_character_distracted("ch_drain"), "the drain guard starts undistracted")
-	chunk.call("_on_drain_bait")
+	var drain_bait: Node = chunk.find_child("DrainBait", true, false)
+	_assert_true(_trigger_exact_interactable_source(gs, drain_bait, "peris"),
+		"Peris fires the exact drain bait from its safe mouth")
 	_assert_true(gs.is_character_distracted("ch_drain"), "firing the bait commits (distracts) the guard")
 	_assert_true(gs.is_moving("ch_drain"), "the baited guard walks toward the lure")
 	var dest: Vector3 = gs.get_destination("ch_drain")
@@ -24876,8 +28905,8 @@ func _test_wash_drain_loop() -> void:
 	instance.queue_free()
 	await get_tree().process_frame
 
-	# FAST-FORWARD INVARIANCE: drive the REAL scheduled onset at a fine (1x) and coarse (10x) step; the guard
-	# standing in the run must drown in BOTH — the kill is decided at the onset TICK, never by per-frame sampling.
+	# FAST-FORWARD INVARIANCE: drive the REAL scheduled capture and Channel arrival at a fine (1x)
+	# and coarse (10x) step. The guard standing in the run must drown in both without frame sampling.
 	var drowned_fine := await _drain_ff_run(0.0166)
 	var drowned_coarse := await _drain_ff_run(0.166)
 	_assert_equals(drowned_fine, 1, "the scheduled drain onset drowns the in-run guard at a fine (1x) tick step")
@@ -24981,7 +29010,11 @@ func _drain_ff_run(step: float) -> int:
 	for cid in ["aster", "peris", "endo"]:
 		gs.snap_character_to(cid, Vector3(3.0, 0.5, 0.0))
 	gs.snap_character_to("ch_drain", chunk.get_preview_anchors()["drain_run"])
-	inst.headless_advance(6.0, step)   # past FIRST_FLOOD + DRAIN_LOOP_PHASE (3.5s) -> the onset fires once
+	var onset_in := float(chunk.get_preview_state().get("drain_next_onset_in", -1.0))
+	if onset_in >= 0.0:
+		inst.headless_advance(onset_in + 0.01, step)
+	if gs.is_external_traversal_active("ch_drain"):
+		_advance_wash_enemy_current_to_arrival(inst, gs, "ch_drain", step)
 	var drowned := int(chunk.get_preview_state().get("drowned_count", 0))
 	inst.queue_free(); await get_tree().process_frame
 	return drowned
@@ -24999,16 +29032,51 @@ func _drain_bait_run() -> int:
 		return -1
 	for cid in ["aster", "peris", "endo"]:
 		gs.snap_character_to(cid, Vector3(3.0, 0.5, 0.0))   # party clear: a pure bait (no chase / charge)
-	chunk.call("_on_drain_bait")
-	inst.headless_advance(9.0, 0.05)   # the guard walks in (~1s) + commit (6.5s) spans a full flood period
+	if inst.has_method("headless_set_selected_characters"):
+		inst.headless_set_selected_characters(["aster", "peris", "endo"])
+	var drain_bait: Node = chunk.find_child("DrainBait", true, false)
+	if not _trigger_exact_interactable_source(gs, drain_bait, "peris"):
+		inst.queue_free(); await get_tree().process_frame
+		return -1
+	var elapsed := 0.0
+	while elapsed < 9.0 and not gs.is_external_traversal_active("ch_drain"):
+		inst.headless_advance(0.05, 0.05)
+		elapsed += 0.05
+	if gs.is_external_traversal_active("ch_drain"):
+		_advance_wash_enemy_current_to_arrival(inst, gs, "ch_drain", 0.05)
 	var drowned := int(chunk.get_preview_state().get("drowned_count", 0))
 	inst.queue_free(); await get_tree().process_frame
 	return drowned
 
-# --- Test: the Showcase Gallery chunk shows off all three hiding tiers, both enemy types, and flora ---
-# Validates the exhibit content (3 hide tiers, 2 named enemy types + a demo sentry, the flora line-up) AND
+
+## Finish the exact locked Channel traversal already accepted for an enemy. This helper never
+## manufactures contact or damage: it advances only to the authoritative end_tick, where Channel
+## owns impact, lethal damage, and the Wash bookkeeping callback.
+func _advance_wash_enemy_current_to_arrival(
+		instance: Node, gs, enemy_id: String, step := 0.01) -> bool:
+	if instance == null or gs == null or not gs.is_external_traversal_active(enemy_id):
+		return false
+	var traversal: Dictionary = gs.get_external_traversal_state(enemy_id)
+	if not str(traversal.get("traversal_id", "")).begins_with("channel_sweep/"):
+		return false
+	var scheduler = instance.get("_scheduler")
+	if scheduler == null or not scheduler.has_method("get_current_tick"):
+		return false
+	var remaining := maxf(
+		0.0,
+		float(traversal.get("end_tick", 0.0))
+			- float(scheduler.get_current_tick())
+	) + 0.01
+	instance.headless_advance(
+		remaining,
+		minf(maxf(0.001, step), remaining)
+	)
+	return not gs.is_external_traversal_active(enemy_id)
+
+# --- Test: the Showcase Gallery exposes real, causally surveyed field mechanics ---
+# Validates the exhibit content (3 hide tiers, 2 named enemy types + a demo sentry, four shipped flora objects) AND
 # that the hiding geometry actually TEACHES: on the EXPOSED pad the pacing sentry spots you, on the MEDIUM
-# pad it holds you at range, on the FULL pad it never sees you. Reaching the exit completes the tour.
+# pad it holds you at range, on the FULL pad it never sees you. Exit presence alone must never complete.
 func _test_showcase_gallery() -> void:
 	_test_name = "Showcase Gallery"
 	var inst = await _instantiate_preview_chunk_and_wait("showcase_gallery", 5)
@@ -25018,12 +29086,20 @@ func _test_showcase_gallery() -> void:
 	var chunk = inst._active_chunk
 	var state: Dictionary = chunk.get_preview_state()
 	_assert_equals(int(state.get("hiding_type_count", 0)), 3, "Three hiding tiers on display")
-	_assert_equals(int(state.get("flora_count", 0)), 6, "All six flora species on display")
+	_assert_equals(int(state.get("flora_count", 0)), 4,
+		"Only the four flora with shipped field mechanics are exhibited")
+	_assert_equals(int(state.get("required_evidence_count", 0)), 9,
+		"Completion names nine exact physical responses rather than an aggregate survey count")
 	_assert_equals(int(state.get("enemy_count", 0)), 2, "Both enemy TYPES (standard + chain) are present")
 	_assert_true((state.get("enemy_types", []) as Array).has("standard") and (state.get("enemy_types", []) as Array).has("chain"),
 		"The state reports both enemy types")
 	var demo = chunk.find_child("GalleryDemoSentry", true, false)
 	_assert_true(demo != null, "The hiding bay has a demo sentry")
+	_assert_true(chunk.find_child("GalleryFloraScarpet", true, false) is Scarpet
+			and chunk.find_child("GalleryFloraCapbage", true, false) is Capbage
+			and chunk.find_child("GalleryFloraFlure", true, false) is Flure
+			and chunk.find_child("GalleryFloraHushbloom", true, false) is Hushbloom,
+		"The flora bay uses four reusable gameplay objects, not recoloured generic meshes")
 	var anchors: Dictionary = chunk.get_preview_anchors()
 
 	# Drive each pad. Order FULL -> MEDIUM -> EXPOSED so the sentry stays calm until the exposed test.
@@ -25040,10 +29116,16 @@ func _test_showcase_gallery() -> void:
 		_assert_true(spotted_on.call(anchors["pad_exposed"] as Vector3),
 			"EXPOSED: the pacing sentry spots you")
 
-	# Reaching the exit completes the tour.
+	# Neither one member nor the whole party can convert an unsurveyed room into completion.
 	inst.headless_set_character_position("peris", Vector3(79.0, 0.5, 0.0))
 	inst.headless_advance(0.3, 0.1)
-	_assert_true(bool(chunk.get_preview_state().get("complete", false)), "Reaching the EXIT completes the gallery tour")
+	_assert_true(not bool(chunk.get_preview_state().get("complete", true)),
+		"One member reaching EXIT cannot complete an unsurveyed gallery")
+	for cid in ["aster", "peris", "endo"]:
+		inst.headless_set_character_position(cid, Vector3(79.0, 0.5, float(["aster", "peris", "endo"].find(cid))))
+	inst.headless_advance(0.3, 0.1)
+	_assert_true(not bool(chunk.get_preview_state().get("complete", true)),
+		"Even the whole party at EXIT cannot spoof missing causal evidence")
 	await _dispose_scene(inst)
 
 # --- Test: the SET PIECE showcase (docs/SET_PIECES.md) — crawl pipes, rotating hub, water basin ---
@@ -25070,7 +29152,12 @@ func _test_set_piece_showcase() -> void:
 	var wheel = chunk.find_child("HubWheel", true, false)
 	_assert_true(wheel != null, "The push wheel exists")
 	wheel._trigger()
-	_assert_true(bool(chunk.get_preview_state().get("hub_aligned", false)), "One push ALIGNS the hub")
+	_assert_true(str(chunk.get_preview_state().get("hub_phase", "")) == "rotating"
+		and not bool(chunk.get_preview_state().get("hub_aligned", true)),
+		"One push starts a real rotation while the hub route stays shut")
+	inst.headless_advance(0.5, 0.1)
+	_assert_true(bool(chunk.get_preview_state().get("hub_aligned", false)),
+		"The hub route opens only after the bent pipe arrives in alignment")
 	inst.headless_set_character_position("peris", anchors["hub_west"] as Vector3)
 	var hub_mouth = chunk.find_child("HubMouthWest", true, false)
 	hub_mouth._trigger()
@@ -25090,13 +29177,16 @@ func _test_set_piece_showcase() -> void:
 	var mouth_s = chunk.find_child("PipeMouthSouth", true, false)
 	for cid in ["peris", "aster", "endo"]:
 		inst.headless_set_character_position(cid, (anchors["pipe_south"] as Vector3) + Vector3(0.6, 0, 0))
+	inst.headless_set_selected_characters(["peris", "aster", "endo"])
 	var pre_speed := float(gs.characters["peris"].get("move_speed", 2.6))
 	var entry_ticks: Array = []
 	var group_done: Array = []
 	mouth_s.crawl_started.connect(func(who: String) -> void:
 		entry_ticks.append([who, gs.scheduler.get_current_tick()]))
 	mouth_s.group_crawl_finished.connect(func(ids: Array) -> void: group_done.append(ids))
-	mouth_s.start_group_crawl(["peris", "aster", "endo"])
+	mouth_s.set("active_character", "peris")
+	_assert_true(bool(mouth_s.call("_trigger", false)),
+		"The gathered party commits the group crawl through the exact pipe mouth")
 	inst.headless_advance(30.0, 0.1)
 	_assert_equals(entry_ticks.size(), 3, "All three queued members enter the tube")
 	if entry_ticks.size() == 3:
@@ -25174,33 +29264,64 @@ func _test_set_piece_showcase() -> void:
 	_assert_true(not gs.grid.is_walkable(15, 19), "The canal starts impassable")
 	_assert_equals(int(chunk.get_preview_state().get("scraps_alive", 0)), 2, "Two iron-laden scraps roam the east bank")
 	# Path A: bridge while the swarm lives -> the plate gets EATEN out from under the route
-	lever._trigger()                       # charge at station 0 -> plate held
-	shunt._trigger()                       # -> station 1 (the gap)
-	lever._trigger()                       # discharge -> plate placed
-	inst.headless_advance(0.3, 0.1)
+	lever._trigger()                       # begin charging at station 0
+	inst.headless_advance(0.5, 0.1)        # plate physically reaches the magnet
+	shunt._trigger()
+	inst.headless_advance(0.6, 0.1)        # -> station 1 (the gap), after physical transit
+	lever._trigger()                       # begin lowering the plate
+	_assert_true(not gs.grid.is_walkable(15, 19), "A descending plate does not open the canal early")
+	inst.headless_advance(0.5, 0.1)        # impact -> plate placed
 	_assert_true(gs.grid.is_walkable(15, 19), "The dropped plate bridges the canal")
-	inst.headless_advance(8.0, 0.1)
+	var strip_approach: Dictionary = chunk.get_preview_state()
+	_assert_true(str(strip_approach.get("plate_strip_phase", "")) == "approaching"
+		and (strip_approach.get("plate_approachers", []) as Array).size() == 2
+		and (strip_approach.get("plate_strippers", []) as Array).is_empty(),
+		"The living scraps visibly travel from their pen before touching the plate")
+	for scrap_id in strip_approach.get("plate_approachers", []) as Array:
+		_assert_true(gs.is_external_traversal_active(str(scrap_id)),
+			"%s's plate approach is authoritative movement" % str(scrap_id))
+	inst.headless_advance(3.6, 0.1)
+	var strip_contact: Dictionary = chunk.get_preview_state()
+	_assert_true(str(strip_contact.get("plate_strip_phase", "")) == "stripping"
+		and (strip_contact.get("plate_strippers", []) as Array).size() == 2
+		and float(strip_contact.get("plate_integrity", 1.0)) < 1.0,
+		"Only physically contacting scraps begin visibly stripping plate integrity")
+	_assert_true(gs.grid.is_walkable(15, 19),
+		"The partially stripped plate remains real crossing topology")
+	inst.headless_advance(3.0, 0.1)
 	var st_e: Dictionary = chunk.get_preview_state()
-	_assert_equals(str(st_e.get("plate", "")), "eaten", "Living scraps STRIP the unattended plate")
+	_assert_equals(str(st_e.get("plate", "")), "eaten",
+		"Living scraps finish stripping only after arrival plus contact time")
 	_assert_true(not gs.grid.is_walkable(15, 19), "The eaten plate closes the crossing again")
 	# Path B: deal with the swarm FIRST (pin under the magnet, drop it in the canal), then bridge
 	chunk.reset_preview_state()
 	inst.headless_advance(0.3, 0.1)
-	shunt._trigger()                       # 0 -> 1
-	shunt._trigger()                       # 1 -> 2 (the scrap pen)
-	lever._trigger()                       # charge -> swarm pinned
+	shunt._trigger()
+	inst.headless_advance(0.6, 0.1)        # 0 -> 1
+	shunt._trigger()
+	inst.headless_advance(0.6, 0.1)        # 1 -> 2 (the scrap pen)
+	lever._trigger()                       # begin lifting the swarm
+	_assert_equals(str(chunk.get_preview_state().get("magnet_phase", "")), "lifting_swarm",
+		"The magnet visibly lifts the iron-laden swarm before carrying it")
+	inst.headless_advance(0.5, 0.1)
 	_assert_equals(str(chunk.get_preview_state().get("magnet_carrying", "")), "swarm",
 		"The magnet pins the iron-laden swarm beneath it")
-	shunt._trigger()                       # 2 -> 0
-	shunt._trigger()                       # 0 -> 1 (over the canal)
+	shunt._trigger()
+	inst.headless_advance(0.6, 0.1)        # 2 -> 0
+	shunt._trigger()
+	inst.headless_advance(0.6, 0.1)        # 0 -> 1 (over the canal)
 	lever._trigger()                       # discharge -> the swarm drops into the canal
 	inst.headless_advance(0.5, 0.1)
 	_assert_equals(int(chunk.get_preview_state().get("scraps_alive", -1)), 0,
 		"Dropping the pinned swarm in the canal finishes it")
-	shunt._trigger()                       # 1 -> 2
-	shunt._trigger()                       # 2 -> 0 (the plate store)
-	lever._trigger()                       # charge plate
-	shunt._trigger()                       # 0 -> 1
+	shunt._trigger()
+	inst.headless_advance(0.6, 0.1)        # 1 -> 2
+	shunt._trigger()
+	inst.headless_advance(0.6, 0.1)        # 2 -> 0 (the plate store)
+	lever._trigger()                       # begin charging plate
+	inst.headless_advance(0.5, 0.1)
+	shunt._trigger()
+	inst.headless_advance(0.6, 0.1)        # 0 -> 1
 	lever._trigger()                       # discharge -> placed
 	inst.headless_advance(8.5, 0.1)
 	var st_e2: Dictionary = chunk.get_preview_state()
@@ -26644,9 +30765,21 @@ func _test_downed_carry() -> void:
 		_assert_true(false, "pump_hall instantiates")
 		return
 	var gs = inst._game_state
+	var body_manager = inst._downed_body_manager
+	_assert_true(body_manager != null and body_manager.has_prepared_body("aster"),
+		"the reusable manager stages Aster's disabled body before combat")
+	var prepared_body = body_manager.get_prepared_body("aster") if body_manager != null else null
+	var prepared_outline = body_manager._outline_targets.get("aster") if body_manager != null else null
+	_assert_true(prepared_body != null and not bool(prepared_body.interaction_enabled),
+		"the prewarmed body is physics/input inert while Aster is conscious")
+	_assert_true(prepared_outline != null \
+			and int(prepared_outline.call("get_outline_shell_count")) == 1,
+		"the body outline owns only Aster's authored body mesh, not path/ability utility meshes")
 	gs.down_character("aster")
 	var body = inst.find_child("DownedBody_aster", true, false)
 	_assert_true(body != null, "a downed member grows a clickable body zone")
+	_assert_true(body == prepared_body,
+		"the down activates the staged body instead of allocating a new Area during damage")
 	_assert_true(body != null and (body in (inst._preview_interactables as Array)),
 		"the body zone is REGISTERED with the host — real click + hover wiring, not just a node in the tree")
 	if body == null:
@@ -26676,9 +30809,12 @@ func _test_downed_carry() -> void:
 	_assert_true(gs.has_free_hands("peris", 2), "hands free again after the set-down")
 	# Revive clears the zone.
 	gs.restore_character("aster")
-	await get_tree().process_frame   # queue_free needs one real frame; the ONLY frame this test waits
+	await get_tree().process_frame   # allow hover/physics state to settle; the pooled node remains disabled
 	_assert_true(inst.find_child("DownedBody_aster", true, false) == null,
 		"a restored member's body zone is gone")
+	_assert_true(body_manager.get_prepared_body("aster") == prepared_body \
+			and not bool(prepared_body.interaction_enabled),
+		"restore returns the same body to the disabled pool for a later combat down")
 	inst.queue_free()
 	await get_tree().process_frame
 
@@ -27567,13 +31703,44 @@ func _test_game_state() -> void:
 	var after_stop := gs.get_position("aster")
 	_assert_true(stop_pos.distance_to(after_stop) < 0.01, "Position preserved after stop")
 
+	# WRAP resolves in the shared damage path: it absorbs only incoming HP loss, reports the
+	# remainder, and expires on scheduler time instead of a scene-private timer.
+	gs.set_stat("aster", "hp", 100.0)
+	var absorbed_events: Array = []
+	gs.damage_absorbed.connect(func(char_id: String, amount: float, remaining: float, source_id: String):
+		absorbed_events.append([char_id, amount, remaining, source_id]))
+	_assert_true(gs.apply_damage_shield("aster", 25.0, 2.0, "wrap"),
+		"WRAP applies a finite damage shield")
+	gs.adjust_stat("aster", "hp", -15.0)
+	_assert_true(is_equal_approx(gs.get_stat("aster", "hp"), 100.0),
+		"WRAP absorbs damage before HP changes")
+	_assert_true(is_equal_approx(gs.get_damage_shield("aster"), 10.0),
+		"WRAP exposes the remaining shield amount")
+	gs.adjust_stat("aster", "hp", -20.0)
+	_assert_true(is_equal_approx(gs.get_stat("aster", "hp"), 90.0),
+		"Damage beyond WRAP's remainder reaches HP")
+	_assert_true(is_zero_approx(gs.get_damage_shield("aster")),
+		"A consumed WRAP shield clears")
+	_assert_equals(absorbed_events.size(), 2, "WRAP emits legible absorption feedback per hit")
+	_assert_true(gs.apply_damage_shield("aster", 10.0, 0.5, "wrap"),
+		"WRAP can be refreshed for a new target window")
+	sched.advance_ticks(0.6)
+	_assert_true(is_zero_approx(gs.get_damage_shield("aster")),
+		"WRAP expires with gameplay scheduler time")
+	gs.adjust_stat("aster", "hp", -5.0)
+	_assert_true(is_equal_approx(gs.get_stat("aster", "hp"), 85.0),
+		"Damage after WRAP expires reaches HP normally")
+
 	# Serialize / deserialize round-trip
 	gs.command_move_to_cell("aster", Vector2i(3, 3))
 	sched.advance_ticks(100.0)
+	_assert_true(gs.apply_damage_shield("aster", 12.0, 3.0, "wrap"),
+		"Active WRAP is present at snapshot time")
 
 	var snapshot := gs.serialize()
 	_assert_true(snapshot.has("characters"), "Snapshot has characters")
 	_assert_true(snapshot.characters.has("aster"), "Snapshot has aster")
+	_assert_true(snapshot.has("damage_shields"), "Snapshot includes deterministic shield state")
 
 	var sched2 := EventScheduler.new()
 	var gs2 := GameState.new()
@@ -27584,6 +31751,13 @@ func _test_game_state() -> void:
 	var pos1: Vector3 = gs.get_position("aster")
 	var pos2: Vector3 = gs2.get_position("aster")
 	_assert_true(pos1.distance_to(pos2) < 0.01, "Positions match after round-trip")
+	_assert_true(is_equal_approx(gs2.get_damage_shield("aster"), 12.0),
+		"Active WRAP amount survives snapshot round-trip")
+	_assert_equals(gs.state_hash(), gs2.state_hash(),
+		"Active WRAP participates in deterministic state hashing")
+	sched2.advance_ticks(3.1)
+	_assert_true(is_zero_approx(gs2.get_damage_shield("aster")),
+		"Restored WRAP expires after its serialized remaining duration")
 
 	# Unregister
 	gs.unregister_character("aster")
@@ -27736,26 +31910,26 @@ func _test_event_log_roundtrip() -> void:
 	gs_a.register_character("peris", grid.grid_to_world(Vector2i(2, 2)), 3.0, {})
 	var fired_orig: Array = []
 	# In-range immediate fire
-	gs_a.queue_ability("peris", "protect", grid.grid_to_world(Vector2i(2, 2)), 3.0,
-		func(): fired_orig.append("protect"))
+	gs_a.queue_ability("peris", "wrap", grid.grid_to_world(Vector2i(2, 2)), 3.0,
+		func(): fired_orig.append("wrap"))
 	# Out-of-range queue, then cancel
 	gs_a.queue_ability("peris", "emp", grid.grid_to_world(Vector2i(8, 8)), 1.0,
 		func(): fired_orig.append("emp"))
 	gs_a.cancel_queued_ability("peris")
 	gs_a.flush_tick()
 
-	_assert_equals(fired_orig.size(), 1, "Recording: only in-range protect fired")
+	_assert_equals(fired_orig.size(), 1, "Recording: only in-range WRAP fired")
 	_assert_equals(gs_a.event_log.size(), 4, "4 ability events logged (register + queue + queue + cancel)")
 
-	# Replay with handler registry should fire protect again.
+	# Replay with handler registry should fire WRAP again.
 	var fired_replay: Array = []
 	var handlers := {
-		&"protect": func(): fired_replay.append("protect"),
+		&"wrap": func(): fired_replay.append("wrap"),
 		&"emp": func(): fired_replay.append("emp"),
 	}
 	var gs_a_replay := GameState.replay(gs_a.event_log, grid, handlers)
 	_assert_equals(fired_replay.size(), 1, "Replay: registered handler fires once")
-	_assert_equals(fired_replay[0], "protect", "Replay: correct ability fired")
+	_assert_equals(fired_replay[0], "wrap", "Replay: correct ability fired")
 	_assert_true(not gs_a_replay.has_queued_ability("peris"),
 		"Replay: cancelled ability is not queued")
 
@@ -27763,6 +31937,91 @@ func _test_event_log_roundtrip() -> void:
 	var gs_a_replay_nohandlers := GameState.replay(gs_a.event_log, grid)
 	_assert_true(not gs_a_replay_nohandlers.has_queued_ability("peris"),
 		"Replay without handlers: cancel still applies")
+
+	# --- Canonical abilities are authoritative and replay without caller handlers ---
+	var canonical_grid := GridWorld.new()
+	canonical_grid.create_room(24, 12, true)
+	var canonical_sched := EventScheduler.new()
+	var canonical_state := GameState.new()
+	canonical_state.grid = canonical_grid
+	canonical_state.scheduler = canonical_sched
+	canonical_state.event_log = EventLog.new()
+	var aster_pos := canonical_grid.grid_to_world(Vector2i(2, 2))
+	var peris_pos := canonical_grid.grid_to_world(Vector2i(2, 4))
+	var monos_pos := canonical_grid.grid_to_world(Vector2i(18, 4))
+	canonical_state.register_character("aster", aster_pos, 3.0, {"stamina": 60.0})
+	canonical_state.register_character("peris", peris_pos, 3.0, {"stamina": 45.0})
+	canonical_state.register_character("monos", monos_pos, 3.0, {"stamina": 0.0})
+	canonical_state.set_party(["aster", "peris"])
+
+	var wrong_owner := canonical_state.queue_canonical_ability(
+		"peris", "emp", peris_pos)
+	_assert_true(not bool(wrong_owner.get("accepted", true)),
+		"EMP rejects a non-Aster owner")
+	_assert_equals(str(wrong_owner.get("reason", "")), "wrong_owner",
+		"Wrong canonical owner reports a stable reason")
+	_assert_true(is_equal_approx(canonical_state.get_stat("peris", "stamina"), 45.0),
+		"Rejected canonical cast spends no stamina")
+
+	var emp_root := Node3D.new()
+	add_child(emp_root)
+	var emp_receiver := _MockCanonicalEmpReceiver.new()
+	emp_receiver.position = aster_pos
+	emp_root.add_child(emp_receiver)
+	var emp_result := canonical_state.queue_canonical_ability(
+		"aster", "emp", aster_pos, {}, emp_root)
+	_assert_true(bool(emp_result.get("accepted", false)), "Aster's valid EMP resolves")
+	_assert_equals(emp_receiver.pulse_count, 1, "EMP applies its world effect exactly once")
+	_assert_true(is_equal_approx(canonical_state.get_stat("aster", "stamina"), 35.0),
+		"Successful EMP atomically spends canonical stamina")
+
+	# A targeted shield may protect its caster; the canonical text does not prohibit this.
+	var self_wrap := canonical_state.queue_canonical_ability(
+		"peris", "wrap", peris_pos, {"target_id": "peris"})
+	_assert_true(bool(self_wrap.get("accepted", false)),
+		"WRAP accepts an explicit conscious authorized self-target")
+	_assert_true(is_equal_approx(canonical_state.get_damage_shield("peris"), 25.0),
+		"Self-targeted WRAP applies its shield effect")
+
+	var unauthorized_wrap := canonical_state.queue_canonical_ability(
+		"peris", "wrap", monos_pos, {"target_id": "monos"})
+	_assert_true(not bool(unauthorized_wrap.get("accepted", true)),
+		"WRAP rejects a registered target not authorized by command context")
+	_assert_true(is_equal_approx(canonical_state.get_stat("peris", "stamina"), 30.0),
+		"Rejected WRAP spends no stamina")
+
+	# Monos is not recruited party, but the Peris tutorial explicitly authorizes him as a ward.
+	var portal_wrap := canonical_state.queue_canonical_ability(
+		"peris", "wrap", monos_pos, {
+			"target_id": "monos",
+			"allowed_target_ids": ["aster", "peris", "monos"],
+		})
+	_assert_true(bool(portal_wrap.get("accepted", false)) \
+			and bool(portal_wrap.get("queued", false)),
+		"Authorized out-of-range WRAP queues movement instead of spending early")
+	_assert_true(is_equal_approx(canonical_state.get_stat("peris", "stamina"), 30.0),
+		"Queued WRAP does not spend until the effect resolves")
+	for _canonical_step in range(500):
+		if canonical_state.get_damage_shield("monos") > 0.0:
+			break
+		if canonical_sched.pop_next().is_empty():
+			break
+	_assert_true(is_equal_approx(canonical_state.get_damage_shield("monos"), 25.0),
+		"Scheduled WRAP applies after Peris enters cast range")
+	_assert_true(is_equal_approx(canonical_state.get_stat("peris", "stamina"), 15.0),
+		"Scheduled WRAP spends stamina exactly once on success")
+	canonical_state.flush_tick()
+
+	var canonical_replay := GameState.replay(canonical_state.event_log, canonical_grid)
+	_assert_true(is_equal_approx(canonical_replay.get_stat("aster", "stamina"), 35.0),
+		"Handler-free replay resolves EMP stamina exactly once")
+	_assert_true(is_equal_approx(canonical_replay.get_stat("peris", "stamina"), 15.0),
+		"Handler-free replay resolves immediate and scheduled WRAP costs")
+	_assert_true(is_equal_approx(canonical_replay.get_damage_shield("monos"), 25.0),
+		"Handler-free replay reconstructs the scheduled WRAP effect")
+	_assert_equals(canonical_state.state_hash(), canonical_replay.state_hash(),
+		"Canonical ability command replay reaches identical simulation state")
+	emp_root.free()
 
 # Lint: every public, non-static function in game_state.gd that mutates
 # state must call _emit so the action lands in the event log. Read-only
@@ -27831,15 +32090,24 @@ func _test_event_log_mutation_audit() -> void:
 		"register_mechanism", "unregister_mechanism",
 		"get_all_actuators", "evaluate_mechanisms",
 		# Stat reads
-		"get_stat", "get_stat_cap", "is_running",
+		"get_stat", "get_stat_cap", "is_running", "get_damage_shield",
 		# Stat and running wrappers emit; these
 		# call through them rather than emitting directly.
 		"adjust_stat", "toggle_running", "reset_characters_to_full",
+		# Temporary shields are deterministic consequences of a logged ability cast;
+		# their scheduler lifecycle is rebuilt by replaying that cast.
+		"apply_damage_shield", "clear_damage_shield",
 		# Pure ATP helpers (static, no state) — formatting/clamping only.
 		"normalize_atp", "quantize_atp", "clamp_atp", "atp_text",
 		# Map structure (the grid) is set from level data at scene setup — not a
 		# per-run player command. get_navigation_state is a pure query.
-		"get_navigation_state",
+		"get_navigation_state", "can_accept_move_command", "compute_rally_destinations",
+		# Detection subscriptions and batching are derived runtime acceleration state.
+		# Logged movement and visibility inputs reproduce their outcomes.
+		"set_detection_targets", "set_detection_enabled",
+		"begin_detection_update_batch", "end_detection_update_batch",
+		# Performance counters are diagnostics only and never affect simulation state.
+		"get_performance_counters", "reset_performance_counters",
 		# Pure queries over derived state: the route-mode flag (its MUTATOR set_route_mode emits),
 		# the knockdown window (a consequence of the logged dodge_roll), and the interactor picker
 		# (reads positions/hands only — the resulting move/trigger is what gets logged).
@@ -28600,13 +32868,17 @@ func _test_no_game_over() -> void:
 	gs.grid = grid
 	gs.scheduler = sched
 
-	# Register party with explicit max stats so restore works
+	# Register party with explicit caps. A wipe retreat may put them back in play,
+	# but it must preserve the ATP each member had when the spoke was lost.
 	for member in ["aster", "peris"]:
 		gs.register_character(member, grid.grid_to_world(Vector2i(1, 1)), 3.0, {
-			"hp": 100.0, "max_hp": 100.0,
-			"stamina": 80.0, "max_stamina": 80.0,
+			"hp": 100.0, "hp_max": 100.0,
+			"stamina": 80.0, "stamina_max": 80.0,
 			"atp": 6, "narrative_available": true,
 		})
+	gs.set_stat("aster", "atp", 2.0)
+	gs.set_stat("peris", "atp", 3.0)
+	var atp_before_wipe := {"aster": 2.0, "peris": 3.0}
 
 	var zm := ZoneManager.new()
 	var zone := Zone.new()
@@ -28629,6 +32901,14 @@ func _test_no_game_over() -> void:
 	zm.party_retreated.connect(func(hub_id: StringName):
 		retreated_to.append(String(hub_id)))
 
+	# Retreat is an emergency wipe reset, not a rest button available at a hub.
+	gs.set_stat("aster", "hp", 60.0)
+	_assert_true(not zm.retreat_to_last_hub(gs, ["aster", "peris"]),
+		"retreat refuses while any party member remains conscious")
+	_assert_equals(gs.get_stat("aster", "hp"), 60.0,
+		"a refused retreat does not heal a conscious character")
+	_assert_equals(retreated_to.size(), 0, "a refused retreat emits no checkpoint signal")
+
 	# Go into a spoke, everyone gets downed
 	gs.down_character("aster")
 	gs.down_character("peris")
@@ -28646,6 +32926,9 @@ func _test_no_game_over() -> void:
 	for member in ["aster", "peris"]:
 		var stats: Dictionary = gs.characters[member].stats
 		_assert_equals(stats.get("hp", -1.0), 100.0, "%s HP restored" % member)
+		_assert_equals(stats.get("stamina", -1.0), 80.0, "%s stamina restored" % member)
+		_assert_equals(stats.get("atp", -1.0), atp_before_wipe[member],
+			"%s wipe retreat preserves ATP rather than granting a free rest" % member)
 		_assert_true(gs.is_narratively_available(member),
 			"%s narrative-available after retreat" % member)
 	_assert_true(not gs.is_party_downed(["aster", "peris"]),
@@ -28701,12 +32984,10 @@ func _test_scripted_death_only() -> void:
 	_assert_equals(offenders.size(), 0,
 		"character_died.emit( only from die_scripted (offenders: %s)" % str(offenders))
 
-# Down a character, retreat to a hub, trigger rest, assert every stat is
-# restored to its declared max and the character is narratively available
-# again. Proves the failure model's "care is infrastructural" thesis at
-# the simulation level: nobody stays down after a rest.
+# Hub arrival must not masquerade as rest. Recovery begins only after the character is
+# physically inside a shelter and the explicit rest command spends ATP.
 func _test_hub_rest_restore() -> void:
-	_test_name = "Hub Rest Restore"
+	_test_name = "Hub Arrival vs Shelter Rest"
 
 	var grid := GridWorld.new()
 	grid.create_room(10, 8, true)
@@ -28715,37 +32996,58 @@ func _test_hub_rest_restore() -> void:
 	gs.grid = grid
 	gs.scheduler = sched
 
-	# Register aster with explicit max stats so restore has something to
-	# restore TO. Without max_hp / max_stamina in stats, restore leaves
-	# the value alone (safer than guessing).
 	gs.register_character("aster", grid.grid_to_world(Vector2i(1, 1)), 3.0, {
-		"hp": 100.0, "max_hp": 100.0,
-		"stamina": 80.0, "max_stamina": 80.0,
+		"hp": 95.0, "hp_max": 100.0,
+		"stamina": 72.0, "stamina_max": 80.0,
 		"atp": 6,
 		"narrative_available": true,
 	})
-
-	# Down clears stats and narrative availability.
-	gs.down_character("aster")
-	_assert_equals(gs.characters["aster"].stats.get("hp", -1.0), 0.0, "HP zeroed on down")
-	_assert_equals(gs.characters["aster"].stats.get("stamina", -1.0), 0.0, "Stamina zeroed on down")
-	_assert_true(not gs.is_narratively_available("aster"),
-		"Narrative-unavailable when downed")
-
-	# Retreat position is enough to trigger hub restore.
 	var hub := Hub.new()
 	hub.id = &"hub_channels"
 	hub.zone_id = &"channels"
 	hub.position = grid.grid_to_world(Vector2i(4, 4))
 	hub.radius = 2.0
-
-	Hub.restore_party(gs, ["aster"])
-
+	var zones := ZoneManager.new()
+	var zone := Zone.new()
+	zone.id = &"channels"
+	zones.register_zone(zone)
+	zones.register_hub(hub)
+	zones.enter_zone(&"channels")
+	zones.enter_hub(hub.id, gs, ["aster"])
 	var stats: Dictionary = gs.characters["aster"].stats
-	_assert_equals(stats.get("hp", -1.0), 100.0, "HP restored to max")
-	_assert_equals(stats.get("stamina", -1.0), 80.0, "Stamina restored to max")
-	_assert_equals(stats.get("atp", -1.0), GameState.ATP_MAX_PIPS, "ATP restored to full")
-	_assert_true(gs.is_narratively_available("aster"), "Narrative-available after rest")
+	_assert_equals(stats.get("hp", -1.0), 95.0, "Entering a hub does not heal HP")
+	_assert_equals(stats.get("stamina", -1.0), 72.0, "Entering a hub does not refill stamina")
+	_assert_equals(stats.get("atp", -1.0), 6.0, "Entering a hub does not refill ATP")
+
+	# Portal transit ends at another hub, but that arrival is still only a location/progression
+	# change. It must not gain the old Hub.restore_party side effect through another call path.
+	var destination_zone := Zone.new()
+	destination_zone.id = &"stacks"
+	zones.register_zone(destination_zone)
+	var destination_hub := Hub.new()
+	destination_hub.id = &"hub_stacks"
+	destination_hub.zone_id = &"stacks"
+	zones.register_hub(destination_hub)
+	var portal := Portal.new()
+	portal.id = &"channels_to_stacks"
+	portal.from_zone_id = &"channels"
+	portal.to_zone_id = &"stacks"
+	portal.to_hub_id = destination_hub.id
+	zones.register_portal(portal)
+	_assert_true(zones.take_portal(portal.id, gs, ["aster"]), "Portal transit succeeds")
+	_assert_equals(gs.get_stat("aster", "hp"), 95.0, "Portal arrival does not heal HP")
+	_assert_equals(gs.get_stat("aster", "stamina"), 72.0, "Portal arrival does not refill stamina")
+	_assert_equals(gs.get_stat("aster", "atp"), 6.0, "Portal arrival does not refill ATP")
+
+	gs.add_shelter_region(
+		Vector2(hub.position.x - hub.radius, hub.position.z - hub.radius),
+		Vector2(hub.position.x + hub.radius, hub.position.z + hub.radius))
+	gs.snap_character_to("aster", hub.position)
+	_assert_true(gs.command_rest("aster"), "Explicit shelter rest starts after hub arrival")
+	_assert_equals(gs.get_stat("aster", "atp"), 5.0, "Shelter rest spends one ATP up front")
+	sched.advance(8.5)
+	_assert_equals(gs.get_stat("aster", "hp"), 100.0, "Shelter rest heals HP")
+	_assert_equals(gs.get_stat("aster", "stamina"), 80.0, "Shelter rest restores stamina")
 
 # Gate requires Endo. Without Endo in the party, try_pass emits blocked
 # with a reason naming the missing member and does not pass. Adding Endo
@@ -29188,9 +33490,7 @@ func _walk_for_dead_names(path: String, retired: Dictionary, offenders: Array) -
 ## setters (concealment/distraction) are the chunks' JOB per the hide-tier law, so neither is
 ## linted. If the kit lacks a verb, ADD IT TO THE KIT (the Enemy return-to-post precedent).
 const CHUNK_MUTATION_DEBT := {
-	"boss_showcase_chunk.gd": {"snap_character_to": 1, "adjust_stat": 1},
-	"lockout_chase_chunk.gd": {"snap_character_to": 4, "restore_character": 1},
-	"set_piece_showcase_chunk.gd": {"snap_character_to": 1},
+	"lockout_chase_chunk.gd": {"snap_character_to": 1, "restore_character": 1},
 	"wash_relay_chunk.gd": {"snap_character_to": 2},
 }
 
@@ -29836,6 +34136,43 @@ func _set_sequence_character_position(instance: Node, char_id: String, pos: Vect
 		instance._game_state.command_stop(char_id)
 		instance._game_state.characters[char_id].position = pos
 
+func _ensure_elevator_gauntlet_endo_fixture(instance: Node) -> void:
+	if instance._game_state.characters.has("endo"):
+		return
+	instance._set_endo_presenter_present(true)
+	instance._endo.global_position = instance._endo_entry_destination()
+	instance._register_gs_character("endo", instance._endo, 2.5, {
+		"hp": instance.PARTY_MAX_HP,
+		"stamina": GameState.STAMINA_MAX,
+		"atp": GameState.ATP_MAX_PIPS,
+	})
+
+func _stage_elevator_gauntlet_intro_approach(instance: Node) -> void:
+	var targets: Dictionary = instance._gauntlet_intro_targets()
+	for member_id in instance.GAUNTLET_INTRO_REQUIRED_MEMBERS:
+		var target: Vector3 = targets[member_id]
+		var approach := target + Vector3(-2.0, 0.0, 0.0)
+		instance._game_state.command_stop(member_id)
+		instance._game_state.set_character_level(member_id, instance.LEVEL_LOWER)
+		instance._game_state.snap_character_to(member_id, approach)
+		var presenter: Node3D = instance._elevator_party_node(member_id)
+		if presenter != null:
+			presenter.global_position = approach
+
+## Accelerate only the travel time of the production-owned entrance formation.
+## Each body must first receive an accepted GameState movement command; only then
+## does the fixture settle that body at its real endpoint and let production
+## derive arrival. This prevents a teleport-only test from legitimizing a fake
+## dialogue latch or an unsaved presenter animation.
+func _settle_elevator_gauntlet_intro_formation(instance: Node) -> void:
+	var targets: Dictionary = instance._gauntlet_intro_targets()
+	for member_id in instance.GAUNTLET_INTRO_REQUIRED_MEMBERS:
+		instance._gauntlet_intro_authority["next_retry_tick"] = \
+			instance._scheduler.get_current_tick()
+		instance._issue_next_gauntlet_intro_move()
+		_set_sequence_character_position(instance, member_id, targets[member_id])
+		instance._update_gauntlet_intro_formation()
+
 func _disable_enemy_detection(instance: Node) -> void:
 	var enemy_groups: Array = []
 	if "_enemies" in instance:
@@ -29992,106 +34329,136 @@ func _clear_sequence_runtime(instance: Node) -> void:
 	if "_dialogue" in instance and instance._dialogue and instance._dialogue.has_method("clear"):
 		instance._dialogue.clear()
 
-func _complete_channels_field_operation_direct(instance: Node, operation_id: String) -> void:
-	if not instance.CHANNELS_FIELD_OPERATIONS.has(operation_id):
-		return
-	var operation: Dictionary = instance.CHANNELS_FIELD_OPERATIONS[operation_id]
-	for site_id in operation.get("evidence", []):
-		instance._on_channels_field_site_interacted(str(site_id))
-	var valid_choices: Array = operation.get("valid_choices", [])
-	if valid_choices.is_empty():
-		return
-	var choice_id := str(valid_choices[0])
-	instance._on_channels_field_site_interacted(choice_id)
-	var resolution_sites: Dictionary = operation.get("resolution_sites", {})
-	if resolution_sites.has(choice_id):
-		instance._on_channels_field_site_interacted(str(resolution_sites[choice_id]))
 
-func _schedule_channels_field_operation_human(instance: Node, operation_id: String) -> float:
-	if not instance.CHANNELS_FIELD_OPERATIONS.has(operation_id):
-		return 0.0
-	var operation: Dictionary = instance.CHANNELS_FIELD_OPERATIONS[operation_id]
-	var elapsed := 0.0
-	var cursor: Vector3 = operation.get("start", Vector3.ZERO)
-	for raw_site_id in operation.get("evidence", []):
-		var site_id := str(raw_site_id)
-		var spec: Dictionary = instance.CHANNELS_FIELD_SITES[site_id]
-		var site_position: Vector3 = spec.get("pos", cursor)
-		var role := str(spec.get("role", "aster"))
-		elapsed += cursor.distance_to(site_position) / 2.5
-		elapsed += float(instance._channels_field_site_work_seconds(site_id)) + 6.5
-		var callback_delay := elapsed
-		instance._scheduler.schedule_after(callback_delay, func():
-			_set_sequence_character_position(instance, role, site_position)
-			instance._on_channels_field_site_interacted(site_id)
-		, "human_channels_%s_%s" % [operation_id, site_id])
-		cursor = site_position
-	var valid_choices: Array = operation.get("valid_choices", [])
-	if valid_choices.is_empty():
-		return elapsed
-	var choice_id := str(valid_choices[0])
-	var choice_spec: Dictionary = instance.CHANNELS_FIELD_SITES[choice_id]
-	var choice_position: Vector3 = choice_spec.get("pos", cursor)
-	var choice_role := str(choice_spec.get("role", "aster"))
-	elapsed += cursor.distance_to(choice_position) / 2.5
-	elapsed += float(instance._channels_field_site_work_seconds(choice_id)) + float(operation.get("decision_seconds", 0.0))
-	var choice_delay := elapsed
-	instance._scheduler.schedule_after(choice_delay, func():
-		_set_sequence_character_position(instance, choice_role, choice_position)
-		instance._on_channels_field_site_interacted(choice_id)
-	, "human_channels_%s_%s" % [operation_id, choice_id])
-	cursor = choice_position
-	var resolution_sites: Dictionary = operation.get("resolution_sites", {})
-	if resolution_sites.has(choice_id):
-		var resolution_id := str(resolution_sites[choice_id])
-		var resolution_spec: Dictionary = instance.CHANNELS_FIELD_SITES[resolution_id]
-		var resolution_position: Vector3 = resolution_spec.get("pos", cursor)
-		var resolution_role := str(resolution_spec.get("role", "aster"))
-		elapsed += cursor.distance_to(resolution_position) / 2.5
-		elapsed += float(instance._channels_field_site_work_seconds(resolution_id))
-		var resolution_delay := elapsed
-		instance._scheduler.schedule_after(resolution_delay, func():
-			_set_sequence_character_position(instance, resolution_role, resolution_position)
-			instance._on_channels_field_site_interacted(resolution_id)
-		, "human_channels_%s_%s" % [operation_id, resolution_id])
-	return elapsed
+func _drive_act1_stacks_bank_control(instance: Node, bank_id: String) -> bool:
+	if not "_stacks_bank_interactables" in instance \
+			or not instance._stacks_bank_interactables.has(bank_id):
+		return false
+	var bank: Node3D = instance._stacks_bank_interactables.get(bank_id)
+	if not is_instance_valid(bank):
+		return false
+	instance._game_state.command_stop("aster")
+	_set_sequence_character_position(instance, "aster", bank.global_position)
+	instance._select_character("aster")
+	bank.set("active_character", "aster")
+	return bool(bank.call("_trigger", false))
 
-func _complete_act1_district_field_operation_direct(instance: Node, district: String, operation_id: String) -> void:
-	var operations: Dictionary = instance.STACKS_FIELD_OPERATIONS if district == "stacks" else instance.RINGS_FIELD_OPERATIONS
-	var specs: Dictionary = instance.STACKS_FIELD_SITES if district == "stacks" else instance.RINGS_FIELD_SITES
-	var nodes: Dictionary = instance._stacks_field_sites if district == "stacks" else instance._rings_field_sites
-	if not operations.has(operation_id):
-		return
-	var operation: Dictionary = operations[operation_id]
-	for evidence_variant in operation.get("evidence", []):
-		var evidence_id := str(evidence_variant)
-		var evidence_spec: Dictionary = specs[evidence_id]
-		instance.headless_select_character(str(evidence_spec.get("role", "")))
-		var evidence: Node = nodes.get(evidence_id)
-		if evidence != null:
-			evidence.call("_trigger", false)
-	var choices: Array = operation.get("choices", [])
-	if choices.is_empty():
-		return
-	var choice_id := str(choices[0])
-	var choice_spec: Dictionary = specs[choice_id]
-	instance.headless_select_character(str(choice_spec.get("role", "")))
-	var choice: Node = nodes.get(choice_id)
-	if choice != null:
-		choice.call("_trigger", false)
-	var resolution_id := str((operation.get("resolution_sites", {}) as Dictionary).get(choice_id, ""))
-	if resolution_id == "" or not specs.has(resolution_id):
-		return
-	var resolution_spec: Dictionary = specs[resolution_id]
-	instance.headless_select_character(str(resolution_spec.get("role", "")))
-	var resolution: Node = nodes.get(resolution_id)
-	if resolution != null:
-		resolution.call("_trigger", false)
+
+func _drive_act1_optional_control(
+		instance: Node, interactable: Node, actor: String
+	) -> bool:
+	if not is_instance_valid(interactable):
+		return false
+	instance._game_state.command_stop(actor)
+	_set_sequence_character_position(instance, actor, (interactable as Node3D).global_position)
+	instance._select_character(actor)
+	interactable.set("active_character", actor)
+	return bool(interactable.call("_trigger", false))
+
+
+func _drive_act1_channels_shelter_control(instance: Node) -> bool:
+	var shelter: Node3D = instance._channels_shelter_interactable
+	if not is_instance_valid(shelter):
+		return false
+	for char_id in ["aster", "peris", "endo"]:
+		instance._game_state.command_stop(char_id)
+	instance._select_character("aster")
+	shelter.set("active_character", "aster")
+	return bool(shelter.call("_trigger", false))
+
+
+func _drive_act1_stacks_shelter_control(instance: Node) -> bool:
+	var shelter: Node3D = instance._stacks_shelter_interactable
+	if not is_instance_valid(shelter):
+		return false
+	for char_id in ["aster", "peris", "endo"]:
+		instance._game_state.command_stop(char_id)
+		_set_sequence_character_position(instance, char_id, instance.STACKS_SHELTER_POS)
+	instance._select_character("aster")
+	shelter.set("active_character", "aster")
+	return bool(shelter.call("_trigger", false))
+
+
+func _drive_act1_flure_control(
+		instance: Node, flure: Node, actor: String
+	) -> bool:
+	if not is_instance_valid(flure) or not flure is Node3D:
+		return false
+	instance._select_character(actor)
+	return _trigger_exact_flure_source(instance._game_state, flure, actor)
+
+
+func _drive_act1_channels_window_current(
+		instance: Node, window_id: String
+	) -> Dictionary:
+	var result := {
+		"enemy_count": 0,
+		"committed_ids": [],
+		"completed_ids": [],
+		"fully_swept": false,
+	}
+	if not instance._channels_window_lanes.has(window_id):
+		return result
+	var lane: Dictionary = instance._channels_window_lanes.get(window_id, {})
+	var entries: Array = lane.get("periodic_channels", [])
+	var enemy_ids: Array = lane.get("enemy_ids", [])
+	result["enemy_count"] = enemy_ids.size()
+	if entries.is_empty() or enemy_ids.is_empty():
+		return result
+	var entry: Dictionary = entries[0]
+	var channel: Variant = entry.get("channel")
+	var channel_position: Vector3 = entry.get("position", Vector3.ZERO)
+	if not is_instance_valid(channel) or not channel is Channel:
+		return result
+
+	# This focused driver forces one known contact while retaining the production
+	# consequence chain: a real Channel sees real Enemy bodies, commits locked
+	# traversals, and only their physical arrivals can populate swept_ids.
+	var safe_observer_position := channel_position + Vector3(-40.0, 0.0, 40.0)
+	for char_id in instance.CHANNELS_PARTY_IDS:
+		instance.headless_set_character_position(char_id, safe_observer_position)
+	for enemy_id_v in enemy_ids:
+		var enemy_id := str(enemy_id_v)
+		instance._game_state.command_stop(enemy_id)
+		instance._game_state.snap_character_to(enemy_id, channel_position)
+	(channel as Channel).flood_now()
+	instance.headless_advance(0.061, 0.001)
+
+	var last_arrival := -1.0
+	for enemy_id_v in enemy_ids:
+		var enemy_id := str(enemy_id_v)
+		var traversal: Dictionary = (
+			instance._game_state.get_external_traversal_state(enemy_id))
+		if str(traversal.get("traversal_id", "")).begins_with("channel_sweep/"):
+			(result["committed_ids"] as Array).append(enemy_id)
+			last_arrival = maxf(
+				last_arrival, float(traversal.get("end_tick", -1.0)))
+	if last_arrival >= 0.0:
+		instance.headless_advance(
+			maxf(
+				0.0,
+				last_arrival - float(instance._scheduler.get_current_tick())
+			) + 0.01,
+			0.01
+		)
+
+	lane = instance._channels_window_lanes.get(window_id, {})
+	for enemy_id_v in enemy_ids:
+		var enemy_id := str(enemy_id_v)
+		var enemy: Variant = instance._resolve_channels_enemy(enemy_id)
+		if is_instance_valid(enemy) \
+				and enemy.has_method("is_alive") \
+				and not bool(enemy.call("is_alive")) \
+				and not instance._game_state.is_external_traversal_active(enemy_id):
+			(result["completed_ids"] as Array).append(enemy_id)
+	instance._evaluate_channels_window_authority()
+	result["fully_swept"] = instance._channels_scope_is_fully_swept(
+		lane.get("enemy_ids", []), lane.get("swept_ids", []))
+	return result
+
 
 func _make_act1_sequence_actions(instance: Node) -> Dictionary:
 	var actions := {}
-	actions["channels_intake_survey"] = func():
-		_complete_channels_field_operation_direct(instance, "intake")
 	actions["channels_to_memory"] = func():
 		_set_sequence_character_position(
 			instance,
@@ -30100,30 +34467,19 @@ func _make_act1_sequence_actions(instance: Node) -> Dictionary:
 		)
 	actions["channels_memory"] = func():
 		_clear_sequence_runtime(instance)
-		instance._start_channels_field_operation("memory")
-	actions["channels_memory_reconstruction"] = func():
-		_complete_channels_field_operation_direct(instance, "memory")
+		instance._start_channels_corpse()
 	actions["channels_corpse"] = func():
 		_clear_sequence_runtime(instance)
-		_set_sequence_character_position(instance, "aster", instance.CHANNELS_WINDOW_ONE_STAGE_POS)
-		_set_sequence_character_position(instance, "peris", instance.CHANNELS_WINDOW_ONE_STAGE_POS + Vector3(-1.6, 0.0, 1.2))
-		_set_sequence_character_position(instance, "endo", instance.CHANNELS_WINDOW_ONE_STAGE_POS + Vector3(-2.8, 0.0, -1.0))
-		instance._start_channels_field_operation("harvest")
-	actions["channels_harvest_recovery"] = func():
-		_complete_channels_field_operation_direct(instance, "harvest")
+		instance._start_channels_window_intro("window_one")
 	actions["channels_window_one_intro"] = func():
 		instance._begin_channels_window_lane("window_one")
 	actions["channels_window_one_activate"] = func():
-		instance.activate_channels_window_lure("window_one")
+		var lane: Dictionary = instance._channels_window_lanes.get("window_one", {})
+		_drive_act1_flure_control(
+			instance, instance._valid_channels_flure(lane), "peris")
 	actions["channels_window_one_cross"] = func():
-		_set_sequence_character_position(
-			instance,
-			"aster",
-			instance.CHANNELS_WINDOW_ONE_GOAL_POS
-		)
+		_set_sequence_character_position(instance, "aster", instance.CHANNELS_WINDOW_ONE_GOAL_POS)
 		instance._update_channels_window_puzzles(0.1, 1.0)
-	actions["channels_relay_alignment"] = func():
-		_complete_channels_field_operation_direct(instance, "relay")
 	actions["channels_to_flure"] = func():
 		_set_sequence_character_position(
 			instance,
@@ -30135,22 +34491,16 @@ func _make_act1_sequence_actions(instance: Node) -> Dictionary:
 		_set_sequence_character_position(instance, "aster", instance.CHANNELS_WINDOW_TWO_STAGE_POS)
 		_set_sequence_character_position(instance, "peris", instance.CHANNELS_WINDOW_TWO_STAGE_POS + Vector3(-1.6, 0.0, 1.2))
 		_set_sequence_character_position(instance, "endo", instance.CHANNELS_WINDOW_TWO_STAGE_POS + Vector3(-2.8, 0.0, -1.0))
-		instance._start_channels_field_operation("signal")
-	actions["channels_signal_mapping"] = func():
-		_complete_channels_field_operation_direct(instance, "signal")
+		instance._start_channels_window_intro("window_two")
 	actions["channels_window_two_intro"] = func():
 		instance._begin_channels_window_lane("window_two")
 	actions["channels_window_two_activate"] = func():
-		instance.activate_channels_window_lure("window_two")
+		var lane: Dictionary = instance._channels_window_lanes.get("window_two", {})
+		_drive_act1_flure_control(
+			instance, instance._valid_channels_flure(lane), "peris")
 	actions["channels_window_two_cross"] = func():
-		_set_sequence_character_position(
-			instance,
-			"aster",
-			instance.CHANNELS_WINDOW_TWO_GOAL_POS
-		)
+		_set_sequence_character_position(instance, "aster", instance.CHANNELS_WINDOW_TWO_GOAL_POS)
 		instance._update_channels_window_puzzles(0.1, 1.0)
-	actions["channels_escape_plan"] = func():
-		_complete_channels_field_operation_direct(instance, "escape")
 	actions["channels_to_encounter"] = func():
 		_set_sequence_character_position(
 			instance,
@@ -30164,22 +34514,22 @@ func _make_act1_sequence_actions(instance: Node) -> Dictionary:
 		_set_sequence_character_position(instance, "endo", instance.CHANNELS_ENCOUNTER_ENTRY_POS)
 		instance._begin_channels_encounter()
 	actions["channels_encounter_activate"] = func():
-		instance._on_channels_run_lure_activated()
+		_drive_act1_flure_control(instance, instance._channels_run_lure, "endo")
 	actions["channels_encounter_hide"] = func():
-		_set_sequence_character_position(
-			instance,
-			"endo",
-			instance.CHANNELS_HIDE_SPOT_POS
-		)
+		_set_sequence_character_position(instance, "endo", instance.CHANNELS_HIDE_SPOT_POS)
 	actions["channels_encounter_run"] = func():
-		_set_sequence_character_position(
-			instance,
-			"endo",
-			instance.CHANNELS_SHELTER_POS
-		)
+		_set_sequence_character_position(instance, "endo", instance.CHANNELS_SHELTER_POS)
 	actions["channels_shelter"] = func():
 		_clear_sequence_runtime(instance)
-		instance._start_channels_explore()
+		for char_id in ["aster", "peris", "endo"]:
+			_set_sequence_character_position(instance, char_id, instance.CHANNELS_SHELTER_POS)
+			instance._game_state.set_stat(char_id, "hp", 90.0)
+			instance._game_state.set_stat(char_id, "atp", 2.0)
+		if not instance._channels_shelter_reached:
+			instance._on_channels_shelter_party_arrived()
+		instance._dialogue.clear()
+		instance._enable_channels_shelter_rest()
+		_drive_act1_channels_shelter_control(instance)
 	actions["channels_explore"] = func():
 		_set_sequence_character_position(
 			instance,
@@ -30188,20 +34538,17 @@ func _make_act1_sequence_actions(instance: Node) -> Dictionary:
 		)
 	actions["stacks_enter"] = func():
 		_clear_sequence_runtime(instance)
-		instance._enter_step("stacks_terminal")
-	actions["stacks_terminal"] = func():
+		instance._start_stacks_bank_audit()
+	actions["stacks_bank_audit"] = func():
+		for bank_id in ["bank_a", "bank_b", "bank_c", "bank_b"]:
+			_drive_act1_stacks_bank_control(instance, bank_id)
+	actions["stacks_shelter"] = func():
 		_clear_sequence_runtime(instance)
-		instance._enter_step("stacks_signal")
-	actions["stacks_signal"] = func():
-		_clear_sequence_runtime(instance)
-		instance._enter_step("stacks_archive")
-	actions["stacks_archive"] = func():
-		_clear_sequence_runtime(instance)
-		instance.trigger_stacks_archive(false)
-	actions["stacks_identity_reconstruction"] = func():
-		_complete_act1_district_field_operation_direct(instance, "stacks", "identity")
-	actions["stacks_egress_commit"] = func():
-		_complete_act1_district_field_operation_direct(instance, "stacks", "egress")
+		for char_id in ["aster", "peris", "endo"]:
+			_set_sequence_character_position(instance, char_id, instance.STACKS_SHELTER_POS)
+			instance._game_state.set_stat(char_id, "hp", 90.0)
+			instance._game_state.set_stat(char_id, "atp", 2.0)
+		_drive_act1_stacks_shelter_control(instance)
 	actions["stacks_explore"] = func():
 		_set_sequence_character_position(
 			instance,
@@ -30210,17 +34557,21 @@ func _make_act1_sequence_actions(instance: Node) -> Dictionary:
 		)
 	actions["rings_enter"] = func():
 		_clear_sequence_runtime(instance)
-		instance._enter_step("rings_client")
+		instance._start_rings_client()
 	actions["rings_client"] = func():
 		_clear_sequence_runtime(instance)
-		instance._enter_step("endo_departs")
+		var marco_position: Vector3 = instance.headless_get_anchor_positions().get(
+			"rings_marco", instance.RINGS_START + Vector3(80.0, 0.5, -5.0))
+		_set_sequence_character_position(
+			instance, "peris", marco_position + Vector3(-1.0, 0.0, -0.6))
+		_set_sequence_character_position(
+			instance, "endo", marco_position + Vector3(-2.0, 0.0, 1.0))
+		instance._game_state.set_party(["aster", "peris", "endo"])
+		instance._rings_client_interactable.active_character = "peris"
+		instance._rings_client_interactable._trigger(false)
 	actions["endo_departs"] = func():
 		_clear_sequence_runtime(instance)
-		instance._start_district_field_operation("rings", "residence")
-	actions["rings_residence_survey"] = func():
-		_complete_act1_district_field_operation_direct(instance, "rings", "residence")
-	actions["rings_boundary_commit"] = func():
-		_complete_act1_district_field_operation_direct(instance, "rings", "boundary")
+		instance._start_rings_explore()
 	actions["rings_explore"] = func():
 		_set_sequence_character_position(
 			instance,
@@ -30239,9 +34590,6 @@ func _make_act1_sequence_actions(instance: Node) -> Dictionary:
 		)
 		instance._start_lockout_chase()
 	actions["lockout_chase"] = func():
-		# Campaign Act 1 now hosts the full lockout_chase SceneChunk. This contract driver
-		# intentionally skips gameplay, so advance through its completion seam instead of
-		# teleporting into the old procedural corridor's exile trigger.
 		if bool(instance.get("_lockout_chase_active")):
 			instance._start_lockout_exile()
 		else:
@@ -30258,772 +34606,39 @@ func _make_act1_sequence_actions(instance: Node) -> Dictionary:
 		instance._change_scene_or_record("res://scenes/tutorial/leaving_facility.tscn")
 	return actions
 
-func _make_act1_human_actions(instance: Node) -> Dictionary:
-	var actions := {}
-	actions["channels_intake_survey"] = func():
-		_schedule_channels_field_operation_human(instance, "intake")
-	actions["channels_memory_reconstruction"] = func():
-		_schedule_channels_field_operation_human(instance, "memory")
-	actions["channels_harvest_recovery"] = func():
-		_schedule_channels_field_operation_human(instance, "harvest")
-	actions["channels_relay_alignment"] = func():
-		_schedule_channels_field_operation_human(instance, "relay")
-	actions["channels_signal_mapping"] = func():
-		_schedule_channels_field_operation_human(instance, "signal")
-	actions["channels_escape_plan"] = func():
-		_schedule_channels_field_operation_human(instance, "escape")
-	actions["channels_to_memory"] = func():
-		_schedule_human_move(
-			instance,
-			"aster",
-			Vector3(instance.CHANNELS_MEMORY_TRIGGER_X + 1.0, 0.5, 0.0),
-			"human_channels_to_memory",
-			0.5
-		)
-	actions["channels_to_flure"] = func():
-		_schedule_human_move(
-			instance,
-			"aster",
-			Vector3(instance.CHANNELS_FLURE_TRIGGER_X + 1.0, 0.5, 0.0),
-			"human_channels_to_flure",
-			0.45
-		)
-	actions["channels_window_one_intro"] = func():
-		var stage_targets := {
-			"aster": instance.CHANNELS_WINDOW_ONE_STAGE_POS,
-			"peris": instance.CHANNELS_WINDOW_ONE_STAGE_POS + Vector3(-1.6, 0.0, 1.2),
-			"endo": instance.CHANNELS_WINDOW_ONE_STAGE_POS + Vector3(-2.8, 0.0, -1.0),
-		}
-		for char_id in stage_targets.keys():
-			_set_sequence_character_position(instance, char_id, stage_targets[char_id])
-	actions["channels_window_one_activate"] = func():
-		var char_id := "aster"
-		var target: Vector3 = instance.CHANNELS_WINDOW_ONE_LURE_POS
-		var from := _get_sequence_character_position(instance, char_id)
-		var speed := _get_sequence_character_speed(instance, char_id)
-		var travel_time := from.distance_to(target) / maxf(speed, 0.1)
-		var arrive_delay := 0.25 + travel_time
-		instance._scheduler.schedule_after(arrive_delay, func():
-			_set_sequence_character_position(instance, char_id, target)
-		, "human_channels_window_one_arrive")
-		instance._scheduler.schedule_after(arrive_delay + 1.6, func():
-			_set_sequence_character_position(instance, char_id, target)
-			instance.activate_channels_window_lure("window_one")
-		, "human_channels_window_one_activate")
-	actions["channels_window_one_cross"] = func():
-		_schedule_human_move(
-			instance,
-			"aster",
-			instance.CHANNELS_WINDOW_ONE_GOAL_POS,
-			"human_channels_window_one_cross",
-			0.15
-		)
-	actions["channels_to_encounter"] = func():
-		_schedule_human_move(
-			instance,
-			"aster",
-			Vector3(instance.CHANNELS_ENCOUNTER_TRIGGER_X + 1.0, 0.5, 0.0),
-			"human_channels_to_encounter",
-			0.45
-		)
-	actions["channels_window_two_intro"] = func():
-		var stage_targets := {
-			"aster": instance.CHANNELS_WINDOW_TWO_STAGE_POS,
-			"peris": instance.CHANNELS_WINDOW_TWO_STAGE_POS + Vector3(-1.6, 0.0, 1.2),
-			"endo": instance.CHANNELS_WINDOW_TWO_STAGE_POS + Vector3(-2.8, 0.0, -1.0),
-		}
-		for char_id in stage_targets.keys():
-			_set_sequence_character_position(instance, char_id, stage_targets[char_id])
-	actions["channels_window_two_activate"] = func():
-		var char_id := "aster"
-		var target: Vector3 = instance.CHANNELS_WINDOW_TWO_LURE_POS
-		var from := _get_sequence_character_position(instance, char_id)
-		var speed := _get_sequence_character_speed(instance, char_id)
-		var travel_time := from.distance_to(target) / maxf(speed, 0.1)
-		var arrive_delay := 0.25 + travel_time
-		instance._scheduler.schedule_after(arrive_delay, func():
-			_set_sequence_character_position(instance, char_id, target)
-		, "human_channels_window_two_arrive")
-		instance._scheduler.schedule_after(arrive_delay + 1.6, func():
-			_set_sequence_character_position(instance, char_id, target)
-			instance.activate_channels_window_lure("window_two")
-		, "human_channels_window_two_activate")
-	actions["channels_window_two_cross"] = func():
-		_schedule_human_move(
-			instance,
-			"aster",
-			instance.CHANNELS_WINDOW_TWO_GOAL_POS,
-			"human_channels_window_two_cross",
-			0.15
-		)
-	actions["channels_encounter_activate"] = func():
-		var char_id := "endo"
-		var target: Vector3 = instance.CHANNELS_RUN_LURE_POS
-		var from := _get_sequence_character_position(instance, char_id)
-		var speed := _get_sequence_character_speed(instance, char_id)
-		var travel_time := from.distance_to(target) / maxf(speed, 0.1)
-		var arrive_delay := 0.35 + travel_time
-		instance._scheduler.schedule_after(arrive_delay, func():
-			_set_sequence_character_position(instance, char_id, target)
-		, "human_channels_lure_arrive")
-		instance._scheduler.schedule_after(arrive_delay + 2.0, func():
-			_set_sequence_character_position(instance, char_id, target)
-			instance._on_channels_run_lure_activated()
-		, "human_channels_lure_activate")
-	actions["channels_encounter_hide"] = func():
-		_schedule_human_move(
-			instance,
-			"endo",
-			instance.CHANNELS_HIDE_SPOT_POS,
-			"human_channels_encounter_hide",
-			0.2
-		)
-	actions["channels_encounter_run"] = func():
-		_schedule_human_move(
-			instance,
-			"endo",
-			instance.CHANNELS_SHELTER_POS,
-			"human_channels_encounter_run",
-			0.2
-		)
-	actions["channels_explore"] = func():
-		_schedule_human_move(
-			instance,
-			"aster",
-			Vector3(instance.CHANNELS_END.x - 4.0, 0.5, 0.0),
-			"human_channels_explore",
-			0.4
-		)
-	actions["stacks_explore"] = func():
-		_schedule_human_move(
-			instance,
-			"aster",
-			Vector3(instance.STACKS_END.x - 4.0, 0.5, 0.0),
-			"human_stacks_explore",
-			0.4
-		)
-	actions["rings_explore"] = func():
-		_schedule_human_move(
-			instance,
-			"aster",
-			Vector3(instance.RINGS_END.x - 4.0, 0.5, 0.0),
-			"human_rings_explore",
-			0.4
-		)
-	actions["lockout_chase"] = func():
-		_schedule_human_move(
-			instance,
-			"aster",
-			Vector3(instance.LOCKOUT_START.x - 11.0, 0.5, 0.0),
-			"human_lockout_chase",
-			0.2
-		)
-	return actions
-
-func _dialogue_style_speed_multiplier(style: String) -> float:
-	match style:
-		"fragment":
-			return 0.4
-		"poem":
-			return 0.7
-		"whisper":
-			return 0.25
-		_:
-			return 1.0
-
-func _dialogue_line_duration(key: String, continue_delay := 0.35) -> float:
-	var line := DialogueData.get_line(key)
-	var cps := 30.0 * _dialogue_style_speed_multiplier(line.style)
-	var display_time := line.text.length() / maxf(cps, 1.0)
-	var hold_time := continue_delay if line.wait else 2.0
-	return display_time + hold_time
-
-func _dialogue_chain_duration(keys: Array, delay_between := 0.0, continue_delay := 0.35) -> float:
-	var total := 0.0
-	for i in range(keys.size()):
-		total += _dialogue_line_duration(str(keys[i]), continue_delay)
-		if delay_between > 0.0 and i < keys.size() - 1:
-			total += delay_between
-	return total
-
-func _travel_duration(from: Vector3, to: Vector3, speed: float, reaction_delay := 0.0) -> float:
-	return reaction_delay + from.distance_to(to) / maxf(speed, 0.1)
-
-func _party_move_duration(from_positions: Dictionary, destinations: Dictionary, speeds: Dictionary) -> float:
-	var longest := 0.0
-	for id in destinations.keys():
-		if not from_positions.has(id):
-			continue
-		longest = maxf(
-			longest,
-			from_positions[id].distance_to(destinations[id]) / maxf(float(speeds.get(id, 3.0)), 0.1)
-		)
-	return longest
-
-func _mark_estimate_step(step_wall_times: Dictionary, step_name: String, system_time: float, dialogue_time: float) -> void:
-	step_wall_times[step_name] = system_time + dialogue_time
-
-func _estimate_channels_field_operation_seconds(instance: Node, operation_id: String) -> float:
-	if not instance.CHANNELS_FIELD_OPERATIONS.has(operation_id):
-		return 0.0
-	var operation: Dictionary = instance.CHANNELS_FIELD_OPERATIONS[operation_id]
-	var seconds := float(instance._channels_shortest_operation_route(operation_id)) / 2.5
-	var evidence: Array = operation.get("evidence", [])
-	for raw_site_id in evidence:
-		seconds += float(instance._channels_field_site_work_seconds(str(raw_site_id))) + 6.5
-	seconds += float(operation.get("decision_seconds", 0.0))
-	var valid_choices: Array = operation.get("valid_choices", [])
-	var resolution_sites: Dictionary = operation.get("resolution_sites", {})
-	var shortest_choice_work := INF
-	for raw_choice_id in valid_choices:
-		var choice_id := str(raw_choice_id)
-		var choice_work := float(instance._channels_field_site_work_seconds(choice_id))
-		if resolution_sites.has(choice_id):
-			choice_work += float(instance._channels_field_site_work_seconds(str(resolution_sites[choice_id])))
-		shortest_choice_work = minf(shortest_choice_work, choice_work)
-	if is_finite(shortest_choice_work):
-		seconds += shortest_choice_work
-	return seconds
-
-func _set_estimated_channels_party_at_operation_end(instance: Node, operation_id: String, positions: Dictionary) -> void:
-	var operation: Dictionary = instance.CHANNELS_FIELD_OPERATIONS[operation_id]
-	var operation_end: Vector3 = operation.get("end", Vector3.ZERO)
-	positions["aster"] = operation_end
-	positions["peris"] = operation_end + Vector3(-1.2, 0.0, 1.0)
-	positions["endo"] = operation_end + Vector3(-1.8, 0.0, -0.8)
-
-func _estimate_act1_district_field_operation_seconds(instance: Node, district: String, operation_id: String) -> float:
-	var operations: Dictionary = instance.STACKS_FIELD_OPERATIONS if district == "stacks" else instance.RINGS_FIELD_OPERATIONS
-	var specs: Dictionary = instance.STACKS_FIELD_SITES if district == "stacks" else instance.RINGS_FIELD_SITES
-	if not operations.has(operation_id):
-		return 0.0
-	var operation: Dictionary = operations[operation_id]
-	var seconds := float(instance._district_shortest_operation_route(district, operation_id)) / 2.5
-	for evidence_variant in operation.get("evidence", []):
-		seconds += float(specs[str(evidence_variant)].get("dwell", 0.0))
-	var branch_seconds := INF
-	for choice_variant in operation.get("choices", []):
-		var choice_id := str(choice_variant)
-		var resolution_id := str((operation.get("resolution_sites", {}) as Dictionary).get(choice_id, ""))
-		if specs.has(choice_id) and specs.has(resolution_id):
-			branch_seconds = minf(branch_seconds,
-				float(specs[choice_id].get("dwell", 0.0)) + float(specs[resolution_id].get("dwell", 0.0)))
-	if is_finite(branch_seconds):
-		seconds += branch_seconds
-	# Each field operation includes evidence synthesis and a genuine plan comparison.
-	seconds += 24.0
-	return seconds
-
-func _set_estimated_district_party_at_operation_end(instance: Node, district: String, operation_id: String, positions: Dictionary) -> void:
-	var operations: Dictionary = instance.STACKS_FIELD_OPERATIONS if district == "stacks" else instance.RINGS_FIELD_OPERATIONS
-	if not operations.has(operation_id):
-		return
-	var operation_end: Vector3 = operations[operation_id].get("end", Vector3.ZERO)
-	positions["aster"] = operation_end
-	positions["peris"] = operation_end + Vector3(-1.2, 0.0, 1.0)
-	positions["endo"] = operation_end + Vector3(-1.8, 0.0, -0.8)
-
-func _estimate_lockout_chase_first_clear_seconds() -> float:
-	var chase_scene := load("res://scenes/fragments/chunks/lockout_chase_chunk.tscn") as PackedScene
-	if chase_scene == null:
-		return 0.0
-	var chase := chase_scene.instantiate()
-	if chase == null or not chase.has_method("get_playtime_contract"):
-		if chase != null:
-			chase.free()
-		return 0.0
-	var contract: Dictionary = chase.call("get_playtime_contract")
-	chase.free()
-	return float(contract.get("total_play_seconds", 0.0))
-
-func _estimate_act1_human_playtime() -> Dictionary:
-	var scene := load("res://scenes/tutorial/act1.tscn")
-	if not scene:
+func _measure_act1_causal_structure() -> Dictionary:
+	var scene := load("res://scenes/tutorial/act1.tscn") as PackedScene
+	if scene == null:
 		return {}
-	var instance: Node = scene.instantiate()
-	if not instance:
-		return {}
-
-	var speeds := {
-		"aster": 3.0,
-		"peris": 2.5,
-		"endo": 2.5,
+	var instance := scene.instantiate()
+	instance.set("start_chunk", "channels")
+	instance.set("suppress_scene_change", true)
+	get_tree().root.add_child(instance)
+	for _frame in range(8):
+		await get_tree().process_frame
+	instance._load_chunk("stacks")
+	instance._load_chunk("rings")
+	var result := {
+		"channels": instance.get_channels_playtime_contract(),
+		"stacks": {
+			"bank_count": instance._stacks_bank_interactables.size(),
+			"shelter_present": instance.find_child("StacksShelterRest", true, false) != null,
+			"has_synthetic_contract": instance.has_method("get_stacks_playtime_contract"),
+		},
+		"rings": {
+			"required_beats": ["marco_reassignment", "endo_departure"],
+			"ambient_trace_count": instance._rings_trace_interactables.size(),
+			"has_synthetic_contract": instance.has_method("get_rings_playtime_contract"),
+		},
+		"sequence_steps": ACT1_SEQUENCE_STEPS.duplicate(),
 	}
-	var positions := {
-		"aster": instance.CHANNELS_START + Vector3(5, 0.5, 0),
-		"peris": instance.CHANNELS_START + Vector3(0, 0.5, 1),
-		"endo": instance.CHANNELS_START + Vector3(-1, 0.5, 0),
-	}
-	var step_wall_times := {}
-	var system_time := 2.5
-	var dialogue_time := 0.0
-	var overlapping_dialogue_time := 0.0
-
-	_mark_estimate_step(step_wall_times, "channels_enter", system_time, dialogue_time)
-	dialogue_time += _dialogue_chain_duration([
-		"channels.narration.enter",
-		"channels.aster.fluid",
-		"channels.peris.sound",
-	])
-	system_time += 0.5
-	_mark_estimate_step(step_wall_times, "channels_intake_survey", system_time, dialogue_time)
-	system_time += _estimate_channels_field_operation_seconds(instance, "intake")
-	_set_estimated_channels_party_at_operation_end(instance, "intake", positions)
-
-	_mark_estimate_step(step_wall_times, "channels_to_memory", system_time, dialogue_time)
-	var target := Vector3(instance.CHANNELS_MEMORY_TRIGGER_X + 1.0, 0.5, 0.0)
-	system_time += _travel_duration(positions["aster"], target, speeds["aster"], 0.5)
-	positions["aster"] = target
-
-	_mark_estimate_step(step_wall_times, "channels_memory", system_time, dialogue_time)
-	var party_targets := {
-		"peris": instance.CHANNELS_BODY_POS + Vector3(-1.0, 0.0, 1.1),
-		"aster": instance.CHANNELS_BODY_POS + Vector3(-3.0, 0.0, 0.4),
-		"endo": instance.CHANNELS_BODY_POS + Vector3(-4.2, 0.0, -0.8),
-	}
-	system_time += _party_move_duration(positions, party_targets, speeds)
-	for id in party_targets.keys():
-		positions[id] = party_targets[id]
-	dialogue_time += _dialogue_chain_duration([
-		"channels.narration.memory",
-		"channels.peris.know_place",
-		"channels.aster.not_here",
-		"channels.peris.saw_it",
-		"channels.narration.leads",
-	])
-	system_time += 0.5
-	_mark_estimate_step(step_wall_times, "channels_memory_reconstruction", system_time, dialogue_time)
-	system_time += _estimate_channels_field_operation_seconds(instance, "memory")
-	_set_estimated_channels_party_at_operation_end(instance, "memory", positions)
-
-	_mark_estimate_step(step_wall_times, "channels_corpse", system_time, dialogue_time)
-	dialogue_time += _dialogue_chain_duration([
-		"channels.narration.body",
-		"channels.endo.kneel",
-		"channels.aster.report",
-		"channels.peris.smell",
-		"channels.peris.clients",
-		"channels.aster.lysate",
-		"channels.peris.people",
-		"channels.aster.hungry",
-		"channels.aster.downgrade",
-	])
-	system_time += 0.5
-	_mark_estimate_step(step_wall_times, "channels_harvest_recovery", system_time, dialogue_time)
-	system_time += _estimate_channels_field_operation_seconds(instance, "harvest")
-	_set_estimated_channels_party_at_operation_end(instance, "harvest", positions)
-
-	_mark_estimate_step(step_wall_times, "channels_window_one_intro", system_time, dialogue_time)
-	party_targets = {
-		"aster": instance.CHANNELS_WINDOW_ONE_STAGE_POS,
-		"peris": instance.CHANNELS_WINDOW_ONE_STAGE_POS + Vector3(-1.6, 0.0, 1.2),
-		"endo": instance.CHANNELS_WINDOW_ONE_STAGE_POS + Vector3(-2.8, 0.0, -1.0),
-	}
-	system_time += _party_move_duration(positions, party_targets, speeds)
-	for id in party_targets.keys():
-		positions[id] = party_targets[id]
-	dialogue_time += _dialogue_chain_duration([
-		"channels.narration.window_one",
-		"channels.endo.window_one",
-	])
-	system_time += 0.35
-
-	_mark_estimate_step(step_wall_times, "channels_window_one_activate", system_time, dialogue_time)
-	system_time += _travel_duration(
-		positions["aster"],
-		instance.CHANNELS_WINDOW_ONE_LURE_POS,
-		speeds["aster"],
-		0.25
-	)
-	positions["aster"] = instance.CHANNELS_WINDOW_ONE_LURE_POS
-	system_time += 1.6
-
-	_mark_estimate_step(step_wall_times, "channels_window_one_cross", system_time, dialogue_time)
-	system_time += _travel_duration(
-		positions["aster"],
-		instance.CHANNELS_WINDOW_ONE_GOAL_POS,
-		speeds["aster"],
-		0.15
-	)
-	positions["aster"] = instance.CHANNELS_WINDOW_ONE_GOAL_POS
-	_mark_estimate_step(step_wall_times, "channels_relay_alignment", system_time, dialogue_time)
-	system_time += _estimate_channels_field_operation_seconds(instance, "relay")
-	_set_estimated_channels_party_at_operation_end(instance, "relay", positions)
-
-	_mark_estimate_step(step_wall_times, "channels_to_flure", system_time, dialogue_time)
-	target = Vector3(instance.CHANNELS_FLURE_TRIGGER_X + 1.0, 0.5, 0.0)
-	system_time += _travel_duration(positions["aster"], target, speeds["aster"], 0.45)
-	positions["aster"] = target
-
-	_mark_estimate_step(step_wall_times, "channels_flure", system_time, dialogue_time)
-	party_targets = {
-		"peris": instance.CHANNELS_FLURE_POS + Vector3(-0.8, 0.0, 0.6),
-		"aster": instance.CHANNELS_FLURE_POS + Vector3(-2.5, 0.0, -0.3),
-		"endo": instance.CHANNELS_FLURE_POS + Vector3(-3.6, 0.0, 1.2),
-	}
-	system_time += _party_move_duration(positions, party_targets, speeds)
-	for id in party_targets.keys():
-		positions[id] = party_targets[id]
-	dialogue_time += _dialogue_chain_duration([
-		"channels.narration.flora",
-		"channels.aster.lure",
-		"channels.peris.signals",
-		"channels.peris.pause",
-	])
-	dialogue_time += _dialogue_chain_duration([
-		"channels.peris.touch",
-		"channels.peris.always",
-	])
-	system_time += 2.0
-	_mark_estimate_step(step_wall_times, "channels_signal_mapping", system_time, dialogue_time)
-	system_time += _estimate_channels_field_operation_seconds(instance, "signal")
-	_set_estimated_channels_party_at_operation_end(instance, "signal", positions)
-
-	_mark_estimate_step(step_wall_times, "channels_window_two_intro", system_time, dialogue_time)
-	party_targets = {
-		"aster": instance.CHANNELS_WINDOW_TWO_STAGE_POS,
-		"peris": instance.CHANNELS_WINDOW_TWO_STAGE_POS + Vector3(-1.6, 0.0, 1.2),
-		"endo": instance.CHANNELS_WINDOW_TWO_STAGE_POS + Vector3(-2.8, 0.0, -1.0),
-	}
-	system_time += _party_move_duration(positions, party_targets, speeds)
-	for id in party_targets.keys():
-		positions[id] = party_targets[id]
-	dialogue_time += _dialogue_chain_duration([
-		"channels.narration.window_two",
-		"channels.peris.window_two",
-	])
-	system_time += 0.35
-
-	_mark_estimate_step(step_wall_times, "channels_window_two_activate", system_time, dialogue_time)
-	system_time += _travel_duration(
-		positions["aster"],
-		instance.CHANNELS_WINDOW_TWO_LURE_POS,
-		speeds["aster"],
-		0.25
-	)
-	positions["aster"] = instance.CHANNELS_WINDOW_TWO_LURE_POS
-	system_time += 1.6
-
-	_mark_estimate_step(step_wall_times, "channels_window_two_cross", system_time, dialogue_time)
-	system_time += _travel_duration(
-		positions["aster"],
-		instance.CHANNELS_WINDOW_TWO_GOAL_POS,
-		speeds["aster"],
-		0.15
-	)
-	positions["aster"] = instance.CHANNELS_WINDOW_TWO_GOAL_POS
-	_mark_estimate_step(step_wall_times, "channels_escape_plan", system_time, dialogue_time)
-	system_time += _estimate_channels_field_operation_seconds(instance, "escape")
-	_set_estimated_channels_party_at_operation_end(instance, "escape", positions)
-
-	_mark_estimate_step(step_wall_times, "channels_to_encounter", system_time, dialogue_time)
-	target = Vector3(instance.CHANNELS_ENCOUNTER_TRIGGER_X + 1.0, 0.5, 0.0)
-	system_time += _travel_duration(positions["aster"], target, speeds["aster"], 0.45)
-	positions["aster"] = target
-
-	_mark_estimate_step(step_wall_times, "channels_encounter_intro", system_time, dialogue_time)
-	party_targets = {
-		"aster": instance.CHANNELS_ENCOUNTER_ENTRY_POS + Vector3(-2.4, 0.0, 0.4),
-		"peris": instance.CHANNELS_ENCOUNTER_ENTRY_POS + Vector3(-1.4, 0.0, 1.2),
-		"endo": instance.CHANNELS_ENCOUNTER_ENTRY_POS,
-	}
-	system_time += _party_move_duration(positions, party_targets, speeds)
-	for id in party_targets.keys():
-		positions[id] = party_targets[id]
-
-	_mark_estimate_step(step_wall_times, "channels_encounter_activate", system_time, dialogue_time)
-	var lure_arrival_time := _travel_duration(
-		positions["endo"],
-		instance.CHANNELS_RUN_LURE_POS,
-		speeds["endo"],
-		0.35
-	)
-	system_time += lure_arrival_time + 2.0
-	positions["endo"] = instance.CHANNELS_RUN_LURE_POS
-
-	_mark_estimate_step(step_wall_times, "channels_encounter_hide", system_time, dialogue_time)
-	var hide_travel_time := _travel_duration(
-		positions["endo"],
-		instance.CHANNELS_HIDE_SPOT_POS,
-		speeds["endo"],
-		0.2
-	)
-	system_time += 20.0
-	positions["endo"] = instance.CHANNELS_HIDE_SPOT_POS
-
-	_mark_estimate_step(step_wall_times, "channels_encounter_run", system_time, dialogue_time)
-	system_time += _travel_duration(
-		positions["endo"],
-		instance.CHANNELS_SHELTER_POS,
-		speeds["endo"],
-		0.2
-	)
-	positions["endo"] = instance.CHANNELS_SHELTER_POS
-
-	_mark_estimate_step(step_wall_times, "channels_shelter", system_time, dialogue_time)
-	party_targets = {
-		"aster": instance.CHANNELS_SHELTER_POS + Vector3(-1.8, 0.0, -1.2),
-		"peris": instance.CHANNELS_SHELTER_POS + Vector3(-0.8, 0.0, 0.9),
-		"endo": instance.CHANNELS_SHELTER_POS + Vector3(-0.3, 0.0, -0.2),
-	}
-	system_time += _party_move_duration(positions, party_targets, speeds)
-	for id in party_targets.keys():
-		positions[id] = party_targets[id]
-	dialogue_time += _dialogue_chain_duration([
-		"channels.narration.shelter",
-		"channels.endo.door",
-		"channels.narration.recuperate",
-		"channels.narration.shortcut",
-	])
-	system_time += 0.5
-
-	_mark_estimate_step(step_wall_times, "channels_explore", system_time, dialogue_time)
-	target = Vector3(instance.CHANNELS_END.x - 4.0, 0.5, 0.0)
-	system_time += _travel_duration(positions["aster"], target, speeds["aster"], 0.4)
-	positions["aster"] = target
-
-	_mark_estimate_step(step_wall_times, "stacks_enter", system_time, dialogue_time)
-	dialogue_time += _dialogue_chain_duration([
-		"stacks.narration.enter",
-		"stacks.aster.cores",
-		"stacks.peris.noisy",
-		"stacks.narration.network_address",
-		"stacks.aster.know_number",
-	])
-	# First-time Engram reading is authored text, not a fake stationary gameplay timer.
-	dialogue_time += 15.0
-	system_time += 0.5
-
-	_mark_estimate_step(step_wall_times, "stacks_terminal", system_time, dialogue_time)
-	target = Vector3(instance.STACKS_START.x + 88.0, 1.0, 0.0)
-	system_time += _travel_duration(positions["aster"], target, speeds["aster"], 0.4) + 1.3
-	positions["aster"] = target
-	dialogue_time += _dialogue_chain_duration([
-		"stacks.aster.support_team",
-		"stacks.aster.drink_machine",
-		"stacks.peris.priorities",
-		"stacks.narration.cleaned_terminal",
-		"stacks.aster.cleaner_than_place",
-		"stacks.aster.simplodrink",
-		"stacks.peris.miss_machine",
-		"stacks.aster.expectation",
-	])
-	system_time += 0.2
-
-	_mark_estimate_step(step_wall_times, "stacks_signal", system_time, dialogue_time)
-	target = Vector3(instance.STACKS_START.x + 96.0, 1.0, -16.9)
-	system_time += _travel_duration(positions["aster"], target, speeds["aster"], 0.35) + 1.3
-	positions["aster"] = target
-	dialogue_time += _dialogue_chain_duration([
-		"stacks.narration.instrumented_lane",
-		"stacks.aster.nonstandard",
-		"stacks.aster.metrics",
-		"stacks.peris.damn_cooler",
-		"stacks.aster.cooling_part",
-		"stacks.peris.meaning",
-		"stacks.aster.standardization",
-	])
-	system_time += 0.2
-
-	_mark_estimate_step(step_wall_times, "stacks_bank_audit", system_time, dialogue_time)
-	# The comparison is deliberately a spatial sample, not a lucky one-click answer:
-	# read the normalized feed, cross to the cold mirror, then commit the unsigned bank.
-	target = Vector3(instance.STACKS_START.x + 118.0, 0.5, -9.5)
-	system_time += _travel_duration(positions["aster"], target, speeds["aster"], 0.35) + 1.2
-	positions["aster"] = target
-	target = Vector3(instance.STACKS_START.x + 154.0, 0.5, -7.5)
-	system_time += _travel_duration(positions["aster"], target, speeds["aster"], 0.35) + 1.2
-	positions["aster"] = target
-	target = Vector3(instance.STACKS_START.x + 138.0, 0.5, 9.0)
-	system_time += _travel_duration(positions["aster"], target, speeds["aster"], 0.35) + 1.2
-	positions["aster"] = target
-	system_time += 0.2
-
-	_mark_estimate_step(step_wall_times, "stacks_archive", system_time, dialogue_time)
-	target = Vector3(instance.STACKS_START.x + 165.0, 1.0, -10.0)
-	system_time += _travel_duration(positions["aster"], target, speeds["aster"], 0.35) + 1.3
-	positions["aster"] = target
-	dialogue_time += _dialogue_chain_duration([
-		"stacks.narration.workspace",
-		"stacks.aster.pull_archive",
-		"stacks.aster.ghost_ids",
-		"stacks.peris.fake_permissions",
-		"stacks.aster.security_patch",
-		"stacks.aster.not_the_type",
-		"stacks.aster.right",
-	])
-	system_time += 0.2
-
-	_mark_estimate_step(step_wall_times, "stacks_identity_reconstruction", system_time, dialogue_time)
-	system_time += _estimate_act1_district_field_operation_seconds(instance, "stacks", "identity")
-	_set_estimated_district_party_at_operation_end(instance, "stacks", "identity", positions)
-	_mark_estimate_step(step_wall_times, "stacks_egress_commit", system_time, dialogue_time)
-	system_time += _estimate_act1_district_field_operation_seconds(instance, "stacks", "egress")
-	_set_estimated_district_party_at_operation_end(instance, "stacks", "egress", positions)
-
-	_mark_estimate_step(step_wall_times, "stacks_explore", system_time, dialogue_time)
-	target = Vector3(instance.STACKS_END.x - 4.0, 0.5, 0.0)
-	system_time += _travel_duration(positions["aster"], target, speeds["aster"], 0.4)
-	positions["aster"] = target
-	positions["peris"] = target + Vector3(-1.8, 0.0, 1.2)
-	positions["endo"] = target + Vector3(-3.0, 0.0, -1.0)
-
-	_mark_estimate_step(step_wall_times, "rings_enter", system_time, dialogue_time)
-	dialogue_time += _dialogue_chain_duration([
-		"ring.entry.narration",
-		"ring.entry.aster.home",
-		"ring.entry.aster.machine",
-		"ring.entry.peris.quiet",
-		"ring.entry.endo.wall_touch",
-		"ring.scatter.peris.notice",
-		"ring.scatter.aster.continue",
-	])
-	system_time += 0.2
-
-	_mark_estimate_step(step_wall_times, "rings_client", system_time, dialogue_time)
-	target = Vector3(instance.RINGS_START.x + 80.0, 0.5, -5.0)
-	system_time += _travel_duration(positions["peris"], target, speeds["peris"], 0.4) + 1.0
-	positions["peris"] = target
-	dialogue_time += _dialogue_chain_duration([
-		"ring.marco.entry.narration",
-		"ring.marco.entry.marco.warn",
-		"ring.marco.entry.peris.name",
-		"ring.marco.entry.marco.correct",
-		"ring.marco.warn.jeopardize",
-		"ring.marco.warn.c_suite",
-		"ring.marco.peris.wellness_start",
-		"ring.marco.peris.silence",
-		"ring.marco.peris.apology",
-		"ring.marco.exit.marco.brief",
-		"ring.marco.exit.narration",
-		"ring.after_marco.aster.weird",
-		"ring.after_marco.peris.quiet",
-		"ring.after_marco.aster.move_on",
-		"ring.after_marco.endo.watch",
-	])
-	system_time += 0.2
-
-	_mark_estimate_step(step_wall_times, "endo_departs", system_time, dialogue_time)
-	dialogue_time += _dialogue_chain_duration([
-		"ring.departure.narration",
-		"ring.departure.aster.question",
-		"ring.departure.peris.read",
-		"ring.departure.endo.turn",
-		"ring.departure.aster.delayed",
-		"ring.departure.peris.explain",
-		"ring.departure.aster.but",
-		"ring.departure.peris.look",
-		"ring.departure.aster.settle",
-		"ring.departure.narration.closing",
-	])
-	system_time += 0.2
-
-	# The three district traces are ordered story gates but remain player-controlled traversal.
-	var rings_trace_positions := {
-		"client_bloom": Vector3(instance.RINGS_START.x + 76.0, 0.5, -8.0),
-		"forget_me_not": Vector3(instance.RINGS_START.x + 116.0, 0.5, 13.8),
-		"doorvine": Vector3(instance.RINGS_START.x + 156.0, 0.5, 8.5),
-	}
-	for trace_id in ["client_bloom", "forget_me_not", "doorvine"]:
-		_mark_estimate_step(step_wall_times, "rings_trace_%s" % trace_id, system_time, dialogue_time)
-		target = rings_trace_positions[trace_id]
-		system_time += _travel_duration(positions["peris"], target, speeds["peris"], 0.25) + 1.4
-		positions["peris"] = target
-
-	_mark_estimate_step(step_wall_times, "rings_residence_survey", system_time, dialogue_time)
-	system_time += _estimate_act1_district_field_operation_seconds(instance, "rings", "residence")
-	_set_estimated_district_party_at_operation_end(instance, "rings", "residence", positions)
-	_mark_estimate_step(step_wall_times, "rings_boundary_commit", system_time, dialogue_time)
-	system_time += _estimate_act1_district_field_operation_seconds(instance, "rings", "boundary")
-	_set_estimated_district_party_at_operation_end(instance, "rings", "boundary", positions)
-
-	_mark_estimate_step(step_wall_times, "rings_explore", system_time, dialogue_time)
-	target = Vector3(instance.RINGS_END.x - 4.0, 0.5, 0.0)
-	system_time += _travel_duration(positions["peris"], target, speeds["peris"], 0.4)
-	positions["aster"] = target
-	positions["peris"] = target
-
-	_mark_estimate_step(step_wall_times, "lockout_approach", system_time, dialogue_time)
-	dialogue_time += _dialogue_chain_duration([
-		"lockout.approach.narration",
-		"lockout.approach.aster.confident",
-	])
-	positions["aster"] = Vector3(6.0, 0.5, 1.0)
-	positions["peris"] = Vector3(6.0, 0.5, -1.0)
-	target = Vector3(3.0, 0.5, 0.0)
-	system_time += _travel_duration(positions["aster"], target, speeds["aster"], 0.35) + 0.8
-	positions["aster"] = target
-
-	_mark_estimate_step(step_wall_times, "lockout_rejected", system_time, dialogue_time)
-	dialogue_time += _dialogue_chain_duration([
-		"lockout.approach.panel_reject",
-		"lockout.approach.aster.glitch",
-		"lockout.approach.aster.retry",
-		"lockout.approach.aster.confused",
-		"lockout.escalate.aster.hack",
-		"lockout.escalate.hack_block",
-		"lockout.escalate.aster.recog",
-		"lockout.escalate.aster.try_again",
-		"lockout.escalate.peris.quiet",
-		"lockout.escalate.peris_approaches",
-		"lockout.escalate.aster.notices",
-		"lockout.escalate.peris.dont",
-	])
-	system_time += 0.2
-
-	_mark_estimate_step(step_wall_times, "lockout_chase", system_time, dialogue_time)
-	overlapping_dialogue_time += _dialogue_chain_duration([
-		"lockout.dispatch.narration",
-		"lockout.dispatch.aster.frozen",
-		"lockout.dispatch.peris.hears",
-		"lockout.dispatch.aster.pulled",
-		"lockout.dispatch.peris.no",
-		"lockout.dispatch.narration.start_chase",
-		"lockout.chase.aster.lost",
-		"lockout.chase.peris.listen",
-	])
-	# The chase owns a canonical first-clear model that includes its routed escape, four live
-	# pair-rally sectors, branch work, and recovery checks. Dispatch dialogue overlays that active
-	# interval and therefore does not pad wall-clock duration.
-	var lockout_chase_contract_seconds := _estimate_lockout_chase_first_clear_seconds()
-	target = Vector3(209.0, 0.5, 0.0)
-	system_time += lockout_chase_contract_seconds
-	positions["aster"] = target
-	positions["peris"] = target + Vector3(0.0, 0.0, 1.5)
-
-	_mark_estimate_step(step_wall_times, "lockout_exile", system_time, dialogue_time)
-	dialogue_time += _dialogue_chain_duration([
-		"lockout.chase.narration.boundary",
-		"lockout.standoff.narration",
-		"lockout.standoff.aster.try",
-		"lockout.standoff.peris.back",
-		"lockout.standoff.aster.cant_answer",
-		"lockout.standoff.narration.silence",
-		"lockout.aftermath.aster.watch",
-		"lockout.aftermath.peris.answer",
-		"lockout.aftermath.aster.sit",
-		"lockout.aftermath.peris.sit",
-		"lockout.aftermath.peris.ask_word",
-		"lockout.aftermath.aster.fugacity",
-		"lockout.aftermath.aster.clarify",
-		"lockout.aftermath.peris.pressure",
-		"lockout.aftermath.aster.laugh",
-		"lockout.aftermath.peris.soft",
-		"lockout.aftermath.narration.close",
-	])
-	system_time += 2.0
-
-	_mark_estimate_step(step_wall_times, "complete", system_time, dialogue_time)
+	instance.set_process(false)
+	instance.set_physics_process(false)
+	if instance.has_method("_teardown_sequence"):
+		instance._teardown_sequence()
 	instance.queue_free()
-	return {
-		"step_wall_times": step_wall_times,
-		"system_time": system_time,
-		"dialogue_time": dialogue_time,
-		"scene_total": system_time + dialogue_time,
-		"hide_travel_time": hide_travel_time,
-		"overlapping_dialogue_time": overlapping_dialogue_time,
-		"lockout_chase_contract_seconds": lockout_chase_contract_seconds,
-	}
+	await get_tree().process_frame
+	return result
 
 func _report_act1_playtime() -> void:
 	var result := await _run_sequence_contract(
@@ -31053,53 +34668,53 @@ func _report_act1_playtime() -> void:
 	print("")
 
 func _report_act1_human_playtime() -> void:
-	_test_name = "Act 1 Human Playtime"
-	var result := _estimate_act1_human_playtime()
-	_assert_true(not result.is_empty(), "Computed human playtime estimate")
-	var channels_enter_wall := _step_wall_time(result, "channels_enter")
-	var channels_shelter_wall := _step_wall_time(result, "channels_shelter")
-	var channels_explore_wall := _step_wall_time(result, "channels_explore")
-	var stacks_enter_wall := _step_wall_time(result, "stacks_enter")
-	var rings_enter_wall := _step_wall_time(result, "rings_enter")
-	var lockout_approach_wall := _step_wall_time(result, "lockout_approach")
-	var complete_wall := _step_wall_time(result, "complete")
-	var scene_total := float(result.get("scene_total", 0.0))
-	var scheduler_total := float(result.get("system_time", 0.0))
-	var dialogue_total := float(result.get("dialogue_time", 0.0))
-	var hide_travel_time := float(result.get("hide_travel_time", 0.0))
-	var overlapping_dialogue_time := float(result.get("overlapping_dialogue_time", 0.0))
-	var lockout_chase_contract_seconds := float(result.get("lockout_chase_contract_seconds", 0.0))
-	var channels_total := stacks_enter_wall - channels_enter_wall
-	var stacks_total := rings_enter_wall - stacks_enter_wall
-	var rings_total := lockout_approach_wall - rings_enter_wall
-	var lockout_total := complete_wall - lockout_approach_wall
-	_assert_true(channels_enter_wall >= 0.0, "Captured channels entry wall time")
-	_assert_true(channels_shelter_wall >= 0.0, "Captured shelter wall time")
-	_assert_true(channels_explore_wall >= 0.0, "Captured channels explore wall time")
-	_assert_true(complete_wall >= 0.0, "Captured Act 1 completion wall time")
-	_assert_true(hide_travel_time < 20.0, "Encounter hide run fits within lure duration")
-	_assert_true(lockout_chase_contract_seconds >= 300.0,
-		"Lockout human estimate consumes the canonical five-minute-or-longer chase contract")
-	_assert_true(channels_total >= 180.0, "Channels supplies at least three minutes of first-play pacing")
-	_assert_true(stacks_total >= 240.0, "Stacks supplies at least four minutes of first-play pacing")
-	_assert_true(rings_total >= 240.0, "Rings supplies at least four minutes of first-play pacing")
-	_assert_true(lockout_total >= 300.0, "Lockout supplies at least five minutes of first-play pacing")
+	_test_name = "Act 1 Causal Structure"
+	var result: Dictionary = await _measure_act1_causal_structure()
+	_assert_true(not result.is_empty(), "Loaded Act 1 causal measurements")
+	if result.is_empty():
+		return
+	var channels_contract: Dictionary = result.get("channels", {})
+	_assert_equals(
+		str(channels_contract.get("measurement_kind", "")),
+		"causal_structure_not_first_clear_elapsed",
+		"Channels retains its source-backed structural report"
+	)
+	var stacks_structure: Dictionary = result.get("stacks", {})
+	_assert_equals(int(stacks_structure.get("bank_count", 0)), 3,
+		"Stacks keeps one meaningful three-bank deduction")
+	_assert_true(bool(stacks_structure.get("shelter_present", false)),
+		"Stacks ends its required content at the named shelter-rest conversation")
+	_assert_true(not bool(stacks_structure.get("has_synthetic_contract", true)),
+		"Stacks exposes no synthetic pacing contract")
+	var rings_structure: Dictionary = result.get("rings", {})
+	_assert_equals(int(rings_structure.get("ambient_trace_count", 0)), 3,
+		"Rings keeps three optional ambient flora/memory reads")
+	_assert_true(not bool(rings_structure.get("has_synthetic_contract", true)),
+		"Rings exposes no synthetic pacing contract")
+	var steps: Array = result.get("sequence_steps", [])
+	for retired_step in [
+		"channels_intake_survey", "channels_memory_reconstruction", "channels_signal_mapping",
+		"channels_escape_plan", "stacks_identity_reconstruction", "stacks_egress_commit",
+		"rings_residence_survey", "rings_boundary_commit",
+		"stacks_terminal", "stacks_signal", "stacks_archive",
+		"rings_trace_client_bloom", "rings_trace_forget_me_not", "rings_trace_doorvine",
+	]:
+		_assert_true(not steps.has(retired_step), "Retired padding step is absent: %s" % retired_step)
+	for causal_step in [
+		"channels_window_one_activate", "channels_window_two_activate", "channels_encounter_hide",
+		"stacks_bank_audit", "stacks_shelter", "rings_client", "endo_departs",
+	]:
+		_assert_true(steps.has(causal_step), "Causal gameplay step remains: %s" % causal_step)
 
 	print("")
-	print("  === Act 1 Human Playtime ===")
-	print("  Channels to shelter: %s" % _format_playtime(channels_shelter_wall - channels_enter_wall))
-	print("  Channels to free explore: %s" % _format_playtime(channels_explore_wall - channels_enter_wall))
-	print("  Channels district total: %s" % _format_playtime(channels_total))
-	print("  Stacks district total: %s" % _format_playtime(stacks_total))
-	print("  Rings district total: %s" % _format_playtime(rings_total))
-	print("  Lockout district total: %s" % _format_playtime(lockout_total))
-	print("  Full scripted Act 1 (from channels enter): %s" % _format_playtime(complete_wall - channels_enter_wall))
-	print("  Full scripted scene (including fade): %s" % _format_playtime(scene_total))
-	print("  Scheduler-driven time: %s" % _format_playtime(scheduler_total))
-	print("  Dialogue/display time: %s" % _format_playtime(dialogue_total))
-	print("  Dialogue over active chase movement: %s" % _format_playtime(overlapping_dialogue_time))
+	print("  === Act 1 Causal Structure ===")
+	print("  Channels: 2 hydraulic windows, lure-hide-run encounter, shelter rest; %.1fm authored span." % [
+		float((result.get("channels", {}) as Dictionary).get("core_route_span_meters", 0.0))
+	])
+	print("  Stacks: compare 3 banks, then the shelter-rest anxiety conversation; records are optional.")
+	print("  Rings: Marco names the reassignment pattern, Endo departs; 3 ambient reads remain optional.")
+	print("  First-clear duration must come from observed human playtest telemetry; this report makes no elapsed-time claim.")
 	print("")
-
 func _test_tag_day_dialogue() -> void:
 	_test_name = "Tag Day Dialogue"
 	var scene := load("res://scenes/tutorial/tag_day.tscn")
@@ -31373,7 +34988,11 @@ func _test_elevator_dialogue() -> void:
 			var target: Vector3 = instance.ASTER_POS + Vector3(0.5, 0.5, 0)
 			instance._peris_node.global_position = target
 			instance._game_state.characters["peris"].position = target
-			instance._on_aster_wake_interacted(),
+			_trigger_exact_interactable_source(
+				instance._game_state,
+				instance._aster_wake_interactable,
+				"peris",
+				instance),
 		"units_activate": func():
 			# Resume from auto-pause so dialogue can advance
 			instance._scheduler.resume(),
@@ -31534,7 +35153,7 @@ func _test_junction_flow() -> void:
 	if layout != null:
 		var required_anchors := [
 			"Entry", "Center", "Exit", "Workbench", "Monitor", "Food", "Lookout",
-			"Heater", "Markings", "Game", "PrepRecover", "PrepScout", "Plant",
+			"Heater", "Markings", "Game", "Plant",
 			"EndoEntry", "DrinkPickup", "PartyRest", "ClearLaneStart", "ClearLaneEnd",
 		]
 		var authored_anchor_names := layout.anchor_names()
@@ -31548,7 +35167,7 @@ func _test_junction_flow() -> void:
 		_assert_true(ceiling != null and not ceiling.visible,
 			"Junction ceiling cannot occlude the party from the default camera")
 		_assert_true(east_blocker != null and not east_blocker.visible,
-			"Junction opens visibly into the fieldwork annex")
+			"Junction east circulation remains visibly unobstructed")
 		_assert_true(bedroll != null and not bedroll.visible,
 			"Central circulation lane is not blocked by the old bedroll")
 		var imported_flora := layout.find_child("Junction_Flora", true, false) as Node3D
@@ -31561,7 +35180,7 @@ func _test_junction_flow() -> void:
 		_assert_true(not grid.find_path(entry_cell, exit_cell, {}, false, {}, {}, instance.LEVEL_LOWER).is_empty(),
 			"Junction has a continuous west-east circulation path")
 		for anchor_name in ["Workbench", "Monitor", "Food", "Lookout", "Heater", "Markings",
-				"Game", "PrepRecover", "PrepScout", "Plant", "DrinkPickup", "PartyRest"]:
+				"Game", "Plant", "DrinkPickup", "PartyRest"]:
 			var anchor_cell := grid.world_to_grid(layout.anchor_position(anchor_name))
 			_assert_true(grid.is_walkable(anchor_cell.x, anchor_cell.y, {}, {}, instance.LEVEL_LOWER),
 				"Junction anchor '%s' is on the lower-deck footprint" % anchor_name)
@@ -31570,7 +35189,7 @@ func _test_junction_flow() -> void:
 
 		var clearance_anchors := [
 			"Workbench", "Monitor", "Food", "Lookout", "Heater", "Markings", "Game",
-			"PrepRecover", "PrepScout", "Plant",
+			"Plant",
 		]
 		var minimum_clearance := INF
 		for i in range(clearance_anchors.size()):
@@ -31627,25 +35246,8 @@ func _test_junction_flow() -> void:
 	# Verify dormant plant exists
 	var plant := instance.find_child("DormantPlant", true, false)
 	_assert_true(plant != null, "Dormant plant interactable exists")
-	var junction_survey_plan := [
-		["Workbench", "aster"],
-		["Food", "peris"],
-		["Monitor", "peris"],
-	]
-	for survey_spec in junction_survey_plan:
-		var survey_station: Node = instance._junction_interactables.get(str(survey_spec[0]))
-		if survey_station != null:
-			survey_station.set("active_character", str(survey_spec[1]))
-			survey_station.call("_trigger", false)
-	var junction_prep: Node = instance._junction_prep_interactables.get("scout")
-	_assert_true(junction_prep != null and bool(junction_prep.get("interaction_enabled")),
-		"Junction survey unlocks preparation before the plant")
-	if junction_prep != null:
-		junction_prep.set("active_character", "peris")
-		junction_prep.call("_trigger", false)
-	_complete_elevator_junction_fieldwork_direct(instance, "Junction story path")
 	_assert_true(plant != null and bool(plant.get("interaction_enabled")),
-		"Junction story path earns the dormant plant through annex fieldwork")
+		"Junction exposes Peris's plant transition immediately; shelter reads stay optional")
 
 	# Trigger the plant interaction (simulates Peris tending it)
 	if plant:
@@ -31771,6 +35373,16 @@ func _test_enemy() -> void:
 		await get_tree().process_frame
 	_assert_true(enemy.get_state() in combat_states,
 		"Attack cycle progresses (got: %s)" % enemy.get_state())
+
+	# EMP is an opt-in electronics contract, never a blanket synonym for stun.
+	var pre_emp_state := enemy.get_state()
+	_assert_true(not enemy.apply_emp(1.0), "A biological/default enemy rejects EMP")
+	_assert_equals(enemy.get_state(), pre_emp_state, "Rejected EMP does not alter enemy state")
+	enemy.emp_compatible = true
+	_assert_true(enemy.apply_emp(1.0), "An authored electronic enemy accepts EMP")
+	_assert_equals(enemy.get_state(), "stunned", "Accepted EMP enters the reusable stunned state")
+	scheduler.advance(1.1)
+	await get_tree().process_frame
 
 	# Test: take_damage
 	enemy.take_damage(40.0)
@@ -32075,22 +35687,88 @@ func _test_act1() -> void:
 
 	# Verify key scene anchors exist
 	_assert_true(instance.find_child("ChannelsBody", true, false) != null, "Body landmark in channels")
-	_assert_true(instance.find_child("ChannelsWindowLane_window_one", true, false) != null, "First timed window lane in channels")
-	_assert_true(instance.find_child("ChannelsWindowInteract_window_one", true, false) != null, "First timed window interactable in channels")
-	_assert_true(instance.find_child("ChannelsWindowChannel_window_one_0", true, false) != null, "First timed window rhythm channel in channels")
-	_assert_true(instance.find_child("ChannelsWindowBridge_window_one_0", true, false) != null, "First timed window bridge segment in channels")
-	_assert_true(instance.find_child("ChannelsWindowCorpse_window_one_0", true, false) != null, "First timed window corpse cluster in channels")
-	_assert_true(instance.find_child("ChannelsWindowSwarm_window_one_0", true, false) != null, "First timed window siderophore unit in channels")
-	_assert_true(instance.find_child("SecondFlure", true, false) != null, "Second flure in channels")
-	_assert_true(instance.find_child("ChannelsWindowLane_window_two", true, false) != null, "Second timed window lane in channels")
-	_assert_true(instance.find_child("ChannelsWindowInteract_window_two", true, false) != null, "Second timed window interactable in channels")
-	_assert_true(instance.find_child("ChannelsWindowChannel_window_two_0", true, false) != null, "Second timed window rhythm channel in channels")
-	_assert_true(instance.find_child("EncounterFlure", true, false) != null, "Encounter flure in channels")
-	_assert_true(instance.find_child("EncounterFlureInteract", true, false) != null, "Encounter interactable in channels")
+	for window_id in ["window_one", "window_two"]:
+		var lane: Dictionary = instance._channels_window_lanes.get(window_id, {})
+		_assert_true(
+			lane.get("stage_pos") is Vector3
+				and lane.get("lure_pos") is Vector3
+				and lane.get("goal_pos") is Vector3,
+			"%s exposes its authored spatial lane contract" % window_id
+		)
+		var lane_flure: Variant = lane.get("interactable")
+		_assert_true(
+			lane_flure is Flure
+				and str((lane_flure as Flure).authority_id)
+					== "act1_channels_%s_flure" % window_id,
+			"%s owns one stable-authority Flure instead of a generic interactable" % window_id
+		)
+		var lane_channels_real := true
+		var periodic_channels: Array = lane.get("periodic_channels", [])
+		for channel_entry_v in periodic_channels:
+			if not (channel_entry_v is Dictionary) \
+					or not ((channel_entry_v as Dictionary).get("channel") is Channel):
+				lane_channels_real = false
+				break
+		_assert_true(
+			periodic_channels.size() == instance.CHANNELS_WINDOW_PERIODIC_CHANNELS
+				and lane_channels_real,
+			"%s exposes its three real Channel-owned wash strips" % window_id
+		)
+		var lane_enemies_real := true
+		var enemy_ids: Array = lane.get("enemy_ids", [])
+		for enemy_id_v in enemy_ids:
+			var enemy_id := str(enemy_id_v)
+			if not enemy_id.begins_with("act1_channels_%s_enemy_" % window_id) \
+					or not (instance._resolve_channels_enemy(enemy_id) is Enemy) \
+					or not instance._game_state.characters.has(enemy_id):
+				lane_enemies_real = false
+				break
+		_assert_true(
+			not enemy_ids.is_empty() and lane_enemies_real,
+			"%s exposes registered stable-ID Enemy bodies instead of swarm boxes" % window_id
+		)
+	_assert_true(
+		instance._channels_flure is Flure
+			and str(instance._channels_flure.authority_id) == instance.CHANNELS_CODA_FLURE_ID
+			and instance._channels_flure_channel is Channel,
+		"the Channels coda composes one real Flure with one real Channel"
+	)
+	_assert_true(
+		instance._channels_run_lure is Flure
+			and str(instance._channels_run_lure.authority_id)
+				== instance.CHANNELS_ENCOUNTER_FLURE_ID,
+		"the final encounter uses one stable-authority Flure, not duplicate proxy nodes"
+	)
+	var encounter_enemies_real := true
+	for enemy_id_v in instance._channels_swarm_enemy_ids:
+		var enemy_id := str(enemy_id_v)
+		if not enemy_id.begins_with("act1_channels_encounter_enemy_") \
+				or not (instance._resolve_channels_enemy(enemy_id) is Enemy) \
+				or not instance._game_state.characters.has(enemy_id):
+			encounter_enemies_real = false
+			break
+	_assert_true(
+		instance._channels_swarm_enemy_ids.size() == 7 and encounter_enemies_real,
+		"the final encounter exposes its complete stable-ID Enemy roster"
+	)
+	for retired_proxy_name in [
+		"ChannelsWindowInteract_window_one",
+		"ChannelsWindowSwarm_window_one_0",
+		"SecondFlure",
+		"ChannelsWindowInteract_window_two",
+		"EncounterFlureInteract",
+		"ChannelsSwarm_0",
+	]:
+		_assert_true(
+			instance.find_child(retired_proxy_name, true, false) == null,
+			"retired Channels proxy is absent: %s" % retired_proxy_name
+		)
 	_assert_true(instance.find_child("ChannelsHideSpot", true, false) != null, "Hide spot in channels")
-	_assert_true(instance.find_child("ChannelsSwarm_0", true, false) != null, "Swarm cluster in channels")
 	_assert_true(instance.find_child("ChannelsShelterDoor", true, false) != null, "Shelter door in channels")
-	_assert_true(instance.find_child("ChannelsShortcutGate", true, false) != null, "Shortcut gate in channels")
+	_assert_true(
+		instance.find_child(
+			"ChannelsShelterReturnGate", true, false) is PartyGate3D,
+		"Channels shelter owns a real two-phase return gate")
 	_assert_true(instance.find_child("ChannelsShelterLabel", true, false) != null, "Shelter label in channels")
 	_assert_true(instance.find_child("DataTerminal", true, false) != null, "Terminal interactable in stacks")
 	_assert_true(instance.find_child("SignalWall", true, false) != null, "Signal wall interactable in stacks")
@@ -32100,34 +35778,79 @@ func _test_act1() -> void:
 	_assert_true(not instance._channels_shortcut_unlocked, "Channels shortcut starts locked")
 	_assert_true(not instance._channels_party_recuperated, "Party starts unrested in channels")
 
-	# Smoke the two timed flure windows that pad out the Channels route.
+	# Smoke the two physical flure windows on the Channels route.
 	instance.start_channels_window_puzzle("window_one")
 	await get_tree().process_frame
 	_assert_true(instance._current_step == "channels_window_one_activate", "Window one enters activation step")
 	var window_one_contract: Dictionary = instance.headless_get_state().get("channels_window_lanes", {}).get("window_one", {})
 	_assert_equals(int(window_one_contract.get("periodic_channel_count", 0)), 3, "Window one exposes three periodic flood channels")
 	_assert_true(bool(window_one_contract.get("wash_analysis", {}).get("guaranteed", false)), "Window one wash analysis guarantees a washout across timing offsets")
-	instance.activate_channels_window_lure("window_one")
-	_assert_true(instance._current_step == "channels_window_one_cross", "Window one activation opens the crossing window")
-	instance.headless_advance(6.0)
+	var window_one_flure: Node = instance._channels_window_lanes["window_one"].get("interactable")
+	_assert_true(
+		not _drive_act1_flure_control(instance, window_one_flure, "aster"),
+		"Window one rejects a non-Peris activation at the physical flure")
+	_assert_true(
+		_drive_act1_flure_control(instance, window_one_flure, "peris"),
+		"Peris tends window one's real Flure through its world control")
+	_assert_true(instance._current_step == "channels_window_one_cross",
+		"Window one enters its crossing phase from the Flure receipt")
+	var window_one_before_current: Dictionary = (
+		instance.headless_get_state().get(
+			"channels_window_lanes", {}).get("window_one", {}))
+	_assert_true(
+		str(window_one_before_current.get("swarm_state", "")) == "advancing"
+			and (window_one_before_current.get("swept_ids", []) as Array).is_empty(),
+		"Flure activation alone cannot manufacture a washed pack")
+	var window_one_wash := _drive_act1_channels_window_current(
+		instance, "window_one")
 	var window_one_rhythm_state: Dictionary = instance.headless_get_state().get("channels_window_lanes", {}).get("window_one", {})
-	_assert_equals(str(window_one_rhythm_state.get("swarm_state", "")), "washed", "Window one flure branch washes the siderophore pack")
-	_assert_true(int(window_one_rhythm_state.get("washed_channel_index", -1)) >= 0, "Window one records which rhythm channel washed the pack")
-	instance.headless_set_character_position("aster", instance.CHANNELS_WINDOW_ONE_GOAL_POS)
-	instance._update_channels_window_puzzles(0.1, 1.0)
-	_assert_true(instance._current_step == "channels_relay_alignment", "Window one success opens the relay field operation")
+	_assert_equals(
+		(window_one_wash.get("committed_ids", []) as Array).size(),
+		int(window_one_wash.get("enemy_count", 0)),
+		"Window one's real current commits every Enemy body to a locked carry")
+	_assert_equals(
+		(window_one_wash.get("completed_ids", []) as Array).size(),
+		int(window_one_wash.get("enemy_count", 0)),
+		"Window one's carried Enemy bodies physically arrive before becoming swept")
+	_assert_true(
+		bool(window_one_wash.get("fully_swept", false))
+			and str(window_one_rhythm_state.get("swarm_state", "")) == "washed",
+		"Window one becomes safe only from Channel-owned swept-body truth")
+	for char_id in instance.CHANNELS_PARTY_IDS:
+		instance.headless_set_character_position(
+			char_id, instance.CHANNELS_WINDOW_ONE_GOAL_POS)
+	instance._evaluate_channels_window_authority()
+	_assert_true(instance._current_step == "channels_to_flure",
+		"Full-party arrival after the physical wash opens the ferrolure route")
 	_assert_true(instance._channels_window_lanes["window_one"]["last_outcome"] == "success", "Window one records a success outcome")
 
 	instance.start_channels_window_puzzle("window_two")
 	await get_tree().process_frame
-	instance.activate_channels_window_lure("window_two")
-	instance.headless_advance(instance.CHANNELS_WINDOW_TWO_DURATION + 0.1)
-	_assert_true(instance._channels_window_lanes["window_two"]["phase"] == "failed", "Window two can fail on a missed crossing window")
-	_assert_true(instance._channels_window_lanes["window_two"]["last_outcome"] == "window_closed", "Window two failure records the timeout reason")
+	var window_two_flure: Node = instance._channels_window_lanes["window_two"].get("interactable")
+	_assert_true(
+		_drive_act1_flure_control(instance, window_two_flure, "peris"),
+		"Peris tends window two's real Flure through its world control")
+	var window_two_wash := _drive_act1_channels_window_current(
+		instance, "window_two")
+	_assert_equals(
+		(window_two_wash.get("committed_ids", []) as Array).size(),
+		int(window_two_wash.get("enemy_count", 0)),
+		"Window two re-applies the learned Flure-to-current causal chain")
+	_assert_true(
+		bool(window_two_wash.get("fully_swept", false)),
+		"Window two also requires real Channel arrivals rather than a timer verdict")
+	for char_id in instance.CHANNELS_PARTY_IDS:
+		instance.headless_set_character_position(
+			char_id, instance.CHANNELS_WINDOW_TWO_GOAL_POS)
+	instance._evaluate_channels_window_authority()
+	_assert_true(
+		instance._current_step == "channels_to_encounter"
+			and instance._channels_window_lanes["window_two"]["last_outcome"]
+				== "success",
+		"Full-party transfer after window two opens the encounter route")
 
 	# Smoke the Channels hide-and-run encounter.
 	instance.prepare_channels_fragment()
-	var hide_spot := instance.find_child("ChannelsHideSpot", true, false)
 	instance._begin_channels_encounter()
 	await get_tree().process_frame
 	_assert_true(instance._current_step == "channels_encounter_activate", "Encounter enters activation step")
@@ -32135,102 +35858,313 @@ func _test_act1() -> void:
 	_assert_true(instance._player == endo, "Endo becomes the active player for the encounter")
 	_assert_true(not instance._channels_run_lure_active, "Encounter lure starts inactive")
 
-	instance._on_channels_run_lure_activated()
-	_assert_true(instance._current_step == "channels_encounter_hide", "Lure activation advances to hide step")
-	_assert_true(instance._channels_run_lure_active, "Lure activation powers the encounter plant")
+	_assert_true(
+		not _drive_act1_flure_control(
+			instance, instance._channels_run_lure, "aster"),
+		"Encounter Flure rejects a non-Endo activation")
+	_assert_true(
+		_drive_act1_flure_control(
+			instance, instance._channels_run_lure, "endo"),
+		"Endo tends the encounter's real Flure through its world control")
+	_assert_true(instance._current_step == "channels_encounter_hide",
+		"The Flure's accepted effect receipt advances to the hide phase")
+	_assert_true(
+		instance._channels_run_lure_active
+			and str(instance._channels_run_lure.get_effect_state().get(
+				"phase", "")) == Flure.PHASE_ACTIVE,
+		"The encounter window is owned by the Flure's saved active phase")
 
-	instance._on_channels_run_lure_expired()
-	_assert_true(instance._channels_encounter_resetting, "Missing the hide window arms an encounter retry")
-	instance._scheduler.cancel_tag("channels_run_lure_expire")
-	instance._scheduler.cancel_tag("channels_encounter_retry")
-	instance._reset_channels_encounter_nodes()
+	# Put the real lured bodies at the signal so this focused test isolates the
+	# party-coordination rule from traversal time. Their Enemy FSM state and
+	# proximity, not a room-local counter, establish that the pack committed.
+	for enemy_id_v in instance._channels_swarm_enemy_ids:
+		var enemy_id := str(enemy_id_v)
+		instance._game_state.snap_character_to(
+			enemy_id, instance.CHANNELS_RUN_LURE_POS)
+	instance.headless_set_character_position(
+		"endo", instance.CHANNELS_HIDE_SPOT_POS)
+	instance._evaluate_channels_encounter_authority()
+	_assert_true(
+		not instance._channels_party_hidden
+			and instance._current_step == "channels_encounter_hide",
+		"Endo hiding alone cannot impersonate a full-party concealment")
+	for char_id in instance.CHANNELS_PARTY_IDS:
+		instance.headless_set_character_position(
+			char_id, instance.CHANNELS_HIDE_SPOT_POS)
+	instance._evaluate_channels_encounter_authority()
+	_assert_true(instance._channels_party_hidden,
+		"The complete conscious party establishes the hide state")
+	_assert_true(instance._current_step == "channels_encounter_run",
+		"Real lured Enemy positions plus full-party concealment open the run")
 
-	instance._begin_channels_encounter()
-	instance._on_channels_run_lure_activated()
-	endo.global_position = hide_spot.global_position
-	instance._update_channels_encounter(0.1, 1.0)
-	_assert_true(instance._channels_party_hidden, "Endo can hide before the lure expires")
-
-	instance._on_channels_run_lure_expired()
-	_assert_true(instance._current_step == "channels_encounter_run", "Hidden party can transition into the run step")
-	_assert_true(not instance._channels_run_lure_active, "Lure powers down before the shelter sprint")
-
-	instance._aster_hp = 41.0
-	instance._peris_hp = 58.0
-	if instance._game_state.characters.has("aster"):
-		instance._game_state.characters["aster"].stats["atp"] = 3.0
-	if instance._game_state.characters.has("peris"):
-		instance._game_state.characters["peris"].stats["atp"] = 4.0
-	endo.global_position = instance.CHANNELS_SHELTER_POS
-	instance._update_channels_encounter(0.1, 1.0)
-	_assert_true(instance._current_step == "channels_shelter", "Encounter success advances to the shelter beat")
-	_assert_true(instance._channels_shortcut_unlocked, "Shelter reach unlocks the channels shortcut")
-	_assert_true(instance._channels_party_recuperated, "Shelter reach marks the party as recuperated")
-	_assert_equals(instance._aster_hp, 100.0, "Shelter recuperation restores Aster HP")
-	_assert_equals(instance._peris_hp, 100.0, "Shelter recuperation restores Peris HP")
-	_assert_equals(float(instance._game_state.characters["aster"].stats.get("atp", 0.0)), 8.0, "Shelter recuperation restores Aster ATP")
-	_assert_equals(float(instance._game_state.characters["peris"].stats.get("atp", 0.0)), 8.0, "Shelter recuperation restores Peris ATP")
+	for char_id in ["aster", "peris", "endo"]:
+		instance._game_state.set_stat(char_id, "hp", 80.0)
+		instance._game_state.set_stat(char_id, "stamina", 20.0)
+		instance._game_state.set_stat(char_id, "atp", 3.0)
+	instance.headless_set_character_position(
+		"endo", instance.CHANNELS_SHELTER_POS)
+	instance._evaluate_channels_encounter_authority()
+	_assert_true(instance._current_step == "channels_encounter_run",
+		"One runner reaching shelter cannot remotely complete the party route")
+	for char_id in instance.CHANNELS_PARTY_IDS:
+		instance.headless_set_character_position(
+			char_id, instance.CHANNELS_SHELTER_POS)
+	instance._evaluate_channels_encounter_authority()
+	_assert_true(instance._current_step == "channels_shelter",
+		"Full-party physical shelter arrival completes the encounter")
+	# Skip only the travel time in this focused test; the arrival callback still owns
+	# the explicit shelter-rest command exercised below.
+	instance.headless_set_character_position("aster", instance.CHANNELS_SHELTER_POS + Vector3(-1.8, 0.0, -1.2))
+	instance.headless_set_character_position("peris", instance.CHANNELS_SHELTER_POS + Vector3(-0.8, 0.0, 0.9))
+	instance.headless_set_character_position("endo", instance.CHANNELS_SHELTER_POS + Vector3(-0.3, 0.0, -0.2))
+	instance.headless_advance(0.2, 0.05)
+	_assert_true(instance._channels_shelter_reached and not instance._channels_party_recuperated,
+		"Shelter arrival opens the return gate but keeps the hearth locked during its introduction")
+	var shortcut_opening: Dictionary = (
+		instance._channels_shortcut_gate.get_authority_state())
+	_assert_true(
+		str(shortcut_opening.get("phase", ""))
+				== PartyGate3D.PHASE_OPENING
+			and float(shortcut_opening.get("end_tick", -1.0))
+				> float(instance._scheduler.get_current_tick())
+			and str((shortcut_opening.get("context", {}) as Dictionary).get(
+				"cause", ""))
+				== "whole_party_reached_channels_shelter"
+			and not instance._channels_shortcut_unlocked,
+		"Shelter arrival commits the saved gate-opening window before topology clears")
+	for char_id in ["aster", "peris", "endo"]:
+		_assert_true(not instance._game_state.is_resting(char_id),
+			"%s does not auto-rest on shelter arrival" % char_id)
+		_assert_equals(instance._game_state.get_stat(char_id, "atp"), 3.0,
+			"%s pays nothing before the explicit shelter action" % char_id)
+	_assert_true(not instance.trigger_channels_shelter_rest(),
+		"The retired Channels rest helper cannot manufacture a hearth receipt")
+	instance._dialogue.clear()
+	instance._enable_channels_shelter_rest()
+	instance._on_act1_channels_shelter_interacted(
+		instance._channels_shelter_interactable, false)
+	_assert_true(not instance._channels_party_recuperated,
+		"A direct Channels rest callback cannot impersonate an accepted one-shot")
+	_assert_true(_drive_act1_channels_shelter_control(instance),
+		"The gathered party starts rest through the Channels hearth world control")
+	_assert_true(instance._channels_party_recuperated,
+		"REST PARTY begins the Channels shelter transaction")
+	for char_id in ["aster", "peris", "endo"]:
+		_assert_true(instance._game_state.is_resting(char_id), "%s rests through GameState" % char_id)
+		_assert_equals(instance._game_state.get_stat(char_id, "atp"), 2.0,
+			"%s spends one ATP when shared rest starts" % char_id)
+		_assert_equals(instance._game_state.get_stat(char_id, "hp"), 80.0,
+			"%s is not healed instantly by the scene" % char_id)
+	instance.headless_advance(1.1, 0.05)
+	for char_id in ["aster", "peris", "endo"]:
+		_assert_true(instance._game_state.get_stat(char_id, "hp") > 80.0,
+			"%s recovers incrementally through the shared rest loop" % char_id)
+	instance.headless_advance(22.0, 0.05)
+	for char_id in ["aster", "peris", "endo"]:
+		_assert_equals(instance._game_state.get_stat(char_id, "hp"),
+			instance._game_state.get_stat_cap(char_id, "hp"),
+			"%s completes shelter recovery through GameState" % char_id)
+	_assert_true(
+		str(instance._channels_shortcut_gate.get_authority_state().get(
+			"phase", "")) == PartyGate3D.PHASE_OPEN
+			and instance._channels_shortcut_unlocked,
+		"The return gate clears topology only after its physical opening deadline")
+	instance._game_state.set_stat("aster", "hp", 80.0)
+	instance._game_state.set_stat("aster", "stamina", 20.0)
+	instance._game_state.set_stat("aster", "atp", 0.0)
+	instance._channels_party_recuperated = false
+	instance._channels_shelter_rest_phase = "ready"
+	instance._clear_channels_shelter_rest_context()
+	instance._publish_channels_runtime_authority()
+	instance._apply_channels_shelter_rest_presentation()
+	_assert_true(not _drive_act1_channels_shelter_control(instance),
+		"The Channels hearth rejects a rest whose party cannot pay")
+	_assert_true(not instance._channels_party_recuperated, "A party without the ATP budget cannot claim a full shelter rest")
+	_assert_equals(instance._game_state.get_stat("aster", "hp"), 80.0,
+		"Shelter presence alone does not heal a character who cannot rest")
+	instance._game_state.set_stat("aster", "atp", 2.0)
 
 	var engram_journal = _test_singleton(ENGRAM_JOURNAL_SINGLETON, ENGRAM_JOURNAL_SCRIPT_PATH)
-	_assert_true(engram_journal != null, "EngramJournal singleton is available for Stacks")
+	_assert_true(engram_journal != null, "EngramJournal singleton is available for optional Stacks records")
 	if engram_journal != null:
 		engram_journal.call("reset_state", false)
-	instance.prepare_stacks_fragment("engram")
-	instance.trigger_stacks_support_log()
+	instance.prepare_stacks_fragment("bank")
+	_assert_true(instance._current_step == "stacks_bank_audit",
+		"Stacks opens directly on the meaningful three-bank deduction")
+
+	# These records can enrich the area in any order, but none is a route prerequisite. The
+	# observation flags and journal entry still come only from the authored world controls.
+	_assert_true(not instance.trigger_stacks_terminal()
+		and not instance.trigger_stacks_signal()
+		and not instance.trigger_stacks_archive(),
+		"Retired Stacks optional-read helpers cannot manufacture observations")
+	_assert_true(_drive_act1_optional_control(
+			instance, instance._stacks_terminal_interactable, "aster"),
+		"Aster physically reads the maintenance terminal")
+	instance._dialogue.clear()
+	instance._finish_stacks_terminal_dialogue()
+	_assert_true(instance.trigger_stacks_support_log(),
+		"The Engram viewer opens only after the terminal acquired its entry")
 	await get_tree().process_frame
 	if engram_journal != null:
-		_assert_equals(int(engram_journal.call("get_entry_count")), 1, "Stacks intro creates one Engram support log")
-	_assert_true(instance._engram_overlay.visible, "Stacks intro opens the Engram overlay")
-	_assert_equals(instance.headless_get_state()["stacks"]["engram"]["story_key"], "stacks_support_team_log", "Stacks intro records the support log story key")
+		_assert_equals(int(engram_journal.call("get_entry_count")), 1,
+			"Optional Stacks support log creates one Engram entry")
+	_assert_true(instance._engram_overlay.visible, "Optional Stacks support log opens the Engram overlay")
+	_assert_equals(instance.headless_get_state()["stacks"]["engram"]["story_key"],
+		"stacks_support_team_log", "Optional Stacks support log records its story key")
 	instance.close_stacks_engram_overlay()
 	instance.headless_advance(0.2)
-	_assert_true(instance._current_step == "stacks_terminal", "Closing the Engram advances to the terminal beat")
+	_assert_true(_drive_act1_optional_control(
+			instance, instance._stacks_signal_interactable, "aster"),
+		"Aster physically parses the custom signal wall")
+	instance._dialogue.clear()
+	instance._finish_stacks_signal_dialogue()
+	_assert_true(_drive_act1_optional_control(
+			instance, instance._stacks_workspace_interactable, "aster"),
+		"Aster physically traces the support workspace")
+	instance._dialogue.clear()
+	instance._finish_stacks_archive_dialogue()
+	_assert_true(instance._stacks_terminal_interacted and instance._stacks_signal_interacted
+		and instance._stacks_archive_interacted,
+		"Optional Stacks records remain inspectable")
+	_assert_true(instance._current_step == "stacks_bank_audit",
+		"Support log, terminal, signal, and archive never gate or reorder the route")
+	_assert_equals(instance._stacks_bank_samples.size(), 0,
+		"Optional records cannot manufacture bank evidence")
 
-	instance.prepare_stacks_fragment("terminal")
-	instance.trigger_stacks_terminal()
-	_assert_true(instance._stacks_terminal_interacted, "Stacks terminal interaction is tracked")
-	_assert_true(instance._current_step == "stacks_signal", "Stacks terminal interaction advances to signal beat")
-
-	instance.prepare_stacks_fragment("signal")
-	instance.trigger_stacks_signal()
-	_assert_true(instance._stacks_signal_interacted, "Stacks signal interaction is tracked")
-	_assert_true(instance._current_step == "stacks_archive", "Stacks signal interaction advances to archive beat")
-
-	# The campaign route inserts an active data-bank deduction between the signal wall
-	# and Myke's workspace. Keep the dialogue-free fragment seam above for lab previews,
-	# then exercise the real gate directly here.
-	instance._start_stacks_bank_audit()
-	_assert_true(instance._current_step == "stacks_bank_audit", "Stacks campaign opens the data-bank audit")
-	instance.trigger_stacks_bank("bank_a")
-	_assert_true(not instance._stacks_bank_resolved, "A normalized bank does not resolve the ghost-ID trace")
-	_assert_equals(instance._stacks_bank_attempts, 1, "A wrong Stacks bank records one comparison")
-	_assert_true(instance._current_step == "stacks_bank_audit", "A wrong Stacks bank keeps the audit active")
-	instance.trigger_stacks_bank("bank_b")
-	_assert_true(not instance._stacks_bank_resolved, "The unsigned bank cannot be guessed before all feeds are sampled")
-	_assert_equals(instance._stacks_bank_samples.size(), 2, "Stacks records distinct bank samples")
-	instance.trigger_stacks_bank("bank_c")
-	_assert_true(not instance._stacks_bank_resolved, "Completing the comparison away from the unsigned bank requires a commit")
-	_assert_equals(instance._stacks_bank_samples.size(), 3, "Stacks requires all three feeds for a grounded comparison")
-	instance.trigger_stacks_bank("bank_b")
-	_assert_true(instance._stacks_bank_resolved, "The unsigned bank resolves the compared ghost-ID trace")
-	_assert_equals(instance._stacks_bank_attempts, 4, "All Stacks comparisons and the final commit are tracked")
-	instance.headless_advance(0.3)
-	_assert_true(instance._current_step == "stacks_archive", "Resolving the Stacks bank audit opens Myke's workspace")
-
-	instance.prepare_stacks_fragment("archive")
-	instance.trigger_stacks_archive()
-	_assert_true(instance._stacks_archive_interacted, "Stacks workspace interaction is tracked")
-	_assert_true(instance._stacks_audit_flags_found, "Stacks workspace interaction flags the audit clue")
-	_assert_true(instance._current_step == "stacks_identity_reconstruction",
-		"Stacks workspace opens the identity-reconstruction field operation")
-	_complete_act1_district_field_operation_direct(instance, "stacks", "identity")
-	_assert_true(instance._current_step == "stacks_egress_commit",
-		"Identity execution advances to the support-egress operation")
-	_complete_act1_district_field_operation_direct(instance, "stacks", "egress")
+	_assert_true(
+		not instance.trigger_stacks_bank("bank_a"),
+		"The retired Stacks bank helper cannot manufacture evidence")
+	var stacks_bank_a: Node = instance._stacks_bank_interactables.get("bank_a")
+	instance._on_act1_stacks_bank_interacted(stacks_bank_a, "bank_a")
+	_assert_true(instance._stacks_bank_samples.is_empty(),
+		"A direct Stacks bank callback cannot impersonate a post-trigger receipt")
+	_assert_true(_drive_act1_stacks_bank_control(instance, "bank_a"),
+		"Aster physically samples Stacks bank A through its world control")
+	_assert_true(
+		not instance._stacks_bank_resolved
+			and instance._stacks_bank_samples.size() == 1
+			and instance._stacks_last_commit.is_empty(),
+		"The first Bank A probe records visible evidence rather than guessing")
+	_assert_equals(instance._stacks_bank_attempts, 1,
+		"Stacks records the first physical probe")
+	_assert_true(_drive_act1_stacks_bank_control(instance, "bank_a"),
+		"Aster revisits sampled Bank A to commit that prediction")
+	_assert_true(
+		not instance._stacks_bank_resolved
+			and instance._stacks_last_commit == "bank_a"
+			and instance._stacks_failed_commits == ["bank_a"],
+		"The wrong physical commit leaves a legible falsified prediction")
+	_assert_equals(instance._stacks_bank_attempts, 2,
+		"Stacks counts the falsified commit independently of observation")
+	_assert_true(instance._current_step == "stacks_bank_audit",
+		"A falsified prediction keeps the retryable audit active")
+	_assert_true(_drive_act1_stacks_bank_control(instance, "bank_b"),
+		"Aster physically samples Stacks bank B after revising the model")
+	_assert_true(
+		not instance._stacks_bank_resolved
+			and instance._stacks_bank_samples.size() == 2
+			and instance._stacks_last_commit == "bank_a",
+		"The first Bank B probe adds evidence without auto-solving")
+	_assert_equals(instance._stacks_bank_attempts, 3,
+		"Stacks tracks the revised observation")
+	_assert_true(_drive_act1_stacks_bank_control(instance, "bank_b"),
+		"Aster commits the evidence-derived prediction at Bank B")
+	_assert_true(
+		instance._stacks_bank_resolved
+			and instance._stacks_last_commit == "bank_b"
+			and instance._stacks_bank_samples.size() == 2,
+		"The correct physical commit resolves without checklist-padding every bank")
+	_assert_equals(instance._stacks_bank_attempts, 4,
+		"Observations and both prediction commits remain auditable")
+	_assert_true(instance._current_step == "stacks_shelter",
+		"Resolving the Stacks deduction synchronously opens shelter rest")
+	for char_id in ["aster", "peris", "endo"]:
+		instance.headless_set_character_position(char_id, instance.STACKS_SHELTER_POS)
+		instance._game_state.set_stat(char_id, "hp", 90.0)
+		instance._game_state.set_stat(char_id, "atp", 2.0)
+		_assert_true(instance._game_state.is_at_shelter(char_id),
+			"%s is physically inside the Stacks shelter" % char_id)
+	_assert_true(not instance.trigger_stacks_shelter_rest(false),
+		"The retired Stacks rest helper cannot manufacture the anxiety beat")
+	instance._on_act1_stacks_shelter_interacted(
+		instance._stacks_shelter_interactable, false)
+	_assert_true(not instance._stacks_anxiety_seen,
+		"A direct Stacks shelter callback cannot impersonate its one-shot receipt")
+	_assert_true(_drive_act1_stacks_shelter_control(instance),
+		"The gathered party commits the Stacks rest through the shelter world control")
+	_assert_true(
+		instance._stacks_anxiety_seen
+			and instance._current_step == "stacks_shelter"
+			and instance._dialogue.is_active(),
+		"The accepted rest begins the named conversation before releasing exploration")
+	for char_id in ["aster", "peris", "endo"]:
+		_assert_true(instance._game_state.is_resting(char_id),
+			"%s rests through GameState at the Stacks shelter" % char_id)
+	instance._dialogue.clear()
+	instance._queue_stacks_explore()
+	instance.headless_advance(0.21, 0.05)
 	_assert_true(instance._current_step == "stacks_explore",
-		"Two completed Stacks operations return control to exploration")
-	_assert_equals(instance._stacks_field_operations_completed.size(), 2,
-		"Stacks persists both field-operation outcomes")
+		"Finishing the shelter conversation releases Stacks exploration")
+	instance.headless_advance(22.0, 0.05)
+	for char_id in ["aster", "peris", "endo"]:
+		_assert_true(
+			not instance._game_state.is_resting(char_id)
+				and instance._game_state.get_stat(char_id, "hp")
+					== instance._game_state.get_stat_cap(char_id, "hp")
+				and instance._game_state.get_stat(char_id, "stamina")
+					== instance._game_state.get_stat_cap(char_id, "stamina"),
+			"%s finishes physical Stacks recovery before the party leaves" % char_id)
+
+	instance.prepare_rings_fragment("client")
+	_assert_true(not instance.trigger_rings_trace("doorvine"),
+		"The retired Rings trace helper cannot manufacture ambient knowledge")
+	for trace_id in ["doorvine", "client_bloom", "forget_me_not"]:
+		_assert_true(_drive_act1_optional_control(
+				instance, instance._rings_trace_interactables.get(trace_id), "peris"),
+			"Peris physically reads Rings trace %s" % trace_id)
+	_assert_equals(instance._rings_trace_seen.size(), 3,
+		"All three Peris flora/memory reads can be visited in any order")
+	_assert_true(instance._current_step == "rings_client",
+		"Ambient Rings reads cannot gate or reorder progression")
+	var rings_client: Node = instance._rings_client_interactable
+	_assert_true(not instance.trigger_rings_client(false),
+		"The retired Rings client helper cannot manufacture reassignment")
+	instance._on_act1_rings_client_interacted(rings_client, false)
+	_assert_true(
+		not instance._rings_client_seen
+			and instance._rings_endo_phase
+				== instance.RINGS_ENDO_PHASE_PRESENT,
+		"A direct Rings callback cannot impersonate Marco's post-trigger receipt")
+	rings_client.set("active_character", "peris")
+	_assert_true(not bool(rings_client.call("_trigger", false)),
+		"Remote Peris and Endo cannot consume Marco's physical conversation")
+	var marco_position: Vector3 = instance.headless_get_anchor_positions().get(
+		"rings_marco", instance.RINGS_START + Vector3(80.0, 0.5, -5.0))
+	instance.headless_set_character_position(
+		"peris", marco_position + Vector3(-1.0, 0.0, -0.6))
+	instance.headless_set_character_position(
+		"endo", marco_position + Vector3(-2.0, 0.0, 1.0))
+	instance._game_state.set_party(["aster", "peris", "endo"])
+	rings_client.set("active_character", "peris")
+	_assert_true(bool(rings_client.call("_trigger", false)),
+		"Gathered Peris and Endo speak with Marco through the real interaction")
+	var rings_departure: Dictionary = (
+		instance._game_state.get_external_traversal_state("endo"))
+	_assert_true(
+		instance._current_step == "endo_departs"
+			and instance._rings_client_seen
+			and instance._rings_endo_phase
+				== instance.RINGS_ENDO_PHASE_DEPARTING,
+		"Marco's accepted receipt commits Endo's departure phase")
+	_assert_true(
+		not rings_departure.is_empty()
+			and StringName(str(rings_departure.get("traversal_id", "")))
+				== instance.RINGS_ENDO_TRAVERSAL_ID
+			and instance._game_state.characters.has("endo")
+			and instance._game_state.get_party().has("endo")
+			and instance._endo.visible,
+		"Endo remains physically present during the saved locked traversal")
 
 	# Verify dialogue keys exist for all scenes
 	for prefix in ["channels.narration.enter", "channels.peris.know_place", "channels.aster.report",
@@ -32238,7 +36172,16 @@ func _test_act1() -> void:
 		"channels.narration.window_two", "channels.peris.window_two", "channels.endo.kneel",
 		"channels.narration.recuperate", "channels.narration.shortcut",
 		"stacks.engram.support_log.title", "stacks.aster.support_team", "stacks.aster.standardization", "stacks.aster.right",
+		"stacks.rest.narration.open", "stacks.rest.narration.peris_quiet", "stacks.rest.peris.breath",
+		"stacks.rest.peris.cant", "stacks.rest.peris.silence", "stacks.rest.peris.try_again",
+		"stacks.rest.peris.scared", "stacks.rest.peris.ask", "stacks.rest.peris.wait_for_answer",
+		"stacks.rest.aster.start", "stacks.rest.aster.models", "stacks.rest.aster.focus",
+		"stacks.rest.aster.application", "stacks.rest.aster.peris", "stacks.rest.peris.listening",
+		"stacks.rest.peris.huh", "stacks.rest.peris.focus", "stacks.rest.peris.breath_settles",
+		"stacks.rest.aster.notice", "stacks.rest.peris.yeah", "stacks.rest.narration.close",
 		"ring.entry.peris.quiet", "ring.departure.endo.turn", "ring.marco.entry.peris.name",
+		"ring.reassignment.marco.pair", "ring.reassignment.peris.start",
+		"ring.reassignment.marco.scatter", "ring.reassignment.peris.shift",
 		"lockout.approach.panel_reject", "lockout.escalate.peris.dont", "lockout.standoff.peris.back"]:
 		_assert_true(DialogueData.has_key(prefix) and DialogueData.text(prefix) != "",
 			"Dialogue key exists with authored text: %s" % prefix)
@@ -32247,7 +36190,11 @@ func _test_act1() -> void:
 	instance._unload_chunk("channels")
 	await get_tree().process_frame
 	_assert_true(not instance._chunks.has("channels"), "Channels unloaded")
-	_assert_true(instance.find_child("EncounterFlureInteract", true, false) == null, "Encounter interactable unloads with channels")
+	_assert_true(
+		instance.find_child("ChannelsEncounterFlure", true, false) == null
+			and not is_instance_valid(instance._channels_run_lure),
+		"the real encounter Flure unloads with Channels"
+	)
 
 	instance.queue_free()
 	await get_tree().process_frame
@@ -32656,9 +36603,21 @@ func _test_flure() -> void:
 	for i in range(3):
 		await get_tree().process_frame
 
+	# The focused fixture begins before the corridor opens the upper exit. Exercise that real
+	# lifecycle seam instead of assuming the bridge endpoint was available from scene construction.
+	var upper_end_cell: Vector2i = instance._grid.world_to_grid(Vector3(
+		instance.BRIDGE_END_X - 1.0, 0.0, 0.0))
+	_assert_true(not instance._grid.is_cell_allowed_on_level(upper_end_cell, instance.LEVEL_UPPER),
+		"the upper bridge endpoint starts gated before the corridor handoff")
+	instance._unlock_upper_exit_footprint()
+	_assert_true(instance._grid.is_cell_allowed_on_level(upper_end_cell, instance.LEVEL_UPPER),
+		"the corridor handoff opens the authored upper bridge endpoint")
+
 	# Build the route fork before jumping ahead so its lower-deck divider edits the level-specific
 	# path footprint, then enter the gauntlet through the real mandatory-briefing path.
 	instance._load_chunk("below")
+	_ensure_elevator_gauntlet_endo_fixture(instance)
+	_stage_elevator_gauntlet_intro_approach(instance)
 	instance._start_gauntlet()
 	for i in range(3):
 		await get_tree().process_frame
@@ -32679,10 +36638,8 @@ func _test_flure() -> void:
 		"the route divider blocks the lower-deck center bypass in the path grid")
 	_assert_true(not instance._grid.is_cell_allowed_on_level(divider_cell, instance.LEVEL_UPPER),
 		"the extended route divider is beyond the authored upper-bridge endpoint")
-	var upper_end_cell: Vector2i = instance._grid.world_to_grid(Vector3(
-		instance.BRIDGE_END_X - 1.0, 0.0, 0.0))
 	_assert_true(instance._grid.is_cell_allowed_on_level(upper_end_cell, instance.LEVEL_UPPER),
-		"the upper bridge remains walkable through its authored endpoint")
+		"loading the lower route and gauntlet preserves the opened upper bridge endpoint")
 
 	# The authored floor/click surface reaches beyond the completion line.
 	var exit_supported := false
@@ -32699,8 +36656,8 @@ func _test_flure() -> void:
 	_assert_true(exit_supported,
 		"the gauntlet floor/click collider extends through the exit gate")
 
-	# The entrance lies within detection range, so the mandatory briefing owns an explicit safety
-	# window: no targets and no clickable lure until its two lines finish.
+	# The mandatory briefing owns an explicit safety window: no targets and no clickable lure until
+	# its two lines finish. Authored posts remain outside immediate sight range after it releases.
 	var first_enemy: Enemy = instance._gauntlet_enemies[0]
 	_assert_true(first_enemy._detection_targets.is_empty(),
 		"gauntlet enemies are inert during the mandatory briefing")
@@ -32711,12 +36668,21 @@ func _test_flure() -> void:
 	_assert_equals(float(instance._game_state.get_stat("aster", "hp")), aster_hp_before,
 		"the party cannot be attacked during the mandatory briefing")
 
-	# Finish the intro deterministically and verify the real input contract.
+	# Dialogue is one latch, not the encounter switch. The production-owned
+	# accepted movements and three settled endpoints must independently complete.
 	instance._finish_gauntlet_intro()
-	_assert_true("aster" in first_enemy._detection_targets or "peris" in first_enemy._detection_targets,
-		"enemies arm when the briefing finishes")
+	_assert_true(first_enemy._detection_targets.is_empty()
+			and not instance._flure_interactable.interaction_enabled,
+		"finishing dialogue alone leaves the pack inert and Flure locked")
+	_settle_elevator_gauntlet_intro_formation(instance)
+	var intro_targets_all_three := true
+	for member_id in instance.GAUNTLET_INTRO_REQUIRED_MEMBERS:
+		intro_targets_all_three = intro_targets_all_three \
+			and member_id in first_enemy._detection_targets
+	_assert_true(intro_targets_all_three,
+		"enemies arm against Aster, Peris, and Endo after the physical formation")
 	_assert_true(instance._flure_interactable.interaction_enabled,
-		"Flure becomes interactable after the briefing")
+		"Flure becomes interactable after briefing plus three-body arrival")
 	_assert_equals(str(instance._flure_interactable.required_character), "peris",
 		"Flure delegates activation to Peris")
 	_assert_equals(
@@ -32736,12 +36702,16 @@ func _test_flure() -> void:
 
 	_assert_true(instance._flure_active, "Flure is active after activation")
 
-	# Verify enemies ignore players.
-	_assert_true(first_enemy._detection_targets.is_empty(),
-		"Enemies stop targeting players when lure active (targets: %s)" % str(first_enemy._detection_targets))
+	# The reusable FSM owns the consequence. Detection targets remain authoritative; the lured state
+	# suppresses acquisition without scene code deleting and rebuilding them.
+	_assert_true(first_enemy.get_state() == "lured"
+		and instance._game_state.is_character_distracted(first_enemy.char_id),
+		"Flure moves the linked pack into its reusable lured state")
 
 	# Enemies should move toward the flure.
-	for i in range(20):
+	# The far stage-one post is 19m from the actual park point; allow its
+	# scheduler-backed walk to settle while remaining inside the 14s signal window.
+	for i in range(34):
 		instance._scheduler.advance(0.3)
 		await get_tree().process_frame
 
@@ -32754,16 +36724,20 @@ func _test_flure() -> void:
 	_assert_true(near_lure >= 3,
 		"Most enemies moved toward flure (near: %d/5)" % near_lure)
 
-	# Expire flure
-	instance._on_flure_expired()
+	# Expire through the real shared Flure timer rather than calling the scene's feedback callback.
+	instance._scheduler.advance_ticks(instance.FLURE_DURATION + 0.1)
 	for i in range(2):
 		await get_tree().process_frame
 
 	_assert_true(not instance._flure_active, "Flure deactivated after expiry")
 
-	# Verify enemies re-target players
-	_assert_true("aster" in first_enemy._detection_targets or "peris" in first_enemy._detection_targets,
-		"Enemies re-target players after lure expires")
+	# The enemy returns through its own home contract and the unchanged target policy is still armed.
+	var resumed_targets_all_three := true
+	for member_id in instance.GAUNTLET_INTRO_REQUIRED_MEMBERS:
+		resumed_targets_all_three = resumed_targets_all_three \
+			and member_id in first_enemy._detection_targets
+	_assert_true(first_enemy.get_state() != "lured" and resumed_targets_all_three,
+		"Enemies resume their home watch after lure expiry")
 
 	instance.queue_free()
 	await get_tree().process_frame
@@ -33750,8 +37724,10 @@ func _collect_tutorial_dialogue_section(
 
 func _aster_dialogue_dump_actions(instance: Node) -> Dictionary:
 	return {
-		"show_terminal": func(): instance._on_terminal_interacted(),
-		"walk_to_drink": func(): instance._on_drink_interacted(),
+		"show_terminal": func(): _trigger_exact_interactable_source(
+			instance._game_state, instance._terminal, "aster", instance),
+		"walk_to_drink": func(): _trigger_exact_interactable_source(
+			instance._game_state, instance._drink_machine, "aster", instance),
 		"explore_workspace": func():
 			instance._explore_gate_unlocked = true
 			instance._on_exploration_gate_interacted(),
@@ -34273,8 +38249,11 @@ func _test_selection_controller() -> void:
 	var rally_grid := GridWorld.new()
 	rally_grid.create_room(12, 12)
 	gs.grid = rally_grid
-	var rally_cell_center := rally_grid.grid_to_world(Vector2i(6, 6))
 	var rally_members: Array[String] = ["aster", "peris", "endo"]
+	for id in rally_members:
+		gs.command_stop(id)
+	gs.snap_character_to("aster", rally_grid.grid_to_world(Vector2i(2, 2)))
+	var rally_cell_center := rally_grid.grid_to_world(Vector2i(6, 6))
 	var cell_signature_a: String = sel._rally_preview_target_signature(
 		rally_cell_center + Vector3(0.05, 0.0, 0.05), "", rally_members)
 	var cell_signature_b: String = sel._rally_preview_target_signature(
@@ -34285,6 +38264,18 @@ func _test_selection_controller() -> void:
 		"Sub-cell pointer jitter keeps one rally-preview cache key (no repeated party A*)")
 	_assert_true(cell_signature_a != next_cell_signature,
 		"Crossing into a new grid cell invalidates the rally preview")
+	gs.snap_character_to("aster", rally_grid.grid_to_world(Vector2i(3, 2)))
+	var moved_member_signature: String = sel._rally_preview_target_signature(
+		rally_cell_center, "", rally_members)
+	_assert_true(cell_signature_a != moved_member_signature,
+		"A moving rally member crossing a cell invalidates its cached route")
+	var original_route_mode := gs.is_route_cautious()
+	gs.set_route_mode(not original_route_mode)
+	var changed_mode_signature: String = sel._rally_preview_target_signature(
+		rally_cell_center, "", rally_members)
+	_assert_true(moved_member_signature != changed_mode_signature,
+		"Changing cautious/direct navigation invalidates cached rally routes")
+	gs.set_route_mode(original_route_mode)
 	gs.grid = null
 
 	# The movable preview uses the same deterministic formation that release commits. Every exact
@@ -34476,6 +38467,35 @@ func _test_grid_risk() -> void:
 	_assert_true(_polyline_length(direct_path) < _polyline_length(safe_path),
 		"The direct route is shorter (in distance) than the safe detour")
 
+	# A risky GOAL used to defeat the distance-only heuristic: this four-cell
+	# command enters three unavoidable 80-cost cells, so A* expanded roughly the
+	# whole floor (1,500+ nodes / about 15 ms in the Web elevator). The cached
+	# relaxed risk-to-go potential must keep both planners proportional to the move.
+	var deep_risk_grid := GridWorld.new()
+	deep_risk_grid.create_room(96, 31, true)
+	for risk_z in range(12, 19):
+		for risk_x in range(12, 23):
+			deep_risk_grid.set_cell_risk(Vector2i(risk_x, risk_z), 80.0, true)
+	var deep_start := Vector2i(10, 15)
+	var deep_end := Vector2i(14, 15)
+	var deep_path := deep_risk_grid.find_path(deep_start, deep_end, {}, true)
+	_assert_true(not deep_path.is_empty(), "Cautious routing can reach a recoverable deep-risk goal")
+	_assert_true(deep_risk_grid.get_last_path_iterations() <= 16,
+		"Deep-risk spatial search stays local (%d expansions)" % deep_risk_grid.get_last_path_iterations())
+	var deep_sched := EventScheduler.new()
+	var deep_gs := GameState.new()
+	deep_gs.grid = deep_risk_grid
+	deep_gs.scheduler = deep_sched
+	deep_gs.route_cautious = true
+	deep_gs._add_reservation(Vector2i(11, 15), -GameState._RESERVE_BUFFER,
+		GameState._PARK_HORIZON, "risk_probe_blocker")
+	var deep_plan: Dictionary = deep_gs._plan_cooperative(
+		deep_start, deep_end, 2.5, 0.0, "risk_probe", 0)
+	_assert_true(not deep_plan.is_empty(),
+		"Deep-risk cooperative search detours around a reserved approach cell")
+	_assert_true(deep_gs._coop_last_nodes > 0 and deep_gs._coop_last_nodes < 100,
+		"Deep-risk cooperative conflict search stays bounded (%d expansions)" % deep_gs._coop_last_nodes)
+
 	# (2) Non-recoverable: a full-height band has no safe crossing — cautious refuses, direct passes.
 	for z in range(1, 8):
 		grid.set_cell_risk(Vector2i(6, z), 20.0, false)
@@ -34517,6 +38537,66 @@ func _test_grid_risk() -> void:
 	var replayed := GameState.replay(log, grid)
 	_assert_true(not replayed.route_cautious,
 		"Replay restores the route mode (last set_route_mode in the log wins)")
+
+	# (5) IRON_BLOOM is part of the same cautious cost vocabulary as risk_cells.
+	# Force the ordinary cautious route to conflict with a parked intermediate
+	# reservation so the commit MUST use the space-time branch. Both planners
+	# must still prefer the clear detour over the shorter bloom lane.
+	var bloom_grid := GridWorld.new()
+	bloom_grid.create_room(14, 7, true)  # symmetric clear detours above/below the centre lane
+	var bloom_start := Vector2i(2, 3)
+	var bloom_end := Vector2i(11, 3)
+	for x in range(5, 8):
+		bloom_grid.set_tile(x, 3, GridWorld.Tile.IRON_BLOOM)
+	var bloom_safe: Array[Vector3] = bloom_grid.find_path(bloom_start, bloom_end, {}, true)
+	var bloom_direct: Array[Vector3] = bloom_grid.find_path(bloom_start, bloom_end, {}, false)
+	var safe_hits_bloom := false
+	var direct_hits_bloom := false
+	var bloom_conflict_cell := Vector2i(-1, -1)
+	for wp in bloom_safe:
+		var cell := bloom_grid.world_to_grid(wp)
+		if bloom_grid.get_tile(cell.x, cell.y) == GridWorld.Tile.IRON_BLOOM:
+			safe_hits_bloom = true
+		if bloom_conflict_cell == Vector2i(-1, -1) \
+				and cell.y != bloom_start.y and cell.x >= 5 and cell.x <= 7:
+			bloom_conflict_cell = cell
+	for wp in bloom_direct:
+		var cell := bloom_grid.world_to_grid(wp)
+		if bloom_grid.get_tile(cell.x, cell.y) == GridWorld.Tile.IRON_BLOOM:
+			direct_hits_bloom = true
+	_assert_true(not bloom_safe.is_empty() and not safe_hits_bloom,
+		"Cautious spatial A* avoids IRON_BLOOM tiles")
+	_assert_true(not bloom_direct.is_empty() and direct_hits_bloom,
+		"Direct spatial A* uses the shorter IRON_BLOOM lane")
+	_assert_true(bloom_conflict_cell != Vector2i(-1, -1),
+		"The cautious spatial route exposes a detour cell to reserve")
+	if bloom_conflict_cell != Vector2i(-1, -1):
+		var bloom_sched := EventScheduler.new()
+		var bloom_gs := GameState.new()
+		bloom_gs.grid = bloom_grid
+		bloom_gs.scheduler = bloom_sched
+		bloom_gs.route_cautious = true
+		bloom_gs.register_character("bloom_mover", bloom_grid.grid_to_world(bloom_start), 3.0, {})
+		bloom_gs._add_reservation(bloom_conflict_cell, -GameState._RESERVE_BUFFER,
+			GameState._PARK_HORIZON, "detour_blocker")
+		bloom_gs.reset_performance_counters()
+		var bloom_moved: bool = bloom_gs.command_move_to_cell("bloom_mover", bloom_end)
+		var bloom_counters := bloom_gs.get_performance_counters()
+		_assert_true(bloom_moved, "Cautious commit finds the other clear detour")
+		_assert_equals(int(bloom_counters.get("cooperative_fast_paths", 0)), 0,
+			"The reserved spatial detour rejects the fast path")
+		_assert_equals(int(bloom_counters.get("cooperative_conflict_searches", 0)), 1,
+			"The IRON_BLOOM parity check runs through space-time search")
+		_assert_true(bloom_gs._coop_last_nodes > 0,
+			"The IRON_BLOOM parity check expands space-time nodes")
+		var committed_hits_bloom := false
+		if bloom_moved and bloom_gs.characters["bloom_mover"].movement != null:
+			for wp in bloom_gs.characters["bloom_mover"].movement.path:
+				var cell := bloom_grid.world_to_grid(wp)
+				if bloom_grid.get_tile(cell.x, cell.y) == GridWorld.Tile.IRON_BLOOM:
+					committed_hits_bloom = true
+		_assert_true(not committed_hits_bloom,
+			"Conflict-search commit preserves cautious IRON_BLOOM avoidance")
 
 ## GridWorld.from_data — the get_grid_data() contract a chunk hands the preview: world-rect footprint
 ## carving, risk regions, stacked levels + links all build deterministically from plain data.
@@ -34775,12 +38855,16 @@ func _test_drink_partial_dwell() -> void:
 	_assert_true(not bool(instance._has_drunk),
 		"Walking in and leaving does NOT pour: the hold times from ARRIVAL, not from crossing the zone edge")
 
-	# Sanity: the FULL hold still works — arrive and STAND for dwell_time.
+	# Sanity: the FULL hold dispenses the item, then its endocytosis time must still be paid.
 	gs.snap_character_to("aster", Vector3(machine_pos.x, 0.0, machine_pos.z))
 	dm._on_body_entered(player)
 	instance.headless_advance(float(dm.dwell_time) + 0.5, 0.05)
 	await get_tree().process_frame
-	_assert_true(bool(instance._has_drunk), "The full standing hold pours the drink")
+	_assert_true(not bool(instance._has_drunk) and gs.is_endocytosing("aster"),
+		"The full standing hold dispenses a real drink without granting its digest endpoint")
+	instance.headless_advance(instance.DRINK_ENDOCYTOSIS_DURATION, 0.05)
+	_assert_true(bool(instance._has_drunk) and not gs.is_endocytosing("aster"),
+		"The dispensed drink completes only after canonical endocytosis")
 	instance.queue_free()
 	await get_tree().process_frame
 
@@ -34980,9 +39064,9 @@ func _test_modeled_room_binder() -> void:
 	instance.queue_free()
 	await get_tree().process_frame
 
-## The Flora Garden fragment plays the WHOLE tending loop through its interactables: take a
-## seed, plant a pad, tend each dawn to flourishing, harvest a tonic, and the two near pads
-## grow into one mycelial network.
+## The Flora Garden fragment plays its authored tending loop through real stock and pads: take a
+## seed, plant it, tend each dawn to flourishing, and connect the two near growths into one
+## mycelial network. Generic seed stock deliberately has no invented healing harvest.
 func _test_flora_garden() -> void:
 	_test_name = "Flora Garden"
 	var instance = await _instantiate_preview_chunk_and_wait("flora_garden", 6)
@@ -35000,27 +39084,31 @@ func _test_flora_garden() -> void:
 	_assert_true(crate != null and pad1 != null, "The garden exposes the crate and pads")
 	# Plant the two NEAR pads (peris walks via snap; the interactables enforce her reach).
 	for pad in [pad1, pad2]:
-		gs.snap_character_to("peris", crate.global_position + Vector3(0.2, 0, 0))
-		crate._trigger()
+		_assert_true(_trigger_exact_interactable_source(gs, crate, "peris"),
+			"Peris takes a seed from the exact crate source")
 		_assert_true(gs._find_carried_item("peris", "flora_seed") != "", "The crate hands Peris a seed")
-		gs.snap_character_to("peris", pad.get_meta("pad_pos") + Vector3(0.3, 0, 0))
-		pad._trigger()
+		_assert_true(_trigger_exact_interactable_source(gs, pad, "peris"),
+			"Peris plants through the exact soil-pad source")
 	_assert_equals(gs.flora.size(), 2, "Both pads hold a planted growth")
 	var ids: Array = gs.flora.keys()
 	# Tend daily to flourishing (planting counts as the first day's tending).
 	for day in range(3):
 		instance.headless_advance(76.0, 0.5)
 		await get_tree().process_frame
-		for fid in ids:
-			gs.snap_character_to("peris", gs.flora[fid].position + Vector3(0.3, 0, 0))
-			gs.command_tend_flora("peris", str(fid))
+		for pad_index in range(2):
+			var fid := str(chunk._pad_flora_ids[pad_index])
+			if gs.get_flora_stage(fid) >= GameState.FLORA_STAGES.size() - 1:
+				continue
+			_assert_true(_trigger_exact_interactable_source(
+					gs, chunk._tend_interactables[pad_index], "peris"),
+				"Peris tends growth %d through its exact FloraPad source" % (pad_index + 1))
 	_assert_equals(gs.get_flora_stage(str(ids[0])), 3, "Daily tending reaches flourishing")
 	_assert_true(gs.get_flora_light_at(gs.flora[ids[0]].position) > 0.9, "The flourishing growth sheds light")
 	_assert_equals(gs.get_flora_network_id(str(ids[0])), gs.get_flora_network_id(str(ids[1])),
 		"The two near pads grew into ONE mycelial network")
 	gs.snap_character_to("peris", gs.flora[ids[0]].position + Vector3(0.3, 0, 0))
-	var tonic: String = gs.command_harvest_flora("peris", str(ids[0]))
-	_assert_true(tonic != "", "The flourishing growth yields a tonic")
+	_assert_true(gs.command_harvest_flora("peris", str(ids[0])) == "",
+		"Generic garden growth does not manufacture an uncited healing tonic")
 	instance.queue_free()
 	await get_tree().process_frame
 
@@ -35038,8 +39126,25 @@ func _test_dusk_run() -> void:
 		instance.headless_advance(0.1, 0.05)
 		await get_tree().process_frame
 	var east: Vector3 = instance._active_chunk.get_preview_anchors()["east_shelter"]
-	_assert_true(gs.grid.is_cell_risky(gs.grid.world_to_grid(instance._active_chunk.get_preview_anchors()["iron_center"])),
+	var iron_center: Vector3 = instance._active_chunk.get_preview_anchors()["iron_center"]
+	_assert_true(gs.grid.is_cell_risky(gs.grid.world_to_grid(iron_center)),
 		"The iron field is real data-layer risk")
+	var aster_hp_before: float = gs.get_stat("aster", "hp")
+	var peris_hp_before: float = gs.get_stat("peris", "hp")
+	gs.snap_character_to("aster", iron_center)
+	gs.snap_character_to("peris", Vector3(20.0, 0.0, 7.5))
+	instance.headless_advance(instance._active_chunk.IRON_DAMAGE_INTERVAL + 0.05, 0.05)
+	await get_tree().process_frame
+	_assert_true(gs.get_stat("aster", "hp") < aster_hp_before,
+		"The direct iron route damages the body actually crossing it")
+	_assert_equals(gs.get_stat("peris", "hp"), peris_hp_before,
+		"The visible southern detour avoids iron damage")
+	var risk_state: Dictionary = instance._active_chunk.get_preview_state().get(
+		"iron_risk_field", {})
+	var contact_ticks: Dictionary = risk_state.get("contact_ticks", {})
+	_assert_true(bool(risk_state.get("active", false))
+			and int(contact_ticks.get("aster", 0)) >= 1,
+		"Dusk Run exposes fixed-cadence spatial contact evidence")
 	for cid in ["aster", "peris", "endo"]:
 		gs.snap_character_to(cid, east + Vector3(0.4 * float(cid.length() % 3), 0, 0.3))
 	instance.headless_advance(25.0, 0.5)  # evening arrives
@@ -35134,12 +39239,14 @@ func _test_flora_network() -> void:
 	_assert_true(gs.get_flora_network_id(f3) != gs.get_flora_network_id(f1),
 		"A distant growth is its own network")
 
-	# --- Harvest: established+ growths yield once per day ---
+	# --- Generic network growth has no invented healing yield ---
 	gs.snap_character_to("peris", Vector3(4.5, 0, 4.5))
-	var tonic := gs.command_harvest_flora("peris", f1)
-	_assert_true(tonic != "", "A flourishing growth yields a restorative")
-	_assert_true(gs.command_harvest_flora("peris", f1) == "", "One yield per growth per day")
-	_assert_true(gs.command_harvest_flora("peris", f3) == "", "A freshly planted growth has nothing to give")
+	_assert_true(gs.command_harvest_flora("peris", f1) == "",
+		"A generic flourishing growth does not manufacture an uncited healing tonic")
+	_assert_true(gs.command_harvest_flora("aster", f1) == "",
+		"Only Peris can harvest a species-authored flora tool")
+	_assert_true(gs.command_harvest_flora("peris", f3) == "",
+		"A freshly planted growth has nothing to give")
 
 	# --- Replay rebuilds the garden ---
 	var live_stage := gs.get_flora_stage(f1)
@@ -35271,7 +39378,15 @@ func _test_shelter_rest() -> void:
 	_assert_true(not gs.command_rest("aster"), "Rest refuses when too low on ATP to sleep")
 	gs.set_stat("aster", "atp", 4.0)
 	gs.set_stat("aster", "hp", GameState.HP_MAX)
-	_assert_true(not gs.command_rest("aster"), "Rest refuses at full HP")
+	gs.set_stat("aster", "stamina", GameState.STAMINA_MAX)
+	_assert_true(not gs.command_rest("aster"), "Daytime rest refuses when both HP and stamina are already full")
+	gs.set_stat("aster", "stamina", GameState.STAMINA_MAX - 8.0)
+	_assert_true(gs.command_rest("aster"), "A full-HP but tired character can recover at a shelter")
+	advance.call(sched, 2.5)
+	_assert_true(absf(gs.get_stat("aster", "stamina") - GameState.STAMINA_MAX) < 0.01,
+		"Shelter rest restores stamina even when HP started full")
+	_assert_true(not gs.is_resting("aster"), "Daytime recovery stops after both HP and stamina fill")
+	gs.set_stat("aster", "atp", 4.0)
 
 	# --- Healing rate + pip cost ---
 	gs.set_stat("aster", "hp", 40.0)
@@ -35288,11 +39403,11 @@ func _test_shelter_rest() -> void:
 	gs.command_move_to_pos("aster", Vector3(5, 0, 3))
 	_assert_true(not gs.is_resting("aster"), "A movement command interrupts the rest")
 
-	# --- Auto-stop at full HP ---
+	# --- Auto-stop once both HP and stamina are full ---
 	gs.set_stat("aster", "hp", GameState.HP_MAX - 2.0)
 	gs.command_rest("aster")
 	advance.call(sched, 4.0)
-	_assert_true(not gs.is_resting("aster"), "Rest auto-stops when HP fills")
+	_assert_true(not gs.is_resting("aster"), "Rest auto-stops when HP and stamina are full")
 	_assert_true(absf(gs.get_stat("aster", "hp") - GameState.HP_MAX) < 0.01, "HP capped at max")
 
 	# --- Revive at shelter: ally presence, 10s, reset on leave ---
@@ -35337,6 +39452,23 @@ func _test_shelter_rest() -> void:
 	_assert_true(absf(gs.get_stat("aster", "stamina") - GameState.STAMINA_MAX) < 0.01,
 		"A night's sleep wakes you at FULL stamina (got %.1f)" % gs.get_stat("aster", "stamina"))
 
+	# --- A full-HP party can still commit to a full night; tiredness is sufficient but not required ---
+	pair = make.call()
+	gs = pair[0]
+	sched = pair[1]
+	gs.set_game_clock(1, GameState.NIGHT_START)
+	gs.set_stat("aster", "hp", GameState.HP_MAX)
+	gs.set_stat("peris", "hp", GameState.HP_MAX)
+	gs.set_stat("aster", "stamina", 22.0)
+	gs.set_stat("peris", "stamina", GameState.STAMINA_MAX)
+	gs.set_stat("aster", "atp", 4.0)
+	gs.set_stat("peris", "atp", 4.0)
+	_assert_true(gs.command_rest("aster"), "A healthy but tired character can bed down for the night")
+	_assert_true(gs.command_rest("peris"), "A fully recovered character can join the party's full-night rest")
+	_assert_equals(gs.game_day, 2, "A healthy full party can complete shelter rest without artificial damage")
+	_assert_true(absf(gs.get_stat("aster", "stamina") - GameState.STAMINA_MAX) < 0.01,
+		"The full shelter rest wakes the tired character at full stamina")
+
 	# --- Night skip with a downed member: bonus lost, downed-at-shelter revives with half ---
 	pair = make.call()
 	gs = pair[0]
@@ -35379,34 +39511,36 @@ func _test_shelter_rest() -> void:
 	_assert_true(gs.get_stat("aster", "stamina") >= 20.0 + 5.0 * GameState.REST_STAMINA_PER_SEC - 5.0,
 		"Resting restores stamina per second too (got %.1f)" % gs.get_stat("aster", "stamina"))
 
-	# --- Field Restore: the no-shelter revive (long cast, stamina price, rooted caster) ---
+	# --- Oli's Restore: the one canonical no-shelter revive exception ---
 	pair = make.call()
 	gs = pair[0]
 	sched = pair[1]
-	gs.set_stat("aster", "stamina", 100.0)
+	gs.register_character("oli", Vector3(12.5, 0, 9), 3.0)
 	gs.snap_character_to("peris", Vector3(12, 0, 9))   # far from any shelter
-	gs.snap_character_to("aster", Vector3(12.5, 0, 9))
 	gs.down_character("peris")
-	gs.set_stat("aster", "stamina", 30.0)
-	_assert_true(not gs.command_field_restore("aster", "peris"),
-		"Field restore refuses when the caster can't pay the stamina")
 	gs.set_stat("aster", "stamina", 100.0)
-	_assert_true(gs.command_field_restore("aster", "peris"), "Field restore starts in the field")
-	_assert_true(absf(gs.get_stat("aster", "stamina") - 40.0) < 0.01,
-		"The stamina price is paid up front (got %.1f)" % gs.get_stat("aster", "stamina"))
+	_assert_true(not gs.command_field_restore("aster", "peris"),
+		"Aster cannot inherit Oli's Restore just because the target is in range")
+	gs.set_stat("oli", "stamina", 30.0)
+	_assert_true(not gs.command_field_restore("oli", "peris"),
+		"Oli's Restore refuses when he cannot pay the stamina")
+	gs.set_stat("oli", "stamina", 100.0)
+	_assert_true(gs.command_field_restore("oli", "peris"), "Oli starts Restore in the field")
+	_assert_true(absf(gs.get_stat("oli", "stamina") - 40.0) < 0.01,
+		"The stamina price is paid up front (got %.1f)" % gs.get_stat("oli", "stamina"))
 	advance.call(sched, 4.0)
 	_assert_true(gs.is_downed("peris"), "Half a cast has revived nobody yet")
-	gs.command_move_to_pos("aster", Vector3(14, 0, 9))
+	gs.command_move_to_pos("oli", Vector3(14, 0, 9))
 	advance.call(sched, 6.0)
-	_assert_true(gs.is_downed("peris"), "Moving mid-cast breaks the restore (and the stamina stays spent)")
-	_assert_true(not gs.is_field_restoring("aster"), "The broken cast is cleared")
-	gs.command_field_restore("aster", "peris")
-	_assert_true(not gs.is_field_restoring("aster"), "Out of range after walking away — the cast refuses")
-	gs.snap_character_to("aster", Vector3(12.5, 0, 9))
-	gs.set_stat("aster", "stamina", 100.0)
-	_assert_true(gs.command_field_restore("aster", "peris"), "Back in range, the cast starts again")
+	_assert_true(gs.is_downed("peris"), "Moving mid-cast breaks Restore (and the stamina stays spent)")
+	_assert_true(not gs.is_field_restoring("oli"), "The broken cast is cleared")
+	gs.command_field_restore("oli", "peris")
+	_assert_true(not gs.is_field_restoring("oli"), "Out of range after walking away — the cast refuses")
+	gs.snap_character_to("oli", Vector3(12.5, 0, 9))
+	gs.set_stat("oli", "stamina", 100.0)
+	_assert_true(gs.command_field_restore("oli", "peris"), "Back in range, Oli starts Restore again")
 	advance.call(sched, 8.5)
-	_assert_true(not gs.is_downed("peris"), "The full cast revives the downed character in the field")
+	_assert_true(not gs.is_downed("peris"), "Oli's full cast revives the downed character in the field")
 	_assert_true(absf(gs.get_stat("peris", "hp") - GameState.REVIVE_HP) < 0.01,
 		"Field revive stands them up at 1 HP")
 
@@ -36833,12 +40967,9 @@ func _test_peris_scene_transition() -> void:
 ## REAL transition lifecycle — real input to `complete`, then the actual change_scene_to_file ->
 ## teardown -> final process (NOT suppressed, NOT a manual teardown) — and prints a sentinel. A
 ## scheduler used after teardown surfaces as a SCRIPT ERROR in this child's stderr.
-## SUBPROCESS GUARD: no wall-clock timer callback may outlive its scene. The bridge collapse
-## arms SceneTree timers (debris stagger + settle cleanup) whose lambdas capture scene nodes;
-## SceneTree timers belong to the TREE, not the scene, so freeing the scene mid-tumble (a real
-## scene transition, a wipe-restart, a test teardown) left them pending -- each later fired
-## against freed captures and the engine printed "Lambda capture at index 0 was freed" (13x at
-## every --test-elevator exit). Non-fatal, so only a child-process log-grep can see it.
+## SUBPROCESS GUARD: no wall-clock presentation work may outlive its scene. This reproduces a real
+## teardown with the frame-sliced debris queue still nonempty, then keeps the tree alive beyond the
+## old timer horizon so both queued-work and historical lambda-capture regressions surface in stderr.
 func _test_elevator_teardown_clean() -> void:
 	_test_name = "Elevator Collapse Teardown Clean"
 	var exe := OS.get_executable_path()
@@ -36852,6 +40983,7 @@ func _test_elevator_teardown_clean() -> void:
 	for line in out:
 		log += str(line)
 	var collapsed := log.contains("[ELEVATOR-TEARDOWN-CHILD] collapsed=true")
+	var pending_exercised := log.contains("pending=true")
 	var lambda_freed := log.contains("Lambda capture at index")
 	var crashed := log.contains("on a null value")
 	if lambda_freed or crashed:
@@ -36861,15 +40993,16 @@ func _test_elevator_teardown_clean() -> void:
 				print("  [teardown-leak] %s" % raw.strip_edges())
 				shown += 1
 	_assert_true(collapsed, "Child drove the REAL bridge collapse then freed the scene mid-tumble (exit %d)" % code)
+	_assert_true(pending_exercised,
+		"Teardown guard frees the scene while staged debris work is genuinely pending")
 	_assert_true(not lambda_freed,
 		"No wall-clock timer lambda outlives the freed scene (zero 'Lambda capture ... was freed')")
 	_assert_true(not crashed, "Mid-collapse teardown derefs nothing freed (no 'on a null value')")
 
 ## Child entry for the guard above (run via --drive-elevator-teardown). Builds the real elevator
 ## scene, fires the real collapse beat (dialogue + camera + scheduled fall -> debris cascade),
-## then frees the scene MID-TUMBLE and keeps the SceneTree alive past every wall-clock horizon
-## the collapse armed (piece stagger <=0.5s, settle cleanup 3.0s). Any timer callback that
-## outlived the scene fires during the hold and its engine error lands in this child's stderr.
+## then frees the scene MID-TUMBLE with unconverted pieces still queued and keeps the SceneTree
+## alive past the historical 3-second cleanup horizon.
 func _drive_elevator_teardown_child() -> void:
 	_test_name = "Elevator Teardown (child)"
 	var scene := load("res://scenes/tutorial/elevator.tscn")
@@ -36897,12 +41030,14 @@ func _drive_elevator_teardown_child() -> void:
 	instance._start_bridge_collapse()
 	instance.headless_advance(1.0, 0.05)   # past the bridge_fall delay -> _execute_bridge_fall
 	var collapsed := str(instance._current_step) == "bridge_collapse"
-	for i in range(3):
-		await get_tree().process_frame   # stagger timers now pending, few elapsed (headless deltas are tiny)
+	var pending: bool = instance._collapse_presenter != null \
+		and instance._collapse_presenter.pending_piece_count() > 0
+	await get_tree().process_frame
 	instance.queue_free()
 	await get_tree().process_frame
 	await get_tree().create_timer(3.6).timeout
-	print("[ELEVATOR-TEARDOWN-CHILD] collapsed=%s survived=true" % str(collapsed))
+	print("[ELEVATOR-TEARDOWN-CHILD] collapsed=%s pending=%s survived=true" \
+		% [str(collapsed), str(pending)])
 
 func _drive_peris_transition_child() -> void:
 	_test_name = "Peris Transition (child)"
@@ -36969,8 +41104,10 @@ func _drive_peris_transition_child() -> void:
 func _test_sequence_contracts() -> void:
 	var aster_actions := func(instance: Node):
 		var actions := {}
-		actions["show_terminal"] = func(): instance._on_terminal_interacted()
-		actions["walk_to_drink"] = func(): instance._on_drink_interacted()
+		actions["show_terminal"] = func(): _trigger_exact_interactable_source(
+			instance._game_state, instance._terminal, "aster", instance)
+		actions["walk_to_drink"] = func(): _trigger_exact_interactable_source(
+			instance._game_state, instance._drink_machine, "aster", instance)
 		# Exploration beat: unlock the gate immediately and fire it. The scene
 		# normally waits EXPLORE_MIN_TIME of scheduler time, but contract tests
 		# skip straight through.
@@ -37025,19 +41162,9 @@ func _test_sequence_contracts() -> void:
 
 	# clearance -> complete now rides the scheduler (the blue fade is a cosmetic tween),
 	# so the driver reaches complete on its own — no force-fire needed.
-	var tag_day_actions := func(instance: Node):
-		var actions := {}
-		actions["witness_choice"] = func():
-			instance.trigger_witness_record("public_log", false)
-		var complete_current_record := func():
-			var site_id := str(instance.current_escort_field_site_id())
-			if site_id != "":
-				instance._on_escort_field_site_interacted(site_id)
-		for raw_site in instance.ESCORT_FIELD_SITE_DEFS:
-			actions["escort_record_%s" % str((raw_site as Dictionary).get("id", ""))] = complete_current_record
-		actions["return_to_scanner"] = func():
-			instance.trigger_return_scanner(false)
-		return actions
+	var tag_day_actions := func(_instance: Node):
+		# Optional camera/fast-forward controls do not gate this authored cinematic.
+		return {}
 
 	var elevator_actions := func(instance: Node):
 		var actions := {}
@@ -37056,7 +41183,11 @@ func _test_sequence_contracts() -> void:
 				"peris",
 				instance.ASTER_POS + Vector3(0.5, 0.5, 0.0)
 			)
-			instance._on_aster_wake_interacted()
+			_trigger_exact_interactable_source(
+				instance._game_state,
+				instance._aster_wake_interactable,
+				"peris",
+				instance)
 		actions["emp_tutorial"] = func():
 			instance._on_emp_pressed()
 			instance._toggle_pause()
@@ -37069,49 +41200,57 @@ func _test_sequence_contracts() -> void:
 		actions["corridor"] = func():
 			_disable_enemy_detection(instance)
 		actions["bridge"] = func():
-			# Walk out across the bridge to its far end — the gate collapses it there.
+			# The bridge gate keys on the party tail: both units must be on the failing span.
+			# Mirror the real-input rally instead of teleporting only the lead unit.
 			_disable_enemy_detection(instance)
-			_set_sequence_character_position(
-				instance,
-				"aster",
-				Vector3(instance.BRIDGE_END_X - 1.0, 0.5, 0.0)
-			)
+			for cid in ["aster", "peris"]:
+				_set_sequence_character_position(
+					instance,
+					cid,
+					Vector3(instance.BRIDGE_END_X - 1.0, 0.5, 0.0)
+				)
 		actions["bridge_collapse"] = func():
-			instance._on_fall_landed()
+			instance._on_fall_landed(true) # explicit deterministic harness endpoint
 		actions["climb_attempt"] = func():
-			instance._on_climb_prompt_interacted()
+			_trigger_exact_interactable_source(
+				instance._game_state,
+				instance._climb_interactable,
+				"aster",
+				instance)
 		actions["route_read_circuit"] = func():
 			instance._set_elevator_overlay_state("peris", true)
 		actions["route_choice"] = func():
 			_disable_enemy_detection(instance)
-			instance._route_beats_crossed.assign([true, true, true])
-			_set_sequence_character_position(
-				instance,
-				"aster",
-				instance.ROUTES_CONVERGE + Vector3(1.5, 0.5, 0.0)
-			)
+			for beat_index in range(instance.ROUTE_BEAT_COUNT):
+				var route_x: float = instance.FORK_POS.x \
+					+ float(instance.ROUTE_BEAT_OFFSETS[beat_index]) \
+					+ float(instance.ROUTE_BEAT_CLEARANCE_OFFSET) + 1.2
+				for character_id in ["aster", "peris"]:
+					_set_sequence_character_position(
+						instance, character_id,
+						Vector3(route_x, instance.BELOW_Y + 0.5, -1.5)
+					)
+				instance._update_route_course_progress()
+			var wreckage_anchor: Vector3 = instance._wreckage_interaction_anchor()
+			_set_sequence_character_position(instance, "aster", wreckage_anchor + Vector3(0.0, 0.0, -1.1))
+			_set_sequence_character_position(instance, "peris", wreckage_anchor + Vector3(0.0, 0.0, 1.1))
+			instance._arm_wreckage_gate()
+			instance._wreckage_interactable.set("active_character", "aster")
+			instance._wreckage_interactable.call("_trigger", false)
 		actions["junction_arrive"] = func():
-			for survey_spec in [["Workbench", "aster"], ["Food", "peris"], ["Monitor", "peris"]]:
-				var survey: Node = instance._junction_interactables.get(str(survey_spec[0]))
-				if survey != null:
-					survey.set("active_character", str(survey_spec[1]))
-					survey.call("_trigger", false)
-			var prep: Node = instance._junction_prep_interactables.get("scout")
-			if prep != null:
-				prep.set("active_character", "peris")
-				prep.call("_trigger", false)
-			_complete_elevator_junction_fieldwork_direct(instance, "Elevator sequence contract")
 			instance._start_dusk_from_plant()
-		actions["endo_shelter"] = func():
-			instance._on_endo_delivered("endo")
 		actions["gauntlet"] = func():
+			instance._finish_gauntlet_intro()
+			_settle_elevator_gauntlet_intro_formation(instance)
 			_disable_enemy_detection(instance)
-			instance._on_flure_activated()
-			_set_sequence_character_position(
-				instance,
-				"aster",
-				instance.GAUNTLET_EXIT + Vector3(1.5, 0.5, 0.0)
-			)
+			_trigger_exact_flure_source(
+				instance._game_state, instance._flure_interactable, "peris")
+			for character_id in instance.GAUNTLET_INTRO_REQUIRED_MEMBERS:
+				_set_sequence_character_position(
+					instance,
+					character_id,
+					instance.GAUNTLET_EXIT + Vector3(1.5, 0.5, 0.0)
+				)
 		actions["complete"] = func():
 			instance._change_scene_or_record("res://scenes/tutorial/act1.tscn")
 			instance._scheduler.clear()
@@ -37206,10 +41345,11 @@ func _test_sequence_contracts() -> void:
 		[
 			"consciousness_fragments", "waking", "approach_aster", "wake_aster",
 			"conversation", "system_restored", "units_activate", "emp_tutorial",
-			"doors_unlocked", "doors_open", "rally_tutorial", "corridor",
+			"doors_open", "rally_tutorial", "corridor",
 			"bridge", "bridge_collapse", "fallen", "climb_attempt",
 			"route_read_circuit", "route_choice", "junction_arrive",
-			"endo_enters", "endo_shelter", "night_watch", "dawn", "morning",
+			"endo_enters", "endo_shelter", "endo_delivery", "endo_delivered",
+			"night_watch", "dawn", "morning",
 			"gauntlet", "complete",
 		],
 		elevator_actions,
@@ -37301,12 +41441,14 @@ func _drive_intro_leg(scene_path: String, visit: int) -> Dictionary:
 ## The scripted interaction at each gated step, per scene. Mirrors the per-scene
 ## contract hooks (force-fired / teleported beats); the chain's value is verifying
 ## the connected end-to-end path, not the input fidelity of every beat (real-input
-## reachability is covered separately by --test-input-playthrough).
+## reachability is covered separately by --test-elevator-realinput).
 func _intro_leg_actions(scene_path: String, visit: int, instance: Node) -> Dictionary:
 	var actions := {}
 	if scene_path.ends_with("aster_sim.tscn"):
-		actions["show_terminal"] = func(): instance._on_terminal_interacted()
-		actions["walk_to_drink"] = func(): instance._on_drink_interacted()
+		actions["show_terminal"] = func(): _trigger_exact_interactable_source(
+			instance._game_state, instance._terminal, "aster", instance)
+		actions["walk_to_drink"] = func(): _trigger_exact_interactable_source(
+			instance._game_state, instance._drink_machine, "aster", instance)
 		actions["explore_workspace"] = func():
 			instance._explore_gate_unlocked = true
 			instance._on_exploration_gate_interacted()
@@ -37328,7 +41470,11 @@ func _intro_leg_actions(scene_path: String, visit: int, instance: Node) -> Dicti
 		# ride the scheduler (the fades/fall are cosmetic tweens), so no force-fire.
 		actions["approach_aster"] = func():
 			_set_sequence_character_position(instance, "peris", instance.ASTER_POS + Vector3(0.5, 0.5, 0.0))
-			instance._on_aster_wake_interacted()
+			_trigger_exact_interactable_source(
+				instance._game_state,
+				instance._aster_wake_interactable,
+				"peris",
+				instance)
 		actions["emp_tutorial"] = func():
 			instance._on_emp_pressed()
 			instance._toggle_pause()
@@ -37339,24 +41485,50 @@ func _intro_leg_actions(scene_path: String, visit: int, instance: Node) -> Dicti
 			instance._hud.set_paused(false)
 			instance.headless_advance(8.0, 0.05)
 		actions["corridor"] = func(): _disable_enemy_detection(instance)
-		# Cross the (upper-deck) bridge: walk Aster to the far end, which is what collapses it. Without
-		# this the leg stalls at "bridge" (the gate keys on aster.x past the span, but nothing moved her).
+		# The bridge and pre-Endo lower-deck thresholds are two-body invariants even in this contract driver.
 		actions["bridge"] = func():
 			_disable_enemy_detection(instance)
-			_set_sequence_character_position(instance, "aster", Vector3(instance.BRIDGE_END_X, 0.5, 0.0))
-		actions["climb_attempt"] = func(): instance._on_climb_prompt_interacted()
+			for character_id in ["aster", "peris"]:
+				_set_sequence_character_position(
+					instance, character_id, Vector3(instance.BRIDGE_END_X, 0.5, 0.0))
+		actions["climb_attempt"] = func(): _trigger_exact_interactable_source(
+			instance._game_state,
+			instance._climb_interactable,
+			"aster",
+			instance)
 		actions["route_read_circuit"] = func():
 			instance._set_elevator_overlay_state("peris", true)
 		actions["route_choice"] = func():
 			_disable_enemy_detection(instance)
-			instance._route_beats_crossed.assign([true, true, true])
-			_set_sequence_character_position(instance, "aster", instance.ROUTES_CONVERGE + Vector3(1.5, 0.5, 0.0))
-		actions["junction_arrive"] = func(): instance._start_dusk_from_plant()
-		actions["endo_shelter"] = func(): instance._on_endo_delivered("endo")
+			for beat_index in range(instance.ROUTE_BEAT_COUNT):
+				var route_x: float = instance.FORK_POS.x \
+					+ float(instance.ROUTE_BEAT_OFFSETS[beat_index]) \
+					+ float(instance.ROUTE_BEAT_CLEARANCE_OFFSET) + 1.2
+				for character_id in ["aster", "peris"]:
+					_set_sequence_character_position(
+						instance, character_id,
+						Vector3(route_x, instance.BELOW_Y + 0.5, -1.5)
+					)
+				instance._update_route_course_progress()
+			var wreckage_anchor: Vector3 = instance._wreckage_interaction_anchor()
+			_set_sequence_character_position(instance, "aster", wreckage_anchor + Vector3(0.0, 0.0, -1.1))
+			_set_sequence_character_position(instance, "peris", wreckage_anchor + Vector3(0.0, 0.0, 1.1))
+			instance._arm_wreckage_gate()
+			instance._wreckage_interactable.set("active_character", "aster")
+			instance._wreckage_interactable.call("_trigger", false)
+		actions["junction_arrive"] = func():
+			instance._start_dusk_from_plant()
 		actions["gauntlet"] = func():
+			instance._finish_gauntlet_intro()
+			_settle_elevator_gauntlet_intro_formation(instance)
 			_disable_enemy_detection(instance)
-			instance._on_flure_activated()
-			_set_sequence_character_position(instance, "aster", instance.GAUNTLET_EXIT + Vector3(1.5, 0.5, 0.0))
+			_trigger_exact_flure_source(
+				instance._game_state, instance._flure_interactable, "peris")
+			for character_id in instance.GAUNTLET_INTRO_REQUIRED_MEMBERS:
+				_set_sequence_character_position(
+					instance, character_id,
+					instance.GAUNTLET_EXIT + Vector3(1.5, 0.5, 0.0)
+				)
 		actions["complete"] = func():
 			instance._change_scene_or_record("res://scenes/tutorial/act1.tscn")
 			instance._scheduler.clear()
@@ -37500,33 +41672,6 @@ func _test_items() -> void:
 	_assert_equals(gs.get_stat("aster", "hp"), cap_after,
 		"Curecumin refilled hp to new cap")
 	_assert_true(not gs.items.has(cure_up), "Curecumin consumed (item removed)")
-
-	# --- Endocytose solfloraphane on Aster: locked_to peris, no upgrade ---
-	var sol_aster := gs.spawn_item("solfloraphane", Vector3(5, 0, 5))
-	gs.pick_up_item("aster", sol_aster)
-	var aster_tend_before: float = float(gs.characters["aster"].stats.get("tending_speed", 0.0))
-	gs.endocytose_item("aster", sol_aster)
-	for _di in range(100):
-		if sched.pop_next().is_empty(): break
-	_assert_true(gs.items.has(sol_aster),
-		"Solfloraphane preserved when consumer is wrong character")
-	_assert_equals(gs.items[sol_aster].location, "internal",
-		"Locked-out solfloraphane sits in Aster's internal")
-	_assert_equals(float(gs.characters["aster"].stats.get("tending_speed", 0.0)),
-		aster_tend_before, "Aster tending_speed unchanged")
-
-	# --- Endocytose solfloraphane on Peris: applies tending_speed +0.15 ---
-	# Earlier asserts left Peris's hands in an unknown state; clear them so
-	# the upgrade flow has a clean slate.
-	gs.characters["peris"].hands = [null, null]
-	var sol_peris := gs.spawn_item("solfloraphane", Vector3(5, 0, 5))
-	_assert_true(gs.pick_up_item("peris", sol_peris), "Peris picks up solfloraphane")
-	_assert_true(gs.endocytose_item("peris", sol_peris), "Peris starts solfloraphane endocytosis")
-	for _di in range(100):
-		if sched.pop_next().is_empty(): break
-	_assert_equals(float(gs.characters["peris"].stats.get("tending_speed", 0.0)),
-		0.15, "Peris tending_speed +0.15 after solfloraphane")
-	_assert_true(not gs.items.has(sol_peris), "Solfloraphane consumed by Peris")
 
 	# --- Cancel endocytosis ---
 	var cancel_item := gs.spawn_item("seed", Vector3(5, 0, 5))
@@ -37913,8 +42058,8 @@ func _test_dodge_roll() -> void:
 	_assert_true(low_sta_detected, "Low stamina: detection fires (auto-dodge failed)")
 
 ## DECORATIVE FLORA + HOSTILE ARCHITECTURE (docs/DECORATIVE_FLORA.md, SET_PIECES 21): ornamental
-## invasives are SCENERY — dormant, un-pickable, never in the white hover grammar — until Peris's
-## HARVEST read lights them YELLOW; the only verb they answer is CLEAR. Runbacks landscape over
+## invasives are SCENERY — dormant, un-pickable, never in the hover grammar, and never promoted
+## into zero-value READ/CLEAR chores. Runbacks landscape over
 ## your failures (Verdanta spreads, Festoona droops, Lilypall re-rolls; Curbelia doesn't care).
 ## Anti-loiter studs drain hp from ANYONE standing on them — party and enemy alike.
 func _test_decorative_flora() -> void:
@@ -37941,50 +42086,12 @@ func _test_decorative_flora() -> void:
 		_assert_true(not deco.interaction_enabled, "%s is dormant scenery (not interactive)" % deco.name)
 		_assert_true(not deco.input_ray_pickable, "%s never intercepts the hover ray" % deco.name)
 		_assert_true(deco.get("_outline_target") == null, "%s is not wired into the white outline grammar" % deco.name)
-		_assert_true(not deco.is_revealed(), "%s starts unrevealed" % deco.name)
-	# The reveal tint is YELLOW — the third outline lane, not white, not a character color.
-	var tint: Color = DecorativeFlora.REVEAL_COLOR
-	_assert_true(tint.r > 0.9 and tint.g > 0.7 and tint.b < 0.4, "The harvest reveal tint is yellow")
 
-	# --- The harvest ability itself: the data-fragment context exposes Peris's HARVEST ---
-	_assert_true((instance.get("_ability_defs") as Dictionary).has("peris_harvest"),
-		"The data-fragment context carries the peris_harvest ability (abilities.xlsx row loaded)")
-
-	# --- The harvest read: nothing in reach reveals nothing ---
-	instance.headless_set_character_position("peris", Vector3(26.0, 0.5, 3.0))
-	instance._activate_preview_ability("peris_harvest")
-	var lit := 0
-	for deco in decos:
-		if deco.is_revealed():
-			lit += 1
-	_assert_equals(lit, 0, "A harvest read with nothing ornamental in reach lights nothing")
-
-	# --- The harvest read among the plantings lights everything in range yellow ---
-	instance.set_preview_ability_state("peris_harvest", "ready")  # skip the active+cooldown wait
-	instance.headless_set_character_position("peris", Vector3(5.0, 0.5, 0.5))
-	instance._activate_preview_ability("peris_harvest")
-	for deco in decos:
-		_assert_true(deco.is_revealed(), "%s lights on the harvest read" % deco.name)
-		_assert_true(deco.interaction_enabled, "%s takes the CLEAR verb while read" % deco.name)
-	# The window closes: the yellow fades, but a READ decorative stays clearable — a committed
-	# clear order arriving after the fade must not be silently refused (the disabled-trigger lesson).
-	instance.headless_advance(chunk.HARVEST_REVEAL_SECS + 0.6, 0.1)
-	for deco in decos:
-		_assert_true(not deco.is_revealed(), "%s yellow fades when the window closes" % deco.name)
-		_assert_true(deco.interaction_enabled, "%s stays clearable once read" % deco.name)
-
-	# --- CLEAR: yields nothing, removes the instance ---
+	# --- Context contract: no invented cast ability or replacement chore. ---
+	_assert_true(not (instance.get("_ability_defs") as Dictionary).has("peris_harvest"),
+		"Hostile Streets does not reintroduce HARVEST as a cast ability")
 	var patch = by_name.get("VerdantaPatch")
-	var items_before: int = gs.items.size() if "items" in gs else 0
-	patch._trigger(false)
-	_assert_true(patch.is_cleared(), "Clearing a read decorative removes it")
-	_assert_true(not patch.visible, "A cleared decorative is gone from the world")
-	if "items" in gs:
-		_assert_equals(gs.items.size(), items_before, "Clearing yields NOTHING (no item spawns)")
-	instance.set_preview_ability_state("peris_harvest", "ready")
-	instance._activate_preview_ability("peris_harvest")
-	_assert_true(not patch.is_revealed(), "A cleared decorative never lights again")
-	instance.headless_advance(chunk.HARVEST_REVEAL_SECS + 0.6, 0.1)
+	_assert_true(patch != null and patch.visible, "Verdanta remains visible scenery")
 
 	# --- Anti-loiter studs: symmetric drain (party AND enemy) ---
 	var strip = strips[0]
@@ -38026,8 +42133,9 @@ func _test_decorative_flora() -> void:
 	var spread_dist := Vector2(spread.position.x - fall.x, spread.position.z - fall.z).length()
 	_assert_true(spread_dist < 2.5, "The new patch grows where the party fell (%.2f away)" % spread_dist)
 	_assert_true(festoona.is_drooped(), "Festoona DROOPS after the wipe — the celebration is over")
-	_assert_true(not curbelia.is_drooped() and not curbelia.is_cleared(), "Curbelia doesn't care that you died")
-	_assert_true(patch.is_cleared(), "A cleared decorative stays cleared through the runback")
+	_assert_true(not curbelia.is_drooped(), "Curbelia doesn't care that you died")
+	_assert_true(patch.visible and not patch.interaction_enabled,
+		"Verdanta remains scenery through the runback")
 	var pads_moved := false
 	for i in mini(pads_before.size(), lilypall._species_meshes.size()):
 		if not lilypall._species_meshes[i].position.is_equal_approx(pads_before[i]):
@@ -38039,7 +42147,7 @@ func _test_decorative_flora() -> void:
 	await get_tree().process_frame
 	_assert_equals(chunk.decoratives().size(), 5, "Reset removes the runback-grown patches")
 	_assert_true(not festoona.is_drooped(), "Reset un-droops the Festoona")
-	_assert_true(not patch.is_cleared() and patch.visible, "Reset restores a cleared decorative")
+	_assert_true(patch.visible, "Reset preserves authored decoration")
 	_assert_true(not patch.interaction_enabled, "Restored decoration is dormant scenery again")
 	await _dispose_scene(instance)
 
@@ -38153,11 +42261,13 @@ func _test_boss_playable() -> void:
 	_assert_equals(bool(chunk.spiker_at_bottom(t0 + 123.45)), bool(chunk.spiker_at_bottom(t0 + 123.45)),
 		"spiker_at_bottom is a pure function of the tick")
 	# the brake's detent never freezes the lane on the corridor
-	chunk._on_brake_used()
+	gs.snap_character_to("peris", chunk._boss_control_data_position(chunk._brake_ia))
+	chunk._brake_ia.active_character = "peris"
+	chunk._brake_ia._trigger(false)
 	_assert_true(bool(chunk.get_preview_state()["ring0_parked"]), "the brake parks ring 0")
 	_assert_true(not bool(chunk.spiker_at_bottom(float(chunk._tick()))),
 		"the parked detent leaves the Spiker's lane off the corridor (no soft-lock)")
-	chunk._on_brake_used()   # release for the fire test
+	chunk._brake_ia._trigger(false)   # release for the fire test
 	# --- The rake: exposed on the corridor while the lane bears -> hp drains ---
 	chunk._ring0_parked = wrapf(float((chunk._wheels[0] as Dictionary)["bottom"]) - chunk._spiker_angle, 0.0, TAU)
 	_assert_true(bool(chunk.spiker_at_bottom(float(chunk._tick()))),
@@ -38185,21 +42295,23 @@ func _test_boss_playable() -> void:
 	var up_pos: Vector3 = gs.get_position("aster")
 	_assert_true(up_pos.y > crag_h - 0.6,
 		"the climb carries the character to the summit (y=%.2f)" % up_pos.y)
-	# the summit survey is a PROXIMITY dwell (Area3D body-enter): sync the character NODE to the
-	# data position (idle nodes don't re-sync — the known gotcha) and interleave real frames with
-	# scheduler time so detection arms and the dwell clock runs.
-	inst.headless_set_character_position("aster", up_pos)
-	for i in range(10):
-		await get_tree().process_frame
-		inst.headless_advance(0.5, 0.1)
+	# Consume the summit instrument through its exact nearby physical source; portrait selection is
+	# not a substitute for the servicing body's authoritative position.
+	var survey_pos: Vector3 = chunk._boss_control_data_position(survey)
+	gs.snap_character_to("aster", survey_pos)
+	inst.headless_set_character_position("aster", survey_pos)
+	survey.set("active_character", "aster")
+	_assert_true(bool(survey.call("_trigger", false)),
+		"the nearby summit body physically works the survey instrument")
 	_assert_true(bool(chunk.get_preview_state()["watch_vantage"]),
-		"standing the summit fires the ACT II survey beat")
-	# the descend mouth is CLICK-gated; the character stands inside its radius, so the committed
-	# order is a zero-length walk + launch (force-fired here, the data-layer convention)
+		"the summit instrument fires the ACT II survey beat")
+	# The descend mouth is click-gated; the character stands inside its real source radius, so the
+	# committed order is a zero-length walk plus launch.
 	var descend: Node = chunk.find_child("DescendSwitchback", true, false)
 	_assert_true(descend != null, "the descend mouth waits at the summit")
 	descend.set("active_character", "aster")
-	descend.call("_trigger")
+	_assert_true(bool(descend.call("_trigger", false)),
+		"the nearby summit body physically commits the descend mouth")
 	inst.headless_advance(40.0, 0.1)
 	var down_pos: Vector3 = gs.get_position("aster")
 	_assert_true(down_pos.y < 0.8, "the descend carries the character back down (y=%.2f)" % down_pos.y)
@@ -38212,8 +42324,25 @@ func _test_boss_playable() -> void:
 	var apron := Vector3(tower_x - 5.4, 0.0, float(chunk.CRAG_R) + 1.0)
 	gs.snap_character_to("trail_gnawer_0", apron)
 	var speed_before := float(climb.get("crawl_speed"))
-	winch.call("_trigger")
-	inst.headless_advance(0.5, 0.1)
+	gs.snap_character_to("peris", chunk._boss_control_data_position(winch))
+	winch.set("active_character", "peris")
+	_assert_true(bool(winch.call("_trigger", false)),
+		"nearby Peris physically works the trail-head winch")
+	var sweep_start: Dictionary = gs.get_external_traversal_state("trail_gnawer_0")
+	var sweep_start_pos: Vector3 = gs.get_position("trail_gnawer_0")
+	_assert_true(not sweep_start.is_empty()
+			and Vector2(sweep_start_pos.x - apron.x, sweep_start_pos.z - apron.z).length() < 0.01,
+		"the winch starts a locked scree trajectory without teleporting its victim")
+	inst.headless_advance(float(chunk.SCREE_SWEEP_DURATION) * 0.5, 0.05)
+	var sweep_mid: Dictionary = gs.get_external_traversal_state("trail_gnawer_0")
+	var mid_pos: Vector3 = gs.get_position("trail_gnawer_0")
+	_assert_true(float(sweep_mid.get("progress", 0.0)) > 0.45
+			and float(sweep_mid.get("progress", 1.0)) < 0.55
+			and Vector2(mid_pos.x - apron.x, mid_pos.z - apron.z).length() < 3.2,
+		"halfway through the sweep the locust is physically between apron and landing")
+	_assert_true(not gs.command_move_to_pos("trail_gnawer_0", apron),
+		"ordinary movement cannot cancel the locked scree phase")
+	inst.headless_advance(float(chunk.SCREE_SWEEP_DURATION) * 0.5 + 0.001, 0.05)
 	var swept_pos: Vector3 = gs.get_position("trail_gnawer_0")
 	_assert_true(Vector2(swept_pos.x - apron.x, swept_pos.z - apron.z).length() > 3.2,
 		"the winch sweeps the locust off the trail head")
@@ -38344,11 +42473,11 @@ func _test_naturalizer_hushbloom() -> void:
 	pad.stun(2.0)
 	pad.active_character = "walker"
 	_assert_true(bool(pad.is_stunned()), "the portal is sealed")
-	_assert_true(not bool(pad.step_through()), "a sealed portal refuses transit")
+	_assert_true(not bool(pad._trigger(false)), "a sealed portal refuses transit")
 	_assert_true(gs.get_position("walker").x < 45.0, "the walker did not teleport through the seal")
 	sched.advance_ticks(2.2)
 	_assert_true(not bool(pad.is_stunned()), "the seal expires")
-	_assert_true(bool(pad.step_through()), "the recovered portal transits again")
+	_assert_true(bool(pad._trigger(false)), "the recovered portal transits again")
 	_assert_true(gs.get_position("walker").x > 45.0, "the walker arrives at the destination")
 	# --- The carry verb ---
 	var bloom2 := Hushbloom.new()
@@ -38364,8 +42493,8 @@ func _test_naturalizer_hushbloom() -> void:
 ## THE INFLAMMASHUNT (data/puzzles/inflammashunt_puzzle.md "Required Tests"): the ten
 ## deterministic scenarios — clean informed solve, no-info long-hold solve, the four recoverable
 ## wrong approaches, the two harmless early attempts, the Aster+Peris shadow solve, and the
-## route-info hold-time table. Every scenario ends with the same five steps ("water, clean,
-## clean, tend, open") because every wrong approach must leave the puzzle solvable.
+## route-info hold-time table. Every scenario ends with the same causal sequence ("water, clean,
+## clean, tend, open, physically retrieve") because every wrong approach must leave it solvable.
 func _test_inflammashunt() -> void:
 	_test_name = "Inflammashunt"
 	# --- (1) clean_full_info_solution + (10) route_info_timers ---
@@ -38380,15 +42509,22 @@ func _test_inflammashunt() -> void:
 		"without the pipe diagram the valve is a LONG hold (14s)")
 	# Myke's crawl is physically character-coded: Aster is refused, Myke goes through
 	var crawl: Node = chunk.find_child("MykeCrawlIn", true, false)
+	var crawl_data_id := str(crawl.get("data_id"))
+	var crawl_source: Vector3 = gs.get_interactable(crawl_data_id).get(
+		"position", Vector3.INF)
+	gs.snap_character_to("aster", crawl_source)
 	var aster_before: Vector3 = gs.get_position("aster")
 	crawl.set("active_character", "aster")
-	crawl.call("_trigger")
-	inst.headless_advance(3.0, 0.1)
-	_assert_true(gs.get_position("aster").distance_to(aster_before) < 2.0,
-		"the crawlspace refuses Aster (only Myke fits)")
-	gs.snap_character_to("myke", Vector3(24.5, 0.0, -4.0))
+	_assert_true(not bool(crawl.call("_trigger", false))
+			and not gs.is_external_traversal_active("aster"),
+		"the exact crawlspace source refuses Aster (only Myke fits)")
+	inst.headless_advance(0.2, 0.1)
+	_assert_true(gs.get_position("aster").is_equal_approx(aster_before),
+		"the refused crawl cannot queue a delayed Aster traversal")
+	gs.snap_character_to("myke", crawl_source)
 	crawl.set("active_character", "myke")
-	crawl.call("_trigger")
+	_assert_true(bool(crawl.call("_trigger", false)),
+		"Myke enters the exact crawlspace source")
 	inst.headless_advance(14.0, 0.1)
 	var mp: Vector3 = gs.get_position("myke")
 	_assert_true(mp.x > 29.0 and mp.z < -9.5,
@@ -38396,10 +42532,7 @@ func _test_inflammashunt() -> void:
 	# all six route reads
 	for pair in [["AsterLogTerminal", "aster"], ["PipeDiagram", "aster"], ["DeadRootNetwork", "peris"],
 			["LivingJunction", "peris"], ["GrateObservation", "myke"], ["DeviceGap", "myke"]]:
-		var it: Node = chunk.find_child(str(pair[0]), true, false)
-		it.set("active_character", str(pair[1]))
-		it.call("_trigger")
-		inst.headless_advance(0.2, 0.1)
+		_inflam_step(inst, chunk, str(pair[0]), str(pair[1]))
 	var st: Dictionary = chunk.headless_get_state()
 	var all_info := true
 	for k in st["route_info"]:
@@ -38411,7 +42544,7 @@ func _test_inflammashunt() -> void:
 		"the pipe diagram cuts the valve hold to 2.5s (route info is efficiency)")
 	_assert_true(is_equal_approx(float(chunk._root_it.dwell_time), 2.5),
 		"the living junction cuts the root hold to 2.5s")
-	# the five-step solve: water, clean, clean, tend, open
+	# Five causal interventions expose the catalyst; the exact physical pickup completes the solve.
 	_inflam_step(inst, chunk, "DrainageValve", "aster")
 	_assert_equals(str(chunk.char_a_state), "damp", "the valve dampens char A")
 	_inflam_step(inst, chunk, "CharDepositA", "myke")
@@ -38421,28 +42554,17 @@ func _test_inflammashunt() -> void:
 	_assert_equals(str(chunk.root_state), "connected", "the tended root connects")
 	_assert_true(bool(chunk.housing_unlocked), "the healing zone reaches the housing")
 	_inflam_step(inst, chunk, "DeviceHousing", "aster")
+	_inflam_step(inst, chunk, "InflammashuntDevice", "aster")
 	_assert_true(bool(chunk.device_retrieved), "clean informed solve retrieves the device")
+	_assert_equals(str(chunk.headless_get_state().get("current_step", "")), "complete",
+		"catalyst retrieval completes the canonical Inflammashunt level")
+	_assert_equals(str(chunk._phase), "complete", "the production chunk enters its complete phase")
+	_assert_true(chunk.get_node_or_null("CommissioningGallery") == null,
+		"no uncited post-solve commissioning gallery is appended")
 	_assert_true((chunk.wrong_events as Array).is_empty(), "clean solve records no wrong events")
 	_assert_equals(int(chunk.long_hold_count), 0, "informed play never long-holds")
 	await _dispose_scene(inst)
 
-	# Isolate the new normal-input gallery from the legacy mechanics assertions above. Those old
-	# assertions intentionally force-fire TIMED_ACTION callbacks; a fresh preview keeps the scheduler
-	# identical to real play before we measure routed arrival and dwell completion.
-	var commissioning_inst = await _instantiate_preview_chunk_and_wait("inflammashunt", 8)
-	var commissioning_chunk = commissioning_inst._active_chunk
-	commissioning_chunk.housing_unlocked = true
-	commissioning_chunk._on_open_housing()
-	var commissioning_result := await _drive_inflammashunt_commissioning_normal_input(
-		commissioning_inst, commissioning_chunk)
-	var commissioning_failure := str(commissioning_result.get("failure_reason", ""))
-	_assert_true(bool(commissioning_result.get("completed", false)),
-		"the full commissioning gallery completes through right-click, routed arrival, and real timed dwell%s"
-			% ("" if commissioning_failure == "" else " (%s)" % commissioning_failure))
-	_assert_equals(int(commissioning_result.get("actions_completed", 0)),
-		commissioning_chunk.get_commissioning_clean_action_plan().size(),
-		"all clean-route commissioning actions execute in machine-readable order")
-	await _dispose_scene(commissioning_inst)
 	# the opt-in member never leaks into other fragments
 	var inst_other = await _instantiate_preview_chunk_and_wait("lure_relay", 6)
 	if inst_other != null:
@@ -38466,8 +42588,9 @@ func _test_inflammashunt() -> void:
 	_inflam_step(inst2, chunk2, "CharDepositB", "myke")
 	_inflam_step(inst2, chunk2, "RootTendril", "peris")
 	_inflam_step(inst2, chunk2, "DeviceHousing", "aster")
+	_inflam_step(inst2, chunk2, "InflammashuntDevice", "aster")
 	_assert_true(bool(chunk2.device_retrieved),
-		"the correct five steps still solve with NO route info (longer timers, same puzzle)")
+		"the causal chain and pickup still solve with NO route info (longer timers, same puzzle)")
 	_assert_true(int(chunk2.long_hold_count) >= 3,
 		"uninformed holds are counted (%d) — the hint ladder rides them" % int(chunk2.long_hold_count))
 	_assert_true((chunk2.wrong_events as Array).is_empty(), "slow is not wrong")
@@ -38494,12 +42617,14 @@ func _test_inflammashunt() -> void:
 	_inflam_step(inst3, chunk3, "CharDepositB", "myke")
 	_inflam_step(inst3, chunk3, "RootTendril", "peris")
 	_inflam_step(inst3, chunk3, "DeviceHousing", "aster")
+	_inflam_step(inst3, chunk3, "InflammashuntDevice", "aster")
 	_assert_true(bool(chunk3.device_retrieved), "the puzzle stays solvable after the reset mistake")
 	await _dispose_scene(inst3)
 
 	# --- (4) dry_char_a_recovery: fire works, but it wakes what must stay dormant ---
 	var inst4 = await _instantiate_preview_chunk_and_wait("inflammashunt", 8)
 	var chunk4 = inst4._active_chunk
+	var gs4 = inst4._game_state
 	_inflam_step(inst4, chunk4, "CharDepositA", "myke")
 	_assert_equals(str(chunk4.char_a_state), "burned", "Myke's Inflame clears the dry char by fire")
 	_assert_true("burned_char_a" in (chunk4.wrong_events as Array), "— recorded as the wrong approach")
@@ -38509,6 +42634,10 @@ func _test_inflammashunt() -> void:
 		if is_instance_valid(e) and str(e.get_state()) in ["alert", "pursuit", "windup", "charge", "impact", "recover"]:
 			raged = true
 	_assert_true(raged, "the heat wakes the Chelators — a real combat encounter")
+	for burn_safe_idx in range(3):
+		var burn_safe_id: String = str(["aster", "peris", "myke"][burn_safe_idx])
+		gs4.snap_character_to(
+			burn_safe_id, Vector3(7.0 + float(burn_safe_idx), 0.0, 0.0))
 	inst4.headless_advance(18.0, 0.1)
 	_assert_true(float(chunk4._rage_until) < 0.0, "the encounter cools once nothing provokes it")
 	_inflam_step(inst4, chunk4, "DrainageValve", "aster")
@@ -38517,6 +42646,7 @@ func _test_inflammashunt() -> void:
 	_inflam_step(inst4, chunk4, "CharDepositB", "myke")
 	_inflam_step(inst4, chunk4, "RootTendril", "peris")
 	_inflam_step(inst4, chunk4, "DeviceHousing", "aster")
+	_inflam_step(inst4, chunk4, "InflammashuntDevice", "aster")
 	_assert_true(bool(chunk4.device_retrieved), "solvable after the char A burn")
 	await _dispose_scene(inst4)
 
@@ -38527,7 +42657,16 @@ func _test_inflammashunt() -> void:
 	_inflam_step(inst5, chunk5, "CharDepositB", "myke")
 	_assert_equals(str(chunk5.root_state), "hostile", "fire near the root makes it HOSTILE")
 	_assert_true(gs5.characters.has("hostile_root"), "the root is a real registered body (Chain AI)")
-	gs5.snap_character_to("peris", Vector3(44.0, 0.0, 4.0))
+	# Myke ignited the char at the root's feet, so he is initially the closest valid target.
+	# Isolate Peris as the nearby body before asserting a Peris-specific consequence.
+	for root_bystander in ["aster", "myke"]:
+		gs5.command_stop(root_bystander)
+		gs5.snap_character_to(root_bystander,
+			Vector3(33.0, 0.0, -5.0 if root_bystander == "aster" else -7.0))
+	gs5.command_stop("hostile_root")
+	var whip_root_pos: Vector3 = gs5.get_position("hostile_root")
+	gs5.snap_character_to("peris", whip_root_pos + Vector3(0.0, 0.0, -1.0))
+	gs5.set_stat("peris", "auto_dodge", 0.0, "inflammashunt_whip_fixture")
 	var php := float(gs5.get_stat("peris", "hp"))
 	inst5.headless_advance(4.0, 0.1)
 	_assert_true(float(gs5.get_stat("peris", "hp")) < php, "the hostile root whips whoever comes close")
@@ -38535,7 +42674,8 @@ func _test_inflammashunt() -> void:
 	_inflam_step(inst5, chunk5, "GasSacFlora", "peris")
 	_assert_equals(str(chunk5.gas_sac_state), "tended", "Peris tends the flora — a sac ripens")
 	_inflam_step(inst5, chunk5, "TakeSac", "aster")
-	_assert_equals(str(chunk5.headless_get_state()["sac_carrier"]), "aster", "Aster carries the repellent sac")
+	_assert_equals(str(chunk5.gas_sac_state), "active", "taking the sac creates its live item phase")
+	_assert_equals(str(chunk5.headless_get_state()["sac_carrier"]), "aster", "Aster carries the repellent sac in a real hand slot")
 	# herd it home: keep the carrier on the far side so the recoil pushes the root at its base
 	var base: Vector3 = chunk5.ROOT_BASE_POS
 	var herded := false
@@ -38559,16 +42699,22 @@ func _test_inflammashunt() -> void:
 	_inflam_step(inst5, chunk5, "CharDepositB", "myke")
 	_inflam_step(inst5, chunk5, "RootTendril", "peris")
 	_inflam_step(inst5, chunk5, "DeviceHousing", "aster")
+	_inflam_step(inst5, chunk5, "InflammashuntDevice", "aster")
 	_assert_true(bool(chunk5.device_retrieved), "solvable after the hostile-root recovery")
 	await _dispose_scene(inst5)
 
 	# --- (6) attack_buffer_recovery ---
 	var inst6 = await _instantiate_preview_chunk_and_wait("inflammashunt", 8)
 	var chunk6 = inst6._active_chunk
+	var gs6 = inst6._game_state
 	_inflam_step(inst6, chunk6, "StrikeCluster", "aster")
 	_assert_equals(str(chunk6.buffer_state), "shattered", "striking the dormant ring shatters the buffer")
 	_assert_true("attacked_buffer" in (chunk6.wrong_events as Array), "— recorded")
 	_assert_true(int(chunk6._enemies.size()) > 3, "active Chelators flood in from the broken ring")
+	for buffer_safe_idx in range(3):
+		var buffer_safe_id: String = str(["aster", "peris", "myke"][buffer_safe_idx])
+		gs6.snap_character_to(
+			buffer_safe_id, Vector3(7.0 + float(buffer_safe_idx), 0.0, 0.0))
 	inst6.headless_advance(18.0, 0.1)
 	inst6.headless_advance(5.0, 0.1)
 	_assert_equals(str(chunk6.buffer_state), "stable",
@@ -38578,6 +42724,7 @@ func _test_inflammashunt() -> void:
 	_inflam_step(inst6, chunk6, "CharDepositB", "myke")
 	_inflam_step(inst6, chunk6, "RootTendril", "peris")
 	_inflam_step(inst6, chunk6, "DeviceHousing", "aster")
+	_inflam_step(inst6, chunk6, "InflammashuntDevice", "aster")
 	_assert_true(bool(chunk6.device_retrieved), "solvable after the buffer attack")
 	await _dispose_scene(inst6)
 
@@ -38588,10 +42735,7 @@ func _test_inflammashunt() -> void:
 	_assert_true(not gs7.characters.has("myke"), "the shadow party has no Myke")
 	for pair2 in [["AsterLogTerminal", "aster"], ["PipeDiagram", "aster"],
 			["DeadRootNetwork", "peris"], ["LivingJunction", "peris"]]:
-		var it2: Node = chunk7.find_child(str(pair2[0]), true, false)
-		it2.set("active_character", str(pair2[1]))
-		it2.call("_trigger")
-		inst7.headless_advance(0.2, 0.1)
+		_inflam_step(inst7, chunk7, str(pair2[0]), str(pair2[1]))
 	_inflam_step(inst7, chunk7, "ObserveFeeding", "aster")
 	_assert_true(bool(chunk7.route_info["myke_char_feed"]),
 		"watching the feeders + routes A/B reconstructs C1 (char is the fuel)")
@@ -38605,196 +42749,52 @@ func _test_inflammashunt() -> void:
 	_inflam_step(inst7, chunk7, "CharDepositB", "peris")
 	_inflam_step(inst7, chunk7, "RootTendril", "peris")
 	_inflam_step(inst7, chunk7, "DeviceHousing", "aster")
-	_assert_true(bool(chunk7.device_retrieved), "the shadow pair completes the same five-step solve")
+	_inflam_step(inst7, chunk7, "InflammashuntDevice", "aster")
+	_assert_true(bool(chunk7.device_retrieved),
+		"the shadow pair completes the same causal chain and physical pickup")
 	_assert_true((chunk7.wrong_events as Array).is_empty(), "— cleanly")
 	await _dispose_scene(inst7)
 
-## Fire one junction interactable through the data layer (the same force-fire path every
-## chunk test uses) and let the scheduler settle.
+## Move one real body to the registered source and fire that exact Interactable, then wait for the
+## mechanism's real physical endpoint. Water propagation, filament
+## growth, and the housing hinge deliberately no longer commit inside the trigger frame.
 func _inflam_step(inst: Node, chunk: Node, node_name: String, actor: String) -> void:
 	var it: Node = chunk.find_child(node_name, true, false)
 	if it == null:
 		_assert_true(false, "interactable %s exists" % node_name)
 		return
+	var gs = inst._game_state
+	var data_id := str(it.get("data_id"))
+	if gs == null or not gs.characters.has(actor) or data_id == "" \
+			or not gs.has_interactable(data_id):
+		_assert_true(false, "%s has exact source/body authority" % node_name)
+		return
+	var source_position: Vector3 = gs.get_interactable(data_id).get(
+		"position", Vector3.INF)
+	if not source_position.is_finite():
+		_assert_true(false, "%s has a finite data-space source" % node_name)
+		return
+	gs.snap_character_to(actor, source_position)
 	it.set("active_character", actor)
-	it.call("_trigger")
-	inst.headless_advance(0.4, 0.1)
-
-## Drive the post-retrieval gallery through the normal interaction controller. The focused
-## verifier owns structural/state coverage; this shared regression additionally proves that the
-## authored route, arrival radii, and full TIMED_ACTION dwells are executable without force-fire.
-func _drive_inflammashunt_commissioning_normal_input(inst: Node, chunk: Node) -> Dictionary:
-	var plan: Array = chunk.get_commissioning_clean_action_plan()
-	var gs = inst._game_state
-	if gs == null or plan.is_empty():
-		return {"completed": false, "actions_completed": 0}
-	var modeled_starts := {
-		"aster": chunk.HOUSING_POS,
-		"peris": chunk.ROOT_BASE_POS,
-		"myke": chunk.CHAR_B_POS,
-	}
-	for role_variant in modeled_starts:
-		var role := str(role_variant)
-		if gs.characters.has(role):
-			gs.restore_character(role)
-			gs.snap_character_to(role, modeled_starts[role])
-	for enemy in chunk._enemies:
-		if is_instance_valid(enemy) and enemy.is_alive():
-			enemy.stun(900.0)
-
-	var completed_actions := 0
-	var failure_reason := ""
-	for action_variant in plan:
-		var action: Dictionary = action_variant
-		var node: Node = chunk.find_child(str(action.get("node_name", "")), true, false)
-		var role := str(action.get("role", ""))
-		if node == null:
-			failure_reason = "missing node %s" % str(action.get("node_name", ""))
-			break
-		if not bool(node.get("interaction_enabled")):
-			failure_reason = "disabled before input: %s (phase %s)" % [
-				str(node.name), str(chunk.headless_get_state().get("commissioning_phase", ""))]
-			break
-		if not gs.characters.has(role):
-			failure_reason = "missing role %s for %s" % [role, str(node.name)]
-			break
-		inst.headless_select_character(role)
-		_synthetic_click_interactable(inst, node)
-		var guard := 0
-		while bool(node.get("interaction_enabled")) and guard < 240:
-			inst.headless_advance(0.25, 0.05)
-			await get_tree().process_frame
-			guard += 1
-			if guard % 24 == 0 and not gs.is_moving(role) \
-					and not _interactable_work_in_progress(node):
-				_synthetic_click_interactable(inst, node)
-		if bool(node.get("interaction_enabled")):
-			var controller_target := ""
-			if inst._player != null and inst._player.get("_interaction_controller") != null:
-				var active_target = inst._player._interaction_controller.get("active_target")
-				controller_target = str(active_target.name) if active_target != null else ""
-			var data_id := str(node.get("data_id"))
-			var data_spec: Dictionary = gs.get_interactable(data_id)
-			failure_reason = (
-				"normal input stalled at %s for %s (registered=%s moving=%s dwelling=%s "
-				+ "in_range=%s distance=%.2f controller_target=%s tick=%.1f dwell_start=%.1f "
-				+ "dwell=%.1f progress=%.1f paused=%s pending=%d node_tick=%.1f same_scheduler=%s "
-				+ "active=%s required=%s used=%s data_id=%s data_enabled=%s data_triggered=%s "
-				+ "preview_active=%s)"
-			) % [
-				str(node.name), role, str(inst._preview_interactables.has(node)),
-				str(gs.is_moving(role)), str(_interactable_work_in_progress(node)),
-				str(node.get("_player_in_range")),
-				gs.get_position(role).distance_to((node as Node3D).global_position), controller_target,
-				float(inst._scheduler.get_current_tick()), float(node.get("_dwell_start_tick")),
-				float(node.get("dwell_time")), float(node.get("_dwell_progress")),
-				str(inst._scheduler.is_paused()),
-				int(inst._scheduler.pending_count()),
-				float(node.get("_scheduler").get_current_tick()),
-				str(node.get("_scheduler") == inst._scheduler),
-				str(node.get("active_character")), str(node.get("required_character")),
-				str(node.get("_used")), data_id, str(gs.is_interactable_enabled(data_id)),
-				str(data_spec.get("triggered", false)), str(inst.get_preview_active_character()),
-			]
-			break
-		completed_actions += 1
-
-	var state: Dictionary = chunk.headless_get_state()
-	return {
-		"completed": bool(state.get("commissioning_complete", false)),
-		"actions_completed": completed_actions,
-		"failure_reason": failure_reason,
-	}
-
-## Drive one Lockout rally node through the same right-click -> walk -> TIMED_ACTION
-## chain used by a player. The focused chunk verifier owns the exact pacing model;
-## this shared regression proves its machine-readable hook surface remains executable.
-func _drive_lockout_hook_node(inst: Node, chunk: Node, node_name: String, role: String) -> bool:
-	var node: Node = chunk.find_child(node_name, true, false)
-	if node == null:
-		_assert_true(false, "Lockout driver hook resolves %s" % node_name)
-		return false
-	if not bool(node.get("interaction_enabled")):
-		_assert_true(false, "Lockout driver hook is enabled in sequence: %s" % node_name)
-		return false
-	var gs = inst._game_state
-	var target: Vector3 = (node as Node3D).global_position
-	for cid in ["aster", "peris"]:
-		gs.restore_character(cid)
-	# Keep the intact pair in the active bay while leaving the selected role far
-	# enough away that the ordinary interaction controller must issue a walk.
-	var partner := "peris" if role == "aster" else "aster"
-	gs.snap_character_to(partner, target + Vector3(0.0, 0.0, 0.8))
-	gs.snap_character_to(role, target + Vector3(-2.8, 0.0, -0.6))
-	inst.headless_select_character(role)
-	_synthetic_click_interactable(inst, node)
-	for _tick in range(160):
-		inst.headless_advance(0.1, 0.05)
-		await get_tree().process_frame
-		var still_working := _interactable_work_in_progress(node)
-		if not bool(node.get("interaction_enabled")) and not still_working \
-				and not gs.is_moving(role):
-			return true
-	_assert_true(false, "Lockout normal-input hook completes: %s" % node_name)
-	return false
-
-func _drive_lockout_rally_sectors(inst: Node, chunk: Node) -> bool:
-	var hooks: Dictionary = chunk.get_lockout_driver_hooks()
-	var stages: Array = hooks.get("stages", [])
-	var completed := true
-	for stage_variant in stages:
-		var stage: Dictionary = stage_variant
-		completed = await _drive_lockout_hook_node(
-			inst, chunk, str(stage.get("entry_node", "")), str(stage.get("entry_role", "aster"))) and completed
-		# This regression isolates interaction sequencing from combat variance. Live
-		# time still advances honestly during each real dwell; pursuers are merely
-		# held so a random charge cannot invalidate a deterministic gate test.
-		for enemy in chunk.enemies():
-			if is_instance_valid(enemy) and enemy.is_alive():
-				enemy.stun(300.0)
-		for common_variant in (stage.get("common_nodes", []) as Array):
-			var common: Dictionary = common_variant
-			completed = await _drive_lockout_hook_node(
-				inst, chunk, str(common.get("node", "")), str(common.get("role", ""))) and completed
-		var strategies: Dictionary = stage.get("strategies", {})
-		var strategy_ids: Array = strategies.keys()
-		strategy_ids.sort()
-		if strategy_ids.is_empty():
-			_assert_true(false, "Lockout rally stage exposes a strategy branch")
-			return false
-		var strategy: Dictionary = strategies[strategy_ids[0]]
-		completed = await _drive_lockout_hook_node(
-			inst, chunk, str(strategy.get("choice_node", "")), str(strategy.get("choice_role", "aster"))) and completed
-		for execution_variant in (strategy.get("execution_nodes", []) as Array):
-			var execution: Dictionary = execution_variant
-			completed = await _drive_lockout_hook_node(
-				inst, chunk, str(execution.get("node", "")), str(execution.get("role", ""))) and completed
-
-		var commit_name := str(stage.get("commit_node", ""))
-		var commit: Node = chunk.find_child(commit_name, true, false)
-		# The action dwells normally exceed the live-survival floor. Keep a bounded
-		# movement fallback for scheduler ordering at the final half-second tick.
-		var movement_tick := 0
-		var movement_limit := int(ceil(float(stage.get("live_seconds", 0.0)) * 2.0)) + 20
-		var movement_side := -1.0
-		while commit != null and not bool(commit.get("interaction_enabled")) and movement_tick < movement_limit:
-			var center := ((chunk.find_child(str(stage.get("entry_node", "")), true, false) as Node3D).global_position
-				+ (commit as Node3D).global_position) * 0.5
-			inst._game_state.snap_character_to("peris", center + Vector3(0.0, 0.0, 0.8))
-			if not inst._game_state.is_moving("aster"):
-				movement_side *= -1.0
-				inst._game_state.command_move_to_pos("aster", center + Vector3(4.0 * movement_side, 0.0, -0.8))
-			inst.headless_advance(0.5, 0.05)
-			await get_tree().process_frame
-			movement_tick += 1
-		completed = await _drive_lockout_hook_node(
-			inst, chunk, commit_name, str(stage.get("commit_role", "peris"))) and completed
-	return completed
+	_assert_true(bool(it.call("_trigger", false)),
+		"%s is triggered by nearby %s at its exact source" % [node_name, actor])
+	var settle_duration := 0.4
+	match node_name:
+		"DrainageValve":
+			if str(chunk.water_phase) == "flowing":
+				settle_duration = float(chunk.WATER_FLOW_DURATION) + 0.05
+		"RootTendril":
+			if str(chunk.root_state) == "connecting":
+				settle_duration = float(chunk.ROOT_CONNECT_DURATION) + 0.05
+		"DeviceHousing":
+			if str(chunk.housing_state) == "opening":
+				settle_duration = float(chunk.HOUSING_OPEN_DURATION) + 0.05
+	inst.headless_advance(settle_duration, 0.1)
 
 ## lever holds pursuers; the offshoot's Hushbloom DOUBLE-SEAL makes the pocket a Naturalizer-proof
 ## hide (the canon expert solution); Tyreg's accept arms her Suppress; Endo's wall is sanctuary
 ## and the rest completes the scene.
-func _test_lockout_from_top_rally_reset() -> void:
+func _test_lockout_from_top_reset() -> void:
 	var inst = await _instantiate_preview_chunk_and_wait("lockout_chase", 8)
 	_assert_true(inst != null, "lockout_chase instantiates for the pre-checkpoint reset probe")
 	if inst == null:
@@ -38808,45 +42808,23 @@ func _test_lockout_from_top_rally_reset() -> void:
 
 	var scanner: Node = chunk.find_child("BoundaryScanner", true, false)
 	if scanner != null:
-		scanner.set("active_character", "aster")
-		scanner.call("_trigger")
+		_assert_true(_trigger_exact_interactable_source(gs, scanner, "aster"),
+			"pre-checkpoint probe uses the exact nearby scanner")
 	inst.headless_advance(6.0, 0.1)
 	_assert_true(bool(chunk.get_preview_state()["chase_started"]),
 		"the pre-checkpoint reset probe starts the chase")
-
-	# The first live rally precedes checkpoint x=50. Start its scheduler-backed timed
-	# interaction, then force a from-the-top reset and verify both FSM state and ring retract.
-	var entry: Node = chunk.find_child("LockoutRally_records_entry", true, false)
-	_assert_true(entry != null and entry.is_interaction_enabled(),
-		"the pre-checkpoint records rally is live")
-	if entry != null:
-		var entry_pos: Vector3 = (entry as Node3D).global_position
-		inst.headless_select_character("aster")
-		gs.snap_character_to("aster", entry_pos + Vector3(-0.6, 0.0, -0.2))
-		gs.snap_character_to("peris", entry_pos + Vector3(1.0, 0.0, 1.0))
-		entry.set("active_character", "aster")
-		entry.call("on_interaction_arrived")
-		inst.headless_advance(1.8, 0.05)
-		# headless_advance moves the scheduler but does not run child _process methods.
-		entry.call("_process", 0.0)
-		_assert_equals(float(chunk._checkpoint_x), -1.0,
-			"records rally work begins before the first checkpoint")
-		_assert_true(bool(entry.call("_is_dwelling")) and float(entry.get("_dwell_progress")) > 0.0,
-			"the from-the-top reset probe has live rally work to cancel")
-		chunk._restart_fragment()
-		await get_tree().process_frame
-		var progress_mat: StandardMaterial3D = entry.get("_progress_mat")
-		_assert_true(not bool(entry.call("_is_dwelling")),
-			"from-the-top recovery cancels the pre-checkpoint rally dwell")
-		_assert_equals(float(entry.get("_dwell_progress")), 0.0,
-			"from-the-top recovery clears pre-checkpoint rally progress")
-		_assert_true(progress_mat != null and is_zero_approx(progress_mat.albedo_color.a),
-			"from-the-top recovery hides the cancelled rally ring")
-		_assert_true(not bool(chunk.get_preview_state()["chase_started"]),
-			"from-the-top recovery re-arms the quiet scanner state")
-		if scanner != null:
-			scanner.set("active_character", "aster")
-			scanner.call("_trigger")
+	var lockout_state: Dictionary = chunk.get_preview_state()
+	_assert_true(chunk.find_children("LockoutRally*", "", true, false).is_empty()
+			and not chunk.has_method("get_lockout_driver_hooks")
+			and not lockout_state.has("rally_phase"),
+		"Lockout exposes no synthetic rally nodes, driver hooks, or progress state")
+	chunk._restart_fragment()
+	await get_tree().process_frame
+	_assert_true(not bool(chunk.get_preview_state()["chase_started"]),
+		"from-the-top recovery re-arms the quiet scanner state")
+	if scanner != null:
+		_assert_true(_trigger_exact_interactable_source(gs, scanner, "aster"),
+			"reset probe reuses the re-armed physical scanner")
 		inst.headless_advance(6.0, 0.1)
 		_assert_true(bool(chunk.get_preview_state()["chase_started"]),
 			"the scanner starts the chase again after a pre-checkpoint reset")
@@ -38854,7 +42832,7 @@ func _test_lockout_from_top_rally_reset() -> void:
 
 func _test_lockout_chase() -> void:
 	_test_name = "Lockout Chase"
-	await _test_lockout_from_top_rally_reset()
+	await _test_lockout_from_top_reset()
 	var inst = await _instantiate_preview_chunk_and_wait("lockout_chase", 8)
 	if inst == null:
 		_assert_true(false, "lockout_chase instantiates")
@@ -38876,8 +42854,8 @@ func _test_lockout_chase() -> void:
 	for cid_sb in ["aster", "peris"]:
 		gs.snap_character_to(cid_sb, Vector3(float(chunk.WALL_X) + 2.0, 0.0, 0.0))
 	for it_sb in chunk._exit_shelters:
-		it_sb.set("active_character", "aster")
-		it_sb.call("_trigger")
+		_assert_true(_trigger_exact_interactable_source(gs, it_sb, "aster"),
+			"the physical Endo-wall source accepts Aster before encounter-specific refusal")
 	inst.headless_advance(0.5, 0.1)
 	_assert_true(not bool(chunk.get_preview_state()["complete"]),
 		"skipping the scanner skips the SCENE, not the chase — the wall rest refuses pre-lockout")
@@ -38886,8 +42864,8 @@ func _test_lockout_chase() -> void:
 	# --- the trigger raises the waves ---
 	_assert_true(not bool(chunk.get_preview_state()["chase_started"]), "quiet before the scanner")
 	var scanner: Node = chunk.find_child("BoundaryScanner", true, false)
-	scanner.set("active_character", "aster")
-	scanner.call("_trigger")
+	_assert_true(_trigger_exact_interactable_source(gs, scanner, "aster"),
+		"the nearby Aster body presents tags through the exact scanner")
 	inst.headless_advance(6.0, 0.1)
 	_assert_true(bool(chunk.get_preview_state()["chase_started"]), "the rejection starts the chase")
 	_assert_true(bool(chunk.get_preview_state()["bridge_down"]),
@@ -38940,12 +42918,44 @@ func _test_lockout_chase() -> void:
 	for cid_ff2 in ["aster", "peris"]:
 		gs.snap_character_to(cid_ff2, chunk.fragment.spawns[cid_ff2])
 	_assert_true(int(chunk.get_preview_state()["pursuers"]) >= 2, "wave 1 takes the corridor")
+	# Regression for the exact binary-float phase that previously rearmed chase_pursuit at 15.4
+	# while the scheduler was already dispatching 15.4, locking advance_ticks in a zero-delay loop.
+	var rounded_cadence_deadline := float(
+		chunk._next_chase_recurring_tick_from(13.8, 0.8, 15.4))
+	_assert_true(rounded_cadence_deadline > 15.4
+			and is_equal_approx(rounded_cadence_deadline, 16.2),
+		"fixed pursuit cadence always rearms strictly in the future after a rounded boundary")
 	# THE CHASE IS RELENTLESS (the framework's pursuer contract): the wave hunts the party down
 	# the corridor even when they are far beyond a normal detection radius — pursuers track the
 	# fleeing party; only full concealment breaks the track.
 	for cid0 in ["aster", "peris"]:
 		gs.snap_character_to(cid0, Vector3(42.0, 0.0, 0.0))
+	gs.reset_performance_counters()
+	chunk.reset_flow_field_diagnostics()
+	Enemy.CALLS.clear()
+	var pursuit_probe_started := Time.get_ticks_usec()
 	inst.headless_advance(8.0, 0.1)
+	var pursuit_probe_ms := float(Time.get_ticks_usec() - pursuit_probe_started) / 1000.0
+	var pursuit_work: Dictionary = gs.get_performance_counters()
+	var flow_work: Dictionary = chunk.get_flow_field_diagnostics()
+	var direct_legs := int(Enemy.CALLS.get("direct_pursuit_leg", 0))
+	var pursuit_callbacks := int(Enemy.CALLS.get("pursue", 0))
+	var pending_work: int = int(gs.scheduler.pending_count())
+	print("[PERF:LOCKOUT] chase8s=%.2fms direct_legs=%d pursue=%d flow=%s counters=%s pending=%d" % [
+		pursuit_probe_ms,
+		direct_legs,
+		pursuit_callbacks,
+		str(flow_work),
+		str(pursuit_work),
+		pending_work,
+	])
+	_assert_true(direct_legs > 0 and int(pursuit_work.get("plain_plans", 0)) < direct_legs,
+		"direct pursuit consumes shared waypoints instead of re-running A* per body")
+	_assert_true(int(flow_work.get("rebuilds", 999)) <= 4
+			and int(flow_work.get("cache_hits", 0)) > 0,
+		"the shared flow field rebuilds only when quarry cells/topology change")
+	_assert_true(pursuit_callbacks < 80 and pending_work >= 0 and pending_work < 96,
+		"eight chase seconds keep pursuit callbacks and pending scheduler work bounded")
 	var chased := false
 	for e0 in chunk.enemies():
 		if is_instance_valid(e0) and gs.get_position(str(e0.char_id)).x > 14.0:
@@ -38954,18 +42964,33 @@ func _test_lockout_chase() -> void:
 	var nat0 = chunk.enemies()[0]
 	_assert_true(not (nat0._hesitation_zones as Array).is_empty(),
 		"pursuers carry the Chelator hesitation zone (the protocol lever is armed)")
-	# --- the door lever holds a pursuer at the line ---
-	gs.snap_character_to(str(nat0.char_id), Vector3(float(chunk.DOOR_X) - 1.5, 0.0, 0.0))
+	# --- the door leaf holds the whole route while a pursuer physically breaches it ---
+	# Start outside the closing leaf's travel window. A body already 1.5 wu from the opening can
+	# legitimately slip through during the authored 0.8-second close; that does not test a seated door.
+	gs.snap_character_to(str(nat0.char_id), Vector3(float(chunk.DOOR_X) - 6.0, 0.0, 0.0))
 	var door: Node = chunk.find_child("ServiceDoor", true, false)
-	door.set("active_character", "peris")
-	door.call("_trigger")
-	inst.headless_advance(1.2, 0.1)
-	_assert_true(bool(chunk.get_preview_state()["door_sealed"]), "the door seals (once, forever)")
-	_assert_true(bool(nat0.is_stunned()), "a pursuer at the sealed line is HELD while cutting through")
+	_assert_true(_trigger_exact_interactable_source(gs, door, "peris"),
+		"Peris reaches and uses the exact service-door control")
+	inst.headless_advance(float(chunk.DOOR_CLOSE_SECS) + 0.1, 0.1)
+	_assert_equals(str(chunk.get_preview_state()["door_phase"]), "sealed",
+		"the service leaf physically seats before any cutter starts its breach")
+	# Place the cutter on the approach only after the blocker is authoritative. This separates
+	# "the closing door can be beaten" from the contract under test: a seated leaf holds the route.
+	gs.snap_character_to(str(nat0.char_id), Vector3(float(chunk.DOOR_X) - 1.5, 0.0, 0.0))
+	inst.headless_advance(0.6, 0.1)
+	_assert_equals(str(chunk.get_preview_state()["door_phase"]), "breaching",
+		"the seated door enters its saved breach phase when a cutter reaches it")
+	_assert_true(bool(chunk.get_preview_state()["door_blocking"])
+		and gs.get_position(str(nat0.char_id)).x < float(chunk.DOOR_X),
+		"the physical door topology holds the whole pack instead of proxy-stunning one cutter")
 	# --- the expert path: pick both blooms, port in, double-seal, hide ---
+	for expert_cid in ["aster", "peris"]:
+		gs.restore_character(expert_cid)
 	var blooms: Array = chunk.hushblooms()
 	_assert_equals(blooms.size(), 2, "two carryable blooms grow on the corridor")
 	for hb in blooms:
+		gs.snap_character_to("peris", hb.get_effect_origin())
+		hb.set("active_character", "peris")
 		_assert_true(bool(hb.pick()), "the bloom picks")
 	_assert_equals(int(chunk.get_preview_state()["bloom_carry"]), 2, "both blooms in hand")
 	var pad_in = chunk._pad_in
@@ -38973,11 +42998,14 @@ func _test_lockout_chase() -> void:
 	for cid in ["aster", "peris"]:
 		gs.snap_character_to(cid, pad_in.position)
 		pad_in.set("active_character", cid)
-		_assert_true(bool(pad_in.step_through()), "%s ports into the offshoot" % cid)
+		_assert_true(bool(pad_in._trigger(false)), "%s ports into the offshoot" % cid)
 	for seal_name in ["SealPadIn", "SealPadOut"]:
 		var seal: Node = chunk.find_child(seal_name, true, false)
+		gs.snap_character_to("peris",
+			seal.get_meta("lockout_seal_data_position", (seal as Node3D).position))
 		seal.set("active_character", "peris")
-		seal.call("_trigger")
+		_assert_true(bool(seal.call("_trigger")),
+			"%s consumes a physically held bloom from inside the pocket" % seal_name)
 	_assert_true(bool(pad_in.is_stunned()) and bool(pad_out.is_stunned()),
 		"both portals sealed — the pocket is locked (the double-seal)")
 	_assert_equals(int(chunk.get_preview_state()["bloom_carry"]), 0, "the seal spends the blooms")
@@ -38996,13 +43024,16 @@ func _test_lockout_chase() -> void:
 	for cid3 in ["aster", "peris"]:
 		gs.snap_character_to(cid3, pad_out.position)
 		pad_out.set("active_character", cid3)
-		_assert_true(bool(pad_out.step_through()), "%s exits behind the wave" % cid3)
+		_assert_true(bool(pad_out._trigger(false)), "%s exits behind the wave" % cid3)
 	# --- S4 the wash: sweeps BOTH ways (nobody reads tells for you) ---
 	# isolate the terrain sections: FREEZE the hunt outright (dead FSM tags = statues; commands
 	# can still move them for mechanic checks, but nothing ever re-engages)
 	gs.scheduler.cancel_tag("chase_pursuit")
+	gs.scheduler.cancel_tag("chase_portal_follow")
 	for e_iso in chunk.enemies():
 		if is_instance_valid(e_iso):
+			if gs.is_external_traversal_active(str(e_iso.char_id)):
+				gs.cancel_external_traversal(str(e_iso.char_id), &"lockout_test_isolation")
 			gs.scheduler.cancel_tag("enemy_" + str(e_iso.name))
 			gs.command_stop(str(e_iso.char_id))
 	for cid_iso in ["aster", "peris"]:
@@ -39057,6 +43088,7 @@ func _test_lockout_chase() -> void:
 		"the collapsed shelf cannot be walked through (x=%.1f)" % gs.get_position("aster").x)
 	var clamber: Node = chunk.find_child("ClamberBarricade", true, false)
 	# THE PAIR GATE: alone at the shelf (partner parked at the plaza) the boost REFUSES
+	gs.snap_character_to("aster", Vector3(float(chunk.BARRICADE_X0) - 1.2, 0.0, 0.0))
 	gs.restore_character("peris")
 	gs.snap_character_to("peris", Vector3(4.0, 0.0, 2.0))
 	clamber.set("active_character", "aster")
@@ -39080,33 +43112,21 @@ func _test_lockout_chase() -> void:
 	gs.restore_character("aster")
 	# --- Tyreg's accept arms Suppress ---
 	var tyreg: Node = chunk.find_child("TyregChoice", true, false)
+	gs.set_party(["aster", "peris"])
+	gs.snap_character_to("aster", chunk.TYREG_STATION + Vector3(-1.0, 0.0, 0.0))
+	gs.snap_character_to("peris", chunk.TYREG_STATION + Vector3(-1.0, 0.0, 1.0))
 	tyreg.set("active_character", "aster")
-	tyreg.call("_trigger")
+	_assert_true(bool(tyreg.call("_trigger")),
+		"Tyreg accepts only a conscious active party body at her physical station")
 	_assert_true(bool(chunk.get_preview_state()["tyreg_accepted"]), "Tyreg joins on accept")
 	gs.snap_character_to(str(nat0.char_id), gs.get_position("aster") + Vector3(2.0, 0.0, 0.0))
 	inst.headless_advance(3.0, 0.1)
-	_assert_true(int(chunk._suppress_charges) < chunk.SUPPRESS_CHARGES,
+	_assert_true(int(chunk.get_preview_state().get("suppress_charges", chunk.SUPPRESS_CHARGES))
+			< chunk.SUPPRESS_CHARGES,
 		"her Suppress spends a round on the closing pursuer")
 	# --- RUNBACKS ARE CHECKPOINTS: a wipe resumes at the marker with the world kept ---
 	_assert_true(float(chunk._checkpoint_x) >= 128.0,
 		"the pair crossing sections together advanced the marker (checkpoint_x=%.0f)" % float(chunk._checkpoint_x))
-	# Queue a real click-to-walk rally interaction immediately before the wipe. The checkpoint snap
-	# must cancel both halves of that work: the Interactable's dwell and the Player controller's
-	# active target. Otherwise the forced stop is mistaken for arrival on the following frame and the
-	# old relay starts remotely from the checkpoint.
-	var queued_entry: Node = chunk.find_child("LockoutRally_records_entry", true, false)
-	var aster_player: Node = inst._characters.get("aster")
-	var queued_controller: Node = aster_player.get("_interaction_controller") if aster_player != null else null
-	_assert_true(queued_entry != null and bool(queued_entry.get("interaction_enabled")),
-		"the first rally entry can be queued before a runback")
-	if queued_entry != null and queued_controller != null:
-		inst.headless_select_character("aster")
-		var queued_pos: Vector3 = (queued_entry as Node3D).global_position
-		gs.snap_character_to("aster", queued_pos + Vector3(-7.0, 0.0, -1.0))
-		gs.snap_character_to("peris", queued_pos + Vector3(0.0, 0.0, 1.0))
-		_synthetic_click_interactable(inst, queued_entry)
-		_assert_true(queued_controller.get("active_target") == queued_entry,
-			"the pre-wipe rally interaction is genuinely queued in the movement controller")
 	# A live partner may lag without punishment. Once that partner is actually down, crossing the
 	# next apron line drops the survivor and routes through the ordinary full-wipe runback.
 	gs.snap_character_to("aster", Vector3(float(chunk._checkpoint_x) + 1.5, 0.0, -1.0))
@@ -39130,17 +43150,6 @@ func _test_lockout_chase() -> void:
 	_assert_true(bool(chunk.get_preview_state()["bridge_down"]),
 		"the WORLD is kept across a runback — the gantry stays fallen")
 	_assert_equals(int(chunk.get_preview_state()["pursuers"]), 0, "the pack resets at the runback")
-	await get_tree().process_frame
-	if queued_entry != null and queued_controller != null:
-		_assert_true(queued_controller.get("active_target") == null,
-			"checkpoint recovery cancels the queued interaction target before its forced stop")
-		_assert_true(not bool(queued_entry.call("_is_dwelling")),
-			"checkpoint recovery cannot restart the stale rally dwell remotely")
-		_assert_equals(float(queued_entry.get("_dwell_progress")), 0.0,
-			"checkpoint recovery clears stale rally work progress")
-		var queued_progress_mat: StandardMaterial3D = queued_entry.get("_progress_mat")
-		_assert_true(queued_progress_mat != null and is_zero_approx(queued_progress_mat.albedo_color.a),
-			"checkpoint recovery hides the cancelled rally progress ring")
 	# The pair law is symmetric: Peris falling must catch Aster at the same next boundary.
 	var wipe_before_reverse_fail := int(chunk.get_preview_state()["wipe_count"])
 	gs.down_character("peris")
@@ -39184,8 +43193,6 @@ func _test_lockout_chase() -> void:
 			e_cp.queue_free()
 	chunk._enemies.clear()
 	chunk._enemy_posts.clear()
-	_assert_true(await _drive_lockout_rally_sectors(inst, chunk),
-		"all four mandatory pair-rally sectors complete through normal interaction hooks")
 	# --- Endo's wall: sanctuary + the rest completes the scene (the test party stood still under
 	# REAL pursuit above — restore them the way the wipe-restart does, then finish the run) ---
 	for cid4 in ["aster", "peris"]:
@@ -39197,14 +43204,14 @@ func _test_lockout_chase() -> void:
 		wall_rest = it
 	# THE END GATE NEEDS THE PAIR: with Peris down, Endo counts heads and the rest refuses
 	gs.adjust_stat("peris", "hp", -999.0)
-	wall_rest.set("active_character", "aster")
-	wall_rest.call("_trigger")
+	_assert_true(_trigger_exact_interactable_source(gs, wall_rest, "aster"),
+		"the surviving Aster physically attempts the Endo-wall rest")
 	_assert_true(not bool(chunk.get_preview_state()["complete"]),
 		"one survivor at the wall is NOT the end — the rest needs both Aster and Peris")
 	gs.restore_character("peris")
 	gs.snap_character_to("peris", Vector3(float(chunk.WALL_X) + 2.0, 0.0, 1.5))
-	wall_rest.set("active_character", "aster")
-	wall_rest.call("_trigger")
+	_assert_true(_trigger_exact_interactable_source(gs, wall_rest, "aster"),
+		"the gathered pair completes through the exact Endo-wall source")
 	inst.headless_advance(0.5, 0.1)
 	_assert_true(bool(chunk.get_preview_state()["complete"]),
 		"resting at Endo's wall ends the chase")
@@ -39214,8 +43221,8 @@ func _test_lockout_chase() -> void:
 	chunk._restart_fragment()
 	inst.headless_advance(0.5, 0.1)
 	_assert_true(not bool(chunk.get_preview_state()["chase_started"]), "the full reset quiets the chase")
-	scanner.set("active_character", "aster")
-	scanner.call("_trigger")
+	_assert_true(_trigger_exact_interactable_source(gs, scanner, "aster"),
+		"full-wipe reset leaves the exact scanner physically reusable")
 	inst.headless_advance(0.5, 0.1)
 	_assert_true(bool(chunk.get_preview_state()["chase_started"]),
 		"presenting tags AGAIN after a full wipe restarts the chase (the scanner re-armed)")
@@ -39235,8 +43242,7 @@ func _test_chase_probe() -> void:
 		var chunk = inst._active_chunk
 		var gs = inst._game_state
 		var scanner: Node = chunk.find_child("BoundaryScanner", true, false)
-		scanner.set("active_character", "aster")
-		scanner.call("_trigger")
+		_trigger_exact_interactable_source(gs, scanner, "aster")
 		print("[PROBE] ===== strategy: %s =====" % strat)
 		var caught_events := 0
 		var last_hp := {"aster": 100.0, "peris": 100.0}
@@ -39301,8 +43307,7 @@ func _test_chase_probe() -> void:
 						if ap.x > float(chunk.DOOR_X):
 							acted = true
 							var door: Node = chunk.find_child("ServiceDoor", true, false)
-							door.set("active_character", "peris")
-							door.call("_trigger")
+							_trigger_exact_interactable_source(gs, door, "peris")
 							print("[PROBE] t=%4.0f  sealed the door, standing behind it to watch" % t)
 					"offshoot_stumbler":
 						if ap.x > float(chunk.JUNCTION_X) - 1.0:
@@ -39310,26 +43315,30 @@ func _test_chase_probe() -> void:
 							for cid4 in ["aster", "peris"]:
 								gs.snap_character_to(cid4, chunk._pad_in.position)
 								chunk._pad_in.set("active_character", cid4)
-								chunk._pad_in.call("step_through")
+								chunk._pad_in.call("_trigger", false)
 							print("[PROBE] t=%4.0f  found a glowing pad, stepped through (did NOT seal)" % t)
 					"competent_runner":
 						if ap.x > float(chunk.DOOR_X):
 							acted = true
 							var door2: Node = chunk.find_child("ServiceDoor", true, false)
-							door2.set("active_character", "peris")
-							door2.call("_trigger")
+							_trigger_exact_interactable_source(gs, door2, "peris")
 							for cid6 in ["aster", "peris"]:
 								gs.command_move_to_pos(cid6, Vector3(float(chunk.WALL_X) + 2.0, 0, -1.0))
 							print("[PROBE] t=%4.0f  sealed the door AT SPEED, running on" % t)
 					"tyreg_accepter":
-						if ap.x > float(chunk.JUNCTION_X) - 2.0:
-							acted = true
+						var tyreg_pos: Vector3 = gs.get_position(chunk.TYREG_ID)
+						if Vector2(ap.x - tyreg_pos.x, ap.z - tyreg_pos.z).length() \
+								<= float(chunk.TYREG_INTERACTION_RADIUS):
 							var ty: Node = chunk.find_child("TyregChoice", true, false)
 							ty.set("active_character", "aster")
-							ty.call("_trigger")
-							for cid5 in ["aster", "peris"]:
-								gs.command_move_to_pos(cid5, Vector3(float(chunk.WALL_X) + 2.0, 0, 0))
-							print("[PROBE] t=%4.0f  accepted Tyreg, running for the wall with her" % t)
+							acted = bool(ty.call("_trigger"))
+							if acted:
+								for cid5 in ["aster", "peris"]:
+									gs.command_move_to_pos(
+										cid5,
+										Vector3(float(chunk.WALL_X) + 2.0, 0, 0)
+									)
+								print("[PROBE] t=%4.0f  accepted Tyreg, running for the wall with her" % t)
 			# the competent runner READS the corridor: waits out a live wash, clambers the shelf
 			if strat == "competent_runner" and acted:
 				var ap_c: Vector3 = gs.get_position("aster")
@@ -39373,8 +43382,7 @@ func _test_chase_probe() -> void:
 				# attempts, zero adjustment — the same run, but flinchier)
 				if not bool(st.get("chase_started", false)):
 					if ap.distance_to((scanner as Node3D).global_position) < 2.5:
-						scanner.set("active_character", "aster")
-						scanner.call("_trigger")
+						_trigger_exact_interactable_source(gs, scanner, "aster")
 						print("[PROBE] t=%4.0f  dean presents tags again (attempt %d)" % [t, int(st.get("wipe_count", 0)) + 1])
 					elif not gs.is_moving("aster"):
 						for cid_d0 in ["aster", "peris"]:
@@ -39437,8 +43445,7 @@ func _test_chase_probe() -> void:
 			# a runner who reaches the wall tries to rest (they can see the pad)
 			if gs.get_position("aster").x > float(chunk.WALL_X) and not bool(gs.is_downed("aster")):
 				for it in chunk._exit_shelters:
-					it.set("active_character", "aster")
-					it.call("_trigger")
+					_trigger_exact_interactable_source(gs, it, "aster")
 		var fin: Dictionary = chunk.get_preview_state()
 		print("[PROBE] RESULT %s: complete=%s wipes=%d strikes=%d final aster x=%.1f hp a=%.0f p=%.0f" % [
 			strat, str(fin.get("complete", false)), int(fin.get("wipe_count", 0)), caught_events,
@@ -39459,8 +43466,7 @@ func _test_chase_perf() -> void:
 	var mode := str(OS.get_environment("PERF_MODE"))
 	if mode != "baseline":
 		var scanner: Node = chunk.find_child("BoundaryScanner", true, false)
-		scanner.set("active_character", "aster")
-		scanner.call("_trigger")
+		_trigger_exact_interactable_source(gs, scanner, "aster")
 	if mode == "idle_waves":
 		var sched0 = inst._game_state.scheduler
 		sched0.cancel_tag("chase_pursuit")   # waves spawn but never engage

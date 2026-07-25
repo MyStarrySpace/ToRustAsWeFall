@@ -10,8 +10,13 @@ const BranchOptionButtonScene = preload("res://scenes/ui/branch_option_button.ts
 const InputHintChipScene = preload("res://scenes/ui/input_hint_chip.tscn")
 const OverlayToggleButtonScene = preload("res://scenes/ui/overlay_toggle_button.tscn")
 const StretchSeedCatalogScript = preload("res://scripts/generation/stretch_seed_catalog.gd")
+const CanonicalCharacterAbilityScript = preload("res://scripts/game/mechanics/canonical_character_ability.gd")
+const FixedCadenceScript := preload("res://scripts/system/core/fixed_cadence.gd")
 # ItemData is inherited from tutorial_sequence.gd (the shared chunk-host base).
 const PERCEPTION_STACK_SHADER := preload("res://resources/perception_stack.gdshader")
+const MOTHER_GEAR_VISUAL_SCENE := preload(
+	"res://scenes/props/mother_flure/mother_gear.tscn"
+)
 
 const STACKS_CHUNK_SCENE := preload("res://scenes/fragments/chunks/stacks_fragment_chunk.tscn")
 const RINGS_CHUNK_SCENE := preload("res://scenes/fragments/chunks/rings_fragment_chunk.tscn")
@@ -44,6 +49,8 @@ const AGHORA_BAZAAR_CHUNK_SCENE := preload("res://scenes/fragments/chunks/aghora
 const SightMaskBakerScript := preload("res://scripts/game/world/sight_mask_baker.gd")
 const PREVIEW_EMPHASIS_TAG := "preview_event_emphasis"
 const DEFAULT_PREVIEW_EDGE_SCROLL_MARGIN := 6.0
+const QA_GENERATED_COMMAND_PREFIX := "qa_generated_node_command/"
+const QA_WORLD_INTERACTION_PREFIX := "qa_world_interaction/"
 ## Matches perception_stack.gdshader's fully-clear fog radius. Relationship UI uses
 ## the clear region rather than the soft fringe so it cannot reveal a fogged endpoint.
 const PARTY_PERCEPTION_CLEAR_RADIUS := 14.0
@@ -90,11 +97,12 @@ const CHUNK_SCENES := {
 const PREVIEW_ENTRIES := [
 	{"id": "endo_junction_stretch", "chunk": "endo_junction_stretch", "title": "Endo's Junction to Shelter 1", "stage": 1},
 	{"id": "showcase_gallery", "chunk": "showcase_gallery", "title": "Showcase Gallery", "stage": 1},
-	{"id": "stacks", "chunk": "stacks", "title": "Stacks Fragment Lab", "stage": 1},
+	{"id": "stacks", "chunk": "stacks", "title": "The Open Files Initiative", "stage": 1},
 	{"id": "rings", "chunk": "rings", "title": "Rings Fragment Lab", "stage": 1},
 	{"id": "push_lab", "chunk": "push_lab", "title": "Push Lab", "stage": 2},
 	{"id": "rest_lab", "chunk": "rest_lab", "title": "Shelter Rest Lab", "stage": 2},
-	{"id": "lockout", "chunk": "lockout", "title": "Lockout Fragment Lab", "stage": 2},
+	# Compatibility id retained for old links; the scene now inherits the one canonical chase.
+	{"id": "lockout", "chunk": "lockout", "title": "The Lockout Chase (legacy alias)", "stage": 4},
 	{"id": "generated_stretch", "chunk": "generated_stretch", "title": "Generated Stretch", "stage": 2,
 		"config": {"spec_path": "res://data/generated_stretches/generated_teaching_channels_shelter_1_to_2.json"}},
 	{"id": "dusk_run", "chunk": "dusk_run", "title": "Dusk Run", "stage": 3},
@@ -116,9 +124,6 @@ const PREVIEW_ENTRIES := [
 	{"id": "survival_range", "chunk": "survival_range", "title": "Shelter-To-Shelter Range", "stage": 4},
 	{"id": "refuge_run", "chunk": "refuge_run", "title": "Refuge Run", "stage": 4},
 	{"id": "channels_wash_intro", "chunk": "channels_wash_intro", "title": "Channels — Wash Intro", "stage": 5},
-	{"id": "wash_relay", "chunk": "wash_relay", "title": "Wash Relay", "stage": 5},
-	{"id": "generated_diagnosis_setpiece", "chunk": "generated_stretch", "title": "Generated Diagnosis Setpiece", "stage": 6,
-		"config": {"spec_path": "res://data/generated_stretches/generated_diagnosis_setpiece_shelter_5_to_6.json"}},
 	{"id": "mother_flure", "chunk": "mother_flure", "title": "Mother Flure", "stage": 6},
 	# A DATA-driven fragment: the DataFragmentChunk loader composes this entirely from a .tres (no bespoke chunk
 	# code) — point it at any Fragment resource via the config below.
@@ -195,6 +200,9 @@ const PREVIEW_ENTRIES := [
 			"seed": 431, "complexity_tier": "standard", "progression_stage": 3,
 			"biome": "garden", "previous_biome": "channels"},
 			"overlays": {"aster": false, "peris": false, "endo": false}}},
+	# WASH RELAY, concept-plate detail pass: WashRelayDressing (survey-first drum / falls /
+	# signage / shaft wall) + the two story beats — the lonely flure and the curecumin pad.
+	{"id": "wash_relay", "chunk": "wash_relay", "title": "Wash Relay", "stage": 5},
 ]
 
 ## The menu entry for an id (or {} if none).
@@ -306,8 +314,16 @@ const DEFAULT_DAY := 1
 const DEFAULT_TIME := 0.28
 const DEFAULT_DAY_DURATION_SECONDS := DayNightCycleScript.DEFAULT_DAY_DURATION_SECONDS
 const DEFAULT_NIGHT_DURATION_SECONDS := DayNightCycleScript.DEFAULT_NIGHT_DURATION_SECONDS
-const STAMINA_DRAIN := 18.0
+# Keep preview play on the same 40-world-unit sprint bar as canonical GameState.
+# A separate 18/s override made generated proofs, deterministic replays, and the
+# playable browser disagree about whether the same route exhausted Peris.
+const STAMINA_DRAIN := 15.0
 const STAMINA_REGEN := 10.0
+const PREVIEW_STAMINA_TICK := 0.25
+const PREVIEW_RUNTIME_AUTHORITY_VERSION := 1
+const PREVIEW_RUNTIME_AUTHORITY_KEY := "runtime:fragment_preview"
+const PREVIEW_STAMINA_TAG := "fragment_preview:stamina"
+const PREVIEW_ABILITY_TAG_PREFIX := "fragment_preview:ability:"
 
 # The chunk this preview loads. A string (it's the serializable handle the data layer needs — the
 # puzzle JSON, the --preview=<id> CLI arg, and test .set() all key on it), but constrained to the
@@ -344,6 +360,7 @@ var _character_state: Dictionary = {}
 var _ability_defs: Dictionary = {}
 var _ability_runtime: Dictionary = {}
 var _ability_order: Array[String] = []
+var _pending_targeted_ability_id := ""
 
 var _hud
 var _active_char_id := ""
@@ -369,6 +386,19 @@ var _preview_time := DEFAULT_TIME
 var _preview_clock_running := true
 var _preview_show_time := true
 var _preview_cycle = DayNightCycleScript.new()
+## The preview clock is an analytic projection of scheduler time. These anchors, rather than a
+## render-delta accumulator, are the portable authority used by saves, replay, and shelter commits.
+var _preview_clock_anchor_day := DEFAULT_DAY
+var _preview_clock_anchor_time := DEFAULT_TIME
+var _preview_clock_anchor_tick := 0.0
+## Field stamina regeneration is the only preview-specific stamina rule. Sprint drain itself uses
+## GameState's serialized running cadence; this fixed epoch reconstructs every regeneration tick.
+var _preview_stamina_epoch := -1.0
+var _preview_stamina_next_tick := -1.0
+var _preview_runtime_initialized := false
+var _restoring_preview_runtime := false
+var _applying_preview_run_state := false
+var _preview_runtime_baseline: Dictionary = {}
 var _preview_environment: Environment
 var _preview_directional_light: DirectionalLight3D
 var _suppress_hud_character_signal := false
@@ -462,13 +492,24 @@ func _build_characters() -> void:
 		characters_root.add_child(node)
 		_characters[char_id] = node
 
+	for character_node in _characters.values():
+		var target_callable := Callable(self, "_on_preview_ability_target_clicked")
+		if character_node != null and character_node.has_signal("ground_clicked") \
+				and not character_node.is_connected("ground_clicked", target_callable):
+			character_node.connect("ground_clicked", target_callable)
+
 	_player = _characters["aster"]
 	if not Engine.is_editor_hint():
-		# Free-look on by default in the preview — you're here to inspect a chunk, so WASD / right-drag
+		# Free-look on by default in the preview — you're here to inspect a chunk, so WASD / middle-drag
 		# pan the camera around it (click recenters on the active character).
 		_setup_game_camera(_player, Vector3(0, 12, 9), true)
 
 func _register_characters() -> void:
+	# Sprint drain is already a portable GameState phase (including its next cadence tick). Keep the
+	# preview on the canonical game-wide rate; modes may later override that through explicit settings,
+	# never through a second hidden preview economy.
+	if _game_state != null:
+		_game_state.run_stamina_drain_per_sec = STAMINA_DRAIN
 	for char_id in CHARACTER_IDS:
 		var character_node: Node3D = _characters[char_id]
 		_register_gs_character(char_id, character_node, CHARACTER_SPEEDS[char_id], {
@@ -555,6 +596,12 @@ func _begin_chunk() -> void:
 	if _active_chunk != null and _active_chunk.has_method("reset_preview_state"):
 		_pdbg("reset_preview_state")
 		_active_chunk.call("reset_preview_state")
+	# Runtime reset is allowed to restore authored StandardMaterial overrides. Re-scan afterward so
+	# those restored tall surfaces receive the same see-through wrapper as initial construction.
+	# apply_to() skips already wrapped ShaderMaterials, making this refresh idempotent.
+	if _occlusion_mgr != null and _active_chunk != null and preview_chunk in PROCEDURAL_OCCLUSION_CHUNKS:
+		var refreshed_wrappers: int = _occlusion_mgr.apply_to(_active_chunk, 2.0)
+		_pdbg("camera occlusion refreshed on %d reset surfaces" % refreshed_wrappers)
 	_apply_chunk_ui_defaults()
 	# Optional cosmetic contract: a chunk may annotate paused queued paths (for example, learned surge
 	# timing). Rebinding every load/reset also clears cached feedback from the previous fragment.
@@ -564,6 +611,8 @@ func _begin_chunk() -> void:
 		_active_chunk.call("set_preview_planning_feedback", _scheduler != null and _scheduler.is_paused())
 	_pdbg("apply_chunk_navigation_graph")
 	_apply_chunk_navigation_graph()
+	if _active_chunk != null and _active_chunk.has_method("on_game_state_grid_ready"):
+		_active_chunk.call("on_game_state_grid_ready")
 	_apply_chunk_metadata()
 	_pdbg("position_party_for_chunk")
 	_position_party_for_chunk()
@@ -587,7 +636,10 @@ func _begin_chunk() -> void:
 	_refresh_preview_items()
 	_refresh_inventory_panel()
 	_tutorial_prompt.show_action_prompt("command", "Move", 0.0, "RMB")
-	show_preview_message("Preview booted with full HP, stamina, and ATP.", 2.0)
+	if bool(preview_chunk_config.get("preserve_party_state", false)):
+		show_preview_message("Next stretch loaded — carried resources and party losses persist.", 2.0)
+	else:
+		show_preview_message("Preview booted with full HP, stamina, and ATP.", 2.0)
 
 ## Optional presentation contract for authored showcase-like chunks. It lets a scene protect its
 ## first read from the diagnostic chrome while preserving H/F4 as explicit inspection controls.
@@ -644,6 +696,8 @@ func _unload_chunk(chunk_name: String) -> void:
 	cancel_preview_emphasis()
 	var unloading_active: bool = _active_chunk != null and _chunks.get(chunk_name) == _active_chunk
 	if unloading_active:
+		_cancel_preview_runtime_callbacks()
+		_preview_runtime_initialized = false
 		# A coord map is part of the active chunk's spatial contract, not persistent run
 		# state. Retire it with the geometry so a flat successor cannot inherit a helix.
 		if _game_state != null:
@@ -934,7 +988,13 @@ func _roguelike_sync_config() -> void:
 		scene_title_override = "Roguelike — THE SITE (depth %d): take the dose" % (_run_session.depth + 1)
 		return
 	preview_chunk = "generated_stretch"
-	preview_chunk_config = {"spec": _run_session.spec, "roguelike": true}
+	preview_chunk_config = {
+		"spec": _run_session.spec,
+		"roguelike": true,
+		# Depth zero establishes the run fixture. Every later stretch inherits the
+		# same authoritative party stats so losses and ATP decisions remain real.
+		"preserve_party_state": _run_session.depth > 0,
+	}
 	var tier := str(_run_session.spec.get("source", {}).get("complexity_tier", "teaching"))
 	scene_title_override = "Roguelike — Depth %d (%s)" % [_run_session.depth + 1, tier]
 
@@ -1034,6 +1094,7 @@ func _roguelike_choose(option: Dictionary) -> void:
 	var outgoing_chunk := preview_chunk
 	if bool(option.get("summary_new_run", false)):
 		# a fresh run on the next seed: new descent, new target depth, full roster
+		_clear_roguelike_inventory()
 		_run_session = RunSession.new(_run_session.seed + 1, _run_session.levels)
 		_run_session.start()
 		_roguelike_sync_config()
@@ -1049,6 +1110,8 @@ func _roguelike_choose(option: Dictionary) -> void:
 		show_preview_message("%s joins the run." % RunBranchDecisions.display_name(str(reward["recruit"])), 3.5)
 	_run_session.choose(option)   # grows the roster, deepens, generates the next level
 	_roguelike_sync_config()
+	if _active_chunk != null and _active_chunk.has_method("preserve_carried_resources_on_detach"):
+		_active_chunk.call("preserve_carried_resources_on_detach")
 	_unload_chunk(outgoing_chunk)
 	# The unloaded chunk's interactables are queue_free'd; drop them from the preview's caches so the speed-recipient
 	# list (and the active-character push) never touch a freed node. _begin_chunk repopulates from the new chunk.
@@ -1056,14 +1119,21 @@ func _roguelike_choose(option: Dictionary) -> void:
 	_begin_chunk()
 	_roguelike_respawn_party()
 	_roguelike_wire_permadeath()
-	# A head-start ATP reward lands after the new level is live + the party registered.
-	if reward.has("atp_head_start") and _game_state != null:
-		for cid in _run_session.roster:
-			if _game_state.characters.has(cid):
-				_game_state.adjust_stat(cid, "atp", float(reward["atp_head_start"]))
 	if reward.has("gear"):
 		show_preview_message("Salvaged: %s." % str(reward["gear"]).capitalize(), 3.0)
 	_roguelike_advancing = false
+
+
+## Carried resources cross ordinary descents, but ownership ends with the run.
+## Clear authoritative inventory before a summary-driven new run so an item first
+## claimed several chunks ago cannot escape the current chunk's cleanup ledger.
+func _clear_roguelike_inventory() -> void:
+	if _game_state == null:
+		return
+	for item_id_v in _game_state.items.keys().duplicate():
+		_game_state.remove_item(str(item_id_v))
+	_refresh_preview_items()
+	_refresh_inventory_panel()
 
 ## PERMADEATH (the DLC doc's law): in a roguelike run a fallen character leaves the run — the
 ## session shrinks the roster (every deeper level regenerates for the smaller party) and an empty
@@ -1098,9 +1168,7 @@ func _show_run_summary() -> void:
 		lines.append("Lost: %s" % ", ".join(sm.get("deaths", [])))
 	lines.append("Branches chosen: %d" % int(sm.get("choices", 0)))
 	_show_branch_modal({
-		"prompt": "%s
-%s" % [verdict, "
-".join(lines)],
+		"prompt": "%s\n%s" % [verdict, "\n".join(lines)],
 		"options": [{"id": "new_run", "label": "NEW RUN", "risk": "",
 			"reward": {}, "summary_new_run": true}],
 	})
@@ -1309,10 +1377,10 @@ func _on_process(delta: float, spd: float) -> void:
 			if interactable != null and is_instance_valid(interactable):
 				interactable.active_character = _active_char_id
 
-	if _preview_clock_running and spd > 0.0:
-		_advance_preview_clock(delta * spd)
-	_update_stamina(delta, spd)
-	_update_ability_timers(delta, spd)
+	# Gameplay clocks advance on EventScheduler callbacks/anchors. A render frame only projects
+	# their already-committed state into the HUD and lighting.
+	_sync_preview_clock_from_authority(true)
+	_refresh_ability_display()
 	_update_overlay_runtime(delta)
 	_refresh_overlay_panel_status()
 	_refresh_inventory_panel()
@@ -1330,6 +1398,11 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		return
 	if event is InputEventKey and event.pressed and not event.echo:
 		var key_event := event as InputEventKey
+		if event.is_action_pressed("ui_cancel") and _pending_targeted_ability_id != "":
+			_cancel_preview_ability_targeting()
+			show_preview_message("Ability target cancelled.", 1.0)
+			get_viewport().set_input_as_handled()
+			return
 		var direct_ability_action := _pressed_party_ability_action(event)
 		if direct_ability_action != "":
 			_activate_action_bound_preview_ability(direct_ability_action)
@@ -1381,18 +1454,28 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			_activate_keybound_preview_ability(code)
 
 func _input(event: InputEvent) -> void:
-	# Deterministic QA tapes store the resolved generated-node command as an InputEventAction.
+	# Deterministic QA tapes store stable semantic target commands as InputEventActions.
 	# This avoids baking camera projection and window scaling into a replay while still entering
 	# through the ordinary interaction coordinator: the servicing character walks to the live
-	# target, performs its timed action, and produces the same GameState events as a right-click.
+	# generated node or authored world control, performs its timed action, and produces the same
+	# GameState events as a right-click.
 	if not (event is InputEventAction) or not (event as InputEventAction).pressed:
 		return
 	var action_name := str((event as InputEventAction).action)
-	const GENERATED_COMMAND_PREFIX := "qa_generated_node_command/"
-	if not action_name.begins_with(GENERATED_COMMAND_PREFIX) or _active_chunk == null:
+	if _active_chunk == null:
 		return
-	var node_id := action_name.trim_prefix(GENERATED_COMMAND_PREFIX)
-	var target := _active_chunk.get_node_or_null("GeneratedNode_%s" % node_id) as Node3D
+	var target: Node3D = null
+	if action_name.begins_with(QA_GENERATED_COMMAND_PREFIX):
+		var node_id := action_name.trim_prefix(QA_GENERATED_COMMAND_PREFIX)
+		target = _active_chunk.get_node_or_null("GeneratedNode_%s" % node_id) as Node3D
+	elif (
+		action_name.begins_with(QA_WORLD_INTERACTION_PREFIX)
+		and _active_chunk.has_method("get_playthrough_interaction_target")
+	):
+		var target_id := action_name.trim_prefix(QA_WORLD_INTERACTION_PREFIX)
+		target = _active_chunk.call("get_playthrough_interaction_target", target_id) as Node3D
+	else:
+		return
 	if target == null or not target.has_signal("interaction_requested"):
 		return
 	var active_character: Node = _characters.get(_active_char_id, null)
@@ -1424,6 +1507,12 @@ func register_preview_interactable(interactable: Node) -> void:
 	# and not fast-forward invariant (The Watched Gap's flure tend caught it firing late).
 	if _scheduler != null and interactable.has_method("set_scheduler"):
 		interactable.call("set_scheduler", _scheduler)
+	# Timed work also belongs to the authoritative mover. Dynamically loaded chunk
+	# controls miss TutorialSequence's startup tree walk, so bind GameState here as
+	# well; otherwise arrival, interruption, and a restored mid-dwell can disagree
+	# with the body that actually walked to the station.
+	if _game_state != null and interactable.has_method("set_movement_authority"):
+		interactable.call("set_movement_authority", _game_state)
 	_connect_interactable_outline_feedback(interactable)
 	for char_id in CHARACTER_IDS:
 		var character_node: Node = _characters.get(char_id, null)
@@ -1434,7 +1523,7 @@ func get_preview_dialogue_box() -> Node:
 	return _dialogue
 
 func get_preview_engram_overlay() -> Node:
-	return _engram_overlay
+	return _ensure_engram_overlay()
 
 func get_preview_active_character() -> String:
 	return _active_char_id
@@ -1623,6 +1712,13 @@ func set_preview_character_stat(char_id: String, stat_name: String, value: float
 		_ensure_valid_selection()
 
 func adjust_preview_character_stat(char_id: String, stat_name: String, delta: float) -> void:
+	var normalized := _normalize_stat_name(stat_name)
+	# Route combat damage through GameState so shared defenses such as Peris's WRAP can resolve it.
+	# Administrative setters still intentionally bypass temporary shields for resets and authored setup.
+	if normalized == "hp" and delta < 0.0 and _game_state != null \
+			and _game_state.characters.has(char_id):
+		_game_state.adjust_stat(char_id, "hp", delta)
+		return
 	set_preview_character_stat(char_id, stat_name, get_preview_character_stat(char_id, stat_name) + delta)
 
 func set_preview_character_status(char_id: String, status: String) -> void:
@@ -1807,7 +1903,17 @@ func headless_get_anchor_positions() -> Dictionary:
 		anchors.merge(_active_chunk.call("get_preview_anchors"), true)
 	return anchors
 
+
+## Read-only bridge for scene chunks that must validate a shelter interaction
+## against the exact clock the preview displays. Callers decide when to synchronize
+## GameState; this getter deliberately emits no clock events.
+func get_preview_clock_state() -> Dictionary:
+	_sync_preview_clock_from_authority(false)
+	return {"day": _preview_day, "time": _preview_time}
+
+
 func headless_get_state() -> Dictionary:
+	_sync_preview_clock_from_authority(false)
 	var state := {
 		"preview_chunk": preview_chunk,
 		"preview_party_preset": _preview_party_preset(),
@@ -1872,7 +1978,7 @@ func headless_get_state() -> Dictionary:
 			"legacy_keybind": str(ability_def.get("legacy_keybind", "")),
 			"legacy_keycode": int(ability_def.get("legacy_keycode", ability_def.get("keycode", 0))),
 			"state": str(ability_runtime.get("base_state", "ready")),
-			"remaining": float(ability_runtime.get("remaining", 0.0)),
+			"remaining": _preview_ability_remaining(ability_id),
 			"owner": str(ability_def.get("owner", "")),
 			"owner_display": str(ability_def.get("owner_display", "")),
 			"party_slot": int(ability_def.get("party_slot", -1)),
@@ -2017,17 +2123,19 @@ func headless_move_character(char_id: String, pos: Vector3, running := false) ->
 	if _game_state == null or not _game_state.characters.has(char_id):
 		return false
 	_game_state.change_move_speed(char_id, get_preview_character_move_speed(char_id, running))
-	var commanded := _game_state.command_move_to_pos(char_id, pos)
-	# Deterministic replays do not run every visual _process callback. Surface the
-	# same semantic movement-start event explicitly so scheduler-owned systems such
-	# as scarcity begin at the same moment in live play and replay.
-	if (
-		commanded
-		and _active_chunk != null
-		and _active_chunk.has_method("on_preview_movement_started")
-	):
-		_active_chunk.call("on_preview_movement_started", char_id)
-	return commanded
+	# Deterministic input playback must exercise the same floor-link traversal as an
+	# ordinary click. A raw position command preserves the character's current level,
+	# so using it for a generated node on another deck could appear to reach the same
+	# x/z cell through the ceiling while the real interaction correctly rejected it.
+	if _game_state.grid != null and int(_game_state.grid.level_count) > 1:
+		var destination_level := int(_game_state.grid.level_for_y(pos.y))
+		if destination_level != int(_game_state.get_character_level(char_id)):
+			return _game_state.command_move_cross_level(
+				char_id,
+				_game_state.grid.world_to_grid(pos),
+				destination_level
+			)
+	return _game_state.command_move_to_pos(char_id, pos)
 
 func headless_is_character_moving(char_id: String) -> bool:
 	if _game_state == null:
@@ -2065,9 +2173,28 @@ func headless_get_character_movement_info(char_id: String) -> Dictionary:
 func headless_activate_ability(ability_id: String) -> bool:
 	if not _ability_defs.has(ability_id):
 		return false
-	var before: Dictionary = _ability_runtime.get(ability_id, {}).duplicate(true)
-	_activate_preview_ability(ability_id)
-	return before != _ability_runtime.get(ability_id, {})
+	return _execute_preview_ability(
+		ability_id, _headless_default_ability_target(ability_id), _headless_default_wrap_target())
+
+func _headless_default_ability_target(ability_id: String) -> Vector3:
+	if _game_state == null or not _ability_defs.has(ability_id):
+		return Vector3.ZERO
+	var owner := str((_ability_defs[ability_id] as Dictionary).get("owner", ""))
+	if owner == "" or not _game_state.characters.has(owner):
+		return Vector3.ZERO
+	return _game_state.get_render_position(owner)
+
+func _headless_default_wrap_target() -> String:
+	# Deterministic smoke tests use the owner as a guaranteed in-range valid party target. Targeted
+	# tests call headless_activate_ability_at() with the ally they intend to verify.
+	return "peris" if _character_is_available("peris") else ""
+
+func headless_activate_ability_at(
+		ability_id: String,
+		world_pos: Vector3,
+		target_id := ""
+	) -> bool:
+	return _execute_preview_ability(ability_id, world_pos, target_id)
 
 ## Deterministic QA contract for the 6x2 drawer. The direct action names are stable while their
 ## physical keys remain entirely InputMap/settings-owned.
@@ -2089,9 +2216,7 @@ func headless_activate_ability_action(input_action: String) -> bool:
 	var ability_id := _get_ability_for_input_action(input_action)
 	if ability_id == "":
 		return false
-	var before: Dictionary = _ability_runtime.get(ability_id, {}).duplicate(true)
-	_activate_preview_ability(ability_id)
-	return before != _ability_runtime.get(ability_id, {})
+	return headless_activate_ability(ability_id)
 
 func headless_set_overlay_state(overlay_id: String, enabled: bool) -> void:
 	if not _overlay_states.has(overlay_id):
@@ -2105,12 +2230,12 @@ func headless_set_routing_mode(mode: String) -> void:
 	_on_routing_toggled(mode)
 
 func headless_set_preview_time(day: int, time_of_day: float) -> void:
-	_preview_day = maxi(day, 1)
-	_preview_time = clampf(float(time_of_day), 0.0, 1.0)
+	_anchor_preview_clock(maxi(day, 1), clampf(float(time_of_day), 0.0, 1.0))
 	_sync_preview_time_presentation()
+	_publish_preview_runtime_authority()
 
 func headless_set_preview_clock_running(enabled: bool) -> void:
-	_preview_clock_running = enabled
+	_set_preview_clock_running_authoritative(enabled)
 
 func headless_set_character_position(char_id: String, pos: Vector3) -> void:
 	if not _characters.has(char_id):
@@ -2668,6 +2793,12 @@ func _connect_preview_item_signals() -> void:
 		_game_state.item_exocytosed.connect(_on_preview_item_changed)
 	if not _game_state.stat_changed.is_connected(_on_gs_stat_changed):
 		_game_state.stat_changed.connect(_on_gs_stat_changed)
+	if not _game_state.running_changed.is_connected(_on_preview_running_changed):
+		_game_state.running_changed.connect(_on_preview_running_changed)
+	if not _game_state.damage_shield_changed.is_connected(_on_preview_damage_shield_changed):
+		_game_state.damage_shield_changed.connect(_on_preview_damage_shield_changed)
+	if not _game_state.damage_absorbed.is_connected(_on_preview_damage_absorbed):
+		_game_state.damage_absorbed.connect(_on_preview_damage_absorbed)
 	if not _game_state.character_downed.is_connected(_on_preview_character_downed):
 		_game_state.character_downed.connect(_on_preview_character_downed)
 
@@ -2689,8 +2820,47 @@ func _on_gs_stat_changed(char_id: String, stat: String, value: float) -> void:
 			and _game_state != null and not _game_state.is_downed(char_id):
 		_character_state[char_id]["status"] = ""
 	_sync_character_hud(char_id)
+	# Damage needs immediate, source-agnostic acknowledgement. This covers enemy
+	# strikes, hazards, and zero-ATP scarcity through the same authoritative HP
+	# signal instead of requiring every chunk to remember a private HUD effect.
+	if normalized == "hp" and value < previous \
+			and _hud != null and _hud.has_method("pulse_portrait_damage"):
+		_hud.call("pulse_portrait_damage", char_id)
 	if normalized == "hp" and previous > 0.0 and value <= 0.0:
 		_ensure_valid_selection()
+
+func _on_preview_running_changed(char_id: String, running: bool) -> void:
+	if _applying_preview_run_state:
+		return
+	_sync_preview_run_presenters_from_game_state()
+	# GameState ends a sprint exactly on its fixed drain tick. If the active runner exhausted,
+	# retire the party intent too so companions do not keep sprinting after the HUD toggle drops.
+	if not running and char_id == _active_char_id and _game_state != null \
+			and _game_state.get_stat(char_id, "stamina") <= 0.0:
+		_run_active = false
+		_apply_active_run_state()
+		show_preview_message("Stamina exhausted.", 1.2)
+
+func _on_preview_damage_shield_changed(char_id: String, amount: float, source_id: String) -> void:
+	if source_id != CanonicalCharacterAbilityScript.WRAP_ID or not _character_state.has(char_id):
+		return
+	if amount > 0.0:
+		set_preview_character_status(char_id, "wrapped")
+	elif str(_character_state[char_id].get("status", "")) == "wrapped":
+		set_preview_character_status(char_id, "")
+
+func _on_preview_damage_absorbed(
+		char_id: String,
+		amount: float,
+		shield_remaining: float,
+		source_id: String
+	) -> void:
+	if source_id != CanonicalCharacterAbilityScript.WRAP_ID:
+		return
+	var display_name := str(CHARACTER_DISPLAY_NAMES.get(char_id, char_id.capitalize()))
+	show_preview_message("WRAP absorbed %.0f damage for %s (%.0f shield left)." % [
+		amount, display_name, shield_remaining,
+	], 1.5)
 
 ## Scripted downs do not emit stat_changed. Mirror the canonical GameState transition here too,
 ## so control, HUD state, and the perception roster all hand off in the same frame.
@@ -2739,16 +2909,35 @@ func _ensure_preview_item_node(item_id: String) -> void:
 	var root := Node3D.new()
 	root.name = "PreviewItem_%s" % item_id
 
-	var mesh_instance := MeshInstance3D.new()
-	mesh_instance.name = "Mesh"
-	mesh_instance.mesh = _build_preview_item_mesh(str(properties.get("visual_kind", item_type)))
-	var material := StandardMaterial3D.new()
-	material.albedo_color = properties.get("visual_color", _preview_item_color(item_type))
-	material.emission_enabled = true
-	material.emission = material.albedo_color.lightened(0.08)
-	material.emission_energy_multiplier = 0.24
-	mesh_instance.material_override = material
-	root.add_child(mesh_instance)
+	var visual_kind := str(properties.get("visual_kind", item_type))
+	var visual_scene_path := str(properties.get("visual_scene", ""))
+	var authored_visual_added := false
+	if visual_scene_path != "":
+		var packed_visual := load(visual_scene_path) as PackedScene
+		if packed_visual != null:
+			var authored_visual := packed_visual.instantiate() as Node3D
+			if authored_visual != null:
+				authored_visual.name = "Mesh"
+				authored_visual.set_meta("visual_identity", str(properties.get(
+					"visual_identity", visual_kind)))
+				root.add_child(authored_visual)
+				authored_visual_added = true
+	if not authored_visual_added and visual_kind == "mother_gear":
+		var authored_gear := MOTHER_GEAR_VISUAL_SCENE.instantiate() as Node3D
+		authored_gear.name = "Mesh"
+		authored_gear.set_meta("visual_identity", "mother_gear_v1")
+		root.add_child(authored_gear)
+	elif not authored_visual_added:
+		var mesh_instance := MeshInstance3D.new()
+		mesh_instance.name = "Mesh"
+		mesh_instance.mesh = _build_preview_item_mesh(visual_kind)
+		var material := StandardMaterial3D.new()
+		material.albedo_color = properties.get("visual_color", _preview_item_color(item_type))
+		material.emission_enabled = true
+		material.emission = material.albedo_color.lightened(0.08)
+		material.emission_energy_multiplier = 0.24
+		mesh_instance.material_override = material
+		root.add_child(mesh_instance)
 
 	var label := Label3D.new()
 	label.name = "Label"
@@ -2765,7 +2954,7 @@ func _ensure_preview_item_node(item_id: String) -> void:
 
 func _build_preview_item_mesh(visual_kind: String) -> Mesh:
 	match visual_kind:
-		"gear", "mother_gear":
+		"gear":
 			var torus := TorusMesh.new()
 			torus.inner_radius = 0.34
 			torus.outer_radius = 0.58
@@ -2793,6 +2982,8 @@ func _preview_item_color(item_type: String) -> Color:
 			return Color(0.78, 0.68, 0.42)
 		"seed":
 			return Color(0.56, 0.82, 0.48)
+		"hushbloom":
+			return Color(0.82, 0.74, 0.95)
 		"cure_component":
 			return Color(0.62, 0.82, 0.95)
 		"mother_gear":
@@ -2817,6 +3008,7 @@ func _refresh_preview_items() -> void:
 			continue
 
 		var item: Dictionary = _game_state.items[item_id]
+		var properties: Dictionary = item.get("properties", {})
 		var root: Node3D = _preview_item_nodes[item_id]
 		if root == null:
 			continue
@@ -2835,8 +3027,24 @@ func _refresh_preview_items() -> void:
 		match str(item.get("location", "ground")):
 			"ground":
 				root.visible = true
-				root.global_position = Vector3(item.position.x, 0.42, item.position.z)
-				label.visible = true
+				# Items live in the same flat/data coordinate frame as characters and
+				# navigation. Generated stretches bend that frame through coord_map, so
+				# a source item must take the same render transform as its source fixture
+				# instead of appearing back on the discarded flat grid.
+				var data_position: Vector3 = item.get("position", Vector3.ZERO)
+				# A source item may sit inside authored geometry (a housing, cradle, nest) rather
+				# than on an open floor. Its portable item authority still owns the position;
+				# this optional presenter height only prevents the generic floor clamp from
+				# making a sealed payload visibly float through its lid.
+				data_position.y = float(properties.get(
+					"ground_visual_y", maxf(data_position.y, 0.42)))
+				root.global_position = (
+					_game_state.coord_map.to_world(data_position)
+					if _game_state.coord_map != null
+					and _game_state.coord_map.has_method("to_world")
+					else data_position
+				)
+				label.visible = bool(properties.get("ground_label_visible", true))
 			"hand":
 				root.visible = true
 				var holder_id := str(item.get("holder", ""))
@@ -3013,6 +3221,8 @@ func _initialize_default_character_state() -> void:
 	_run_active = false
 
 func _apply_chunk_runtime_preset() -> void:
+	_cancel_preview_runtime_callbacks()
+	_preview_runtime_initialized = false
 	var chunk_character_state := {}
 	var chunk_time_state := {}
 	var chunk_abilities: Array = []
@@ -3040,6 +3250,8 @@ func _apply_chunk_runtime_preset() -> void:
 			_apply_character_override(char_id, chunk_character_state[char_id])
 
 	_configure_preview_abilities(chunk_abilities)
+	_capture_preview_runtime_baseline()
+	_start_preview_runtime_from_current_preset()
 	_refresh_overlay_panel_status()
 	_refresh_active_overlay()
 
@@ -3060,6 +3272,7 @@ func _apply_preview_time_state(state: Dictionary) -> void:
 		if state.has("note_default"):
 			_note_default = str(state.get("note_default", ""))
 
+	_anchor_preview_clock(_preview_day, _preview_time)
 	_sync_preview_time_presentation()
 
 	if _hud != null:
@@ -3070,17 +3283,221 @@ func _apply_preview_time_state(state: Dictionary) -> void:
 	if state.has("note"):
 		show_preview_note(str(state.get("note", "")), float(state.get("note_duration", 3.5)))
 
-func _advance_preview_clock(delta_seconds: float) -> void:
-	if delta_seconds <= 0.0:
-		return
-	var next_clock: Dictionary = _preview_cycle.advance(_preview_day, _preview_time, delta_seconds)
-	var next_day := int(next_clock.get("day", _preview_day))
-	var next_time := float(next_clock.get("time", _preview_time))
-	if next_day == _preview_day and absf(next_time - _preview_time) <= 0.0001:
-		return
+func _anchor_preview_clock(day: int, time_of_day: float) -> void:
+	_preview_clock_anchor_day = maxi(day, 1)
+	_preview_clock_anchor_time = clampf(time_of_day, 0.0, 1.0)
+	_preview_clock_anchor_tick = get_preview_scheduler_tick()
+	_preview_day = _preview_clock_anchor_day
+	_preview_time = _preview_clock_anchor_time
+
+## Project, never accumulate: frame rate cannot change the day/time later committed by a shelter.
+func _sync_preview_clock_from_authority(update_presentation := false) -> void:
+	var next_day := _preview_clock_anchor_day
+	var next_time := _preview_clock_anchor_time
+	if _preview_clock_running:
+		var elapsed := maxf(0.0, get_preview_scheduler_tick() - _preview_clock_anchor_tick)
+		var projected: Dictionary = _preview_cycle.advance(
+			_preview_clock_anchor_day, _preview_clock_anchor_time, elapsed)
+		next_day = int(projected.get("day", next_day))
+		next_time = float(projected.get("time", next_time))
+	var changed := next_day != _preview_day or absf(next_time - _preview_time) > 0.000001
 	_preview_day = next_day
 	_preview_time = next_time
+	if update_presentation and changed:
+		_sync_preview_time_presentation()
+
+func _set_preview_clock_running_authoritative(enabled: bool) -> void:
+	_sync_preview_clock_from_authority(false)
+	_preview_clock_running = enabled
+	_anchor_preview_clock(_preview_day, _preview_time)
 	_sync_preview_time_presentation()
+	_publish_preview_runtime_authority()
+
+# --- portable preview runtime authority --------------------------------------------------------
+
+func preview_runtime_authority_key() -> String:
+	return PREVIEW_RUNTIME_AUTHORITY_KEY
+
+func _capture_preview_runtime_baseline() -> void:
+	var abilities := {}
+	for ability_id in _ability_order:
+		var runtime: Dictionary = _ability_runtime.get(ability_id, {})
+		abilities[ability_id] = {
+			"state": str(runtime.get("base_state", "ready")),
+			"remaining": maxf(0.0, float(runtime.get("remaining", 0.0))),
+		}
+	_preview_runtime_baseline = {
+		"clock": {
+			"day": _preview_day,
+			"time": _preview_time,
+			"running": _preview_clock_running,
+			"show_time": _preview_show_time,
+			"day_duration_seconds": _preview_cycle.day_duration_seconds,
+			"night_duration_seconds": _preview_cycle.night_duration_seconds,
+		},
+		"abilities": abilities,
+	}
+
+func _start_preview_runtime_from_current_preset() -> void:
+	_cancel_preview_runtime_callbacks()
+	var now := get_preview_scheduler_tick()
+	_anchor_preview_clock(_preview_day, _preview_time)
+	_preview_stamina_epoch = now
+	for ability_id in _ability_order:
+		var runtime: Dictionary = _ability_runtime.get(ability_id, {})
+		var state := str(runtime.get("base_state", "ready"))
+		var remaining := maxf(0.0, float(runtime.get("remaining", 0.0)))
+		runtime["deadline"] = now + remaining if state in ["active", "cooldown"] else -1.0
+		runtime["remaining"] = remaining
+		_ability_runtime[ability_id] = runtime
+	_preview_runtime_initialized = true
+	_apply_preview_ability_status_presenters()
+	_arm_preview_runtime_callbacks()
+	_publish_preview_runtime_authority()
+
+func _preview_runtime_authority_state() -> Dictionary:
+	var abilities := {}
+	for ability_id in _ability_order:
+		var runtime: Dictionary = _ability_runtime.get(ability_id, {})
+		abilities[ability_id] = {
+			"state": str(runtime.get("base_state", "ready")),
+			"deadline": float(runtime.get("deadline", -1.0)),
+		}
+	return {
+		"version": PREVIEW_RUNTIME_AUTHORITY_VERSION,
+		"chunk": preview_chunk,
+		"entry_id": _active_preview_entry_id,
+		"clock": {
+			"anchor_day": _preview_clock_anchor_day,
+			"anchor_time": _preview_clock_anchor_time,
+			"anchor_tick": _preview_clock_anchor_tick,
+			"running": _preview_clock_running,
+			"show_time": _preview_show_time,
+			"day_duration_seconds": _preview_cycle.day_duration_seconds,
+			"night_duration_seconds": _preview_cycle.night_duration_seconds,
+		},
+		"stamina_epoch": _preview_stamina_epoch,
+		"abilities": abilities,
+	}
+
+func _publish_preview_runtime_authority() -> void:
+	if not _preview_runtime_initialized or _restoring_preview_runtime or _game_state == null:
+		return
+	_game_state.set_world_state(preview_runtime_authority_key(), _preview_runtime_authority_state())
+
+func on_game_state_snapshot_restored() -> void:
+	_cancel_preview_runtime_callbacks()
+	_preview_runtime_initialized = true
+	var raw: Variant = _game_state.get_world_state(preview_runtime_authority_key(), null) \
+		if _game_state != null else null
+	if raw is Dictionary and int(raw.get("version", 0)) == PREVIEW_RUNTIME_AUTHORITY_VERSION \
+			and str(raw.get("chunk", preview_chunk)) == preview_chunk:
+		_restore_preview_runtime_authority(raw)
+	else:
+		_restore_preview_runtime_baseline()
+	# GameState.deserialize replaced the stat/running ledgers before this presenter hook. Rebuild
+	# local mirrors without emitting commands or paying any cost a second time.
+	if _game_state != null:
+		for char_id_v in _character_state.keys():
+			var char_id := str(char_id_v)
+			if _game_state.characters.has(char_id):
+				_sync_character_from_game_state(char_id)
+	_sync_preview_run_presenters_from_game_state()
+
+func _restore_preview_runtime_authority(saved: Dictionary) -> void:
+	_restoring_preview_runtime = true
+	var clock: Dictionary = saved.get("clock", {}) as Dictionary
+	_preview_cycle.configure(
+		float(clock.get("day_duration_seconds", DEFAULT_DAY_DURATION_SECONDS)),
+		float(clock.get("night_duration_seconds", DEFAULT_NIGHT_DURATION_SECONDS)))
+	_preview_clock_anchor_day = maxi(int(clock.get("anchor_day", DEFAULT_DAY)), 1)
+	_preview_clock_anchor_time = clampf(float(clock.get("anchor_time", DEFAULT_TIME)), 0.0, 1.0)
+	_preview_clock_anchor_tick = float(clock.get("anchor_tick", get_preview_scheduler_tick()))
+	_preview_clock_running = bool(clock.get("running", true))
+	_preview_show_time = bool(clock.get("show_time", true))
+	_preview_stamina_epoch = float(saved.get("stamina_epoch", get_preview_scheduler_tick()))
+	if _preview_stamina_epoch < 0.0:
+		_preview_stamina_epoch = get_preview_scheduler_tick()
+	var saved_abilities: Dictionary = saved.get("abilities", {}) as Dictionary
+	for ability_id in _ability_order:
+		var entry: Dictionary = saved_abilities.get(ability_id, {}) as Dictionary
+		var state := str(entry.get("state", "ready"))
+		if state not in ["ready", "active", "cooldown", "disabled"]:
+			state = "ready"
+		var deadline := float(entry.get("deadline", -1.0)) if state in ["active", "cooldown"] else -1.0
+		if deadline < 0.0 and state in ["active", "cooldown"]:
+			state = "ready"
+		_ability_runtime[ability_id] = {
+			"base_state": state,
+			"deadline": deadline,
+			"remaining": maxf(0.0, deadline - get_preview_scheduler_tick()) if deadline >= 0.0 else 0.0,
+		}
+	_sync_preview_clock_from_authority(false)
+	_apply_preview_ability_status_presenters()
+	_restoring_preview_runtime = false
+	_arm_preview_runtime_callbacks()
+	_sync_preview_time_presentation()
+	_refresh_ability_display()
+
+func _restore_preview_runtime_baseline() -> void:
+	_restoring_preview_runtime = true
+	if _preview_runtime_baseline.is_empty():
+		_capture_preview_runtime_baseline()
+	var clock: Dictionary = _preview_runtime_baseline.get("clock", {}) as Dictionary
+	_preview_cycle.configure(
+		float(clock.get("day_duration_seconds", DEFAULT_DAY_DURATION_SECONDS)),
+		float(clock.get("night_duration_seconds", DEFAULT_NIGHT_DURATION_SECONDS)))
+	_preview_clock_running = bool(clock.get("running", true))
+	_preview_show_time = bool(clock.get("show_time", true))
+	_anchor_preview_clock(
+		maxi(int(clock.get("day", DEFAULT_DAY)), 1),
+		clampf(float(clock.get("time", DEFAULT_TIME)), 0.0, 1.0))
+	var now := get_preview_scheduler_tick()
+	_preview_stamina_epoch = now
+	var baseline_abilities: Dictionary = _preview_runtime_baseline.get("abilities", {}) as Dictionary
+	for ability_id in _ability_order:
+		var entry: Dictionary = baseline_abilities.get(ability_id, {}) as Dictionary
+		var state := str(entry.get("state", "ready"))
+		var remaining := maxf(0.0, float(entry.get("remaining", 0.0)))
+		_ability_runtime[ability_id] = {
+			"base_state": state,
+			"deadline": now + remaining if state in ["active", "cooldown"] else -1.0,
+			"remaining": remaining,
+		}
+	_apply_preview_ability_status_presenters()
+	_restoring_preview_runtime = false
+	_arm_preview_runtime_callbacks()
+	_sync_preview_time_presentation()
+	_refresh_ability_display()
+
+func _apply_preview_ability_status_presenters() -> void:
+	for ability_id in _ability_order:
+		var ability: Dictionary = _ability_defs.get(ability_id, {})
+		var owner := str(ability.get("owner", ""))
+		var active_status := str(ability.get("active_status", ""))
+		if owner == "" or active_status == "" or not _character_state.has(owner):
+			continue
+		if str(_ability_runtime.get(ability_id, {}).get("base_state", "ready")) == "active":
+			set_preview_character_status(owner, active_status)
+		elif str(_character_state[owner].get("status", "")) == active_status:
+			set_preview_character_status(owner, "")
+
+func _arm_preview_runtime_callbacks() -> void:
+	if _scheduler == null:
+		return
+	var next_stamina := _next_preview_stamina_tick_after(get_preview_scheduler_tick())
+	if next_stamina >= 0.0:
+		_schedule_preview_stamina_tick_at(next_stamina)
+	for ability_id in _ability_order:
+		_arm_preview_ability_deadline(ability_id)
+
+func _cancel_preview_runtime_callbacks() -> void:
+	if _scheduler == null:
+		return
+	_scheduler.cancel_tag(PREVIEW_STAMINA_TAG)
+	_preview_stamina_next_tick = -1.0
+	for ability_id in _ability_order:
+		_scheduler.cancel_tag(_preview_ability_tag(ability_id))
 
 func _sync_preview_time_presentation() -> void:
 	if _hud != null:
@@ -3127,18 +3544,35 @@ func _apply_chunk_preview_lighting_profile() -> void:
 	if not (profile_variant is Dictionary):
 		return
 	var profile: Dictionary = profile_variant
-	_preview_environment.ambient_light_energy = maxf(
-		_preview_environment.ambient_light_energy,
-		float(profile.get("ambient_energy_floor", 0.0))
+	var ambient_floor := float(profile.get("ambient_energy_floor", 0.0))
+	var ambient_ceiling := maxf(
+		ambient_floor, float(profile.get("ambient_energy_ceiling", 1000000.0))
 	)
-	_preview_directional_light.light_energy = maxf(
-		_preview_directional_light.light_energy,
-		float(profile.get("directional_energy_floor", 0.0))
+	_preview_environment.ambient_light_energy = clampf(
+		_preview_environment.ambient_light_energy, ambient_floor, ambient_ceiling
 	)
-	_preview_environment.glow_intensity = maxf(
-		_preview_environment.glow_intensity,
-		float(profile.get("glow_intensity_floor", 0.0))
+	var directional_floor := float(profile.get("directional_energy_floor", 0.0))
+	var directional_ceiling := maxf(
+		directional_floor, float(profile.get("directional_energy_ceiling", 1000000.0))
 	)
+	_preview_directional_light.light_energy = clampf(
+		_preview_directional_light.light_energy, directional_floor, directional_ceiling
+	)
+	var glow_floor := float(profile.get("glow_intensity_floor", 0.0))
+	var glow_ceiling := maxf(
+		glow_floor, float(profile.get("glow_intensity_ceiling", 1000000.0))
+	)
+	_preview_environment.glow_intensity = clampf(
+		_preview_environment.glow_intensity, glow_floor, glow_ceiling
+	)
+	var background_mix := clampf(float(profile.get("background_mix", 0.0)), 0.0, 1.0)
+	if background_mix > 0.0 and profile.has("background_color"):
+		var background_target: Color = profile.get(
+			"background_color", _preview_environment.background_color
+		)
+		_preview_environment.background_color = _preview_environment.background_color.lerp(
+			background_target, background_mix
+		)
 	var color_mix := clampf(float(profile.get("color_mix", 0.0)), 0.0, 1.0)
 	if color_mix > 0.0 and profile.has("ambient_color"):
 		var ambient_target: Color = profile.get("ambient_color", _preview_environment.ambient_light_color)
@@ -3172,19 +3606,20 @@ func _apply_character_override(char_id: String, override: Dictionary) -> void:
 	_update_character_in_game_state(char_id)
 	_sync_character_hud(char_id)
 
-## The three party abilities' fallback content + mechanics, sourced from the abilities xlsx (the "default"
-## context for the content; the bindings sheet for owner/keybind/color/atp_cost/status/deltas). A chunk's
-## get_preview_abilities() overrides the content per scenario.
+## Canonical cast-ability fallback content + mechanics, sourced from the abilities xlsx (the "default"
+## context for content and the bindings sheet for owner/keybind/color/stamina cost/status). Chunk-provided
+## entries may tune those canonical abilities for a scenario but cannot add a new cast ability.
 func _build_default_ability_definitions() -> Dictionary:
 	var defs := {}
-	for ability_id in ["aster_focus", "peris_tune", "endo_patch"]:
+	for ability_id in AbilityData.ABILITY_ORDER:
 		var d := {"id": ability_id}
 		d.merge(AbilityData.get_ability("default." + ability_id), true)  # display_name, duration, cooldown, message, note
-		d = _apply_canonical_main_ability_binding(ability_id, d)         # owner, keybind, keycode, color, atp_cost, status, deltas
+		d = _apply_canonical_main_ability_binding(ability_id, d)         # owner, keybind, keycode, color, stamina cost, status
 		defs[ability_id] = d
 	return defs
 
 func _configure_preview_abilities(chunk_abilities: Array) -> void:
+	_cancel_preview_ability_targeting()
 	_ability_defs.clear()
 	_ability_runtime.clear()
 	_ability_order.clear()
@@ -3192,7 +3627,7 @@ func _configure_preview_abilities(chunk_abilities: Array) -> void:
 		_hud.call("clear_abilities")
 
 	var default_defs := _build_default_ability_definitions()
-	for ability_id in ["aster_focus", "peris_tune", "endo_patch"]:
+	for ability_id in AbilityData.ABILITY_ORDER:
 		var def: Dictionary = default_defs[ability_id].duplicate(true)
 		def = _apply_canonical_main_ability_binding(ability_id, def)
 		_ability_defs[ability_id] = def
@@ -3203,7 +3638,7 @@ func _configure_preview_abilities(chunk_abilities: Array) -> void:
 			continue
 		var entry_dict: Dictionary = entry
 		var ability_id := str(entry_dict.get("id", ""))
-		if ability_id == "":
+		if ability_id == "" or not AbilityData.is_canonical_ability(ability_id):
 			continue
 		var merged: Dictionary = _ability_defs.get(ability_id, {}).duplicate(true)
 		merged.merge(entry_dict, true)
@@ -3218,6 +3653,7 @@ func _configure_preview_abilities(chunk_abilities: Array) -> void:
 		_ability_runtime[ability_id] = {
 			"base_state": str(ability.get("initial_state", "ready")),
 			"remaining": float(ability.get("initial_remaining", 0.0)),
+			"deadline": -1.0,
 		}
 		if (
 			_hud != null
@@ -3359,7 +3795,7 @@ func _assign_party_ability_routes() -> void:
 			_set_party_ability_route(ability_id, party_slot, open_slot)
 
 ## Apply an ability's MECHANICS from the abilities xlsx bindings sheet (owner / keybind / keycode / color /
-## atp_cost / active_status / deltas) — the canonical, per-ability_id values that don't change per context.
+## stamina_cost / active_status) — the canonical, per-ability-id values that do not change per context.
 func _apply_canonical_main_ability_binding(ability_id: String, ability: Dictionary) -> Dictionary:
 	var binding := AbilityData.binding(ability_id)
 	if binding.is_empty():
@@ -3390,7 +3826,7 @@ func _apply_canonical_main_ability_binding(ability_id: String, ability: Dictiona
 	else:
 		ability["legacy_keycode"] = int(binding.get("keycode", ability.get("keycode", 0)))
 	ability["keycode"] = int(ability.get("legacy_keycode", 0))
-	for k in ["color", "atp_cost", "active_status", "sta_delta", "hp_delta"]:
+	for k in ["color", "stamina_cost", "active_status"]:
 		if binding.has(k):
 			ability[k] = binding[k]
 	return ability
@@ -3421,7 +3857,7 @@ func _apply_chunk_metadata() -> void:
 	_refresh_ability_hint_flow()
 
 	if _note_default == "":
-		_note_default = "All three characters start topped off. Run drains stamina and abilities spend ATP."
+		_note_default = "All three characters start topped off. Run and cast abilities spend stamina; ATP pays for shelter rest unless an experimental scarcity preset is selected."
 	if _note_label != null and _note_timer <= 0.0:
 		_note_label.text = _note_default
 
@@ -3584,12 +4020,14 @@ func _apply_selection_state(selected_ids: Array, preferred_active := "") -> void
 	# selection change, including adding a member while the active stays put (where _set_active_character
 	# early-returns and would otherwise leave group_move stale).
 	_apply_group_control()
+	_apply_active_run_state()
 	_refresh_overlay_panel_status()
 	_update_survival_overlay()
 
 func _set_active_character(char_id: String) -> void:
 	if _active_char_id == char_id:
 		return
+	_cancel_preview_ability_targeting()
 
 	if _active_char_id != "" and _characters.has(_active_char_id):
 		var previous: CharacterBody3D = _characters[_active_char_id]
@@ -3602,7 +4040,9 @@ func _set_active_character(char_id: String) -> void:
 	_player = _characters[char_id]
 	_sync_character_move_enabled()
 	if _occlusion_mgr != null:
-		_occlusion_mgr.watch_id = char_id   # the level reveals around whoever the camera now follows
+		# Publish the new reveal centre in the same input frame. Directly replacing watch_id leaves
+		# autonomous playback with one rendered frame cut around the previously focused character.
+		_occlusion_mgr.set_watch(_game_state, char_id)
 	if _camera != null:
 		_camera.target = _player
 
@@ -3685,15 +4125,38 @@ func _apply_active_run_state() -> void:
 			and get_preview_character_stat(_active_char_id, "sta") <= 0.0:
 		_run_active = false
 	var ids: Array = _selected_char_ids.duplicate() if not _selected_char_ids.is_empty() else [_active_char_id]
-	for cid in ids:
+	_applying_preview_run_state = true
+	for cid_v in CHARACTER_IDS + OPT_IN_CHARACTER_IDS:
+		var cid := str(cid_v)
 		if cid == "" or not _characters.has(cid):
 			continue
 		var node: CharacterBody3D = _characters[cid]
-		var can_run: bool = _run_active and get_preview_character_stat(cid, "sta") > 0.0
-		node.set_running(can_run)
+		var can_run: bool = ids.has(cid) and _run_active and _character_is_available(cid) \
+			and get_preview_character_stat(cid, "sta") > 0.0
 		if _game_state != null and _game_state.characters.has(cid):
-			var spd: float = node.run_speed if can_run else float(CHARACTER_SPEEDS.get(cid, node.move_speed))
-			_game_state.change_move_speed(cid, spd)
+			if _game_state.is_running(cid) != can_run:
+				_game_state.set_running(cid, can_run)
+			var desired_speed: float = node.run_speed if can_run else float(
+				CHARACTER_SPEEDS.get(cid, node.move_speed))
+			if not is_equal_approx(float(_game_state.characters[cid].get("move_speed", desired_speed)), desired_speed):
+				_game_state.change_move_speed(cid, desired_speed)
+		node.set_running(can_run)
+	_applying_preview_run_state = false
+	_sync_preview_run_presenters_from_game_state()
+
+func _sync_preview_run_presenters_from_game_state() -> void:
+	if _game_state == null:
+		return
+	for cid_v in CHARACTER_IDS + OPT_IN_CHARACTER_IDS:
+		var cid := str(cid_v)
+		if not _characters.has(cid) or not _game_state.characters.has(cid):
+			continue
+		var running := _game_state.is_running(cid)
+		var node = _characters[cid]
+		if node != null and node.has_method("set_running"):
+			node.call("set_running", running)
+	_run_active = _active_char_id != "" and _game_state.characters.has(_active_char_id) \
+		and _game_state.is_running(_active_char_id)
 	if _hud != null:
 		_hud.set_run_mode(_run_active)
 
@@ -3764,112 +4227,157 @@ func _on_center_camera_requested() -> void:
 	show_preview_message("Camera centered on the party", 1.0)
 
 func _activate_preview_ability(ability_id: String) -> void:
-	if not _ability_defs.has(ability_id) or not _ability_runtime.has(ability_id):
+	var failure := _preview_ability_cast_failure(ability_id)
+	if failure != "":
+		show_preview_message(failure, 1.3)
 		return
+	_begin_preview_ability_targeting(ability_id)
 
+func _begin_preview_ability_targeting(ability_id: String) -> void:
+	_cancel_preview_ability_targeting()
+	_pending_targeted_ability_id = ability_id
+	if _player != null and _player.has_method("set_click_mode"):
+		_player.call("set_click_mode", "select")
+	show_preview_message(CanonicalCharacterAbilityScript.target_prompt(ability_id), 4.0)
+
+func _cancel_preview_ability_targeting() -> void:
+	_pending_targeted_ability_id = ""
+	for character_node in _characters.values():
+		if character_node != null and is_instance_valid(character_node) \
+				and character_node.has_method("set_click_mode"):
+			character_node.call("set_click_mode", "move")
+
+func _on_preview_ability_target_clicked(world_pos: Vector3) -> void:
+	if _pending_targeted_ability_id == "":
+		return
+	var ability_id := _pending_targeted_ability_id
+	_cancel_preview_ability_targeting()
+	_execute_preview_ability(ability_id, world_pos)
+
+func _preview_ability_cast_failure(ability_id: String) -> String:
+	if not AbilityData.is_canonical_ability(ability_id) \
+			or not _ability_defs.has(ability_id) or not _ability_runtime.has(ability_id):
+		return "That is not a cast ability. Use contextual actions on their world targets."
 	var ability: Dictionary = _ability_defs[ability_id]
 	var runtime: Dictionary = _ability_runtime[ability_id]
 	var owner := str(ability.get("owner", ""))
-
 	if owner != "" and not _character_is_available(owner):
-		show_preview_message("%s is unavailable." % CHARACTER_DISPLAY_NAMES.get(owner, owner.capitalize()), 1.1)
-		return
+		return "%s is unavailable." % CHARACTER_DISPLAY_NAMES.get(owner, owner.capitalize())
 	if str(runtime.get("base_state", "ready")) != "ready":
-		return
-
-	var atp_cost := float(ability.get("atp_cost", 0.0))
+		return "%s is not ready." % str(ability.get("display_name", ability_id.to_upper()))
 	var stamina_cost := float(ability.get("stamina_cost", 0.0))
-	if owner != "" and get_preview_character_stat(owner, "atp") < atp_cost:
-		show_preview_message("Not enough ATP.", 1.1)
-		return
 	if owner != "" and get_preview_character_stat(owner, "sta") < stamina_cost:
-		show_preview_message("Not enough stamina.", 1.1)
-		return
+		return "%s needs %.0f stamina." % [
+			CHARACTER_DISPLAY_NAMES.get(owner, owner.capitalize()), stamina_cost,
+		]
+	return ""
 
-	if owner != "" and atp_cost > 0.0:
-		adjust_preview_character_stat(owner, "atp", -atp_cost)
-	if owner != "" and stamina_cost > 0.0:
-		adjust_preview_character_stat(owner, "sta", -stamina_cost)
+func _available_preview_party_ids() -> Array:
+	var result: Array = []
+	for char_id in CHARACTER_IDS + OPT_IN_CHARACTER_IDS:
+		if _character_is_available(char_id):
+			result.append(char_id)
+	return result
 
-	var result := {}
-	if _active_chunk != null and _active_chunk.has_method("handle_preview_ability"):
-		result = _active_chunk.call("handle_preview_ability", ability_id, ability)
-	if not (result is Dictionary):
-		result = {}
+func _execute_preview_ability(
+		ability_id: String,
+		world_pos: Vector3,
+		explicit_target_id := ""
+	) -> bool:
+	var failure := _preview_ability_cast_failure(ability_id)
+	if failure != "":
+		show_preview_message(failure, 1.3)
+		return false
 
-	var combined: Dictionary = ability.duplicate(true)
-	combined.merge(result, true)
-	_apply_preview_ability_result(owner, combined)
+	var ability: Dictionary = _ability_defs[ability_id]
+	var owner := str(ability.get("owner", ""))
+	var result: Dictionary = {}
+	match ability_id:
+		CanonicalCharacterAbilityScript.EMP_ID:
+			var emp_duration := float(ability.get(
+				"duration", CanonicalCharacterAbilityScript.EMP_STUN_SECONDS))
+			if emp_duration <= 0.0:
+				emp_duration = CanonicalCharacterAbilityScript.EMP_STUN_SECONDS
+			result = CanonicalCharacterAbilityScript.execute(
+				_game_state, ability_id, owner, world_pos,
+				{"world_root": self, "duration": emp_duration})
+		CanonicalCharacterAbilityScript.WRAP_ID:
+			var party_ids := _available_preview_party_ids()
+			var target_id := explicit_target_id
+			if target_id == "":
+				target_id = CanonicalCharacterAbilityScript.nearest_party_target(
+					_game_state, party_ids, world_pos)
+			var wrap_duration := float(ability.get(
+				"duration", CanonicalCharacterAbilityScript.WRAP_DURATION_SECONDS))
+			if wrap_duration <= 0.0:
+				wrap_duration = CanonicalCharacterAbilityScript.WRAP_DURATION_SECONDS
+			result = CanonicalCharacterAbilityScript.execute(
+				_game_state, ability_id, owner, world_pos, {
+					"target_id": target_id,
+					"allowed_target_ids": party_ids,
+					"duration": wrap_duration,
+				})
+		_:
+			return false
 
-	var duration := float(combined.get("duration", 0.0))
-	var cooldown := float(combined.get("cooldown", 0.0))
-	var next_state := str(combined.get("state", ""))
-	if next_state == "":
-		next_state = "active" if duration > 0.0 else ("cooldown" if cooldown > 0.0 else "ready")
-	var remaining := float(combined.get("remaining", duration if next_state == "active" else cooldown))
+	if not bool(result.get("accepted", false)):
+		var reason := str(result.get("reason", "invalid_target"))
+		match reason:
+			"out_of_range":
+				show_preview_message("Target is outside %s's cast range." % [
+					CHARACTER_DISPLAY_NAMES.get(owner, owner.capitalize()),
+				], 1.4)
+			_:
+				show_preview_message("Choose a conscious party member as the WRAP target.", 1.6)
+		return false
+
+	if ability_id == CanonicalCharacterAbilityScript.EMP_ID:
+		var affected_count := int(result.get("affected_count", 0))
+		if affected_count > 0:
+			show_preview_message("EMP disabled %d compatible electronic%s." % [
+				affected_count, "" if affected_count == 1 else "s",
+			], 2.0)
+		else:
+			show_preview_message(
+				"EMP fired, but no EMP-compatible electronics were inside the pulse.", 2.2)
+	else:
+		var target_id := str(result.get("target_id", ""))
+		var target_name := str(CHARACTER_DISPLAY_NAMES.get(target_id, target_id.capitalize()))
+		show_preview_message("Peris WRAPs %s: %.0f incoming damage can be absorbed." % [
+			target_name, float(result.get("absorption_each", 0.0)),
+		], 2.2)
+
+	var duration := float(ability.get("duration", 0.0))
+	var cooldown := float(ability.get("cooldown", 0.0))
+	var next_state := "active" if duration > 0.0 else ("cooldown" if cooldown > 0.0 else "ready")
+	var remaining := duration if next_state == "active" else cooldown
 	_set_runtime_ability_state(ability_id, next_state, remaining)
-
-func _apply_preview_ability_result(owner: String, combined: Dictionary) -> void:
-	var message := str(combined.get("message", ""))
-	if message != "":
-		show_preview_message(message, float(combined.get("message_duration", 1.8)))
-
-	var note := str(combined.get("note", ""))
-	if note != "":
-		show_preview_note(note, float(combined.get("note_duration", 3.5)))
-
-	if owner != "":
-		var hp_delta := float(combined.get("hp_delta", 0.0))
-		var sta_delta := float(combined.get("sta_delta", combined.get("stamina_delta", 0.0)))
-		var atp_delta := float(combined.get("atp_delta", 0.0))
-		if hp_delta != 0.0:
-			adjust_preview_character_stat(owner, "hp", hp_delta)
-		if sta_delta != 0.0:
-			adjust_preview_character_stat(owner, "sta", sta_delta)
-		if atp_delta != 0.0:
-			adjust_preview_character_stat(owner, "atp", atp_delta)
-
-	if combined.has("characters"):
-		var characters: Dictionary = combined.get("characters", {})
-		for char_id in characters.keys():
-			var entry: Dictionary = characters[char_id]
-			if entry.has("hp"):
-				set_preview_character_stat(char_id, "hp", float(entry.get("hp", DEFAULT_HP)))
-			if entry.has("sta"):
-				set_preview_character_stat(char_id, "sta", float(entry.get("sta", DEFAULT_STAMINA)))
-			if entry.has("stamina"):
-				set_preview_character_stat(char_id, "sta", float(entry.get("stamina", DEFAULT_STAMINA)))
-			if entry.has("atp"):
-				set_preview_character_stat(char_id, "atp", float(entry.get("atp", DEFAULT_ATP)))
-			if entry.has("hp_delta"):
-				adjust_preview_character_stat(char_id, "hp", float(entry.get("hp_delta", 0.0)))
-			if entry.has("sta_delta"):
-				adjust_preview_character_stat(char_id, "sta", float(entry.get("sta_delta", 0.0)))
-			if entry.has("stamina_delta"):
-				adjust_preview_character_stat(char_id, "sta", float(entry.get("stamina_delta", 0.0)))
-			if entry.has("atp_delta"):
-				adjust_preview_character_stat(char_id, "atp", float(entry.get("atp_delta", 0.0)))
-			if entry.has("status"):
-				set_preview_character_status(char_id, str(entry.get("status", "")))
-			if entry.has("visible"):
-				set_preview_character_visible(char_id, bool(entry.get("visible", true)))
-
-	if combined.has("routing_mode"):
-		_on_routing_toggled(str(combined.get("routing_mode", _routing_mode)))
-	if combined.has("time_state") and combined.get("time_state") is Dictionary:
-		_apply_preview_time_state(combined.get("time_state", {}))
+	return true
 
 func _set_runtime_ability_state(ability_id: String, state: String, remaining := 0.0) -> void:
 	if not _ability_runtime.has(ability_id):
 		return
+	var deadline := -1.0
+	if state in ["active", "cooldown"]:
+		deadline = get_preview_scheduler_tick() + maxf(0.0, remaining)
+	_set_runtime_ability_state_at(ability_id, state, deadline)
 
+func _set_runtime_ability_state_at(
+		ability_id: String,
+		state: String,
+		deadline: float,
+		cancel_existing_callback := true
+	) -> void:
+	if not _ability_runtime.has(ability_id):
+		return
 	var previous_state := str(_ability_runtime[ability_id].get("base_state", "ready"))
 	var ability: Dictionary = _ability_defs.get(ability_id, {})
 	var owner := str(ability.get("owner", ""))
 	var active_status := str(ability.get("active_status", ""))
 
 	_ability_runtime[ability_id]["base_state"] = state
-	_ability_runtime[ability_id]["remaining"] = maxf(0.0, remaining)
+	_ability_runtime[ability_id]["deadline"] = deadline if state in ["active", "cooldown"] else -1.0
+	_ability_runtime[ability_id]["remaining"] = _preview_ability_remaining(ability_id)
 
 	if owner != "":
 		if state == "active" and active_status != "":
@@ -3877,31 +4385,58 @@ func _set_runtime_ability_state(ability_id: String, state: String, remaining := 
 		elif previous_state == "active" and active_status != "" and str(_character_state.get(owner, {}).get("status", "")) == active_status:
 			set_preview_character_status(owner, "")
 
+	_arm_preview_ability_deadline(ability_id, cancel_existing_callback)
+	_publish_preview_runtime_authority()
 	_refresh_ability_display(ability_id)
 
-func _update_ability_timers(delta: float, spd: float) -> void:
-	if spd <= 0.0:
+func _preview_ability_remaining(ability_id: String) -> float:
+	if not _ability_runtime.has(ability_id):
+		return 0.0
+	var runtime: Dictionary = _ability_runtime[ability_id]
+	if str(runtime.get("base_state", "ready")) not in ["active", "cooldown"]:
+		return 0.0
+	return maxf(0.0, float(runtime.get("deadline", -1.0)) - get_preview_scheduler_tick())
+
+func _preview_ability_tag(ability_id: String) -> String:
+	return PREVIEW_ABILITY_TAG_PREFIX + ability_id
+
+func _arm_preview_ability_deadline(ability_id: String, cancel_existing := true) -> void:
+	if _scheduler == null:
 		return
+	# A callback is removed from the scheduler as it dispatches. Cancelling that same tag from inside
+	# its callback corrupts EventScheduler's pending-count bookkeeping; only replacement/restore paths
+	# need to cancel a callback that is still genuinely queued.
+	if cancel_existing:
+		_scheduler.cancel_tag(_preview_ability_tag(ability_id))
+	if not _ability_runtime.has(ability_id):
+		return
+	var runtime: Dictionary = _ability_runtime[ability_id]
+	var state := str(runtime.get("base_state", "ready"))
+	var deadline := float(runtime.get("deadline", -1.0))
+	if state not in ["active", "cooldown"] or deadline < 0.0:
+		return
+	_scheduler.schedule_at(
+		maxf(get_preview_scheduler_tick(), deadline),
+		_on_preview_ability_deadline.bind(ability_id, deadline),
+		_preview_ability_tag(ability_id)
+	)
 
-	for ability_id in _ability_order:
-		if not _ability_runtime.has(ability_id):
-			continue
-		var runtime: Dictionary = _ability_runtime[ability_id]
-		var state := str(runtime.get("base_state", "ready"))
-		if state not in ["active", "cooldown"]:
-			continue
-		var remaining := maxf(0.0, float(runtime.get("remaining", 0.0)) - delta * spd)
-		runtime["remaining"] = remaining
-		_ability_runtime[ability_id] = runtime
-		if remaining > 0.0:
-			_refresh_ability_display(ability_id)
-			continue
-
-		var cooldown := float(_ability_defs.get(ability_id, {}).get("cooldown", 0.0))
-		if state == "active" and cooldown > 0.0:
-			_set_runtime_ability_state(ability_id, "cooldown", cooldown)
+func _on_preview_ability_deadline(ability_id: String, expected_deadline: float) -> void:
+	if not _ability_runtime.has(ability_id):
+		return
+	var runtime: Dictionary = _ability_runtime[ability_id]
+	if not is_equal_approx(float(runtime.get("deadline", -1.0)), expected_deadline):
+		return
+	var state := str(runtime.get("base_state", "ready"))
+	if state == "active":
+		var cooldown := maxf(0.0, float(_ability_defs.get(ability_id, {}).get("cooldown", 0.0)))
+		if cooldown > 0.0:
+			_set_runtime_ability_state_at(
+				ability_id, "cooldown", expected_deadline + cooldown, false)
 		else:
-			_set_runtime_ability_state(ability_id, "ready", 0.0)
+			_set_runtime_ability_state_at(ability_id, "ready", -1.0, false)
+	elif state == "cooldown":
+		_set_runtime_ability_state_at(ability_id, "ready", -1.0, false)
 
 func _refresh_ability_display(ability_id := "") -> void:
 	if _hud == null:
@@ -3921,16 +4456,15 @@ func _refresh_ability_display(ability_id := "") -> void:
 		var runtime: Dictionary = _ability_runtime[current_id]
 		var owner := str(ability.get("owner", ""))
 		var display_state := str(runtime.get("base_state", "ready"))
-		var display_remaining := float(runtime.get("remaining", 0.0))
+		var display_remaining := _preview_ability_remaining(current_id)
 
 		if owner != "":
 			if not _character_is_available(owner):
 				display_state = "disabled"
 				display_remaining = 0.0
 			elif display_state == "ready":
-				var atp_cost := float(ability.get("atp_cost", 0.0))
 				var stamina_cost := float(ability.get("stamina_cost", 0.0))
-				if get_preview_character_stat(owner, "atp") < atp_cost or get_preview_character_stat(owner, "sta") < stamina_cost:
+				if get_preview_character_stat(owner, "sta") < stamina_cost:
 					display_state = "disabled"
 					display_remaining = 0.0
 
@@ -4013,35 +4547,46 @@ func _activate_keybound_preview_ability(keycode: int) -> bool:
 	_activate_preview_ability(ability_id)
 	return true
 
-func _update_stamina(delta: float, spd: float) -> void:
-	if _active_char_id == "" or not _character_state.has(_active_char_id):
+func _schedule_preview_stamina_tick_at(deadline: float, cancel_existing := true) -> void:
+	if _scheduler == null or _preview_stamina_epoch < 0.0:
 		return
-	if spd <= 0.0:
+	if cancel_existing:
+		_scheduler.cancel_tag(PREVIEW_STAMINA_TAG)
+	_preview_stamina_next_tick = deadline
+	_scheduler.schedule_at(
+		maxf(get_preview_scheduler_tick(), deadline),
+		_on_preview_stamina_tick.bind(deadline), PREVIEW_STAMINA_TAG)
+
+func _on_preview_stamina_tick(expected_tick: float) -> void:
+	if not is_equal_approx(_preview_stamina_next_tick, expected_tick):
 		return
+	_preview_stamina_next_tick = -1.0
+	_apply_preview_stamina_tick()
+	_schedule_preview_stamina_tick_at(expected_tick + PREVIEW_STAMINA_TICK, false)
 
-	var current_stamina := get_preview_character_stat(_active_char_id, "sta")
-	var next_stamina := current_stamina
-	var moving := false
-	if _game_state != null and _game_state.characters.has(_active_char_id):
-		moving = _game_state.is_moving(_active_char_id)
+func _apply_preview_stamina_tick() -> void:
+	if _game_state == null:
+		return
+	for char_id_v in _character_state.keys():
+		var char_id := str(char_id_v)
+		if not _game_state.characters.has(char_id) or not _character_is_available(char_id):
+			continue
+		# GameState owns sprint drain. The preview cadence only supplies the authored recovery policy.
+		if _game_state.is_running(char_id) or not _stamina_field_regen_allowed(char_id):
+			continue
+		var rate := STAMINA_REGEN * (0.35 if _game_state.is_moving(char_id) else 1.0)
+		var current := _game_state.get_stat(char_id, "stamina")
+		var next := minf(
+			_game_state.get_stat_cap(char_id, "stamina"),
+			current + rate * PREVIEW_STAMINA_TICK)
+		if next > current + 0.000001:
+			_game_state.set_stat(char_id, "stamina", next)
 
-	if _run_active and moving:
-		next_stamina -= STAMINA_DRAIN * delta * spd
-		if next_stamina <= 0.0:
-			next_stamina = 0.0
-			if _run_active:
-				_run_active = false
-				_apply_active_run_state()
-				show_preview_message("Stamina exhausted.", 1.2)
-	elif moving:
-		if _stamina_field_regen_allowed(_active_char_id):
-			next_stamina += STAMINA_REGEN * 0.35 * delta * spd
-	else:
-		if _stamina_field_regen_allowed(_active_char_id):
-			next_stamina += STAMINA_REGEN * delta * spd
-
-	if absf(next_stamina - current_stamina) > 0.001:
-		set_preview_character_stat(_active_char_id, "sta", next_stamina)
+func _next_preview_stamina_tick_after(tick: float) -> float:
+	if _preview_stamina_epoch < 0.0:
+		return -1.0
+	return FixedCadenceScript.next_strict_tick(
+		_preview_stamina_epoch, PREVIEW_STAMINA_TICK, tick)
 
 ## A tension level can CLOSE the field stamina economy (fragment params.stamina_field_regen=false):
 ## the bar then only comes back on SHELTER ground — havens are recovery points, the field is scarce,

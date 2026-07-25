@@ -15,14 +15,27 @@ extends "res://scripts/fragments/chunks/data_fragment_chunk.gd"
 ##   patrol  — a guard ROAMS the section; duck into the hide alcove (full concealment) + time the wash
 ##   lure    — a SENTRY holds a chokepoint; fire the flure to distract + draw it, then cross
 ## A guard that lands a hit shoves you into the channel (washed to the start shelter — same consequence).
-## Reach the chunk end with the whole party; a RETURN device pulls washed members back up.
+## Reach the chunk end, have Peris tend the return vine, and let washed members climb back up.
 ## All hazards fire on the gameplay SCHEDULER (recurring per-section onsets) — fast-forward + replay safe.
 
 const ChannelsArc := preload("res://scripts/game/world/channels_arc.gd")
 const StretchGenerator := preload("res://scripts/generation/stretch_generator.gd")
+const ClimbvineReturnScript := preload("res://scripts/game/objects/climbvine_return.gd")
 const WaterShader := preload("res://resources/channels_water.gdshader")
 const WaterTexV0 := preload("res://resources/models/channels/channels_water_v0.png")
 const WaterTexV1 := preload("res://resources/models/channels/channels_water_v1.png")
+const WASH_AUTHORITY_VERSION := 8
+const WASH_AUTHORITY_KEY := "chunk:wash_relay"
+const WASH_CADENCE_SAVE_EPSILON := 0.00001
+const SPATIAL_AUTHORITY_INTERVAL := 0.1
+const SPATIAL_AUTHORITY_TAG := "wash_spatial_authority"
+const WASH_CONTROL_POSITION_TOLERANCE := 0.25
+const WASH_CONTROL_HEIGHT_TOLERANCE := 1.25
+const REWARD_PHASE_AVAILABLE := "available"
+const REWARD_PHASE_CLAIMING := "claiming"
+const REWARD_PHASE_CLAIMED := "claimed"
+const REWARD_SOURCE_PREFIX := "wash_relay:"
+const DRAIN_REWARD_SOURCE_KEY := REWARD_SOURCE_PREFIX + "drain"
 
 # The LEVEL DATA (environment model + section layout + level tunables). The .tres is the authoritative source;
 # the values below are fallbacks. Read into member vars (initialized at instantiation, before get_grid_data /
@@ -38,10 +51,24 @@ var FLOOR_Z_HALF: float = FRAGMENT.params.get("floor_z_half", 4.0)
 var FLOOR_MIN_X: float = FRAGMENT.params.get("floor_min_x", -1.0)
 var FLOOR_MAX_X: float = FRAGMENT.params.get("floor_max_x", 87.0)
 var CHUNK_END_X: float = FRAGMENT.params.get("chunk_end_x", 84.0)
-var TERMINAL_POS: Vector3 = FRAGMENT.params.get("terminal_pos", Vector3(84.0, 0.5, 2.5))
-var SLOPEROPE_POS: Vector3 = FRAGMENT.params.get("sloperope_pos", Vector3(84.0, 0.5, -2.5))
 var CLIMB_POS: Vector3 = FRAGMENT.params.get("climb_pos", Vector3(5.0, 0.5, 2.5))
 var RETURN_LANDING: Vector3 = FRAGMENT.params.get("return_landing", Vector3(83.0, 0.5, 0.0))
+const SLOPEROPE_DEPLOY_DURATION := 2.5
+const SLOPEROPE_CLIMB_DURATION := 6.0
+const SLOPEROPE_TRAVERSAL_PREFIX := "wash_relay_sloperope:"
+const SLOPEROPE_RETURN_ID := "wash_relay_sloperope"
+const WASH_CURRENT_TRAVERSAL_PREFIX := "wash_relay_current:"
+const WASH_CURRENT_KNOCK_DURATION := 0.85
+const WASH_CURRENT_RETURN_SPEED := 22.0
+const WASH_CURRENT_RETURN_MIN := 0.9
+const WASH_CURRENT_RETURN_MAX := 3.6
+const WASH_CURRENT_PREIMPACT_EPSILON := 0.00001
+const WASH_CURRENT_RECONCILE_TAG := "wash_relay_current_reconcile"
+const WASH_ENEMY_CURRENT_RECONCILE_TAG := "wash_relay_enemy_current_reconcile"
+const WASH_ENEMY_CURRENT_DAMAGE := 10000.0
+const WASH_ENEMY_CURRENT_SPEED := 18.0
+const WASH_ENEMY_CURRENT_MIN_DURATION := 0.7
+const WASH_ENEMY_CURRENT_INNER_LANE := -9.5
 var FLOW_PERIOD: float = FRAGMENT.params.get("flow_period", 6.0)
 var FLOOD_DURATION: float = FRAGMENT.params.get("flood_duration", 1.4)
 var FIRST_FLOOD: float = FRAGMENT.params.get("first_flood", 2.5)
@@ -58,7 +85,7 @@ var LURE_DURATION: float = FRAGMENT.params.get("lure_duration", 9.0)
 # At each GAP between sections, a puzzle fragment branches OUT away from the spiral: on the helix, +lane
 # is a RADIAL spoke jutting off the deck edge (lane 4 = the deck rim) out to the pad. One generated stretch
 # (StretchGenerator, node_count = gap count) supplies an archetype + content per branch; a guarded branch
-# also spawns a roamer (capped). Branches are OPTIONAL reward detours — a salvage cache pays off the climb
+# also spawns a roamer (capped). Branches are OPTIONAL reward detours — a physical lysate source pays off the climb
 # out and back; the gaps themselves stay walkable, so they never block the main run.
 const BRANCH_S_SPAN := 3.0          # branch footprint along s (fits inside every gap)
 const BRANCH_HALF_S := 1.5
@@ -69,18 +96,26 @@ const BRANCH_LANE_SPAN := 6.0       # the deck plank spans lane 4..10 radially
 const BRANCH_PAD_LANE := 8.5        # where the cache + content sit
 const BRANCH_GUARD_CAP := 3         # at most this many branches get a roaming guard (perf + difficulty)
 const BRANCH_GEN_SEED := 4727
-const BRANCH_REWARD := 1
+const BRANCH_GUIDANCE_REWARD := 1
+const BRANCH_GATED_REWARD := 2
+const BRANCH_GUARDED_REWARD := 3
+const DRAIN_RISK_REWARD := 4
 const BRANCH_SWITCH_LANE := 5.0     # the gate switch sits just past the neck (the player hits it on the way out)
-const BRANCH_GATE_LANE := 6.5       # the gate bar (cosmetic barrier) between the switch and the pad cache
+const BRANCH_GATE_LANE := 6.5       # the physical counterweight threshold between switch and cache
+const BRANCH_LEVER_DURATION := 1.4
+const BRANCH_VALVE_DURATION := 1.8
+const BRANCH_DECOY_DURATION := 8.0
+const BRANCH_DECOY_POLL_INTERVAL := 0.1
+const BRANCH_DECOY_ARRIVAL_RADIUS := 0.7
+const BRANCH_GATE_LIFT_HEIGHT := 2.1
 
-var _branches: Array = []           # per gap: {gap, mid_x, pad_lane, archetype, content_count, collected, cache,
-									#           guard, gate_kind, unlocked, switch, gate_bar}
-var _branch_loot := 0
+var _branches: Array = []           # per gap: world refs + authoritative mechanism phase/deadlines/context
 var _branch_root: Node3D
 var _branch_guard_spawns := {}      # guard id -> flat spawn (so reset re-snaps branch guards too)
+var _pending_branch_guard_reposts := {} # restore barrier: rejected Wash futures win after child Enemy attach
 
 # --- Authored transit breaks ---------------------------------------------------------------
-# The old relay was one uninterrupted curl: even with optional salvage spokes, the mandatory read was
+# The old relay was one uninterrupted curl: even with optional lysate spokes, the mandatory read was
 # simply walking the next wet strip. These two composed routes give the coil a different spatial verb without
 # disturbing the proven ChannelsArc mapping:
 #   * a PORTAL pressure-room tucked toward the centre vents the upcoming jet for a generous window;
@@ -115,29 +150,61 @@ var _pressure_portals: Array = []
 var _sluice_tunnels: Array = []
 var _pressure_valve: Area3D
 var _pressure_vent_until := -1.0
+var _section_flood_until: Array = [] # exact absolute off deadline for each active section
+var _drain_flood_until := -1.0
+var _drain_bait_until := -1.0
+var _pending_drown_removals := {}    # enemy id -> absolute removal tick
+var _enemy_drown_mirrors := {}       # enemy id -> provenance/cleanup mirror; Channel owns the carry + impact
+var _section_enemy_currents := {}    # section index -> reusable Channel transaction owner
+var _drain_enemy_current = null
+var _wash_restart_deadline := -1.0
+var _restoring_wash_authority := false
 
 # --- Drain loop: an OPTIONAL flooding DETOUR off the spiral ("out the deck rim and back in"). It leaves the
-# deck at S0, runs a flooding channel along the OUTER lane, and rejoins at S1, with a DRY salvage ledge across
+# deck at S0, runs a flooding channel along the OUTER lane, and rejoins at S1, with a DRY lysate ledge across
 # the water. A guard posts on that ledge; you BAIT it across the flooding run and let the current DROWN it
 # (the bait pulls it in, then the chase keeps it there). The whole thing is bypassed by the main deck (lane 0),
 # and the guard's reach is short so it never harasses a straight-through runner. Like every hazard here it
 # floods on the GAMEPLAY SCHEDULER (exact ticks), and the kill is decided AT the onset tick — never per-frame —
 # so it is fast-forward + replay invariant.
+# Story-beat ledges: two small INWARD spurs (negative lane, toward the drum). The lonely
+# flure sits in the gap right after the lure section — the player just used a flure that
+# answered; this one has no one left to call. The curecumin pad overhangs the well pool at
+# the start shelter, its gold glow the first thing seen from the drop-in.
+const LONELY_FLURE_POS := Vector3(62.5, 0.5, -6.4)
+const CURECUMIN_PAD_POS := Vector3(1.6, 0.5, -6.2)
+const BEAT_LEDGE_REGIONS := [
+	{"min": [61.8, -7.4], "max": [63.2, -3.5]},
+	{"min": [0.8, -7.4], "max": [2.4, -3.5]},
+]
+# The curecumin portal is a REAL blue PortalPad pair (docs/PORTALS.md): the start ledge
+# pad <-> THE NECK GARDEN, a portal-only pocket inside the drum's broken-coil neck (the
+# pressure-pocket grid pattern: separated from the deck, the portal is the only edge).
+# The garden is the sealed Greenfields threshold; the route READ lives on its gate.
+static var CURE_PORTAL_COLOR: Color = LevelPalette.global_color("portal_route")   # portal law: no gold
+const CURE_DEST_POS := Vector3(42.5, 0.5, -8.6)
+const CURE_GATE_POS := Vector3(44.2, 0.5, -8.6)
+const CURE_ARCH_LIFT := 1.15
+const CURE_APERTURE_R := 0.77
+const NECK_GARDEN_REGION := {"min": [40.2, -9.9], "max": [44.8, -7.4]}
+
 const DRAIN_GUARD_ID := "ch_drain"
 const DRAIN_LOOP_S0 := 79.0          # entry leg: the loop leaves the deck rim here
 const DRAIN_LOOP_S1 := 83.5          # exit leg: the loop rejoins the deck rim here
 const DRAIN_RUN_LANE := 7.0          # the outward flooding channel (radial offset from the deck centreline)
 const DRAIN_RUN_HALF := 1.3          # flood footprint half-width in lane (a guard/runner within this band is caught)
-const DRAIN_LEDGE_LANE := 9.3        # the DRY salvage ledge across the run — outside the flood band (guard posts here)
+const DRAIN_LEDGE_LANE := 9.3        # the DRY lysate ledge across the run — outside the flood band (guard posts here)
 const DRAIN_LOOP_PERIOD := 5.0       # the loop's own flood cadence (independent of the section beats)
 const DRAIN_LOOP_DUR := 1.6          # how long the run stays flooded per surge
 const DRAIN_LOOP_PHASE := 1.0        # stagger from FIRST_FLOOD so the loop isn't synced to section 0
 const DRAIN_BAIT_PULL := 6.5         # the bait holds the guard committed in the run a bit longer than one flood
 									 # PERIOD, so a surge is GUARANTEED to catch it while it's parked there
 const DRAIN_KILL_DELAY := 0.7        # the drowned guard's body lingers this long (cosmetic dissolve) then is removed
+const DRAIN_FLORA_POS := Vector3(79.6, 0.5, 6.0) # reachable entry-leg fixture, clear of bait + flood centre
 const FLOOD_SWEEP_INTERVAL := 0.1    # scheduler ticks: visible water is dangerous for its whole window
 const DRAIN_DROWN_SWEEPS := 16       # DRAIN_LOOP_DUR / FLOOD_SWEEP_INTERVAL
 var _drain_root: Node3D
+var _drain_reward: Dictionary = {}
 var _drain_water: Array = []         # the run's flood-water segments (toggled by _drain_flooding)
 var _drain_flooding := false         # the run is mid-surge this window (scheduler-set)
 var _drain_flood_count := 0          # surges fired (for the analytic next-onset read)
@@ -147,15 +214,18 @@ var _cadence_t0 := 0.0              # scheduler tick the hazard cadence was (re)
 									# reads are relative to THIS, so a reset that re-arms at a non-zero tick stays
 									# self-consistent (the real onset and the predicted onset agree)
 
+var _spatial_authority_epoch := -1.0 # fixed cadence for holds, hides, retry state, and exit truth
+var _next_spatial_authority_tick := -1.0
 var _flooding := []                # cosmetic surge window
 var _flood_counts := []            # per section — how many surges have fired (cadence variety / tests)
-var _plate_held := []              # per section — all the section's plates are held this frame
+var _plate_held := []              # per section — derived from canonical positions at the latest sample
 ## Character-level view of positional work. Unlike _plate_held (the aggregate mechanism truth), this
 ## also reports a single member on one half of a double plate so the HUD can protect that holder from
 ## a whole-party rally. The preview host treats this optional dictionary as the generic hold contract.
 var _character_holds: Dictionary = {}   # char_id -> {control_id, kind, label, section}
 var _sluice_blocked := []          # per section — the sluice gate cells are currently walled off
-var _washed := {}                  # char_id -> true: members waiting at the start shelter for optional fast recovery
+var _washed := {}                  # char_id -> true: members waiting at the start shelter for physical reunion
+var _current_carries := {}         # char_id -> saved knock/return phase while the current owns movement
 var _sweep_count := 0              # how many times the party was swept back this run (a "rough run" read)
 var _section_wash_counts := []     # per section — times THIS section has washed the party (the flush hint trigger)
 var _run_hint_shown := false       # one-shot: after enough washes, a character grumbles that you must RUN the surges
@@ -164,7 +234,7 @@ const FLUSH_HINT_THRESHOLD := 3    # the flush hint only appears once a SINGLE s
 var _wipe_restart_pending := false
 var _flow_strips: Array = []
 # The surge-telegraph strips ride the helix under their OWN Node3D root, so they survive hide_flat_graybox (which
-# hides the chunk's flat direct-child graybox) — the strip is the only "about-to-flood" tell without TRACE, and it
+# hides the chunk's flat direct-child graybox) — the strip is the always-on "about-to-flood" tell, and it
 # was vanishing the moment the real channels.glb loaded.
 var _strip_root: Node3D
 # Flood WATER layer — the in-game flood visual. Built WARPED onto the helix under a Node3D root so it SURVIVES
@@ -178,30 +248,48 @@ const WATER_THICK := 0.55
 # _enemies is inherited from DataFragmentChunk (this chunk keeps its own enemy spawners that push to it).
 var _lure_until: Array = []        # per lure — scheduler tick the distraction ends (<=0 = inactive)
 var _lure_meshes: Array = []
-var _sloperope_deployed := false   # the chunk-end line has been dropped (the start climb point is live)
+var _relay_flures: Array = []      # indexed authored Flures; each owns source + target receipts
+var _drain_bait_flure = null
+# Concept-plate dressing (WashRelayDressing) + the two story beats. The dressing handle's
+# fall materials are driven from the splash-intensity ease; the beats are standalone
+# interactables kept OUT of the mechanical arrays (_relay_flures / LURE_SPECS / _portals),
+# whose index alignment and counts other systems assert.
+var _dressing: Dictionary = {}
+var _lonely_flure = null           # a Flure with no targets — it sings, nothing answers
+var _curecumin_pad: Area3D = null  # the blue curecumin PortalPad (outbound side)
+var _cure_portals: Array = []      # [out, back] — NEVER appended to _portals/_pressure_portals
+								   # (transit-breaks asserts those counts)
+var _sloperope_deployed := false   # compatibility readback derived from ClimbvineReturn's GameState phase
 var _debug_tick := 0               # throttles the CHANNELS_DEBUG position log
-var _rope_mesh: MeshInstance3D
+var _climbvine_return = null
+var _rope_mesh: Node3D             # compatibility presenter alias; now the modeled pothos vine, never a box
 var _climb_interactable: Area3D
 var _guidance_root: Node3D
 var _section_guides: Array = []
 var _guidance_section := -1
 var _override_controls: Dictionary = {}   # section index -> held console (for cause/effect feedback)
 
-# --- Character abilities (TRACE / BLOOM / BRACE) — each protagonist's signature read ---
-# Aster TRACE (aster_focus): reads the flood cadence and surfaces the next SAFE window for the section he
-# stands in. Peris BLOOM (peris_tune): flora-tending — grows a persistent bioluminescent light that lights the
-# dark drainage + marks a safe lane. Endo BRACE (endo_patch): braces a washed/at-risk member (refunds stamina)
-# and reveals which hide alcove is deep cover. All derived from the scheduler tick / positions — never logged.
-const ABILITY_CONTEXT := "channels_rhythm"
+# --- Contextual world verbs ---------------------------------------------------------------
+# The cast drawer is reserved for the stable EMP / Wrap roster. Section-specific reads and work live on
+# their world targets: Aster SCANS a flow gauge, Peris TENDS the dormant drain flora, and the connect-back
+# devices only reunite stranded crew. Stat recovery belongs to a full shelter rest.
 const TELEGRAPH_LEAD := 1.2         # seconds before an onset the flow strip brightens (the surge tell)
-const TRACE_HOLD := 6.0             # how long a TRACE read stays surfaced
+const CADENCE_READ_HOLD := 6.0      # how long a scanned gauge keeps its section strip surfaced
 const SURGE_CLOSE_MARGIN := 0.75     # amber when a crossing nearly touches an active-water window
-const ABILITY_OWNERS := {"aster_focus": "aster", "peris_tune": "peris", "endo_patch": "endo"}
-var _surge_timing_learned := false  # run knowledge: nearby visible surge/telegraph, or TRACE, unlocks timing
-var _trace_section := -1            # section TRACE is reading (-1 = none) — derived, cleared on reset
-var _trace_until := 0.0            # scheduler tick the TRACE read expires
-var _blooms: Array = []            # peris's flora lights: [{pos, node}] — persistent for the run
-var _bloom_root: Node3D
+var _surge_timing_learned := false  # run knowledge: a visible surge/telegraph or gauge scan unlocks timing
+var _cadence_read_section := -1     # section whose gauge Aster last scanned (-1 = none)
+var _cadence_read_until := 0.0      # scheduler tick when the scan highlight expires
+var _cadence_readers: Dictionary = {} # timing section index -> SCAN FLOW interactable
+var _drain_flora_interactable: Area3D
+var _drain_flora_tended := false
+var _flora_lights: Array = []       # persistent run lights: [{pos, node}]
+var _flora_light_root: Node3D
+
+# Every consequential relay input is an exact physical source. The Interactable registry owns
+# the accepted edge; this chunk stores the last monotonic receipt whose consequence it consumed.
+# `action_id -> {source, kind, index}` stays presenter-local while the counts are portable.
+var _wash_control_sources: Dictionary = {}
+var _wash_control_committed_counts: Dictionary = {}
 
 # --- Cosmetic-only flourishes (@rendering_only — tweens/wall-clock fine here; never gate a transition) ---
 var _flush_hint_shown := false     # one-shot: the FIRST flush telegraph plays a clearer "a surge is coming" preview
@@ -217,10 +305,6 @@ var _splash_root: Node3D
 var _splash_planes: Array = []     # per section: MeshInstance3D billboard quad at the pipe mouth
 var _splash_intensity: Array = []  # per section: current eased 0..1 splash strength
 var _splash_tex: Texture2D
-const PARTY_RENDER_COLORS := {     # the per-character ownership colour (matches the path ribbon / queued glow)
-	"aster": Color(0.29, 0.62, 1.0), "peris": Color(1.0, 0.67, 0.27), "endo": Color(0.4, 0.72, 0.55),
-}
-
 # --- Build ---
 
 func _section_color(t: String) -> Color:
@@ -239,6 +323,31 @@ func _section_color(t: String) -> Color:
 func _build_chunk() -> void:
 	fragment = FRAGMENT   # the data this chunk is built from (the base interface reads it; the build below uses it)
 	_wdbg("build_chunk start")
+	_wash_control_sources.clear()
+	_wash_control_committed_counts.clear()
+	_relay_flures.clear()
+	_section_enemy_currents.clear()
+	_enemy_drown_mirrors.clear()
+	_drain_bait_flure = null
+	_drain_enemy_current = null
+	var traversal_gs = _get_game_state()
+	if traversal_gs != null and traversal_gs.has_signal("external_traversal_finished") \
+			and not traversal_gs.external_traversal_finished.is_connected(
+				_on_wash_external_traversal_finished):
+		traversal_gs.external_traversal_finished.connect(_on_wash_external_traversal_finished)
+	if traversal_gs != null and traversal_gs.has_signal("external_traversal_cancelled") \
+			and not traversal_gs.external_traversal_cancelled.is_connected(
+				_on_wash_external_traversal_cancelled):
+		traversal_gs.external_traversal_cancelled.connect(
+			_on_wash_external_traversal_cancelled)
+	# A newly attached chunk can receive one process frame before its host calls reset_preview_state().
+	# Give that bootstrap frame complete neutral mechanism truth; otherwise the positional plate poll can index
+	# the still-empty arrays and abort before save authority has a chance to attach.
+	_flooding.clear(); _plate_held.clear(); _sluice_blocked.clear(); _flood_counts.clear()
+	_section_wash_counts.clear(); _section_flood_until.clear()
+	for _i in range(SECTIONS.size()):
+		_flooding.append(false); _plate_held.append(false); _sluice_blocked.append(false)
+		_flood_counts.append(0); _section_wash_counts.append(0); _section_flood_until.append(-1.0)
 	var fcx := (FLOOR_MIN_X + FLOOR_MAX_X) * 0.5
 	var fw := FLOOR_MAX_X - FLOOR_MIN_X
 	_add_floor(self, Vector3(fcx, -0.05, 0.0), Vector3(fw, 0.1, FLOOR_Z_HALF * 2.0), Color(0.10, 0.11, 0.13))
@@ -252,6 +361,7 @@ func _build_chunk() -> void:
 
 	_strip_root = Node3D.new(); _strip_root.name = "FlowStrips"; add_child(_strip_root)
 	_override_controls.clear()
+	_cadence_readers.clear()
 	for i in range(SECTIONS.size()):
 		var s: Dictionary = SECTIONS[i]
 		var t := str(s["type"]); var x0: float = s["x0"]; var x1: float = s["x1"]; var cx := (x0 + x1) * 0.5; var w := x1 - x0
@@ -294,14 +404,20 @@ func _build_chunk() -> void:
 		var strip := _warped_box(_strip_root, cx, 0.0, Vector3(FLOOR_Z_HALF * 1.7, 0.06, w),
 			_section_color(t) * 0.6, _section_color(t), 0.4, 0.03)
 		_flow_strips.append(strip)
+		# Timing is a property of this physical channel, so Aster reads it at a gauge beside the approach instead
+		# of firing a renamed cast from the ability drawer. The gauge points at the exact strip it explains.
+		if str(s["disable"]) == "timing":
+			_build_cadence_reader(i, strip)
 		# the disable control: an override console past the section, or a held plate before it
 		if str(s["disable"]) == "override":
 			var ov := _add_interactable(self, "Override%d" % i, "Flow override", Vector3(x1 + 1.5, 0.5, 0.0),
-				"OVERRIDE", "", 1.0, true, 1.6, Interactable.InteractableType.INSPECTION, false)
+				"OVERRIDE", "", 1.0, false, 1.6, Interactable.InteractableType.INSPECTION, false)
 			var ovm := _add_box(ov, Vector3(0.0, 0.1, 0.0), Vector3(0.6, 1.0, 0.4), Color(0.2, 0.45, 0.5),
 				Color(0.3, 0.9, 1.0), 1.0)   # a console post (child -> rides the helix warp)
 			_outline_interactable_child(ov, ovm, "Override%d" % i, 1.6)
-			ov.interacted.connect(func() -> void: _on_override(i))
+			_configure_wash_control(
+				ov, "override:%d" % i, "override", i,
+				_on_override.bind(i, ov))
 			_override_controls[i] = ov
 			_add_causal_feedback_link(ov, strip, Color(0.25, 0.9, 1.0), {
 				"label": "HOLD TO STOP THIS FLOW",
@@ -325,13 +441,46 @@ func _build_chunk() -> void:
 	_wdbg("water built")
 	_build_drain_loop()
 	_wdbg("drain loop built")
+	_build_enemy_current_channels()
 	_build_splash_planes()
 	_wdbg("pipe splashes built")
+	_dressing = WashRelayDressing.build(self, SECTIONS)
+	_build_story_beats()
+	_wdbg("dressing + story beats built")
 	# This chunk authors its environment directly instead of calling DataFragmentChunk._build_chunk(),
 	# so it must opt into the shared full-wipe signal explicitly.
 	var gs = _get_game_state()
 	if gs != null and not gs.character_downed.is_connected(_on_wash_relay_character_downed):
 		gs.character_downed.connect(_on_wash_relay_character_downed)
+	if gs != null and gs.has_signal("character_restored") \
+			and not gs.character_restored.is_connected(_on_wash_relay_character_restored):
+		gs.character_restored.connect(_on_wash_relay_character_restored)
+	# Scene attachment is an explicit simulation boundary. Arm gameplay authority here so a render
+	# frame or a test-only headless presenter call is never required to start the truthful machine.
+	_activate_wash_relay()
+
+func _build_cadence_reader(section_index: int, strip: Node3D) -> void:
+	var section: Dictionary = SECTIONS[section_index]
+	var reader_pos := Vector3(float(section["x0"]) - 1.25, 0.5, -2.5)
+	var reader := _add_interactable(self, "FlowGauge%d" % section_index, "Scan the channel flow gauge",
+		reader_pos, "SCAN FLOW", "aster", 0.8, false, 1.5,
+		Interactable.InteractableType.INSPECTION, false)
+	reader.consequence_preview = "Reveals this channel's surge period and enables paused path timing."
+	var reader_mesh := _add_box(reader, Vector3(0.0, 0.18, 0.0), Vector3(0.55, 1.1, 0.4),
+		Color(0.08, 0.25, 0.32), Color(0.25, 0.9, 1.0), 1.4)
+	_outline_interactable_child(reader, reader_mesh, "FlowGauge%d" % section_index, 1.5)
+	_configure_wash_control(
+		reader, "cadence:%d" % section_index, "cadence", section_index,
+		_on_cadence_read.bind(section_index, reader))
+	_cadence_readers[section_index] = reader
+	_add_causal_feedback_link(reader, strip, Color(0.29, 0.62, 1.0), {
+		"label": "READS THIS SURGE",
+		"source_offset": Vector3(0.0, 0.9, 0.0),
+		"target_offset": Vector3(0.0, 0.35, 0.0),
+		"arc_height": 1.2,
+		"owner_character": "aster",
+		"name": "FlowGaugeLink%d" % section_index,
+	})
 
 # A box pre-warped onto the helix under an arbitrary parent (generalises _add_warped_box, which targets the
 # branch root). y_off lifts it along the deck's local up. Used for the flood-water layer + sluice gates.
@@ -397,34 +546,50 @@ func _build_water_layer() -> void:
 			gate.visible = false
 			_sluice_gate[i] = gate
 
-# The connect-back points at the chunk end (plus the start climb point the sloperope feeds).
+# The connect-back joins the start landing to the already-reached chunk end. The reusable kit object owns
+# both causal phases: Peris tends the upper pothos, then stranded characters enter a saved locked traversal
+# at the lower mouth. This chunk only supplies endpoints, timing, selection policy, and feedback.
 func _build_connect_backs() -> void:
-	# TERMINAL — telephone stranded crew up; one call at the chunk end, click to walk over. The console mesh is
-	# a CHILD of the interactable so both the visual and its outline ride the helix warp together.
-	var term := _add_interactable(self, "Terminal", "Telephone up", TERMINAL_POS,
-		"TERMINAL", "", 1.2, false, 1.7, Interactable.InteractableType.INSPECTION, false)
-	term.interacted.connect(func() -> void: _on_terminal())
-	var tm := _add_box(term, Vector3(0.0, 0.4, 0.0), Vector3(0.8, 1.5, 0.4), Color(0.1, 0.4, 0.45))
-	var tmat := StandardMaterial3D.new()
-	tmat.albedo_color = Color(0.1, 0.4, 0.45); tmat.emission_enabled = true
-	tmat.emission = Color(0.2, 0.9, 1.0); tmat.emission_energy_multiplier = 2.0; tm.material_override = tmat
-	_outline_interactable_child(term, tm, "Terminal", 1.7)
-	# SLOPEROPE — drop a climbing line down to the start; the party deploys it once.
-	var rope := _add_interactable(self, "Sloperope", "Drop sloperope", SLOPEROPE_POS,
-		"DROP LINE", "", 1.2, false, 1.7, Interactable.InteractableType.INSPECTION, false)
-	rope.interacted.connect(func() -> void: _on_sloperope())
-	var rpost := _add_box(rope, Vector3(0.0, 1.4, 0.0), Vector3(0.4, 2.8, 0.4), Color(0.3, 0.22, 0.12))   # the reel post
-	_outline_interactable_child(rope, rpost, "Sloperope", 1.7)
-	# CLIMB POINT at the start — a washed member climbs the dropped line back up to the chunk end.
-	_climb_interactable = _add_interactable(self, "ClimbLine", "Climb the line", CLIMB_POS,
-		"CLIMB", "", 1.4, false, 1.7, Interactable.InteractableType.INSPECTION, false)
-	_climb_interactable.interacted.connect(func() -> void: _on_climb())
-	_rope_mesh = _add_box(_climb_interactable, Vector3(0.0, 1.4, 0.0), Vector3(0.16, 2.8, 0.16), Color(0.25, 0.18, 0.1))
-	_rope_mesh.visible = false   # the line only appears once dropped from the chunk end
-	_outline_interactable_child(_climb_interactable, _rope_mesh, "ClimbLine", 1.7)
-	# Hiding the rope mesh alone leaves the Area3D, hover verb, and click target live. The line has no readable
-	# meaning until it is physically dropped from the end, so remove the entire affordance until then.
-	_climb_interactable.set_interaction_enabled(false)
+	var gs = _get_game_state()
+	var sched = _get_scheduler()
+	if gs == null or sched == null:
+		push_warning("Wash Relay climbvine could not bind without GameState and scheduler")
+		return
+	_climbvine_return = ClimbvineReturnScript.new()
+	_climbvine_return.name = "WashRelayClimbvineReturn"
+	var configured := bool(_climbvine_return.configure(
+		gs,
+		sched,
+		CLIMB_POS,
+		RETURN_LANDING,
+		ChannelsArc.arc_pos(CLIMB_POS.x, CLIMB_POS.z),
+		ChannelsArc.arc_pos(RETURN_LANDING.x, RETURN_LANDING.z),
+		{
+			"return_id": SLOPEROPE_RETURN_ID,
+			"interaction_radius": 1.7,
+			"deployment_duration": SLOPEROPE_DEPLOY_DURATION,
+			"climb_duration": SLOPEROPE_CLIMB_DURATION,
+		}
+	))
+	if not configured:
+		_climbvine_return.free()
+		_climbvine_return = null
+		push_warning("Wash Relay climbvine rejected its authored endpoints")
+		return
+	_climbvine_return.set_group_provider(Callable(self, "_wash_climb_group"))
+	_climbvine_return.deployment_started.connect(_on_climbvine_deployment_started)
+	_climbvine_return.vine_deployed.connect(_on_climbvine_deployed)
+	_climbvine_return.climb_committed.connect(_on_climbvine_committed)
+	_climbvine_return.tend_rejected.connect(_on_climbvine_tend_rejected)
+	add_child(_climbvine_return)
+	var upper: Area3D = _climbvine_return.get_upper_interactable()
+	_climb_interactable = _climbvine_return.get_lower_interactable()
+	upper.name = "ClimbvineTendAnchor"
+	_climb_interactable.name = "ClimbLine"
+	for interactable in _climbvine_return.get_interactables():
+		_register_interactable(interactable)
+	_rope_mesh = _climbvine_return.get("_vine_visual") as Node3D
+	_sync_climbvine_presenter()
 
 
 ## One local instruction at a time. Each guide is pre-warped onto the spiral and nested below a Node3D so the
@@ -661,44 +826,65 @@ func _is_authored_transit_gap(mid: float) -> bool:
 		or absf(mid - SLUICE_TUNNEL_MOUTH_A.x) < 0.1 \
 		or absf(mid - SLUICE_TUNNEL_MOUTH_B.x) < 0.1
 
-# Generate ONE stretch (one node per gap) through the archetype framework — each node hands a branch its
-# archetype + content placements. Falls back to a fixed archetype rotation so the offshoots still build if
+# Generate ONE stretch (one node per realized offshoot) through the archetype framework. Each node hands a
+# branch its archetype + content placements. Falls back to a fixed archetype rotation so offshoots still build if
 # the generation catalog is unavailable (the chunk never hard-fails on missing data).
 func _generate_branch_nodes(count: int) -> Array:
 	var spec: Dictionary = StretchGenerator.generate({
 		"id": "wash_relay_branches", "title": "Wash Relay Branches",
 		"seed": BRANCH_GEN_SEED, "complexity_tier": "developing", "progression_stage": 3,
 		"budget": {"node_count": count, "branch_count": 0},
+		# These are the three causal grammars this authored branch curriculum must realize. The seed may
+		# choose variants and content, but it may not silently turn the whole optional layer into five
+		# copies of one interaction. With five realized branches, the three interior nodes teach one
+		# physical counterweight, one flora-flow gate, and one enemy-redirection gate.
+		"limitations": {"required": {"archetypes": ["1", "2", "3"]}},
 	})
 	if bool(spec.get("ok", false)):
 		var nodes: Array = spec.get("nodes", [])
 		if nodes.size() >= count:
 			return nodes.slice(0, count)
 	var fallback: Array = []
-	var names := ["Plant as tool", "Stealth-and-time", "Carry the heavy thing", "Redirected enemy aggression",
-		"Lysate forage cache", "Narrative beat", "Plant as tool", "Stealth-and-time"]
+	# The fallback preserves the same boundary -> causal trio -> boundary shape as the generated spec.
+	# Redirect carries a concrete actor marker so even catalog failure cannot degrade its decoy into a label.
+	var names := ["Narrative beat", "Carry the heavy thing", "Plant as tool",
+		"Redirected enemy aggression", "Narrative beat"]
 	for i in range(count):
-		fallback.append({"archetype_name": names[i % names.size()], "content_placements": [], "enemies": []})
+		var archetype_name: String = str(names[i % names.size()])
+		fallback.append({
+			"archetype_name": archetype_name,
+			"content_placements": [],
+			"enemies": [{"role": "redirected_guard"}] \
+				if archetype_name == "Redirected enemy aggression" else [],
+		})
 	return fallback
 
 func _build_branches() -> void:
 	_branches.clear()
-	_branch_loot = 0
 	_branch_guard_spawns.clear()
 	_branch_root = Node3D.new()
 	_branch_root.name = "Branches"
 	add_child(_branch_root)
 	var mids := _gap_mids()
-	_wdbg("generating %d branch nodes" % mids.size())
-	var nodes := _generate_branch_nodes(mids.size())
+	var realized_branch_count := 0
+	for mid_v in mids:
+		if not _is_authored_transit_gap(float(mid_v)):
+			realized_branch_count += 1
+	_wdbg("generating %d branch nodes" % realized_branch_count)
+	# Generate exactly the branches that reach the world. The previous eight-node call discarded three
+	# interior nodes at authored transit gaps, so the causal archetypes chosen for those nodes never existed
+	# in play and a valid seed could accidentally leave only boundary/open and decoy branches.
+	var nodes := _generate_branch_nodes(realized_branch_count)
 	_wdbg("generated %d nodes" % nodes.size())
 	var guards_spawned := 0
+	var node_cursor := 0
 	for g in range(mids.size()):
 		var mid: float = mids[g]
 		if _is_authored_transit_gap(mid):
 			continue
 		var branch_i := _branches.size()
-		var node: Dictionary = nodes[g] if g < nodes.size() else {}
+		var node: Dictionary = nodes[node_cursor] if node_cursor < nodes.size() else {}
+		node_cursor += 1
 		var archetype := str(node.get("archetype_name", "Offshoot"))
 		var placements: Array = node.get("content_placements", [])
 		# The radial plank: juts off the deck rim (lane 4) out to the pad (lane 10), pre-warped onto the helix.
@@ -707,44 +893,98 @@ func _build_branches() -> void:
 		# A marker post at the deck rim so the offshoot reads as a turn-off from the main run.
 		_add_warped_box(mid, BRANCH_NECK_LANE + 0.4, Vector3(0.4, 1.6, 0.4),
 			Color(0.48, 0.3, 0.08), Color(1.0, 0.64, 0.18), 1.1)
-		_add_warped_guidance_label(_branch_root, "BranchOptional%d" % g, "OPTIONAL // SALVAGE",
+		_add_warped_guidance_label(_branch_root, "BranchOptional%d" % g, "OPTIONAL // LYSATE",
 			mid, BRANCH_NECK_LANE + 0.9, Color(1.0, 0.7, 0.25))
 		# The archetype's content placements, clustered on the pad (graybox identity of the puzzle).
 		var content_count := _build_branch_content(mid, placements)
-		# Reward cache — authored FLAT (the host warp pass lifts every interactable onto the helix); its mesh
-		# is a CHILD so it rides the warp and stays visible (it isn't in the GLB the flat-graybox hide replaces).
-		# Click to walk over, then a salvage WORK beat (TIMED_ACTION). The cache box is a CHILD of the
-		# interactable so the visual + its outline+glow ride the helix warp together.
-		var cache := _add_interactable(self, "BranchCache%d" % g, "Optional salvage cache",
-			Vector3(mid, 0.5, BRANCH_PAD_LANE), "SALVAGE", "", 1.2, true, 1.6,
+		# The interaction is a work beat around one exact GameState item. The dark cradle is only an
+		# affordance/outline target; the luminous lysate body is the actual source and remains inspectable
+		# before pickup, in a hand, after transfer, and through save/replay.
+		var source_pos := Vector3(mid, 0.5, BRANCH_PAD_LANE)
+		var cache := _add_interactable(self, "BranchCache%d" % g, "Take the branch lysate",
+			source_pos, "TAKE LYSATE", "", 1.2, true, 1.6,
 			Interactable.InteractableType.TIMED_ACTION, false)
-		var cm := MeshInstance3D.new()
-		var cb := BoxMesh.new(); cb.size = Vector3(0.7, 0.7, 0.7); cm.mesh = cb
-		cm.material_override = _make_material(Color(0.7, 0.6, 0.2), Color(1.0, 0.85, 0.25), 1.4)
-		cm.position = Vector3(0.0, 0.45, 0.0)
-		cache.add_child(cm)
-		_outline_interactable_child(cache, cm, "BranchCache%d" % g, 1.6)
-		cache.interacted.connect(func() -> void: _on_branch_cache(branch_i))
+		var cradle := _add_reward_cradle(cache, "BranchCacheCradle%d" % g)
+		_outline_interactable_child(cache, cradle, "BranchCache%d" % g, 1.6)
+		_configure_wash_control(
+			cache, "branch_cache:%d" % g, "branch_cache", branch_i,
+			_on_branch_cache.bind(branch_i, cache))
 		# A guarded branch (the archetype carries an enemy) spawns a roamer on the pad — a real risk detour.
 		var guard = null
 		if guards_spawned < BRANCH_GUARD_CAP and _branch_has_enemy(node):
 			guard = _spawn_branch_guard(g, mid)
 			if guard != null:
 				guards_spawned += 1
-		# The PUZZLE: the cache is GATED by an archetype-themed switch at the neck. A guarded branch's switch
-		# is a decoy that lures the roamer off the pad; an "open" (forage/narrative) branch is a free breather.
+		# The mechanism is the branch's causal model, not a coloured synonym for one boolean. A lever owns a
+		# physical threshold, a flora valve owns a visible pollen stock, and a guarded decoy owns the guard's
+		# actual travel. Forage/narrative branches remain deliberate breathers.
 		var gate_kind := _branch_gate_kind(archetype, guard != null)
-		var gate_bar = null
 		var switch = null
 		if gate_kind != "open":
-			cache.set_interaction_enabled(false)   # locked until the switch fires (synced to the data layer)
-			gate_bar = _build_branch_gate_bar(mid)
+			cache.set_interaction_enabled(false)
 			switch = _build_branch_switch(g, branch_i, mid, gate_kind)
-		_branches.append({
+		var branch := {
 			"gap": g, "mid_x": mid, "pad_lane": BRANCH_PAD_LANE, "archetype": archetype,
 			"content_count": content_count, "collected": false, "cache": cache, "guard": guard,
-			"gate_kind": gate_kind, "unlocked": gate_kind == "open", "switch": switch, "gate_bar": gate_bar,
-		})
+			"gate_kind": gate_kind, "unlocked": gate_kind == "open", "switch": switch,
+			"mechanism_phase": "clear" if gate_kind == "open" else "idle",
+			"phase_started_at": -1.0, "phase_deadline": -1.0, "next_check_at": -1.0,
+			"mechanism_context": {},
+			"reward_source_key": _branch_reward_source_key(g),
+			"reward_source_pos": source_pos,
+			"reward_atp": _branch_reward_value(gate_kind),
+			"reward_tier": _branch_reward_tier(gate_kind),
+			"reward_item_id": "",
+			"reward_phase": REWARD_PHASE_AVAILABLE,
+			"reward_claimed_by": "",
+			"reward_claim_serial": 0,
+		}
+		cache.consequence_preview = "Moves the visible +%d ATP lysate into this character's free hand." \
+			% int(branch["reward_atp"])
+		branch.merge(_build_branch_mechanism(mid, gate_kind), true)
+		branch["mechanism_context"] = _branch_default_context(branch)
+		_reset_reward_to_source(branch)
+		_branches.append(branch)
+		_apply_branch_mechanism_truth(branch)
+
+
+func _add_reward_cradle(cache: Node3D, node_name: String) -> MeshInstance3D:
+	var cradle := MeshInstance3D.new()
+	cradle.name = node_name
+	var mesh := CylinderMesh.new()
+	mesh.top_radius = 0.42
+	mesh.bottom_radius = 0.5
+	mesh.height = 0.14
+	mesh.radial_segments = 18
+	cradle.mesh = mesh
+	cradle.position = Vector3(0.0, -0.3, 0.0)
+	cradle.material_override = _make_material(
+		Color(0.12, 0.14, 0.12), Color(0.32, 0.45, 0.2), 0.2)
+	cache.add_child(cradle)
+	return cradle
+
+
+func _branch_reward_source_key(gap: int) -> String:
+	return REWARD_SOURCE_PREFIX + "branch:%d" % gap
+
+
+func _branch_reward_value(gate_kind: String) -> int:
+	match gate_kind:
+		"decoy":
+			return BRANCH_GUARDED_REWARD
+		"lever", "valve":
+			return BRANCH_GATED_REWARD
+	return BRANCH_GUIDANCE_REWARD
+
+
+func _branch_reward_tier(gate_kind: String) -> String:
+	match gate_kind:
+		"decoy":
+			return "guarded"
+		"lever", "valve":
+			return "gated"
+	return "guidance"
+
 
 func _branch_has_enemy(node: Dictionary) -> bool:
 	if not (node.get("enemies", []) as Array).is_empty():
@@ -884,7 +1124,9 @@ func _build_pressure_bridge() -> void:
 
 	_pressure_valve = _add_interactable(self, 'PressureValve', 'Vent the jet manifold', PRESSURE_VALVE_POS,
 		'VENT JETS', '', 1.25, false, 1.65, Interactable.InteractableType.TIMED_ACTION, false)
-	_pressure_valve.interacted.connect(_on_pressure_valve)
+	_configure_wash_control(
+		_pressure_valve, "pressure_valve", "pressure_valve", -1,
+		_on_pressure_valve.bind(_pressure_valve))
 	var wheel := _add_box(_pressure_valve, Vector3(0.0, 0.65, 0.0), Vector3(0.9, 1.3, 0.55),
 		Color(0.12, 0.3, 0.34), Color(0.2, 0.9, 1.0), 1.2)
 	_outline_interactable_child(_pressure_valve, wheel, 'PressureValve', 1.65)
@@ -1008,7 +1250,7 @@ func _add_drain_deck(s: float, lane_center: float, size: Vector3, color: Color) 
 	_drain_root.add_child(body)
 
 # Build the loop: entry/exit legs off the deck rim, the flooding run between them (segmented so it follows the
-# curve), a stub out to the DRY salvage ledge across the water, the run's flood-water (hidden until it surges),
+# curve), a stub out to the DRY lysate ledge across the water, the run's flood-water (hidden until it surges),
 # an outer source wall, and the bait that draws the guard across the current. Authored in flat (s, lane); the
 # warp helpers place it on the helix. The cache + the bait interactable are authored FLAT and lifted by the
 # host's warp pass like every other interactable here.
@@ -1027,16 +1269,16 @@ func _build_drain_loop() -> void:
 	for k in range(nseg):
 		var sc := lerpf(s0, s1, (k + 0.5) / float(nseg))
 		_add_drain_deck(sc, DRAIN_RUN_LANE, Vector3(DRAIN_RUN_HALF * 2.0, 0.2, run_len / float(nseg) * 1.12), deck_color)
-	# The stub out to the DRY salvage ledge (crossing the run reaches it) + the ledge pad itself.
+	# The stub out to the DRY lysate ledge (crossing the run reaches it) + the ledge pad itself.
 	_add_drain_deck(smid, (DRAIN_RUN_LANE + DRAIN_LEDGE_LANE + 0.6) * 0.5,
 		Vector3((DRAIN_LEDGE_LANE + 0.6) - DRAIN_RUN_LANE, 0.2, 2.0), Color(0.11, 0.15, 0.18))
-	# Outer "water source" wall along the loop's OUTER RIM, just past the salvage ledge (the side the surge wells
+	# Outer "water source" wall along the loop's OUTER RIM, just past the lysate ledge (the side the surge wells
 	# up from). Placed beyond the ledge so it bounds the loop instead of bisecting the run->ledge crossing.
 	_warped_box(_drain_root, smid, DRAIN_LEDGE_LANE + 0.7, Vector3(0.3, 2.6, run_len + 1.0),
 		Color(0.12, 0.13, 0.16), Color(0.15, 0.4, 0.6), 0.5)
 	_warped_box(_drain_root, smid, DRAIN_LEDGE_LANE, Vector3(0.4, 1.6, 0.4),
 		Color(0.48, 0.3, 0.08), Color(1.0, 0.64, 0.18), 1.0)
-	_add_warped_guidance_label(_drain_root, "DrainOptional", "OPTIONAL // DRAIN CACHE",
+	_add_warped_guidance_label(_drain_root, "DrainOptional", "OPTIONAL // CONCENTRATED LYSATE",
 		smid, DRAIN_LEDGE_LANE - 0.8, Color(1.0, 0.7, 0.25))
 	# Flood water on the run (own segments so the toggle is independent of the section water). Hidden until surge.
 	_drain_water = []
@@ -1048,53 +1290,877 @@ func _build_drain_loop() -> void:
 		seg.material_override = _make_water_material(k)
 		seg.visible = false
 		_drain_water.append(seg)
-	# A salvage cache on the dry ledge — the reward that makes the crossing worth it.
-	var cache := _add_interactable(self, "DrainCache", "Optional drain cache", Vector3(smid, 0.5, DRAIN_LEDGE_LANE),
-		"SALVAGE", "", 1.2, true, 1.6, Interactable.InteractableType.TIMED_ACTION, false)
-	var cm := _add_box(cache, Vector3(0.0, 0.1, 0.0), Vector3(0.7, 0.7, 0.7), Color(0.3, 0.35, 0.2),
-		Color(0.6, 0.8, 0.3), 0.6)
-	_outline_interactable_child(cache, cm, "DrainCache", 1.6)
-	cache.interacted.connect(func() -> void: _on_drain_cache())
+	_build_drain_flora()
+	# The current-and-guard detour pays the strongest early lysate source. The item itself is the
+	# reward; this shallow cradle exists only so hover has a stable, dark silhouette.
+	var source_pos := Vector3(smid, 0.5, DRAIN_LEDGE_LANE)
+	var cache := _add_interactable(self, "DrainCache", "Take the concentrated drain lysate", source_pos,
+		"TAKE LYSATE", "", 1.2, true, 1.6, Interactable.InteractableType.TIMED_ACTION, false)
+	var cradle := _add_reward_cradle(cache, "DrainCacheCradle")
+	_outline_interactable_child(cache, cradle, "DrainCache", 1.6)
+	_configure_wash_control(
+		cache, "drain_cache", "drain_cache", -1,
+		_on_drain_cache.bind(cache))
+	_drain_reward = {
+		"cache": cache,
+		"reward_source_key": DRAIN_REWARD_SOURCE_KEY,
+		"reward_source_pos": source_pos,
+		"reward_atp": DRAIN_RISK_REWARD,
+		"reward_tier": "drain_risk",
+		"reward_item_id": "",
+		"reward_phase": REWARD_PHASE_AVAILABLE,
+		"reward_claimed_by": "",
+		"reward_claim_serial": 0,
+		"collected": false,
+	}
+	cache.consequence_preview = "Moves the visible +%d ATP lysate into this character's free hand." \
+		% DRAIN_RISK_REWARD
+	_reset_reward_to_source(_drain_reward)
 	_build_drain_bait()
 
-# The bait: a click-to-walk decoy at the loop mouth (a SAFE spot just inside, below the flood band). Firing it
-# pulls the ledge guard DOWN across the flooding run toward the song — straight through the current.
+# The bait is the same reusable physical Flure used elsewhere, not a purple box that asks this
+# chunk to impersonate one. Its own exact Interactable receipt owns the song and Enemy lure target.
 func _build_drain_bait() -> void:
 	var bp := Vector3(DRAIN_LOOP_S0, 0.5, BRANCH_NECK_LANE + 0.8)   # lane ~4.3 — inside the loop, below the flood
-	var bait := _add_interactable(self, "DrainBait", "Fire bait", bp,
-		"BAIT", "", 1.0, true, 1.4, Interactable.InteractableType.INSPECTION, false)
-	bait.interacted.connect(func() -> void: _on_drain_bait())
-	var bm := _add_box(bait, Vector3(0.0, 0.7 - bp.y, 0.0), Vector3(0.5, 0.9, 0.5), Color(0.45, 0.2, 0.5))
-	var bmat := StandardMaterial3D.new()
-	bmat.albedo_color = Color(0.45, 0.2, 0.5); bmat.emission_enabled = true
-	bmat.emission = Color(0.9, 0.3, 1.0); bmat.emission_energy_multiplier = 0.7
-	bm.material_override = bmat
-	_outline_interactable_child(bait, bm, "DrainBait", 1.4)
+	var lure_flat := Vector3(
+		(DRAIN_LOOP_S0 + DRAIN_LOOP_S1) * 0.5, 0.5, DRAIN_RUN_LANE)
+	var bait := Flure.new()
+	bait.name = "DrainBait"
+	bait.authority_id = "wash_relay_drain_bait"
+	bait.configure(
+		_get_game_state(), bp, [DRAIN_GUARD_ID], 16.0, 1.4,
+		Color(0.82, 0.32, 0.96))
+	bait.one_shot = false
+	bait.lure_duration = DRAIN_BAIT_PULL
+	bait.settle_pos = lure_flat
+	bait.set_enemy_resolver(_enemy_by_id)
+	bait.set_pre_trigger_validator(
+		_validate_wash_flure_policy.bind("drain", -1))
+	bait.flure_activated.connect(
+		_on_wash_flure_activated.bind("drain", -1, bait))
+	add_child(bait)
+	_register_interactable(bait)
+	_flures.append(bait)
+	_drain_bait_flure = bait
 
-func _on_branch_cache(g: int) -> void:
+
+## The two authored story beats, on their own inward ledges (walkable spurs added in
+## get_grid_data; plank visuals in WashRelayDressing). Both are standalone: registered for
+## outline/warp coverage but kept OUT of _relay_flures/LURE_SPECS/_portals/_pressure_portals,
+## whose index alignment and counts other systems assert.
+func _build_story_beats() -> void:
+	# THE LONELY FLURE — a real flure with an EMPTY target list. Lighting it plays the whole
+	# species grammar (the song, the glow) and nothing comes: the beat IS the mechanic.
+	var flure := Flure.new()
+	flure.name = "LonelyFlure"
+	flure.authority_id = "wash_relay_lonely_flure"
+	flure.configure(_get_game_state(), LONELY_FLURE_POS, [], 6.0, 1.0, Color(1.0, 0.55, 0.12))
+	flure.one_shot = false
+	flure.description = "Light the lonely flure"
+	flure.flure_activated.connect(_on_lonely_flure_lit)
+	add_child(flure)
+	_register_interactable(flure)
+	_flures.append(flure)
+	_lonely_flure = flure
+	# THE CURECUMIN PORTAL — a REAL blue PortalPad pair (docs/PORTALS.md): start ledge <->
+	# the neck garden. The reward canonically waits in a Greenfields Collective home, so
+	# the garden holds only its SEALED gate — the promise, not the loot.
+	var gs = _get_game_state()
+	var pad := PortalPad.new()
+	pad.name = "CurecuminPortalPad"
+	pad.authority_id = "wash_relay_cure_out"
+	pad.call("configure_data", gs, CURECUMIN_PAD_POS, CURE_DEST_POS, 1.25, CURE_PORTAL_COLOR)
+	pad.set_group_provider(_selected_party_ids)
+	add_child(pad)
+	_register_interactable(pad)
+	var back := PortalPad.new()
+	back.name = "CurecuminPortalReturn"
+	back.authority_id = "wash_relay_cure_back"
+	back.call("configure_data", gs, CURE_DEST_POS, CURECUMIN_PAD_POS, 1.25, CURE_PORTAL_COLOR)
+	back.set_group_provider(_selected_party_ids)
+	add_child(back)
+	_register_interactable(back)
+	_curecumin_pad = pad
+	_cure_portals = [pad, back]
+	_build_neck_garden()
+	_build_cure_lenses()
+
+## The portal-only pocket inside the broken-coil neck: green growth in the break, wrapped
+## around the well downpipe, ending at the sealed Greenfields gate. Ground collision comes
+## from NECK_GARDEN_REGION via the host's walkable-collision pass, like the pressure room.
+func _build_neck_garden() -> void:
+	var garden := Node3D.new()
+	garden.name = "NeckGarden"
+	add_child(garden)
+	_warped_box(garden, 42.5, -8.65, Vector3(2.5, 0.3, 4.8), Color(0.10, 0.14, 0.11), Color.BLACK, 0.0, -0.15)
+	_warped_box(garden, 42.5, -8.65, Vector3(2.3, 0.05, 4.4), Color(0.09, 0.2, 0.12),
+		Color(0.16, 0.5, 0.3), 0.45, 0.03)
+	var srng := RandomNumberGenerator.new()
+	srng.seed = 421
+	for k in range(7):
+		var h := 0.45 + srng.randf() * 0.6
+		_warped_box(garden, 40.9 + srng.randf() * 3.4, -9.6 + srng.randf() * 1.9,
+			Vector3(0.09, h, 0.09), Color(0.08, 0.22, 0.14), Color(0.2, 0.85, 0.5), 1.1, h * 0.5)
+	# the sealed gate: dark slab, one warm seam — gold lives on the ITEM's promise, never
+	# on portal fixtures (the portal color law)
+	_warped_box(garden, 44.55, -8.65, Vector3(2.2, 2.6, 0.32), Color(0.09, 0.10, 0.12), Color.BLACK, 0.0, 1.3)
+	var gate := _add_interactable(self, "SealedGreenfieldsGate", "Read the sealed gate",
+		CURE_GATE_POS, "READ GATE", "", 0.8, false, 1.4,
+		Interactable.InteractableType.INSPECTION, false)
+	# The gold seam is a LOCAL child of the flat-authored gate so it (and the outline
+	# target wrapping it) rides the interactable warp exactly once — never a pre-warped
+	# world mesh, which the warp pass would carry a second time.
+	var seam := _add_box(gate, Vector3(-0.05, 1.25, 0.35), Vector3(0.18, 1.9, 0.06),
+		Color(0.3, 0.24, 0.08), LevelPalette.global_color("curecumin_gold"), 2.0)
+	_outline_interactable_child(gate, seam, "SealedGreenfieldsGate", 1.4)
+	gate.interacted.connect(_on_greenfields_gate_read)
+	# the destination arch + its blue light
+	var t := ChannelsArc.tangent(CURE_DEST_POS.x)
+	var arch := MeshInstance3D.new()
+	var ring := TorusMesh.new()
+	ring.inner_radius = CURE_APERTURE_R
+	ring.outer_radius = CURE_APERTURE_R + 0.16
+	arch.mesh = ring
+	arch.material_override = _make_material(Color(0.10, 0.16, 0.3), CURE_PORTAL_COLOR, 2.2)
+	var apos := ChannelsArc.arc_pos(CURE_DEST_POS.x, CURE_DEST_POS.z) + Vector3(0.0, CURE_ARCH_LIFT, 0.0)
+	arch.global_transform = Transform3D(Basis(Vector3.UP.cross(t), t, Vector3.UP), apos)
+	garden.add_child(arch)
+	var glow := OmniLight3D.new()
+	glow.light_color = CURE_PORTAL_COLOR
+	glow.light_energy = 2.4
+	glow.omni_range = 8.0
+	glow.position = apos
+	garden.add_child(glow)
+	# a warm counter-light on the gate so the lens view reads garden-green + gold, not void
+	var gate_glow := OmniLight3D.new()
+	gate_glow.light_color = LevelPalette.global_color("curecumin_gold")
+	gate_glow.light_energy = 1.4
+	gate_glow.omni_range = 5.0
+	gate_glow.position = ChannelsArc.arc_pos(44.2, -8.6) + Vector3(0.0, 1.6, 0.0)
+	garden.add_child(gate_glow)
+
+## Both apertures get the mirrored-camera lens: stand at the pad and SEE the garden
+## through the arch (and the ledge from inside). @rendering_only — headless no-ops.
+func _build_cure_lenses() -> void:
+	var pad_t := ChannelsArc.tangent(CURECUMIN_PAD_POS.x)
+	var pad_xf := Transform3D(
+		Basis(Vector3.UP.cross(pad_t), Vector3.UP, pad_t),
+		ChannelsArc.arc_pos(CURECUMIN_PAD_POS.x, CURECUMIN_PAD_POS.z) + Vector3(0.0, CURE_ARCH_LIFT, 0.0))
+	var dest_t := ChannelsArc.tangent(CURE_DEST_POS.x)
+	var dest_xf := Transform3D(
+		Basis(Vector3.UP.cross(dest_t), Vector3.UP, dest_t),
+		ChannelsArc.arc_pos(CURE_DEST_POS.x, CURE_DEST_POS.z) + Vector3(0.0, CURE_ARCH_LIFT, 0.0))
+	var world := get_world_3d()
+	var lens_out := PortalLens.new()
+	lens_out.name = "CureLensOut"
+	add_child(lens_out)
+	lens_out.setup(pad_xf, dest_xf, CURE_APERTURE_R, world)
+	var lens_back := PortalLens.new()
+	lens_back.name = "CureLensBack"
+	add_child(lens_back)
+	lens_back.setup(dest_xf, pad_xf, CURE_APERTURE_R, world)
+
+func _on_lonely_flure_lit(_pulled: int) -> void:
+	_show_note("The flure sings. Nothing answers.", 2.6)
+
+func _on_greenfields_gate_read() -> void:
+	_show_note("SEALED // ROUTE: GREENFIELDS COLLECTIVE // SPECIMEN: CURECUMIN", 3.2)
+
+## The relay already owns one shared cadence and its warped water meshes. These invisible reusable
+## Channel coordinators are composed under those visible footprints solely to own each caught
+## enemy's RESERVED -> CARRYING -> IMPACT transaction. They never arm a second flood cadence.
+func _build_enemy_current_channels() -> void:
+	var gs = _get_game_state()
+	if gs == null:
+		return
+	for section_index in range(SECTIONS.size()):
+		var channel := Channel.new()
+		channel.name = "SectionEnemyCurrent%d" % section_index
+		channel.configure(
+			0.0, 1.0, 1.0, 9999.0, 1.0, 9999.0,
+			"wash_relay_enemy_section_%d" % section_index)
+		channel.set_sweep(gs, [], _wash_enemy_current_destination.bind(section_index), {
+			"enemy_damage": WASH_ENEMY_CURRENT_DAMAGE,
+			"enemy_stun": 0.0,
+			"refractory": 1000.0,
+			"travel_speed": WASH_ENEMY_CURRENT_SPEED,
+			"min_travel_duration": WASH_ENEMY_CURRENT_MIN_DURATION,
+			"enemy_resolver": _enemy_by_id,
+			"on_enemy_swept": _on_enemy_current_impact.bind(section_index),
+		})
+		channel.visible = false
+		add_child(channel)
+		_section_enemy_currents[section_index] = channel
+	var drain_channel := Channel.new()
+	drain_channel.name = "DrainEnemyCurrent"
+	drain_channel.configure(
+		0.0, 1.0, 1.0, 9999.0, 1.0, 9999.0,
+		"wash_relay_enemy_drain")
+	drain_channel.set_sweep(gs, [], _wash_enemy_current_destination.bind(-1), {
+		"enemy_damage": WASH_ENEMY_CURRENT_DAMAGE,
+		"enemy_stun": 0.0,
+		"refractory": 1000.0,
+		"travel_speed": WASH_ENEMY_CURRENT_SPEED,
+		"min_travel_duration": WASH_ENEMY_CURRENT_MIN_DURATION,
+		"enemy_resolver": _enemy_by_id,
+		"on_enemy_swept": _on_enemy_current_impact.bind(-1),
+	})
+	drain_channel.visible = false
+	add_child(drain_channel)
+	_drain_enemy_current = drain_channel
+
+
+func _wash_enemy_current_destination(
+		_id: String, origin: Vector3, _section_index: int) -> Vector3:
+	return Vector3(origin.x, origin.y, WASH_ENEMY_CURRENT_INNER_LANE)
+
+# Peris's ecology verb belongs to a specific dormant plant, not to the cast drawer. Tending it is a short
+# authored work beat that grows one persistent light beside the optional flood run, where that light matters.
+func _build_drain_flora() -> void:
+	var flora := _add_interactable(self, "DrainFlora", "Tend dormant drain flora", DRAIN_FLORA_POS,
+		"TEND FLORA", "peris", 1.2, true, 1.5, Interactable.InteractableType.TIMED_ACTION, false)
+	flora.consequence_preview = "Grows a persistent light that marks the flooding drain lane."
+	var _planter := _add_box(flora, Vector3(0.0, -0.18, 0.0), Vector3(0.75, 0.35, 0.75),
+		Color(0.17, 0.18, 0.12))
+	var bud := _add_box(flora, Vector3(0.0, 0.2, 0.0), Vector3(0.42, 0.5, 0.42),
+		Color(0.16, 0.38, 0.24), Color(0.35, 0.9, 0.52), 0.45)
+	_outline_interactable_child(flora, bud, "DrainFlora", 1.5)
+	_configure_wash_control(
+		flora, "drain_flora", "drain_flora", -1,
+		_on_drain_flora_tended.bind(flora))
+	_drain_flora_interactable = flora
+	if not _drain_water.is_empty():
+		var target: Node3D = _drain_water[int(_drain_water.size() / 2)]
+		_add_causal_feedback_link(flora, target, Color(1.0, 0.67, 0.27), {
+			"label": "LIGHTS THIS FLOOD LANE",
+			"source_offset": Vector3(0.0, 0.8, 0.0),
+			"target_offset": Vector3(0.0, 0.35, 0.0),
+			"arc_height": 1.3,
+			"owner_character": "peris",
+			"name": "DrainFloraLightLink",
+		})
+
+
+## Configure one exact world source for one Wash action. Repeatable controls keep a repeatable
+## Interactable but still mint a new monotonic registry receipt on every accepted use. Finite
+## lysate/flora sources remain one-shots whose spent presentation is derived from owner truth.
+func _configure_wash_control(
+		source: Node, action_id: String, kind: String, index: int,
+		callback: Callable) -> void:
+	if not is_instance_valid(source) or action_id == "" or not callback.is_valid():
+		return
+	_wash_control_sources[action_id] = {
+		"source": source,
+		"kind": kind,
+		"index": index,
+		"one_shot": bool(source.get("one_shot")),
+	}
+	source.set_meta("wash_control_action_id", action_id)
+	source.set_pre_trigger_validator(
+		_validate_wash_control_trigger.bind(action_id, source))
+	if not source.interacted.is_connected(callback):
+		source.interacted.connect(callback)
+
+
+func _validate_wash_control_trigger(
+		source: Node, actor: String, action_id: String,
+		expected_source: Node) -> bool:
+	var control: Dictionary = _wash_control_sources.get(action_id, {})
+	return is_instance_valid(source) and source == expected_source \
+		and control.get("source") == source \
+		and _wash_control_actor_ready_at_source(source, actor) \
+		and _wash_control_action_ready(action_id, actor)
+
+
+func _wash_control_actor_ready_at_source(source: Node, actor: String) -> bool:
+	var gs = _get_game_state()
+	var data_id := str(source.get("data_id")) if is_instance_valid(source) else ""
+	if gs == null or data_id == "" or not gs.has_interactable(data_id) \
+			or not is_instance_valid(source) or not source is Node3D \
+			or actor == "" or not gs.characters.has(actor) \
+			or not gs.get_party().has(actor) \
+			or fragment == null or not fragment.party_ids.has(actor) \
+			or not gs.is_narratively_available(actor) or gs.is_downed(actor) \
+			or gs.is_knocked_down(actor) or gs.is_moving(actor) \
+			or gs.is_resting(actor) or gs.is_dodging(actor) \
+			or gs.is_endocytosing(actor) \
+			or gs.is_external_traversal_active(actor) or gs.is_dragging(actor) \
+			or gs.is_field_restoring(actor) or gs.is_pushing(actor):
+		return false
+	var required_actor := str(source.get("required_character"))
+	if required_actor != "" and actor != required_actor:
+		return false
+	var source_position_v: Variant = gs.get_interactable(data_id).get(
+		"position", Vector3.INF)
+	if not source_position_v is Vector3:
+		return false
+	var source_position := source_position_v as Vector3
+	if not source_position.is_finite():
+		return false
+	if gs.grid != null and gs.grid.level_count > 1 \
+			and int(gs.get_character_level(actor)) \
+				!= int(gs.grid.level_for_y(source_position.y)):
+		return false
+	var actor_position: Vector3 = gs.get_position(actor)
+	return Vector2(actor_position.x, actor_position.z).distance_to(
+		Vector2(source_position.x, source_position.z)
+	) <= float(source.get("interaction_radius")) \
+			+ WASH_CONTROL_POSITION_TOLERANCE \
+		and absf(actor_position.y - source_position.y) \
+			<= WASH_CONTROL_HEIGHT_TOLERANCE
+
+
+func _wash_control_action_ready(action_id: String, actor := "") -> bool:
+	if not _accepts_gameplay_events() or _get_scheduler() == null:
+		return false
+	var control: Dictionary = _wash_control_sources.get(action_id, {})
+	if control.is_empty():
+		return false
+	var kind := str(control.get("kind", ""))
+	var index := int(control.get("index", -1))
+	match kind:
+		"override":
+			return index >= 0 and index < SECTIONS.size() \
+				and str(SECTIONS[index].get("disable", "")) == "override"
+		"cadence":
+			return index >= 0 and index < SECTIONS.size() \
+				and str(SECTIONS[index].get("disable", "")) == "timing"
+		"branch_cache":
+			if index < 0 or index >= _branches.size():
+				return false
+			var branch := _branches[index] as Dictionary
+			return bool(branch.get("unlocked", true)) \
+				and not bool(branch.get("collected", false)) \
+				and str(branch.get(
+					"reward_phase", REWARD_PHASE_AVAILABLE
+				)) == REWARD_PHASE_AVAILABLE \
+				and _reward_item_at_source(branch) \
+				and (actor == "" \
+					or _get_game_state().has_free_hands(actor, 1))
+		"branch_switch":
+			if index < 0 or index >= _branches.size():
+				return false
+			var branch := _branches[index] as Dictionary
+			var gate_kind := str(branch.get("gate_kind", "open"))
+			if gate_kind == "open" or bool(branch.get("collected", false)) \
+					or str(branch.get("mechanism_phase", "idle")) != "idle":
+				return false
+			if gate_kind == "decoy":
+				return _wash_enemy_ready(
+					str((branch.get("mechanism_context", {}) as Dictionary).get(
+						"guard_id", "")))
+			return gate_kind in ["lever", "valve"]
+		"pressure_valve":
+			return _pressure_vent_until < 0.0
+		"drain_cache":
+			return not _drain_reward.is_empty() \
+				and str(_drain_reward.get(
+					"reward_phase", REWARD_PHASE_AVAILABLE
+				)) == REWARD_PHASE_AVAILABLE \
+				and _reward_item_at_source(_drain_reward) \
+				and (actor == "" \
+					or _get_game_state().has_free_hands(actor, 1))
+		"drain_bait":
+			return _drain_bait_until < 0.0 \
+				and _wash_enemy_ready(DRAIN_GUARD_ID)
+		"drain_flora":
+			return not _drain_flora_tended
+		"lure":
+			if index < 0 or index >= LURE_SPECS.size():
+				return false
+			var until := float(_lure_until[index]) \
+				if index < _lure_until.size() else -1.0
+			return until < 0.0 \
+				and _wash_enemy_ready(str(LURE_SPECS[index].get("target", "")))
+	return false
+
+
+func _wash_enemy_ready(enemy_id: String) -> bool:
+	var gs = _get_game_state()
+	if enemy_id == "" or gs == null or not gs.characters.has(enemy_id) \
+			or gs.is_downed(enemy_id) or _pending_drown_removals.has(enemy_id) \
+			or _enemy_drown_mirrors.has(enemy_id):
+		return false
+	for enemy in _enemies:
+		if is_instance_valid(enemy) and str(enemy.get("char_id")) == enemy_id:
+			return not enemy.has_method("is_alive") or bool(enemy.call("is_alive"))
+	return false
+
+
+func _wash_control_source_trigger_count(source: Node) -> int:
+	var gs = _get_game_state()
+	var data_id := str(source.get("data_id")) if is_instance_valid(source) else ""
+	if gs == null or data_id == "" or not gs.has_interactable(data_id):
+		return -1
+	return int(gs.get_interactable(data_id).get("trigger_count", -1))
+
+
+func _wash_control_source_receipt(
+		source: Node, action_id: String) -> Dictionary:
+	var control: Dictionary = _wash_control_sources.get(action_id, {})
+	if not is_instance_valid(source) or control.get("source") != source:
+		return {}
+	var actor := str(source.get("active_character"))
+	if not _validate_wash_control_trigger(
+			source, actor, action_id, source):
+		return {}
+	var gs = _get_game_state()
+	var data_id := str(source.get("data_id"))
+	if gs == null or data_id == "" or not gs.has_interactable(data_id):
+		return {}
+	var receipt: Dictionary = gs.get_interactable(data_id)
+	var trigger_count := int(receipt.get("trigger_count", -1))
+	var committed_count := int(
+		_wash_control_committed_counts.get(action_id, 0))
+	var expected_one_shot := bool(control.get("one_shot", false))
+	if trigger_count != committed_count + 1 \
+			or str(receipt.get("last_trigger_character", "")) != actor \
+			or bool(receipt.get("one_shot", false)) != expected_one_shot \
+			or not bool(receipt.get("triggered", false)):
+		return {}
+	if expected_one_shot and (
+			not bool(source.get("_used"))
+			or bool(source.get("interaction_enabled"))
+			or bool(receipt.get("enabled", true))
+	):
+		return {}
+	if not expected_one_shot and (
+			bool(source.get("_used"))
+			or not bool(source.get("interaction_enabled"))
+			or not bool(receipt.get("enabled", true))
+	):
+		return {}
+	return {
+		"action_id": action_id,
+		"actor": actor,
+		"trigger_count": trigger_count,
+	}
+
+
+## Consuming the receipt publishes the new owner-side count before any mechanism, item, enemy,
+## information, or light consequence. A snapshot in that interval therefore restores a spent
+## receipt with no semantic outcome; reconciliation rearms only when physical owner truth allows.
+func _consume_wash_control_receipt(
+		source: Node, action_id: String) -> Dictionary:
+	var receipt := _wash_control_source_receipt(source, action_id)
+	if receipt.is_empty():
+		return {}
+	_wash_control_committed_counts[action_id] = int(
+		receipt.get("trigger_count", 0))
+	_publish_wash_authority(false)
+	return receipt
+
+
+func _wash_control_action_ids() -> Array[String]:
+	var ids: Array[String] = []
+	for action_id_v in _wash_control_sources.keys():
+		ids.append(str(action_id_v))
+	ids.sort()
+	return ids
+
+
+func _ensure_wash_control_registry_shapes() -> void:
+	var gs = _get_game_state()
+	if gs == null:
+		return
+	for action_id in _wash_control_action_ids():
+		var control: Dictionary = _wash_control_sources[action_id]
+		var source: Node = control.get("source")
+		if not is_instance_valid(source):
+			continue
+		var desired_one_shot := bool(control.get("one_shot", false))
+		source.set("one_shot", desired_one_shot)
+		var data_id := str(source.get("data_id"))
+		if data_id == "" or not gs.has_interactable(data_id):
+			continue
+		var registered: Dictionary = gs.get_interactable(data_id)
+		if bool(registered.get("one_shot", false)) == desired_one_shot:
+			continue
+		# Legacy bait/flures were accidental one-shots. Re-register the same source as repeatable
+		# while preserving its stable position, monotonic count, and last actor identity.
+		registered["id"] = data_id
+		registered["one_shot"] = desired_one_shot
+		registered["enabled"] = true
+		gs.register_interactable(registered)
+
+
+func _reset_wash_control_committed_counts_to_registry() -> void:
+	_wash_control_committed_counts.clear()
+	for action_id in _wash_control_action_ids():
+		var source: Node = (_wash_control_sources[action_id] as Dictionary).get(
+			"source")
+		_wash_control_committed_counts[action_id] = maxi(
+			0, _wash_control_source_trigger_count(source))
+
+
+func _valid_saved_wash_control_counts(raw: Variant) -> bool:
+	if not raw is Dictionary:
+		return false
+	var saved := raw as Dictionary
+	for action_id in _wash_control_action_ids():
+		if not saved.has(action_id):
+			return false
+		var count := int(saved.get(action_id, -1))
+		var source: Node = (_wash_control_sources[action_id] as Dictionary).get(
+			"source")
+		var source_count := _wash_control_source_trigger_count(source)
+		if count < 0 or source_count < 0 or count > source_count:
+			return false
+	return true
+
+
+func _restore_wash_control_committed_counts(raw: Variant) -> void:
+	_wash_control_committed_counts.clear()
+	var saved := raw as Dictionary if raw is Dictionary else {}
+	for action_id in _wash_control_action_ids():
+		_wash_control_committed_counts[action_id] = maxi(
+			0, int(saved.get(action_id, 0)))
+
+
+func _wash_control_registry_source_is_spent(source: Node) -> bool:
+	var gs = _get_game_state()
+	var data_id := str(source.get("data_id")) if is_instance_valid(source) else ""
+	var receipt: Dictionary = gs.get_interactable(data_id) \
+		if gs != null and data_id != "" and gs.has_interactable(data_id) \
+		else {}
+	return bool(receipt.get("triggered", false)) \
+		or not bool(receipt.get("enabled", true)) \
+		or bool(source.get("_used")) \
+		or not bool(source.get("interaction_enabled"))
+
+
+## GameState emits its accepted edge before Interactable emits `interacted`. If a snapshot lands
+## there, the registry count is newer than this composite record. Burn that orphan count without
+## inventing the missing consequence, then make only structurally ready one-shots usable again.
+func _reconcile_accepted_wash_control_receipts() -> bool:
+	var changed := false
+	for action_id in _wash_control_action_ids():
+		var control: Dictionary = _wash_control_sources[action_id]
+		var source: Node = control.get("source")
+		if not is_instance_valid(source):
+			continue
+		var source_count := maxi(
+			0, _wash_control_source_trigger_count(source))
+		var committed_count := maxi(
+			0, int(_wash_control_committed_counts.get(action_id, 0)))
+		if source_count > committed_count:
+			_wash_control_committed_counts[action_id] = source_count
+			changed = true
+		if bool(control.get("one_shot", false)) \
+				and _wash_control_action_ready(action_id) \
+				and _wash_control_registry_source_is_spent(source):
+			if source.has_method("reset"):
+				source.reset()
+			_wash_control_committed_counts[action_id] = maxi(
+				int(_wash_control_committed_counts.get(action_id, 0)),
+				maxi(0, _wash_control_source_trigger_count(source)))
+			changed = true
+	return changed
+
+
+func _project_wash_control_sources() -> void:
+	var gs = _get_game_state()
+	for action_id in _wash_control_action_ids():
+		var control: Dictionary = _wash_control_sources[action_id]
+		var source: Node = control.get("source")
+		if not is_instance_valid(source):
+			continue
+		var ready := _wash_control_action_ready(action_id)
+		var one_shot := bool(control.get("one_shot", false))
+		var data_id := str(source.get("data_id"))
+		if one_shot and ready \
+				and _wash_control_registry_source_is_spent(source) \
+				and _wash_control_source_trigger_count(source) \
+					<= int(_wash_control_committed_counts.get(action_id, 0)):
+			if source.has_method("reset"):
+				source.reset()
+		if gs != null and data_id != "" and gs.has_interactable(data_id):
+			gs.set_interactable_enabled(data_id, ready)
+		if source.has_method("restore_one_shot_presenter"):
+			source.restore_one_shot_presenter(one_shot and not ready, ready)
+		else:
+			source.set_interaction_enabled(ready)
+
+
+func _on_branch_cache(g: int, source: Node = null) -> bool:
 	if not _accepts_gameplay_events() or g < 0 or g >= _branches.size():
-		return
-	if bool(_branches[g].get("collected", false)):
-		return
-	# Defense in depth: the cache's own enabled flag already blocks the trigger while gated, but a direct
-	# data-layer trigger shouldn't pay out a locked cache either.
-	if not bool(_branches[g].get("unlocked", true)):
-		_say("// LOCKED // clear the gate first")
-		return
-	_branches[g]["collected"] = true
-	_branch_loot += BRANCH_REWARD
-	_say("// SALVAGE // cache stripped (%d)" % _branch_loot)
+		return false
+	var branch: Dictionary = _branches[g]
+	var action_id := "branch_cache:%d" % int(branch.get("gap", -1))
+	if _consume_wash_control_receipt(source, action_id).is_empty():
+		return false
+	if not _claim_reward_source(branch):
+		_restore_reward_interactable(branch, true)
+		_publish_wash_authority()
+		return false
 
-# Map an archetype to the kind of gate that guards its cache. A guarded branch is always a lure puzzle;
-# otherwise the archetype's theme picks the mechanism. Forage/narrative branches are free (a breather).
+	# A successful exact-item transfer owns the terminal branch result. In particular, the decoy's
+	# finite window may now close because the player physically carries what was on the ledge.
+	branch["collected"] = true
+	branch["mechanism_phase"] = "clear"
+	branch["phase_started_at"] = -1.0
+	branch["phase_deadline"] = -1.0
+	branch["next_check_at"] = -1.0
+	branch["unlocked"] = true
+	var sched = _get_scheduler()
+	if sched != null:
+		sched.cancel_tag(_branch_event_tag(branch))
+	_apply_branch_mechanism_truth(branch)
+	_publish_wash_authority()
+	_say("// LYSATE // %s takes %s" % [
+		str(branch.get("reward_claimed_by", "")).capitalize(),
+		_reward_display_name(int(branch.get("reward_atp", 1))),
+	])
+	return true
+
+
+## Commit one source-tagged GameState item, publishing the reservation before pickup so a snapshot
+## from item_picked_up can reconcile the exact actor and identity. A failed range/hand check retracts
+## to AVAILABLE; an injected different holder remains CLAIMING and therefore cannot mint or retarget.
+func _claim_reward_source(reward: Dictionary) -> bool:
+	if str(reward.get("reward_phase", "")) != REWARD_PHASE_AVAILABLE \
+			or not _reward_item_at_source(reward):
+		return false
+	var cache = reward.get("cache")
+	var actor := str(cache.get("active_character")) if is_instance_valid(cache) else ""
+	var gs = _get_game_state()
+	if actor == "" or gs == null or not gs.characters.has(actor):
+		return false
+	if not gs.has_free_hands(actor, 1):
+		_show_message("%s needs a free hand for the lysate." % actor.capitalize(), 2.0)
+		return false
+
+	reward["reward_phase"] = REWARD_PHASE_CLAIMING
+	reward["reward_claimed_by"] = actor
+	reward["reward_claim_serial"] = int(reward.get("reward_claim_serial", 0)) + 1
+	reward["collected"] = false
+	_restore_reward_interactable(reward, false)
+	_publish_wash_authority()
+
+	if not _pick_up_item(actor, str(reward.get("reward_item_id", ""))):
+		reward["reward_phase"] = REWARD_PHASE_AVAILABLE
+		reward["reward_claimed_by"] = ""
+		reward["collected"] = false
+		_restore_reward_interactable(reward, true)
+		_publish_wash_authority()
+		_show_message("The lysate stays seated; stand at the source with one hand free.", 2.0)
+		return false
+
+	reward["reward_phase"] = REWARD_PHASE_CLAIMED
+	reward["collected"] = true
+	_restore_reward_interactable(reward, false)
+	return true
+
+
+func _reward_display_name(value: int) -> String:
+	match value:
+		DRAIN_RISK_REWARD:
+			return "concentrated lysate"
+		BRANCH_GUARDED_REWARD:
+			return "rich lysate"
+		BRANCH_GATED_REWARD:
+			return "lysate ration"
+	return "sparse lysate"
+
+
+func _reward_visual_color(value: int) -> Color:
+	match value:
+		DRAIN_RISK_REWARD:
+			return Color(0.86, 1.0, 0.42)
+		BRANCH_GUARDED_REWARD:
+			return Color(0.94, 0.86, 0.3)
+		BRANCH_GATED_REWARD:
+			return Color(0.86, 0.72, 0.32)
+	return Color(0.72, 0.58, 0.3)
+
+
+func _spawn_reward_item(reward: Dictionary, legacy_recovery := false) -> String:
+	if str(reward.get("reward_source_key", "")) == "":
+		return ""
+	var value := int(reward.get("reward_atp", BRANCH_GUIDANCE_REWARD))
+	return _spawn_item("lysate", reward.get("reward_source_pos", Vector3.ZERO), {
+		"display_name": "%s (+%d ATP)" % [_reward_display_name(value).capitalize(), value],
+		"hand_slots": 1,
+		"atp_restore": float(value),
+		"source_wash_relay": str(reward.get("reward_source_key", "")),
+		"wash_reward_tier": str(reward.get("reward_tier", "guidance")),
+		"wash_reward_atp": value,
+		"visual_kind": "lysate",
+		"visual_color": _reward_visual_color(value),
+		"ground_visual_y": 0.58,
+		"legacy_source_recovery": legacy_recovery,
+	})
+
+
+func _reward_item_ids(source_key: String) -> Array[String]:
+	var ids: Array[String] = []
+	var gs = _get_game_state()
+	if gs == null or not "items" in gs:
+		return ids
+	for item_id_v in gs.items.keys():
+		var item_id := str(item_id_v)
+		var item: Dictionary = _get_item_state(item_id)
+		var properties: Dictionary = item.get("properties", {})
+		if str(item.get("type", "")) == "lysate" \
+				and str(properties.get("source_wash_relay", "")) == source_key:
+			ids.append(item_id)
+	ids.sort()
+	return ids
+
+
+func _is_reward_item(reward: Dictionary, item_id: String) -> bool:
+	if item_id == "":
+		return false
+	return _reward_item_ids(str(reward.get("reward_source_key", ""))).has(item_id)
+
+
+func _reward_item_at_source(reward: Dictionary) -> bool:
+	var item := _get_item_state(str(reward.get("reward_item_id", "")))
+	if item.is_empty() or str(item.get("location", "")) != "ground":
+		return false
+	var pos_v: Variant = item.get("position", Vector3.INF)
+	return pos_v is Vector3 and (pos_v as Vector3).distance_to(
+		reward.get("reward_source_pos", Vector3.ZERO)) < 0.001
+
+
+func _reward_item_holder(reward: Dictionary) -> String:
+	var item := _get_item_state(str(reward.get("reward_item_id", "")))
+	if item.is_empty() or str(item.get("location", "")) != "hand":
+		return ""
+	return str(item.get("holder", ""))
+
+
+func _remove_reward_items(source_key: String, except_id := "") -> void:
+	for item_id in _reward_item_ids(source_key):
+		if item_id != except_id:
+			_remove_item(item_id)
+
+
+func _reset_reward_to_source(reward: Dictionary, legacy_recovery := false) -> void:
+	var source_key := str(reward.get("reward_source_key", ""))
+	if source_key == "":
+		return
+	_remove_reward_items(source_key)
+	reward["reward_phase"] = REWARD_PHASE_AVAILABLE
+	reward["reward_claimed_by"] = ""
+	reward["reward_claim_serial"] = 0
+	reward["collected"] = false
+	reward["reward_item_id"] = _spawn_reward_item(reward, legacy_recovery)
+	_restore_reward_interactable(reward, true)
+
+
+func _restore_reward_interactable(reward: Dictionary, allow_available: bool) -> void:
+	var cache = reward.get("cache")
+	if not is_instance_valid(cache):
+		return
+	var claimed := str(reward.get("reward_phase", "")) == REWARD_PHASE_CLAIMED
+	var available := allow_available \
+		and str(reward.get("reward_phase", "")) == REWARD_PHASE_AVAILABLE \
+		and _reward_item_at_source(reward)
+	var gs = _get_game_state()
+	var data_id := str(cache.get("data_id"))
+	if available and gs != null and gs.has_interactable(data_id):
+		var saved_cache: Dictionary = gs.get_interactable(data_id)
+		if bool(saved_cache.get("triggered", false)):
+			gs.reset_interactable(data_id)
+	if cache.has_method("restore_one_shot_presenter"):
+		cache.restore_one_shot_presenter(claimed, available)
+	else:
+		cache.set_interaction_enabled(available)
+
+
+## Reconcile the portable reservation against GameState's exact item truth. Version 1-4 saves
+## only knew proxy counters/booleans, so they conservatively return one item to its authored
+## ground source. They never infer a carrier or mint a reward directly into a hand.
+func _restore_reward_transaction(
+		reward: Dictionary, saved: Dictionary, saved_version: int) -> void:
+	if reward.is_empty() or str(reward.get("reward_source_key", "")) == "":
+		return
+	if saved_version < 5:
+		_reset_reward_to_source(reward, true)
+		return
+
+	var saved_phase := str(saved.get("reward_phase", REWARD_PHASE_AVAILABLE))
+	if saved_phase not in [
+			REWARD_PHASE_AVAILABLE, REWARD_PHASE_CLAIMING, REWARD_PHASE_CLAIMED]:
+		_reset_reward_to_source(reward)
+		return
+	reward["reward_phase"] = saved_phase
+	reward["reward_claimed_by"] = str(saved.get("reward_claimed_by", ""))
+	reward["reward_claim_serial"] = maxi(0, int(saved.get("reward_claim_serial", 0)))
+	reward["reward_item_id"] = str(saved.get("reward_item_id", ""))
+
+	var source_key := str(reward.get("reward_source_key", ""))
+	var ids := _reward_item_ids(source_key)
+	if not ids.has(str(reward.get("reward_item_id", ""))):
+		reward["reward_item_id"] = ids[0] if not ids.is_empty() else ""
+	_remove_reward_items(source_key, str(reward.get("reward_item_id", "")))
+
+	var at_source := _reward_item_at_source(reward)
+	match str(reward.get("reward_phase", "")):
+		REWARD_PHASE_AVAILABLE:
+			if str(reward.get("reward_item_id", "")) == "":
+				reward["reward_item_id"] = _spawn_reward_item(reward)
+			# A moved AVAILABLE item has no published reservation. Leave the interaction closed
+			# rather than treating an arbitrary holder as the winner or spawning a duplicate.
+		REWARD_PHASE_CLAIMING:
+			if at_source:
+				reward["reward_phase"] = REWARD_PHASE_AVAILABLE
+				reward["reward_claimed_by"] = ""
+			elif str(reward.get("reward_claimed_by", "")) != "" \
+					and _reward_item_holder(reward) == str(reward.get("reward_claimed_by", "")):
+				reward["reward_phase"] = REWARD_PHASE_CLAIMED
+			# A wrong holder/location remains CLAIMING and cannot be silently retargeted.
+		REWARD_PHASE_CLAIMED:
+			if at_source:
+				reward["reward_phase"] = REWARD_PHASE_AVAILABLE
+				reward["reward_claimed_by"] = ""
+
+	reward["collected"] = str(reward.get("reward_phase", "")) == REWARD_PHASE_CLAIMED
+
+
+func _preview_reward_state(reward: Dictionary) -> Dictionary:
+	return {
+		"source_key": str(reward.get("reward_source_key", "")),
+		"source_pos": reward.get("reward_source_pos", Vector3.ZERO),
+		"item_id": str(reward.get("reward_item_id", "")),
+		"phase": str(reward.get("reward_phase", REWARD_PHASE_AVAILABLE)),
+		"claimed_by": str(reward.get("reward_claimed_by", "")),
+		"claim_serial": int(reward.get("reward_claim_serial", 0)),
+		"reward_atp": int(reward.get("reward_atp", 0)),
+		"reward_tier": str(reward.get("reward_tier", "")),
+		"item_at_source": _reward_item_at_source(reward),
+		"item_holder": _reward_item_holder(reward),
+		"cache_available": is_instance_valid(reward.get("cache")) \
+			and bool(reward["cache"].is_interaction_enabled()),
+	}
+
+
+func _claimed_reward_atp() -> int:
+	var total := 0
+	for reward in _branches:
+		if str(reward.get("reward_phase", "")) == REWARD_PHASE_CLAIMED:
+			total += int(reward.get("reward_atp", 0))
+	if str(_drain_reward.get("reward_phase", "")) == REWARD_PHASE_CLAIMED:
+		total += int(_drain_reward.get("reward_atp", 0))
+	return total
+
+# Map an archetype to a world mechanism. A decoy without an actual guard would be another fake label, so
+# threat-flavoured nodes that exceeded the guard budget fall back to the physical counterweight grammar.
 func _branch_gate_kind(archetype: String, has_guard: bool) -> String:
 	var a := archetype.to_lower()
-	if has_guard or "stealth" in a or "enemy" in a or "redirect" in a or "aggress" in a:
-		return "decoy"
+	# Preserve the generated causal identity before applying generic threat dressing. A plant branch
+	# remains a visible stock/flow problem and a carry/structure branch remains a counterweight even if
+	# its generated content also includes a roamer. Enemy-redirection beats still use the body's movement
+	# as their endpoint; only otherwise-untyped guarded beats fall back to that decoy grammar.
 	if "plant" in a or "flora" in a or "pollen" in a:
 		return "valve"
 	if "forage" in a or "lysate" in a or "narrative" in a or "beat" in a or "rest" in a:
 		return "open"
+	if "carry" in a or "heavy" in a or "structure" in a:
+		return "lever"
+	if has_guard:
+		return "decoy"
 	return "lever"   # carry / structure / unknown -> a counterweight lever
 
 # Per-gate-kind presentation + flavour (label, post colour/glow, the line played on activation).
@@ -1102,58 +2168,482 @@ func _branch_gate_theme(kind: String) -> Dictionary:
 	match kind:
 		"valve":
 			return {"label": "POLLEN VALVE", "color": Color(0.22, 0.55, 0.3), "glow": Color(0.3, 0.9, 0.4),
-				"msg": "// VALVE // spores vented — cache exposed"}
+				"msg": "// VALVE // pollen is venting from the cache"}
 		"lever":
 			return {"label": "COUNTERWEIGHT", "color": Color(0.35, 0.4, 0.5), "glow": Color(0.5, 0.7, 0.9),
-				"msg": "// LIFT // counterweight set — gate up"}
+				"msg": "// LIFT // counterweight is taking the gate"}
 		"decoy":
 			return {"label": "DECOY BEACON", "color": Color(0.55, 0.4, 0.18), "glow": Color(1.0, 0.7, 0.2),
-				"msg": "// DECOY // beacon lit — guard drawn off"}
+				"msg": "// DECOY // beacon lit — watch the guard move"}
 	return {"label": "SWITCH", "color": Color(0.4, 0.4, 0.45), "glow": Color(0.7, 0.7, 0.8), "msg": "// CLEAR //"}
 
-# The gate bar: a thin warped barrier across the branch between the switch and the pad. Cosmetic (the cache's
-# enabled flag is the real lock) — it just reads the gate as closed; the switch hides it.
-func _build_branch_gate_bar(mid: float) -> MeshInstance3D:
-	return _add_warped_box(mid, BRANCH_GATE_LANE, Vector3(BRANCH_LANE_SPAN * 0.55, 1.0, 0.25),
-		Color(0.45, 0.16, 0.18), Color(0.9, 0.2, 0.22), 0.7)
+# Build only the world object that belongs to this mechanism. Counterweights get a wide gate with a fixed
+# collision body; pollen valves get a readable cloud stock; decoys get no invented barrier at all.
+func _build_branch_mechanism(mid: float, kind: String) -> Dictionary:
+	var built := {
+		"gate_visual": null, "gate_body": null, "gate_collision": null,
+		"gate_base_transform": Transform3D.IDENTITY, "vent_plumes": [],
+	}
+	match kind:
+		"lever":
+			built.merge(_build_branch_counterweight_gate(mid), true)
+		"valve":
+			built["vent_plumes"] = _build_branch_pollen_plumes(mid)
+	return built
 
-# The gate switch: a themed click-to-walk post at the neck. Authored FLAT (the host warp pass lifts it onto
-# the helix); its post mesh + outline are children so they ride the warp. One-shot — firing it unlocks the branch.
+
+func _build_branch_counterweight_gate(mid: float) -> Dictionary:
+	var root := Node3D.new()
+	root.name = "CounterweightGate_%d" % roundi(mid * 10.0)
+	root.transform = _branch_warp_xform(mid, BRANCH_GATE_LANE)
+	_branch_root.add_child(root)
+	var size := Vector3(0.34, 1.5, BRANCH_S_SPAN * 0.92)
+	var mesh := MeshInstance3D.new()
+	var box := BoxMesh.new()
+	box.size = size
+	mesh.mesh = box
+	mesh.position.y = size.y * 0.5
+	mesh.material_override = _make_material(
+		Color(0.24, 0.28, 0.34), Color(0.5, 0.75, 1.0), 0.8)
+	root.add_child(mesh)
+
+	# Collision deliberately stays at the threshold while the visible gate rises. Movement authority releases
+	# atomically at the endpoint rather than opening an exploitable gap halfway through the animation.
+	var body := StaticBody3D.new()
+	body.name = "CounterweightBlocker_%d" % roundi(mid * 10.0)
+	body.collision_layer = 1
+	body.collision_mask = 0
+	body.transform = _branch_warp_xform(mid, BRANCH_GATE_LANE)
+	var collision := CollisionShape3D.new()
+	var shape := BoxShape3D.new()
+	shape.size = size
+	collision.shape = shape
+	collision.position.y = size.y * 0.5
+	body.add_child(collision)
+	_branch_root.add_child(body)
+	return {
+		"gate_visual": root,
+		"gate_body": body,
+		"gate_collision": collision,
+		"gate_base_transform": root.transform,
+	}
+
+
+func _build_branch_pollen_plumes(mid: float) -> Array:
+	var plumes: Array = []
+	var lanes := [6.9, 7.55, 8.2, 8.85]
+	for plume_i in range(lanes.size()):
+		var root := Node3D.new()
+		root.name = "PollenPlume_%d_%d" % [roundi(mid * 10.0), plume_i]
+		root.transform = _branch_warp_xform(mid, float(lanes[plume_i]))
+		root.set_meta("branch_base_transform", root.transform)
+		root.set_meta("branch_plume_index", plume_i)
+		var mesh := MeshInstance3D.new()
+		var sphere := SphereMesh.new()
+		sphere.radius = 0.62
+		sphere.height = 1.24
+		mesh.mesh = sphere
+		mesh.position.y = 0.65 + float(plume_i % 2) * 0.18
+		mesh.material_override = _make_material(
+			Color(0.25, 0.68, 0.31, 0.48), Color(0.32, 1.0, 0.4), 1.2,
+			BaseMaterial3D.TRANSPARENCY_ALPHA)
+		root.add_child(mesh)
+		_branch_root.add_child(root)
+		plumes.append(root)
+	return plumes
+
+# The switch commits the mechanism; it is not itself the consequence. Decoys remain reusable when a committed
+# guard refuses the lure or when the player lets the lysate window expire.
 func _build_branch_switch(g: int, branch_i: int, mid: float, kind: String) -> Area3D:
 	var theme := _branch_gate_theme(kind)
+	# A decoy must be fireable before the pad guard's ordinary detection radius commits it to pursuit.
+	# The resulting play is readable: light from the safe neck, then move outward while the guard moves in.
+	var switch_lane := BRANCH_NECK_LANE + 0.15 if kind == "decoy" else BRANCH_SWITCH_LANE
 	var switch := _add_interactable(self, "BranchSwitch%d" % g, str(theme["label"]),
-		Vector3(mid, 0.5, BRANCH_SWITCH_LANE), str(theme["label"]), "", 1.0, true, 1.4,
+		Vector3(mid, 0.5, switch_lane), str(theme["label"]), "", 1.0, false, 1.4,
 		Interactable.InteractableType.INSPECTION, false)
+	match kind:
+		"lever": switch.consequence_preview = "Raises the physical gate; the threshold opens only when fully lifted."
+		"valve": switch.consequence_preview = "Vents the visible pollen stock covering this cache."
+		"decoy": switch.consequence_preview = "Calls the branch guard here; the lysate source is reachable only after it arrives."
 	var post := MeshInstance3D.new()
 	var pm := BoxMesh.new(); pm.size = Vector3(0.4, 1.3, 0.4); post.mesh = pm
 	post.material_override = _make_material(theme["color"], theme["glow"], 1.0)
 	post.position = Vector3(0.0, 0.65, 0.0)
 	switch.add_child(post)
 	_outline_interactable_child(switch, post, "BranchSwitch%d" % g, 1.4)
-	switch.interacted.connect(func() -> void: _on_branch_switch(branch_i))
+	_configure_wash_control(
+		switch, "branch_switch:%d" % g, "branch_switch", branch_i,
+		_on_branch_switch.bind(branch_i, switch))
 	return switch
 
-# Activating a branch switch: unlock the cache, drop the gate bar, and (for a guarded branch) lure the guard
-# off the pad — distract it (shrinks its reach) and pull its roam anchor back to the neck corner.
-func _on_branch_switch(g: int) -> void:
+# The three interventions intentionally make different predictions. Only the physical endpoint can expose a
+# cache: full gate lift, complete flow clearance, or guard arrival at the beacon.
+func _on_branch_switch(g: int, source: Node = null) -> bool:
 	if not _accepts_gameplay_events() or g < 0 or g >= _branches.size():
-		return
+		return false
 	var b: Dictionary = _branches[g]
-	if bool(b.get("unlocked", false)):
-		return
-	b["unlocked"] = true
-	if is_instance_valid(b.get("cache")):
-		b["cache"].set_interaction_enabled(true)
-	if is_instance_valid(b.get("gate_bar")):
-		b["gate_bar"].visible = false
-	_say(str(_branch_gate_theme(str(b.get("gate_kind", ""))).get("msg", "// CLEAR //")))
+	var action_id := "branch_switch:%d" % int(b.get("gap", -1))
+	if _consume_wash_control_receipt(source, action_id).is_empty():
+		return false
+	var kind := str(b.get("gate_kind", ""))
+	var accepted := false
+	match kind:
+		"lever": accepted = _begin_branch_timed_phase(g, "raising", BRANCH_LEVER_DURATION)
+		"valve": accepted = _begin_branch_timed_phase(g, "venting", BRANCH_VALVE_DURATION)
+		"decoy": accepted = _begin_branch_decoy(g)
+	if not accepted:
+		_publish_wash_authority()
+		return false
+	_say(str(_branch_gate_theme(kind).get("msg", "// CLEAR //")))
+	_apply_branch_mechanism_truth(b)
+	_publish_wash_authority()
+	_schedule_branch_mechanism(g)
+	return true
+
+
+func _begin_branch_timed_phase(branch_index: int, phase: String, duration: float) -> bool:
+	var sched = _get_scheduler()
+	if sched == null or duration <= 0.0:
+		return false
+	var b: Dictionary = _branches[branch_index]
+	var now := float(sched.get_current_tick())
+	b["mechanism_phase"] = phase
+	b["phase_started_at"] = now
+	b["phase_deadline"] = now + duration
+	b["next_check_at"] = -1.0
+	b["mechanism_context"] = _branch_default_context(b)
+	b["unlocked"] = false
+	return true
+
+
+func _begin_branch_decoy(branch_index: int) -> bool:
+	var sched = _get_scheduler()
+	if sched == null:
+		return false
+	var b: Dictionary = _branches[branch_index]
 	var guard = b.get("guard")
-	if is_instance_valid(guard):
+	if not is_instance_valid(guard) or not guard.has_method("lure_to"):
+		_say("// DECOY // no guard is connected to this beacon")
+		return false
+	var context := _branch_default_context(b)
+	var target := _branch_decode_vec3(context.get("lure_target", []), Vector3.ZERO)
+	if not bool(guard.lure_to(target, BRANCH_DECOY_DURATION)):
+		_say("// DECOY // the guard is committed; wait for it to break off")
+		return false
+	var now := float(sched.get_current_tick())
+	b["mechanism_phase"] = "luring"
+	b["phase_started_at"] = now
+	b["phase_deadline"] = now + BRANCH_DECOY_DURATION
+	b["next_check_at"] = now + BRANCH_DECOY_POLL_INTERVAL
+	b["mechanism_context"] = context
+	b["unlocked"] = false
+	return true
+
+
+func _on_branch_mechanism_tick(
+		branch_index: int, expected_phase: String, expected_deadline: float) -> void:
+	if branch_index < 0 or branch_index >= _branches.size():
+		return
+	var b: Dictionary = _branches[branch_index]
+	if str(b.get("mechanism_phase", "")) != expected_phase \
+			or not is_equal_approx(float(b.get("phase_deadline", -1.0)), expected_deadline):
+		return
+	var sched = _get_scheduler()
+	if sched == null:
+		return
+	var now := float(sched.get_current_tick())
+	match expected_phase:
+		"raising", "venting":
+			if now + 0.000001 < expected_deadline:
+				_schedule_branch_mechanism(branch_index, false)
+				return
+			_complete_branch_mechanism(branch_index)
+		"luring":
+			if now + 0.000001 >= expected_deadline:
+				_reset_branch_decoy_window(branch_index, false)
+				return
+			if _branch_decoy_arrived(b):
+				_open_branch_decoy_window(branch_index, now)
+				return
+			var guard = b.get("guard")
+			if not is_instance_valid(guard) or str(guard.get_state()) != "lured":
+				_reset_branch_decoy_window(branch_index, true)
+				return
+			b["next_check_at"] = minf(expected_deadline, now + BRANCH_DECOY_POLL_INTERVAL)
+			_publish_wash_authority()
+			_schedule_branch_mechanism(branch_index, false)
+		"window":
+			if now + 0.000001 < expected_deadline:
+				var guard = b.get("guard")
+				if is_instance_valid(guard) and str(guard.get_state()) == "lured" \
+						and _branch_decoy_arrived(b):
+					b["next_check_at"] = minf(
+						expected_deadline, now + BRANCH_DECOY_POLL_INTERVAL)
+					_publish_wash_authority()
+					_schedule_branch_mechanism(branch_index, false)
+					return
+				_reset_branch_decoy_window(branch_index, true)
+				return
+			_reset_branch_decoy_window(branch_index, false)
+
+
+func _complete_branch_mechanism(branch_index: int) -> void:
+	var b: Dictionary = _branches[branch_index]
+	var kind := str(b.get("gate_kind", ""))
+	b["mechanism_phase"] = "clear"
+	b["phase_started_at"] = -1.0
+	b["phase_deadline"] = -1.0
+	b["next_check_at"] = -1.0
+	b["unlocked"] = true
+	_apply_branch_mechanism_truth(b)
+	_publish_wash_authority()
+	_say("// LIFT // gate fully raised" if kind == "lever" \
+		else "// VALVE // pollen cleared; cache exposed")
+
+
+func _open_branch_decoy_window(branch_index: int, arrival_tick: float) -> void:
+	var b: Dictionary = _branches[branch_index]
+	b["mechanism_phase"] = "window"
+	b["next_check_at"] = minf(
+		float(b.get("phase_deadline", arrival_tick)), arrival_tick + BRANCH_DECOY_POLL_INTERVAL)
+	b["unlocked"] = true
+	var context: Dictionary = (b.get("mechanism_context", {}) as Dictionary).duplicate(true)
+	context["arrival_tick"] = arrival_tick
+	b["mechanism_context"] = context
+	_apply_branch_mechanism_truth(b)
+	_publish_wash_authority()
+	_schedule_branch_mechanism(branch_index, false)
+	_say("// DECOY // guard at beacon; lysate source reachable")
+
+
+func _reset_branch_decoy_window(branch_index: int, interrupted: bool) -> void:
+	var b: Dictionary = _branches[branch_index]
+	b["mechanism_phase"] = "idle"
+	b["phase_started_at"] = -1.0
+	b["phase_deadline"] = -1.0
+	b["next_check_at"] = -1.0
+	b["mechanism_context"] = _branch_default_context(b)
+	b["unlocked"] = false
+	_apply_branch_mechanism_truth(b)
+	_publish_wash_authority()
+	if interrupted:
+		_say("// DECOY // the guard broke from the lure before reaching it")
+
+
+func _branch_decoy_arrived(branch: Dictionary) -> bool:
+	var guard = branch.get("guard")
+	var gs = _get_game_state()
+	if not is_instance_valid(guard) or gs == null or not gs.characters.has(str(guard.char_id)):
+		return false
+	var context: Dictionary = branch.get("mechanism_context", {})
+	var target := _branch_decode_vec3(context.get("lure_target", []), Vector3.INF)
+	if not target.is_finite():
+		return false
+	var pos: Vector3 = gs.get_position(str(guard.char_id))
+	return Vector2(pos.x, pos.z).distance_to(Vector2(target.x, target.z)) \
+		<= BRANCH_DECOY_ARRIVAL_RADIUS
+
+
+func _schedule_branch_mechanism(branch_index: int, cancel_existing := true) -> void:
+	if branch_index < 0 or branch_index >= _branches.size():
+		return
+	var sched = _get_scheduler()
+	if sched == null:
+		return
+	var b: Dictionary = _branches[branch_index]
+	var phase := str(b.get("mechanism_phase", "idle"))
+	var deadline := float(b.get("phase_deadline", -1.0))
+	var tag := _branch_event_tag(b)
+	if cancel_existing:
+		sched.cancel_tag(tag)
+	if phase not in ["raising", "venting", "luring", "window"] or deadline < 0.0:
+		return
+	var now := float(sched.get_current_tick())
+	var callback_at := deadline
+	if phase in ["luring", "window"]:
+		callback_at = minf(deadline, maxf(now, float(b.get("next_check_at", now))))
+	sched.schedule_after(maxf(0.0, callback_at - now),
+		_on_branch_mechanism_tick.bind(branch_index, phase, deadline), tag)
+
+
+func _branch_event_tag(branch: Dictionary) -> String:
+	return "wash_branch_mechanism_%d" % int(branch.get("gap", -1))
+
+
+func _branch_default_context(branch: Dictionary) -> Dictionary:
+	var kind := str(branch.get("gate_kind", "open"))
+	var gap := int(branch.get("gap", -1))
+	match kind:
+		"lever":
+			return {
+				"mechanism": "counterweight_gate",
+				"blocker_id": "wash_branch_gate_%d" % gap,
+				"gate_lane": BRANCH_GATE_LANE,
+				"lift_height": BRANCH_GATE_LIFT_HEIGHT,
+			}
+		"valve":
+			return {
+				"mechanism": "pollen_vent",
+				"source_lane": BRANCH_PAD_LANE,
+				"outlet_lane": BRANCH_SWITCH_LANE,
+				"stock": "pollen",
+			}
+		"decoy":
+			var guard = branch.get("guard")
+			return {
+				"mechanism": "guard_lure",
+				"guard_id": str(guard.char_id) if is_instance_valid(guard) else "",
+				"lure_target": [
+					float(branch.get("mid_x", 0.0)) + 0.9,
+					0.5,
+					BRANCH_NECK_LANE + 0.4,
+				],
+			}
+	return {"mechanism": "open_breather"}
+
+
+func _branch_decode_vec3(raw: Variant, fallback: Vector3) -> Vector3:
+	if raw is Vector3:
+		return raw as Vector3
+	if raw is Array and (raw as Array).size() >= 3:
+		var decoded := Vector3(float(raw[0]), float(raw[1]), float(raw[2]))
+		return decoded if decoded.is_finite() else fallback
+	return fallback
+
+
+func _branch_phase_progress(branch: Dictionary) -> float:
+	var phase := str(branch.get("mechanism_phase", "idle"))
+	if phase == "clear":
+		return 1.0
+	if phase not in ["raising", "venting"]:
+		return 0.0
+	var started := float(branch.get("phase_started_at", -1.0))
+	var deadline := float(branch.get("phase_deadline", -1.0))
+	if started < 0.0 or deadline <= started:
+		return 0.0
+	var sched = _get_scheduler()
+	var now := float(sched.get_current_tick()) if sched != null else started
+	return clampf((now - started) / (deadline - started), 0.0, 1.0)
+
+
+func _apply_branch_mechanism_truth(branch: Dictionary) -> void:
+	var phase := str(branch.get("mechanism_phase", "idle"))
+	var kind := str(branch.get("gate_kind", "open"))
+	var reward_phase := str(branch.get("reward_phase", REWARD_PHASE_AVAILABLE))
+	var collected := reward_phase == REWARD_PHASE_CLAIMED
+	branch["collected"] = collected
+	var causal_open := kind == "open" or phase == "clear" or phase == "window"
+	_restore_reward_interactable(branch, causal_open)
+	var switch = branch.get("switch")
+	if is_instance_valid(switch):
+		var switch_enabled := reward_phase == REWARD_PHASE_AVAILABLE and phase == "idle"
+		# v1/v2 saves may still describe this control as one-shot. Clear that historical trigger when the
+		# decoy window returns to IDLE so the retry remains real even before the enclosing save is migrated.
 		var gs = _get_game_state()
-		if gs != null and gs.characters.has(guard.char_id):
-			gs.set_character_distracted(guard.char_id, true)
-		if guard.has_method("set_roam"):
-			guard.set_roam(Vector3(float(b["mid_x"]) + 1.0, 0.5, BRANCH_NECK_LANE), 1.0)
+		var data_id := str(switch.get("data_id"))
+		if switch_enabled and gs != null and gs.has_interactable(data_id):
+			var saved_switch: Dictionary = gs.get_interactable(data_id)
+			if bool(saved_switch.get("one_shot", false)) and bool(saved_switch.get("triggered", false)):
+				gs.reset_interactable(data_id)
+		if switch.has_method("restore_one_shot_presenter"):
+			switch.restore_one_shot_presenter(false, switch_enabled)
+		else:
+			switch.set_interaction_enabled(switch_enabled)
+	if kind == "lever":
+		var closed := phase != "clear"
+		var body = branch.get("gate_body")
+		if is_instance_valid(body):
+			body.collision_layer = 1 if closed else 0
+		var collision = branch.get("gate_collision")
+		if is_instance_valid(collision):
+			collision.disabled = not closed
+		_set_branch_gate_blocked(branch, closed)
+	_refresh_branch_mechanism_visual(branch)
+
+
+func _refresh_branch_mechanism_visual(branch: Dictionary) -> void:
+	var phase := str(branch.get("mechanism_phase", "idle"))
+	var kind := str(branch.get("gate_kind", "open"))
+	var progress := _branch_phase_progress(branch)
+	if kind == "lever":
+		var gate = branch.get("gate_visual")
+		if is_instance_valid(gate):
+			var base: Transform3D = branch.get("gate_base_transform", gate.transform)
+			var raised := base
+			raised.origin += base.basis.y.normalized() * BRANCH_GATE_LIFT_HEIGHT * progress
+			gate.transform = raised
+	elif kind == "valve":
+		var plumes: Array = branch.get("vent_plumes", [])
+		for plume_i in range(plumes.size()):
+			var plume = plumes[plume_i]
+			if not is_instance_valid(plume):
+				continue
+			plume.visible = phase in ["idle", "venting"]
+			var stagger := clampf(
+				(progress - float(plume_i) * 0.06) / maxf(0.1, 1.0 - float(plumes.size() - 1) * 0.06),
+				0.0, 1.0)
+			var base: Transform3D = plume.get_meta("branch_base_transform", plume.transform)
+			var streamed := base
+			streamed.origin += base.basis.y.normalized() * stagger * (0.55 + 0.12 * float(plume_i))
+			plume.transform = streamed
+			plume.scale = Vector3(
+				maxf(0.08, 1.0 - stagger), 1.0 + stagger, maxf(0.08, 1.0 - stagger))
+
+
+func _refresh_branch_mechanism_presenters() -> void:
+	for branch in _branches:
+		_refresh_branch_mechanism_visual(branch)
+
+
+func _branch_gate_cells(branch: Dictionary) -> Array[Vector2i]:
+	var gs = _get_game_state()
+	if gs == null or gs.grid == null:
+		return []
+	var unique := {}
+	var mid := float(branch.get("mid_x", 0.0))
+	for tangent_offset in [-1.0, 0.0, 1.0]:
+		var cell: Vector2i = gs.grid.world_to_grid(
+			Vector3(mid + tangent_offset, 0.0, BRANCH_GATE_LANE))
+		unique[cell] = true
+	var cells: Array[Vector2i] = []
+	for cell_v in unique.keys():
+		cells.append(cell_v as Vector2i)
+	return cells
+
+
+func _set_branch_gate_blocked(branch: Dictionary, blocked: bool) -> void:
+	var gs = _get_game_state()
+	if gs == null or gs.grid == null:
+		return
+	var blocker_id := "wash_branch_gate_%d" % int(branch.get("gap", -1))
+	for cell in _branch_gate_cells(branch):
+		var existing := str(gs.grid.dynamic_blockers.get(cell, ""))
+		if blocked:
+			if existing == "" or existing == blocker_id:
+				gs.grid.add_dynamic_blocker(cell, blocker_id)
+		elif existing == blocker_id:
+			gs.grid.remove_dynamic_blocker(cell)
+
+
+func _branch_gate_is_blocked(branch: Dictionary) -> bool:
+	var gs = _get_game_state()
+	if gs == null or gs.grid == null:
+		return false
+	var cells := _branch_gate_cells(branch)
+	var blocker_id := "wash_branch_gate_%d" % int(branch.get("gap", -1))
+	if cells.is_empty():
+		return false
+	for cell in cells:
+		if str(gs.grid.dynamic_blockers.get(cell, "")) != blocker_id:
+			return false
+	return true
+
+
+func _release_branch_gate_blockers() -> void:
+	for branch in _branches:
+		if str(branch.get("gate_kind", "")) == "lever":
+			_set_branch_gate_blocked(branch, false)
 
 # --- Threat layer: hide alcoves, flures, guards ---
 
@@ -1170,19 +2660,27 @@ func _build_threats() -> void:
 	for li in range(LURE_SPECS.size()):
 		var lp: Vector3 = LURE_SPECS[li]["pos"]
 		var idx := li
-		# Click to walk over and fire the lure (discrete action, like lure_relay). The bulb is a CHILD of the
-		# interactable so the visual + its outline ride the helix warp together.
-		var dev := _add_interactable(self, "Flure%d" % li, "Fire flure", lp,
-			"FLURE", "", 1.0, true, 1.4, Interactable.InteractableType.INSPECTION, false)
-		dev.interacted.connect(func() -> void: _on_lure(idx))
-		var bulb := _add_box(dev, Vector3(0.0, 0.7 - lp.y, 0.0), Vector3(0.5, 0.9, 0.5), Color(0.4, 0.25, 0.06))
-		var bm := StandardMaterial3D.new()
-		bm.albedo_color = Color(0.4, 0.25, 0.06); bm.emission_enabled = true
-		bm.emission = Color(1.0, 0.55, 0.12); bm.emission_energy_multiplier = 0.6
-		bulb.material_override = bm
-		_lure_meshes.append(bulb)
+		var target_id := str(LURE_SPECS[li].get("target", ""))
+		var flure := Flure.new()
+		flure.name = "Flure%d" % li
+		flure.authority_id = "wash_relay_section_flure_%d" % li
+		flure.configure(
+			_get_game_state(), lp, [target_id], 24.0, 1.4,
+			Color(1.0, 0.55, 0.12))
+		flure.one_shot = false
+		flure.lure_duration = LURE_DURATION
+		flure.settle_pos = lp
+		flure.set_enemy_resolver(_enemy_by_id)
+		flure.set_pre_trigger_validator(
+			_validate_wash_flure_policy.bind("section", idx))
+		flure.flure_activated.connect(
+			_on_wash_flure_activated.bind("section", idx, flure))
+		add_child(flure)
+		_register_interactable(flure)
+		_flures.append(flure)
+		_relay_flures.append(flure)
+		_lure_meshes.append(flure.get_node_or_null("Glow"))
 		_lure_until.append(-1.0)
-		_outline_interactable_child(dev, bulb, "Flure%d" % li, 1.4)
 	for spec in ENEMY_SPECS:
 		_spawn_ch_enemy(spec)
 
@@ -1216,57 +2714,228 @@ func _enemy_spawn_for(id: String) -> Vector3:
 	return Vector3.ZERO
 
 func _on_enemy_hit(target_id: String) -> void:
-	if _phase == "active" and target_id in PARTY_IDS:
+	if _phase == "active" and target_id in PARTY_IDS \
+			and _party_body_in_active_current(target_id):
 		if _wash_character(target_id):   # the guard shoves you into the channel -> back to the start shelter
 			_announce_wash([target_id])
 
-func _on_lure(idx: int) -> void:
-	if not _accepts_gameplay_events() or idx < 0 or idx >= LURE_SPECS.size():
-		return
-	var l: Dictionary = LURE_SPECS[idx]
-	var target := str(l["target"])
-	var lp: Vector3 = l["pos"]
-	while _lure_until.size() <= idx:
-		_lure_until.append(-1.0)
-	_lure_until[idx] = _get_scheduler_tick() + LURE_DURATION
-	_set_lure_emission(idx, 3.0)
+
+func _party_body_in_active_current(character_id: String) -> bool:
 	var gs = _get_game_state()
-	if gs != null:
-		for enemy in _enemies:
-			if is_instance_valid(enemy) and enemy.char_id == target and gs.characters.has(target):
-				gs.set_character_distracted(target, true)   # reach shrinks: it won't notice a runner keeping distance
-				gs.command_move_to_pos(target, lp)           # and it walks off its post toward the song
-	var sched = _get_scheduler()
-	if sched != null:
-		sched.schedule_after(LURE_DURATION, func() -> void: _on_lure_expired(idx), "wash_lure_%d" % idx)
-	_say("// FLURE SINGS // guard drawn")
+	if gs == null or not gs.characters.has(character_id) \
+			or gs.is_external_traversal_active(character_id):
+		return false
+	var p: Vector3 = gs.get_position(character_id)
+	if _drain_flooding and _in_drain_channel(p):
+		return true
+	for section_index in range(mini(SECTIONS.size(), _flooding.size())):
+		if not bool(_flooding[section_index]) or _section_disabled(section_index):
+			continue
+		var section := SECTIONS[section_index] as Dictionary
+		if p.x >= float(section.get("x0", INF)) \
+				and p.x <= float(section.get("x1", -INF)) \
+				and absf(p.z) <= FLOOR_Z_HALF:
+			return true
+	return false
+
+
+func _validate_wash_flure_policy(
+		source: Node, _actor: String, kind: String, index: int) -> bool:
+	if not _accepts_gameplay_events() or source == null:
+		return false
+	if kind == "drain":
+		return source == _drain_bait_flure \
+			and _drain_bait_until < 0.0 \
+			and _wash_enemy_ready(DRAIN_GUARD_ID)
+	if kind == "section" and index >= 0 and index < LURE_SPECS.size() \
+			and index < _relay_flures.size():
+		return source == _relay_flures[index] \
+			and _wash_enemy_ready(str(LURE_SPECS[index].get("target", "")))
+	return false
+
+
+## Flure has already reserved its exact source, committed its target receipt, and asked the real
+## Enemy FSM to walk to its settle point before this bookkeeping signal. Wash only mirrors the
+## authoritative deadline for HUD/debug reads; it neither distracts nor commands the guard.
+func _on_wash_flure_activated(
+		_pulled: int, kind: String, index: int, flure: Node) -> void:
+	if not is_instance_valid(flure) or not flure.has_method("get_effect_state"):
+		return
+	var effect: Dictionary = flure.get_effect_state()
+	var deadline := float(effect.get("end_tick", -1.0))
+	if kind == "drain":
+		_drain_bait_until = deadline
+		if deadline >= 0.0:
+			_schedule_wash_at(
+				deadline, _drain_chase_resume, "wash_drain_bait")
+		_say("// FLURE SINGS // the ledge guard follows it into the channel")
+	elif kind == "section" and index >= 0 and index < LURE_SPECS.size():
+		while _lure_until.size() <= index:
+			_lure_until.append(-1.0)
+		_lure_until[index] = deadline
+		if deadline >= 0.0:
+			_schedule_wash_at(
+				deadline, _on_lure_expired.bind(index),
+				"wash_lure_%d" % index)
+		_say("// FLURE SINGS // guard drawn")
+	_publish_wash_authority()
+
+
+## Retired compatibility seam. Only the reusable Flure's exact physical trigger can create a song.
+func _on_lure(_idx: int, _source: Node = null) -> bool:
+	return false
 
 func _on_lure_expired(idx: int) -> void:
 	if _phase != "active":
 		return
 	if idx < _lure_until.size():
 		_lure_until[idx] = -1.0
-	_set_lure_emission(idx, 0.6)
-	var target := str(LURE_SPECS[idx]["target"])
-	var gs = _get_game_state()
-	if gs != null and gs.characters.has(target):
-		gs.set_character_distracted(target, false)
-		gs.command_move_to_pos(target, _enemy_spawn_for(target))
+	_publish_wash_authority()
 
 func _set_lure_emission(idx: int, e: float) -> void:
+	# Legacy presenter compatibility only. Reusable Flure derives its glow from its own phase.
+	if idx < _relay_flures.size():
+		return
 	if idx < _lure_meshes.size() and is_instance_valid(_lure_meshes[idx]):
 		var m := _lure_meshes[idx].material_override as StandardMaterial3D
 		if m != null:
 			m.emission_energy_multiplier = e
 
 func _lure_active() -> bool:
-	var now := _get_scheduler_tick()
-	for u in _lure_until:
-		if float(u) > now:
+	for flure in _relay_flures:
+		if is_instance_valid(flure) and flure.has_method("is_active") \
+				and bool(flure.is_active()):
 			return true
+	if is_instance_valid(_drain_bait_flure) \
+			and _drain_bait_flure.has_method("is_active") \
+			and bool(_drain_bait_flure.is_active()):
+		return true
 	return false
 
+
+func _sync_flure_mirrors_from_authority() -> void:
+	_lure_until.clear()
+	for flure in _relay_flures:
+		var deadline := -1.0
+		if is_instance_valid(flure) and flure.has_method("get_effect_state"):
+			var state: Dictionary = flure.get_effect_state()
+			if str(state.get("phase", "")) in ["applying", "active"]:
+				deadline = float(state.get("end_tick", -1.0))
+		_lure_until.append(deadline)
+	_drain_bait_until = -1.0
+	if is_instance_valid(_drain_bait_flure) \
+			and _drain_bait_flure.has_method("get_effect_state"):
+		var drain_state: Dictionary = _drain_bait_flure.get_effect_state()
+		if str(drain_state.get("phase", "")) in ["applying", "active"]:
+			_drain_bait_until = float(drain_state.get("end_tick", -1.0))
+
+
 # --- Wash cadence (scheduler-driven; fires at exact ticks) ---
+
+func _activate_wash_relay() -> void:
+	if _phase == "ready":
+		_phase = "active"
+	if _phase != "active":
+		return
+	var was_restoring := _restoring_wash_authority
+	_restoring_wash_authority = true
+	_ensure_spatial_authority()
+	_ensure_scheduled()
+	_restoring_wash_authority = was_restoring
+	if not was_restoring:
+		_publish_wash_authority()
+
+
+## Held controls, alcove concealment, retry-marker release, and the exit gate are gameplay truth.
+## Sample them on one fixed gameplay cadence rather than on render/headless calls. The epoch and next
+## absolute tick are portable, while the resulting concealment lives in canonical GameState stats.
+func _ensure_spatial_authority() -> void:
+	if _phase != "active":
+		return
+	var sched = _get_scheduler()
+	if sched == null:
+		return
+	var now := float(sched.get_current_tick())
+	var should_arm := false
+	if not is_finite(_spatial_authority_epoch) or _spatial_authority_epoch < 0.0:
+		_spatial_authority_epoch = now
+		should_arm = true
+	if not is_finite(_next_spatial_authority_tick) \
+			or _next_spatial_authority_tick < now - 0.0000001:
+		_next_spatial_authority_tick = FixedCadenceScript.next_strict_tick(
+			_spatial_authority_epoch, SPATIAL_AUTHORITY_INTERVAL, now
+		)
+		should_arm = true
+	# `_activate_wash_relay()` is called by the presenter every frame. A future callback is already
+	# authoritative; repeatedly cancelling and replacing it fills EventScheduler with tombstones and
+	# can eventually strand the live recurrence. Explicit reset/restore paths rearm separately.
+	if not should_arm:
+		return
+	_schedule_wash_at(
+		_next_spatial_authority_tick,
+		_spatial_authority_tick,
+		SPATIAL_AUTHORITY_TAG
+	)
+	_publish_wash_authority()
+
+
+func _restart_spatial_authority() -> void:
+	var sched = _get_scheduler()
+	if sched == null:
+		_spatial_authority_epoch = -1.0
+		_next_spatial_authority_tick = -1.0
+		return
+	sched.cancel_tag(SPATIAL_AUTHORITY_TAG)
+	var now := float(sched.get_current_tick())
+	_spatial_authority_epoch = now
+	_next_spatial_authority_tick = FixedCadenceScript.next_strict_tick(
+		_spatial_authority_epoch, SPATIAL_AUTHORITY_INTERVAL, now
+	)
+	# Reset/attachment is itself an explicit lifecycle boundary. Establish construction truth once,
+	# then every later gameplay consequence comes from the fixed scheduler cadence.
+	_evaluate_spatial_authority()
+	if _phase == "active":
+		_schedule_wash_at(
+			_next_spatial_authority_tick,
+			_spatial_authority_tick,
+			SPATIAL_AUTHORITY_TAG
+		)
+	_publish_wash_authority()
+
+
+func _spatial_authority_tick() -> void:
+	if _phase != "active":
+		_next_spatial_authority_tick = -1.0
+		_publish_wash_authority()
+		return
+	_evaluate_spatial_authority()
+	if _phase != "active":
+		return
+	var sched = _get_scheduler()
+	if sched == null:
+		_next_spatial_authority_tick = -1.0
+		_publish_wash_authority()
+		return
+	var now := float(sched.get_current_tick())
+	_next_spatial_authority_tick = FixedCadenceScript.next_strict_tick(
+		_spatial_authority_epoch, SPATIAL_AUTHORITY_INTERVAL, now
+	)
+	_schedule_wash_at(
+		_next_spatial_authority_tick,
+		_spatial_authority_tick,
+		SPATIAL_AUTHORITY_TAG,
+		false
+	)
+	_publish_wash_authority()
+
+
+func _evaluate_spatial_authority() -> void:
+	if _phase != "active":
+		return
+	_sample_held_control_truth()
+	_sample_hide_concealment_truth()
+	_sample_route_and_completion_truth()
+
 
 func _ensure_scheduled() -> void:
 	if _scheduled or _phase != "active":
@@ -1276,19 +2945,24 @@ func _ensure_scheduled() -> void:
 		return
 	_scheduled = true
 	_cadence_t0 = sched.get_current_tick()   # anchor the cadence to NOW (so a re-arm after reset stays consistent)
+	_section_flood_until.resize(SECTIONS.size())
 	for i in range(SECTIONS.size()):
-		sched.schedule_after(FIRST_FLOOD + float(SECTIONS[i]["phase"]), _make_onset(i), "wash_onset_%d" % i)
-		var lead := FIRST_FLOOD + float(SECTIONS[i]["phase"]) - TELEGRAPH_LEAD
-		if lead > 0.0:
-			sched.schedule_after(lead, _make_pretel(i), "wash_pretel_%d" % i)
+		_section_flood_until[i] = -1.0
+		var onset := _cadence_t0 + FIRST_FLOOD + float(SECTIONS[i]["phase"])
+		_schedule_wash_at(onset, _make_onset(i), "wash_onset_%d" % i)
+		var pretelegraph := onset - TELEGRAPH_LEAD
+		if pretelegraph > _cadence_t0:
+			_schedule_wash_at(pretelegraph, _make_pretel(i), "wash_pretel_%d" % i)
 	# The drain loop floods on its own recurring beat (self-rescheduling like a section, gated on "active").
-	sched.schedule_after(FIRST_FLOOD + DRAIN_LOOP_PHASE, func() -> void: _drain_onset(), "wash_drain_onset")
+	_schedule_wash_at(_cadence_t0 + FIRST_FLOOD + DRAIN_LOOP_PHASE,
+		_drain_onset, "wash_drain_onset")
+	_publish_wash_authority()
 
 func _make_onset(i: int) -> Callable:
-	return func() -> void: _flood_onset(i)
+	return Callable(self, "_flood_onset").bind(i)
 
 func _make_pretel(i: int) -> Callable:
-	return func() -> void: _pre_telegraph(i)
+	return Callable(self, "_pre_telegraph").bind(i)
 
 # The surge TELL: a beat before a section floods, its flow strip brightens to a warning glow so the player
 # reads the coming surge instead of staring at dead water. Cosmetic only (strip energy) — never logged.
@@ -1376,9 +3050,7 @@ func _play_water_surge(i: int) -> void:
 		var m := blob.material_override as StandardMaterial3D
 		if m != null:
 			tw.parallel().tween_property(m, "albedo_color:a", 0.0, 0.4)
-		tw.chain().tween_callback(func() -> void:
-			if is_instance_valid(blob):
-				blob.queue_free())
+		tw.chain().tween_callback(_free_cosmetic_instance.bind(blob.get_instance_id()))
 
 func _period(i: int) -> float:
 	return float(SECTIONS[i].get("period", FLOW_PERIOD))
@@ -1401,10 +3073,13 @@ func _flood_onset(i: int) -> void:
 	var sched = _get_scheduler()
 	if _phase != "active":
 		return
-	# Count cadence beats even while a held control suppresses the water. TRACE predicts the next scheduled beat;
+	# Count cadence beats even while a held control suppresses the water. Gauge reads predict the next beat;
 	# skipping disabled beats here made that read drift as soon as a player released an override or plate.
 	if i < _flood_counts.size():
 		_flood_counts[i] += 1
+	var now := float(sched.get_current_tick()) if sched != null else _get_scheduler_tick()
+	while _section_flood_until.size() < SECTIONS.size():
+		_section_flood_until.append(-1.0)
 	if not _section_disabled(i):
 		_learn_surge_timing_if_near(i)
 		_flooding[i] = true
@@ -1414,28 +3089,37 @@ func _flood_onset(i: int) -> void:
 		if str(SECTIONS[i]["type"]) == "sluice":
 			_set_sluice(i, true)            # the gate slams shut — the threshold is impassable
 		if sched != null:
+			_section_flood_until[i] = now + _dur(i)
 			var sweep_count := ceili(_dur(i) / FLOOD_SWEEP_INTERVAL)
 			for k in range(1, sweep_count + 1):
-				sched.schedule_after(
-					minf(_dur(i), FLOOD_SWEEP_INTERVAL * float(k)),
+				_schedule_wash_at(
+					now + minf(_dur(i), FLOOD_SWEEP_INTERVAL * float(k)),
 					_make_section_sweep(i),
 					"wash_section_sweep_%d_%d" % [i, k]
 				)
-			sched.schedule_after(_dur(i), func() -> void: _set_flood_off(i), "wash_off_%d" % i)
+			_schedule_wash_at(_section_flood_until[i], _set_flood_off.bind(i), "wash_off_%d" % i)
+	else:
+		_section_flood_until[i] = -1.0
 	if sched != null and _phase == "active":
-		sched.schedule_after(_period(i), _make_onset(i), "wash_onset_%d" % i)
-		var lead := _period(i) - TELEGRAPH_LEAD
-		if lead > 0.0:
-			sched.schedule_after(lead, _make_pretel(i), "wash_pretel_%d" % i)
+		var next_onset := _cadence_t0 + FIRST_FLOOD + float(SECTIONS[i]["phase"]) \
+				+ _period(i) * float(_flood_counts[i])
+		_schedule_wash_at(next_onset, _make_onset(i), "wash_onset_%d" % i, false)
+		if next_onset - TELEGRAPH_LEAD > now:
+			_schedule_wash_at(next_onset - TELEGRAPH_LEAD, _make_pretel(i), "wash_pretel_%d" % i)
+	_publish_wash_authority()
 
 func _set_flood_off(i: int) -> void:
 	_flooding[i] = false
+	if i < _section_flood_until.size():
+		_section_flood_until[i] = -1.0
 	_set_strip(i, 0.4)
 	if i < SECTIONS.size() and str(SECTIONS[i]["type"]) == "sluice":
 		_set_sluice(i, false)               # the gate lifts — the threshold opens again
 
+	_publish_wash_authority()
+
 func _make_section_sweep(i: int) -> Callable:
-	return func() -> void: _sweep_flooded_section(i)
+	return Callable(self, "_sweep_flooded_section").bind(i)
 
 ## Scheduler-driven rechecks make the rule match the picture: entering water at any point while it is
 ## visibly up is dangerous. This cannot live in _process because gameplay results must be invariant under
@@ -1476,9 +3160,11 @@ func _section_disabled(i: int) -> bool:
 	var dis := str(SECTIONS[i]["disable"])
 	# plate / double_plate / override are all HELD controls: disabled only WHILE a member stands on the
 	# plate(s) / the override console. Vacate and the flow resumes — no permanent latch (principle #5). The
-	# held state is refreshed positionally in _update; double_plate needs BOTH pads, override needs the console.
+	# held state is sampled at consequence ticks; double_plate needs BOTH pads, override needs the console.
 	if dis == "plate" or dis == "double_plate" or dis == "override":
-		return _plate_held[i]
+		# Consequence callers sample canonical positions now. `_plate_held` is only the resulting presenter cache.
+		_sample_held_control_truth()
+		return i < _plate_held.size() and bool(_plate_held[i])
 	return false
 
 func _pressure_vent_remaining() -> float:
@@ -1538,26 +3224,121 @@ func _wash_character(char_id: String) -> bool:
 	if char_id not in PARTY_IDS:
 		return false
 	var gs = _get_game_state()
-	if gs != null:
-		if not gs.characters.has(char_id):
-			return false
-		gs.command_stop(char_id)   # cancel any in-flight move so the runner is carried off, not walking on
-	# Capture the pre-wash RENDER position + the flat data position BEFORE the snap — the cosmetic streak slides
-	# from where the current grabbed you, down the spiral, to the start. (Purely for the visual; the data snap
-	# below is instant and authoritative — tests depend on it.)
+	if gs == null or not gs.characters.has(char_id):
+		return false
+	# A climbvine/crawl/current traversal owns the character until its endpoint. Its flat data-space
+	# interpolation may cross wet coordinates while the body is elsewhere; those coordinates must not
+	# manufacture a second wash or overwrite the locked traversal.
+	if gs.is_external_traversal_active(char_id) or _current_carries.has(char_id):
+		return false
+	gs.command_stop(char_id)
 	var pre_flat := _get_character_position(char_id)
-	var pre_render := pre_flat
-	if gs != null and gs.characters.has(char_id):
-		pre_render = gs.get_render_position(char_id)
-	# The flood carries you all the way DOWN the spiral to the start shelter. `_washed` means the member is still
-	# WAITING there and can be telephoned/climbed up as a convenience; moving into the relay clears the mark. It is
-	# deliberately not an immunity flag or hidden control lock — a retrying character follows the normal rules.
-	_set_character_position(char_id, START_POS)
-	_washed[char_id] = true
-	# COSMETIC ONLY: the current visibly carries you down the helix (a surge + a colour streak that follows the
-	# curve to the start, then a splash). The body already snapped above — this is just the eye-candy.
+	var pre_render: Vector3 = gs.get_render_position(char_id)
+	var inward := Vector3(-pre_render.x, 0.0, -pre_render.z)
+	inward = inward.normalized() if inward.length_squared() > 0.0001 else Vector3(0.0, 0.0, -1.0)
+	var knocked_render := pre_render + inward * 3.2 - Vector3(0.0, 0.5, 0.0)
+	var return_duration := clampf(
+		pre_flat.distance_to(START_POS) / WASH_CURRENT_RETURN_SPEED,
+		WASH_CURRENT_RETURN_MIN,
+		WASH_CURRENT_RETURN_MAX
+	)
+	var traversal_id := StringName("%sknock:%s" % [WASH_CURRENT_TRAVERSAL_PREFIX, char_id])
+	var now := _get_scheduler_tick()
+	var impact_tick := now + WASH_CURRENT_KNOCK_DURATION
+	var carry := {
+		"phase": "knock_reserved",
+		"origin_render": _wash_encode_vec3(pre_render),
+		"knocked_render": _wash_encode_vec3(knocked_render),
+		"return_duration": return_duration,
+		"traversal_id": String(traversal_id),
+		"impact_tick": impact_tick,
+	}
+	# Reserve complete owner geometry before GameState can synchronously emit traversal_started.
+	_current_carries[char_id] = carry
+	_publish_wash_authority()
+	_arm_wash_current_preimpact(char_id, "knock", String(traversal_id), impact_tick)
+	var accepted := bool(gs.command_external_traversal(
+			char_id,
+			traversal_id,
+			pre_flat,
+			pre_render,
+			knocked_render,
+			WASH_CURRENT_KNOCK_DURATION,
+			&"locked"
+		))
+	if not accepted and _wash_has_matching_traversal(char_id, String(traversal_id)):
+		accepted = true
+	if not accepted:
+		_cancel_wash_current_preimpact(char_id, "knock")
+		_current_carries.erase(char_id)
+		_publish_wash_authority()
+		return false
+	# The real character is now owned by GameState's saved traversal. Full concealment represents being
+	# inside the opaque current/return channel, not an immunity flag left behind at either endpoint.
+	gs.set_character_concealment(char_id, GameState.CONCEAL_FULL)
+	if _current_carries.has(char_id):
+		carry = _current_carries[char_id] as Dictionary
+		if str(carry.get("phase", "")) == "knock_reserved":
+			carry["phase"] = "knock"
+			_current_carries[char_id] = carry
+			_publish_wash_authority()
+	# The surge accent adds impact, but the body itself is the authoritative moving object.
 	_play_sweep_animation(char_id, pre_render, pre_flat.x)
 	return true
+
+
+func _wash_current_preimpact_tag(character_id: String, leg: String) -> String:
+	return "wash_current_preimpact_%s_%s" % [leg, character_id]
+
+
+func _arm_wash_current_preimpact(
+		character_id: String, leg: String, traversal_id: String,
+		impact_tick: float) -> void:
+	_schedule_wash_at(
+		maxf(
+			_get_scheduler_tick(),
+			impact_tick - WASH_CURRENT_PREIMPACT_EPSILON),
+		_mark_wash_current_impact_pending.bind(
+			character_id, leg, traversal_id, impact_tick),
+		_wash_current_preimpact_tag(character_id, leg))
+
+
+func _cancel_wash_current_preimpact(character_id: String, leg: String) -> void:
+	var sched = _get_scheduler()
+	if sched != null:
+		sched.cancel_tag(_wash_current_preimpact_tag(character_id, leg))
+
+
+## This boundary runs just before GameState commits the traversal endpoint. A listener saving from
+## external_traversal_finished therefore sees an explicit arrival transaction, never a stale
+## CARRYING owner paired with an already-landed body.
+func _mark_wash_current_impact_pending(
+		character_id: String, leg: String, traversal_id: String,
+		impact_tick: float) -> void:
+	if not _current_carries.has(character_id):
+		return
+	var carry: Dictionary = (
+		_current_carries[character_id] as Dictionary).duplicate(true)
+	if str(carry.get("traversal_id", "")) != traversal_id \
+			or not is_equal_approx(
+				float(carry.get("impact_tick", -1.0)), impact_tick):
+		return
+	var phase := str(carry.get("phase", ""))
+	if phase not in ["%s_reserved" % leg, leg]:
+		return
+	carry["phase"] = "%s_impact_pending" % leg
+	_current_carries[character_id] = carry
+	_publish_wash_authority()
+
+
+func _wash_has_matching_traversal(
+		character_id: String, traversal_id: String) -> bool:
+	var gs = _get_game_state()
+	if gs == null or not gs.characters.has(character_id) \
+			or not gs.is_external_traversal_active(character_id):
+		return false
+	return str(gs.get_external_traversal_state(character_id).get(
+		"traversal_id", "")) == traversal_id
 
 func _format_party_names(ids: Array) -> String:
 	var names: Array[String] = []
@@ -1579,11 +3360,12 @@ func _format_party_names(ids: Array) -> String:
 ## One character-specific, nonblocking announcement per wash EVENT. The run-hint counts events, not bodies.
 func _announce_wash(ids: Array) -> void:
 	_sweep_count += 1
-	_show_message("// WASHED // %s swept back to the start shelter — regroup or retry" % _format_party_names(ids), 3.0)
+	_show_message("// CURRENT CAUGHT // %s being carried to the start shelter" % _format_party_names(ids), 3.0)
 	# After a few washes the lesson lands diegetically: you can't walk the surges, you have to RUN them.
 	if _sweep_count >= 3 and not _run_hint_shown:
 		_run_hint_shown = true
 		_show_note("Aster: The water comes too often to walk it. Wait for the surge, then RUN.", 4.5)
+	_publish_wash_authority()
 
 # --- Drain loop flood + drown (the recurring hazard on the detour) ---
 
@@ -1597,17 +3379,24 @@ func _drain_onset() -> void:
 	_drain_flooding = true
 	_drain_flood_count += 1
 	if sched != null:
+		var now := float(sched.get_current_tick())
+		_drain_flood_until = now + DRAIN_LOOP_DUR
 		# Re-check the whole run across the visible flood WINDOW: party and guards entering mid-surge obey
 		# the same rule. The sweeps ride the scheduler, so they're fast-forward invariant.
 		for k in range(1, DRAIN_DROWN_SWEEPS + 1):
-			sched.schedule_after(DRAIN_LOOP_DUR * float(k) / float(DRAIN_DROWN_SWEEPS),
-				func() -> void: _wash_drain(), "wash_drain_sweep_%d" % k)
-		sched.schedule_after(DRAIN_LOOP_DUR, func() -> void: _set_drain_off(), "wash_drain_off")
+			_schedule_wash_at(now + DRAIN_LOOP_DUR * float(k) / float(DRAIN_DROWN_SWEEPS),
+				_wash_drain, "wash_drain_sweep_%d" % k)
+		_schedule_wash_at(_drain_flood_until, _set_drain_off, "wash_drain_off")
 	if sched != null and _phase == "active":
-		sched.schedule_after(DRAIN_LOOP_PERIOD, func() -> void: _drain_onset(), "wash_drain_onset")
+		var next_onset := _cadence_t0 + FIRST_FLOOD + DRAIN_LOOP_PHASE \
+				+ DRAIN_LOOP_PERIOD * float(_drain_flood_count)
+		_schedule_wash_at(next_onset, _drain_onset, "wash_drain_onset", false)
+	_publish_wash_authority()
 
 func _set_drain_off() -> void:
 	_drain_flooding = false
+	_drain_flood_until = -1.0
+	_publish_wash_authority()
 
 # Seconds until the loop next floods — analytic from the cadence (the safe-window read; mirrors _section_next_onset_in).
 func _drain_next_onset_in() -> float:
@@ -1645,33 +3434,101 @@ func _drown_enemies_in_run() -> void:
 				and _in_drain_channel(_get_character_position(enemy.char_id)):
 			_drown_enemy(enemy)
 
-# Kill an enemy caught by the loop flood: real data-layer death (take_damage to 0 hp -> FSM 'dead', stops it,
-# is_alive() flips false) decided at the onset tick, plus the cosmetic "current drags it down the drain" streak
-# (the same inward-toward-centre sweep the party gets). The registered character + node are removed a beat
-# later on the SCHEDULER (tick-locked, not a tween) so a re-run can respawn the guard.
-func _drown_enemy(enemy, section_index := -1) -> void:
+# Catch an enemy in the visible flood. This method does not kill or teleport it: the exact reusable
+# Channel first reserves and carries the real GameState body inward. Its IMPACT transaction owns
+# lethal damage; Wash retains only provenance/count/cleanup mirrors for UI and retry bookkeeping.
+func _drown_enemy(enemy, section_index := -1) -> bool:
+	if not is_instance_valid(enemy):
+		return false
 	var id: String = enemy.char_id
 	var gs = _get_game_state()
-	var rp := _get_character_position(id)
-	if gs != null and gs.characters.has(id):
-		rp = gs.get_render_position(id)
-		gs.command_stop(id)
-	enemy.take_damage(enemy.max_hp)   # _hp -> 0, die() -> FSM 'dead' (stops moving, emits died); is_alive() == false
-	_play_sweep_animation(id, rp, rp.x)   # cosmetic: the current carries it inward toward the central drain, dissolving
-	if section_index >= 0:
-		_section_drowned_count += 1
-		_say("// SURGE HIT // section %d took the guard" % (section_index + 1))
-	else:
-		_drowned_count += 1
-		_say("// DRAINED // the current took the guard down the shaft")
-	var sched = _get_scheduler()
-	if sched != null:
-		sched.schedule_after(DRAIN_KILL_DELAY, func() -> void: _remove_enemy(id), "wash_drain_kill_%s" % id)
-	else:
-		_remove_enemy(id)
+	if id.is_empty() or gs == null or not gs.characters.has(id) \
+			or _enemy_drown_mirrors.has(id) \
+			or gs.is_external_traversal_active(id):
+		return false
+	var channel = _section_enemy_currents.get(section_index) \
+		if section_index >= 0 else _drain_enemy_current
+	if not is_instance_valid(channel) or not channel.has_method("request_sweep_body"):
+		return false
+	var origin: Vector3 = gs.get_position(id)
+	var destination := _wash_enemy_current_destination(id, origin, section_index)
+	var mirror := {
+		"phase": "reserved",
+		"section_index": section_index,
+		"channel_key": str(channel.authority_state_key()),
+		"started_tick": _get_scheduler_tick(),
+		"impact_tick": -1.0,
+		"destination": _wash_encode_vec3(destination),
+		"counted": false,
+		"removal_deadline": -1.0,
+	}
+	_enemy_drown_mirrors[id] = mirror
+	_publish_wash_authority()
+	var accepted := bool(channel.request_sweep_body(id, "enemy"))
+	if not accepted:
+		_enemy_drown_mirrors.erase(id)
+		_publish_wash_authority()
+		return false
+	mirror = (_enemy_drown_mirrors.get(id, mirror) as Dictionary).duplicate(true)
+	var traversal: Dictionary = gs.get_external_traversal_state(id)
+	mirror["phase"] = "carrying"
+	mirror["impact_tick"] = float(traversal.get("end_tick", -1.0))
+	_enemy_drown_mirrors[id] = mirror
+	_publish_wash_authority()
+	return true
+
+
+func _on_enemy_current_impact(id: String, section_index: int) -> void:
+	var gs = _get_game_state()
+	var enemy = _enemy_by_id(id)
+	if gs == null or not gs.characters.has(id) or not is_instance_valid(enemy) \
+			or (enemy.has_method("is_alive") and bool(enemy.is_alive())):
+		return
+	var mirror: Dictionary = (
+		_enemy_drown_mirrors.get(id, {}) as Dictionary).duplicate(true)
+	if mirror.is_empty():
+		var fallback_channel_key: String = (
+			"kit:channel:wash_relay_enemy_section_%d" % section_index
+			if section_index >= 0
+			else "kit:channel:wash_relay_enemy_drain")
+		mirror = {
+			"section_index": section_index,
+			"channel_key": fallback_channel_key,
+			"started_tick": _get_scheduler_tick(),
+			"destination": _wash_encode_vec3(gs.get_position(id)),
+			"counted": false,
+		}
+	mirror["phase"] = "arrived"
+	mirror["impact_tick"] = _get_scheduler_tick()
+	if not bool(mirror.get("counted", false)):
+		mirror["counted"] = true
+		if section_index >= 0:
+			_section_drowned_count += 1
+			_say("// SURGE HIT // section %d carried the guard into the drain" % (
+				section_index + 1))
+		else:
+			_drowned_count += 1
+			_say("// DRAINED // the current carried the guard down the shaft")
+	var deadline := _get_scheduler_tick() + DRAIN_KILL_DELAY
+	mirror["removal_deadline"] = deadline
+	_enemy_drown_mirrors[id] = mirror
+	_pending_drown_removals[id] = deadline
+	# Publish the arrived/dead receipt before scheduling presentation cleanup. A save here can
+	# finish only the removal; it can never replay the Channel impact or increment the count twice.
+	_publish_wash_authority()
+	_schedule_wash_at(
+		deadline, _remove_enemy.bind(id), "wash_drain_kill_%s" % id)
 
 # Fully remove a drowned enemy: drop it from _enemies, unregister its GameState character, free the node.
 func _remove_enemy(id: String) -> void:
+	_pending_drown_removals.erase(id)
+	if _enemy_drown_mirrors.has(id):
+		var mirror: Dictionary = (
+			_enemy_drown_mirrors[id] as Dictionary).duplicate(true)
+		mirror["phase"] = "removed"
+		mirror["removal_deadline"] = -1.0
+		_enemy_drown_mirrors[id] = mirror
+		_publish_wash_authority()
 	var gs = _get_game_state()
 	for i in range(_enemies.size() - 1, -1, -1):
 		var e = _enemies[i]
@@ -1680,6 +3537,7 @@ func _remove_enemy(id: String) -> void:
 			if gs != null and gs.has_method("unregister_character") and gs.characters.has(id):
 				gs.unregister_character(id)
 			e.queue_free()
+	_publish_wash_authority()
 
 # A drowned section/drain guard (removed mid-run) must come BACK on a reset/re-run — respawn any ENEMY_SPECS
 # guard that's no longer present, before reset re-snaps the survivors. A guard that is still in _enemies but
@@ -1695,92 +3553,108 @@ func _respawn_missing_enemies() -> void:
 				break
 		if not live:
 			_remove_enemy(id)   # drop a lingering dead body (no-op if already gone)
+			# Enemy owns a separate serialized FSM record. Unregistering the dead body does not
+			# retract that record, so a replacement presenter would otherwise attach, find the
+			# prior `dead` phase, and immediately restore itself with zero HP. A relay reset is an
+			# explicit retry boundary: discard that enemy future before attaching the fresh body.
+			var gs = _get_game_state()
+			if gs != null and gs.has_method("set_world_state"):
+				gs.set_world_state("runtime:enemy:%s" % id, {})
 			_spawn_ch_enemy(spec)
 
 # --- Drain loop: lead the guard in (bait, then chase) ---
 
-# Fire the bait: the ledge guard commits and walks DOWN INTO the flooding run (the lure target is mid-run, IN the
-# flood band — NOT the player's spot at the mouth, which would make the guard charge the baiter instead). It's
-# distracted so it ignores the party at range, and it idles in the run for DRAIN_BAIT_PULL — a span longer than
-# one flood PERIOD, so a surge is guaranteed to catch it there. The chase resumes after (a player still in the
-# loop then keeps it in the current). The player clicks the bait from the SAFE mouth, then steps clear.
-func _on_drain_bait() -> void:
-	var gs = _get_game_state()
-	if not _accepts_gameplay_events() or gs == null:
-		return
-	var lure_flat := Vector3((DRAIN_LOOP_S0 + DRAIN_LOOP_S1) * 0.5, 0.5, DRAIN_RUN_LANE)   # mid-run, IN the flood band
-	var committed := false
-	for enemy in _enemies:
-		if is_instance_valid(enemy) and enemy.char_id == DRAIN_GUARD_ID and gs.characters.has(DRAIN_GUARD_ID):
-			gs.set_character_distracted(DRAIN_GUARD_ID, true)
-			# Pathfind across the run (a straight line would cut the corner) — _to_cell when the grid exists.
-			if gs.grid != null:
-				gs.command_move_to_cell(DRAIN_GUARD_ID, gs.grid.world_to_grid(lure_flat))
-			else:
-				gs.command_move_to_pos(DRAIN_GUARD_ID, lure_flat)
-			committed = true
-	if committed:
-		_say("// BAIT // the guard takes the lure into the channel")
-		var sched = _get_scheduler()
-		if sched != null:
-			sched.schedule_after(DRAIN_BAIT_PULL, func() -> void: _drain_chase_resume(), "wash_drain_bait")
+## Retired compatibility seam. The DrainBait node is a real Flure and only its exact trigger can
+## reserve a source/target receipt and ask the Enemy FSM to follow it into the water.
+func _on_drain_bait(_source: Node = null) -> bool:
+	return false
 
-# The bait window ends: clear the distraction so the guard's detection resumes — now a player in the loop is
-# spotted and the guard CHASES them through the flooding run (it stays in the current).
+# The Flure/Enemy pair owns release and return. This callback only retires Wash's HUD deadline.
 func _drain_chase_resume() -> void:
+	_drain_bait_until = -1.0
 	if _phase != "active":
 		return
-	var gs = _get_game_state()
-	if gs != null and gs.characters.has(DRAIN_GUARD_ID):
-		gs.set_character_distracted(DRAIN_GUARD_ID, false)
+	_publish_wash_authority()
 
-func _on_drain_cache() -> void:
+func _on_drain_cache(source: Node = null) -> bool:
 	if not _accepts_gameplay_events():
-		return
-	_branch_loot += BRANCH_REWARD
-	_say("// SALVAGE // drain cache stripped (%d)" % _branch_loot)
+		return false
+	if _consume_wash_control_receipt(source, "drain_cache").is_empty():
+		return false
+	if not _claim_reward_source(_drain_reward):
+		_restore_reward_interactable(_drain_reward, true)
+		_publish_wash_authority()
+		return false
+	_publish_wash_authority()
+	_say("// LYSATE // %s takes concentrated lysate from the flood ledge" \
+		% str(_drain_reward.get("reward_claimed_by", "")).capitalize())
+	return true
 
-# COSMETIC "the current shoves you off the deck" flourish. The spiral winds around its central axis (the
-# origin in XZ), so the WATER SOURCE is the OUTER wall — the side facing AWAY from the centre. A surge rises at
-# that outer source and drives the caught member INWARD (toward the centre, away from the source), shrinking
-# and fading as the current carries them off. Throwaway nodes, freed on completion. The real body already
-# snapped to START — nothing here gates state; it's all eye-candy on the wall-clock tween (@rendering_only).
-func _play_sweep_animation(char_id: String, from_render: Vector3, _from_x: float) -> void:
+func _on_drain_flora_tended(source: Node = null) -> bool:
+	if not _accepts_gameplay_events() or _drain_flora_tended:
+		return false
+	if _consume_wash_control_receipt(source, "drain_flora").is_empty():
+		return false
+	_drain_flora_tended = true
+	var world := DRAIN_FLORA_POS
+	if is_instance_valid(_drain_flora_interactable):
+		world = _drain_flora_interactable.global_position
+	_spawn_flora_light(world, DRAIN_FLORA_POS)
+	_show_message("// TEND FLORA // living light marks the drain's flooding lane", 3.0)
+	_set_preview_step("wash_relay_drain_flora_tended")
+	if is_instance_valid(_drain_flora_interactable):
+		_flash_causal_feedback(_drain_flora_interactable, 2.4, 1.5)
+		_set_causal_feedback_latched(_drain_flora_interactable, true)
+	_publish_wash_authority()
+	return true
+
+func _spawn_flora_light(world: Vector3, flat: Vector3) -> void:
+	if _flora_light_root == null or not is_instance_valid(_flora_light_root):
+		_flora_light_root = Node3D.new()
+		_flora_light_root.name = "DrainFloraLights"
+		add_child(_flora_light_root)
+	var node := FloraLight.new()
+	node.name = "DrainFloraLight"
+	node.position = world + Vector3(0.0, 0.35, 0.0)
+	node.configure({
+		"albedo": Color(0.2, 0.7, 0.5), "emission": Color(0.4, 1.0, 0.7), "emission_energy": 2.2,
+		"bloom_radius": 0.22, "light_color": Color(0.5, 1.0, 0.75), "light_energy": 2.2, "light_range": 6.0,
+	})
+	_flora_light_root.add_child(node)
+	_flora_lights.append({"pos": flat, "node": node})
+
+# Cosmetic impact accent around the REAL current-owned character traversal. The spiral winds around its
+# central axis, so the surge rises at the outer wall and follows the body's inward first leg. There is no
+# duplicate character-coloured proxy: the actual player node moves through GameState's saved traversal.
+func _play_sweep_animation(_char_id: String, from_render: Vector3, _from_x: float) -> void:
 	if not is_instance_valid(_wash_anim_root):
 		_wash_anim_root = Node3D.new()
 		_wash_anim_root.name = "WashSweep"
 		add_child(_wash_anim_root)
-	var col: Color = PARTY_RENDER_COLORS.get(char_id, Color(0.6, 0.8, 1.0))
 	# Inward = toward the spiral's central axis (origin in XZ); outward (= the water source) is the reverse.
 	var inward := Vector3(-from_render.x, 0.0, -from_render.z)
 	inward = inward.normalized() if inward.length() > 0.01 else Vector3(0, 0, -1)
 	var outward := -inward
 	var source := from_render + outward * 1.3 + Vector3(0.0, 0.35, 0.0)   # the surge wells up at the outer wall
-	var push_to := from_render + inward * 3.2 - Vector3(0.0, 0.5, 0.0)     # shoved toward the centre + a touch down
-	# Water surge at the outer source + the character-colour streak at the wash point.
+	# Water surge at the outer source. The character itself supplies the moving focal point.
 	var surge := _build_cosmetic_blob(_wash_anim_root, source, Vector3(1.4, 0.7, 1.4),
 		Color(0.10, 0.42, 0.66, 0.8), Color(0.3, 0.78, 1.0), 2.2)
-	var streak := _build_cosmetic_blob(_wash_anim_root, from_render, Vector3(0.9, 0.9, 0.9),
-		Color(col.r, col.g, col.b, 0.92), col, 2.6)
 	var tw := create_tween()
-	# Both driven INWARD (toward the centre, away from the source); the streak accelerates (EASE_IN) as it's
-	# carried off, shrinking, while both fade out (albedo alpha + emission glow) so the member dissolves.
+	# Follow the same initial inward impulse, then fade. This tween never owns character state.
 	tw.parallel().tween_property(surge, "global_position", from_render + inward * 1.6, 0.8).set_trans(Tween.TRANS_SINE)
-	tw.parallel().tween_property(streak, "global_position", push_to, 0.85).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
-	tw.parallel().tween_property(streak, "scale", Vector3(0.35, 0.35, 0.35), 0.85)
-	var sm := streak.material_override as StandardMaterial3D
 	var um := surge.material_override as StandardMaterial3D
-	if sm != null:
-		tw.parallel().tween_property(sm, "albedo_color:a", 0.0, 0.85).set_ease(Tween.EASE_IN)
-		tw.parallel().tween_property(sm, "emission_energy_multiplier", 0.0, 0.85)
 	if um != null:
 		tw.parallel().tween_property(um, "albedo_color:a", 0.0, 0.7)
 		tw.parallel().tween_property(um, "emission_energy_multiplier", 0.0, 0.7)
-	tw.chain().tween_callback(func() -> void:
-		if is_instance_valid(surge):
-			surge.queue_free()
-		if is_instance_valid(streak):
-			streak.queue_free())
+	tw.chain().tween_callback(_free_cosmetic_instance.bind(surge.get_instance_id()))
+
+
+func _free_cosmetic_instance(instance_id: int) -> void:
+	# Chunk reset may dispose an accent before its frame tween ends. Bind the scalar instance id,
+	# not the Node itself, so a later callback cannot retain and invoke a freed lambda capture.
+	var cosmetic := instance_from_id(instance_id)
+	if is_instance_valid(cosmetic):
+		cosmetic.queue_free()
 
 func _build_cosmetic_blob(parent: Node3D, pos: Vector3, size: Vector3, color: Color, emission: Color, energy: float) -> MeshInstance3D:
 	var mesh := MeshInstance3D.new()
@@ -1889,6 +3763,9 @@ func _update_pipe_splashes(delta: float) -> void:
 				target = (1.0 - until / SPLASH_LEAD) * 0.7   # building warning, up to 0.7 just before onset
 		_splash_intensity[i] = move_toward(float(_splash_intensity[i]), target, delta * SPLASH_SMOOTH)
 		var inten: float = _splash_intensity[i]
+		# The rim outfall sheets ride the SAME eased intensity — the falls pour exactly when
+		# (and as hard as) the section floods, so the dressing never lies about the cadence.
+		WashRelayDressing.drive_falls(_dressing, i, inten)
 		mi.visible = inten > 0.02
 		if mi.visible:
 			var sc := 0.55 + 0.85 * inten
@@ -1899,9 +3776,11 @@ func _update_pipe_splashes(delta: float) -> void:
 
 # --- Interactions ---
 
-func _on_pressure_valve() -> void:
+func _on_pressure_valve(source: Node = null) -> bool:
 	if not _accepts_gameplay_events():
-		return
+		return false
+	if _consume_wash_control_receipt(source, "pressure_valve").is_empty():
+		return false
 	var sched = _get_scheduler()
 	var now := float(sched.get_current_tick()) if sched != null else 0.0
 	_pressure_vent_until = now + PRESSURE_VENT_WINDOW
@@ -1917,61 +3796,447 @@ func _on_pressure_valve() -> void:
 		})
 	if sched != null:
 		sched.cancel_tag('wash_pressure_vent')
-		sched.schedule_after(PRESSURE_VENT_WINDOW, _on_pressure_vent_closed, 'wash_pressure_vent')
+		_schedule_wash_at(_pressure_vent_until, _on_pressure_vent_closed, 'wash_pressure_vent')
+	_publish_wash_authority()
+	return true
 
 
 func _on_pressure_vent_closed() -> void:
 	_pressure_vent_until = -1.0
 	if is_instance_valid(_pressure_valve):
 		_set_causal_feedback_latched(_pressure_valve, false)
+	if is_instance_valid(_drain_flora_interactable):
+		_set_causal_feedback_latched(_drain_flora_interactable, false)
 	if PRESSURE_VENT_SECTION < _flow_strips.size():
 		_set_strip(PRESSURE_VENT_SECTION, 0.4)
 	if _phase == 'active':
 		_show_message('// PRESSURE RETURNING // the jet manifold is live again', 2.2)
+	_publish_wash_authority()
 
-func _on_override(i: int) -> void:
+func _on_cadence_read(section_index: int, source: Node = null) -> bool:
+	if not _accepts_gameplay_events() or section_index < 0 or section_index >= SECTIONS.size():
+		return false
+	if _consume_wash_control_receipt(
+			source, "cadence:%d" % section_index).is_empty():
+		return false
+	_surge_timing_learned = true
+	_cadence_read_section = section_index
+	var sched = _get_scheduler()
+	_cadence_read_until = (sched.get_current_tick() if sched != null else 0.0) + CADENCE_READ_HOLD
+	_set_strip(section_index, 1.3)
+	var period := _period(section_index)
+	var label := str(SECTIONS[section_index]["type"]).to_upper()
+	var next_in := _section_next_onset_in(section_index)
+	var next_read := ""
+	if next_in >= 0.0:
+		next_read = " // next surge in %.1fs" % next_in
+	_show_message("// FLOW SCAN // %s surges every %.1fs%s" % [label, period, next_read], 3.2)
+	_set_preview_step("wash_relay_cadence_read")
+	var reader = _cadence_readers.get(section_index, null)
+	if is_instance_valid(reader):
+		_flash_causal_feedback(reader, 2.2, 1.45)
+	_publish_wash_authority()
+	return true
+
+func _on_override(i: int, source: Node = null) -> bool:
 	# The override is a HELD console — the hold is positional (refreshed in _update like a plate), so arriving
 	# only confirms the member is manning the station. Step off and the flow resumes (no permanent latch).
 	if not _accepts_gameplay_events() or i < 0 or i >= SECTIONS.size():
-		return
+		return false
+	if _consume_wash_control_receipt(
+			source, "override:%d" % i).is_empty():
+		return false
 	_show_message("// SECTION %d // HOLD HERE while the rest cross" % (i + 1), 2.5)
 	var control = _override_controls.get(i, null)
 	if is_instance_valid(control):
 		_flash_causal_feedback(control, 1.8, 1.25)
+	_publish_wash_authority()
+	return true
 
-func _recover_washed() -> int:
-	var n := _washed.size()
-	for char_id in _washed.keys():
-		_set_character_position(char_id, RETURN_LANDING)
-	_washed.clear()
-	return n
+## Retired compatibility seams. A chunk method has neither the exact source object nor a synchronous
+## body receipt, so it cannot tend or climb on the player's behalf. The visible upper/lower
+## Interactables are the only gameplay entry points; their ClimbvineReturn signals retain feedback.
+func _rejoin_waiting_crew() -> int:
+	return 0
 
-func _on_terminal() -> void:
-	if not _accepts_gameplay_events():
-		return
-	var n := _recover_washed()
-	_show_message("// TERMINAL // %d waiting crew telephoned up" % n if n > 0 else "// TERMINAL // no crew waiting at start", 2.6)
 
-func _on_sloperope() -> void:
-	if not _accepts_gameplay_events():
-		return
-	_sloperope_deployed = true
-	if is_instance_valid(_rope_mesh):
-		_rope_mesh.visible = true
-	if is_instance_valid(_climb_interactable):
-		_climb_interactable.set_interaction_enabled(true)
-		_climb_interactable.show_tutorial_label()
-	_show_message("// SLOPEROPE DROPPED // the CLIMB point is now live at the start", 3.0)
+func _on_sloperope(_character_id := "") -> void:
+	return
+
 
 func _on_climb() -> void:
-	if not _accepts_gameplay_events():
+	return
+
+
+func _wash_climb_group() -> Array:
+	var waiting := _washed.keys()
+	waiting.sort()
+	return waiting
+
+
+func _on_climbvine_deployment_started(_return_id: StringName, _state: Dictionary) -> void:
+	_sloperope_deployed = false
+	_publish_wash_authority()
+
+
+func _on_climbvine_deployed(_return_id: StringName, _state: Dictionary) -> void:
+	_sloperope_deployed = true
+	_publish_wash_authority()
+	_show_message("// VINE DEPLOYED // the lower CLIMB mouth is now reachable at the start", 3.0)
+
+
+func _on_climbvine_committed(_return_id: StringName, character_ids: Array) -> void:
+	for id_v in character_ids:
+		_washed.erase(str(id_v))
+	_publish_wash_authority()
+
+
+func _on_climbvine_tend_rejected(character_id: String, required_character: String) -> void:
+	if character_id.is_empty():
 		return
-	if not _sloperope_deployed:
-		_show_message("// NO LINE // drop the sloperope from the chunk end first", 2.5)
+	_show_message("// NEED %s // %s cannot tend this vine" % [
+		required_character.to_upper(), character_id.capitalize()
+	], 2.4)
+
+
+func _sync_climbvine_presenter() -> void:
+	if not is_instance_valid(_climbvine_return):
+		_sloperope_deployed = false
 		return
-	var n := _recover_washed()
-	if n > 0:
-		_show_message("// CLIMBED UP // %d waiting crew recovered" % n, 2.5)
+	_climbvine_return.sync_from_game_state()
+	_sloperope_deployed = bool(_climbvine_return.is_deployed())
+	_climb_interactable = _climbvine_return.get_lower_interactable()
+	_rope_mesh = _climbvine_return.get("_vine_visual") as Node3D
+
+
+func _on_wash_external_traversal_finished(
+		character_id: String, traversal_id: StringName
+	) -> void:
+	var traversal_name := String(traversal_id)
+	if traversal_name.begins_with(WASH_CURRENT_TRAVERSAL_PREFIX):
+		_on_wash_current_leg_finished(character_id, traversal_name)
+		return
+	if not String(traversal_id).begins_with(SLOPEROPE_TRAVERSAL_PREFIX):
+		return
+	_show_message("// REJOINED // %s climbed to the upper landing" % character_id.capitalize(), 2.2)
+
+
+func _on_wash_external_traversal_cancelled(
+		character_id: String, traversal_id: StringName, _reason: StringName
+	) -> void:
+	var traversal_name := String(traversal_id)
+	if not traversal_name.begins_with(WASH_CURRENT_TRAVERSAL_PREFIX) \
+			or not _current_carries.has(character_id):
+		return
+	var carry: Dictionary = _current_carries[character_id]
+	if str(carry.get("traversal_id", "")) != traversal_name:
+		return
+	_cancel_wash_current_preimpact(
+		character_id, "return" if ":return:" in traversal_name else "knock")
+	_current_carries.erase(character_id)
+	var gs = _get_game_state()
+	if gs != null and gs.characters.has(character_id):
+		gs.set_character_concealment(character_id, GameState.CONCEAL_NONE)
+	_publish_wash_authority()
+
+
+func _on_wash_current_leg_finished(character_id: String, traversal_name: String) -> void:
+	if not _current_carries.has(character_id):
+		return
+	var carry: Dictionary = (
+		_current_carries[character_id] as Dictionary).duplicate(true)
+	if str(carry.get("traversal_id", "")) != traversal_name:
+		return
+	var phase := str(carry.get("phase", ""))
+	if traversal_name == "%sknock:%s" % [
+		WASH_CURRENT_TRAVERSAL_PREFIX, character_id
+	]:
+		if phase in ["knock_reserved", "knock"]:
+			carry["phase"] = "knock_impact_pending"
+			_current_carries[character_id] = carry
+			_publish_wash_authority()
+		elif phase != "knock_impact_pending":
+			return
+		_start_wash_current_return(character_id, carry)
+		return
+	if traversal_name != "%sreturn:%s" % [
+		WASH_CURRENT_TRAVERSAL_PREFIX, character_id
+	]:
+		return
+	if phase in ["return_reserved", "return"]:
+		carry["phase"] = "return_impact_pending"
+		_current_carries[character_id] = carry
+		_publish_wash_authority()
+	elif phase != "return_impact_pending":
+		return
+	_complete_wash_current_arrival(character_id)
+
+
+func _complete_wash_current_arrival(character_id: String) -> void:
+	if not _current_carries.has(character_id):
+		return
+	var carry: Dictionary = (
+		_current_carries[character_id] as Dictionary).duplicate(true)
+	var phase := str(carry.get("phase", ""))
+	if phase == "return_impact_pending":
+		carry["phase"] = "landing_committing"
+		_current_carries[character_id] = carry
+		# Publish the exact arrival transaction before concealment/roster feedback can synchronously
+		# expose the landing to a save observer.
+		_publish_wash_authority()
+	elif phase != "landing_committing":
+		return
+	var gs = _get_game_state()
+	if gs != null and gs.characters.has(character_id):
+		gs.set_character_concealment(character_id, GameState.CONCEAL_NONE)
+	_washed[character_id] = true
+	_current_carries.erase(character_id)
+	_publish_wash_authority()
+	_show_message("// SHELTER LANDED // %s reached the start return" % character_id.capitalize(), 2.2)
+
+
+func _start_wash_current_return(character_id: String, carry: Dictionary) -> void:
+	var gs = _get_game_state()
+	if gs == null or not gs.characters.has(character_id):
+		return
+	var existing_id := "%sreturn:%s" % [
+		WASH_CURRENT_TRAVERSAL_PREFIX, character_id]
+	if _wash_has_matching_traversal(character_id, existing_id):
+		var existing: Dictionary = gs.get_external_traversal_state(character_id)
+		carry["phase"] = "return"
+		carry["traversal_id"] = existing_id
+		carry["impact_tick"] = float(existing.get(
+			"end_tick", carry.get("impact_tick", -1.0)))
+		_current_carries[character_id] = carry
+		_publish_wash_authority()
+		_arm_wash_current_preimpact(
+			character_id, "return", existing_id,
+			float(carry.get("impact_tick", _get_scheduler_tick())))
+		return
+	if gs.is_external_traversal_active(character_id):
+		return
+	var knocked_render := _wash_decode_vec3(
+		carry.get("knocked_render", null), gs.get_render_position(character_id)
+	)
+	var render_destination := START_POS
+	if gs.coord_map != null and gs.coord_map.has_method("to_world"):
+		render_destination = gs.coord_map.to_world(START_POS)
+	var duration := clampf(
+		float(carry.get("return_duration", WASH_CURRENT_RETURN_MIN)),
+		WASH_CURRENT_RETURN_MIN,
+		WASH_CURRENT_RETURN_MAX
+	)
+	var traversal_id := StringName(existing_id)
+	var now := _get_scheduler_tick()
+	var impact_tick := now + duration
+	carry["phase"] = "return_reserved"
+	carry["traversal_id"] = String(traversal_id)
+	carry["impact_tick"] = impact_tick
+	_current_carries[character_id] = carry
+	_publish_wash_authority()
+	_arm_wash_current_preimpact(
+		character_id, "return", String(traversal_id), impact_tick)
+	var accepted := bool(gs.command_external_traversal(
+			character_id,
+			traversal_id,
+			START_POS,
+			knocked_render,
+			render_destination,
+			duration,
+			&"locked"
+		))
+	if not accepted and _wash_has_matching_traversal(
+			character_id, String(traversal_id)):
+		accepted = true
+	if not accepted:
+		# No endpoint is granted on a rejected second leg. Keep the saved phase so a restore or an
+		# explicit reset can recover it without manufacturing arrival.
+		_cancel_wash_current_preimpact(character_id, "return")
+		_schedule_wash_current_reconcile()
+		return
+	if _current_carries.has(character_id):
+		carry = _current_carries[character_id] as Dictionary
+		if str(carry.get("phase", "")) == "return_reserved":
+			carry["phase"] = "return"
+			_current_carries[character_id] = carry
+			_publish_wash_authority()
+
+
+func _cancel_wash_current_carries(reason: StringName) -> void:
+	var gs = _get_game_state()
+	if gs != null:
+		for char_id_v in _current_carries.keys():
+			var char_id := str(char_id_v)
+			_cancel_wash_current_preimpact(char_id, "knock")
+			_cancel_wash_current_preimpact(char_id, "return")
+			if not gs.characters.has(char_id):
+				continue
+			var traversal: Dictionary = gs.get_external_traversal_state(char_id)
+			if str(traversal.get("traversal_id", "")).begins_with(WASH_CURRENT_TRAVERSAL_PREFIX):
+				gs.cancel_external_traversal(char_id, reason)
+			gs.set_character_concealment(char_id, GameState.CONCEAL_NONE)
+	_current_carries.clear()
+
+
+func _reset_enemy_current_channels() -> void:
+	for channel in _section_enemy_currents.values():
+		if is_instance_valid(channel) and channel.has_method("reset"):
+			channel.reset()
+	if is_instance_valid(_drain_enemy_current) \
+			and _drain_enemy_current.has_method("reset"):
+		_drain_enemy_current.reset()
+
+
+func _schedule_wash_current_reconcile() -> void:
+	var sched = _get_scheduler()
+	if sched == null:
+		return
+	_schedule_wash_at(
+		_get_scheduler_tick() + WASH_CURRENT_PREIMPACT_EPSILON,
+		_reconcile_wash_current_carries,
+		WASH_CURRENT_RECONCILE_TAG)
+
+
+func _reconcile_wash_current_carries() -> void:
+	var gs = _get_game_state()
+	if gs == null:
+		return
+	var ids := _current_carries.keys()
+	ids.sort()
+	for id_v in ids:
+		var character_id := str(id_v)
+		if not _current_carries.has(character_id) \
+				or not gs.characters.has(character_id):
+			_current_carries.erase(character_id)
+			continue
+		var carry: Dictionary = (
+			_current_carries[character_id] as Dictionary).duplicate(true)
+		var phase := str(carry.get("phase", ""))
+		var traversal_id := str(carry.get("traversal_id", ""))
+		var matching := _wash_has_matching_traversal(
+			character_id, traversal_id)
+		if matching:
+			var leg := "return" if ":return:" in traversal_id else "knock"
+			var phase_matches_leg: bool = phase in (
+				["knock_reserved", "knock", "knock_impact_pending"]
+					if leg == "knock"
+					else ["return_reserved", "return", "return_impact_pending"])
+			if not phase_matches_leg:
+				# A body and an owner record that disagree about the active leg are a torn
+				# future, not permission to infer an endpoint. Cancel that exact owned
+				# traversal and retract concealment rather than leaving an orphaned carry.
+				gs.cancel_external_traversal(
+					character_id, &"wash_relay_current_phase_mismatch")
+				if _current_carries.has(character_id):
+					_retract_unproven_wash_current(character_id)
+				continue
+			if phase == "%s_reserved" % leg:
+				carry["phase"] = leg
+				_current_carries[character_id] = carry
+				_publish_wash_authority()
+			_arm_wash_current_preimpact(
+				character_id, leg, traversal_id,
+				float(carry.get("impact_tick", _get_scheduler_tick())))
+			continue
+		if gs.is_external_traversal_active(character_id):
+			# Another mechanism owns the body. This current cannot fabricate an arrival.
+			_current_carries.erase(character_id)
+			gs.set_character_concealment(character_id, GameState.CONCEAL_NONE)
+			_publish_wash_authority()
+			continue
+		match phase:
+			"knock_reserved", "return_reserved":
+				_resume_reserved_wash_current_leg(character_id, carry)
+			"knock_impact_pending":
+				_start_wash_current_return(character_id, carry)
+			"return_impact_pending":
+				if gs.get_position(character_id).distance_to(START_POS) <= 0.001:
+					_complete_wash_current_arrival(character_id)
+				else:
+					_retract_unproven_wash_current(character_id)
+			"landing_committing":
+				if gs.get_position(character_id).distance_to(START_POS) <= 0.001:
+					_complete_wash_current_arrival(character_id)
+				else:
+					_retract_unproven_wash_current(character_id)
+			_:
+				# CARRYING without GameState ownership proves cancellation, not arrival.
+				_retract_unproven_wash_current(character_id)
+
+
+func _resume_reserved_wash_current_leg(
+		character_id: String, carry: Dictionary) -> void:
+	var gs = _get_game_state()
+	if gs == null or not gs.characters.has(character_id):
+		return
+	var phase := str(carry.get("phase", ""))
+	var leg := "knock" if phase == "knock_reserved" else "return"
+	var impact_tick := float(carry.get("impact_tick", -1.0))
+	var remaining := impact_tick - _get_scheduler_tick()
+	if impact_tick < 0.0 or remaining <= WASH_CURRENT_PREIMPACT_EPSILON:
+		_retract_unproven_wash_current(character_id)
+		return
+	var traversal_id := str(carry.get("traversal_id", ""))
+	var data_destination: Vector3 = gs.get_position(character_id) \
+		if leg == "knock" else START_POS
+	var render_origin: Vector3 = _wash_decode_vec3(
+		carry.get("origin_render", null), gs.get_render_position(character_id)) \
+		if leg == "knock" else _wash_decode_vec3(
+			carry.get("knocked_render", null), gs.get_render_position(character_id))
+	var render_destination: Vector3 = _wash_decode_vec3(
+		carry.get("knocked_render", null), render_origin) \
+		if leg == "knock" else (
+			gs.coord_map.to_world(START_POS)
+				if gs.coord_map != null and gs.coord_map.has_method("to_world")
+				else START_POS)
+	_arm_wash_current_preimpact(
+		character_id, leg, traversal_id, impact_tick)
+	var accepted := bool(gs.command_external_traversal(
+		character_id,
+		StringName(traversal_id),
+		data_destination,
+		render_origin,
+		render_destination,
+		remaining,
+		&"locked"))
+	if accepted or _wash_has_matching_traversal(character_id, traversal_id):
+		if _current_carries.has(character_id):
+			carry = _current_carries[character_id] as Dictionary
+			if str(carry.get("phase", "")) == "%s_reserved" % leg:
+				carry["phase"] = leg
+				_current_carries[character_id] = carry
+				_publish_wash_authority()
+		return
+	_cancel_wash_current_preimpact(character_id, leg)
+	_retract_unproven_wash_current(character_id)
+
+
+func _retract_unproven_wash_current(character_id: String) -> void:
+	_cancel_wash_current_preimpact(character_id, "knock")
+	_cancel_wash_current_preimpact(character_id, "return")
+	_current_carries.erase(character_id)
+	var gs = _get_game_state()
+	if gs != null and gs.characters.has(character_id):
+		gs.set_character_concealment(character_id, GameState.CONCEAL_NONE)
+	_publish_wash_authority()
+
+
+func _cancel_sloperope_climbs(reason: StringName) -> void:
+	if is_instance_valid(_climbvine_return):
+		# The kit owns both rider cancellation and the deployment phase. A reset must retract both,
+		# otherwise a discarded future can leave a climb mouth enabled in the restored baseline.
+		_climbvine_return.reset()
+		_sloperope_deployed = false
+		return
+	var gs = _get_game_state()
+	if gs == null:
+		return
+	for char_id in PARTY_IDS:
+		if not gs.characters.has(char_id):
+			continue
+		var traversal: Dictionary = gs.get_external_traversal_state(char_id)
+		if str(traversal.get("traversal_id", "")).begins_with(SLOPEROPE_TRAVERSAL_PREFIX):
+			gs.cancel_external_traversal(char_id, reason)
 
 func _set_strip(i: int, energy: float) -> void:
 	if i < _flow_strips.size() and is_instance_valid(_flow_strips[i]):
@@ -1985,7 +4250,11 @@ func _cancel_wash_events() -> void:
 	var sched = _get_scheduler()
 	if sched == null:
 		_scheduled = false
+		_next_spatial_authority_tick = -1.0
 		return
+	sched.cancel_tag(SPATIAL_AUTHORITY_TAG)
+	sched.cancel_tag(WASH_CURRENT_RECONCILE_TAG)
+	sched.cancel_tag(WASH_ENEMY_CURRENT_RECONCILE_TAG)
 	sched.cancel_tag(_restart_tag())
 	sched.cancel_tag('wash_pressure_vent')
 	sched.cancel_tag("wash_drain_onset")
@@ -2001,6 +4270,11 @@ func _cancel_wash_events() -> void:
 			sched.cancel_tag("wash_section_sweep_%d_%d" % [i, k])
 	for i in range(LURE_SPECS.size()):
 		sched.cancel_tag("wash_lure_%d" % i)
+	for character_id in PARTY_IDS:
+		sched.cancel_tag(_wash_current_preimpact_tag(character_id, "knock"))
+		sched.cancel_tag(_wash_current_preimpact_tag(character_id, "return"))
+	for branch in _branches:
+		sched.cancel_tag(_branch_event_tag(branch))
 	var enemy_ids: Array[String] = []
 	for spec in ENEMY_SPECS:
 		enemy_ids.append(str(spec["id"]))
@@ -2010,12 +4284,17 @@ func _cancel_wash_events() -> void:
 			enemy_ids.append(enemy_id)
 	for enemy_id in enemy_ids:
 		sched.cancel_tag("wash_drain_kill_%s" % enemy_id)
+	for pending_id_v in _pending_drown_removals.keys():
+		sched.cancel_tag("wash_drain_kill_%s" % str(pending_id_v))
 	_scheduled = false
+	_next_spatial_authority_tick = -1.0
 
 func _quiesce_wash_hazards() -> void:
 	_cancel_wash_events()
 	for i in range(_flooding.size()):
 		_flooding[i] = false
+		if i < _section_flood_until.size():
+			_section_flood_until[i] = -1.0
 		if i < SECTIONS.size() and str(SECTIONS[i]["type"]) == "sluice":
 			_set_sluice(i, false)
 		_set_strip(i, 0.15)
@@ -2024,6 +4303,7 @@ func _quiesce_wash_hazards() -> void:
 			if is_instance_valid(seg):
 				seg.visible = false
 	_drain_flooding = false
+	_drain_flood_until = -1.0
 	for seg in _drain_water:
 		if is_instance_valid(seg):
 			seg.visible = false
@@ -2031,6 +4311,7 @@ func _quiesce_wash_hazards() -> void:
 		_splash_intensity[i] = 0.0
 		if is_instance_valid(_splash_planes[i]):
 			_splash_planes[i].visible = false
+	WashRelayDressing.reset_falls(_dressing)
 
 func _on_wash_relay_character_downed(char_id: String) -> void:
 	if _phase != "active" or _wipe_restart_pending or char_id not in PARTY_IDS:
@@ -2044,11 +4325,25 @@ func _on_wash_relay_character_downed(char_id: String) -> void:
 	var sched = _get_scheduler()
 	if sched != null:
 		sched.cancel_tag(_restart_tag())
-		sched.schedule_after(1.5, _restart_wash_relay_after_wipe, _restart_tag())
+		_wash_restart_deadline = float(sched.get_current_tick()) + 1.5
+		_schedule_wash_at(_wash_restart_deadline, _restart_wash_relay_after_wipe, _restart_tag())
 	else:
 		_restart_wash_relay_after_wipe()
+	_publish_wash_authority()
+
+
+func _on_wash_relay_character_restored(char_id: String) -> void:
+	if _phase != "active" or char_id not in PARTY_IDS:
+		return
+	# Restoration is a canonical GameState consequence. Re-evaluate immediately so an otherwise
+	# complete gathered party need not wait for a render frame; the fixed cadence remains unchanged.
+	_evaluate_spatial_authority()
+	if _phase == "active":
+		_publish_wash_authority()
+
 
 func _restart_wash_relay_after_wipe() -> void:
+	_wash_restart_deadline = -1.0
 	reset_preview_state()
 	_set_preview_step("wash_relay_restart")
 
@@ -2057,6 +4352,7 @@ func _complete_wash_relay() -> void:
 		return
 	_phase = "complete"
 	_quiesce_wash_hazards()
+	_publish_wash_authority()
 	# Enemy strike resolution happens before hit_target emits. Full concealment is the
 	# completion sanctuary that makes an already-committed charge harmless too.
 	var gs = _get_game_state()
@@ -2075,6 +4371,7 @@ func _complete_wash_relay() -> void:
 
 func _exit_tree() -> void:
 	_cancel_wash_events()
+	_release_branch_gate_blockers()
 	super._exit_tree()
 
 # --- Lifecycle ---
@@ -2098,6 +4395,100 @@ func _plate_footprints(i: int) -> Array:
 		return [Vector2(px, -DOUBLE_PLATE_Z), Vector2(px, DOUBLE_PLATE_Z)]
 	return [Vector2(px, 0.0)]
 
+
+## Sample every held station from canonical GameState positions. `_section_disabled()` calls this
+## again at each flood/telegraph consequence tick, so a render-frame cache can never suppress or
+## manufacture water. The arrays and portrait records are derived presenters, not portable authority.
+func _sample_held_control_truth() -> void:
+	var gs = _get_game_state()
+	while _plate_held.size() < SECTIONS.size():
+		_plate_held.append(false)
+	var next_character_holds: Dictionary = {}
+	for i in range(SECTIONS.size()):
+		var dis := str(SECTIONS[i]["disable"])
+		if dis != "plate" and dis != "double_plate" and dis != "override":
+			continue
+		var all_held := true
+		var footprints := _plate_footprints(i)
+		for footprint_index in range(footprints.size()):
+			var fp: Vector2 = footprints[footprint_index]
+			var pad_held := false
+			for char_id in PARTY_IDS:
+				if gs == null or not gs.characters.has(char_id) or gs.is_downed(char_id) \
+						or gs.is_external_traversal_active(char_id):
+					continue
+				var p: Vector3 = gs.get_position(char_id)
+				if absf(p.x - fp.x) <= PLATE_RADIUS and absf(p.z - fp.y) <= PLATE_RADIUS:
+					pad_held = true
+					var hold_kind := "override" if dis == "override" else "plate"
+					var hold_label := "OVERRIDE" if dis == "override" \
+						else ("DUAL PLATE" if dis == "double_plate" else "PLATE")
+					next_character_holds[char_id] = {
+						"control_id": "wash_%s_%d_%d" % [dis, i, footprint_index],
+						"kind": hold_kind,
+						"label": "%s %d" % [hold_label, i + 1],
+						"section": i,
+					}
+					break
+			if not pad_held:
+				all_held = false
+		if all_held != bool(_plate_held[i]):
+			_plate_held[i] = all_held
+			_set_strip(i, 0.15 if all_held else 0.4)
+			if dis == "override":
+				var control = _override_controls.get(i, null)
+				if is_instance_valid(control):
+					_set_causal_feedback_latched(control, all_held)
+	_character_holds = next_character_holds
+
+
+## Concealment is a canonical GameState stat sampled on the fixed spatial cadence. An external
+## traversal owns its own concealment policy until arrival, so the alcove pass cannot erase a
+## current/crawl/climb state between scheduler callbacks.
+func _sample_hide_concealment_truth() -> void:
+	var gs = _get_game_state()
+	if gs == null:
+		return
+	for char_id in PARTY_IDS:
+		if not gs.characters.has(char_id) or gs.is_external_traversal_active(char_id):
+			continue
+		var position: Vector3 = gs.get_position(char_id)
+		var hidden := false
+		for alcove_v in HIDE_ALCOVES:
+			var alcove: Dictionary = alcove_v
+			var centre: Vector3 = alcove.get("pos", Vector3.INF)
+			if centre.is_finite() and Vector2(
+				position.x - centre.x, position.z - centre.z
+			).length() <= float(alcove.get("radius", 0.0)):
+				hidden = true
+				break
+		gs.set_character_concealment(
+			char_id,
+			GameState.CONCEAL_FULL if hidden else GameState.CONCEAL_NONE
+		)
+
+
+## Retry release and route completion are consequences, not presenter reads. They happen only on
+## the saved fixed cadence (or another explicit GameState consequence such as character restore).
+func _sample_route_and_completion_truth() -> void:
+	var gs = _get_game_state()
+	if gs == null:
+		return
+	var retry_boundary := float(SECTIONS[0]["x0"]) - 0.5 \
+		if not SECTIONS.is_empty() else START_POS.x + 2.5
+	for id_v in _washed.keys():
+		var char_id := str(id_v)
+		if not gs.characters.has(char_id) or gs.get_position(char_id).x >= retry_boundary:
+			_washed.erase(id_v)
+	if _phase != "active":
+		return
+	for char_id in PARTY_IDS:
+		if not gs.characters.has(char_id) or gs.is_downed(char_id) \
+				or gs.is_external_traversal_active(char_id) \
+				or gs.get_position(char_id).x < CHUNK_END_X:
+			return
+	_complete_wash_relay()
+
 ## Run with CHANNELS_DEBUG=1 to log each party member's flat DATA position and its warped RENDER position
 ## (where the node should sit on the helix) once or twice a second — for tracing anomalies like a member
 ## ending up below the deck.
@@ -2117,81 +4508,29 @@ func _debug_log_positions() -> void:
 			print("[channels] %-6s data=(%5.1f,%4.1f,%5.1f) render=(%6.1f,%5.1f,%6.1f) moving=%s" % [cid, d.x, d.y, d.z, r.x, r.y, r.z, gsd.is_moving(cid)])
 
 func _update(delta := 0.0) -> void:
-	if _phase == "ready":
-		_phase = "active"
+	# Presenter attachment is parent-first: Wash validates its composite branch record before each child Enemy
+	# consumes its own record. If Wash rejects a branch future, make that rejection win once more after the
+	# child pass so a separately valid-but-borrowed lured guard snapshot cannot overwrite construction truth.
+	_flush_pending_branch_guard_reposts()
+	_activate_wash_relay()
+	# Render from scheduler truth only. Headless and fast-forward callers see the same midpoint without allowing
+	# a render delta to advance any branch consequence.
+	_refresh_branch_mechanism_presenters()
 	if _phase == "complete" or _phase == "failed":
 		return
-	_ensure_scheduled()
 	_debug_log_positions()
 	_update_pipe_splashes(delta)
 	_refresh_section_guidance()
-	var gsc = _get_game_state()
-	# `_washed` only marks crew who are still WAITING in the start shelter for an optional fast recovery. The moment
-	# they walk back into the relay they are a normal runner again: hazards can wash them and controls can read them.
-	# `.keys()` returns a copy, so erasing mid-loop is safe.
-	var retry_boundary := float(SECTIONS[0]["x0"]) - 0.5 if not SECTIONS.is_empty() else START_POS.x + 2.5
-	for id in _washed.keys():
-		if _get_character_position(id).x >= retry_boundary:
-			_washed.erase(id)
-	# Refresh plate-held state — a section is held only when EVERY one of its pads has a member on it.
-	# Keep the occupant identity separately: the portrait needs to say WHO is committed even when a
-	# double plate is only half-complete, and a rally lock excludes that member without changing selection.
-	var next_character_holds: Dictionary = {}
-	for i in range(SECTIONS.size()):
-		var dis := str(SECTIONS[i]["disable"])
-		if dis != "plate" and dis != "double_plate" and dis != "override":
-			continue
-		var all_held := true
-		var footprints := _plate_footprints(i)
-		for footprint_index in range(footprints.size()):
-			var fp: Vector2 = footprints[footprint_index]
-			var pad_held := false
-			for char_id in PARTY_IDS:
-				if gsc == null or not gsc.characters.has(char_id) or gsc.is_downed(char_id):
-					continue
-				var p := _get_character_position(char_id)
-				if abs(p.x - fp.x) <= PLATE_RADIUS and abs(p.z - fp.y) <= PLATE_RADIUS:
-					pad_held = true
-					var hold_kind := "override" if dis == "override" else "plate"
-					var hold_label := "OVERRIDE" if dis == "override" else ("DUAL PLATE" if dis == "double_plate" else "PLATE")
-					next_character_holds[char_id] = {
-						"control_id": "wash_%s_%d_%d" % [dis, i, footprint_index],
-						"kind": hold_kind,
-						"label": "%s %d" % [hold_label, i + 1],
-						"section": i,
-					}
-					break
-			if not pad_held:
-				all_held = false
-		if all_held != _plate_held[i]:
-			_plate_held[i] = all_held
-			_set_strip(i, 0.15 if all_held else 0.4)
-			if dis == "override":
-				var control = _override_controls.get(i, null)
-				if is_instance_valid(control):
-					_set_causal_feedback_latched(control, all_held)
-	_character_holds = next_character_holds
-	# hide alcoves: a party member tucked in a nook is fully concealed from the guards
-	if gsc != null and not _enemies.is_empty():
-		for cid in PARTY_IDS:
-			if not gsc.characters.has(cid):
-				continue
-			var cp := _get_character_position(cid)
-			var hidden := false
-			for a in HIDE_ALCOVES:
-				if Vector2(cp.x - a["pos"].x, cp.z - a["pos"].z).length() <= float(a["radius"]):
-					hidden = true
-					break
-			gsc.set_character_concealment(cid, GameState.CONCEAL_FULL if hidden else GameState.CONCEAL_NONE)
-	# Aster's TRACE read: while active, pulse the traced section's strip a beat BEFORE its next onset so the
-	# safe window is legible (the telegraph). Cosmetic only — the cadence itself is unchanged.
+	# Aster's contextual gauge read: while active, pulse that section's strip so the scanned cause remains
+	# spatially tied to its effect. Cosmetic only — the cadence itself is unchanged.
 	var schd = _get_scheduler()
-	if _trace_section >= 0 and schd != null:
+	if _cadence_read_section >= 0 and schd != null:
 		var now: float = schd.get_current_tick()
-		if now >= _trace_until:
-			_trace_section = -1
-		elif not _flooding[_trace_section] and not _section_disabled(_trace_section):
-			_set_strip(_trace_section, 1.3)   # the pre-surge read glow
+		if now >= _cadence_read_until:
+			_cadence_read_section = -1
+			_publish_wash_authority()
+		elif not _flooding[_cadence_read_section] and not _section_disabled(_cadence_read_section):
+			_set_strip(_cadence_read_section, 1.3)
 	# Flood WATER + sluice gate visibility — the in-game flood feedback. Driven by the scheduler-set _flooding /
 	# _sluice_blocked (so it's replay-safe + fast-forward invariant); the per-frame work is just the toggle, so
 	# the surging water you got washed by is always VISIBLE (and the sluice gate reads open vs closed).
@@ -2207,15 +4546,6 @@ func _update(delta := 0.0) -> void:
 	for gi in _sluice_gate.keys():
 		if is_instance_valid(_sluice_gate[gi]):
 			_sluice_gate[gi].visible = gi < _sluice_blocked.size() and bool(_sluice_blocked[gi])
-	if _phase == "active":
-		var all_through := gsc != null
-		for char_id in PARTY_IDS:
-			if gsc == null or not gsc.characters.has(char_id) or gsc.is_downed(char_id) \
-					or _get_character_position(char_id).x < CHUNK_END_X:
-				all_through = false
-				break
-		if all_through:
-			_complete_wash_relay()
 
 # --- Scene/preview interface ---
 
@@ -2244,6 +4574,7 @@ func _learn_surge_timing_if_near(section_index: int) -> void:
 		var p: Vector3 = gs.get_position(char_id)
 		if p.x >= x0 and p.x <= x1 and absf(p.z) <= FLOOR_Z_HALF + 3.0:
 			_surge_timing_learned = true
+			_publish_wash_authority()
 			return
 
 ## Optional read-only contract consumed by PathRenderManager. It is intentionally absent until the
@@ -2491,7 +4822,7 @@ func get_grid_data() -> Dictionary:
 			continue
 		regions.append({"min": [float(mid) - BRANCH_HALF_S, BRANCH_NECK_LANE], "max": [float(mid) + BRANCH_HALF_S, BRANCH_OUTER_LANE]})
 	# The drain loop: entry/exit legs (overlap the deck rim -> connected), the flooding run between them, and
-	# the stub out to the dry salvage ledge across the water. Authored flat in (s, lane) exactly like the branches.
+	# the stub out to the dry lysate ledge across the water. Authored flat in (s, lane) exactly like the branches.
 	var drain_mid := (DRAIN_LOOP_S0 + DRAIN_LOOP_S1) * 0.5
 	regions.append({"min": [DRAIN_LOOP_S0 - 0.8, BRANCH_NECK_LANE], "max": [DRAIN_LOOP_S0 + 0.8, DRAIN_RUN_LANE + 0.6]})
 	regions.append({"min": [DRAIN_LOOP_S1 - 0.8, BRANCH_NECK_LANE], "max": [DRAIN_LOOP_S1 + 0.8, DRAIN_RUN_LANE + 0.6]})
@@ -2503,6 +4834,12 @@ func get_grid_data() -> Dictionary:
 	# Only the crawl mouths are walkable. Its visible outer bulge remains grid-forbidden authored transit.
 	regions.append({"min": [35.1, BRANCH_NECK_LANE], "max": [37.9, 12.0]})
 	regions.append({"min": [42.1, BRANCH_NECK_LANE], "max": [44.9, 12.0]})
+	# The two story-beat ledges (inward spurs; each overlaps the deck rim at lane -4 -> connected).
+	for ledge in BEAT_LEDGE_REGIONS:
+		regions.append(ledge)
+	# The neck garden: portal-only (separated from the deck by blocked rows, like the
+	# pressure pocket — the curecumin portal pair is the only edge in).
+	regions.append(NECK_GARDEN_REGION)
 	return {
 		"contract_id": GridWorld.GRID_DATA_CONTRACT_ID,
 		"origin": [-2.0, 0.0, -11.0], "cell_size": 1.0, "width": 92, "height": 27,
@@ -2513,8 +4850,8 @@ func get_preview_anchors() -> Dictionary:
 	var anchors := get_spawn_positions()
 	anchors["start_shelter"] = START_POS
 	anchors["chunk_end"] = Vector3(CHUNK_END_X + 1.0, 0.5, 0.0)
-	anchors["terminal"] = TERMINAL_POS
-	anchors["sloperope"] = SLOPEROPE_POS
+	anchors["sloperope"] = RETURN_LANDING # compatibility key for older drivers
+	anchors["climbvine_tend"] = RETURN_LANDING
 	anchors["climb_line"] = CLIMB_POS
 	for i in range(SECTIONS.size()):
 		anchors["section_%s" % SECTIONS[i]["type"]] = Vector3((float(SECTIONS[i]["x0"]) + float(SECTIONS[i]["x1"])) * 0.5, 0.5, 0.0)
@@ -2526,10 +4863,14 @@ func get_preview_anchors() -> Dictionary:
 		anchors["branch_%d" % int(b["gap"])] = Vector3(float(b["mid_x"]), 0.5, float(b["pad_lane"]))
 	var drain_mid := (DRAIN_LOOP_S0 + DRAIN_LOOP_S1) * 0.5
 	anchors["drain_run"] = Vector3(drain_mid, 0.5, DRAIN_RUN_LANE)              # mid of the flooding run
-	anchors["drain_ledge"] = Vector3(drain_mid, 0.5, DRAIN_LEDGE_LANE)          # the dry salvage ledge + guard post
+	anchors["drain_ledge"] = Vector3(drain_mid, 0.5, DRAIN_LEDGE_LANE)          # the dry lysate ledge + guard post
 	anchors["drain_bait"] = Vector3(DRAIN_LOOP_S0, 0.5, BRANCH_NECK_LANE + 0.8) # the bait at the loop mouth
 	anchors["drain_entry"] = Vector3(DRAIN_LOOP_S0, 0.5, BRANCH_NECK_LANE)      # where the loop leaves the deck
 	anchors["drain_exit"] = Vector3(DRAIN_LOOP_S1, 0.5, BRANCH_NECK_LANE)       # where it rejoins
+	anchors["lonely_flure"] = LONELY_FLURE_POS
+	anchors["curecumin_pad"] = CURECUMIN_PAD_POS
+	anchors["curecumin_garden"] = CURE_DEST_POS
+	anchors["greenfields_gate"] = CURE_GATE_POS
 	anchors['pressure_portal_entry'] = PRESSURE_PORTAL_ENTRY
 	anchors['pressure_room_arrival'] = PRESSURE_ROOM_ARRIVAL
 	anchors['pressure_room_return'] = PRESSURE_ROOM_RETURN
@@ -2542,131 +4883,45 @@ func get_preview_anchors() -> Dictionary:
 func get_preview_time_state() -> Dictionary:
 	return (FRAGMENT.time_state as Dictionary).duplicate(true)
 
-func get_preview_abilities() -> Array:
-	# Display names + tuning come from data/abilities/en/abilities.xlsx (channels_rhythm.* rows): aster_focus=
-	# TRACE, peris_tune=BLOOM, endo_patch=BRACE. The preview shell already registers the three keys; this just
-	# gives them the channels' names/notes. The EFFECTS live in handle_preview_ability below.
-	return AbilityData.for_context(ABILITY_CONTEXT)
-
-# The three protagonists' signature reads. Returns a Dict merged over the ability def + applied by the preview
-# (note text, per-character stat deltas). Owner stat deltas (aster +atp, peris +sta, endo +hp) auto-apply
-# upstream; here we add the channels-specific EFFECT. Pure derived state — replay/fast-forward safe.
-func handle_preview_ability(ability_id: String, _ability: Dictionary = {}) -> Dictionary:
-	if not _accepts_gameplay_events():
-		return {"note": "// RELAY CLEAR // no active channel read"}
-	match ability_id:
-		"aster_focus":
-			return _ability_trace()
-		"peris_tune":
-			return _ability_bloom()
-		"endo_patch":
-			return _ability_brace()
-	return {}
-
-# TRACE — Aster reads the cadence: find the section he's in (or the next ahead) and surface its safe window.
-func _ability_trace() -> Dictionary:
-	# TRACE establishes the cadence vocabulary immediately, even if Aster is between sections.
-	_surge_timing_learned = true
-	var x := _owner_x("aster_focus")
-	var i := _section_index_at(x)
-	if i < 0:
-		i = _next_section_ahead(x)
-	if i < 0:
-		return {"note": "// TRACE // open water ahead — no surge to read"}
-	_trace_section = i
-	var sched = _get_scheduler()
-	_trace_until = (sched.get_current_tick() if sched != null else 0.0) + TRACE_HOLD
-	var label := str(SECTIONS[i]["type"]).to_upper()
-	if _section_disabled(i):
-		return {"note": "// TRACE // %s held open — cross now" % label}
-	return {"note": "// TRACE // %s surges on a %.1fs beat — cross right after the next surge" % [label, _period(i)]}
-
-# BLOOM — Peris tends flora: grow a persistent bioluminescent light at her spot. It lights the dark drainage
-# and marks a safe lane (the dark section can only be read once it's bloomed).
-func _ability_bloom() -> Dictionary:
-	var gs = _get_game_state()
-	if gs == null:
-		return {"note": "// BLOOM //"}
-	var flat: Vector3 = gs.get_position("peris")
-	var world: Vector3 = gs.get_render_position("peris") if gs.coord_map != null else flat
-	_spawn_bloom(world, flat)
-	return {"note": "// BLOOM // bioluminescence takes — the lane reads clear"}
-
-# BRACE — Endo braces the party: refund stamina to anyone still waiting at the start shelter for the re-cross,
-# and mark the deep hide alcove. If nobody is waiting, it still steadies the party (owner HP applies upstream).
-func _ability_brace() -> Dictionary:
-	var result := {}
-	var deltas := {}
-	for id in _washed.keys():
-		deltas[id] = {"sta_delta": 14.0}
-	if not deltas.is_empty():
-		result["characters"] = deltas
-		result["note"] = "// BRACE // %d waiting at start — steadied for the retry" % deltas.size()
-	else:
-		result["note"] = "// BRACE // the party reads the deep cover"
-	return result
-
-# The section whose [x0,x1] footprint contains x (flat s-axis), or -1.
-func _section_index_at(x: float) -> int:
-	for i in range(SECTIONS.size()):
-		if x >= float(SECTIONS[i]["x0"]) and x <= float(SECTIONS[i]["x1"]):
-			return i
-	return -1
-
-# The first section starting ahead of x, or -1.
-func _next_section_ahead(x: float) -> int:
-	for i in range(SECTIONS.size()):
-		if float(SECTIONS[i]["x0"]) > x:
-			return i
-	return -1
-
-func _owner_x(ability_id: String) -> float:
-	var gs = _get_game_state()
-	var owner := str(ABILITY_OWNERS.get(ability_id, ""))
-	if gs != null and owner != "" and gs.characters.has(owner):
-		return gs.get_position(owner).x
-	return 0.0
-
-# Grow a flora light (the shared FloraLight: emissive bloom + omni light) at a warped world position. Stored
-# so it persists for the run and is cleared on reset. Cosmetic light; the "lane reads clear" is the gameplay read.
-func _spawn_bloom(world: Vector3, flat: Vector3) -> void:
-	if _bloom_root == null or not is_instance_valid(_bloom_root):
-		_bloom_root = Node3D.new()
-		_bloom_root.name = "Blooms"
-		add_child(_bloom_root)
-	var node := FloraLight.new()
-	node.position = world + Vector3(0.0, 0.2, 0.0)
-	node.configure({
-		"albedo": Color(0.2, 0.7, 0.5), "emission": Color(0.4, 1.0, 0.7), "emission_energy": 2.2,
-		"bloom_radius": 0.22, "light_color": Color(0.5, 1.0, 0.75), "light_energy": 2.2, "light_range": 6.0,
-	})
-	_bloom_root.add_child(node)
-	_blooms.append({"pos": flat, "node": node})
-
 func get_preview_overlay_status(_overlay_id: String, _current_tick: float) -> Array:
 	return []
 
 func reset_preview_state() -> void:
 	var n := SECTIONS.size()
+	# Reset owns an explicit interruption rather than attempting to snap a locked mid-climb actor.
+	_reset_enemy_current_channels()
+	_cancel_wash_current_carries(&"wash_relay_reset")
+	_cancel_sloperope_climbs(&"wash_relay_reset")
 	_pressure_vent_until = -1.0
+	_wash_restart_deadline = -1.0
+	_drain_bait_until = -1.0
+	_drain_flood_until = -1.0
+	_pending_drown_removals.clear()
+	_enemy_drown_mirrors.clear()
 	# The host scheduler PERSISTS across an in-place reset, and every hazard onset self-reschedules forever — so a
 	# reset must CANCEL the live cadence and re-arm it, or the old (un-rebased) chain keeps firing while the
 	# analytic safe-window reads recompute from the zeroed counts (predicted vs real onset drift). Cancel every
 	# recurring tag + the pending drowned-guard removals, then clear _scheduled so _ensure_scheduled re-anchors
 	# the whole cadence to the post-reset 'now' (matching a fresh boot).
 	_cancel_wash_events()
+	_spatial_authority_epoch = -1.0
+	_next_spatial_authority_tick = -1.0
 	_wipe_restart_pending = false
 	# A guard drowned in the drain loop was unregistered + freed — bring it (and any other missing spec guard) back
 	# before the re-snap below assumes every guard still exists.
 	_respawn_missing_enemies()
+	_enemy_drown_mirrors.clear()
 	_phase = "ready"
 	_character_holds.clear()
 	_flooding = []; _plate_held = []; _sluice_blocked = []; _flood_counts = []; _section_wash_counts = []
+	_section_flood_until = []
 	for i in range(n):
 		_flooding.append(false); _plate_held.append(false); _sluice_blocked.append(false); _flood_counts.append(0); _section_wash_counts.append(0)
+		_section_flood_until.append(-1.0)
 	# Pipe-mouth splashes back to rest (no lead-in showing).
 	for i in range(_splash_intensity.size()):
 		_splash_intensity[i] = 0.0
+	WashRelayDressing.reset_falls(_dressing)
 	for mi in _splash_planes:
 		if is_instance_valid(mi):
 			mi.visible = false
@@ -2679,12 +4934,13 @@ func reset_preview_state() -> void:
 		if is_instance_valid(seg):
 			seg.visible = false
 	_washed.clear()
+	_current_carries.clear()
 	_sweep_count = 0
 	_run_hint_shown = false
 	_sloperope_deployed = false
-	# Ability state is derived per-run — clear it so a reset/replay doesn't leak a stale TRACE read or blooms.
-	_trace_section = -1
-	_trace_until = 0.0
+	# Contextual-read state is derived per run; clear the transient gauge highlight on retry.
+	_cadence_read_section = -1
+	_cadence_read_until = 0.0
 	# Learned cadence is player knowledge, not transient hazard state: keep it across an in-place retry.
 	for segs in _section_water:
 		for seg in segs:
@@ -2694,10 +4950,11 @@ func reset_preview_state() -> void:
 	for gi in _sluice_gate.keys():
 		if is_instance_valid(_sluice_gate[gi]):
 			_sluice_gate[gi].visible = false
-	_blooms.clear()
-	if is_instance_valid(_bloom_root):
-		_bloom_root.queue_free()
-		_bloom_root = null
+	_drain_flora_tended = false
+	_flora_lights.clear()
+	if is_instance_valid(_flora_light_root):
+		_flora_light_root.queue_free()
+		_flora_light_root = null
 	# Cosmetic flourishes: re-arm the one-time flush hint and drop any in-flight preview / sweep streak nodes so a
 	# reset mid-animation can't strand a half-played pulse or a lingering surge box.
 	_flush_hint_shown = false
@@ -2710,11 +4967,14 @@ func reset_preview_state() -> void:
 	if is_instance_valid(_surge_root):
 		_surge_root.queue_free()
 		_surge_root = null
-	_branch_loot = 0
 	for interactable in _interactables:
 		if is_instance_valid(interactable) and interactable.has_method("reset"):
 			interactable.reset()
-	# reset() re-enables every interactable; the climb stays nonexistent as an affordance until the end reel drops it.
+	for flure in _flures:
+		if is_instance_valid(flure) and flure.has_method("reset_flure"):
+			flure.reset_flure()
+	# Generic reset re-enables every interactable. The lower mouth remains gated until the authoritative
+	# ClimbvineReturn deployment phase reaches `deployed`; the Peris-only upper TEND anchor stays available.
 	if is_instance_valid(_climb_interactable):
 		_climb_interactable.set_interaction_enabled(false)
 	for control in _override_controls.values():
@@ -2723,24 +4983,28 @@ func reset_preview_state() -> void:
 	if is_instance_valid(_pressure_valve):
 		_set_causal_feedback_latched(_pressure_valve, false)
 	for b in _branches:
-		b["collected"] = false
+		_reset_reward_to_source(b)
 		var gated := str(b.get("gate_kind", "open")) != "open"
+		b["mechanism_phase"] = "idle" if gated else "clear"
+		b["phase_started_at"] = -1.0
+		b["phase_deadline"] = -1.0
+		b["next_check_at"] = -1.0
+		b["mechanism_context"] = _branch_default_context(b)
 		b["unlocked"] = not gated
 		if is_instance_valid(b.get("cache")) and b["cache"].has_method("reset"):
 			b["cache"].reset()
-		if gated and is_instance_valid(b.get("cache")):
-			b["cache"].set_interaction_enabled(false)   # re-lock (reset() re-enabled it)
 		if is_instance_valid(b.get("switch")) and b["switch"].has_method("reset"):
 			b["switch"].reset()
-		if is_instance_valid(b.get("gate_bar")):
-			b["gate_bar"].visible = true
 		# Send any branch guard back to roaming its pad (the decoy may have pulled its anchor to the neck).
 		if is_instance_valid(b.get("guard")) and b["guard"].has_method("set_roam"):
 			b["guard"].set_roam(Vector3(float(b["mid_x"]), 0.5, BRANCH_PAD_LANE), 1.6)
+		_apply_branch_mechanism_truth(b)
+	_reset_reward_to_source(_drain_reward)
 	if is_instance_valid(_rope_mesh):
 		_rope_mesh.visible = false
 	for i in range(_lure_until.size()):
 		_lure_until[i] = -1.0
+	_drain_bait_until = -1.0
 	var gs = _get_game_state()
 	if gs != null:
 		if gs.grid != null:
@@ -2761,12 +5025,949 @@ func reset_preview_state() -> void:
 		_set_strip(i, 0.4)
 	for i in range(_lure_meshes.size()):
 		_set_lure_emission(i, 0.6)
+	_ensure_wash_control_registry_shapes()
+	_reset_wash_control_committed_counts_to_registry()
+	_project_wash_control_sources()
 	if is_instance_valid(_guidance_root):
 		_guidance_root.visible = true
 	_refresh_section_guidance()
+	_phase = "active"
+	_restoring_wash_authority = true
+	_restart_spatial_authority()
+	_ensure_scheduled()
+	_restoring_wash_authority = false
+	_publish_wash_authority()
 	_set_preview_step("wash_relay_briefing")
 
+
+## Portable truth for the authored relay. Every deadline is an absolute gameplay-scheduler tick;
+## saving in wet water, a lure window, a pressure vent, or a wipe delay therefore preserves the
+## already-paid time instead of granting a fresh interval on each load.
+func _portable_reward_transaction(reward: Dictionary) -> Dictionary:
+	return {
+		"reward_item_id": str(reward.get("reward_item_id", "")),
+		"reward_phase": str(reward.get("reward_phase", REWARD_PHASE_AVAILABLE)),
+		"reward_claimed_by": str(reward.get("reward_claimed_by", "")),
+		"reward_claim_serial": int(reward.get("reward_claim_serial", 0)),
+	}
+
+
+func _wash_authority_state() -> Dictionary:
+	for action_id in _wash_control_action_ids():
+		if not _wash_control_committed_counts.has(action_id):
+			var source: Node = (
+				_wash_control_sources[action_id] as Dictionary
+			).get("source")
+			_wash_control_committed_counts[action_id] = maxi(
+				0, _wash_control_source_trigger_count(source))
+	var branches: Array = []
+	for branch in _branches:
+		branches.append({
+			"gap": int(branch.get("gap", -1)),
+			"gate_kind": str(branch.get("gate_kind", "open")),
+			"unlocked": bool(branch.get("unlocked", true)),
+			"mechanism_phase": str(branch.get("mechanism_phase", "clear")),
+			"phase_started_at": float(branch.get("phase_started_at", -1.0)),
+			"phase_deadline": float(branch.get("phase_deadline", -1.0)),
+			"next_check_at": float(branch.get("next_check_at", -1.0)),
+			"mechanism_context": (branch.get("mechanism_context", {}) as Dictionary).duplicate(true),
+			"reward_item_id": str(branch.get("reward_item_id", "")),
+			"reward_phase": str(branch.get("reward_phase", REWARD_PHASE_AVAILABLE)),
+			"reward_claimed_by": str(branch.get("reward_claimed_by", "")),
+			"reward_claim_serial": int(branch.get("reward_claim_serial", 0)),
+		})
+	return {
+		"version": WASH_AUTHORITY_VERSION,
+		"phase": _phase,
+		"scheduled": _scheduled,
+		"cadence_t0": _cadence_t0,
+		"spatial_authority_epoch": _spatial_authority_epoch,
+		"next_spatial_authority_tick": _next_spatial_authority_tick,
+		"flooding": _flooding.duplicate(),
+		"flood_counts": _flood_counts.duplicate(),
+		"section_flood_until": _section_flood_until.duplicate(),
+		"section_wash_counts": _section_wash_counts.duplicate(),
+		"drain_flooding": _drain_flooding,
+		"drain_flood_count": _drain_flood_count,
+		"drain_flood_until": _drain_flood_until,
+		"drain_bait_until": _drain_bait_until,
+		"pressure_vent_until": _pressure_vent_until,
+		"lure_until": _lure_until.duplicate(),
+		"pending_drown_removals": _portable_float_map(_pending_drown_removals),
+		"enemy_drown_mirrors": _portable_enemy_drown_mirrors(),
+		"wipe_restart_pending": _wipe_restart_pending,
+		"wash_restart_deadline": _wash_restart_deadline,
+		"wipe_count": _wipe_count,
+		"washed": _washed.keys(),
+		"current_carries": _portable_current_carries(),
+		"sweep_count": _sweep_count,
+		"run_hint_shown": _run_hint_shown,
+		"flush_hint_shown": _flush_hint_shown,
+		# Diagnostic compatibility only. Deployment authority lives in GameState's timed mechanism
+		# registry under the ClimbvineReturn mechanism id, not in this composite chunk record.
+		"sloperope_deployed": is_instance_valid(_climbvine_return) \
+				and _climbvine_return.is_deployed(),
+		"surge_timing_learned": _surge_timing_learned,
+		"cadence_read_section": _cadence_read_section,
+		"cadence_read_until": _cadence_read_until,
+		"drain_flora_tended": _drain_flora_tended,
+		"branches": branches,
+		"drain_reward": _portable_reward_transaction(_drain_reward),
+		"drowned_count": _drowned_count,
+		"section_drowned_count": _section_drowned_count,
+		"control_committed_counts":
+			_wash_control_committed_counts.duplicate(true),
+	}
+
+
+func _publish_wash_authority(project_controls := true) -> void:
+	if _restoring_wash_authority:
+		return
+	if project_controls:
+		_project_wash_control_sources()
+	var gs = _get_game_state()
+	if gs != null and gs.has_method("set_world_state"):
+		gs.set_world_state(WASH_AUTHORITY_KEY, _wash_authority_state())
+
+
+func on_game_state_snapshot_restored() -> void:
+	# The loader owns separate generic state (weak walls / shared damage cadence). Restore it first;
+	# this subclass record then replaces the shared phase and scheduling bit with relay-specific truth.
+	super.on_game_state_snapshot_restored()
+	_cancel_wash_events()
+	_pending_branch_guard_reposts.clear()
+	var gs = _get_game_state()
+	_ensure_wash_control_registry_shapes()
+	var raw: Variant = gs.get_world_state(WASH_AUTHORITY_KEY, null) \
+			if gs != null and gs.has_method("get_world_state") else null
+	if not raw is Dictionary \
+			or int(raw.get("version", 0)) \
+				not in [1, 2, 3, 4, 5, 6, 7, WASH_AUTHORITY_VERSION]:
+		_retract_wash_presenter_to_defaults()
+		return
+	var saved: Dictionary = raw
+	var saved_version := int(saved.get("version", 0))
+	var now := float(_get_scheduler_tick())
+	if not _valid_wash_arrays(saved) \
+			or (saved_version >= 7 and not _valid_v7_wash_cadence(saved, now)) \
+			or (saved_version >= 8 and not _valid_enemy_drown_mirrors(
+				saved.get("enemy_drown_mirrors", null))) \
+			or (saved_version >= 8 and not _valid_current_carries_raw(
+				saved.get("current_carries", null))) \
+			or (saved_version >= 7 and not _valid_saved_wash_control_counts(
+				saved.get("control_committed_counts", null))):
+		_retract_wash_presenter_to_defaults()
+		return
+
+	_restoring_wash_authority = true
+	if saved_version >= 7:
+		_restore_wash_control_committed_counts(
+			saved.get("control_committed_counts", {}))
+	else:
+		# Versions 1-6 predate owner-side receipt identities. Preserve their physical state,
+		# but burn every registry edge already visible at that saved tick.
+		_reset_wash_control_committed_counts_to_registry()
+	_phase = str(saved.get("phase", "ready"))
+	_scheduled = bool(saved.get("scheduled", false))
+	_cadence_t0 = float(saved.get("cadence_t0", 0.0))
+	if saved_version >= 6:
+		_spatial_authority_epoch = float(saved.get("spatial_authority_epoch", -1.0))
+		_next_spatial_authority_tick = float(saved.get("next_spatial_authority_tick", -1.0))
+		if _phase == "active" and (
+				not _scheduled
+				or not is_finite(_spatial_authority_epoch) or _spatial_authority_epoch < 0.0
+				or not is_finite(_next_spatial_authority_tick)
+				# A JSON round-trip can place an epoch-aligned decimal boundary a few ulps on
+				# either side of `now`. That is still the saved pending callback, not stale truth.
+				or _next_spatial_authority_tick < now - 0.0000001
+		):
+			_retract_wash_presenter_to_defaults()
+			return
+	else:
+		# Legacy records predate the spatial cadence. Preserve their world truth, then begin the
+		# first strict boundary after the restored scheduler tick without granting an immediate poll.
+		_spatial_authority_epoch = now
+		_next_spatial_authority_tick = FixedCadenceScript.next_strict_tick(
+			_spatial_authority_epoch, SPATIAL_AUTHORITY_INTERVAL, now
+		)
+	_flooding = (saved.get("flooding", []) as Array).duplicate()
+	_flood_counts = (saved.get("flood_counts", []) as Array).duplicate()
+	_section_flood_until = (saved.get("section_flood_until", []) as Array).duplicate()
+	_section_wash_counts = (saved.get("section_wash_counts", []) as Array).duplicate()
+	_plate_held.clear(); _sluice_blocked.clear()
+	for _i in range(SECTIONS.size()):
+		_plate_held.append(false); _sluice_blocked.append(false)
+	_sample_held_control_truth()
+	_drain_flooding = bool(saved.get("drain_flooding", false))
+	_drain_flood_count = maxi(0, int(saved.get("drain_flood_count", 0)))
+	_drain_flood_until = float(saved.get("drain_flood_until", -1.0))
+	_drain_bait_until = float(saved.get("drain_bait_until", -1.0))
+	_pressure_vent_until = float(saved.get("pressure_vent_until", -1.0))
+	_lure_until = (saved.get("lure_until", []) as Array).duplicate()
+	_pending_drown_removals = _validated_float_map(saved.get("pending_drown_removals", {}))
+	_enemy_drown_mirrors = _validated_enemy_drown_mirrors(
+		saved.get("enemy_drown_mirrors", {})) if saved_version >= 8 else {}
+	_wipe_restart_pending = bool(saved.get("wipe_restart_pending", false))
+	_wash_restart_deadline = float(saved.get("wash_restart_deadline", -1.0))
+	_wipe_count = maxi(0, int(saved.get("wipe_count", 0)))
+	_washed.clear()
+	for id_v in (saved.get("washed", []) as Array):
+		var id := str(id_v)
+		if id in PARTY_IDS:
+			_washed[id] = true
+	_restore_current_carries(saved.get("current_carries", {}), saved_version)
+	_sweep_count = maxi(0, int(saved.get("sweep_count", 0)))
+	_run_hint_shown = bool(saved.get("run_hint_shown", false))
+	_flush_hint_shown = bool(saved.get("flush_hint_shown", false))
+	# Never mint a deployed route from the old scene-local boolean. GameState restores the timed
+	# ClimbvineReturn phase independently; old saves without that phase fail closed and can be tended again.
+	_sloperope_deployed = false
+	_surge_timing_learned = bool(saved.get("surge_timing_learned", false))
+	_cadence_read_section = int(saved.get("cadence_read_section", -1))
+	_cadence_read_until = float(saved.get("cadence_read_until", 0.0))
+	_drain_flora_tended = bool(saved.get("drain_flora_tended", false))
+	_drowned_count = maxi(0, int(saved.get("drowned_count", 0)))
+	_section_drowned_count = maxi(0, int(saved.get("section_drowned_count", 0)))
+	_restore_branch_state(saved.get("branches", []) as Array, saved_version)
+	_restore_reward_transaction(
+		_drain_reward,
+		saved.get("drain_reward", {}) as Dictionary if saved.get("drain_reward", {}) is Dictionary else {},
+		saved_version)
+	if saved_version >= 8:
+		_sync_flure_mirrors_from_authority()
+	var receipt_reconciled := _reconcile_accepted_wash_control_receipts()
+	_apply_restored_wash_presenters()
+	_restoring_wash_authority = false
+	_rearm_restored_wash_callbacks()
+	_schedule_wash_current_reconcile()
+	_schedule_enemy_current_reconcile()
+	if saved_version != WASH_AUTHORITY_VERSION or receipt_reconciled:
+		_publish_wash_authority()
+
+
+func _valid_wash_arrays(saved: Dictionary) -> bool:
+	for key in ["flooding", "flood_counts", "section_flood_until", "section_wash_counts"]:
+		if not saved.get(key, null) is Array or (saved.get(key, []) as Array).size() != SECTIONS.size():
+			return false
+	return saved.get("lure_until", null) is Array \
+			and (saved.get("lure_until", []) as Array).size() == LURE_SPECS.size()
+
+
+## Version 7 is the first Wash record whose exact input receipts make it a strict authority boundary.
+## Validate its cadence as one coherent record before projecting any saved value into the presenter.
+## Versions 1-6 retain their migration path above: old saves predate this typed cadence contract.
+func _valid_v7_wash_cadence(saved: Dictionary, now: float) -> bool:
+	if not is_finite(now) or now < 0.0 \
+			or not _valid_wash_finite_number(saved.get("cadence_t0", null)) \
+			or not saved.get("scheduled", null) is bool \
+			or not saved.get("drain_flooding", null) is bool:
+		return false
+	var phase := str(saved.get("phase", ""))
+	var scheduled := bool(saved.get("scheduled", false))
+	if (phase == "active" and not scheduled) \
+			or (phase == "complete" and scheduled) \
+			or phase not in ["active", "complete"]:
+		return false
+	var cadence_t0 := float(saved.get("cadence_t0", -1.0))
+	if cadence_t0 < 0.0 or cadence_t0 > now + WASH_CADENCE_SAVE_EPSILON:
+		return false
+	if not _valid_saved_spatial_cadence(saved, phase, now):
+		return false
+
+	var flooding := saved.get("flooding", []) as Array
+	var flood_counts := saved.get("flood_counts", []) as Array
+	var flood_until := saved.get("section_flood_until", []) as Array
+	var wash_counts := saved.get("section_wash_counts", []) as Array
+	for i in range(SECTIONS.size()):
+		if not flooding[i] is bool \
+				or not _valid_wash_nonnegative_count(flood_counts[i]) \
+				or not _valid_wash_nonnegative_count(wash_counts[i]) \
+				or not _valid_wash_deadline(flood_until[i]):
+			return false
+		var is_flooding := bool(flooding[i])
+		var count := float(flood_counts[i])
+		var deadline := float(flood_until[i])
+		if is_flooding:
+			if phase != "active" or count < 1.0 or deadline < now - WASH_CADENCE_SAVE_EPSILON:
+				return false
+			var expected_deadline := cadence_t0 + FIRST_FLOOD \
+					+ float(SECTIONS[i]["phase"]) \
+					+ _period(i) * (count - 1.0) + _dur(i)
+			if not is_finite(expected_deadline) \
+					or absf(deadline - expected_deadline) > WASH_CADENCE_SAVE_EPSILON:
+				return false
+		elif deadline != -1.0:
+			return false
+		if phase == "active":
+			var next_onset := cadence_t0 + FIRST_FLOOD \
+					+ float(SECTIONS[i]["phase"]) + _period(i) * count
+			if not is_finite(next_onset) \
+					or next_onset < now - WASH_CADENCE_SAVE_EPSILON:
+				return false
+			if count > 0.0 \
+					and next_onset - _period(i) > now + WASH_CADENCE_SAVE_EPSILON:
+				return false
+
+	if not _valid_wash_nonnegative_count(saved.get("drain_flood_count", null)) \
+			or not _valid_wash_deadline(saved.get("drain_flood_until", null)):
+		return false
+	var drain_flooding := bool(saved.get("drain_flooding", false))
+	var drain_count := float(saved.get("drain_flood_count", -1))
+	var drain_deadline := float(saved.get("drain_flood_until", -1.0))
+	if drain_flooding:
+		if phase != "active" or drain_count < 1.0 \
+				or drain_deadline < now - WASH_CADENCE_SAVE_EPSILON:
+			return false
+		var expected_drain_deadline := cadence_t0 + FIRST_FLOOD + DRAIN_LOOP_PHASE \
+				+ DRAIN_LOOP_PERIOD * (drain_count - 1.0) + DRAIN_LOOP_DUR
+		if not is_finite(expected_drain_deadline) \
+				or absf(drain_deadline - expected_drain_deadline) \
+					> WASH_CADENCE_SAVE_EPSILON:
+			return false
+	elif drain_deadline != -1.0:
+		return false
+	if phase == "active":
+		var next_drain_onset := cadence_t0 + FIRST_FLOOD + DRAIN_LOOP_PHASE \
+				+ DRAIN_LOOP_PERIOD * drain_count
+		if not is_finite(next_drain_onset) \
+				or next_drain_onset < now - WASH_CADENCE_SAVE_EPSILON:
+			return false
+		if drain_count > 0.0 \
+				and next_drain_onset - DRAIN_LOOP_PERIOD \
+					> now + WASH_CADENCE_SAVE_EPSILON:
+			return false
+	return true
+
+
+func _valid_saved_spatial_cadence(
+		saved: Dictionary, phase: String, now: float) -> bool:
+	var epoch_raw: Variant = saved.get("spatial_authority_epoch", null)
+	var next_raw: Variant = saved.get("next_spatial_authority_tick", null)
+	if not _valid_wash_finite_number(epoch_raw) \
+			or not _valid_wash_finite_number(next_raw):
+		return false
+	var epoch := float(epoch_raw)
+	var next_tick := float(next_raw)
+	if epoch < 0.0 or epoch > now + WASH_CADENCE_SAVE_EPSILON:
+		return false
+	if phase == "complete":
+		return next_tick == -1.0
+	if phase != "active" \
+			or next_tick < now - WASH_CADENCE_SAVE_EPSILON \
+			or next_tick > now + SPATIAL_AUTHORITY_INTERVAL \
+				+ WASH_CADENCE_SAVE_EPSILON:
+		return false
+	var step_float := (next_tick - epoch) / SPATIAL_AUTHORITY_INTERVAL
+	var step := roundi(step_float)
+	if step < 1:
+		return false
+	var aligned_tick := epoch + float(step) * SPATIAL_AUTHORITY_INTERVAL
+	return absf(next_tick - aligned_tick) <= WASH_CADENCE_SAVE_EPSILON
+
+
+func _valid_wash_finite_number(raw: Variant) -> bool:
+	return (raw is int or raw is float) and is_finite(float(raw))
+
+
+func _valid_wash_nonnegative_count(raw: Variant) -> bool:
+	if raw is int:
+		return int(raw) >= 0
+	if not raw is float:
+		return false
+	var value := float(raw)
+	return is_finite(value) and value >= 0.0 and value == floorf(value)
+
+
+func _valid_wash_deadline(raw: Variant) -> bool:
+	if not _valid_wash_finite_number(raw):
+		return false
+	var value := float(raw)
+	return value == -1.0 or value >= 0.0
+
+
+func _retract_wash_presenter_to_defaults() -> void:
+	_restoring_wash_authority = true
+	_reset_enemy_current_channels()
+	_cancel_wash_current_carries(&"wash_relay_absent_restore")
+	_phase = "ready"
+	_scheduled = false
+	_cadence_t0 = 0.0
+	_spatial_authority_epoch = -1.0
+	_next_spatial_authority_tick = -1.0
+	_flooding.clear(); _flood_counts.clear(); _section_flood_until.clear(); _section_wash_counts.clear()
+	for _i in range(SECTIONS.size()):
+		_flooding.append(false); _flood_counts.append(0); _section_flood_until.append(-1.0); _section_wash_counts.append(0)
+	_drain_flooding = false
+	_drain_flood_count = 0
+	_drain_flood_until = -1.0
+	_drain_bait_until = -1.0
+	_pressure_vent_until = -1.0
+	_lure_until.clear()
+	for _i in range(LURE_SPECS.size()):
+		_lure_until.append(-1.0)
+	_pending_drown_removals.clear()
+	_enemy_drown_mirrors.clear()
+	_wipe_restart_pending = false
+	_wash_restart_deadline = -1.0
+	_wipe_count = 0
+	_washed.clear()
+	_current_carries.clear()
+	_character_holds.clear()
+	_sweep_count = 0
+	_run_hint_shown = false
+	_flush_hint_shown = false
+	_sloperope_deployed = false
+	_surge_timing_learned = false
+	_cadence_read_section = -1
+	_cadence_read_until = 0.0
+	_drain_flora_tended = false
+	_drowned_count = 0
+	_section_drowned_count = 0
+	_plate_held.clear()
+	_sluice_blocked.clear()
+	for _i in range(SECTIONS.size()):
+		_plate_held.append(false)
+		_sluice_blocked.append(false)
+	for branch in _branches:
+		_reset_branch_to_baseline(branch, true)
+	_reset_reward_to_source(_drain_reward)
+	_ensure_wash_control_registry_shapes()
+	_reset_wash_control_committed_counts_to_registry()
+	_apply_restored_wash_presenters()
+	_restoring_wash_authority = false
+	_activate_wash_relay()
+
+
+func _rearm_restored_wash_callbacks() -> void:
+	var sched = _get_scheduler()
+	if sched == null:
+		return
+	var now := float(sched.get_current_tick())
+	if _phase == "active" \
+			and _next_spatial_authority_tick >= now - 0.0000001:
+		# Reconstruct the saved callback even when decimal cadence math lands on the restored tick.
+		# Scheduling it at `now` keeps it pending until the scheduler advances; restore itself does
+		# not sample positions or manufacture a consequence.
+		_schedule_wash_at(
+			maxf(now, _next_spatial_authority_tick),
+			_spatial_authority_tick,
+			SPATIAL_AUTHORITY_TAG
+		)
+	if _scheduled and _phase == "active":
+		for i in range(SECTIONS.size()):
+			var next_onset := _cadence_t0 + FIRST_FLOOD + float(SECTIONS[i]["phase"]) \
+					+ _period(i) * float(int(_flood_counts[i]))
+			_schedule_wash_at(maxf(now, next_onset), _make_onset(i), "wash_onset_%d" % i)
+			if next_onset - TELEGRAPH_LEAD > now:
+				_schedule_wash_at(next_onset - TELEGRAPH_LEAD, _make_pretel(i), "wash_pretel_%d" % i)
+			if bool(_flooding[i]) and float(_section_flood_until[i]) >= 0.0:
+				_rearm_section_window(i, float(_section_flood_until[i]), now)
+		var drain_next := _cadence_t0 + FIRST_FLOOD + DRAIN_LOOP_PHASE \
+				+ DRAIN_LOOP_PERIOD * float(_drain_flood_count)
+		_schedule_wash_at(maxf(now, drain_next), _drain_onset, "wash_drain_onset")
+		if _drain_flooding and _drain_flood_until >= 0.0:
+			_rearm_drain_window(_drain_flood_until, now)
+	if _pressure_vent_until >= 0.0:
+		_schedule_wash_at(maxf(now, _pressure_vent_until), _on_pressure_vent_closed, "wash_pressure_vent")
+	for i in range(_lure_until.size()):
+		if float(_lure_until[i]) >= 0.0:
+			_schedule_wash_at(maxf(now, float(_lure_until[i])), _on_lure_expired.bind(i), "wash_lure_%d" % i)
+	if _drain_bait_until >= 0.0:
+		_schedule_wash_at(maxf(now, _drain_bait_until), _drain_chase_resume, "wash_drain_bait")
+	for id_v in _pending_drown_removals.keys():
+		var id := str(id_v)
+		_schedule_wash_at(maxf(now, float(_pending_drown_removals[id_v])),
+			_remove_enemy.bind(id), "wash_drain_kill_%s" % id)
+	if _wipe_restart_pending and _wash_restart_deadline >= 0.0:
+		_schedule_wash_at(maxf(now, _wash_restart_deadline),
+			_restart_wash_relay_after_wipe, _restart_tag())
+	for branch_index in range(_branches.size()):
+		_schedule_branch_mechanism(branch_index)
+
+
+func _rearm_section_window(i: int, off_tick: float, now: float) -> void:
+	var onset := off_tick - _dur(i)
+	var sweep_count := ceili(_dur(i) / FLOOD_SWEEP_INTERVAL)
+	for k in range(1, sweep_count + 1):
+		var deadline := onset + minf(_dur(i), FLOOD_SWEEP_INTERVAL * float(k))
+		if deadline > now + 0.000001:
+			_schedule_wash_at(deadline, _make_section_sweep(i),
+				"wash_section_sweep_%d_%d" % [i, k])
+	_schedule_wash_at(maxf(now, off_tick), _set_flood_off.bind(i), "wash_off_%d" % i)
+
+
+func _rearm_drain_window(off_tick: float, now: float) -> void:
+	var onset := off_tick - DRAIN_LOOP_DUR
+	for k in range(1, DRAIN_DROWN_SWEEPS + 1):
+		var deadline := onset + DRAIN_LOOP_DUR * float(k) / float(DRAIN_DROWN_SWEEPS)
+		if deadline > now + 0.000001:
+			_schedule_wash_at(deadline, _wash_drain, "wash_drain_sweep_%d" % k)
+	_schedule_wash_at(maxf(now, off_tick), _set_drain_off, "wash_drain_off")
+
+
+func _schedule_wash_at(
+		deadline: float,
+		callback: Callable,
+		tag: String,
+		cancel_existing := true
+	) -> void:
+	var sched = _get_scheduler()
+	if sched == null:
+		return
+	# EventScheduler removes a callback while dispatching it. Self-rescheduling the same tag must
+	# not cancel that already-dispatched tag: doing so corrupts its pending-count bookkeeping and
+	# leaves the newly queued recurrence stranded. Replacement/restore callers still cancel first.
+	if cancel_existing:
+		sched.cancel_tag(tag)
+	sched.schedule_after(maxf(0.0, deadline - float(sched.get_current_tick())), callback, tag)
+
+
+func _apply_restored_wash_presenters() -> void:
+	for i in range(SECTIONS.size()):
+		var flooding := i < _flooding.size() and bool(_flooding[i])
+		if str(SECTIONS[i]["type"]) == "sluice":
+			_set_sluice(i, flooding)
+		for seg in (_section_water[i] if i < _section_water.size() else []):
+			if is_instance_valid(seg):
+				seg.visible = flooding
+	for seg in _drain_water:
+		if is_instance_valid(seg):
+			seg.visible = _drain_flooding
+	_sync_climbvine_presenter()
+	if is_instance_valid(_pressure_valve):
+		_set_causal_feedback_latched(_pressure_valve, _pressure_vent_until > _get_scheduler_tick())
+	for i in range(_lure_until.size()):
+		_set_lure_emission(i, 3.0 if float(_lure_until[i]) > _get_scheduler_tick() else 0.6)
+	for branch in _branches:
+		_apply_branch_mechanism_truth(branch)
+	_restore_reward_interactable(_drain_reward, true)
+	if is_instance_valid(_flora_light_root):
+		_flora_light_root.queue_free()
+	_flora_light_root = null
+	_flora_lights.clear()
+	if _drain_flora_tended:
+		var world := _drain_flora_interactable.global_position if is_instance_valid(_drain_flora_interactable) else DRAIN_FLORA_POS
+		_spawn_flora_light(world, DRAIN_FLORA_POS)
+	_project_wash_control_sources()
+
+
+func _restore_branch_state(states: Array, saved_version: int) -> void:
+	var by_gap := {}
+	for state_v in states:
+		if state_v is Dictionary:
+			by_gap[int(state_v.get("gap", -1))] = state_v
+	for branch in _branches:
+		var state: Dictionary = by_gap.get(int(branch.get("gap", -1)), {})
+		if state.is_empty() or (state.has("gate_kind") \
+				and str(state.get("gate_kind", "")) != str(branch.get("gate_kind", ""))):
+			_reset_branch_to_baseline(branch, true)
+			continue
+		var legacy_collected := bool(state.get("collected", false))
+		var kind := str(branch.get("gate_kind", "open"))
+		# v1/v2 recorded only the proxy boolean. Preserve solved topology, but return the reward to a physical
+		# source rather than minting it into an unknown hand; an uncollected gated branch remains retryable.
+		if not state.has("mechanism_phase"):
+			_reset_branch_to_baseline(branch, true)
+			if legacy_collected:
+				branch["mechanism_phase"] = "clear"
+				branch["unlocked"] = true
+			continue
+		var phase := str(state.get("mechanism_phase", ""))
+		var started := float(state.get("phase_started_at", -1.0))
+		var deadline := float(state.get("phase_deadline", -1.0))
+		var next_check := float(state.get("next_check_at", -1.0))
+		var context_v: Variant = state.get("mechanism_context", {})
+		var context: Dictionary = (context_v as Dictionary).duplicate(true) \
+			if context_v is Dictionary else {}
+		if not _valid_branch_mechanism_state(
+				branch, phase, started, deadline, next_check, context):
+			_reset_branch_to_baseline(branch, true)
+			continue
+		branch["mechanism_phase"] = phase
+		branch["phase_started_at"] = started
+		branch["phase_deadline"] = deadline
+		branch["next_check_at"] = next_check
+		branch["mechanism_context"] = context
+		branch["unlocked"] = kind == "open" or phase in ["clear", "window"]
+		_restore_reward_transaction(branch, state, saved_version)
+		if str(branch.get("reward_phase", "")) == REWARD_PHASE_CLAIMED:
+			branch["mechanism_phase"] = "clear"
+			branch["phase_started_at"] = -1.0
+			branch["phase_deadline"] = -1.0
+			branch["next_check_at"] = -1.0
+			branch["mechanism_context"] = _branch_default_context(branch)
+			branch["unlocked"] = true
+
+
+func _valid_branch_mechanism_state(
+		branch: Dictionary, phase: String, started: float, deadline: float,
+		next_check: float, context: Dictionary) -> bool:
+	var kind := str(branch.get("gate_kind", "open"))
+	var allowed := {
+		"open": ["clear"],
+		"lever": ["idle", "raising", "clear"],
+		"valve": ["idle", "venting", "clear"],
+		"decoy": ["idle", "luring", "window", "clear"],
+	}
+	if phase not in (allowed.get(kind, []) as Array) or not _valid_branch_context(branch, context):
+		return false
+	if phase in ["raising", "venting", "luring", "window"]:
+		if not is_finite(started) or not is_finite(deadline) or started < 0.0 or deadline <= started:
+			return false
+		if phase in ["luring", "window"] and (not is_finite(next_check) \
+				or next_check < started or next_check > deadline + 0.000001):
+			return false
+		if phase == "window":
+			var arrival := float(context.get("arrival_tick", -1.0))
+			if not is_finite(arrival) or arrival < started or arrival > deadline + 0.000001:
+				return false
+	else:
+		if started != -1.0 or deadline != -1.0 or next_check != -1.0:
+			return false
+	return true
+
+
+func _valid_branch_context(branch: Dictionary, context: Dictionary) -> bool:
+	var expected := _branch_default_context(branch)
+	if str(context.get("mechanism", "")) != str(expected.get("mechanism", "")):
+		return false
+	match str(branch.get("gate_kind", "open")):
+		"lever":
+			return str(context.get("blocker_id", "")) == str(expected.get("blocker_id", "")) \
+				and is_equal_approx(float(context.get("gate_lane", INF)), BRANCH_GATE_LANE) \
+				and is_equal_approx(float(context.get("lift_height", INF)), BRANCH_GATE_LIFT_HEIGHT)
+		"valve":
+			return str(context.get("stock", "")) == "pollen" \
+				and is_equal_approx(float(context.get("source_lane", INF)), BRANCH_PAD_LANE) \
+				and is_equal_approx(float(context.get("outlet_lane", INF)), BRANCH_SWITCH_LANE)
+		"decoy":
+			var target := _branch_decode_vec3(context.get("lure_target", []), Vector3.INF)
+			var expected_target := _branch_decode_vec3(expected.get("lure_target", []), Vector3.ZERO)
+			return str(context.get("guard_id", "")) == str(expected.get("guard_id", "")) \
+				and target.is_finite() and target.distance_to(expected_target) < 0.001
+	return true
+
+
+func _reset_branch_to_baseline(branch: Dictionary, repost_guard: bool) -> void:
+	var kind := str(branch.get("gate_kind", "open"))
+	_reset_reward_to_source(branch)
+	branch["mechanism_phase"] = "clear" if kind == "open" else "idle"
+	branch["phase_started_at"] = -1.0
+	branch["phase_deadline"] = -1.0
+	branch["next_check_at"] = -1.0
+	branch["mechanism_context"] = _branch_default_context(branch)
+	branch["unlocked"] = kind == "open"
+	if repost_guard:
+		_queue_branch_guard_repost(branch)
+
+
+func _queue_branch_guard_repost(branch: Dictionary) -> void:
+	var guard = branch.get("guard")
+	if not is_instance_valid(guard) or not guard.has_method("re_post"):
+		return
+	var guard_id := str(guard.get("char_id"))
+	var post := Vector3(float(branch.get("mid_x", 0.0)), 0.5, BRANCH_PAD_LANE)
+	var authored_post: Variant = _branch_guard_spawns.get(guard_id, post)
+	if authored_post is Vector3:
+		post = authored_post
+	# Apply immediately for direct chunk restores, then retain one derived barrier for the normal parent-first
+	# presenter traversal. This dictionary is deliberately not serialized: it only orders one attachment pass.
+	_pending_branch_guard_reposts[guard_id] = {"guard": guard, "post": post}
+	guard.re_post(post)
+
+
+func _flush_pending_branch_guard_reposts() -> void:
+	if _pending_branch_guard_reposts.is_empty():
+		return
+	var pending: Array = _pending_branch_guard_reposts.values()
+	_pending_branch_guard_reposts.clear()
+	for record_v in pending:
+		if not record_v is Dictionary:
+			continue
+		var record := record_v as Dictionary
+		var guard = record.get("guard")
+		var post_v: Variant = record.get("post", Vector3.ZERO)
+		if is_instance_valid(guard) and guard.has_method("re_post") and post_v is Vector3:
+			guard.re_post(post_v)
+
+
+func _portable_current_carries() -> Dictionary:
+	var out := {}
+	for char_id_v in _current_carries.keys():
+		var char_id := str(char_id_v)
+		var carry: Dictionary = _current_carries[char_id_v]
+		out[char_id] = {
+			"phase": str(carry.get("phase", "")),
+			"origin_render": _wash_encode_vec3(_wash_decode_vec3(
+				carry.get("origin_render", null), Vector3.ZERO
+			)),
+			"knocked_render": _wash_encode_vec3(_wash_decode_vec3(
+				carry.get("knocked_render", null), Vector3.ZERO
+			)),
+			"return_duration": clampf(
+				float(carry.get("return_duration", WASH_CURRENT_RETURN_MIN)),
+				WASH_CURRENT_RETURN_MIN,
+				WASH_CURRENT_RETURN_MAX
+			),
+			"traversal_id": str(carry.get("traversal_id", "")),
+			"impact_tick": float(carry.get("impact_tick", -1.0)),
+		}
+	return out
+
+
+func _valid_current_carries_raw(raw: Variant) -> bool:
+	if not raw is Dictionary:
+		return false
+	for id_v in (raw as Dictionary).keys():
+		var character_id := str(id_v)
+		var carry_v: Variant = (raw as Dictionary)[id_v]
+		if character_id not in PARTY_IDS or not carry_v is Dictionary \
+				or not _valid_portable_current_carry(
+					character_id, carry_v as Dictionary):
+			return false
+	return true
+
+
+func _restore_current_carries(raw: Variant, saved_version: int) -> void:
+	_current_carries.clear()
+	if not raw is Dictionary:
+		return
+	var gs = _get_game_state()
+	if gs == null:
+		return
+	for char_id_v in (raw as Dictionary).keys():
+		var char_id := str(char_id_v)
+		if char_id not in PARTY_IDS or not gs.characters.has(char_id):
+			continue
+		var carry_v: Variant = (raw as Dictionary)[char_id_v]
+		if not carry_v is Dictionary:
+			continue
+		var carry: Dictionary = (carry_v as Dictionary).duplicate(true)
+		var phase := str(carry.get("phase", ""))
+		if saved_version < 8:
+			if phase not in ["knock", "return"]:
+				continue
+			var traversal: Dictionary = gs.get_external_traversal_state(char_id)
+			var expected_id := "%s%s:%s" % [
+				WASH_CURRENT_TRAVERSAL_PREFIX, phase, char_id]
+			if str(traversal.get("traversal_id", "")) != expected_id:
+				continue
+			var legacy_render_origin_value: Variant = traversal.get(
+				"render_origin", gs.get_render_position(char_id))
+			var legacy_render_origin: Vector3 = legacy_render_origin_value \
+				if legacy_render_origin_value is Vector3 \
+				else gs.get_render_position(char_id)
+			carry["origin_render"] = _wash_encode_vec3(legacy_render_origin)
+			carry["traversal_id"] = expected_id
+			carry["impact_tick"] = float(traversal.get("end_tick", -1.0))
+		if not _valid_portable_current_carry(char_id, carry):
+			continue
+		_current_carries[char_id] = {
+			"phase": phase,
+			"origin_render": _wash_encode_vec3(_wash_decode_vec3(
+				carry.get("origin_render", null), gs.get_render_position(char_id)
+			)),
+			"knocked_render": _wash_encode_vec3(_wash_decode_vec3(
+				carry.get("knocked_render", null), gs.get_render_position(char_id)
+			)),
+			"return_duration": clampf(
+				float(carry.get("return_duration", WASH_CURRENT_RETURN_MIN)),
+				WASH_CURRENT_RETURN_MIN,
+				WASH_CURRENT_RETURN_MAX
+			),
+			"traversal_id": str(carry.get("traversal_id", "")),
+			"impact_tick": float(carry.get("impact_tick", -1.0)),
+		}
+
+
+func _valid_portable_current_carry(
+		character_id: String, carry: Dictionary) -> bool:
+	var phase := str(carry.get("phase", ""))
+	if phase not in [
+		"knock_reserved", "knock", "knock_impact_pending",
+		"return_reserved", "return", "return_impact_pending",
+		"landing_committing",
+	]:
+		return false
+	var leg := "knock" if phase.begins_with("knock") else "return"
+	var expected_id := "%s%s:%s" % [
+		WASH_CURRENT_TRAVERSAL_PREFIX, leg, character_id]
+	var impact_tick := float(carry.get("impact_tick", -1.0))
+	return str(carry.get("traversal_id", "")) == expected_id \
+		and is_finite(impact_tick) and impact_tick >= 0.0 \
+		and _wash_decode_vec3(
+			carry.get("origin_render", null), Vector3.INF).is_finite() \
+		and _wash_decode_vec3(
+			carry.get("knocked_render", null), Vector3.INF).is_finite() \
+		and is_finite(float(carry.get(
+			"return_duration", WASH_CURRENT_RETURN_MIN)))
+
+
+func _portable_enemy_drown_mirrors() -> Dictionary:
+	var out := {}
+	var ids := _enemy_drown_mirrors.keys()
+	ids.sort()
+	for id_v in ids:
+		var id := str(id_v)
+		var mirror: Dictionary = _enemy_drown_mirrors[id_v]
+		out[id] = {
+			"phase": str(mirror.get("phase", "")),
+			"section_index": int(mirror.get("section_index", -1)),
+			"channel_key": str(mirror.get("channel_key", "")),
+			"started_tick": float(mirror.get("started_tick", -1.0)),
+			"impact_tick": float(mirror.get("impact_tick", -1.0)),
+			"destination": _wash_encode_vec3(_wash_decode_vec3(
+				mirror.get("destination", null), Vector3.ZERO)),
+			"counted": bool(mirror.get("counted", false)),
+			"removal_deadline": float(mirror.get("removal_deadline", -1.0)),
+		}
+	return out
+
+
+func _valid_enemy_drown_mirrors(raw: Variant) -> bool:
+	if not raw is Dictionary:
+		return false
+	for id_v in (raw as Dictionary).keys():
+		var id := str(id_v)
+		var value: Variant = (raw as Dictionary)[id_v]
+		if id.is_empty() or not value is Dictionary:
+			return false
+		var mirror := value as Dictionary
+		var phase := str(mirror.get("phase", ""))
+		var section_index := int(mirror.get("section_index", -2))
+		var expected_key := "kit:channel:wash_relay_enemy_drain" \
+			if section_index == -1 else (
+				"kit:channel:wash_relay_enemy_section_%d" % section_index)
+		var started_tick := float(mirror.get("started_tick", -1.0))
+		var impact_tick := float(mirror.get("impact_tick", -1.0))
+		var removal_deadline := float(mirror.get("removal_deadline", -1.0))
+		if phase not in ["reserved", "carrying", "arrived", "removed"] \
+				or section_index < -1 or section_index >= SECTIONS.size() \
+				or str(mirror.get("channel_key", "")) != expected_key \
+				or not is_finite(started_tick) or started_tick < 0.0 \
+				or not is_finite(impact_tick) or impact_tick < -1.0 \
+				or not is_finite(removal_deadline) or removal_deadline < -1.0 \
+				or not mirror.get("counted", null) is bool \
+				or not _wash_decode_vec3(
+					mirror.get("destination", null), Vector3.INF).is_finite():
+			return false
+		if phase in ["reserved", "carrying"] and bool(mirror.get("counted", false)):
+			return false
+		if phase == "arrived" and (
+				not bool(mirror.get("counted", false))
+				or removal_deadline < 0.0):
+			return false
+		if phase == "removed" and (
+				not bool(mirror.get("counted", false))
+				or removal_deadline != -1.0):
+			return false
+	return true
+
+
+func _validated_enemy_drown_mirrors(raw: Variant) -> Dictionary:
+	if not _valid_enemy_drown_mirrors(raw):
+		return {}
+	return (raw as Dictionary).duplicate(true)
+
+
+func _schedule_enemy_current_reconcile() -> void:
+	if _get_scheduler() == null:
+		return
+	_schedule_wash_at(
+		_get_scheduler_tick() + WASH_CURRENT_PREIMPACT_EPSILON,
+		_reconcile_enemy_current_mirrors,
+		WASH_ENEMY_CURRENT_RECONCILE_TAG)
+
+
+func _reconcile_enemy_current_mirrors() -> void:
+	var gs = _get_game_state()
+	if gs == null:
+		return
+	var ids := _enemy_drown_mirrors.keys()
+	ids.sort()
+	for id_v in ids:
+		var id := str(id_v)
+		if not _enemy_drown_mirrors.has(id):
+			continue
+		var mirror: Dictionary = _enemy_drown_mirrors[id]
+		var phase := str(mirror.get("phase", ""))
+		if phase == "removed":
+			_remove_enemy(id)
+			continue
+		var section_index := int(mirror.get("section_index", -1))
+		var channel = _section_enemy_currents.get(section_index) \
+			if section_index >= 0 else _drain_enemy_current
+		var channel_active := false
+		if is_instance_valid(channel) and channel.has_method("serialize_state"):
+			var channel_state: Dictionary = channel.serialize_state()
+			channel_active = (channel_state.get(
+				"active_sweeps", {}) as Dictionary).has(id)
+		if channel_active:
+			continue
+		var enemy = _enemy_by_id(id)
+		var enemy_dead: bool = is_instance_valid(enemy) \
+			and enemy.has_method("is_alive") and not bool(enemy.is_alive())
+		var destination: Vector3 = _wash_decode_vec3(
+			mirror.get("destination", null), Vector3.INF)
+		var arrived: bool = gs.characters.has(id) and destination.is_finite() \
+			and gs.get_position(id).distance_to(destination) <= 0.001
+		if phase in ["reserved", "carrying"]:
+			if enemy_dead and arrived:
+				_on_enemy_current_impact(id, section_index)
+			else:
+				# Without the Channel receipt, an unproven mirror cannot drown anything.
+				_enemy_drown_mirrors.erase(id)
+				_publish_wash_authority()
+			continue
+		if phase == "arrived":
+			if not enemy_dead and gs.characters.has(id):
+				_enemy_drown_mirrors.erase(id)
+				_pending_drown_removals.erase(id)
+				_publish_wash_authority()
+				continue
+			var deadline := float(mirror.get("removal_deadline", -1.0))
+			if deadline <= _get_scheduler_tick() + WASH_CURRENT_PREIMPACT_EPSILON:
+				_remove_enemy(id)
+			else:
+				_pending_drown_removals[id] = deadline
+				_schedule_wash_at(
+					deadline, _remove_enemy.bind(id),
+					"wash_drain_kill_%s" % id)
+
+
+func _wash_encode_vec3(value: Vector3) -> Array:
+	return [value.x, value.y, value.z]
+
+
+func _wash_decode_vec3(raw: Variant, fallback: Vector3) -> Vector3:
+	if raw is Vector3:
+		return raw
+	if raw is Array and raw.size() >= 3:
+		var decoded := Vector3(float(raw[0]), float(raw[1]), float(raw[2]))
+		return decoded if decoded.is_finite() else fallback
+	return fallback
+
+
+func _portable_float_map(source: Dictionary) -> Dictionary:
+	var out := {}
+	for key_v in source.keys():
+		out[str(key_v)] = float(source[key_v])
+	return out
+
+
+func _validated_float_map(raw: Variant) -> Dictionary:
+	var out := {}
+	if not raw is Dictionary:
+		return out
+	for key_v in raw.keys():
+		var value := float(raw[key_v])
+		if is_finite(value):
+			out[str(key_v)] = value
+	return out
+
 func get_preview_state() -> Dictionary:
+	_sync_climbvine_presenter()
+	_sample_held_control_truth()
 	var secs: Array = []
 	for i in range(SECTIONS.size()):
 		secs.append({"type": SECTIONS[i]["type"], "disable": SECTIONS[i]["disable"],
@@ -2803,10 +6004,15 @@ func get_preview_state() -> Dictionary:
 			"distracted": (gs != null and gs.is_character_distracted(enemy.char_id)),
 		})
 	var hidden_ids: Array = []
+	var climbing_ids: Array[String] = []
 	if gs != null:
 		for cid in PARTY_IDS:
 			if gs.characters.has(cid) and gs.get_character_concealment(cid) >= GameState.CONCEAL_FULL:
 				hidden_ids.append(cid)
+			var traversal: Dictionary = gs.get_external_traversal_state(cid) \
+					if gs.characters.has(cid) else {}
+			if str(traversal.get("traversal_id", "")).begins_with(SLOPEROPE_TRAVERSAL_PREFIX):
+				climbing_ids.append(cid)
 	var branches: Array = []
 	for b in _branches:
 		branches.append({
@@ -2816,25 +6022,57 @@ func get_preview_state() -> Dictionary:
 			"guarded": is_instance_valid(b.get("guard")),
 			"gate_kind": str(b.get("gate_kind", "open")), "gated": str(b.get("gate_kind", "open")) != "open",
 			"unlocked": bool(b.get("unlocked", true)),
+			"mechanism_phase": str(b.get("mechanism_phase", "clear")),
+			"phase_started_at": float(b.get("phase_started_at", -1.0)),
+			"phase_deadline": float(b.get("phase_deadline", -1.0)),
+			"next_check_at": float(b.get("next_check_at", -1.0)),
+			"phase_progress": _branch_phase_progress(b),
+			"mechanism_context": (b.get("mechanism_context", {}) as Dictionary).duplicate(true),
+			"reward_source_key": str(b.get("reward_source_key", "")),
+			"reward_source_pos": b.get("reward_source_pos", Vector3.ZERO),
+			"reward_item_id": str(b.get("reward_item_id", "")),
+			"reward_phase": str(b.get("reward_phase", REWARD_PHASE_AVAILABLE)),
+			"reward_claimed_by": str(b.get("reward_claimed_by", "")),
+			"reward_claim_serial": int(b.get("reward_claim_serial", 0)),
+			"reward_atp": int(b.get("reward_atp", 0)),
+			"reward_tier": str(b.get("reward_tier", "")),
+			"reward_item_at_source": _reward_item_at_source(b),
+			"reward_item_holder": _reward_item_holder(b),
+			"cache_available": is_instance_valid(b.get("cache")) \
+				and bool(b["cache"].is_interaction_enabled()),
+			"topology_blocked": _branch_gate_is_blocked(b) \
+				if str(b.get("gate_kind", "")) == "lever" else false,
 		})
 	return {
 		"phase": _phase, "complete": _phase == "complete", "wipe_count": _wipe_count,
+		"spatial_authority_epoch": _spatial_authority_epoch,
+		"next_spatial_authority_tick": _next_spatial_authority_tick,
 		"sections": secs, "section_count": SECTIONS.size(),
 		"washed_count": _washed.size(), "washed": _washed.keys(),
+		"current_carry_count": _current_carries.size(),
+		"current_carries": _portable_current_carries(),
 		"flow_period": FLOW_PERIOD, "flood_duration": FLOOD_DURATION,
 		"enemy_count": guards.size(), "guards": guards,
 		"lure_active": _lure_active(), "hidden": hidden_ids,
 		"sloperope_deployed": _sloperope_deployed,
+		"climbvine_return": _climbvine_return.get_state() \
+				if is_instance_valid(_climbvine_return) else {},
+		"climbing_count": climbing_ids.size(), "climbing": climbing_ids,
 		"climb_available": is_instance_valid(_climb_interactable) and _climb_interactable.is_interaction_enabled(),
 		"guidance_section": _guidance_section, "guidance_count": _section_guides.size(),
 		"section_setpiece_count": _section_setpiece_count,
 		"pressure_portal_count": _pressure_portals.size(), "sluice_tunnel_count": _sluice_tunnels.size(),
 		"pressure_vent_active": _pressure_vent_remaining() > 0.0,
 		"pressure_vent_remaining": _pressure_vent_remaining(),
-		"branches": branches, "branch_count": _branches.size(), "branch_loot": _branch_loot,
+		"branches": branches, "branch_count": _branches.size(),
+		# Diagnostic only: this total derives from exact physical claim transactions.
+		"claimed_reward_atp": _claimed_reward_atp(),
+		"drain_reward": _preview_reward_state(_drain_reward),
 		"branch_guard_count": branch_guard_count,
-		"trace_section": _trace_section, "surge_timing_learned": _surge_timing_learned,
-		"bloom_count": _blooms.size(),
+		"cadence_read_section": _cadence_read_section,
+		"cadence_read_period": _period(_cadence_read_section) if _cadence_read_section >= 0 else -1.0,
+		"surge_timing_learned": _surge_timing_learned,
+		"drain_flora_tended": _drain_flora_tended, "flora_light_count": _flora_lights.size(),
 		"sweep_count": _sweep_count, "section_wash_counts": _section_wash_counts.duplicate(),
 		"flush_hint_shown": _flush_hint_shown,
 		"water_shown": _water_shown_state(),
