@@ -68,9 +68,10 @@ const FLURE_POS_LANE := -6.4
 const PAD_LEDGE_S := 1.6
 const PAD_POS_LANE := -6.2
 
-# Palette roles kept at runtime (fall material + beat lights; the mesh palette is the .py's).
-const COL_WATER_EM := Color(0.3, 0.75, 0.95)
-const COL_GOLD := Color(0.95, 0.75, 0.15)          # Curecumin turmeric
+# Runtime colors come from THE palette registry (docs/LEVEL_PALETTES.md) — the same
+# JSON the Blender builder reads; nothing here hard-codes a hue.
+static var COL_WATER_EM: Color = LevelPalette.color("channels", "water")
+static var COL_PORTAL_BLUE: Color = LevelPalette.global_color("portal_route")
 
 static var _mat_cache: Dictionary = {}
 
@@ -200,9 +201,9 @@ static func _add_beat_lights(root: Node3D) -> void:
 	warm.omni_range = 7.0
 	warm.position = ChannelsArc.arc_pos(FLURE_LEDGE_S, FLURE_POS_LANE) + Vector3(0.0, 1.0, 0.0)
 	root.add_child(warm)
-	var gold := OmniLight3D.new()
-	gold.light_color = COL_GOLD
-	gold.light_energy = 1.1
-	gold.omni_range = 5.5
-	gold.position = ChannelsArc.arc_pos(PAD_LEDGE_S, PAD_POS_LANE) + Vector3(0.0, 0.9, 0.0)
-	root.add_child(gold)
+	var portal_glow := OmniLight3D.new()
+	portal_glow.light_color = COL_PORTAL_BLUE
+	portal_glow.light_energy = 1.1
+	portal_glow.omni_range = 5.5
+	portal_glow.position = ChannelsArc.arc_pos(PAD_LEDGE_S, PAD_POS_LANE) + Vector3(0.0, 0.9, 0.0)
+	root.add_child(portal_glow)

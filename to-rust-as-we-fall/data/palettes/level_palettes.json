@@ -1,0 +1,73 @@
+{
+  "_comment": "THE level palette registry (docs/LEVEL_PALETTES.md). One source of truth for asset colors: Godot reads it through LevelPalette (scripts/system/level_palette.gd), the Blender builders read it directly. Every asset color traces to a row here; _global rows are cross-level invariants and are never restyled per level.",
+  "_global": {
+    "terminal_green": "#5ce87f",
+    "portal_transit": "#8c6bfa",
+    "portal_route": "#4c8cff",
+    "portal_locked": "#e04848",
+    "curecumin_gold": "#f2bf26",
+    "warning_amber": "#f2991f",
+    "character_ownership_note": "per-character tints stay in code (HUD contract), not here"
+  },
+  "channels": {
+    "_district": "Plumbing Power Project (GDD 4.4) — dark wet iron, luminous water, teal flora",
+    "ground": "#101216",
+    "iron": "#1a1c21",
+    "iron_dark": "#121317",
+    "rust": "#42210f",
+    "pipe": "#2b2624",
+    "wood": "#614526",
+    "stem_dead": "#241a12",
+    "water": "#4cbff2",
+    "water_deep": "#0f2933",
+    "foam": "#ccf2ff",
+    "flora": "#33d9bf",
+    "moss": "#123d33",
+    "porthole_glass": "#0d1f24",
+    "lamp": "#b36610",
+    "rim_light": "#c2d9e6",
+    "sections": {
+      "flush": "#264d8c",
+      "current": "#3373b3",
+      "jet": "#668cd9",
+      "plate": "#8c591a",
+      "sluice": "#73331a",
+      "patrol": "#8c2e33",
+      "lure": "#8c4d80",
+      "basin": "#1f5999",
+      "double_plate": "#99661a"
+    }
+  },
+  "greenfields": {
+    "_district": "Greenfields Collective — PROPOSED starter row; refine when its chunks build",
+    "ground": "#16241a",
+    "structure": "#2e4433",
+    "flora": "#5ce87f",
+    "bloom": "#e8c25c",
+    "water": "#66d9c2"
+  },
+  "stacks": {
+    "_district": "The Open Files Initiative — PROPOSED from the existing chunk look",
+    "ground": "#1c1a16",
+    "structure": "#332e26",
+    "paper": "#d9c9a3",
+    "index_light": "#66d9ff",
+    "rust": "#4d2a14"
+  },
+  "aghora": {
+    "_district": "The Aghora — PROPOSED: the counterfeit agora's magenta neon over dark stacks",
+    "ground": "#171219",
+    "structure": "#2b2130",
+    "neon": "#e64ccc",
+    "banner": "#8c3d73",
+    "lamp": "#f2b34d"
+  },
+  "endo_junction": {
+    "_district": "Endo's junction — PROPOSED: glowing cave, teal plants, work iron",
+    "ground": "#131a1c",
+    "rock": "#223033",
+    "flora": "#33d9bf",
+    "work_iron": "#3d332b",
+    "lamp": "#b36610"
+  }
+}
