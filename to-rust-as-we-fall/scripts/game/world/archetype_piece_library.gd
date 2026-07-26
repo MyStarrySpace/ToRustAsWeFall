@@ -25,17 +25,20 @@ const MANIFEST := {
 	"capbage": "Capbage", "scarpet": "Scarpet", "hushbloom": "Hushbloom",
 }
 
-static var _template: Node3D = null
+# Only the PackedScene is cached; each call instantiates, clones the named
+# piece, and frees the scratch instance — a live never-in-tree template Node
+# would leak 19 nodes at every process exit.
+static var _packed: PackedScene = null
 
-static func _ensure_template() -> Node3D:
-	if _template != null and is_instance_valid(_template):
-		return _template
+static func _ensure_packed() -> PackedScene:
+	if _packed != null:
+		return _packed
 	var packed = load(SCENE_PATH)
 	if packed == null or not (packed is PackedScene):
 		push_warning("ArchetypePieceLibrary: cannot load %s" % SCENE_PATH)
 		return null
-	_template = (packed as PackedScene).instantiate() as Node3D
-	return _template
+	_packed = packed as PackedScene
+	return _packed
 
 static func has_piece(content_id: String) -> bool:
 	return MANIFEST.has(content_id)
@@ -49,15 +52,18 @@ static func instantiate(content_id: String) -> Node3D:
 	if not MANIFEST.has(content_id):
 		push_warning("ArchetypePieceLibrary: no piece for content id '%s'" % content_id)
 		return null
-	var tpl := _ensure_template()
-	if tpl == null:
+	var packed := _ensure_packed()
+	if packed == null:
 		return null
-	var node := tpl.find_child(str(MANIFEST[content_id]), true, false)
+	var scratch := packed.instantiate()
+	var node := scratch.find_child(str(MANIFEST[content_id]), true, false)
+	var clone: Node3D = null
 	if node == null or not (node is Node3D):
 		push_warning("ArchetypePieceLibrary: piece node '%s' missing from %s"
 			% [MANIFEST[content_id], SCENE_PATH])
-		return null
-	var clone := (node as Node3D).duplicate() as Node3D
-	clone.transform = Transform3D.IDENTITY
-	clone.set_meta("archetype_piece_id", content_id)
+	else:
+		clone = (node as Node3D).duplicate() as Node3D
+		clone.transform = Transform3D.IDENTITY
+		clone.set_meta("archetype_piece_id", content_id)
+	scratch.free()
 	return clone

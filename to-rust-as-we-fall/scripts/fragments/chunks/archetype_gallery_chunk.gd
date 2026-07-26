@@ -26,7 +26,7 @@ func _build_chunk() -> void:
 		var piece := ArchetypePieceLibrary.instantiate(id)
 		if piece == null:
 			continue
-		piece.position = _plinth_pos(i) + Vector3(0.0, 0.5, 0.0)
+		piece.position = _plinth_pos(i) + Vector3(0.0, 0.4, 0.0)   # base ON the 0.4 plinth top
 		add_child(piece)
 
 func _plinth_pos(i: int) -> Vector3:

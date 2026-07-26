@@ -1035,8 +1035,15 @@ func _build_branch_content(mid: float, placements: Array) -> int:
 		var piece := ArchetypePieceLibrary.instantiate(content_id) \
 			if ArchetypePieceLibrary.has_piece(content_id) else null
 		if piece != null:
-			piece.name = "BranchContent_%s_%d" % [content_id, count]
-			piece.transform = _branch_warp_xform(mid + off.x, BRANCH_PAD_LANE + off.y)
+			# Unique across ALL branches (mid disambiguates) or Godot @-renames a
+			# repeated content id and the census misses it. Pieces are authored
+			# base-at-origin; the plank deck is a 0.2 slab centred on mid's arc
+			# height, so the base sits at the DECK TOP at mid — not at the local
+			# arc height, which climbs KCLIMB per s and would bury a slot.
+			piece.name = "BranchContent_%d_%s_%d" % [roundi(mid * 10.0), content_id, count]
+			var xf := _branch_warp_xform(mid + off.x, BRANCH_PAD_LANE + off.y)
+			xf.origin.y = _branch_warp_xform(mid, BRANCH_PAD_LANE).origin.y + 0.1
+			piece.transform = xf
 			_branch_root.add_child(piece)
 		else:
 			var sz := _branch_marker_size(p.get("size", []))

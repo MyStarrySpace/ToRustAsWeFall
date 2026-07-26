@@ -21,13 +21,18 @@ it for assets"). The registry is DATA, shared by both sides of the pipeline:
    never fixtures), warning amber.
 3. **Per-character ownership tints stay in code** (the HUD contract), not in level rows.
 4. **Generated content obeys the level palette too** — the branch/archetype set pieces
-   must draw from the hosting level's row (open fix from the asset autopsy: today they
-   ship magenta/purple confetti from nowhere).
+   draw from the hosting level's row (the archetype piece library bakes the channels
+   row for v1; re-emit per district when their art passes land).
 5. **Sub-palettes** (e.g. `channels.sections`) are part of the row: the nine section-gate
    hues are data here, mirrored nowhere else.
 6. Rows marked `PROPOSED` are starter identities distilled from existing chunk looks
    (greenfields / stacks / aghora / endo_junction); the director refines them when
    that level's art pass lands — but new assets for those levels use the row as-is TODAY.
+7. **The `species` row holds CANONICAL FLORA COLORS** (flora_taxonomy.md), district-
+   independent: a species keeps its identity in every level (Hushbloom pale lavender
+   `#d6cce6` — teal belongs to Seefern; healthy Scarpet greenish-brown `#6f6b4e` with
+   rust scar patches; Mother-Flure root browns). Level rows restyle ARCHITECTURE,
+   never species.
 
 ## Current rows
 
