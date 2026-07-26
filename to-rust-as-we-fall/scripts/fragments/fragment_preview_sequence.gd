@@ -3542,7 +3542,22 @@ func _apply_preview_lighting() -> void:
 ## A chunk can preserve a dark authored time while raising the tactical light floor needed by
 ## its materials and camera. This is applied after the shared day/night curve so it survives
 ## clock updates and Web compatibility's reduced glow without globally flattening every night.
+const _TONEMAP_MODES := {
+	"linear": Environment.TONE_MAPPER_LINEAR, "reinhard": Environment.TONE_MAPPER_REINHARDT,
+	"filmic": Environment.TONE_MAPPER_FILMIC, "aces": Environment.TONE_MAPPER_ACES,
+	"agx": Environment.TONE_MAPPER_AGX,
+}
+
 func _apply_chunk_preview_lighting_profile() -> void:
+	if _preview_environment == null:
+		return
+	# Reset the GRADE knobs first so a chunk without a profile (or without these keys)
+	# never inherits the previous chunk's filmic tonemap / bloom.
+	_preview_environment.tonemap_mode = Environment.TONE_MAPPER_LINEAR
+	_preview_environment.tonemap_white = 1.0
+	_preview_environment.tonemap_exposure = 1.0
+	_preview_environment.glow_bloom = 0.0
+	_preview_environment.glow_hdr_threshold = 1.0
 	if _active_chunk == null or not _active_chunk.has_method("get_preview_lighting_profile"):
 		return
 	var profile_variant = _active_chunk.call("get_preview_lighting_profile")
@@ -3587,6 +3602,14 @@ func _apply_chunk_preview_lighting_profile() -> void:
 		var directional_target: Color = profile.get("directional_color", _preview_directional_light.light_color)
 		_preview_directional_light.light_color = _preview_directional_light.light_color.lerp(
 			directional_target, color_mix)
+	# The GRADE: a chunk (the interior channels) can pull the whole space into a
+	# filmic, bloom-lit mood without touching any other fragment's look.
+	_preview_environment.tonemap_mode = _TONEMAP_MODES.get(
+		str(profile.get("tonemap_mode", "linear")), Environment.TONE_MAPPER_LINEAR)
+	_preview_environment.tonemap_white = float(profile.get("tonemap_white", 1.0))
+	_preview_environment.tonemap_exposure = float(profile.get("exposure", 1.0))
+	_preview_environment.glow_bloom = float(profile.get("glow_bloom", 0.0))
+	_preview_environment.glow_hdr_threshold = float(profile.get("glow_hdr_threshold", 1.0))
 
 func _apply_character_override(char_id: String, override: Dictionary) -> void:
 	if not _character_state.has(char_id):

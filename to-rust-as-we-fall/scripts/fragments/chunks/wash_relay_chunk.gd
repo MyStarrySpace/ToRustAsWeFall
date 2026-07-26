@@ -1496,17 +1496,26 @@ func _build_neck_garden() -> void:
 ## a constant ambient band in the channels' dark teal, glow held so emissives
 ## keep blooming at night (and on the web build's reduced-glow renderer).
 func get_preview_lighting_profile() -> Dictionary:
+	# The ambiance plate (docs/CHANNELS_CONCEPT.md): dark, wet, high-contrast, lit by
+	# the red/blue/purple accent trio with neon bloom on the water/portal/rim. A
+	# filmic grade lifts the shadow floor just enough to read while keeping the deep
+	# contrast; bloom makes the emissives glow. Cool near-black shadow, sun ~zero.
 	return {
-		"ambient_energy_floor": 0.48,
-		"ambient_energy_ceiling": 0.56,
+		"ambient_energy_floor": 0.66,
+		"ambient_energy_ceiling": 0.74,
 		"directional_energy_floor": 0.05,
 		"directional_energy_ceiling": 0.09,
-		"glow_intensity_floor": 0.30,
-		"ambient_color": Color(0.16, 0.22, 0.26),
-		"directional_color": Color(0.50, 0.62, 0.70),
-		"background_color": Color(0.012, 0.018, 0.022),
+		"glow_intensity_floor": 0.6,
+		"glow_bloom": 0.32,
+		"glow_hdr_threshold": 0.9,
+		"tonemap_mode": "filmic",
+		"tonemap_white": 6.0,
+		"exposure": 1.15,
+		"ambient_color": Color(0.13, 0.18, 0.25),
+		"directional_color": Color(0.40, 0.55, 0.74),
+		"background_color": Color(0.01, 0.014, 0.022),
 		"background_mix": 0.6,
-		"color_mix": 0.6,
+		"color_mix": 0.5,
 	}
 
 ## THE AUTHORED LIGHT RIG. Wayfinding follows the no-decorative-text ruling — the
@@ -1520,22 +1529,37 @@ func _build_light_rig() -> void:
 	var rig := Node3D.new()
 	rig.name = "LightRig"
 	add_child(rig)
-	for i in range(SECTIONS.size()):                       # gate hues = the signage
+	var water := LevelPalette.color("channels", "water")
+	var purple := LevelPalette.global_color("portal_transit")
+	var red := Color(0.95, 0.22, 0.14)
+	for i in range(SECTIONS.size()):
 		var sec: Dictionary = SECTIONS[i]
-		_rig_omni(rig, float(sec["x0"]), 0.0, 2.4,
-			LevelPalette.color("channels", "sections/" + str(sec["type"])), 2.2, 7.5)
-		if str(sec["type"]) in ["flush", "current", "basin", "double_plate"]:
-			_rig_omni(rig, (float(sec["x0"]) + float(sec["x1"])) * 0.5, 0.0, 1.0,
-				LevelPalette.color("channels", "water"), 1.4, 6.0)
-	for mid_v in _gap_mids():                              # work-lamps at the turn-offs
-		_rig_omni(rig, float(mid_v), 3.2, 1.8,
-			LevelPalette.global_color("warning_amber"), 2.0, 7.0)
+		# WATER is the pervasive dominant glow (concept plate B) — a bright cyan pool
+		# hugging the deck of EVERY section, lighting it from below across the walkway.
+		var s_mid := (float(sec["x0"]) + float(sec["x1"])) * 0.5
+		_rig_omni(rig, s_mid, 0.0, 0.6, water, 3.6, 8.0)
+		_rig_omni(rig, s_mid, -2.6, 0.6, water, 2.2, 7.0)   # reach the inner rim too
+		# the gate hue rides above as the section's wordless signage.
+		_rig_omni(rig, float(sec["x0"]), 0.0, 2.6,
+			LevelPalette.color("channels", "sections/" + str(sec["type"])), 1.8, 6.5)
+	# PORTALS cast purple (concept plate B) — pooling on the planks around each ring.
+	for portal_s in [CURECUMIN_PAD_POS.x, CURE_DEST_POS.x, PRESSURE_PORTAL_ENTRY.x, PRESSURE_PORTAL_LANDING.x]:
+		_rig_omni(rig, float(portal_s), 0.0, 1.1, purple, 2.6, 6.0)
+	# LANTERNS: the RED accent zone on the inner rim (the moody red wall of plate B),
+	# warm amber holding the shelters/overlook.
+	for red_s in [10.0, 30.0, 50.0, 70.0]:
+		_rig_omni(rig, float(red_s), -3.4, 2.0, red, 2.2, 6.5)
 	_rig_omni(rig, 1.6, -2.0, 2.0, LevelPalette.color("channels", "lamp"), 2.4, 8.0)
 	_rig_omni(rig, 84.0, 0.0, 2.2, LevelPalette.color("channels", "lamp"), 2.4, 8.0)
-	for s_pos in [20.6, 39.5, 54.5, 72.5]:                 # constant seep shafts
+	for mid_v in _gap_mids():                              # amber work-lamps at the turn-offs
+		_rig_omni(rig, float(mid_v), 3.2, 1.8,
+			LevelPalette.global_color("warning_amber"), 1.8, 6.5)
+	# the DRUM CROWN rim — a bright cyan-white band, the brightest thing up top.
+	_rig_omni(rig, 86.0, 0.0, 3.4, Color(0.7, 0.92, 1.0), 3.2, 8.0)
+	for s_pos in [20.6, 39.5, 54.5, 72.5]:                 # constant pale seep shafts
 		var seep := SpotLight3D.new()
 		seep.light_color = Color(0.70, 0.74, 0.68)
-		seep.light_energy = 3.0
+		seep.light_energy = 2.6
 		seep.spot_range = 14.0
 		seep.spot_angle = 18.0
 		seep.shadow_enabled = false

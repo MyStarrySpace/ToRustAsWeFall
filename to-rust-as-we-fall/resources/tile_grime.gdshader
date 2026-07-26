@@ -20,6 +20,8 @@ uniform vec4 rust_color : source_color = vec4(0.36, 0.18, 0.10, 1.0);
 uniform float rust_amount = 0.42;
 uniform float grime_scale = 0.16;    // 1/size of the broad grime patches (world metres)
 uniform float roughness_val = 0.85;
+uniform float metallic_val = 0.0;
+uniform float specular_val = 0.5;   // wet surfaces raise this so coloured lights glint/pool
 uniform float emission_energy = 0.0; // opt-in low self-light for readable night-route surfaces
 
 varying vec3 v_obj;      // object-space position (tile UVs — locked to the mesh)
@@ -77,4 +79,6 @@ void fragment() {
 	ALBEDO = final_color;
 	EMISSION = final_color * emission_energy;
 	ROUGHNESS = roughness_val;
+	METALLIC = metallic_val;
+	SPECULAR = specular_val;
 }
