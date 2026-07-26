@@ -10,6 +10,10 @@ shader_type spatial;
 uniform sampler2D tile_tex : filter_nearest, repeat_enable;
 uniform vec4 tint : source_color = vec4(1.0, 1.0, 1.0, 1.0);
 uniform float tiles_per_m = 1.0;
+// Cells per side of a VARIATION ATLAS (1 = a plain single tile). With an 8x8 atlas
+// one metre spans one CELL, so consecutive metres sample different hand-varied tiles
+// instead of stamping the same 32px cell (the single-tile leopard-mottle fix).
+uniform float atlas_cells = 1.0;
 uniform vec4 grime_color : source_color = vec4(0.16, 0.13, 0.10, 1.0);
 uniform float grime_amount = 0.58;
 uniform vec4 rust_color : source_color = vec4(0.36, 0.18, 0.10, 1.0);
@@ -52,7 +56,7 @@ void vertex() {
 
 void fragment() {
 	// object-space triplanar tile sample (crisp, locked to the building)
-	vec3 uv = v_obj * tiles_per_m;
+	vec3 uv = v_obj * tiles_per_m / atlas_cells;
 	vec3 bn = abs(normalize(v_nrm));
 	bn /= (bn.x + bn.y + bn.z);
 	vec3 cx = texture(tile_tex, uv.zy).rgb;

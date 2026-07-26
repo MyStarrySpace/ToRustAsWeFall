@@ -1052,7 +1052,14 @@ func _tinted_tile_material(tile_name: String, tint: Color) -> ShaderMaterial:
 		return _tile_mat_cache[key]
 	var mat := ShaderMaterial.new()
 	mat.shader = GRIME_SHADER
-	var tex = load(TILE_DIR + tile_name + ".png")
+	# Prefer the surface's 8x8 VARIATION ATLAS (per-metre hand-varied cells); the
+	# single tile remains the fallback for stems without one.
+	var atlas_path := "res://resources/textures/atlases/" + tile_name + "_var8.png"
+	var tex = load(atlas_path) if ResourceLoader.exists(atlas_path) else null
+	if tex != null:
+		mat.set_shader_parameter("atlas_cells", 8.0)
+	else:
+		tex = load(TILE_DIR + tile_name + ".png")
 	if tex != null:
 		mat.set_shader_parameter("tile_tex", tex)
 	mat.set_shader_parameter("tint", lifted)

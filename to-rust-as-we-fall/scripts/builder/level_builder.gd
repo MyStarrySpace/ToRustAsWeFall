@@ -209,7 +209,14 @@ func _update_cam_gesture() -> void:
 
 func _tile_mat(tile: String) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
-	var tex = load(TILE_DIR + tile + ".png")
+	# Prefer the 8x8 variation atlas (one metre = one hand-varied cell); the single
+	# tile stays the fallback for stems without one.
+	var atlas_path := "res://resources/textures/atlases/%s_var8.png" % tile
+	var tex = load(atlas_path) if ResourceLoader.exists(atlas_path) else null
+	if tex != null:
+		m.uv1_scale = Vector3(0.125, 0.125, 0.125)
+	else:
+		tex = load(TILE_DIR + tile + ".png")
 	if tex != null:
 		m.albedo_texture = tex
 	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
