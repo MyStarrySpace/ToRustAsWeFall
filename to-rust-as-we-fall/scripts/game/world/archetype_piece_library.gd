@@ -23,6 +23,9 @@ const MANIFEST := {
 	"root_slide": "RootSlide", "shelter": "Shelter", "shortcut_gate": "ShortcutGate",
 	"terminal": "Terminal", "water_control": "WaterControl", "workbench": "Workbench",
 	"capbage": "Capbage", "scarpet": "Scarpet", "hushbloom": "Hushbloom",
+	"flure": "Flure", "seefern": "Seefern", "climbvine": "Climbvine",
+	"gasafoetida": "Gasafoetida", "forget_me_nots": "ForgetMeNots",
+	"resolution_roots": "ResolutionRoots", "mother_flure": "MotherFlure",
 }
 
 # Only the PackedScene is cached; each call instantiates, clones the named

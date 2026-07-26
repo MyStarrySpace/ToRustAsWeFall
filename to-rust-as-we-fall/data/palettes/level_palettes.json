@@ -76,6 +76,16 @@
     "hushbloom_stem": "#7a8468",
     "scarpet_green": "#6f6b4e",
     "root_bark": "#4a3a2c",
-    "root_worn": "#8a6f4d"
+    "root_worn": "#8a6f4d",
+    "flure_bronze": "#8f6b38",
+    "flure_core": "#e08a2a",
+    "seefern_leaf": "#1e4a40",
+    "seefern_vein": "#33d9bf",
+    "climbvine_fiber": "#4f6b3a",
+    "climbvine_node": "#2e2620",
+    "gasafoetida_stalk": "#54603c",
+    "gasafoetida_pod": "#b0a95c",
+    "forget_me_not_blue": "#6f8fd9",
+    "resolution_root_pale": "#bfae8f"
   }
 }

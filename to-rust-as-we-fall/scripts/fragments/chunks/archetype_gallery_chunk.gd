@@ -29,11 +29,14 @@ func _build_chunk() -> void:
 		piece.position = _plinth_pos(i) + Vector3(0.0, 0.4, 0.0)   # base ON the 0.4 plinth top
 		add_child(piece)
 
+func _row_count() -> int:
+	return int(ceil(float(_ids.size()) / float(COLS)))
+
 func _plinth_pos(i: int) -> Vector3:
 	var row := i / COLS
 	var col := i % COLS
 	return Vector3((float(col) - float(COLS - 1) * 0.5) * COL_SPACING,
-		0.0, (float(row) - 1.0) * ROW_SPACING - 1.6)
+		0.0, (float(row) - float(_row_count() - 1) * 0.5) * ROW_SPACING - 1.0)
 
 func _display_name(id: String, catalog) -> String:
 	for category in ["structures", "flora"]:
@@ -51,7 +54,8 @@ func _gallery_fragment() -> Fragment:
 	frag.party_ids = PackedStringArray(["aster", "peris", "endo"])
 	var cs := 1.5
 	var w := 18
-	var h := 12
+	# The floor grows with the manifest: plinth rows + a spawn/rest strip below.
+	var h := int(ceil((float(_row_count()) * ROW_SPACING + 9.0) / cs))
 	frag.floors = [{
 		"pos": Vector3(0, -0.05, 0), "size": Vector3(w * cs, 0.1, h * cs),
 		"color": Color(0.10, 0.11, 0.13), "tile": "deck_metal",
@@ -82,12 +86,13 @@ func _gallery_fragment() -> Fragment:
 		"origin": [origin_x, 0.0, origin_z], "width": w, "height": h,
 		"walkable_cells": cells,
 	}
+	var spawn_z := float(_row_count() - 1) * 0.5 * ROW_SPACING + 2.6
 	frag.spawns = {
-		"aster": Vector3(-1.5, 0.5, 7.4),
-		"peris": Vector3(0.0, 0.5, 7.4),
-		"endo": Vector3(1.5, 0.5, 7.4),
+		"aster": Vector3(-1.5, 0.5, spawn_z),
+		"peris": Vector3(0.0, 0.5, spawn_z),
+		"endo": Vector3(1.5, 0.5, spawn_z),
 	}
-	frag.shelters = [{"min": Vector2(-4.0, 6.4), "max": Vector2(4.0, 8.6)}]
+	frag.shelters = [{"min": Vector2(-4.0, spawn_z - 1.2), "max": Vector2(4.0, spawn_z + 1.4)}]
 	var catalog = CatalogScript.new()
 	var lights: Array[Dictionary] = []
 	var labels: Array[Dictionary] = []
