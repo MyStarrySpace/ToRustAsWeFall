@@ -39,6 +39,7 @@ const WASH_RELAY_CHUNK_SCENE := preload("res://scenes/fragments/chunks/wash_rela
 const DATA_FRAGMENT_CHUNK_SCENE := preload("res://scenes/fragments/chunks/data_fragment.tscn")
 const SHAPE_GRAMMAR_CHUNK_SCENE := preload("res://scenes/fragments/chunks/shape_grammar_preview.tscn")
 const CREATURE_CHUNK_SCENE := preload("res://scenes/fragments/chunks/creature_preview.tscn")
+const ARCHETYPE_GALLERY_CHUNK_SCENE := preload("res://scenes/fragments/chunks/archetype_gallery.tscn")
 const ARCHITECTURE_SHOWCASE_CHUNK_SCENE := preload("res://scenes/fragments/chunks/architecture_showcase.tscn")
 const GEOMETRY_LAB_CHUNK_SCENE := preload("res://scenes/fragments/chunks/geometry_lab.tscn")
 const SET_PIECE_SHOWCASE_CHUNK_SCENE := preload("res://scenes/fragments/chunks/set_piece_showcase_chunk.tscn")
@@ -79,6 +80,7 @@ const CHUNK_SCENES := {
 	"data_fragment": DATA_FRAGMENT_CHUNK_SCENE,
 	"shape_grammar": SHAPE_GRAMMAR_CHUNK_SCENE,
 	"creature_grammar": CREATURE_CHUNK_SCENE,
+	"archetype_gallery": ARCHETYPE_GALLERY_CHUNK_SCENE,
 	"architecture_showcase": ARCHITECTURE_SHOWCASE_CHUNK_SCENE,
 	"geometry_lab": GEOMETRY_LAB_CHUNK_SCENE,
 	"set_piece_showcase": SET_PIECE_SHOWCASE_CHUNK_SCENE,
@@ -203,6 +205,9 @@ const PREVIEW_ENTRIES := [
 	# WASH RELAY, concept-plate detail pass: WashRelayDressing (survey-first drum / falls /
 	# signage / shaft wall) + the two story beats — the lonely flure and the curecumin pad.
 	{"id": "wash_relay", "chunk": "wash_relay", "title": "Wash Relay", "stage": 5},
+	# The archetype PIECE LIBRARY gallery: every visual body in
+	# ArchetypePieceLibrary on its own plinth (bodies, never verbs).
+	{"id": "archetype_gallery", "chunk": "archetype_gallery", "title": "Archetype Piece Library", "stage": 1},
 ]
 
 ## The menu entry for an id (or {} if none).
@@ -331,7 +336,7 @@ const PREVIEW_ABILITY_TAG_PREFIX := "fragment_preview:ability:"
 # (the --test-fragment-preview-registry test enforces it). Empty = the picker (preview_menu).
 @export_enum("stacks", "rings", "lockout", "mother_flure", "survival_range",
 	"endo_junction_stretch", "generated_stretch",
-	"refuge_run", "channels_wash_intro", "lure_relay", "distract_gate", "puzzle_atom", "push_lab", "rest_lab", "flora_garden", "dusk_run", "showcase_gallery", "wash_relay", "data_fragment", "shape_grammar", "creature_grammar", "architecture_showcase", "geometry_lab", "set_piece_showcase", "boss_showcase", "aghora_bazaar", "lockout_chase", "inflammashunt") var preview_chunk := "stacks"
+	"refuge_run", "channels_wash_intro", "lure_relay", "distract_gate", "puzzle_atom", "push_lab", "rest_lab", "flora_garden", "dusk_run", "showcase_gallery", "wash_relay", "data_fragment", "shape_grammar", "creature_grammar", "archetype_gallery", "architecture_showcase", "geometry_lab", "set_piece_showcase", "boss_showcase", "aghora_bazaar", "lockout_chase", "inflammashunt") var preview_chunk := "stacks"
 @export var scene_title_override := ""
 @export var preview_chunk_config: Dictionary = {}
 

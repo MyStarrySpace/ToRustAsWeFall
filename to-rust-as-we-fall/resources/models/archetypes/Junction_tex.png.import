@@ -2,19 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://c2cy24105kyhj"
-path="res://.godot/imported/channels_rust_iron_var8.png-1ddcf6c79c47c9911e5864b6848f3d3f.ctex"
+uid="uid://dypvrymygp6ym"
+path="res://.godot/imported/Junction_tex.png-7fdf5f09e3e681e3d91a53b9ffaffd4e.ctex"
 metadata={
 "vram_texture": false
-}
-generator_parameters={
-"md5": "b311abf53016eeae4b05737ca1425de8"
 }
 
 [deps]
 
-source_file="res://resources/models/channels/channels_rust_iron_var8.png"
-dest_files=["res://.godot/imported/channels_rust_iron_var8.png-1ddcf6c79c47c9911e5864b6848f3d3f.ctex"]
+source_file="res://resources/models/archetypes/Junction_tex.png"
+dest_files=["res://.godot/imported/Junction_tex.png-7fdf5f09e3e681e3d91a53b9ffaffd4e.ctex"]
 
 [params]
 
@@ -26,7 +23,7 @@ compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=true
+mipmaps/generate=false
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""

@@ -1028,12 +1028,23 @@ func _build_branch_content(mid: float, placements: Array) -> int:
 			continue
 		var p := raw as Dictionary
 		var off: Vector2 = offsets[count]
-		var sz := _branch_marker_size(p.get("size", []))
-		var cat := str(p.get("category", ""))
-		var marker := _add_warped_box(mid + off.x, BRANCH_PAD_LANE + off.y, sz,
-			_branch_content_color(cat), Color.BLACK, 0.0)
-		marker.material_override = _tinted_tile_material(
-			_branch_content_tile(cat), _branch_content_color(cat))
+		var content_id := str(p.get("id", ""))
+		# A placement whose noun has a library body wears the REAL piece (visual
+		# only — the noun's verb stays with its runtime binding); unknown nouns
+		# keep the palette-tinted graybox marker.
+		var piece := ArchetypePieceLibrary.instantiate(content_id) \
+			if ArchetypePieceLibrary.has_piece(content_id) else null
+		if piece != null:
+			piece.name = "BranchContent_%s_%d" % [content_id, count]
+			piece.transform = _branch_warp_xform(mid + off.x, BRANCH_PAD_LANE + off.y)
+			_branch_root.add_child(piece)
+		else:
+			var sz := _branch_marker_size(p.get("size", []))
+			var cat := str(p.get("category", ""))
+			var marker := _add_warped_box(mid + off.x, BRANCH_PAD_LANE + off.y, sz,
+				_branch_content_color(cat), Color.BLACK, 0.0)
+			marker.material_override = _tinted_tile_material(
+				_branch_content_tile(cat), _branch_content_color(cat))
 		count += 1
 	return count
 

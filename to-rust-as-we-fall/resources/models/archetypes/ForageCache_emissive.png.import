@@ -2,19 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://c2cy24105kyhj"
-path="res://.godot/imported/channels_rust_iron_var8.png-1ddcf6c79c47c9911e5864b6848f3d3f.ctex"
+uid="uid://csy2c1fe4sq0p"
+path="res://.godot/imported/ForageCache_emissive.png-2ca3af0c265cc552b58e1f74029f80c2.ctex"
 metadata={
 "vram_texture": false
-}
-generator_parameters={
-"md5": "b311abf53016eeae4b05737ca1425de8"
 }
 
 [deps]
 
-source_file="res://resources/models/channels/channels_rust_iron_var8.png"
-dest_files=["res://.godot/imported/channels_rust_iron_var8.png-1ddcf6c79c47c9911e5864b6848f3d3f.ctex"]
+source_file="res://resources/models/archetypes/ForageCache_emissive.png"
+dest_files=["res://.godot/imported/ForageCache_emissive.png-2ca3af0c265cc552b58e1f74029f80c2.ctex"]
 
 [params]
 
@@ -26,7 +23,7 @@ compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=true
+mipmaps/generate=false
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""

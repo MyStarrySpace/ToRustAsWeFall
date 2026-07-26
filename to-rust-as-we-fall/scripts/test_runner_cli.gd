@@ -441,6 +441,9 @@ func _ready() -> void:
 			"--test-spiral-drop-down":
 				ran_test = true
 				await _test_spiral_drop_down()
+			"--test-archetype-pieces":
+				ran_test = true
+				await _test_archetype_pieces()
 			"--test-stretch-branches":
 				ran_test = true
 				await _test_stretch_branches()
@@ -1358,6 +1361,7 @@ func _run_all_tests() -> void:
 	await _test_channels_probe_coverage()
 	await _test_generated_stretch_probe_coverage()
 	await _test_spiral_drop_down()
+	await _test_archetype_pieces()
 	await _test_chunk_atoms()
 	_test_chunk_batch()
 	await _test_generated_atom_playable()
@@ -26299,6 +26303,73 @@ func _test_wash_relay_flood_visual() -> void:
 	instance.queue_free()
 	await get_tree().process_frame
 
+
+## The archetype piece LIBRARY contract (ArchetypePieceLibrary: bodies, never verbs):
+## (1) COVERAGE both ways — every structures key in the content palette and every
+##     runtime-bound flora id resolves to a piece; every manifest id is a known
+##     content key (no orphan pieces drifting from the vocabulary).
+## (2) Every piece instantiates to a Node3D with visible mesh geometry and NO
+##     collision/interaction nodes — a body must not smuggle a verb past the
+##     GeneratedNodeRuntimeRegistry honesty law.
+## (3) The wash relay's branch placements wear library pieces for mapped content
+##     ids (the graybox fallback is only for unmapped nouns).
+func _test_archetype_pieces() -> void:
+	_test_name = "Archetype Piece Library"
+	var catalog = load("res://scripts/generation/stretch_archetype_catalog.gd").new()
+	var structures: Array = catalog.get_content_keys("structures")
+	_assert_true(structures.size() >= 15, "the content palette lists the structures vocabulary")
+	for key in structures:
+		_assert_true(ArchetypePieceLibrary.has_piece(str(key)),
+			"structures key '%s' has a library piece" % key)
+	var flora_bound: Array = (GeneratedNodeRuntimeRegistry.GENERATED_CONTENT_BINDINGS.get("flora", {}) as Dictionary).keys()
+	_assert_true(flora_bound.size() >= 3, "the runtime registry binds flora content")
+	for key in flora_bound:
+		_assert_true(ArchetypePieceLibrary.has_piece(str(key)),
+			"runtime-bound flora '%s' has a library piece" % key)
+	for id_v in ArchetypePieceLibrary.piece_ids():
+		_assert_true(catalog.has_content("structures", str(id_v))
+				or catalog.has_content("flora", str(id_v)),
+			"manifest id '%s' is a known content key" % id_v)
+	var failed_ids: Array = []
+	var meshless_ids: Array = []
+	var verbful_ids: Array = []
+	for id_v in ArchetypePieceLibrary.piece_ids():
+		var piece := ArchetypePieceLibrary.instantiate(str(id_v))
+		if piece == null:
+			failed_ids.append(id_v)
+			continue
+		var meshes := 0
+		var verbs := 0
+		var stack: Array = [piece]
+		while not stack.is_empty():
+			var n: Node = stack.pop_back()
+			if n is MeshInstance3D and (n as MeshInstance3D).mesh != null:
+				meshes += 1
+			if n is CollisionObject3D or n.has_signal("interacted"):
+				verbs += 1
+			for c in n.get_children():
+				stack.append(c)
+		if meshes == 0:
+			meshless_ids.append(id_v)
+		if verbs > 0:
+			verbful_ids.append(id_v)
+		piece.free()
+	_assert_true(failed_ids.is_empty(), "every manifest piece instantiates (failed: %s)" % str(failed_ids))
+	_assert_true(meshless_ids.is_empty(), "every piece carries mesh geometry (meshless: %s)" % str(meshless_ids))
+	_assert_true(verbful_ids.is_empty(), "pieces are BODIES — no collision/interactables (verbful: %s)" % str(verbful_ids))
+	# (3) branch placements in the live wash relay wear pieces
+	var inst = await _instantiate_preview_chunk_and_wait("wash_relay", 6)
+	if inst != null:
+		var chunk = inst._active_chunk
+		var branches: Node = chunk.find_child("Branches", true, false)
+		var pieces := 0
+		if branches != null:
+			for c in branches.get_children():
+				if str(c.name).begins_with("BranchContent_"):
+					pieces += 1
+		_assert_true(pieces >= 1,
+			"branch placements wear library pieces (found %d BranchContent_ nodes)" % pieces)
+		await _dispose_scene(inst)
 
 func _trigger_wash_climbvine_tend(chunk: Node, gs, actor := "peris") -> bool:
 	var source: Node = chunk.find_child("ClimbvineTendAnchor", true, false)
