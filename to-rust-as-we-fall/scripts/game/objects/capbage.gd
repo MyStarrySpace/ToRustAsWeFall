@@ -16,6 +16,7 @@ signal tucked_in()
 
 var _gs   # GameState (Interactable keeps its own _game_state for data binding)
 var _head: MeshInstance3D
+var _concealment_origin := Vector3.INF
 
 ## Configure BEFORE adding to the tree (interaction_radius is read in _ready).
 func configure(gs, world_pos: Vector3, radius := 1.4) -> void:
@@ -29,6 +30,7 @@ func configure(gs, world_pos: Vector3, radius := 1.4) -> void:
 	tutorial_label = "HIDE"
 
 func _ready() -> void:
+	juice_profile = "plant"   # flora rustle on hover + trigger (InteractableJuice)
 	if get_node_or_null("CollisionShape3D") == null:
 		var cs := CollisionShape3D.new()
 		cs.name = "CollisionShape3D"
@@ -76,4 +78,15 @@ func _on_interacted() -> void:
 
 ## True if `world_pos` is inside this Capbage's tight-hide radius (a member there is CONCEAL_FULL).
 func conceals(world_pos: Vector3) -> bool:
-	return Vector2(world_pos.x - global_position.x, world_pos.z - global_position.z).length() <= conceal_radius
+	var origin := global_position if _concealment_origin == Vector3.INF else _concealment_origin
+	return Vector2(world_pos.x - origin.x, world_pos.z - origin.z).length() <= conceal_radius
+
+
+func get_concealment_origin() -> Vector3:
+	return global_position if _concealment_origin == Vector3.INF else _concealment_origin
+
+
+## Coordinate-map presenters call this before moving the visible root. Ordinary
+## authored scenes retain the original global-position behavior.
+func set_concealment_origin(origin: Vector3) -> void:
+	_concealment_origin = origin

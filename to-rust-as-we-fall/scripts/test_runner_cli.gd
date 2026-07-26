@@ -444,6 +444,9 @@ func _ready() -> void:
 			"--test-archetype-pieces":
 				ran_test = true
 				await _test_archetype_pieces()
+			"--test-interactable-juice":
+				ran_test = true
+				await _test_interactable_juice()
 			"--test-stretch-branches":
 				ran_test = true
 				await _test_stretch_branches()
@@ -1362,6 +1365,7 @@ func _run_all_tests() -> void:
 	await _test_generated_stretch_probe_coverage()
 	await _test_spiral_drop_down()
 	await _test_archetype_pieces()
+	await _test_interactable_juice()
 	await _test_chunk_atoms()
 	_test_chunk_batch()
 	await _test_generated_atom_playable()
@@ -26303,6 +26307,71 @@ func _test_wash_relay_flood_visual() -> void:
 	instance.queue_free()
 	await get_tree().process_frame
 
+
+## The interactable JUICE grammar (InteractableJuice — cosmetic squash/rustle):
+## (1) a punch deforms a mesh then RESTORES scale and rotation exactly (an
+##     interrupted beat can never leave a prop bent);
+## (2) the profile gates hover motion — "plant" rustles on hover, "prop" holds
+##     still (hover noise law), and both punch on the click-commit ack;
+## (3) juice is tween-only — it never writes the EventLog (replay untouched).
+func _test_interactable_juice() -> void:
+	_test_name = "Interactable Juice"
+	var root := Node3D.new()
+	add_child(root)
+	var mesh := MeshInstance3D.new()
+	mesh.mesh = BoxMesh.new()
+	root.add_child(mesh)
+	var base_scale := mesh.scale
+	var base_rot := mesh.rotation
+	InteractableJuice.punch([mesh], 0.2, 0.3)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	_assert_true(not mesh.scale.is_equal_approx(base_scale),
+		"a punch visibly deforms the mesh mid-beat")
+	await get_tree().create_timer(0.6).timeout
+	_assert_true(mesh.scale.is_equal_approx(base_scale) and mesh.rotation.is_equal_approx(base_rot),
+		"the beat restores scale AND rotation to rest")
+	# an interrupting rustle replaces the punch and still comes home
+	InteractableJuice.punch([mesh], 0.2, 0.4)
+	await get_tree().process_frame
+	InteractableJuice.rustle([mesh], 0.1, 0.4)
+	await get_tree().create_timer(0.7).timeout
+	_assert_true(mesh.scale.is_equal_approx(base_scale) and mesh.rotation.is_equal_approx(base_rot),
+		"kill-and-replace beats still restore the rest pose")
+	# profile gating through a real interactable + outline target
+	var ia = (load("res://scenes/game/interactable.tscn") as PackedScene).instantiate()
+	root.add_child(ia)
+	var target := StaticBody3D.new()
+	target.set_script(load("res://scripts/game/objects/outline_surface_target.gd"))
+	root.add_child(target)
+	var omesh := MeshInstance3D.new()
+	omesh.mesh = BoxMesh.new()
+	root.add_child(omesh)
+	target.call("register_highlight_mesh", omesh)
+	ia.call("set_outline_target", target)
+	ia.set("juice_profile", "prop")
+	ia.call("set_hover_feedback", true)
+	await get_tree().process_frame
+	_assert_true(not omesh.has_meta(InteractableJuice.META_TWEEN),
+		"a PROP holds still on hover (motion would be noise)")
+	ia.call("set_hover_feedback", false)
+	ia.set("juice_profile", "plant")
+	ia.call("set_hover_feedback", true)
+	await get_tree().process_frame
+	_assert_true(omesh.has_meta(InteractableJuice.META_TWEEN),
+		"a PLANT rustles at hover attention")
+	await get_tree().create_timer(0.6).timeout
+	ia.set("juice_profile", "prop")
+	ia.call("begin_queued_feedback", Vector3.ZERO, Color.WHITE)
+	await get_tree().process_frame
+	var tw = omesh.get_meta(InteractableJuice.META_TWEEN)
+	_assert_true(tw is Tween and (tw as Tween).is_valid(),
+		"the click-commit ack nudges the object")
+	await get_tree().create_timer(0.5).timeout
+	_assert_true(omesh.scale.is_equal_approx(Vector3.ONE),
+		"the ack settles back to rest")
+	root.queue_free()
+	await get_tree().process_frame
 
 ## The archetype piece LIBRARY contract (ArchetypePieceLibrary: bodies, never verbs):
 ## (1) COVERAGE both ways — every structures key in the content palette and every

@@ -2,10 +2,9 @@ class_name DecorativeFlora
 extends Interactable
 
 ## ORNAMENTAL INVASIVE flora (docs/DECORATIVE_FLORA.md): decoration with NO gameplay value that
-## reads as scenery — no hover outline, no SHIFT reveal, not pickable. Peris's HARVEST ability is
-## the only thing that lights it: the reveal window registers a YELLOW outline ("just pretty") and
-## makes it clickable exactly long enough to CLEAR it (harvesting yields nothing and removes the
-## instance). Canon: every decorative species is a feral cultivar of an engineered commercial
+## reads as scenery — no hover outline, SHIFT reveal, interaction, or stat consequence. Functional
+## flora retain Peris's READ/TEND affordances; ornamentals do not impersonate them. Canon: every
+## decorative species is a feral cultivar of an engineered commercial
 ## product (GDD L1469) — the brand name survives as the species name.
 ##
 ## Species (per-species death/runback behaviour lives in the LOADER's runback pass; this class
@@ -15,19 +14,11 @@ extends Interactable
 ##   lilypall  — floating pond rosettes; re-rolled per attempt (reroll(seed))
 ##   festoona  — celebration garland; droops after a wipe (set_drooped(true))
 
-signal cleared()
-
 const SPECIES := ["verdanta", "curbelia", "lilypall", "festoona"]
-## The reveal tint: yellow, deliberately NOT the white hover or a character color — the outline
-## grammar's third lane (white = interactive, char tint = queued, yellow = decorative).
-const REVEAL_COLOR := Color(1.0, 0.84, 0.25)
 
 var species := "curbelia"
 var _opts: Dictionary = {}
 var _species_meshes: Array = []
-var _revealed := false
-var _known := false
-var _is_cleared := false
 var _drooped := false
 
 ## Configure BEFORE adding to the tree (Interactable._ready sizes the pick shape from
@@ -39,12 +30,13 @@ func configure(flora_species: String, world_pos: Vector3, opts: Dictionary = {})
 	interaction_radius = float(_opts.get("radius", 1.2))
 	interactable_type = InteractableType.INSPECTION
 	one_shot = true
-	description = "Clear the ornamental growth"
-	tutorial_label = "CLEAR"
-	# Dormant scenery: not interactive and not pickable until a harvest reveal opens the window.
+	description = "Ornamental scenery"
+	tutorial_label = ""
+	# Scenery stays non-interactive and non-pickable.
 	interaction_enabled = false
 
 func _ready() -> void:
+	juice_profile = "plant"   # flora rustle on hover + trigger (InteractableJuice)
 	if get_node_or_null("CollisionShape3D") == null:
 		var cs := CollisionShape3D.new()
 		cs.name = "CollisionShape3D"
@@ -54,60 +46,14 @@ func _ready() -> void:
 		add_child(cs)
 	_build_species_visual()
 	super._ready()
-	# Dormant scenery: fully non-interactive AND un-pickable (the hover ray must sail through).
+	# Fully non-interactive and un-pickable: the hover ray must sail through.
 	set_interaction_enabled(false)
-	# Deliberately NO outline target wiring: hover and SHIFT must show NOTHING (the whole point).
-	if not interacted.is_connected(_on_cleared_interaction):
-		interacted.connect(_on_cleared_interaction)
 
-## --- The harvest reveal window (Peris's read) ---
-
-## Lights/extinguishes the yellow outline. The mask registration goes STRAIGHT to the
-## OutlineMaskManager — bypassing the OutlineSurfaceTarget hover pipeline on purpose, so the
-## white grammar can never claim these meshes. The FIRST reveal makes the decorative KNOWN:
-## it stays clickable (CLEAR) after the yellow fades — a committed clear order walking in as
-## the window closes must not be silently refused (the disabled-trigger lesson).
-func set_harvest_reveal(active: bool) -> void:
-	if _is_cleared or active == _revealed:
-		return
-	_revealed = active
-	if active and not _known:
-		_known = true
-		set_interaction_enabled(true)
-	var manager = OutlineMaskManager.find_for(self)
-	if manager != null:
-		if active:
-			manager.register(get_instance_id(), _species_meshes, REVEAL_COLOR, false)
-		else:
-			manager.unregister(get_instance_id())
-
-func is_revealed() -> bool:
-	return _revealed
-
-## Harvest-clear: nothing yielded, the instance goes away. The only verb decoration answers to.
-func clear_decoration() -> void:
-	if _is_cleared:
-		return
-	set_harvest_reveal(false)
-	_is_cleared = true
-	set_interaction_enabled(false)
-	visible = false
-	cleared.emit()
-
-func is_cleared() -> bool:
-	return _is_cleared
-
-func _on_cleared_interaction() -> void:
-	clear_decoration()
-
-## Host reset: back to the authored state (a fresh run) — present, unknown, un-drooped, dormant.
+## Host reset: back to the authored state (a fresh run) — present and un-drooped.
 func reset_decoration() -> void:
-	set_harvest_reveal(false)
-	_is_cleared = false
-	_known = false
 	visible = true
-	reset()                        # re-arm the one-shot
-	set_interaction_enabled(false) # ...but back to dormant scenery
+	reset()
+	set_interaction_enabled(false)
 	if _drooped:
 		_drooped = false
 		_rebuild_species_visual()
@@ -134,16 +80,11 @@ func reroll(attempt_seed: int) -> void:
 ## --- Visuals (simple procedural meshes; the loader never sees these) ---
 
 func _rebuild_species_visual() -> void:
-	var was_revealed := _revealed
-	if was_revealed:
-		set_harvest_reveal(false)
 	for m in _species_meshes:
 		if is_instance_valid(m):
 			m.queue_free()
 	_species_meshes.clear()
 	_build_species_visual()
-	if was_revealed:
-		set_harvest_reveal(true)
 
 func _build_species_visual() -> void:
 	match species:

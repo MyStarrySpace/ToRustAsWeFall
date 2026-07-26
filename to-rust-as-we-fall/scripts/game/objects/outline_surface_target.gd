@@ -213,6 +213,12 @@ func get_highlight_mesh_count() -> int:
 	_prune_highlight_meshes()
 	return _highlight_meshes.size()
 
+## The registered meshes themselves — the geometry a cosmetic system (juice
+## squash/rustle) animates. Callers get a copy; ownership stays here.
+func get_highlight_meshes() -> Array:
+	_prune_highlight_meshes()
+	return _highlight_meshes.duplicate()
+
 ## Number of meshes this target outlines. Named "shell count" for the historical inverted-hull shells; the crisp
 ## outline is now the screen-space mask, so this is the count of registered outline meshes (the contract callers
 ## assert: a visible object registered geometry to outline).

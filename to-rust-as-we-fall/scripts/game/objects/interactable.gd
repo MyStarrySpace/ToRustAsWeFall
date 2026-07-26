@@ -40,6 +40,10 @@ enum InteractableType {
 @export var selected_feedback_duration := 2.5
 @export var selected_particle_count := 120
 @export var selected_particles_enabled := true
+## Cosmetic juice on click/trigger (InteractableJuice): "prop" = squash-and-settle
+## on trigger + a click-commit nudge; "plant" = the same plus an organic rustle on
+## hover and trigger; "none" = still. Purely visual, never a scheduler tick.
+@export_enum("prop", "plant", "none") var juice_profile: String = "prop"
 
 ## Dialogue key prefix; empty means signal-only.
 @export var dialogue_key := ""
@@ -93,6 +97,22 @@ var _feedback_managed := false
 var _movement_gs           # GameState movement authority: dwell arms on arrival, cancels on move
 var _dwell_char_id := ""   # who armed the dwell (char_id of the body in range)
 var _dwell_pending := false  # in range but still walking — the dwell starts on arrival
+## Save/load authority for committed work. EventScheduler does not serialize Callables, so a local
+## `dwelling` flag cannot survive its callback heap being cleared during load. Bound interactions
+## publish their actor, phase, and absolute completion tick into GameState.world_state; this node,
+## its StateMachine, and the progress ring are presenters rebuilt from that record.
+const DWELL_AUTHORITY_VERSION := 1
+const DWELL_AUTHORITY_PREFIX := "runtime:interactable_dwell:"
+var _dwell_deadline := -1.0
+var _restoring_dwell_authority := false
+var _dwell_authority_initialized := false
+var _owner_used_override: Variant = null
+var _owner_enabled_override: Variant = null
+## Optional scenario-owned preflight. The callable must be a pure query with signature
+## `(interactable, active_character) -> bool`: it runs before GameState records a trigger and before
+## this presenter mutates one-shot, dwell, feedback, or dialogue state. An invalid callable preserves
+## the legacy/default behavior.
+var _pre_trigger_validator := Callable()
 
 signal interacted()
 ## The wrong character tried this (required_character mismatch) — hosts surface "who is needed".
@@ -172,6 +192,7 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	if _used or not interaction_enabled:
 		return
+	var perf_started := PerformanceTrace.begin()
 
 	if _tutorial_label_3d and _tutorial_label_3d.visible and _tutorial_label_3d.modulate.a > 0.1:
 		var pulse := 0.6 + sin(Time.get_ticks_msec() * 0.003) * 0.25  # @rendering_only: label pulse
@@ -201,6 +222,7 @@ func _process(delta: float) -> void:
 	# interactables used to run all their _process bodies every frame).
 	if not _frame_work_pending():
 		set_process(false)
+	PerformanceTrace.end(&"update", &"interactable.process", perf_started, interactable_id, 1)
 
 func _frame_work_pending() -> bool:
 	if _tutorial_label_3d != null and _tutorial_label_3d.visible:
@@ -229,7 +251,12 @@ func bind_data(game_state, id: String) -> void:
 	if _game_state == null or not _game_state.has_interactable(id):
 		return
 	var spec: Dictionary = _game_state.get_interactable(id)
-	interactable_type = InteractableType.HOLD_ACTION if bool(spec.get("requires_hold", true)) else InteractableType.INSPECTION
+	var legacy_type := InteractableType.HOLD_ACTION \
+		if bool(spec.get("requires_hold", true)) else InteractableType.INSPECTION
+	interactable_type = int(spec.get("interactable_type", legacy_type))
+	if interactable_type < InteractableType.HOLD_ACTION \
+			or interactable_type > InteractableType.TIMED_ACTION:
+		interactable_type = legacy_type
 	dwell_time = float(spec.get("hold_time", dwell_time))
 	one_shot = bool(spec.get("one_shot", one_shot))
 	required_character = String(spec.get("required_character", required_character))
@@ -240,17 +267,57 @@ func bind_data(game_state, id: String) -> void:
 		tutorial_label = String(spec.get("tutorial_label"))
 	interaction_enabled = _game_state.is_interactable_enabled(id)
 
-func _begin_dwell() -> void:
+## Stable key for an in-flight interaction commitment. Data-first objects use their registered ID;
+## older directly-instantiated production objects fall back to their stable scene-tree path once a
+## movement GameState has been injected. Standalone previews have no authority and stay ephemeral.
+func _dwell_authority_key() -> String:
+	var stable_id := data_id
+	if stable_id == "" and is_inside_tree():
+		stable_id = str(get_path())
+	return DWELL_AUTHORITY_PREFIX + stable_id if stable_id != "" else ""
+
+func _dwell_authority_game_state():
+	if _game_state != null:
+		return _game_state
+	return _movement_gs
+
+func _publish_dwell_authority(phase: String) -> void:
+	if _restoring_dwell_authority:
+		return
+	# Scene construction calls set_interaction_enabled(), which cancels an otherwise empty FSM. That
+	# default must never overwrite a restored in-flight record before the post-load attachment hook.
+	if not _dwell_authority_initialized and phase == "idle":
+		return
+	var authority = _dwell_authority_game_state()
+	var key := _dwell_authority_key()
+	if authority == null or key == "" or not authority.has_method("set_world_state"):
+		return
+	authority.set_world_state(key, {
+		"version": DWELL_AUTHORITY_VERSION,
+		"phase": phase,
+		"actor": _dwell_char_id,
+		"deadline": _dwell_deadline,
+		# TIMED_ACTION arrival creates a logical range without a physics overlap event.
+		"range_active": _player_in_range,
+	})
+
+func _begin_dwell(arrival_receipt := false) -> void:
+	if _restoring_dwell_authority:
+		return
 	if not _uses_hold_timer() or not _player_in_range:
 		return
 	if _used or not interaction_enabled:
 		return
+	_dwell_authority_initialized = true
 	# The hold times from STANDING at the object, never from crossing the zone edge mid-walk: a 2-unit
 	# radius with a sub-second dwell would otherwise be mostly elapsed before the character even stops
 	# (and then fire while they walk away). While the dwelling character is moving, the dwell is PENDING
 	# and arms on the data-layer arrival; starting a new move cancels it (see _on_authority_*).
-	if _movement_gs != null and _dwell_char_id != "" and _movement_gs.is_moving(_dwell_char_id):
+	if not arrival_receipt and _movement_gs != null and _dwell_char_id != "" \
+			and _movement_gs.is_moving(_dwell_char_id):
 		_dwell_pending = true
+		_dwell_deadline = -1.0
+		_publish_dwell_authority("pending")
 		return
 	_dwell_pending = false
 	set_process(true)
@@ -266,7 +333,9 @@ func _begin_dwell() -> void:
 ## 'dwelling' enter hook: reset progress + schedule the completion under the FSM tag.
 func _enter_dwelling() -> void:
 	_dwell_start_tick = _scheduler.get_current_tick()
+	_dwell_deadline = _dwell_start_tick + dwell_time
 	_dwell_progress = 0.0
+	_publish_dwell_authority("dwelling")
 	_dwell_fsm.schedule(dwell_time, _on_dwell_complete)
 
 func _cancel_dwell() -> void:
@@ -274,6 +343,8 @@ func _cancel_dwell() -> void:
 	# Back to 'armed' — the FSM cancels the pending completion via its tag.
 	if _dwell_fsm != null:
 		_dwell_fsm.transition_to("armed")
+	_dwell_deadline = -1.0
+	_publish_dwell_authority("idle")
 
 ## Wire the GameState whose movement events anchor the hold timer (injected by the sequence alongside
 ## the scheduler). With no authority the dwell keeps the legacy edge-triggered behavior (standalone use).
@@ -285,6 +356,76 @@ func set_movement_authority(game_state) -> void:
 		_movement_gs.character_arrived.connect(_on_authority_arrived)
 	if _movement_gs.has_signal("movement_started"):
 		_movement_gs.movement_started.connect(_on_authority_movement_started)
+
+## Reattach this presenter after GameState has been replaced from a save. Never infer a new outcome:
+## mirror the restored registry, then re-arm exactly the remaining portion of its authoritative dwell.
+func on_game_state_snapshot_restored() -> void:
+	var authority = _dwell_authority_game_state()
+	if authority == null:
+		return
+	_restoring_dwell_authority = true
+	# TutorialSequence cleared the callback heap before deserializing. Remove the stale local claim
+	# without writing it back over the freshly restored world-state record.
+	if _dwell_fsm != null:
+		_dwell_fsm.cancel_pending()
+		_dwell_fsm.force_current("armed")
+	_fallback_dwelling = false
+	_dwell_pending = false
+	_dwell_deadline = -1.0
+	_dwell_progress = 0.0
+	_dwell_char_id = ""
+	_player_in_range = false
+
+	# One-shot usage and enablement live in the serialized interactable registry. This retracts a
+	# future use when loading an earlier snapshot and keeps a saved completion spent after loading it.
+	if _game_state != null and data_id != "" and _game_state.has_interactable(data_id):
+		var spec: Dictionary = _game_state.get_interactable(data_id)
+		_used = bool(spec.get("one_shot", false)) and bool(spec.get("triggered", false))
+		set_interaction_enabled(_game_state.is_interactable_enabled(data_id))
+	# A staged object such as InfrastructureOperation or an exit shelter owns whether this control is
+	# spent. Its restore hook runs before descendants in the production presenter walk; retain that
+	# explicit phase projection instead of letting the generic registry infer a second truth.
+	if _owner_used_override is bool and _owner_enabled_override is bool:
+		_used = bool(_owner_used_override)
+		set_interaction_enabled(bool(_owner_enabled_override))
+
+	var key := _dwell_authority_key()
+	var saved: Variant = authority.get_world_state(key, {}) if key != "" \
+			and authority.has_method("get_world_state") else {}
+	var restored_phase := "idle"
+	if saved is Dictionary and int(saved.get("version", 0)) == DWELL_AUTHORITY_VERSION:
+		restored_phase = str(saved.get("phase", "idle"))
+		_dwell_char_id = str(saved.get("actor", ""))
+		_player_in_range = bool(saved.get("range_active", false))
+		if restored_phase == "pending" and not _used and interaction_enabled:
+			_dwell_pending = true
+			# Restored ordinary movement emits character_arrived. If the snapshot caught the actor
+			# already parked at the boundary, resume on the next idle turn instead of losing the work.
+			if _movement_gs == null or _dwell_char_id == "" \
+					or not _movement_gs.is_moving(_dwell_char_id):
+				call_deferred("_resume_restored_pending_dwell")
+		elif restored_phase == "dwelling" and not _used and interaction_enabled and _scheduler != null:
+			_dwell_deadline = float(saved.get("deadline", _scheduler.get_current_tick()))
+			_dwell_start_tick = _dwell_deadline - dwell_time
+			_dwell_progress = clampf(
+				_scheduler.get_current_tick() - _dwell_start_tick, 0.0, dwell_time)
+			if _dwell_fsm == null:
+				set_scheduler(_scheduler)
+			_dwell_fsm.force_current("dwelling")
+			_dwell_fsm.schedule(
+				maxf(0.000001, _dwell_deadline - _scheduler.get_current_tick()),
+				_on_dwell_complete)
+			set_process(true)
+	_restoring_dwell_authority = false
+	_dwell_authority_initialized = true
+	_refresh_feedback()
+	if restored_phase == "idle" and interaction_enabled and not _used:
+		call_deferred("_refresh_player_range")
+
+func _resume_restored_pending_dwell() -> void:
+	if not _dwell_pending or _used or not interaction_enabled:
+		return
+	_begin_dwell()
 
 ## The dwelling character stopped: a pending (walked-in) hold starts NOW — timed from standing still.
 func _on_authority_arrived(id: String) -> void:
@@ -300,6 +441,8 @@ func _on_authority_movement_started(id: String) -> void:
 	if _is_dwelling():
 		_cancel_dwell()
 		_dwell_pending = _player_in_range and _proximity_dwell()
+		if _dwell_pending:
+			_publish_dwell_authority("pending")
 
 func _is_dwelling() -> bool:
 	if _dwell_fsm != null:
@@ -333,6 +476,9 @@ func _on_dwell_complete() -> void:
 func _trigger(play_feedback := true) -> bool:
 	if _used or not interaction_enabled:
 		return false
+	if _pre_trigger_validator.is_valid() \
+			and not bool(_pre_trigger_validator.call(self, active_character)):
+		return false
 	# When bound, the data layer is the trigger authority (guards the required
 	# character + enabled state, records the event for replay, disables one-shots).
 	# Unbound, the node guards locally.
@@ -358,6 +504,7 @@ func _trigger(play_feedback := true) -> bool:
 		_tutorial_label_3d.modulate.a = 0.0
 	if play_feedback:
 		outline_selected.emit(self)
+		_play_trigger_juice()
 
 	if dialogue_key != "":
 		var resolved := _resolve_dialogue_key()
@@ -367,6 +514,29 @@ func _trigger(play_feedback := true) -> bool:
 
 	interacted.emit()
 	return true
+
+
+func set_pre_trigger_validator(validator: Callable) -> void:
+	_pre_trigger_validator = validator
+
+## The meshes juice animates: the object's registered outline geometry — the
+## same meshes the hover mask renders, so the outline squashes with the body.
+func _juice_meshes() -> Array:
+	if _outline_target != null and is_instance_valid(_outline_target) \
+			and _outline_target.has_method("get_highlight_meshes"):
+		return _outline_target.call("get_highlight_meshes")
+	return []
+
+func _play_trigger_juice() -> void:
+	match juice_profile:
+		"plant":
+			# One beat per node (kill-and-replace) — the strong rustle IS the
+			# plant's trigger acknowledgement; a punch would just be killed by it.
+			InteractableJuice.rustle(_juice_meshes(), 0.12, 0.7)
+			InteractableJuice.tap(35)
+		"prop":
+			InteractableJuice.punch(_juice_meshes(), 0.14, 0.34)
+			InteractableJuice.tap(35)
 
 ## Abort a click-gated/timed action because its owning scenario is resetting. This is distinct
 ## from reset(): it retracts the scheduled dwell without changing one-shot usage or enablement,
@@ -416,6 +586,11 @@ func get_action_preview() -> String:
 		preview = description.strip_edges()
 	return InputLabels.expand(preview)
 
+## Presentation seam for an authored WorldCalloutStack3D. The interactable continues to own the
+## label's text, pulse, and visibility; a spatial composition may only reserve it a legible row.
+func get_tutorial_label_node() -> Label3D:
+	return _tutorial_label_3d
+
 func show_tutorial_label() -> void:
 	set_process(true)  # the label pulse is per-frame work
 	if _tutorial_label_3d and interaction_enabled:
@@ -428,7 +603,14 @@ func hide_tutorial_label() -> void:
 	if _tutorial_label_3d:
 		var tween := create_tween()
 		tween.tween_property(_tutorial_label_3d, "modulate:a", 0.0, 0.3)
-		tween.tween_callback(func(): _tutorial_label_3d.visible = false)
+		# Do not capture the Label3D itself in a delayed lambda. Dense chunk resets can replace or
+		# dispose labels before the tween callback, producing a freed-capture storm during replay.
+		tween.tween_callback(_finish_hide_tutorial_label)
+
+
+func _finish_hide_tutorial_label() -> void:
+	if is_instance_valid(_tutorial_label_3d):
+		_tutorial_label_3d.visible = false
 
 ## Construction-time suppression for dense compositions that already carry authored world labels.
 ## Unlike hide_tutorial_label(), this does not create a second tween alongside the factory reveal.
@@ -613,6 +795,10 @@ func set_hover_feedback(active: bool) -> void:
 	# The name reads on EVERY hover — identification is free. Aster's data overlay only restyles
 	# the readout (its cyan), it no longer gates whether a hovered object names itself.
 	_set_identify_label_visible(active)
+	# Plants rustle at a touch of attention; industrial props hold still on hover
+	# (motion on every hover would be noise — the outline + verb already speak).
+	if active and juice_profile == "plant" and interaction_enabled and not _used:
+		InteractableJuice.rustle(_juice_meshes(), 0.045, 0.45)
 
 ## Aster's data overlay (de)activates: it tints the hover readout into the data register. The label
 ## itself follows plain hover either way.
@@ -699,7 +885,7 @@ func set_interaction_enabled(active: bool) -> void:
 		_set_identify_label_visible(false)  # a disabled object surfaces no scan readout
 	# A disabled / consumed interactable stops its highlight even if hover/SHIFT still wants it.
 	_refresh_feedback()
-	if active:
+	if active and not _restoring_dwell_authority:
 		call_deferred("_refresh_player_range")
 
 func is_interaction_enabled() -> bool:
@@ -721,12 +907,17 @@ func on_interaction_arrived() -> void:
 		_trigger(false)
 	elif _works_on_arrival():
 		# Walked over via a click; now run the work/tend timer (the character is here, so it's in range),
-		# and _on_dwell_complete fires the actual trigger once dwell_time elapses.
+		# and _on_dwell_complete fires the actual trigger once dwell_time elapses. This call itself is
+		# the interaction coordinator's authoritative arrival receipt. GameState can still report the
+		# movement as active until every listener of that same arrival signal has returned; treating that
+		# transient flag as a new pending walk misses the already-consumed arrival and strands the action.
 		_dwell_char_id = active_character
 		_player_in_range = true
-		_begin_dwell()
+		_begin_dwell(true)
 
 func _refresh_player_range() -> void:
+	if _restoring_dwell_authority:
+		return
 	if not interaction_enabled or not monitoring or _used:
 		return
 	_player_in_range = false
@@ -790,9 +981,15 @@ func _clear_particle_emitter(particles: GPUParticles3D) -> void:
 
 ## A meshless interactable's queued feedback lives on ITS OBJECT's outline target: the character-
 ## colored outline + energy glow while the interaction is committed/en route. No particles.
+## The commit is also the CLICK moment — the object gives a small acknowledge nudge
+## and touch devices feel a light tap (the "I heard you" beat; the full squash
+## waits for the actual trigger on arrival).
 func begin_queued_feedback(origin: Vector3 = Vector3.ZERO, queue_color: Color = Color(0, 0, 0, 0)) -> void:
 	if _outline_target != null and is_instance_valid(_outline_target) and _outline_target.has_method("begin_queued_feedback"):
 		_outline_target.call("begin_queued_feedback", origin, queue_color)
+	if juice_profile != "none":
+		InteractableJuice.punch(_juice_meshes(), 0.06, 0.22)
+		InteractableJuice.tap(18)
 
 func complete_queued_feedback() -> void:
 	if _outline_target != null and is_instance_valid(_outline_target) and _outline_target.has_method("complete_queued_feedback"):
@@ -822,6 +1019,8 @@ func get_interaction_target_position(_from_position: Vector3 = Vector3.ZERO, _re
 	return global_position
 
 func reset() -> void:
+	_owner_used_override = null
+	_owner_enabled_override = null
 	_used = false
 	_player_in_range = false
 	_dwell_progress = 0.0
@@ -830,6 +1029,20 @@ func reset() -> void:
 	if _game_state != null and data_id != "" and _game_state.has_interactable(data_id):
 		_game_state.reset_interactable(data_id)
 	set_interaction_enabled(true)
+
+
+## Object-owner restore seam for a staged one-shot mechanism. The enclosing mechanism already has the
+## authoritative phase; this only retracts/mirrors the control presenter without overwriting an in-flight
+## dwell record before this Interactable receives its own snapshot-restored callback.
+func restore_one_shot_presenter(used: bool, enabled: bool) -> void:
+	var was_restoring := _restoring_dwell_authority
+	_restoring_dwell_authority = true
+	_owner_used_override = used
+	_owner_enabled_override = enabled
+	_used = used
+	set_interaction_enabled(enabled)
+	_restoring_dwell_authority = was_restoring
+
 
 func get_dwell_progress() -> float:
 	return _dwell_progress / dwell_time if dwell_time > 0 else 0.0

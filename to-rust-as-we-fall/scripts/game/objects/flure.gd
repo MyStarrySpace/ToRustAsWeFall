@@ -93,6 +93,7 @@ func configure(gs, world_pos: Vector3, lure_target_ids: Array, attract := 32.0, 
 		_restore_authoritative_runtime()
 
 func _ready() -> void:
+	juice_profile = "plant"   # flora rustle on hover + trigger (InteractableJuice)
 	# Exported authority_id may be assigned after configure() but before add_child(). Resolve it at
 	# attachment time so authored IDs always win over the deterministic fallback.
 	_resolved_authority_id = _resolve_authority_id(_authored_origin)
