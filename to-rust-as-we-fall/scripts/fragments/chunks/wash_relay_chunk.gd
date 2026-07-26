@@ -454,6 +454,8 @@ func _build_chunk() -> void:
 	_build_story_beats()
 	_build_light_rig()
 	_make_dressing_wet()
+	_build_neon_edges()
+	_build_reflection_probe()
 	_wdbg("dressing + story beats built")
 	# This chunk authors its environment directly instead of calling DataFragmentChunk._build_chunk(),
 	# so it must opt into the shared full-wipe signal explicitly.
@@ -1517,6 +1519,10 @@ func get_preview_lighting_profile() -> Dictionary:
 		"background_color": Color(0.01, 0.014, 0.022),
 		"background_mix": 0.6,
 		"color_mix": 0.5,
+		"fog_density": 0.018,
+		"fog_color": Color(0.05, 0.09, 0.14),
+		"fog_energy": 0.9,
+		"fog_aerial": 0.5,
 	}
 
 ## THE AUTHORED LIGHT RIG. Wayfinding follows the no-decorative-text ruling — the
@@ -1599,6 +1605,38 @@ func _make_dressing_wet() -> void:
 				mi.set_surface_override_material(si, wet)
 		for c in n.get_children():
 			stack.append(c)
+
+## The signature bright CYAN edge lines (concept plates A + B): thin emissive strips
+## run the deck's inner + outer lip the whole length, tracing the coil in neon. They
+## ride the helix warp like every other warped piece; the pressure break is skipped.
+func _build_neon_edges() -> void:
+	var glow := LevelPalette.color("channels", "water")
+	var dim := Color(glow.r * 0.3, glow.g * 0.3, glow.b * 0.35)
+	var s := 1.0
+	while s < CHUNK_END_X:
+		if not (s > 19.0 and s < 22.2):                    # skip the broken-coil pressure gap
+			for lane in [-FLOOR_Z_HALF + 0.15, FLOOR_Z_HALF - 0.15]:
+				var strip := _add_warped_box(s + 0.7, lane, Vector3(1.35, 0.05, 0.16),
+					dim, glow, 2.6)
+				strip.name = "NeonEdge"
+		s += 1.5
+
+## A reflection probe over the play space so the WET deck + drum actually REFLECT the
+## drum, rim, and coloured lights (not just specular glints). Box-projected + interior
+## so it captures the shaft; UPDATE_ONCE — the geometry and the authored lights are
+## static, so one bake is exact and free per frame. Supported on Forward+ and compat.
+func _build_reflection_probe() -> void:
+	var probe := ReflectionProbe.new()
+	probe.name = "ChannelsReflection"
+	probe.size = Vector3(46.0, 24.0, 46.0)
+	probe.origin_offset = Vector3.ZERO
+	probe.box_projection = true
+	probe.interior = true
+	probe.update_mode = ReflectionProbe.UPDATE_ONCE
+	probe.intensity = 0.9
+	probe.max_distance = 60.0
+	probe.position = Vector3(0.0, 6.0, 0.0)
+	add_child(probe)
 
 func _rig_omni(rig: Node3D, s: float, lane: float, height: float,
 		color: Color, energy: float, reach: float) -> void:

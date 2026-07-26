@@ -3552,12 +3552,13 @@ func _apply_chunk_preview_lighting_profile() -> void:
 	if _preview_environment == null:
 		return
 	# Reset the GRADE knobs first so a chunk without a profile (or without these keys)
-	# never inherits the previous chunk's filmic tonemap / bloom.
+	# never inherits the previous chunk's filmic tonemap / bloom / fog.
 	_preview_environment.tonemap_mode = Environment.TONE_MAPPER_LINEAR
 	_preview_environment.tonemap_white = 1.0
 	_preview_environment.tonemap_exposure = 1.0
 	_preview_environment.glow_bloom = 0.0
 	_preview_environment.glow_hdr_threshold = 1.0
+	_preview_environment.fog_enabled = false
 	if _active_chunk == null or not _active_chunk.has_method("get_preview_lighting_profile"):
 		return
 	var profile_variant = _active_chunk.call("get_preview_lighting_profile")
@@ -3610,6 +3611,16 @@ func _apply_chunk_preview_lighting_profile() -> void:
 	_preview_environment.tonemap_exposure = float(profile.get("exposure", 1.0))
 	_preview_environment.glow_bloom = float(profile.get("glow_bloom", 0.0))
 	_preview_environment.glow_hdr_threshold = float(profile.get("glow_hdr_threshold", 1.0))
+	# Atmospheric depth fog: the vast-dark-shaft feel, far geometry fading into the
+	# murk. Separate from the perception fog-of-war (a screen shader); this is the
+	# Environment's own depth fog and works on both renderers.
+	if float(profile.get("fog_density", 0.0)) > 0.0:
+		_preview_environment.fog_enabled = true
+		_preview_environment.fog_density = float(profile.get("fog_density", 0.0))
+		_preview_environment.fog_light_color = profile.get("fog_color", Color(0.05, 0.08, 0.12))
+		_preview_environment.fog_light_energy = float(profile.get("fog_energy", 1.0))
+		_preview_environment.fog_sky_affect = float(profile.get("fog_sky_affect", 0.0))
+		_preview_environment.fog_aerial_perspective = float(profile.get("fog_aerial", 0.4))
 
 func _apply_character_override(char_id: String, override: Dictionary) -> void:
 	if not _character_state.has(char_id):
