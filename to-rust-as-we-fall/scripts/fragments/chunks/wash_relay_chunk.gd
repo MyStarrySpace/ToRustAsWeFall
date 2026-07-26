@@ -911,12 +911,13 @@ func _build_branches() -> void:
 		var placements: Array = node.get("content_placements", [])
 		# The radial plank: juts off the deck rim (lane 4) out to the pad (lane 10), pre-warped onto the helix.
 		var deck_color := Color(0.12, 0.14, 0.17)
-		_add_warped_deck(mid, BRANCH_DECK_CENTER_LANE, Vector3(BRANCH_LANE_SPAN, 0.2, BRANCH_S_SPAN), deck_color)
+		_add_warped_deck(mid, BRANCH_DECK_CENTER_LANE, Vector3(BRANCH_LANE_SPAN, 0.2, BRANCH_S_SPAN),
+			deck_color, "deck_metal")
 		# A marker post at the deck rim so the offshoot reads as a turn-off from the main run.
 		_add_warped_box(mid, BRANCH_NECK_LANE + 0.4, Vector3(0.4, 1.6, 0.4),
-			Color(0.48, 0.3, 0.08), Color(1.0, 0.64, 0.18), 1.1)
+			LevelPalette.color("channels", "wood"), LevelPalette.global_color("warning_amber"), 1.1)
 		_add_warped_guidance_label(_branch_root, "BranchOptional%d" % g, "OPTIONAL // LYSATE",
-			mid, BRANCH_NECK_LANE + 0.9, Color(1.0, 0.7, 0.25))
+			mid, BRANCH_NECK_LANE + 0.9, LevelPalette.global_color("warning_amber"))
 		# The archetype's content placements, clustered on the pad (graybox identity of the puzzle).
 		var content_count := _build_branch_content(mid, placements)
 		# The interaction is a work beat around one exact GameState item. The dark cradle is only an
@@ -1028,8 +1029,11 @@ func _build_branch_content(mid: float, placements: Array) -> int:
 		var p := raw as Dictionary
 		var off: Vector2 = offsets[count]
 		var sz := _branch_marker_size(p.get("size", []))
-		_add_warped_box(mid + off.x, BRANCH_PAD_LANE + off.y, sz,
-			_branch_content_color(str(p.get("category", ""))), Color.BLACK, 0.0)
+		var cat := str(p.get("category", ""))
+		var marker := _add_warped_box(mid + off.x, BRANCH_PAD_LANE + off.y, sz,
+			_branch_content_color(cat), Color.BLACK, 0.0)
+		marker.material_override = _tinted_tile_material(
+			_branch_content_tile(cat), _branch_content_color(cat))
 		count += 1
 	return count
 
@@ -1041,10 +1045,18 @@ func _branch_marker_size(raw_size: Variant) -> Vector3:
 
 func _branch_content_color(category: String) -> Color:
 	match category:
-		"flora": return Color(0.25, 0.55, 0.3)
-		"enemies": return Color(0.6, 0.2, 0.22)
-		"structures": return Color(0.35, 0.4, 0.5)
-	return Color(0.4, 0.4, 0.45)
+		"flora": return LevelPalette.color("channels", "moss")
+		"enemies": return LevelPalette.color("channels", "rust")
+		"structures": return LevelPalette.color("channels", "iron")
+	return LevelPalette.color("channels", "pipe")
+
+## The atlas tile a generated content marker wears — categories share the level's
+## material language instead of flat unauthored fills.
+func _branch_content_tile(category: String) -> String:
+	match category:
+		"flora": return "biolum_teal"
+		"enemies": return "rust_iron"
+	return "facility_metal"
 
 func _spawn_branch_guard(g: int, mid: float):
 	var gs = _get_game_state()
@@ -1083,8 +1095,10 @@ func _add_warped_box(s: float, lane_center: float, size: Vector3, color: Color, 
 	_branch_root.add_child(mesh)
 	return mesh
 
-func _add_warped_deck(s: float, lane_center: float, size: Vector3, color: Color) -> void:
+func _add_warped_deck(s: float, lane_center: float, size: Vector3, color: Color, tile := "") -> void:
 	var mesh := _add_warped_box(s, lane_center, size, color)
+	if tile != "":
+		mesh.material_override = _tinted_tile_material(tile, color)
 	var body := StaticBody3D.new()
 	body.collision_layer = 1
 	body.collision_mask = 0
@@ -2162,17 +2176,23 @@ func _branch_gate_kind(archetype: String, has_guard: bool) -> String:
 
 # Per-gate-kind presentation + flavour (label, post colour/glow, the line played on activation).
 func _branch_gate_theme(kind: String) -> Dictionary:
+	# Mechanism colors come from the level palette (docs/LEVEL_PALETTES.md), never
+	# hand-mixed rgb — generated branch content wears the same skin as the level.
 	match kind:
 		"valve":
-			return {"label": "POLLEN VALVE", "color": Color(0.22, 0.55, 0.3), "glow": Color(0.3, 0.9, 0.4),
+			return {"label": "POLLEN VALVE", "color": LevelPalette.color("channels", "moss"),
+				"glow": LevelPalette.color("channels", "flora"),
 				"msg": "// VALVE // pollen is venting from the cache"}
 		"lever":
-			return {"label": "COUNTERWEIGHT", "color": Color(0.35, 0.4, 0.5), "glow": Color(0.5, 0.7, 0.9),
+			return {"label": "COUNTERWEIGHT", "color": LevelPalette.color("channels", "iron"),
+				"glow": LevelPalette.color("channels", "rim_light"),
 				"msg": "// LIFT // counterweight is taking the gate"}
 		"decoy":
-			return {"label": "DECOY BEACON", "color": Color(0.55, 0.4, 0.18), "glow": Color(1.0, 0.7, 0.2),
+			return {"label": "DECOY BEACON", "color": LevelPalette.color("channels", "lamp"),
+				"glow": LevelPalette.global_color("warning_amber"),
 				"msg": "// DECOY // beacon lit — watch the guard move"}
-	return {"label": "SWITCH", "color": Color(0.4, 0.4, 0.45), "glow": Color(0.7, 0.7, 0.8), "msg": "// CLEAR //"}
+	return {"label": "SWITCH", "color": LevelPalette.color("channels", "pipe"),
+		"glow": LevelPalette.color("channels", "rim_light"), "msg": "// CLEAR //"}
 
 # Build only the world object that belongs to this mechanism. Counterweights get a wide gate with a fixed
 # collision body; pollen valves get a readable cloud stock; decoys get no invented barrier at all.
@@ -2200,8 +2220,8 @@ func _build_branch_counterweight_gate(mid: float) -> Dictionary:
 	box.size = size
 	mesh.mesh = box
 	mesh.position.y = size.y * 0.5
-	mesh.material_override = _make_material(
-		Color(0.24, 0.28, 0.34), Color(0.5, 0.75, 1.0), 0.8)
+	var theme := _branch_gate_theme("lever")
+	mesh.material_override = _make_material(theme["color"], theme["glow"], 0.8)
 	root.add_child(mesh)
 
 	# Collision deliberately stays at the threshold while the visible gate rises. Movement authority releases
@@ -2241,8 +2261,10 @@ func _build_branch_pollen_plumes(mid: float) -> Array:
 		sphere.height = 1.24
 		mesh.mesh = sphere
 		mesh.position.y = 0.65 + float(plume_i % 2) * 0.18
+		var pollen := LevelPalette.color("channels", "moss")
 		mesh.material_override = _make_material(
-			Color(0.25, 0.68, 0.31, 0.48), Color(0.32, 1.0, 0.4), 1.2,
+			Color(pollen.r, pollen.g, pollen.b, 0.48),
+			LevelPalette.color("channels", "flora"), 1.2,
 			BaseMaterial3D.TRANSPARENCY_ALPHA)
 		root.add_child(mesh)
 		_branch_root.add_child(root)

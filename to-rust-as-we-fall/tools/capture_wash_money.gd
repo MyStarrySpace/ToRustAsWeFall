@@ -56,6 +56,8 @@ func _init() -> void:
 	var shots := [
 		{"name": "curecumin_portal", "cam": Vector3(8.7, 3.0, 3.9), "at": Vector3(4.7, 2.0, 0.7),
 			"falls": 0.0, "fov": 50.0},
+		{"name": "branch_spur", "cam": Vector3(-19.5, 7.6, 13.2), "at": Vector3(-15.3, 5.3, 9.5),
+			"falls": 0.0, "fov": 52.0},
 		{"name": "lonely_flure", "cam": Vector3(7.6, 11.6, -3.6), "at": Vector3(3.76, 10.0, -2.6),
 			"falls": 0.0, "fov": 48.0},
 		{"name": "drum_face", "cam": Vector3(7.7, 2.4, 2.1), "at": Vector3(3.33, 1.8, 0.92),
