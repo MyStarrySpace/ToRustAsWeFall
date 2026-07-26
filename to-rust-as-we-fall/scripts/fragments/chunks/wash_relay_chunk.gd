@@ -452,6 +452,7 @@ func _build_chunk() -> void:
 	_wdbg("pipe splashes built")
 	_dressing = WashRelayDressing.build(self, SECTIONS)
 	_build_story_beats()
+	_build_light_rig()
 	_wdbg("dressing + story beats built")
 	# This chunk authors its environment directly instead of calling DataFragmentChunk._build_chunk(),
 	# so it must opt into the shared full-wipe signal explicitly.
@@ -1488,6 +1489,69 @@ func _build_neck_garden() -> void:
 	gate_glow.omni_range = 5.0
 	gate_glow.position = ChannelsArc.arc_pos(44.2, -8.6) + Vector3(0.0, 1.6, 0.0)
 	garden.add_child(gate_glow)
+
+## The Channels is INTERIOR infrastructure (director's lighting brief): night is
+## lit by the AUTHORED rig below, and "day" is only occasional seep light — the
+## shared day/night curve barely moves this level. Near-zero sun in both phases,
+## a constant ambient band in the channels' dark teal, glow held so emissives
+## keep blooming at night (and on the web build's reduced-glow renderer).
+func get_preview_lighting_profile() -> Dictionary:
+	return {
+		"ambient_energy_floor": 0.48,
+		"ambient_energy_ceiling": 0.56,
+		"directional_energy_floor": 0.05,
+		"directional_energy_ceiling": 0.09,
+		"glow_intensity_floor": 0.30,
+		"ambient_color": Color(0.16, 0.22, 0.26),
+		"directional_color": Color(0.50, 0.62, 0.70),
+		"background_color": Color(0.012, 0.018, 0.022),
+		"background_mix": 0.6,
+		"color_mix": 0.6,
+	}
+
+## THE AUTHORED LIGHT RIG. Wayfinding follows the no-decorative-text ruling — the
+## light IS the signage: each section gate casts its palette hue, amber work-lamps
+## pace the branch gaps, water sections pool cyan, warm lamps mark the start
+## shelter and the chunk-end overlook, and a few CONSTANT pale seep shafts fall
+## from above (the "occasional light seeping in" that is all daytime means here).
+## Every light is shadowless and tightly ranged — the compat/web renderer caps
+## lights per object, and the rig must fit inside that budget.
+func _build_light_rig() -> void:
+	var rig := Node3D.new()
+	rig.name = "LightRig"
+	add_child(rig)
+	for i in range(SECTIONS.size()):                       # gate hues = the signage
+		var sec: Dictionary = SECTIONS[i]
+		_rig_omni(rig, float(sec["x0"]), 0.0, 2.4,
+			LevelPalette.color("channels", "sections/" + str(sec["type"])), 2.2, 7.5)
+		if str(sec["type"]) in ["flush", "current", "basin", "double_plate"]:
+			_rig_omni(rig, (float(sec["x0"]) + float(sec["x1"])) * 0.5, 0.0, 1.0,
+				LevelPalette.color("channels", "water"), 1.4, 6.0)
+	for mid_v in _gap_mids():                              # work-lamps at the turn-offs
+		_rig_omni(rig, float(mid_v), 3.2, 1.8,
+			LevelPalette.global_color("warning_amber"), 2.0, 7.0)
+	_rig_omni(rig, 1.6, -2.0, 2.0, LevelPalette.color("channels", "lamp"), 2.4, 8.0)
+	_rig_omni(rig, 84.0, 0.0, 2.2, LevelPalette.color("channels", "lamp"), 2.4, 8.0)
+	for s_pos in [20.6, 39.5, 54.5, 72.5]:                 # constant seep shafts
+		var seep := SpotLight3D.new()
+		seep.light_color = Color(0.70, 0.74, 0.68)
+		seep.light_energy = 3.0
+		seep.spot_range = 14.0
+		seep.spot_angle = 18.0
+		seep.shadow_enabled = false
+		seep.position = _branch_warp_xform(float(s_pos), 0.0).origin + Vector3(0.0, 9.0, 0.0)
+		seep.rotation_degrees = Vector3(-90.0, 0.0, 0.0)
+		rig.add_child(seep)
+
+func _rig_omni(rig: Node3D, s: float, lane: float, height: float,
+		color: Color, energy: float, reach: float) -> void:
+	var light := OmniLight3D.new()
+	light.light_color = color
+	light.light_energy = energy
+	light.omni_range = reach
+	light.shadow_enabled = false
+	light.position = _branch_warp_xform(s, lane).origin + Vector3(0.0, height, 0.0)
+	rig.add_child(light)
 
 func _on_lonely_flure_lit(_pulled: int) -> void:
 	_show_note("The flure sings. Nothing answers.", 2.6)

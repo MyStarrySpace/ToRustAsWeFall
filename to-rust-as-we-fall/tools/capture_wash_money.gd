@@ -38,14 +38,17 @@ func _init() -> void:
 			st[k] = false
 		if scene.has_method("_refresh_active_overlay"):
 			scene.call("_refresh_active_overlay")
-	var key := DirectionalLight3D.new()
-	key.rotation_degrees = Vector3(-58, -30, 0)
-	key.light_energy = 1.25
-	get_root().add_child(key)
-	var fill := DirectionalLight3D.new()
-	fill.rotation_degrees = Vector3(-18, 145, 0)
-	fill.light_energy = 0.45
-	get_root().add_child(fill)
+	# RIG=off drops the injected studio key/fill — the honest capture of the
+	# level's AUTHORED lighting (the rig flatters; the game never has it).
+	if OS.get_environment("RIG") != "off":
+		var key := DirectionalLight3D.new()
+		key.rotation_degrees = Vector3(-58, -30, 0)
+		key.light_energy = 1.25
+		get_root().add_child(key)
+		var fill := DirectionalLight3D.new()
+		fill.rotation_degrees = Vector3(-18, 145, 0)
+		fill.light_energy = 0.45
+		get_root().add_child(fill)
 	var cam := Camera3D.new()
 	cam.fov = 55.0
 	cam.far = 300.0

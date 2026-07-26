@@ -23568,6 +23568,24 @@ func _test_wash_relay_story_beats() -> void:
 		var gate: Node = chunk.find_child("SealedGreenfieldsGate", true, false)
 		_assert_true(gate is Interactable and gate.interacted.get_connections().size() > 0,
 			"the sealed Greenfields gate exists and reading it surfaces the route")
+		# THE AUTHORED LIGHT RIG (interior lighting law): night carries its own light —
+		# gate hues, work-lamps, water pools, seep shafts — every light shadowless and
+		# tightly ranged for the compat/web per-object light budget, and the lighting
+		# profile pins the sun near zero so day barely differs from night here.
+		var rig: Node = chunk.find_child("LightRig", true, false)
+		_assert_true(rig != null and rig.get_child_count() >= 18,
+			"the wash relay authors its light rig (%d lights)" % (rig.get_child_count() if rig != null else 0))
+		if rig != null:
+			var unbudgeted := 0
+			for lt in rig.get_children():
+				if lt is Light3D and (lt as Light3D).shadow_enabled:
+					unbudgeted += 1
+				if lt is OmniLight3D and (lt as OmniLight3D).omni_range > 8.0:
+					unbudgeted += 1
+			_assert_equals(unbudgeted, 0, "every rig light is shadowless and tightly ranged")
+		var profile: Dictionary = chunk.call("get_preview_lighting_profile")
+		_assert_true(float(profile.get("directional_energy_ceiling", 99.0)) <= 0.1,
+			"interior law: the sun ceiling keeps day within a whisker of night")
 		# both pads wear the contract fixtures (PortalFixtures: aperture arch + live lens)
 		var cure_lensed := 0
 		for cp in (chunk.get("_cure_portals") as Array):
