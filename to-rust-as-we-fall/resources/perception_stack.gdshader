@@ -29,6 +29,15 @@ float depth_to_ndc(float depth_raw) {
 #endif
 }
 
+// The stack's veil/edge colors are authored in LINEAR light — Forward+ tonemaps
+// them into the intended warm parchment. The Compatibility renderer (and thus the
+// WEB build) outputs sRGB directly, which displays raw linear values ~2.5x darker:
+// the fog veil went near-black in the browser. Encode authored colors for the
+// active pipeline so both renderers show the same veil.
+vec3 pipe_color(vec3 linear_authored) {
+	return OUTPUT_IS_SRGB ? pow(linear_authored, vec3(1.0 / 2.2)) : linear_authored;
+}
+
 // Line-of-sight: a fragment hidden behind a wall from every vision source reads as unseen (data-view / fog)
 // even inside the clear radius, so the visibility hugs walls instead of being a flat circle. Screen-space:
 // march the segment source->fragment, project each step, and compare the depth buffer. SOFTENED: it accumulates
@@ -225,7 +234,7 @@ void fragment() {
 			float color_edge = smoothstep(0.01, 0.08, abs(lum_l + lum_r + lum_u + lum_d - 4.0 * lum_c));
 
 			float edge = clamp(max(depth_edge, color_edge * 0.6), 0.0, 1.0);
-			vec3 data_view = vec3(0.01, 0.012, 0.02) + edge * data_edge_color;
+			vec3 data_view = pipe_color(vec3(0.01, 0.012, 0.02)) + edge * pipe_color(data_edge_color);
 			float scanline = 0.92 + 0.08 * sin(SCREEN_UV.y * VIEWPORT_SIZE.y * 0.3);
 			data_view *= scanline;
 
@@ -239,7 +248,7 @@ void fragment() {
 				data_blackout_radius,
 				blackout_dist
 			);
-			current = mix(current, vec3(0.005, 0.005, 0.01), blackout);
+			current = mix(current, pipe_color(vec3(0.005, 0.005, 0.01)), blackout);
 		}
 	}
 
@@ -263,7 +272,7 @@ void fragment() {
 		if (fog_blend > 0.005) {
 			float lum = dot(current, vec3(0.3, 0.59, 0.11));
 			vec3 desat = mix(current, vec3(lum), fog_desaturation * fog_blend);
-			vec3 fogged = mix(desat, fog_color, fog_blend * 0.7);
+			vec3 fogged = mix(desat, pipe_color(fog_color), fog_blend * 0.7);
 			fogged = mix(fogged, vec3(dot(fogged, vec3(0.3, 0.59, 0.11))), fog_blend * 0.3);
 			current = fogged;
 		}
