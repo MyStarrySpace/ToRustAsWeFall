@@ -453,6 +453,7 @@ func _build_chunk() -> void:
 	_dressing = WashRelayDressing.build(self, SECTIONS)
 	_build_story_beats()
 	_build_light_rig()
+	_make_dressing_wet()
 	_wdbg("dressing + story beats built")
 	# This chunk authors its environment directly instead of calling DataFragmentChunk._build_chunk(),
 	# so it must opt into the shared full-wipe signal explicitly.
@@ -1566,6 +1567,38 @@ func _build_light_rig() -> void:
 		seep.position = _branch_warp_xform(float(s_pos), 0.0).origin + Vector3(0.0, 9.0, 0.0)
 		seep.rotation_degrees = Vector3(-90.0, 0.0, 0.0)
 		rig.add_child(seep)
+
+## Give the drum + dressing a WET sheen (concept plate B): duplicate each opaque,
+## non-emissive dressing material and drop its roughness + add metallic/specular, so
+## the coloured lights glint and streak across the iron. Channels-ONLY — the
+## materials are duplicated, so the paintlib source shared with the Peris/Aster rooms
+## stays matte. Glowing (water/rim/lamp) and transparent (falls/glass) pieces are
+## skipped so they keep their emissive look.
+func _make_dressing_wet() -> void:
+	if _dressing == null or not (_dressing is Dictionary) or not _dressing.has("root"):
+		return
+	var root = _dressing["root"]
+	if not is_instance_valid(root):
+		return
+	var stack: Array = [root]
+	while not stack.is_empty():
+		var n = stack.pop_back()
+		if n is MeshInstance3D and (n as MeshInstance3D).mesh != null:
+			var mi := n as MeshInstance3D
+			for si in range(mi.mesh.get_surface_count()):
+				var m = mi.get_active_material(si)
+				if not (m is BaseMaterial3D):
+					continue
+				var bm := m as BaseMaterial3D
+				if bm.emission_enabled or bm.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED:
+					continue
+				var wet := bm.duplicate() as BaseMaterial3D
+				wet.roughness = 0.32
+				wet.metallic = 0.34
+				wet.metallic_specular = 0.9
+				mi.set_surface_override_material(si, wet)
+		for c in n.get_children():
+			stack.append(c)
 
 func _rig_omni(rig: Node3D, s: float, lane: float, height: float,
 		color: Color, energy: float, reach: float) -> void:
