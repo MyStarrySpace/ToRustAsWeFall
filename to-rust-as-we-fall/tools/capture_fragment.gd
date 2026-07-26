@@ -91,6 +91,19 @@ func _init() -> void:
 	cam.current = true
 	for _j in range(16):
 		await process_frame
+	# Re-hide right before the frame is taken: some tags (branch reward items,
+	# world-item nameplates) spawn only after the chunk's runtime state
+	# initializes, well past the first hide pass — sweep the WHOLE tree, and all
+	# text mechanisms (Label3D, Sprite3D plates, late CanvasLayers), so
+	# LABELS=off means what it says.
+	if OS.get_environment("LABELS") == "off":
+		# The preview's per-frame item sync re-shows nameplates every frame —
+		# freeze the host's process before sweeping or the sweep loses the race.
+		scene.set_process(false)
+		_hide_labels(get_root())
+		_hide_plates(get_root())
+		_hide_canvas(get_root())
+		await process_frame
 	await RenderingServer.frame_post_draw
 	var img := get_root().get_texture().get_image()
 	var out_dir := OS.get_environment("OUT_DIR")
@@ -130,6 +143,12 @@ func _hide_labels(n: Node) -> void:
 		(n as Label3D).visible = false
 	for c in n.get_children():
 		_hide_labels(c)
+
+func _hide_plates(n: Node) -> void:
+	if n is Sprite3D:
+		(n as Sprite3D).visible = false
+	for c in n.get_children():
+		_hide_plates(c)
 
 func _hide_canvas(n: Node) -> void:
 	if n is CanvasLayer:
