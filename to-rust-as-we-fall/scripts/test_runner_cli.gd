@@ -856,6 +856,9 @@ func _ready() -> void:
 			"--test-ability-data":
 				ran_test = true
 				_test_ability_data()
+			"--test-canon-fauna-names":
+				ran_test = true
+				_test_canon_fauna_names()
 			"--test-leaving-facility":
 				ran_test = true
 				await _test_leaving_facility()
@@ -1541,6 +1544,7 @@ func _run_all_tests() -> void:
 	await _test_act1_prepare_fragment_grids()
 	await _test_grid_port_robustness()
 	_test_ability_data()
+	_test_canon_fauna_names()
 	await _test_overlay_facility_gating()
 	await _test_leaving_facility()
 	await _test_showcase()
@@ -9783,7 +9787,7 @@ func _test_mother_flure_preview() -> void:
 	inventory_instance.headless_set_character_position("endo", live_root_node.global_position)
 	inventory_instance.headless_advance(inventory_chunk.ROOT_HAZARD_INTERVAL + 0.2, 0.05)
 	_assert_true(inventory_instance.get_preview_character_stat("endo", "hp") < hazard_hp,
-		"Carrying gear grants no invented Techo-mat immunity; the root state remains the hazard control")
+		"Carrying gear grants no invented Sapscrap-mat immunity; the root state remains the hazard control")
 	_mother_execute_root_move(inventory_instance, inventory_chunk, "term_alpha", "spine_gate", -1, ["A4", "B4"], "Repair Test 3/3")
 	inventory_instance.headless_select_character("endo")
 	inventory_instance.headless_set_character_position("endo", inventory_chunk._repair_point_position("edge_relief"))
@@ -14275,6 +14279,62 @@ func _assert_elevator_active_player_can_move(instance: Node, label: String) -> v
 # Abilities' display names + descriptions + tuning live in data/abilities/en/abilities.xlsx. This guards
 # the loader AND that the migration preserved the per-context content (a chunk's abilities + the tutorial
 # scene abilities resolve to the same values they used to hardcode).
+# The four RETIRED fauna names are load-bearing traps: content written against them
+# silently contradicts canon (docs/concept-prompts/fauna.md — director's ruling, final).
+# The rename record itself (reference-docs/fauna_roster.md) and the instruction files
+# that teach the mapping keep the old names on purpose and live outside this sweep;
+# everywhere in the shipped project a retired name is a bug.
+# Note "neutrophil" is real biology and must survive — the check is word-boundaried,
+# and "ReportEcho…" style identifiers contain "techo" only across a word seam.
+func _test_canon_fauna_names() -> void:
+	_test_name = "Canon Fauna Names"
+	var retired := {
+		"Techo": "Sapscrap", "Verding": "Aember",
+		"Neutro": "Flare", "Nosoma": "Redactor",
+	}
+	var roots: Array = ["res://scripts", "res://data", "res://docs", "res://resources", "res://tools"]
+	var exts: Array = ["gd", "json", "tres", "md", "txt", "gdshader"]
+	# The RECORD: these two carry the retired names deliberately — the doc's rename
+	# table and this test's own mapping. Exempting them is what lets the rule be
+	# written down at all (same reason reference-docs/fauna_roster.md keeps them).
+	var record_files: Array = [
+		"res://docs/concept-prompts/fauna.md",
+		"res://scripts/test_runner_cli.gd",
+	]
+	var offenders: Array = []
+	var scanned := 0
+	var stack: Array = roots.duplicate()
+	while not stack.is_empty():
+		var dir_path: String = str(stack.pop_back())
+		var dir := DirAccess.open(dir_path)
+		if dir == null:
+			continue
+		dir.list_dir_begin()
+		var entry := dir.get_next()
+		while entry != "":
+			if entry.begins_with("."):
+				entry = dir.get_next()
+				continue
+			var full := dir_path.path_join(entry)
+			if dir.current_is_dir():
+				stack.append(full)
+			elif exts.has(entry.get_extension().to_lower()) and not record_files.has(full):
+				var text := FileAccess.get_file_as_string(full)
+				if not text.is_empty():
+					scanned += 1
+					for old_name in retired.keys():
+						var re := RegEx.create_from_string("(?i)\\b%ss?\\b" % old_name)
+						var found := re.search(text)
+						if found != null:
+							offenders.append("%s: '%s' (use '%s')"
+								% [full, found.get_string(), retired[old_name]])
+			entry = dir.get_next()
+		dir.list_dir_end()
+	_assert_true(scanned > 200, "the sweep actually read the project (%d files)" % scanned)
+	_assert_true(offenders.is_empty(),
+		"no retired fauna names survive in the shipped project (%d): %s"
+			% [offenders.size(), ", ".join(offenders.slice(0, 5))])
+
 func _test_ability_data() -> void:
 	_test_name = "Ability Data"
 	AbilityData.load_dir()
@@ -32425,25 +32485,25 @@ func _test_rng_determinism() -> void:
 	var seq_a: Array = []
 	var seq_b: Array = []
 	for _i in range(20):
-		seq_a.append(reg_a.get_rng(&"ai.techo").randi())
+		seq_a.append(reg_a.get_rng(&"ai.sapscrap").randi())
 		seq_a.append(reg_a.get_rng(&"loot").randf())
 		seq_a.append(reg_a.get_rng(&"ambient").randf_range(0.0, 1.0))
 	for _i in range(20):
-		seq_b.append(reg_b.get_rng(&"ai.techo").randi())
+		seq_b.append(reg_b.get_rng(&"ai.sapscrap").randi())
 		seq_b.append(reg_b.get_rng(&"loot").randf())
 		seq_b.append(reg_b.get_rng(&"ambient").randf_range(0.0, 1.0))
 	_assert_equals(seq_a.hash(), seq_b.hash(), "Same seed → same value sequence")
 
 	# Different seed means different sequence.
-	var seq_a_techo: Array = []
+	var seq_a_sapscrap: Array = []
 	var reg_a2 := RngRegistry.new(42)
 	for _i in range(20):
-		seq_a_techo.append(reg_a2.get_rng(&"ai.techo").randi())
+		seq_a_sapscrap.append(reg_a2.get_rng(&"ai.sapscrap").randi())
 	var reg_c := RngRegistry.new(43)
 	var seq_c: Array = []
 	for _i in range(20):
-		seq_c.append(reg_c.get_rng(&"ai.techo").randi())
-	_assert_true(seq_a_techo.hash() != seq_c.hash(),
+		seq_c.append(reg_c.get_rng(&"ai.sapscrap").randi())
+	_assert_true(seq_a_sapscrap.hash() != seq_c.hash(),
 		"Different seed → different sequence (same system)")
 
 	# Per-system isolation: consuming one system's RNG must not shift another's
@@ -32451,20 +32511,20 @@ func _test_rng_determinism() -> void:
 	var loot_d: Array = []
 	for _i in range(10):
 		loot_d.append(reg_d.get_rng(&"loot").randi())
-	# Repeat with extra ai.techo calls interleaved.
+	# Repeat with extra ai.sapscrap calls interleaved.
 	var reg_e := RngRegistry.new(42)
 	for _i in range(10):
-		reg_e.get_rng(&"ai.techo").randi()  # different system, should not perturb loot
+		reg_e.get_rng(&"ai.sapscrap").randi()  # different system, should not perturb loot
 	var loot_e: Array = []
 	for _i in range(10):
 		loot_e.append(reg_e.get_rng(&"loot").randi())
 	_assert_equals(loot_d.hash(), loot_e.hash(),
-		"Per-system isolation: ai.techo calls do not shift loot output")
+		"Per-system isolation: ai.sapscrap calls do not shift loot output")
 
-	# Per-spawn (birth_id) isolation: two Techos born at different events
+	# Per-spawn (birth_id) isolation: two Sapscraps born at different events
 	# get different streams from the same system name.
-	var techo_4712 := reg_a.get_rng(&"ai.techo", 4712).randi()
-	var techo_9999 := reg_a.get_rng(&"ai.techo", 9999).randi()
+	var techo_4712 := reg_a.get_rng(&"ai.sapscrap", 4712).randi()
+	var techo_9999 := reg_a.get_rng(&"ai.sapscrap", 9999).randi()
 	_assert_true(techo_4712 != techo_9999,
 		"Different birth_ids in same system produce different streams")
 

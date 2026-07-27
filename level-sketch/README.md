@@ -116,5 +116,5 @@ Scenes are thin (just a root + script); everything is built procedurally in GDSc
 }
 ```
 
-- `kind`: a flora/fauna **species id** (e.g. `seefern`, `flure`, `capbage`, `techos`, `spikers`, `naturalizers` — the full roster + colors live in `scripts/species_catalog.gd`), or `shelter` / `blockin`
+- `kind`: a flora/fauna **species id** (e.g. `seefern`, `flure`, `capbage`, `sapscraps`, `spikers`, `naturalizers` — the full roster + colors live in `scripts/species_catalog.gd`), or `shelter` / `blockin`
 - `shape`: `cell` (1×1 point), `rect` (`w`×`h`), `circle` (radius `r`, centred on cell `x,y`)

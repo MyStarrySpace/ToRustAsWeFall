@@ -32,7 +32,7 @@ const CHARACTERS := [
 		"id": "myke", "name": "Myke", "cell": "microglia", "class": "MCG", "color": Color(0.86, 0.40, 0.36),
 		"role": "Burst DPS — fire kit. THE combat specialist (the redirect/gauntlet primary).",
 		"capabilities": ["combat", "impact", "force", "carry", "physical", "tend", "class_other"],
-		"abilities": [{"name": "Inflame", "desc": "Fire zone, attracts Neutros"}, {"name": "Engulf", "desc": "Burn + ROS swarm"}],
+		"abilities": [{"name": "Inflame", "desc": "Fire zone, attracts Flares"}, {"name": "Engulf", "desc": "Burn + ROS swarm"}],
 	},
 	{
 		"id": "oli", "name": "Oli", "cell": "oligodendrocyte", "class": "OLG", "color": Color(0.75, 0.66, 0.92),

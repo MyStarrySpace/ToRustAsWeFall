@@ -20,19 +20,19 @@ const FLORA := [
 ]
 
 const FAUNA := [
-	{"id": "techos", "name": "Techos", "color": Color(0.62, 0.22, 0.48)},            # iron-enterobactin red-violet
-	{"id": "verdings", "name": "Verdings", "color": Color(0.62, 0.85, 0.30)},        # fluorescent chartreuse
+	{"id": "sapscraps", "name": "Sapscraps", "color": Color(0.62, 0.22, 0.48)},            # iron-enterobactin red-violet
+	{"id": "aembers", "name": "Aembers", "color": Color(0.62, 0.85, 0.30)},        # fluorescent chartreuse
 	{"id": "hidras", "name": "Hidras", "color": Color(0.52, 0.50, 0.40)},            # grey-bronze pipe-mimic
 	{"id": "crusts", "name": "Crusts", "color": Color(0.72, 0.62, 0.46)},            # cream-rust biofilm mat
 	{"id": "candids", "name": "Candids", "color": Color(0.85, 0.82, 0.58)},          # pale yeast-cream
 	{"id": "meebs", "name": "Meebs", "color": Color(0.55, 0.68, 0.58)},              # translucent green-grey amoeba
 	{"id": "naturalizers", "name": "Naturalizers", "color": Color(0.46, 0.56, 0.74)},  # NK grey-blue carapace
 	{"id": "gnawers", "name": "Gnawers", "color": Color(0.45, 0.20, 0.24)},          # heme-dark hunter
-	{"id": "neutros", "name": "Neutros", "color": Color(0.90, 0.74, 0.42)},          # inflammatory amber burster
+	{"id": "flares", "name": "Flares", "color": Color(0.90, 0.74, 0.42)},          # inflammatory amber burster
 	{"id": "spikers", "name": "Spikers", "color": Color(0.56, 0.82, 0.80)},          # pale teal neuron
 	{"id": "tanglers", "name": "Tanglers", "color": Color(0.42, 0.44, 0.26)},        # dark olive tau-helix
 	{"id": "toxos", "name": "Toxos", "color": Color(0.60, 0.46, 0.46)},              # grey-red crescent
-	{"id": "nosomas", "name": "Nosomas", "color": Color(0.58, 0.62, 0.66)},          # ghost-pale cloaked enforcer
+	{"id": "redactors", "name": "Redactors", "color": Color(0.58, 0.62, 0.66)},          # ghost-pale cloaked enforcer
 ]
 
 const _DEFAULT_FLORA_COLOR := Color(0.33, 0.72, 0.36)

@@ -75,7 +75,7 @@ func _build_demo() -> void:
 	model.fill_rect(1, 5, 3, 7, -1, "room")   # a pit one level down
 	model.add_object({"kind": "seefern", "x": 1, "y": 1, "level": 0})
 	model.add_object({"kind": "flure", "x": 2, "y": 1, "level": 0})
-	model.add_object({"kind": "techos", "x": 7, "y": 1, "level": 0})
+	model.add_object({"kind": "sapscraps", "x": 7, "y": 1, "level": 0})
 	model.add_object({"kind": "spikers", "x": 7, "y": 5, "level": 0})
 	model.add_object({"kind": SketchModel.KIND_SHELTER, "x": 8, "y": 5, "level": 0})
 	model.add_object({"kind": SketchModel.KIND_BLOCKIN, "shape": SketchModel.SHAPE_RECT, "x": 5, "y": 0, "w": 3, "h": 2, "level": 0})

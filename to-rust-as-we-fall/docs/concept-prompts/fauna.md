@@ -1,71 +1,58 @@
-# Fauna — concept prompts
+# Fauna — concept references and prompts
 
-The thirteen canonical threats live in `reference-docs/fauna_roster.md` (roles,
-biology, tells, counters — the prompt for each species must encode its TELL, the
-way flora prompts encode affordances). Remember the renames: Techos→Sapscraps,
-Verdings→Aembers, Neutros→Flares, Nosomas→Redactors.
+Like flora, fauna is a category where **canon already exists — never regenerate what
+it covers.** The canonical prompt document is `reference-docs/fauna_image_prompts.md`
+(~41 KB, all thirteen threats), and the ecology that pairs with it is
+`reference-docs/enemy_ecosystem.md`. Both are now mirrored into `reference-docs/`
+(they were missing from the mirror until 2026-07-27, which is how a redundant
+hand-written prompt set got made here — the mistake this file now exists to prevent).
 
-Seeded here: the species that stand guard in the Plumbing Power Project (the
-wash relay's branch guards are Sapscraps — the iron-lure answerers; only
-Sapscraps/Aembers/Hidras answer a Flure decoy). The in-game guard body is still
-a placeholder capsule — these references feed the creature-grammar hookup.
+Each canonical entry carries: **Tier · Silhouette priority · Form · Locomotion ·
+Attack telegraph · Hurt/death · Biological inspiration.** The attack telegraph is the
+fauna equivalent of a flora affordance — it is the thing the art must encode, because
+the player reads the tell before the strike.
 
-Style block per prompt (fauna share the flora preamble, darker):
+## The naming (director's ruling, 2026-07-27 — FINAL)
 
-> **[STYLE]** = Voxel and low-poly base geometry with painterly atmospheric
-> textures applied over it. Hand-painted brush detail visible on every surface.
-> Near-black background, diorama-on-dark, single specimen centered, three-quarter
-> view. Cold industrial rim light plus one colored accent. Game-asset concept
-> sheet framing.
+Four species were renamed onto the harm-naming scheme; the rename is now propagated
+through the whole corpus (code, data, docs, and the canon mirror):
 
----
+| Current (canonical) | Retired | Why |
+|---|---|---|
+| **Sapscraps** | Techos | *sap* (drains iron, saps infrastructure) + *scraps* (picked-clean detritus, scrap-sized swarm bodies) |
+| **Aembers** | Verdings | *amber* + *ember* — the resin-seep at a wound, and the glowing core you see coming |
+| **Flares** | Neutros | the area burst is a flare; doubles as an inflammatory flare-up (neutrophil) |
+| **Redactors** | Nosomas | *redact* = erase-from-record — the information-suppression motif as a name |
 
-## Sapscraps (`sapscraps`) — swarm fodder, common
+The other nine keep their names: Hidras, Crusts, Candids, Meebs, Gnawers, Spikers,
+Tanglers, Toxos, Naturalizers.
 
-Canon: catecholate siderophore (enterobactin) — the THREE-PALP C3 body IS the
-molecule's threefold geometry. Tell: one palp lifts and GLOWS before the clamp.
-It strips iron from fixtures; leaves picked-clean scrap detritus.
+`reference-docs/fauna_roster.md` deliberately **keeps** the retired names — it *is* the
+rename record. So do the project instruction files that teach the mapping. Everywhere
+else a retired name is a bug: `--test-canon-fauna-names` fails on one.
 
-> [STYLE] A small scuttling iron-scavenger creature with strict threefold
-> symmetry: three identical claw-palps arranged 120 degrees apart around a squat
-> central body, each palp tipped with a dull metal-stained clamp. Rust flakes
-> and scraped-bright metal streaks on its hide from chewing infrastructure. One
-> palp is RAISED and glowing hot red-orange at the tip — the strike tell — while
-> the other two grip the ground. Around it, a litter of picked-clean iron
-> scraps. Small — knee-height — but clearly built to swarm.
+Note for anyone reading older art or docs: `fauna_image_prompts.md` and
+`enemy_ecosystem.md` were authored before the rename and have been migrated in place,
+so their species headings now read Sapscraps / Aembers / Flares / Redactors. The
+numbered duplicate copies in the director's Downloads folder (`… (1).md`) were left
+untouched as pre-rename history.
 
-**States to generate:** idle (all three palps down, dull), tell (one palp raised
-and glowing — the canonical read), swarm-mass (five or six bodies clustered on a
-fixture, stripping it).
+## Where each species' art comes from
 
-## Aembers (`aembers`) — breach ambusher, mid
+Use the canonical prompt for the species (`reference-docs/fauna_image_prompts.md`
+§ *species*), prepending the shared style preamble that file defines. Generated art
+belongs in `reference-images/concept/fauna/`.
 
-Canon: fluorescent siderophore (pyoverdine) tracking vascular damage. Tell: the
-glowing amber core BRIGHTENS AND LEANS toward its target before the flare.
+**Priority order for the build queue** — the wash relay's branch guards are
+**Sapscraps** (canon: only Sapscraps / Aembers / Hidras answer a Flure iron decoy), and
+the in-game guard body is still a placeholder capsule, so Sapscraps art unblocks the
+creature-grammar hookup first. Aembers and Hidras follow (both appear in the Plumbing
+Power Project); the enforcement classes (Naturalizers, Redactors) matter for Tag Day
+and the lockout chase.
 
-> [STYLE] A sessile ambush creature camped at a broken breach in an iron wall: a
-> dark, resin-sheathed body like hardened sap clinging to the breach edges, with
-> one deep amber-glowing core visible inside its translucent mass — an ember in
-> amber. The core is mid-tell: brightened and visibly LEANING toward the viewer,
-> the surrounding resin body tensed. The amber glow is the only warm light in
-> frame, staining the breach edges.
+The three prompts previously hand-written here were redundant with canon and have been
+removed. If a species ever needs a *new* prompt — a state the canonical file does not
+cover (a swarm-mass composition, a district-specific dressing) — add it below as an
+explicit supplement and cite which canonical entry it extends.
 
-## Hidras (`hidras`) — infrastructure ambush, mid
-
-Canon: hydroxamate siderophore — the segmented HELIX body is the iron-cage
-propeller geometry. Disguised as cabling until it unspools.
-
-> [STYLE] A segmented helical creature disguised as industrial cabling: a long
-> coiled body of dark cable-like segments wound along a wall conduit run,
-> almost indistinguishable from the real cables beside it — except for a faint
-> repeating segment seam and one raised hooked end-segment beginning to
-> unspool. Show it HALF-REVEALED: most of the body reading as innocent cable,
-> the head third peeling away from the wall in a helix.
-
-## Queue (prompts to write as their districts come up)
-
-Crusts · Candids · Meebs · Gnawers · Spikers · Tanglers · Flares · Toxos ·
-Naturalizers · Redactors — each entry must encode the roster's TELL as the
-centerpiece (pores dilating, cup brightening, haze swelling…), and the two
-enforcement classes (Naturalizers, Redactors) carry the institutional-clean
-look that contrasts the feral organisms.
+## Supplements (none yet)
