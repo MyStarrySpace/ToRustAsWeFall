@@ -181,7 +181,7 @@ const BEAT_LEDGE_REGIONS := [
 # pad <-> THE NECK GARDEN, a portal-only pocket inside the drum's broken-coil neck (the
 # pressure-pocket grid pattern: separated from the deck, the portal is the only edge).
 # The garden is the sealed Greenfields threshold; the route READ lives on its gate.
-static var CURE_PORTAL_COLOR: Color = LevelPalette.global_color("portal_route")   # portal law: no gold
+static var CURE_PORTAL_COLOR: Color = LevelPalette.global_color("portal_transit")  # PURPLE per plate A (portal law: red/purple/blue only)
 const CURE_DEST_POS := Vector3(42.5, 0.5, -8.6)
 const CURE_GATE_POS := Vector3(44.2, 0.5, -8.6)
 const CURE_APERTURE_R := 0.77
@@ -456,6 +456,8 @@ func _build_chunk() -> void:
 	_make_dressing_wet()
 	_apply_vasculature()
 	_build_organic_props()
+	_build_concept_props()
+	_build_structural_scaffold()
 	_build_reflection_probe()
 	_wdbg("dressing + story beats built")
 	# This chunk authors its environment directly instead of calling DataFragmentChunk._build_chunk(),
@@ -483,10 +485,15 @@ func _build_flow_terminal(strip: Node3D) -> void:
 		"LOG THE SURGE", "aster", 1.1, false, 1.5,
 		Interactable.InteractableType.INSPECTION, false)
 	term.consequence_preview = "Aster logs this channel's timing; crossings then wait out the surge automatically."
-	var body := _add_box(term, Vector3(0.0, 0.18, 0.0), Vector3(0.62, 1.15, 0.42),
-		Color(0.08, 0.25, 0.32), Color.BLACK, 0.0)
-	var screen := _add_box(term, Vector3(0.0, 0.62, 0.24), Vector3(0.44, 0.3, 0.06),
-		Color(0.05, 0.09, 0.06), LevelPalette.global_color("terminal_green"), 1.6)
+	# the body is the concept-pass Terminal PIECE (wood core in iron straps, green
+	# matrix head) — the interactable/outline wiring is unchanged, only the mesh
+	var body: Node3D = ArchetypePieceLibrary.instantiate("terminal")
+	if body == null:
+		body = _add_box(term, Vector3(0.0, 0.18, 0.0), Vector3(0.62, 1.15, 0.42),
+			Color(0.08, 0.25, 0.32), Color.BLACK, 0.0)
+	else:
+		body.transform = Transform3D(Basis(Vector3.UP, PI), Vector3(0.0, -0.5, 0.0))
+		term.add_child(body)
 	_outline_interactable_child(term, body, "FlowTerminal", 1.5)
 	_configure_wash_control(
 		term, "flow_terminal", "flow_terminal", FLOW_ASSIST_SECTION,
@@ -1646,6 +1653,71 @@ func _apply_vasculature() -> void:
 				(n as MeshInstance3D).material_overlay = mat
 		for c in n.get_children():
 			stack.append(c)
+
+## THE REASSEMBLY (director: "the level isn't using the new assets yet"): place the
+## concept-pass assemblies. All are BODIES riding the helix warp; gameplay untouched.
+func _warp_piece(pid: String, s_pos: float, lane: float, y_off: float, yaw: float,
+		parent: Node3D, tag: String) -> Node3D:
+	var piece := ArchetypePieceLibrary.instantiate(pid)
+	if piece == null:
+		return null
+	piece.transform = Transform3D(
+		ChannelsArc.basis_at(s_pos) * Basis(Vector3.UP, yaw),
+		ChannelsArc.arc_pos(s_pos, lane) + Vector3(0.0, y_off, 0.0))
+	piece.name = "%s_%d" % [tag, roundi(s_pos * 10.0)]
+	parent.add_child(piece)
+	return piece
+
+func _build_concept_props() -> void:
+	var root := Node3D.new()
+	root.name = "ConceptProps"
+	add_child(root)
+	# the curecumin portal ASSEMBLY at the pad ledge (plate A): ornate ring + frame
+	# behind the pad, console beside it, turned pad-rings under it, the pier's
+	# broken end past the ledge lip. The pad's plain fixture arch is hidden — the
+	# masonry ring IS the aperture now (the live lens keeps hovering in its bore).
+	_warp_piece("portal_ring_ornate", 1.6, -7.55, 0.0, PI * 0.5, root, "CureRing")
+	_warp_piece("portal_console", 2.85, -6.5, 0.0, PI * 0.5 + 0.3, root, "CureConsole")
+	_warp_piece("portal_pad_rings", 1.6, -6.2, 0.02, 0.0, root, "CurePadRings")
+	_warp_piece("broken_pier", 1.6, -8.3, -0.02, PI, root, "CurePier")
+	if _cure_portals.size() > 0 and is_instance_valid(_cure_portals[0]):
+		var arch: Node = (_cure_portals[0] as Node).find_child("PortalArch", true, false)
+		if arch != null:
+			(arch as Node3D).visible = false
+	# vascular tracery panels claim the outer wall fins (plate G: a WEB, not arches)
+	for ts in [8.5, 30.0, 41.0, 65.0, 75.5]:
+		_warp_piece("wall_tracery", ts, 11.3, 0.15, -PI * 0.5, root, "Tracery")
+	# red bar lamps give the rig's red pools a FIXTURE on the wall
+	for ls in [10.0, 30.0, 50.0, 70.0]:
+		_warp_piece("red_bar_lamp", ls, 11.15, 2.3, -PI * 0.5, root, "BarLamp")
+	# the reservoir platform stands in the drum's crown water (plate D)
+	var platform := ArchetypePieceLibrary.instantiate("reservoir_platform")
+	if platform != null:
+		platform.transform = Transform3D(Basis(Vector3.UP, 2.2), Vector3(0.55, 16.42, -0.35))
+		platform.name = "CrownPlatform"
+		root.add_child(platform)
+
+## STRUCTURAL SCAFFOLDING: the coil reads as BUILT — truss bays hang under the
+## deck run, legs carry the branch piers, racked pipes ride the outer rim, and
+## railings guard the pressure pocket's open edge. Tileable 2 m modules.
+func _build_structural_scaffold() -> void:
+	var root := Node3D.new()
+	root.name = "Scaffolding"
+	add_child(root)
+	var s_pos := 4.0
+	while s_pos < 84.0:
+		if not (s_pos > 18.0 and s_pos < 23.5):            # the broken-coil gap stays bare
+			_warp_piece("scaffold_truss", s_pos, 0.0, -1.42, -PI * 0.5, root, "Truss")
+		s_pos += 6.0
+	for gap_mid in GAP_MIDS_SCAFFOLD:                      # legs under the branch piers
+		for ds in [-0.8, 0.8]:
+			_warp_piece("scaffold_leg", gap_mid + ds, 7.5, -3.28, 0.0, root, "PierLeg")
+	for rs in [21.0, 23.0, 25.0]:                          # pressure-pocket edge railings
+		_warp_piece("railing_run", rs, -10.2, 0.0, -PI * 0.5, root, "PocketRail")
+	for ps in [34.2, 36.2]:                                # racked pipe runs, outer rim
+		_warp_piece("pipe_rack", ps, 4.95, 0.0, -PI * 0.5, root, "PipeRack")
+
+const GAP_MIDS_SCAFFOLD: Array = [12.5, 28.5, 54.5, 62.5, 72.5]
 
 ## Wave-1 organic props (docs/CHANNELS_CONCEPT.md prop audit): the plate's detail is
 ## PROPS, not texture — 3D vein trunks climbing the drum with glowing basal bulbs,
