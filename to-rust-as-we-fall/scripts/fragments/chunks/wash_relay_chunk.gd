@@ -454,6 +454,7 @@ func _build_chunk() -> void:
 	_build_story_beats()
 	_build_light_rig()
 	_make_dressing_wet()
+	_apply_vasculature()
 	_build_neon_edges()
 	_build_reflection_probe()
 	_wdbg("dressing + story beats built")
@@ -1603,6 +1604,39 @@ func _make_dressing_wet() -> void:
 				wet.metallic = 0.34
 				wet.metallic_specular = 0.9
 				mi.set_surface_override_material(si, wet)
+		for c in n.get_children():
+			stack.append(c)
+
+## ORGANIC VASCULATURE overgrowth (concept plate C): the veins + glowing clusters lay
+## over the tall iron (drum, shaft walls) as a per-instance material_overlay — a
+## transparent world-triplanar pass ON TOP of the painted iron, so the base plate/rust
+## detail stays and the tendrils climb over it. One shared material; the textures come
+## from the Voronoi generator (gen_vasculature.py). Skipped if the maps are missing.
+func _apply_vasculature() -> void:
+	if _dressing == null or not (_dressing is Dictionary) or not _dressing.has("root"):
+		return
+	var root = _dressing["root"]
+	if not is_instance_valid(root):
+		return
+	var alb_path := "res://resources/textures/vasculature/vasculature_albedo.png"
+	if not ResourceLoader.exists(alb_path):
+		return
+	var mat := ShaderMaterial.new()
+	mat.shader = load("res://resources/vasculature_overlay.gdshader")
+	mat.set_shader_parameter("vein_albedo", load(alb_path))
+	mat.set_shader_parameter("vein_emissive", load("res://resources/textures/vasculature/vasculature_emissive.png"))
+	mat.set_shader_parameter("vein_normal", load("res://resources/textures/vasculature/vasculature_normal.png"))
+	mat.render_priority = 1
+	var stack: Array = [root]
+	while not stack.is_empty():
+		var n = stack.pop_back()
+		if n is MeshInstance3D and (n as MeshInstance3D).mesh != null:
+			var nm := str(n.name).to_lower()
+			# tall iron only: the drum body/neck/crown + the shaft-wall band. Skip the
+			# emissive rim, water, gate signs, ledges (the veins climb structure, not glass).
+			if (nm.contains("drum") or nm.contains("shaft") or nm.contains("shaftpanel")) \
+					and not nm.contains("rim") and not nm.contains("water"):
+				(n as MeshInstance3D).material_overlay = mat
 		for c in n.get_children():
 			stack.append(c)
 

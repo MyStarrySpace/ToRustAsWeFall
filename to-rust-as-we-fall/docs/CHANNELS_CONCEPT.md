@@ -40,6 +40,25 @@ Same geometry, dramatically re-lit. This is the grade to hit:
 - **The drum rim** is a bright cyan-white band, the brightest thing up top.
 - **Neon bloom** on the water/portal/rim; filmic contrast; near-black background.
 
+## Plate C — DETAIL PLATES (5 close-ups, 2026-07-27) — ORGANIC OVERGROWTH
+
+Five detail shots that push the look further and confirm the red/purple/cyan wet mood:
+
+- **The iron is OVERGROWN with organic vasculature.** Vein-like tendrils (dark
+  red-brown, faintly lit) climb the drum and the shaft walls in a branching network
+  — the biological substrate leaking into the architecture (canon: the NVU substrate
+  bleeding nutrients into the iron). Blue/purple **bioluminescent clusters** (mushroom/
+  crystal nodes) gather at vein junctions and wall niches.
+- **Director's method:** draw the organic detail as TEXTURE for now (not geometry),
+  via a **Voronoi-inspired method** — Voronoi/Worley cell EDGES form the branching
+  vein network naturally (see blender/skills/building-generation/gen_voronoi_holemesh
+  `voronoi_edges`). Generator: blender/textures/gen_vasculature.py → an overlay laid
+  on the iron surfaces (drum + walls), with emissive junction nodes for the clusters.
+- Detail confirmations: the drum PORTHOLE is an octagonal wheel-mullion window onto
+  teal water; the cyan WATER CHANNEL snakes bright through the plank+grate deck as the
+  dominant light; alcove SHELTERS glow cyan inside; red lantern accents; the purple
+  CURECUMIN portal ring-on-stand + pad over the dark well, garden through the lens.
+
 ## Implementation ledger (this level's channels chunk + shared preview grade)
 
 - **Grade (per-chunk lighting profile):** filmic tonemap + glow bloom + darker cool
