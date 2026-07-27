@@ -1,5 +1,21 @@
 # Plumbing Power Project — prop concept prompts
 
+> **REFERENCES RECEIVED (2026-07-27), seven plates:** portal ring + console (a
+> SEGMENTED MASONRY ring in a wooden plank frame with crest block; console =
+> carved pedestal, tilted glyph screen, ball-segmented cable arcs), pad rings
+> (radial wood-wedge outer ring, two purple neon grooves, trefoil emblem boss),
+> water channel deck section (hex grate + plank decking, stacked-block banks),
+> reservoir platform interior (riveted caisson, corner straps, central hex
+> grate, crown ring above), flow terminal (wood core in iron straps, green
+> matrix head, drain pipe), shelter room (warm lantern interior, care-banners,
+> shelf plants, hex vents), and the DEFINITIVE organics plate (fat linked-lobe
+> vein trunk + vascular web + biolume colony). Vocabulary they establish: HEX
+> mesh everywhere, wood-core-in-iron-straps, rivet rows, emblem/crest bosses —
+> and the wall overgrowth is an irregular vascular WEB, not gothic arches.
+> Builders live in blender/archetypes/concept_pass1.py. Drop the plate files in
+> reference-images/concept/plumbing_power_project/ so future sessions can read
+> them (they currently exist only in this conversation).
+
 District props for the wash relay stretch (asset-sheet CHANNELS PROPS section).
 Each prompt is self-contained. The district style block baked into every prompt:
 
