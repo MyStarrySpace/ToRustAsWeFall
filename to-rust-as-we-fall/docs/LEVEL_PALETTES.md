@@ -45,3 +45,17 @@ it for assets"). The registry is DATA, shared by both sides of the pipeline:
   biolume roles are shared by the texture generator (gen_vasculature.py), the piece
   library parts, and any runtime lights — one organism, one palette.
 - **greenfields / stacks / aghora / endo_junction** — PROPOSED starters, see JSON.
+
+## Species colours corrected from the concept cards (2026-07-27)
+
+The species row is canon-derived, but where a written description and the director's
+own card render disagreed, the CARD wins (it is the art of record):
+
+- `climbvine_fiber` was a green; ENT-020 shows a **bone/beige** rope. Corrected, with
+  `climbvine_node` darkened to match its grip-roots.
+- `scarpet_green` (olive-brown) describes the *senescing* read; the tended card ENT-015
+  is a vivid green mass shot with rust-orange. Added `scarpet_blade`,
+  `scarpet_blade_deep` and `scarpet_senesce` for the tended blade mix — `scarpet_green`
+  stays for the faded state.
+- Added `seefern_vein_core`: ENT-014's veins read near-**white**, with the teal
+  (`seefern_vein`) as their glow, not the core colour.

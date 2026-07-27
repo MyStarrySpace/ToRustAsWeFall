@@ -88,11 +88,15 @@
     "flure_core": "#e08a2a",
     "seefern_leaf": "#1e4a40",
     "seefern_vein": "#33d9bf",
-    "climbvine_fiber": "#4f6b3a",
-    "climbvine_node": "#2e2620",
+    "climbvine_fiber": "#c4b393",
+    "climbvine_node": "#3a2f24",
     "gasafoetida_stalk": "#54603c",
     "gasafoetida_pod": "#b0a95c",
     "forget_me_not_blue": "#6f8fd9",
-    "resolution_root_pale": "#bfae8f"
+    "resolution_root_pale": "#bfae8f",
+    "scarpet_blade": "#5f8f3f",
+    "scarpet_blade_deep": "#3d6b2c",
+    "scarpet_senesce": "#b5561f",
+    "seefern_vein_core": "#e8f7f0"
   }
 }
