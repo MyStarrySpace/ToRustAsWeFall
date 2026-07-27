@@ -1570,11 +1570,11 @@ func _build_light_rig() -> void:
 	# warm amber holding the shelters/overlook.
 	for red_s in [10.0, 30.0, 50.0, 70.0]:
 		_rig_omni(rig, float(red_s), -3.4, 2.0, red, 2.2, 6.5)
-	_rig_omni(rig, 1.6, -2.0, 2.0, LevelPalette.color("channels", "lamp"), 2.4, 8.0)
-	_rig_omni(rig, 84.0, 0.0, 2.2, LevelPalette.color("channels", "lamp"), 2.4, 8.0)
+	_rig_omni(rig, 1.6, -2.0, 2.0, LevelPalette.color("channels", "lamp"), 1.6, 8.0)
+	_rig_omni(rig, 84.0, 0.0, 2.2, LevelPalette.color("channels", "lamp"), 1.6, 8.0)
 	for mid_v in _gap_mids():                              # amber work-lamps at the turn-offs
 		_rig_omni(rig, float(mid_v), 3.2, 1.8,
-			LevelPalette.global_color("warning_amber"), 1.8, 6.5)
+			LevelPalette.global_color("warning_amber"), 1.25, 6.5)
 	# the DRUM CROWN rim — a bright cyan-white band, the brightest thing up top.
 	_rig_omni(rig, 86.0, 0.0, 3.4, Color(0.7, 0.92, 1.0), 3.2, 8.0)
 	for s_pos in [20.6, 39.5, 54.5, 72.5]:                 # constant pale seep shafts
