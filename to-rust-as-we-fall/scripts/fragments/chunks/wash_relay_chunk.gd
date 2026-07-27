@@ -456,7 +456,6 @@ func _build_chunk() -> void:
 	_make_dressing_wet()
 	_apply_vasculature()
 	_build_organic_props()
-	_build_neon_edges()
 	_build_reflection_probe()
 	_wdbg("dressing + story beats built")
 	# This chunk authors its environment directly instead of calling DataFragmentChunk._build_chunk(),
@@ -517,6 +516,10 @@ func _warped_box(parent: Node3D, s: float, lane: float, size: Vector3, color: Co
 ## The flood surface as ONE world-space triangle strip riding the helix arc: two verts per
 ## sample across the lane band, normals up, UV.u tiling along s (one tile per WATER_SEG).
 func _build_water_ribbon(x0: float, x1: float, half_lane: float, y_off: float) -> MeshInstance3D:
+	# The node's ORIGIN sits at the section's arc midpoint and vertices are baked
+	# relative to it — so the ribbon's position is meaningful (the telegraph test
+	# uses it as the on-helix reference), not an identity transform at world zero.
+	var origin := ChannelsArc.arc_pos((x0 + x1) * 0.5, 0.0) + Vector3.UP * y_off
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLE_STRIP)
 	var n := maxi(4, int(ceil((x1 - x0) / 0.75)))
@@ -525,12 +528,13 @@ func _build_water_ribbon(x0: float, x1: float, half_lane: float, y_off: float) -
 		var u := (sx - x0) / WATER_SEG
 		st.set_normal(Vector3.UP)
 		st.set_uv(Vector2(u, 0.0))
-		st.add_vertex(ChannelsArc.arc_pos(sx, -half_lane) + Vector3.UP * y_off)
+		st.add_vertex(ChannelsArc.arc_pos(sx, -half_lane) + Vector3.UP * y_off - origin)
 		st.set_normal(Vector3.UP)
 		st.set_uv(Vector2(u, 1.0))
-		st.add_vertex(ChannelsArc.arc_pos(sx, half_lane) + Vector3.UP * y_off)
+		st.add_vertex(ChannelsArc.arc_pos(sx, half_lane) + Vector3.UP * y_off - origin)
 	var mi := MeshInstance3D.new()
 	mi.mesh = st.commit()
+	mi.position = origin
 	return mi
 
 # A ShaderMaterial running channels_water.gdshader — the animated, textured flood-water look. Each flood
@@ -1633,17 +1637,16 @@ func _apply_vasculature() -> void:
 		var n = stack.pop_back()
 		if n is MeshInstance3D and (n as MeshInstance3D).mesh != null:
 			var nm := str(n.name).to_lower()
-			# tall iron only: the drum body/neck/crown + the shaft-wall band. Skip the
-			# emissive rim, water, gate signs, ledges (the veins climb structure, not glass).
-			if (nm.contains("drum") or nm.contains("shaft") or nm.contains("shaftpanel")) \
-					and not nm.contains("rim") and not nm.contains("water"):
+			# The DRUM only. On the huge dark shaft panels the overlay's emissive
+			# cluster dots read as a scattered "starfield" — an invented look the
+			# director cut; those walls stay bare until the arched wall-tracery
+			# PROP replaces them (prop audit #8). Veins climb the drum, where the
+			# plate shows them. Skip the rim + water.
+			if nm.contains("drum") and not nm.contains("rim") and not nm.contains("water"):
 				(n as MeshInstance3D).material_overlay = mat
 		for c in n.get_children():
 			stack.append(c)
 
-## The signature bright CYAN edge lines (concept plates A + B): thin emissive strips
-## run the deck's inner + outer lip the whole length, tracing the coil in neon. They
-## ride the helix warp like every other warped piece; the pressure break is skipped.
 ## Wave-1 organic props (docs/CHANNELS_CONCEPT.md prop audit): the plate's detail is
 ## PROPS, not texture — 3D vein trunks climbing the drum with glowing basal bulbs,
 ## biolume clusters at their feet, the porthole ASSEMBLY standing proud of the plate,
@@ -1726,18 +1729,6 @@ func _build_organic_props() -> void:
 		post.material_override = post_mat
 		post.position = Vector3(sin(pa2), 0.0, cos(pa2)) * 3.79 + Vector3(0.0, 16.65, 0.0)
 		root.add_child(post)
-
-func _build_neon_edges() -> void:
-	var glow := LevelPalette.color("channels", "water")
-	var dim := Color(glow.r * 0.3, glow.g * 0.3, glow.b * 0.35)
-	var s := 1.0
-	while s < CHUNK_END_X:
-		if not (s > 19.0 and s < 22.2):                    # skip the broken-coil pressure gap
-			for lane in [-FLOOR_Z_HALF + 0.15, FLOOR_Z_HALF - 0.15]:
-				var strip := _add_warped_box(s + 0.7, lane, Vector3(1.35, 0.05, 0.16),
-					dim, glow, 2.6)
-				strip.name = "NeonEdge"
-		s += 1.5
 
 ## A reflection probe over the play space so the WET deck + drum actually REFLECT the
 ## drum, rim, and coloured lights (not just specular glints). Box-projected + interior

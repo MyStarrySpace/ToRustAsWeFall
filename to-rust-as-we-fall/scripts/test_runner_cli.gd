@@ -26417,10 +26417,14 @@ func _test_archetype_pieces() -> void:
 		_assert_true(catalog.has_content("structures", str(id_v))
 				or catalog.has_content("flora", str(id_v)),
 			"manifest id '%s' is a known content key" % id_v)
+	for id_v in ArchetypePieceLibrary.dressing_ids():
+		_assert_true(not catalog.has_content("structures", str(id_v))
+				and not catalog.has_content("flora", str(id_v)),
+			"dressing id '%s' stays OUT of the generation vocabulary" % id_v)
 	var failed_ids: Array = []
 	var meshless_ids: Array = []
 	var verbful_ids: Array = []
-	for id_v in ArchetypePieceLibrary.piece_ids():
+	for id_v in ArchetypePieceLibrary.piece_ids() + ArchetypePieceLibrary.dressing_ids():
 		var piece := ArchetypePieceLibrary.instantiate(str(id_v))
 		if piece == null:
 			failed_ids.append(id_v)
