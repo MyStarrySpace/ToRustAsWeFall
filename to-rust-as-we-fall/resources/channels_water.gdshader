@@ -29,6 +29,8 @@ uniform float ripple_gain : hint_range(0.5, 4.0) = 2.2;     // remaps the dark t
 uniform float foam_strength : hint_range(0.0, 2.0) = 0.8;
 uniform float water_alpha : hint_range(0.0, 1.0) = 0.88;    // translucency (see the deck faintly through it)
 uniform float emission_strength : hint_range(0.0, 4.0) = 2.2;  // self-glow — what makes the flood READ
+uniform float fresnel_strength : hint_range(0.0, 2.0) = 0.55;  // grazing-angle brightening — water
+uniform float fresnel_power : hint_range(1.0, 8.0) = 3.0;      // read as a SURFACE, not a flat decal
 
 // VISIBLE-RANGE fade (shared globals the perception view sets). A transparent surface is excluded from the
 // perception overlay's screen rewrite, so it can't be data-viewed like opaque geometry — the flood would stay
@@ -118,6 +120,10 @@ void fragment() {
 	float reveal_alpha = mix(1.0, reveal_alpha_floor, camera_reveal);
 	float reveal_emission = mix(1.0, reveal_emission_floor, camera_reveal);
 
+	// FRESNEL: edge-on view brightens toward foam — the subtle surface response the
+	// flat decal look lacked. Cheap scalar; identical on Forward+ and compat.
+	float fres = pow(1.0 - clamp(dot(normalize(v_normal), normalize(CAMERA_POSITION_WORLD - v_world)), 0.0, 1.0), fresnel_power) * fresnel_strength;
+	col = mix(col, foam_color, clamp(fres, 0.0, 0.6));
 	ALBEDO = col;
 	ROUGHNESS = 0.18;
 	METALLIC = 0.0;

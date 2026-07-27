@@ -458,6 +458,7 @@ func _build_chunk() -> void:
 	_build_organic_props()
 	_build_concept_props()
 	_build_structural_scaffold()
+	_apply_material_response()
 	_build_reflection_probe()
 	_wdbg("dressing + story beats built")
 	# This chunk authors its environment directly instead of calling DataFragmentChunk._build_chunk(),
@@ -1653,6 +1654,55 @@ func _apply_vasculature() -> void:
 				(n as MeshInstance3D).material_overlay = mat
 		for c in n.get_children():
 			stack.append(c)
+
+## MATERIAL RESPONSE (director: "noisy, and lacks the subtle fresnel effect on
+## materials and translucency"): every dressing/prop material gets a light
+## RESPONSE — a subtle white rim so silhouettes catch the coloured light, and
+## backlight on organics so they read translucent, lit from within. One walk,
+## one duplicate per unique material (cached), same pattern as the wet pass.
+func _apply_material_response() -> void:
+	var cache: Dictionary = {}
+	for root_name in ["OrganicProps", "ConceptProps", "Scaffolding"]:
+		var root := find_child(root_name, false, false)
+		if root != null:
+			_material_response_walk(root, cache)
+	if _dressing is Dictionary and _dressing.has("root") and is_instance_valid(_dressing["root"]):
+		_material_response_walk(_dressing["root"], cache)
+
+func _material_response_walk(node: Node, cache: Dictionary) -> void:
+	if node is MeshInstance3D:
+		var mi := node as MeshInstance3D
+		if mi.mesh != null:
+			for si in range(mi.mesh.get_surface_count()):
+				var mat := mi.get_active_material(si)
+				if not (mat is StandardMaterial3D):
+					continue
+				if mat.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED:
+					continue                                  # god rays / blends keep their look
+				var key := mat.get_instance_id()
+				if not cache.has(key):
+					var dup := (mat as StandardMaterial3D).duplicate() as StandardMaterial3D
+					var mname := str(mat.resource_name).to_lower()
+					var organic := mname.contains("vein") or mname.contains("bark") 						or mname.contains("moss") or mname.contains("fern") or mname.contains("leaf") 						or mname.contains("scarpet") or mname.contains("vine") or mname.contains("bloom") 						or mname.contains("stalk") or mname.contains("pod") or mname.contains("capbage")
+					var lit_within := dup.emission_enabled and dup.emission.get_luminance() > 0.05
+					dup.rim_enabled = true
+					if lit_within:
+						dup.rim = 0.12
+						dup.rim_tint = 0.2
+						dup.backlight_enabled = true
+						dup.backlight = dup.emission * 0.55   # caps read lit from WITHIN
+					elif organic:
+						dup.rim = 0.32
+						dup.rim_tint = 0.35
+						dup.backlight_enabled = true
+						dup.backlight = dup.albedo_color * 0.5  # light bleeds through tissue
+					else:
+						dup.rim = 0.16
+						dup.rim_tint = 0.65                   # hard surfaces: a whisper of fresnel
+					cache[key] = dup
+				mi.set_surface_override_material(si, cache[key])
+	for child in node.get_children():
+		_material_response_walk(child, cache)
 
 ## THE REASSEMBLY (director: "the level isn't using the new assets yet"): place the
 ## concept-pass assemblies. All are BODIES riding the helix warp; gameplay untouched.
