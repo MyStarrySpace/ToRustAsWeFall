@@ -455,6 +455,7 @@ func _build_chunk() -> void:
 	_build_light_rig()
 	_make_dressing_wet()
 	_apply_vasculature()
+	_build_organic_props()
 	_build_neon_edges()
 	_build_reflection_probe()
 	_wdbg("dressing + story beats built")
@@ -1643,6 +1644,89 @@ func _apply_vasculature() -> void:
 ## The signature bright CYAN edge lines (concept plates A + B): thin emissive strips
 ## run the deck's inner + outer lip the whole length, tracing the coil in neon. They
 ## ride the helix warp like every other warped piece; the pressure break is skipped.
+## Wave-1 organic props (docs/CHANNELS_CONCEPT.md prop audit): the plate's detail is
+## PROPS, not texture — 3D vein trunks climbing the drum with glowing basal bulbs,
+## biolume clusters at their feet, the porthole ASSEMBLY standing proud of the plate,
+## and the continuous neon crown tube over the drum rim (plate 1's brightest element).
+## Drum: centre ChannelsArc.CENTER, radius 3.45 (WashRelayDressing.DRUM_R), top 16.5.
+func _build_organic_props() -> void:
+	var root := Node3D.new()
+	root.name = "OrganicProps"
+	add_child(root)
+	var drum_r := 3.45
+	# Vein trunks hug the drum: {angle (atan2(x,z)), base y, scale}. The first two sit
+	# in the drum_face / curecumin money-shot views; the rest spread the overgrowth.
+	var trunks := [
+		{"a": 1.62, "y": 0.55, "s": 1.0},
+		{"a": 0.95, "y": 0.5, "s": 0.85},
+		{"a": 2.18, "y": 8.6, "s": 1.15},
+		{"a": 3.6, "y": 4.4, "s": 1.0},
+		{"a": 5.1, "y": 9.8, "s": 0.9},
+	]
+	for t in trunks:
+		var trunk := ArchetypePieceLibrary.instantiate("vein_trunk")
+		if trunk == null:
+			return
+		var a: float = t["a"]
+		var radial := Vector3(sin(a), 0.0, cos(a))
+		trunk.transform = Transform3D(
+			Basis(Vector3.UP, a).scaled(Vector3.ONE * float(t["s"])),
+			radial * (drum_r + 0.05) + Vector3(0.0, float(t["y"]), 0.0))
+		trunk.name = "VeinTrunk_%d" % roundi(a * 100.0)
+		root.add_child(trunk)
+		var cluster := ArchetypePieceLibrary.instantiate("biolume_cluster")
+		if cluster != null:
+			cluster.transform = Transform3D(Basis(Vector3.UP, a + 0.9),
+				radial * (drum_r + 0.55) + Vector3(0.35 * sin(a + 1.6), float(t["y"]) + 0.02, 0.35 * cos(a + 1.6)))
+			cluster.name = "Biolume_%d" % roundi(a * 100.0)
+			root.add_child(cluster)
+		# each trunk's bulb nest casts real light so the overgrowth pools violet
+		var glow := OmniLight3D.new()
+		glow.light_color = Color(0.55, 0.35, 0.9)
+		glow.light_energy = 1.1
+		glow.omni_range = 2.6
+		glow.shadow_enabled = false
+		glow.position = radial * (drum_r + 0.5) + Vector3(0.0, float(t["y"]) + 0.35, 0.0)
+		root.add_child(glow)
+	# The porthole assembly at the drum-face money shot (the painted porthole spot).
+	var port := ArchetypePieceLibrary.instantiate("porthole")
+	if port != null:
+		var pa := 1.30
+		port.transform = Transform3D(Basis(Vector3.UP, pa).scaled(Vector3.ONE * 1.35),
+			Vector3(sin(pa), 0.0, cos(pa)) * (drum_r + 0.02) + Vector3(0.0, 0.85, 0.0))
+		port.name = "PortholeFace"
+		root.add_child(port)
+	# The neon crown: one CONTINUOUS bright tube riding posts over the drum rim.
+	var crown := MeshInstance3D.new()
+	var torus := TorusMesh.new()
+	torus.inner_radius = 3.72
+	torus.outer_radius = 3.86
+	torus.rings = 48
+	torus.ring_segments = 10
+	crown.mesh = torus
+	var tube := StandardMaterial3D.new()
+	tube.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	tube.albedo_color = Color(0.75, 0.95, 1.0)
+	tube.emission_enabled = true
+	tube.emission = Color(0.75, 0.95, 1.0)
+	tube.emission_energy_multiplier = 3.4
+	crown.material_override = tube
+	crown.position = Vector3(0.0, 16.9, 0.0)
+	root.add_child(crown)
+	var post_mat := StandardMaterial3D.new()
+	post_mat.albedo_color = Color(0.13, 0.13, 0.16)
+	for i in range(10):
+		var pa2 := TAU * i / 10.0
+		var post := MeshInstance3D.new()
+		var cyl := CylinderMesh.new()
+		cyl.top_radius = 0.035
+		cyl.bottom_radius = 0.035
+		cyl.height = 0.55
+		post.mesh = cyl
+		post.material_override = post_mat
+		post.position = Vector3(sin(pa2), 0.0, cos(pa2)) * 3.79 + Vector3(0.0, 16.65, 0.0)
+		root.add_child(post)
+
 func _build_neon_edges() -> void:
 	var glow := LevelPalette.color("channels", "water")
 	var dim := Color(glow.r * 0.3, glow.g * 0.3, glow.b * 0.35)

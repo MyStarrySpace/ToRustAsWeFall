@@ -35,7 +35,10 @@
 				21,
 				22,
 				23,
-				24
+				24,
+				25,
+				26,
+				27
 			]
 		}
 	],
@@ -256,6 +259,33 @@
 			"name":"MotherFlure",
 			"translation":[
 				0,
+				0,
+				10.399999618530273
+			]
+		},
+		{
+			"mesh":25,
+			"name":"VeinTrunk",
+			"translation":[
+				2.5999999046325684,
+				0,
+				10.399999618530273
+			]
+		},
+		{
+			"mesh":26,
+			"name":"BiolumeCluster",
+			"translation":[
+				5.199999809265137,
+				0,
+				10.399999618530273
+			]
+		},
+		{
+			"mesh":27,
+			"name":"Porthole",
+			"translation":[
+				7.800000190734863,
 				0,
 				10.399999618530273
 			]
@@ -657,6 +687,78 @@
 				"metallicFactor":0,
 				"roughnessFactor":0.8999999761581421
 			}
+		},
+		{
+			"doubleSided":true,
+			"emissiveFactor":[
+				1,
+				1,
+				1
+			],
+			"emissiveTexture":{
+				"index":37
+			},
+			"extensions":{
+				"KHR_materials_emissive_strength":{
+					"emissiveStrength":1.100000023841858
+				}
+			},
+			"name":"VeinTrunkTex",
+			"pbrMetallicRoughness":{
+				"baseColorTexture":{
+					"index":38
+				},
+				"metallicFactor":0,
+				"roughnessFactor":0.8999999761581421
+			}
+		},
+		{
+			"doubleSided":true,
+			"emissiveFactor":[
+				1,
+				1,
+				1
+			],
+			"emissiveTexture":{
+				"index":39
+			},
+			"extensions":{
+				"KHR_materials_emissive_strength":{
+					"emissiveStrength":1.100000023841858
+				}
+			},
+			"name":"BiolumeClusterTex",
+			"pbrMetallicRoughness":{
+				"baseColorTexture":{
+					"index":40
+				},
+				"metallicFactor":0,
+				"roughnessFactor":0.8999999761581421
+			}
+		},
+		{
+			"doubleSided":true,
+			"emissiveFactor":[
+				1,
+				1,
+				1
+			],
+			"emissiveTexture":{
+				"index":41
+			},
+			"extensions":{
+				"KHR_materials_emissive_strength":{
+					"emissiveStrength":1.600000023841858
+				}
+			},
+			"name":"PortholeTex",
+			"pbrMetallicRoughness":{
+				"baseColorTexture":{
+					"index":42
+				},
+				"metallicFactor":0,
+				"roughnessFactor":0.8999999761581421
+			}
 		}
 	],
 	"meshes":[
@@ -1009,6 +1111,48 @@
 					"material":24
 				}
 			]
+		},
+		{
+			"name":"VeinTrunk",
+			"primitives":[
+				{
+					"attributes":{
+						"POSITION":96,
+						"NORMAL":97,
+						"TEXCOORD_0":98
+					},
+					"indices":99,
+					"material":25
+				}
+			]
+		},
+		{
+			"name":"BiolumeCluster",
+			"primitives":[
+				{
+					"attributes":{
+						"POSITION":100,
+						"NORMAL":101,
+						"TEXCOORD_0":102
+					},
+					"indices":103,
+					"material":26
+				}
+			]
+		},
+		{
+			"name":"Porthole",
+			"primitives":[
+				{
+					"attributes":{
+						"POSITION":104,
+						"NORMAL":105,
+						"TEXCOORD_0":106
+					},
+					"indices":107,
+					"material":27
+				}
+			]
 		}
 	],
 	"textures":[
@@ -1159,6 +1303,30 @@
 		{
 			"sampler":0,
 			"source":36
+		},
+		{
+			"sampler":0,
+			"source":37
+		},
+		{
+			"sampler":0,
+			"source":38
+		},
+		{
+			"sampler":0,
+			"source":39
+		},
+		{
+			"sampler":0,
+			"source":40
+		},
+		{
+			"sampler":0,
+			"source":41
+		},
+		{
+			"sampler":0,
+			"source":42
 		}
 	],
 	"images":[
@@ -1346,6 +1514,36 @@
 			"mimeType":"image/png",
 			"name":"MotherFlure_tex",
 			"uri":"MotherFlure_tex.png"
+		},
+		{
+			"mimeType":"image/png",
+			"name":"VeinTrunk_emissive",
+			"uri":"VeinTrunk_emissive.png"
+		},
+		{
+			"mimeType":"image/png",
+			"name":"VeinTrunk_tex",
+			"uri":"VeinTrunk_tex.png"
+		},
+		{
+			"mimeType":"image/png",
+			"name":"BiolumeCluster_emissive",
+			"uri":"BiolumeCluster_emissive.png"
+		},
+		{
+			"mimeType":"image/png",
+			"name":"BiolumeCluster_tex",
+			"uri":"BiolumeCluster_tex.png"
+		},
+		{
+			"mimeType":"image/png",
+			"name":"Porthole_emissive",
+			"uri":"Porthole_emissive.png"
+		},
+		{
+			"mimeType":"image/png",
+			"name":"Porthole_tex",
+			"uri":"Porthole_tex.png"
 		}
 	],
 	"accessors":[
@@ -2174,6 +2372,108 @@
 			"componentType":5123,
 			"count":456,
 			"type":"SCALAR"
+		},
+		{
+			"bufferView":96,
+			"componentType":5126,
+			"count":1284,
+			"max":[
+				0.6449999809265137,
+				3.5,
+				0.4212435483932495
+			],
+			"min":[
+				-0.625,
+				0,
+				-0.39147549867630005
+			],
+			"type":"VEC3"
+		},
+		{
+			"bufferView":97,
+			"componentType":5126,
+			"count":1284,
+			"type":"VEC3"
+		},
+		{
+			"bufferView":98,
+			"componentType":5126,
+			"count":1284,
+			"type":"VEC2"
+		},
+		{
+			"bufferView":99,
+			"componentType":5123,
+			"count":2088,
+			"type":"SCALAR"
+		},
+		{
+			"bufferView":100,
+			"componentType":5126,
+			"count":426,
+			"max":[
+				0.3799999952316284,
+				0.5299999713897705,
+				0.3799999952316284
+			],
+			"min":[
+				-0.3799999952316284,
+				0,
+				-0.3799999952316284
+			],
+			"type":"VEC3"
+		},
+		{
+			"bufferView":101,
+			"componentType":5126,
+			"count":426,
+			"type":"VEC3"
+		},
+		{
+			"bufferView":102,
+			"componentType":5126,
+			"count":426,
+			"type":"VEC2"
+		},
+		{
+			"bufferView":103,
+			"componentType":5123,
+			"count":696,
+			"type":"SCALAR"
+		},
+		{
+			"bufferView":104,
+			"componentType":5126,
+			"count":396,
+			"max":[
+				0.6200000047683716,
+				1.3700000047683716,
+				0.09000000357627869
+			],
+			"min":[
+				-0.6200000047683716,
+				0.12999999523162842,
+				-0.14000000059604645
+			],
+			"type":"VEC3"
+		},
+		{
+			"bufferView":105,
+			"componentType":5126,
+			"count":396,
+			"type":"VEC3"
+		},
+		{
+			"bufferView":106,
+			"componentType":5126,
+			"count":396,
+			"type":"VEC2"
+		},
+		{
+			"bufferView":107,
+			"componentType":5123,
+			"count":654,
+			"type":"SCALAR"
 		}
 	],
 	"bufferViews":[
@@ -2752,6 +3052,78 @@
 			"byteLength":912,
 			"byteOffset":174996,
 			"target":34963
+		},
+		{
+			"buffer":0,
+			"byteLength":15408,
+			"byteOffset":175908,
+			"target":34962
+		},
+		{
+			"buffer":0,
+			"byteLength":15408,
+			"byteOffset":191316,
+			"target":34962
+		},
+		{
+			"buffer":0,
+			"byteLength":10272,
+			"byteOffset":206724,
+			"target":34962
+		},
+		{
+			"buffer":0,
+			"byteLength":4176,
+			"byteOffset":216996,
+			"target":34963
+		},
+		{
+			"buffer":0,
+			"byteLength":5112,
+			"byteOffset":221172,
+			"target":34962
+		},
+		{
+			"buffer":0,
+			"byteLength":5112,
+			"byteOffset":226284,
+			"target":34962
+		},
+		{
+			"buffer":0,
+			"byteLength":3408,
+			"byteOffset":231396,
+			"target":34962
+		},
+		{
+			"buffer":0,
+			"byteLength":1392,
+			"byteOffset":234804,
+			"target":34963
+		},
+		{
+			"buffer":0,
+			"byteLength":4752,
+			"byteOffset":236196,
+			"target":34962
+		},
+		{
+			"buffer":0,
+			"byteLength":4752,
+			"byteOffset":240948,
+			"target":34962
+		},
+		{
+			"buffer":0,
+			"byteLength":3168,
+			"byteOffset":245700,
+			"target":34962
+		},
+		{
+			"buffer":0,
+			"byteLength":1308,
+			"byteOffset":248868,
+			"target":34963
 		}
 	],
 	"samplers":[
@@ -2762,7 +3134,7 @@
 	],
 	"buffers":[
 		{
-			"byteLength":175908,
+			"byteLength":250176,
 			"uri":"archetype_pieces.bin"
 		}
 	]

@@ -26,6 +26,8 @@ const MANIFEST := {
 	"flure": "Flure", "seefern": "Seefern", "climbvine": "Climbvine",
 	"gasafoetida": "Gasafoetida", "forget_me_nots": "ForgetMeNots",
 	"resolution_roots": "ResolutionRoots", "mother_flure": "MotherFlure",
+	"vein_trunk": "VeinTrunk", "biolume_cluster": "BiolumeCluster",
+	"porthole": "Porthole",
 }
 
 # Only the PackedScene is cached; each call instantiates, clones the named
