@@ -36,7 +36,14 @@
       "lure": "#8c4d80",
       "basin": "#1f5999",
       "double_plate": "#99661a"
-    }
+    },
+    "vein_bark": "#331214",
+    "vein_ridge": "#5c1c1f",
+    "biolume_stem": "#949aad",
+    "biolume_blue": "#4d73f2",
+    "biolume_violet": "#8c4de6",
+    "lamp_red": "#f23824",
+    "pipe_joint": "#5a7399"
   },
   "greenfields": {
     "_district": "Greenfields Collective \u2014 PROPOSED starter row; refine when its chunks build",

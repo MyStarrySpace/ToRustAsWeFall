@@ -38,5 +38,10 @@ it for assets"). The registry is DATA, shared by both sides of the pipeline:
 
 - **channels** — dark wet iron `#1a1c21` on `#101216`, rust `#42210f`, luminous water
   `#4cbff2` over `#0f2933`, teal flora `#33d9bf`, aged wood `#614526`, amber work-lamps
-  `#b36610`; plus the nine `sections/*` gate hues.
+  `#b36610`; plus the nine `sections/*` gate hues; plus the organic-overgrowth and
+  prop roles from the concept plates — `vein_bark`/`vein_ridge` (the vasculature),
+  `biolume_blue`/`biolume_violet`/`biolume_stem` (the cluster glow), `lamp_red`
+  (the red bar-lamp/dot-sign light), `pipe_joint` (ball-joint steel). The vein and
+  biolume roles are shared by the texture generator (gen_vasculature.py), the piece
+  library parts, and any runtime lights — one organism, one palette.
 - **greenfields / stacks / aghora / endo_junction** — PROPOSED starters, see JSON.
