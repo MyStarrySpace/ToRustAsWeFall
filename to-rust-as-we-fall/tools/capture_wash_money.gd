@@ -31,6 +31,9 @@ func _init() -> void:
 	# LABELS=keep leaves every Label3D visible — the scene annotates itself, which is the
 	# ground-truth mode for audits (what IS that thing in frame?). Default strips them.
 	if OS.get_environment("LABELS") != "keep":
+		# The HOST re-syncs item nameplates every frame — freeze its process so a
+		# swept label can't come back before the capture (the RICH LYSATE leak).
+		scene.set_process(false)
 		_hide_labels(scene)
 	var st = scene.get("_overlay_states")
 	if st is Dictionary:
@@ -90,6 +93,10 @@ func _init() -> void:
 		cam.look_at_from_position(shot["cam"], shot["at"], Vector3.UP)
 		for _j in range(10):
 			await process_frame
+		# Late item nameplates (branch/drain lysate) spawn after the first sweep;
+		# re-hide right before the frame so LABELS=off holds every shot.
+		if OS.get_environment("LABELS") != "keep":
+			_hide_labels(scene)
 		await RenderingServer.frame_post_draw
 		var img := get_root().get_texture().get_image()
 		img.save_png(out_dir.path_join(str(shot["name"]) + ".png"))
