@@ -142,7 +142,6 @@ transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 15.0, 2.0, 8.12)
 metadata/piece = "gate_sign"
 metadata/mount = "wall"
 metadata/cluster = "bay"
-metadata/emission_scale = 0.35
 
 [node name="DoorLamp" type="Marker3D" parent="MaintenanceBay"]
 transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 13.6, 2.45, 8.1)
