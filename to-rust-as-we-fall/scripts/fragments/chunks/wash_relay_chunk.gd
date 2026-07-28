@@ -597,7 +597,14 @@ func _build_water_layer() -> void:
 		if str(s["type"]) == "sluice":
 			# the gate stands across the threshold while closed (a visible, real blocker — not invisible)
 			var gate := _warped_box(_water_root, (x0 + x1) * 0.5, 0.0,
-				Vector3(FLOOR_Z_HALF * 1.8, 2.4, 0.3), Color(0.3, 0.12, 0.1), Color(1.0, 0.3, 0.18), 1.0, 1.2)
+				Vector3(FLOOR_Z_HALF * 1.8, 2.4, 0.3), Color(0.14, 0.07, 0.06), Color(1.0, 0.3, 0.18), 0.35, 1.2)
+			for gx in [-2.4, 0.0, 2.4]:
+				var leaf: Node3D = ArchetypePieceLibrary.instantiate("door_ironband")
+				if leaf != null:
+					leaf.transform = Transform3D(Basis(Vector3.UP, PI).scaled(Vector3.ONE * 1.35),
+						Vector3(gx, -1.2, 0.18))
+					_tint_piece(leaf, Color(1.0, 0.3, 0.18), 0.6)
+					gate.add_child(leaf)
 			gate.visible = false
 			_sluice_gate[i] = gate
 
@@ -996,6 +1003,8 @@ func _build_branches() -> void:
 		var placements: Array = node.get("content_placements", [])
 		# The radial plank: juts off the deck rim (lane 4) out to the pad (lane 10), pre-warped onto the helix.
 		var deck_color := Color(0.12, 0.14, 0.17)
+		_clad_deck(_branch_root, mid, BRANCH_DECK_CENTER_LANE,
+			Vector3(BRANCH_LANE_SPAN, 0.2, BRANCH_S_SPAN), "branchdeck_%d" % roundi(mid * 10.0))
 		_add_warped_deck(mid, BRANCH_DECK_CENTER_LANE, Vector3(BRANCH_LANE_SPAN, 0.2, BRANCH_S_SPAN),
 			deck_color, "deck_metal")
 		# A marker post at the deck rim so the offshoot reads as a turn-off from the main run.
@@ -1207,6 +1216,30 @@ func _add_warped_box(s: float, lane_center: float, size: Vector3, color: Color, 
 	_branch_root.add_child(mesh)
 	return mesh
 
+## Clad a warped deck slab in TILE pieces (2 m module, hash-alternated variants) —
+## the slab stays as the collision-bearing iron substrate; the walked surface is
+## library planks and grates (the no-placeholder law for decks).
+func _clad_deck(root: Node3D, s: float, lane_center: float, size: Vector3, cluster: String,
+		embed := false) -> void:
+	var n_lane := int(size.x / 2.0)
+	var n_s := int(size.z / 2.0)
+	if n_lane < 1 or n_s < 1:
+		return
+	for i in range(n_lane):
+		for j in range(n_s):
+			var lane := lane_center + (i - (n_lane - 1) * 0.5) * 2.0
+			var sp := s + (j - (n_s - 1) * 0.5) * 2.0
+			var h := (roundi(sp * 10.0) * 7 + roundi(lane * 10.0) * 13 + i * 3 + j * 5) % 7
+			var pid := "deck_planks"
+			match h:
+				1: pid = "deck_planks_b"
+				2: pid = "deck_planks_c"
+				3: pid = "deck_grate"
+				5: pid = "deck_grate_b"
+			_warp_piece(pid, sp, lane, size.y, -PI * 0.5, root,
+				"DeckTile", "floor", embed, cluster)
+
+
 func _add_warped_deck(s: float, lane_center: float, size: Vector3, color: Color, tile := "") -> void:
 	var mesh := _add_warped_box(s, lane_center, size, color)
 	if tile != "":
@@ -1241,20 +1274,28 @@ func _build_pressure_bridge() -> void:
 		Color(0.008, 0.012, 0.018), Color(0.08, 0.2, 0.32), 0.35, 0.18)
 	void_mesh.name = 'MandatoryCoilBreak'
 	for edge_s in [PRESSURE_GAP_S0, PRESSURE_GAP_S1]:
-		_setpiece_mesh(_transit_root, 'BrokenCoilLip', edge_s, 0.0,
-			Vector3(FLOOR_Z_HALF * 2.15, 0.5, 0.32), Color(0.18, 0.12, 0.08),
-			Color(1.0, 0.38, 0.14), 1.25, 0.28)
+		# the break edge is BROKEN PIER planks, splintered ends pointing into the gap
+		var lip_yaw := -PI * 0.5 if edge_s == PRESSURE_GAP_S0 else PI * 0.5
+		var lip_s: float = edge_s + (0.9 if edge_s == PRESSURE_GAP_S0 else -0.9)
+		for lip_lane in [-2.0, 0.0, 2.0]:
+			_setpiece_piece(_transit_root, "broken_pier", lip_s, lip_lane, 0.06,
+				lip_yaw, Color(1.0, 0.38, 0.14), 0.5, "coilbreak", "wall", true)
 
 	_add_transit_deck(PRESSURE_ROOM_CENTER.x, PRESSURE_ROOM_CENTER.z,
 		Vector3(4.4, 0.24, 5.2), Color(0.09, 0.14, 0.18))
-	for sc in [21.35, 26.05]:
+	_clad_deck(_transit_root, PRESSURE_ROOM_CENTER.x, PRESSURE_ROOM_CENTER.z,
+		Vector3(4.4, 0.24, 5.2), "pressure_deck", true)   # the room is a carved void
+	for sc in [21.6, 25.8]:                                # measured: the room deck spans 21.5..25.9
 		for lane in [-10.2, -6.0]:
-			_setpiece_mesh(_transit_root, 'PressurePylon', sc, lane, Vector3(0.55, 3.2, 0.55),
-				Color(0.12, 0.16, 0.2), Color(0.45, 0.82, 1.0), 0.75, 1.6)
-	_setpiece_mesh(_transit_root, 'PressureHeader', PRESSURE_ROOM_CENTER.x, -10.05,
-		Vector3(0.55, 0.55, 5.2), Color(0.13, 0.18, 0.22), Color(0.3, 0.75, 1.0), 0.9, 2.9)
-	_setpiece_mesh(_transit_root, 'PressureWindow', PRESSURE_ROOM_CENTER.x, -6.0,
-		Vector3(0.25, 1.6, 4.4), Color(0.08, 0.2, 0.26), Color(0.22, 0.7, 1.0), 0.55, 1.25)
+			_setpiece_piece(_transit_root, "scaffold_leg", sc, lane, 0.0, 0.0,
+				Color(0.45, 0.82, 1.0), 0.55, "pressure", "attached", true)
+	for hs2 in [22.4, 25.0]:
+		_setpiece_piece(_transit_root, "scaffold_truss", hs2, -10.05, 2.9, -PI * 0.5,
+			Color(0.3, 0.75, 1.0), 0.55, "pressure", "attached", true)
+	for ws in [21.6, 23.7, 25.8]:
+		# the room's lit windows are porthole assemblies on the inner frame line
+		_setpiece_piece(_transit_root, "porthole", ws, -6.0, 0.55, PI * 0.5,
+			Color(0.22, 0.7, 1.0), 0.6, "pressure", "attached", true)
 
 	_spawn_pressure_portal('PressurePortalIn', 'PRESSURE TRANSIT', PRESSURE_PORTAL_ENTRY,
 		PRESSURE_ROOM_ARRIVAL, Color(0.75, 0.38, 1.0))
@@ -1320,15 +1361,19 @@ func _build_sluice_tunnel_choice() -> void:
 	_add_transit_deck(SLUICE_TUNNEL_MOUTH_B.x, 7.4, Vector3(7.4, 0.22, 2.8), Color(0.09, 0.13, 0.16))
 	_build_tunnel_mouth_frame(SLUICE_TUNNEL_MOUTH_A.x, SLUICE_TUNNEL_MOUTH_A.z)
 	_build_tunnel_mouth_frame(SLUICE_TUNNEL_MOUTH_B.x, SLUICE_TUNNEL_MOUTH_B.z)
+	var prev_pt := Vector3(SLUICE_TUNNEL_MOUTH_A.x, 0.5, SLUICE_TUNNEL_MOUTH_A.z)
 	for point_v in SLUICE_TUNNEL_DATA_PATH:
 		var point := point_v as Vector3
-		for side in [-1.15, 1.15]:
-			_setpiece_mesh(_transit_root, 'PipeRib', point.x, point.z + side,
-				Vector3(0.28, 2.2, 0.48), Color(0.1, 0.14, 0.17),
-				Color(0.28, 0.75, 0.86), 0.55, 1.1)
-		_setpiece_mesh(_transit_root, 'PipeRoof', point.x, point.z,
-			Vector3(2.6, 0.28, 0.62), Color(0.1, 0.15, 0.18),
-			Color(0.25, 0.72, 0.84), 0.65, 2.15)
+		var seg := Vector2(point.x - prev_pt.x, point.z - prev_pt.z)
+		if seg.length() > 0.3:
+			# one pipe per SEGMENT, oriented along it — the run reads continuous
+			# and every barrel overlaps its neighbour (chain support to the mouths)
+			_setpiece_piece(_transit_root, "pipe",
+				(prev_pt.x + point.x) * 0.5, (prev_pt.z + point.z) * 0.5, 0.0,
+				-PI * 0.5 + atan2(seg.y, seg.x),
+				Color(0.28, 0.75, 0.86), 0.5, "sluicepipe", "attached", true,
+				seg.length() / 1.15)
+		prev_pt = point
 
 	var reverse_path: Array = [
 		Vector3(42.5, 0.5, 12.0), Vector3(41.5, 0.5, 13.0),
@@ -1366,12 +1411,10 @@ func _spawn_sluice_tunnel(node_name: String, label: String, mouth_flat: Vector3,
 
 
 func _build_tunnel_mouth_frame(s: float, lane: float) -> void:
-	for side in [-1.35, 1.35]:
-		_setpiece_mesh(_transit_root, 'PipeMouthPost', s, lane + side,
-			Vector3(0.42, 2.7, 0.72), Color(0.1, 0.15, 0.18),
-			Color(0.28, 0.82, 0.9), 0.75, 1.35)
-	_setpiece_mesh(_transit_root, 'PipeMouthHeader', s, lane, Vector3(3.1, 0.42, 0.8),
-		Color(0.1, 0.15, 0.18), Color(0.28, 0.82, 0.9), 0.9, 2.65)
+	# the crawl mouth wears a full door frame (the leaf reads as the hatch you
+	# crawl through), teal-tinted to the tunnel's conceal grammar
+	_setpiece_piece(_transit_root, "door_ironband", s, lane, 0.0, 0.0,
+		Color(0.28, 0.82, 0.9), 0.6, "sluicepipe", "floor", false, 1.1)
 
 
 func _add_transit_deck(s: float, lane_center: float, size: Vector3, color: Color) -> void:
@@ -1561,7 +1604,11 @@ func _build_neck_garden() -> void:
 			Vector3(0.09, h, 0.09), Color(0.08, 0.22, 0.14), Color(0.2, 0.85, 0.5), 1.1, h * 0.5)
 	# the sealed gate: dark slab, one warm seam — gold lives on the ITEM's promise, never
 	# on portal fixtures (the portal color law)
-	_warped_box(garden, 44.55, -8.65, Vector3(2.2, 2.6, 0.32), Color(0.09, 0.10, 0.12), Color.BLACK, 0.0, 1.3)
+	_warped_box(garden, 44.55, -8.65, Vector3(2.2, 2.6, 0.32), Color(0.06, 0.07, 0.08), Color.BLACK, 0.0, 1.3)
+	var sealed_leaf := _warp_piece("door_ironband", 44.55, -8.5, 0.0, 0.0, garden,
+		"SealedGate", "floor", false, "garden_gate")
+	if sealed_leaf != null:
+		sealed_leaf.transform = sealed_leaf.transform.scaled_local(Vector3.ONE * 1.15)
 	var gate := _add_interactable(self, "SealedGreenfieldsGate", "Read the sealed gate",
 		CURE_GATE_POS, "READ GATE", "", 0.8, false, 1.4,
 		Interactable.InteractableType.INSPECTION, false)
@@ -1796,7 +1843,7 @@ func _warp_piece(pid: String, s_pos: float, lane: float, y_off: float, yaw: floa
 	piece.transform = Transform3D(
 		ChannelsArc.basis_at(s_pos) * Basis(Vector3.UP, yaw),
 		ChannelsArc.arc_pos(s_pos, lane) + Vector3(0.0, y_off, 0.0))
-	piece.name = "%s_%d" % [tag, roundi(s_pos * 10.0)]
+	piece.name = "%s_%d_%d" % [tag, roundi(s_pos * 10.0), roundi(lane * 10.0)]
 	piece.set_meta("mount", mount)
 	piece.set_meta("embed_ok", embed_ok)
 	piece.set_meta("cluster", cluster if cluster != "" else piece.name)
@@ -1862,7 +1909,7 @@ func _build_structural_scaffold() -> void:
 	for rs in [21.0, 23.0, 25.0]:                          # pressure-pocket edge railings
 		_warp_piece("railing_run", rs, -10.2, 0.24, -PI * 0.5, root, "PocketRail",
 			"floor", true, "pocket")   # the pressure room is a VOID carved through the
-			                            # drum-neck shell; the shell's convex box reads solid
+										# drum-neck shell; the shell's convex box reads solid
 	for ps in [8.0, 50.0]:                                 # racked pipe runs, outer rim (33-47 = wall-skip, no rim there)
 		_warp_piece("pipe_rack", ps, 4.3, 0.0, -PI * 0.5, root, "PipeRack",
 			"floor", false, "rack")                  # measured: 4.95 hung over the falls void
@@ -1946,6 +1993,7 @@ func _build_organic_props() -> void:
 	tube.emission_energy_multiplier = 3.4
 	crown.material_override = tube
 	crown.position = Vector3(0.0, 16.9, 0.0)
+	crown.name = "CrownTube"
 	crown.set_meta("mount", "wall")
 	crown.set_meta("embed_ok", true)
 	crown.set_meta("cluster", "crown")
@@ -1960,6 +2008,7 @@ func _build_organic_props() -> void:
 		cyl.bottom_radius = 0.035
 		cyl.height = 0.55
 		post.mesh = cyl
+		post.name = "CrownPost_%d" % i
 		post.material_override = post_mat
 		post.position = Vector3(sin(pa2), 0.0, cos(pa2)) * 3.62 + Vector3(0.0, 16.65, 0.0)
 		post.set_meta("mount", "wall")
@@ -2054,8 +2103,14 @@ func _build_drain_flora() -> void:
 	var flora := _add_interactable(self, "DrainFlora", "Tend dormant drain flora", DRAIN_FLORA_POS,
 		"TEND FLORA", "peris", 1.2, true, 1.5, Interactable.InteractableType.TIMED_ACTION, false)
 	flora.consequence_preview = "Grows a persistent light that marks the flooding drain lane."
-	var _planter := _add_box(flora, Vector3(0.0, -0.18, 0.0), Vector3(0.75, 0.35, 0.75),
-		Color(0.17, 0.18, 0.12))
+	var _planter: Node3D = ArchetypePieceLibrary.instantiate("forage_cache")
+	if _planter != null:
+		_planter.transform = Transform3D(Basis(Vector3.UP, 0.3).scaled(Vector3.ONE * 0.8),
+			Vector3(0.0, -0.5, 0.0))
+		flora.add_child(_planter)
+	else:
+		_planter = _add_box(flora, Vector3(0.0, -0.18, 0.0), Vector3(0.75, 0.35, 0.75),
+			Color(0.17, 0.18, 0.12))
 	var bud := _add_box(flora, Vector3(0.0, 0.2, 0.0), Vector3(0.42, 0.5, 0.42),
 		Color(0.16, 0.38, 0.24), Color(0.35, 0.9, 0.52), 0.45)
 	_outline_interactable_child(flora, bud, "DrainFlora", 1.5)
@@ -2744,8 +2799,17 @@ func _build_branch_counterweight_gate(mid: float) -> Dictionary:
 	mesh.mesh = box
 	mesh.position.y = size.y * 0.5
 	var theme := _branch_gate_theme("lever")
-	mesh.material_override = _make_material(theme["color"], theme["glow"], 0.8)
+	mesh.material_override = _make_material(theme["color"] * 0.45, theme["glow"], 0.3)
 	root.add_child(mesh)
+	# the visible gate is a shortcut-hatch leaf riding the animated substrate
+	for gz in [-0.75, 0.75]:
+		var cw_leaf: Node3D = ArchetypePieceLibrary.instantiate("shortcut_gate")
+		if cw_leaf != null:
+			cw_leaf.transform = Transform3D(
+				(Basis(Vector3.UP, PI * 0.5)).scaled(Vector3.ONE * 0.95),
+				Vector3(0.12, -size.y * 0.5, gz))
+			_tint_piece(cw_leaf, theme["glow"], 0.5)
+			mesh.add_child(cw_leaf)
 
 	# Collision deliberately stays at the threshold while the visible gate rises. Movement authority releases
 	# atomically at the endpoint rather than opening an exploitable gap halfway through the animation.

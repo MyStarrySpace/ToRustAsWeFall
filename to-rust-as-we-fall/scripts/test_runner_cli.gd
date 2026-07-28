@@ -27558,12 +27558,14 @@ func _test_wash_relay_prop_survey() -> void:
 		_assert_true(false, "chunk present")
 		inst.queue_free(); await get_tree().process_frame; return
 	var props: Array = []
-	for root_name in ["OrganicProps", "ConceptProps", "Scaffolding", "SetpieceSilhouettes"]:
+	for root_name in ["OrganicProps", "ConceptProps", "Scaffolding", "SetpieceSilhouettes",
+			"TransitBreaks", "Branches", "DrainLoop"]:
 		var root = chunk.find_child(root_name, false, false)
 		if root == null:
 			continue
 		for child in root.get_children():
-			if child is MeshInstance3D and (child as MeshInstance3D).mesh != null:
+			if child is MeshInstance3D and (child as MeshInstance3D).mesh != null \
+					and child.has_meta("mount"):
 				props.append(child)
 			elif child is Node3D:
 				for sub in (child as Node3D).get_children():
@@ -27610,7 +27612,7 @@ func _test_wash_relay_prop_survey() -> void:
 		if mount == "attached":
 			# supported by CONTACT with a cluster-mate (an arch header on its legs)
 			var my_cluster := str(mi.get_meta("cluster", ""))
-			var grown: AABB = aabb.grow(0.35)
+			var grown: AABB = aabb.grow(0.6)   # chained hardware: a fair contact reach
 			for other in props:
 				if other == mi:
 					continue
