@@ -34,6 +34,14 @@ const SPATIAL_AUTHORITY_INTERVAL := 0.1
 ## the warning; calm marks a plate-held / quiesced section below idle.
 const STRIP_IDLE_ENERGY := 0.18
 const STRIP_CALM_ENERGY := 0.06
+## THE GRUNGE LAW (director): the coil is dark iron, wood, and rust — structure is
+## NEVER tinted; its painted albedo carries. Color is spent only on a few SIGNALS,
+## from this constrained accent set. Section identity lives in the gate light and
+## sign band, never in painting the architecture a different hue per section.
+const ACCENT_WATER := Color(0.30, 0.62, 0.72)    # flow hardware, hide alcoves
+const ACCENT_WORK := Color(0.85, 0.58, 0.22)     # stations a worker tends
+const ACCENT_EMBER := Color(0.72, 0.28, 0.14)    # hazard machinery
+const ACCENT_ORGANIC := Color(0.48, 0.32, 0.62)  # the alien-organic register
 const SPATIAL_AUTHORITY_TAG := "wash_spatial_authority"
 const WASH_CONTROL_POSITION_TOLERANCE := 0.25
 const WASH_CONTROL_HEIGHT_TOLERANCE := 1.25
@@ -320,6 +328,11 @@ var _splash_tex: Texture2D
 # --- Build ---
 
 func _section_color(t: String) -> Color:
+	# One color authority: the palette registry's sections table (the same table
+	# the dressing GLB's gate signs paint from), so a retune lands everywhere.
+	var c := LevelPalette.color("channels", "sections/" + t)
+	if c != LevelPalette.MISSING:
+		return c
 	match t:
 		"flush":   return Color(0.15, 0.30, 0.55)
 		"current": return Color(0.20, 0.45, 0.70)
@@ -470,7 +483,10 @@ func _build_chunk() -> void:
 	_build_story_beats()
 	_build_light_rig()
 	_make_dressing_wet()
-	_apply_vasculature()
+	# Vasculature overlay PULLED (director 2026-07-28: the current Voronoi pass
+	# reads wrong on the drum). The generator stays; redesign against the organics
+	# plate before re-enabling.
+	#_apply_vasculature()
 	_build_organic_props()
 	_build_concept_props()
 	_build_structural_scaffold()
@@ -807,61 +823,66 @@ func _build_section_setpieces() -> void:
 				# the flush SOURCE reads as a grounded manifold (nothing exists at
 				# height to hang a spout from — measured, not assumed)
 				_setpiece_piece(root, "junction", cx, 3.8, 0.0, PI * 0.5,
-					Color(0.2, 0.65, 1.0), 0.45, sec_cluster, "floor", false, 1.25)
-				_setpiece_rail_run(root, x0, x1, -3.25, base, 0.5, sec_cluster)
+					ACCENT_WATER, 0.45, sec_cluster, "floor", false, 1.25)
+				_setpiece_rail_run(root, x0, x1, -3.25, base, 0.0, sec_cluster)
 			'current':
 				for lane in [-2.8, 2.8]:
-					_setpiece_rail_run(root, x0, x1, lane, Color(0.2, 0.75, 1.0), 0.55, sec_cluster)
+					_setpiece_rail_run(root, x0, x1, lane, base, 0.0, sec_cluster)
 				for sc in [x0 + 1.0, cx, x1 - 1.0]:
 					_setpiece_mesh(root, 'FlowFin', sc, 0.0, Vector3(3.6, 0.08, 0.5),
-						base * 0.45, base, 1.0, 0.12)   # floor light-language: flow chevrons
+						base * 0.45, ACCENT_WATER, 0.8, 0.12)   # floor light-language: flow chevrons
 			'jet':
-				_setpiece_arch(root, cx, Color(0.32, 0.48, 0.72), 3.9)
+				_setpiece_arch(root, cx, base, 3.9)
+				# the nozzle BANK sits along ONE lane, fed by a rack of pipes at its
+				# back — machinery a crew installed from the wall side, not a
+				# symmetric scatter. Ember accent: this hardware hurts.
 				for sc in [x0 + 1.0, cx, x1 - 1.0]:
-					for lane in [-2.45, 2.45]:
-						# nozzle hardware = a small junction manifold with open bores
-						_setpiece_piece(root, "junction", sc, lane, 0.0, 0.0,
-							Color(0.35, 0.8, 1.0), 0.6, sec_cluster, "floor", false, 0.55)
+					_setpiece_piece(root, "junction", sc, -2.45, 0.0, 0.0,
+						ACCENT_EMBER, 0.5, sec_cluster, "floor", false, 0.55)
+				_setpiece_piece(root, "pipe_rack", cx, -3.3, 0.0, -PI * 0.5,
+					base, 0.0, sec_cluster)
 			'plate':
 				for lane in [-1.15, 1.15]:
-					_setpiece_rail_run(root, x0, x1, lane, base, 0.5, sec_cluster)
-				# the hold-station is a valve column, amber
+					_setpiece_rail_run(root, x0, x1, lane, base, 0.0, sec_cluster)
+				# the hold-station is a valve column a worker tends: work amber
 				_setpiece_piece(root, "water_control", x0 - 0.65, -2.7, 0.0, 0.0,
-					Color(1.0, 0.7, 0.2), 0.9, sec_cluster, "floor", false, 1.4)
+					ACCENT_WORK, 0.7, sec_cluster, "floor", false, 1.4)
 			'sluice':
-				_setpiece_arch(root, x0 + 0.25, Color(0.32, 0.16, 0.1), 4.3)
-				_setpiece_arch(root, x1 - 0.25, Color(0.32, 0.16, 0.1), 4.3)
-				# the overhead header is trussed between the arch legs
+				_setpiece_arch(root, x0 + 0.25, base, 4.3)
+				_setpiece_arch(root, x1 - 0.25, base, 4.3)
+				# the overhead header is trussed between the arch legs — bare rusted
+				# iron; the gate leaves below carry the only warning color here
 				for hl in [-2.7, -0.9, 0.9, 2.7]:
 					_setpiece_piece(root, "scaffold_truss", cx, hl, 4.15, 0.0,
-						Color(1.0, 0.34, 0.18), 0.5, "arch_%d" % roundi((x0 + 0.25) * 10.0),
+						base, 0.0, "arch_%d" % roundi((x0 + 0.25) * 10.0),
 						"attached", true)
 			'patrol':
 				for lane in [-3.15, 3.15]:
-					# the hide alcove wears the library's hide piece, teal-tinted
+					# the hide alcove keeps its taught cyan glow, dimmed to a coal
 					_setpiece_piece(root, "hide_slot", cx, lane, 0.0,
 						PI * 0.5 if lane > 0.0 else -PI * 0.5,
-						Color(0.15, 0.85, 0.9), 0.45, sec_cluster, "floor", false, 1.05)
+						ACCENT_WATER, 0.45, sec_cluster, "floor", false, 1.05)
 				_setpiece_arch(root, x1 - 0.5, base, 3.7)
 			'lure':
 				for sc in [x0 + 0.55, x1 - 0.55]:
-					_setpiece_arch(root, sc, Color(0.38, 0.17, 0.4), 3.5)
-				# the beacon is a scaffold leg burning magenta
+					_setpiece_arch(root, sc, base, 3.5)
+				# the beacon leg smolders the ORGANIC violet — the register of the
+				# overgrowth it stands in, not a hot magenta stick
 				_setpiece_piece(root, "scaffold_leg", cx, 0.0, 0.0, 0.0,
-					Color(1.0, 0.35, 0.9), 1.1, sec_cluster)
+					ACCENT_ORGANIC, 0.6, sec_cluster)
 			'basin':
 				for sc in [x0 + 1.0, cx, x1 - 1.0]:
 					# pump columns: tall valve stations along the basin rim
 					_setpiece_piece(root, "water_control", sc, 3.15, 0.0, 0.0,
-						Color(0.2, 0.65, 1.0), 0.7, sec_cluster, "floor", false, 2.0)
+						ACCENT_WATER, 0.55, sec_cluster, "floor", false, 2.0)
 				for lane in [-3.35, 3.35]:
-					_setpiece_rail_run(root, x0, x1, lane, base, 0.45, sec_cluster)
+					_setpiece_rail_run(root, x0, x1, lane, base, 0.0, sec_cluster)
 			'double_plate':
 				for lane in [-DOUBLE_PLATE_Z, DOUBLE_PLATE_Z]:
 					_setpiece_piece(root, "water_control", x0 - 0.55, lane, 0.0, 0.0,
-						Color(1.0, 0.72, 0.18), 1.0, sec_cluster, "floor", false, 1.55)
+						ACCENT_WORK, 0.8, sec_cluster, "floor", false, 1.55)
 				for lane in [-1.0, 1.0]:
-					_setpiece_rail_run(root, x0, x1, lane, base, 0.55, sec_cluster)
+					_setpiece_rail_run(root, x0, x1, lane, base, 0.0, sec_cluster)
 				_setpiece_arch(root, x1 - 0.35, base, 4.0)
 		_section_setpiece_count += 1
 
@@ -914,15 +935,17 @@ func _setpiece_piece(parent: Node3D, pid: String, s: float, lane: float, y_off: 
 	return piece
 
 
-## The section ARCH is two scaffold legs (scaled to the arch height), tinted.
-func _setpiece_arch(parent: Node3D, s: float, color: Color, height: float) -> void:
+## The section ARCH is two scaffold legs (scaled to the arch height) and a trussed
+## lintel — BARE structure by the grunge law (the color param is kept for the call
+## sites' intent record but never painted; the gate light carries section identity).
+func _setpiece_arch(parent: Node3D, s: float, _color: Color, height: float) -> void:
 	var cluster := "arch_%d" % roundi(s * 10.0)
 	for lane in [-3.35, 3.35]:
-		_setpiece_piece(parent, "scaffold_leg", s, lane, 0.0, 0.0, color, 0.5,
+		_setpiece_piece(parent, "scaffold_leg", s, lane, 0.0, 0.0, Color(), 0.0,
 			cluster, "floor", false, height / 3.2)
 	for hl in [-2.7, -0.9, 0.9, 2.7]:                    # the lintel, trussed leg-to-leg
 		_setpiece_piece(parent, "scaffold_truss", s, hl, height - 1.15, 0.0,
-			color, 0.45, cluster, "attached", true)
+			Color(), 0.0, cluster, "attached", true)
 
 
 ## A low RAIL RUN along a span: railing_run modules tiled every 2 m, tinted.
@@ -1941,9 +1964,17 @@ func _build_structural_scaffold() -> void:
 		_warp_piece("railing_run", rs, -10.2, 0.24, -PI * 0.5, root, "PocketRail",
 			"floor", true, "pocket")   # the pressure room is a VOID carved through the
 										# drum-neck shell; the shell's convex box reads solid
-	for ps in [8.0, 50.0]:                                 # racked pipe runs, outer rim (33-47 = wall-skip, no rim there)
+	# PLACEMENT STORY: pipe racks are not sprinkled — they gather where a crew
+	# actually worked. ONE maintenance bay beside the flush manifold: paired racks,
+	# the valve column that works them, and the bay's own work lamp. (33-47 =
+	# wall-skip, nothing hangs over the falls void; lone scattered racks are the
+	# "splatter" read and are gone.)
+	for ps in [6.4, 10.6]:                                 # racks FLANK the flush manifold at 8.5
 		_warp_piece("pipe_rack", ps, 4.3, 0.0, -PI * 0.5, root, "PipeRack",
-			"floor", false, "rack")                  # measured: 4.95 hung over the falls void
+			"floor", false, "bay")
+	_warp_piece("water_control", 5.2, 3.6, 0.0, PI, root, "BayValve",
+		"floor", false, "bay")
+	_rig_omni(root, 5.2, 3.9, 2.4, LevelPalette.color("channels", "lamp"), 1.2, 5.0)
 
 const GAP_MIDS_SCAFFOLD: Array = [12.5, 28.5, 54.5, 62.5, 72.5]
 

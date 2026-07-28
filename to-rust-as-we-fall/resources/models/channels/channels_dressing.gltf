@@ -2952,11 +2952,6 @@
 			"emissiveTexture":{
 				"index":6
 			},
-			"extensions":{
-				"KHR_materials_emissive_strength":{
-					"emissiveStrength":1.5
-				}
-			},
 			"name":"GateSign_flushTex",
 			"pbrMetallicRoughness":{
 				"baseColorTexture":{
@@ -2975,11 +2970,6 @@
 			],
 			"emissiveTexture":{
 				"index":8
-			},
-			"extensions":{
-				"KHR_materials_emissive_strength":{
-					"emissiveStrength":1.5
-				}
 			},
 			"name":"GateSign_currentTex",
 			"pbrMetallicRoughness":{
@@ -3000,11 +2990,6 @@
 			"emissiveTexture":{
 				"index":10
 			},
-			"extensions":{
-				"KHR_materials_emissive_strength":{
-					"emissiveStrength":1.5
-				}
-			},
 			"name":"GateSign_jetTex",
 			"pbrMetallicRoughness":{
 				"baseColorTexture":{
@@ -3023,11 +3008,6 @@
 			],
 			"emissiveTexture":{
 				"index":12
-			},
-			"extensions":{
-				"KHR_materials_emissive_strength":{
-					"emissiveStrength":1.5
-				}
 			},
 			"name":"GateSign_plateTex",
 			"pbrMetallicRoughness":{
@@ -3048,11 +3028,6 @@
 			"emissiveTexture":{
 				"index":14
 			},
-			"extensions":{
-				"KHR_materials_emissive_strength":{
-					"emissiveStrength":1.5
-				}
-			},
 			"name":"GateSign_sluiceTex",
 			"pbrMetallicRoughness":{
 				"baseColorTexture":{
@@ -3071,11 +3046,6 @@
 			],
 			"emissiveTexture":{
 				"index":16
-			},
-			"extensions":{
-				"KHR_materials_emissive_strength":{
-					"emissiveStrength":1.5
-				}
 			},
 			"name":"GateSign_patrolTex",
 			"pbrMetallicRoughness":{
@@ -3096,11 +3066,6 @@
 			"emissiveTexture":{
 				"index":18
 			},
-			"extensions":{
-				"KHR_materials_emissive_strength":{
-					"emissiveStrength":1.5
-				}
-			},
 			"name":"GateSign_lureTex",
 			"pbrMetallicRoughness":{
 				"baseColorTexture":{
@@ -3120,11 +3085,6 @@
 			"emissiveTexture":{
 				"index":20
 			},
-			"extensions":{
-				"KHR_materials_emissive_strength":{
-					"emissiveStrength":1.5
-				}
-			},
 			"name":"GateSign_basinTex",
 			"pbrMetallicRoughness":{
 				"baseColorTexture":{
@@ -3143,11 +3103,6 @@
 			],
 			"emissiveTexture":{
 				"index":22
-			},
-			"extensions":{
-				"KHR_materials_emissive_strength":{
-					"emissiveStrength":1.5
-				}
 			},
 			"name":"GateSign_double_plateTex",
 			"pbrMetallicRoughness":{
