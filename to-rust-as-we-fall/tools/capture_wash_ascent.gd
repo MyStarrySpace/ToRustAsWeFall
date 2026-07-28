@@ -52,8 +52,14 @@ func _initialize() -> void:
 		{"name": "ascent_bay", "cam": [12.0, 5.5, 2.6], "at": [11.5, -3.0, 1.1], "fov": 55.0},
 		{"name": "ascent_portal", "cam": [18.6, 1.0, 1.8], "at": [24.3, 1.0, 1.6], "fov": 50.0},
 		{"name": "ascent_approach", "cam": [-2.5, 2.0, 2.1], "at": [4.0, 0.0, 0.7], "fov": 58.0},
+		{"name": "ascent_surge", "cam": [10.5, 8.0, 3.4], "at": [14.5, 2.0, 0.6],
+			"fov": 56.0, "flood": 1},
 	]
+	var chunk: Node = scene.find_child("Chunk_wash_ascent", true, false)
 	for shot in shots:
+		if shot.has("flood") and chunk != null:
+			# stage the surge visual for the still (state setter only — no scheduler)
+			chunk.call("_set_wash_state", int(shot["flood"]), "flood")
 		cam.fov = float(shot["fov"])
 		var c: Array = shot["cam"]
 		var a: Array = shot["at"]

@@ -163,8 +163,9 @@ func _realize_markers(node: Node) -> void:
 		_realize_row(n3, _wall_variant_ids(), int(n3.get_meta("wall_run")),
 			_skip_set(n3), "wall", "structure_wall")
 	elif n3.has_meta("channel_run"):
-		_realize_row(n3, ["water_channel"], int(n3.get_meta("channel_run")),
-			{}, "floor", "structure_channel")
+		_realize_channel_run(n3, int(n3.get_meta("channel_run")))
+	elif n3.has_meta("drum_shell"):
+		_realize_drum_shell(n3)
 	elif n3.has_meta("rail_run"):
 		_realize_row(n3, ["railing_run"], int(n3.get_meta("rail_run")),
 			_skip_set(n3), "floor", "structure_rail")
@@ -208,8 +209,46 @@ func _realize_row(marker: Node3D, variant_ids: Array, count: int, skip: Dictiona
 		if piece == null:
 			continue
 		_stamp(piece, mount, cluster, true)
-		if cluster == "structure_channel":
-			_register_channel_segment(piece, flat.origin.x)
+
+## The channel run is three pieces working together: the trough segments meeting
+## mouth-to-mouth, a bolted JOINT COLLAR clamped over every interior seam (real
+## pipe-run infrastructure — the seam notch was a flagged artifact), and one
+## SURGE WATER sheet riding each segment, hidden at idle: the wash raises real
+## modeled water now, not a glow change.
+func _realize_channel_run(marker: Node3D, count: int) -> void:
+	var pitch := _piece_aabb("water_channel").size.x
+	for k in range(count):
+		var flat := marker.global_transform \
+			* Transform3D(Basis.IDENTITY, Vector3((float(k) + 0.5) * pitch, 0.0, 0.0))
+		var seg := _spawn_piece("water_channel", flat, _run_stretch(flat.origin.z))
+		if seg == null:
+			continue
+		_stamp(seg, "floor", "structure_channel", true)
+		var water := _spawn_piece("water_surface", flat, _run_stretch(flat.origin.z))
+		if water != null:
+			_stamp(water, "floor", "structure_channel", true)
+			water.visible = false
+		_register_channel_segment(seg, water, flat.origin.x - pitch * 0.5)
+		if k > 0:
+			var seam := marker.global_transform \
+				* Transform3D(Basis.IDENTITY, Vector3(float(k) * pitch, 0.0, 0.0))
+			var collar := _spawn_piece("channel_collar", seam, 1.0)
+			if collar != null:
+				_stamp(collar, "floor", "structure_channel", true)
+
+## The drum shell is WORLD architecture — anchored on the coil's axis, not the
+## flat frame. The marker contributes its yaw angle (degrees) and height only.
+func _realize_drum_shell(marker: Node3D) -> void:
+	var piece := ArchetypePieceLibrary.instantiate("drum_shell")
+	if piece == null:
+		_unresolved.append("drum_shell")
+		return
+	piece.transform = Transform3D(
+		Basis(Vector3.UP, deg_to_rad(float(marker.get_meta("drum_shell")))),
+		Vector3(0.0, marker.position.y, 0.0))
+	_stamp(piece, "floor", "structure_drum", true)
+	_realized_root.add_child(piece)
+	_placed_count += 1
 
 ## Deck runs lay nx × nz two-metre tiles in the marker's local frame, each tile
 ## individually warped (the strip polygonalizes in flat space, curves per-tile).
@@ -392,10 +431,10 @@ func _find_meta_nodes(root: Node, meta_key: String) -> Array:
 
 # --- The wash gameplay layer (all scheduler-analytic; nothing per-frame) ---
 
-## Channel segments double as the water-state display: their baked glow strip IS
-## the surge telegraph until a modeled water surface piece exists. Materials are
-## duplicated per segment at build so each stretch can brighten independently.
-func _register_channel_segment(piece: Node3D, flat_s: float) -> void:
+## Each channel segment carries its trough glow materials (duplicated so each
+## stretch brightens independently) AND its surge-water sheet. The wash drives
+## both from scheduled callbacks — nothing per-frame.
+func _register_channel_segment(piece: Node3D, water: Node3D, flat_s: float) -> void:
 	var mats: Array = []
 	var stack: Array = [piece]
 	while not stack.is_empty():
@@ -412,20 +451,40 @@ func _register_channel_segment(piece: Node3D, flat_s: float) -> void:
 			stack.append(c)
 	for m in mats:
 		_channel_base_energy[m] = (m as StandardMaterial3D).emission_energy_multiplier
-	_channel_segments.append({"node": piece, "s": flat_s, "mats": mats})
+	_channel_segments.append({"node": piece, "water": water, "s": flat_s, "mats": mats})
 
-func _set_channel_band(section: int, mult: float) -> void:
+## The one wash-state display: "idle" (bare trough), "telegraph" (glow rises,
+## the water sheet surfaces low), "flood" (the sheet rides high and bright),
+## "held" (valve-quieted: dimmer than idle, no water).
+func _set_wash_state(section: int, state: String) -> void:
 	if section < 0 or section >= WASH_SECTIONS.size():
 		return
 	var s0 := float(WASH_SECTIONS[section]["s0"])
 	var s1 := float(WASH_SECTIONS[section]["s1"])
+	var band := 1.0
+	var water_on := false
+	var water_lift := 0.0
+	match state:
+		"telegraph":
+			band = 2.4; water_on = true; water_lift = 0.18
+		"flood":
+			band = 4.5; water_on = true; water_lift = 0.34
+		"held":
+			band = 0.5
 	for seg in _channel_segments:
 		var mid := float(seg["s"]) + _piece_aabb("water_channel").size.x * 0.5
 		if mid < s0 or mid > s1:
 			continue
 		for m in seg["mats"]:
 			(m as StandardMaterial3D).emission_energy_multiplier = \
-				float(_channel_base_energy.get(m, 1.0)) * mult
+				float(_channel_base_energy.get(m, 1.0)) * band
+		var water = seg["water"]
+		if water is Node3D and is_instance_valid(water):
+			(water as Node3D).visible = water_on
+			var lifted: Transform3D = (water as Node3D).transform
+			lifted.origin.y = ChannelsArc.arc_pos(mid, 0.0).y \
+				- DECK_TOP + 0.02 + water_lift
+			(water as Node3D).transform = lifted
 
 func _wash_tag(kind: String, i: int) -> String:
 	return "wash_ascent_%s_%d" % [kind, i]
@@ -446,7 +505,7 @@ func reset_preview_state() -> void:
 	for i in range(WASH_SECTIONS.size()):
 		_flood_counts.append(0)
 		_flooding.append(false)
-		_set_channel_band(i, 1.0)
+		_set_wash_state(i, "idle")
 		_schedule_section(i)
 
 func _cancel_wash_events() -> void:
@@ -480,14 +539,14 @@ func _schedule_section(i: int) -> void:
 func _telegraph_section(i: int) -> void:
 	if _phase != "active":
 		return
-	_set_channel_band(i, 2.4)
+	_set_wash_state(i, "telegraph")
 
 func _flood_onset(i: int) -> void:
 	if _phase != "active":
 		return
 	_flooding[i] = true
 	_flood_counts[i] += 1
-	_set_channel_band(i, 4.5)
+	_set_wash_state(i, "flood")
 	_sweep_section(i)
 	var sched = _get_scheduler()
 	if sched == null:
@@ -503,7 +562,7 @@ func _flood_onset(i: int) -> void:
 func _flood_off(i: int) -> void:
 	if i < _flooding.size():
 		_flooding[i] = false
-	_set_channel_band(i, 1.0)
+	_set_wash_state(i, "idle")
 	_schedule_section(i)
 
 ## The sweep: anyone standing in the surge band of a live section is carried back
@@ -574,7 +633,7 @@ func _on_valve(_args = null) -> void:
 		sched.cancel_tag(_wash_tag(kind, 0))
 	if 0 < _flooding.size():
 		_flooding[0] = false
-	_set_channel_band(0, 0.5)
+	_set_wash_state(0, "held")
 	# Recurrence index advances past every onset the hold swallows, so release
 	# re-arms at the next analytic beat rather than firing a stale backlog.
 	while _section_next_onset(0) < _valve_hold_until:
@@ -585,7 +644,7 @@ func _on_valve(_args = null) -> void:
 
 func _on_valve_release() -> void:
 	_valve_hold_until = -1.0
-	_set_channel_band(0, 1.0)
+	_set_wash_state(0, "idle")
 	_schedule_section(0)
 	if _phase == "active":
 		_show_note("// PRESSURE RETURNING // the channel is live again", 2.0)

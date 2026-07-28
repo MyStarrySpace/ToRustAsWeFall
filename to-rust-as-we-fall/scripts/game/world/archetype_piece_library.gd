@@ -49,6 +49,8 @@ const DRESSING_MANIFEST := {
 	"deck_planks_b": "DeckPlanksB", "deck_planks_c": "DeckPlanksC",
 	"deck_grate_b": "DeckGrateB",
 	"wall_panel_tile_b": "WallPanelTileB", "wall_panel_tile_c": "WallPanelTileC",
+	"water_surface": "WaterSurface", "channel_collar": "ChannelCollar",
+	"drum_shell": "DrumShell",
 }
 
 # Only the PackedScene is cached; each call instantiates, clones the named
