@@ -51,6 +51,10 @@ const DRESSING_MANIFEST := {
 	"wall_panel_tile_b": "WallPanelTileB", "wall_panel_tile_c": "WallPanelTileC",
 	"water_surface": "WaterSurface", "channel_collar": "ChannelCollar",
 	"drum_shell": "DrumShell",
+	"pipe_straight": "PipeStraight", "pipe_elbow": "PipeElbow",
+	"pipe_tee": "PipeTee", "pipe_cross": "PipeCross", "pipe_end": "PipeEnd",
+	"pipe_straight_banded": "PipeStraightBanded",
+	"pipe_straight_valve": "PipeStraightValve",
 }
 
 # Only the PackedScene is cached; each call instantiates, clones the named

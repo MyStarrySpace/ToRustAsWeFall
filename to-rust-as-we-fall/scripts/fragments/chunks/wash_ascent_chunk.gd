@@ -111,11 +111,13 @@ func _build_chunk() -> void:
 func _warp_transform(flat: Transform3D, stretch := 1.0) -> Transform3D:
 	var s := flat.origin.x
 	var lane := LANE_CENTER - flat.origin.z
-	var flat_yaw := atan2(-flat.basis.x.z, flat.basis.x.x)
+	# The change of frame flat->helix is RotY(-PI/2); composing the piece's FULL
+	# flat basis (not just an extracted yaw) also carries vertical rotations —
+	# the pipe router's elbows and risers warp correctly through the same path.
 	return Transform3D(
 		ChannelsArc.basis_at(s)
 			* Basis.from_scale(Vector3(1.0, 1.0, stretch))
-			* Basis(Vector3.UP, -PI * 0.5 + flat_yaw),
+			* Basis(Vector3.UP, -PI * 0.5) * flat.basis.orthonormalized(),
 		ChannelsArc.arc_pos(s, lane) + Vector3(0.0, flat.origin.y - DECK_TOP, 0.0))
 
 func _run_stretch(flat_z: float) -> float:
@@ -169,9 +171,8 @@ func _realize_markers(node: Node) -> void:
 	elif n3.has_meta("rail_run"):
 		_realize_row(n3, ["railing_run"], int(n3.get_meta("rail_run")),
 			_skip_set(n3), "floor", "structure_rail")
-	elif n3.has_meta("pipe_chain"):
-		_realize_row(n3, ["ball_joint_pipe"], int(n3.get_meta("pipe_chain")),
-			{}, "attached", str(n3.get_meta("cluster", "pipes")))
+	elif n3.has_meta("pipe_route"):
+		_realize_pipe_route(n3)
 
 func _realize_piece(marker: Node3D) -> void:
 	var pid := str(marker.get_meta("piece"))
@@ -235,6 +236,39 @@ func _realize_channel_run(marker: Node3D, count: int) -> void:
 			var collar := _spawn_piece("channel_collar", seam, 1.0)
 			if collar != null:
 				_stamp(collar, "floor", "structure_channel", true)
+
+## The pipe ROUTE: the marker declares axis-aligned waypoints in one-metre cells
+## of its local frame ("x,y,z x,y,z ..."), plus virtual ports where terminal
+## cells feed off-network hardware ("x,y,z:dx,dy,dz ..."). PipeGrid rasterizes
+## and auto-tiles — straight/elbow/tee/cross/end with orientation — and each
+## pick warps onto the helix through the same _warp_transform as everything.
+func _realize_pipe_route(marker: Node3D) -> void:
+	var waypoints: Array = []
+	for part in str(marker.get_meta("pipe_route", "")).split(" ", false):
+		var n := part.split(",", false)
+		if n.size() == 3:
+			waypoints.append(Vector3i(int(n[0]), int(n[1]), int(n[2])))
+	var extra: Dictionary = {}
+	for part in str(marker.get_meta("pipe_ports", "")).split(" ", false):
+		var half := part.split(":", false)
+		if half.size() != 2:
+			continue
+		var c := half[0].split(",", false)
+		var d := half[1].split(",", false)
+		if c.size() == 3 and d.size() == 3:
+			var cell := Vector3i(int(c[0]), int(c[1]), int(c[2]))
+			if not extra.has(cell):
+				extra[cell] = []
+			(extra[cell] as Array).append(Vector3i(int(d[0]), int(d[1]), int(d[2])))
+	var cells := PipeGrid.rasterize(waypoints)
+	var cluster := str(marker.get_meta("cluster", "pipes"))
+	for pick in PipeGrid.resolve(cells, extra):
+		var cell: Vector3i = pick["cell"]
+		var flat := marker.global_transform * Transform3D(pick["basis"] as Basis,
+			Vector3(cell) + Vector3(0.5, 0.5, 0.0))
+		var piece := _spawn_piece(str(pick["piece"]), flat)
+		if piece != null:
+			_stamp(piece, "attached", cluster, true)
 
 ## The drum shell is WORLD architecture — anchored on the coil's axis, not the
 ## flat frame. The marker contributes its yaw angle (degrees) and height only.

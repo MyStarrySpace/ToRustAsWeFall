@@ -865,6 +865,9 @@ func _ready() -> void:
 			"--test-wash-ascent":
 				ran_test = true
 				await _test_wash_ascent()
+			"--test-pipe-grid":
+				ran_test = true
+				_test_pipe_grid()
 			"--test-leaving-facility":
 				ran_test = true
 				await _test_leaving_facility()
@@ -1553,6 +1556,7 @@ func _run_all_tests() -> void:
 	_test_canon_fauna_names()
 	await _test_wash_relay_prop_survey()
 	await _test_wash_ascent()
+	_test_pipe_grid()
 	await _test_overlay_facility_gating()
 	await _test_leaving_facility()
 	await _test_showcase()
@@ -27543,6 +27547,58 @@ func _test_channels_wash_intro_capture() -> void:
 
 # HID it (and it sat off the helix anyway), leaving the player no always-on "about-to-flood" tell. This drives
 # the REAL environment path (coord_map installed => hide_flat_graybox ran) and asserts every strip is still
+
+# THE PIPE AUTO-TILER: one router for every backend — occupied cells resolve to
+# connector pieces + orthogonal orientations (end/straight/elbow/tee/cross), a
+# virtual port aims a terminal cell at off-network hardware, and the GridMap3D
+# backend fills a real grid from the committed pipe_tiles.meshlib. Guards the
+# "actual pipes system" (director 2026-07-28) that replaced the yaw'd chains.
+func _test_pipe_grid() -> void:
+	_test_name = "Pipe Grid"
+	var run := PipeGrid.resolve(PipeGrid.rasterize([Vector3i(0, 0, 0), Vector3i(3, 0, 0)]))
+	_assert_true(run.size() == 4, "rasterize expands a 4-cell run (%d)" % run.size())
+	_assert_true(str(run[1]["piece"]).begins_with("pipe_straight"),
+		"interior run cells are straights (%s)" % run[1]["piece"])
+	_assert_true(str(run[0]["piece"]) == "pipe_end" and str(run[3]["piece"]) == "pipe_end",
+		"open run ends wear blind-flange caps")
+	var l := PipeGrid.resolve(PipeGrid.rasterize(
+		[Vector3i(0, 2, 0), Vector3i(0, 0, 0), Vector3i(2, 0, 0)]))
+	var corner: Dictionary = {}
+	for p in l:
+		if p["cell"] == Vector3i(0, 0, 0):
+			corner = p
+	_assert_true(str(corner.get("piece", "")) == "pipe_elbow",
+		"the above-to-left corner resolves to the elbow")
+	var ports_world: Array = []
+	for prt in PipeGrid.PORTS["pipe_elbow"]:
+		var v: Vector3 = (corner["basis"] as Basis) * Vector3(prt)
+		ports_world.append(Vector3i(roundi(v.x), roundi(v.y), roundi(v.z)))
+	_assert_true(Vector3i(0, 1, 0) in ports_world and Vector3i(1, 0, 0) in ports_world,
+		"the elbow's orientation aims its ports up and along (%s)" % [ports_world])
+	var t := PipeGrid.resolve([Vector3i(0, 0, 0), Vector3i(1, 0, 0), Vector3i(2, 0, 0),
+		Vector3i(1, 1, 0)])
+	var mid: Dictionary = {}
+	for p in t:
+		if p["cell"] == Vector3i(1, 0, 0):
+			mid = p
+	_assert_true(str(mid.get("piece", "")) == "pipe_tee", "a branch cell resolves to a tee")
+	var vp := PipeGrid.resolve([Vector3i(0, 0, 0), Vector3i(0, 1, 0)],
+		{Vector3i(0, 0, 0): [Vector3i(-1, 0, 0)]})
+	var base_cell: Dictionary = {}
+	for p in vp:
+		if p["cell"] == Vector3i(0, 0, 0):
+			base_cell = p
+	_assert_true(str(base_cell.get("piece", "")) == "pipe_elbow",
+		"a virtual junction port turns a terminal cell into an elbow")
+	var gm := GridMap.new()
+	gm.mesh_library = load("res://resources/models/archetypes/pipe_tiles.meshlib")
+	gm.cell_size = Vector3.ONE
+	get_tree().root.add_child(gm)
+	var placed := PipeGrid.fill_gridmap(gm,
+		PipeGrid.rasterize([Vector3i(0, 0, 0), Vector3i(4, 0, 0), Vector3i(4, 3, 0)]))
+	_assert_true(placed == 8, "the GridMap3D backend places every cell (%d/8)" % placed)
+	_assert_true(gm.get_used_cells().size() == 8, "the GridMap holds the assembled run")
+	gm.queue_free()
 
 # THE RESTART LAWS (director 2026-07-28, wash_ascent): the from-scratch scene must
 # contain ZERO primitive meshes (every visible mesh is an archetype library piece —

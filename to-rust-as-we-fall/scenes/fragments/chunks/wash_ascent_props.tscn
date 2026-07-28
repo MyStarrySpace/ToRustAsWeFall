@@ -200,8 +200,9 @@ metadata/accent = "water"
 metadata/energy = 0.45
 
 [node name="FeedPipes" type="Marker3D" parent="ManifoldRun"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 17.79, 0.1, 7.65)
-metadata/pipe_chain = 3
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 17.8, 0.0, 7.55)
+metadata/pipe_route = "0,0,0 0,1,0 6,1,0 6,0,0"
+metadata/pipe_ports = "0,0,0:-1,0,0 6,0,0:1,0,0"
 metadata/cluster = "manifold"
 
 [node name="JunctionEast" type="Marker3D" parent="ManifoldRun"]
