@@ -67,6 +67,8 @@ func _init() -> void:
 
 	# The authored shot list: name, camera, target, fall intensity (0 = dry).
 	var shots := [
+		{"name": "overall", "cam": Vector3(16.0, 23.0, 15.0), "at": Vector3(-1.0, 6.0, -1.0),
+			"falls": 0.35, "fov": 62.0},
 		{"name": "curecumin_portal", "cam": Vector3(8.7, 3.0, 3.9), "at": Vector3(4.7, 2.0, 0.7),
 			"falls": 0.0, "fov": 50.0},
 		{"name": "branch_spur", "cam": Vector3(-19.9, 8.6, 14.0), "at": Vector3(-15.6, 5.2, 9.9),
