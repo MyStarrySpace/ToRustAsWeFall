@@ -27635,6 +27635,7 @@ func _test_wash_ascent() -> void:
 		var n: Node = stack.pop_back()
 		if n is MeshInstance3D and (n as MeshInstance3D).mesh != null \
 				and (n as MeshInstance3D).mesh is PrimitiveMesh \
+				and (n as MeshInstance3D).is_visible_in_tree() \
 				and n.name != "InteractableProgressRing":
 			# The dwell progress ring is the interaction system's shared feedback
 			# cosmetic (outline-grammar family), not level dressing — the ONLY
@@ -27727,7 +27728,9 @@ func _test_wash_ascent() -> void:
 	_assert_true(onsets.size() == 3 and float(onsets[0]) > 0.0,
 		"next onsets are analytic numbers, not sampled guesses: %s" % [onsets])
 	inst.call("headless_set_character_position", "aster", Vector3(6.0, 0.1, 1.0))
-	inst.call("headless_advance", float(onsets[0]) + 0.3)
+	# the kit sweep is a real CARRY traversal, not a snap: advance past the onset,
+	# the catch poll, and the downstream travel before counting the impact
+	inst.call("headless_advance", float(onsets[0]) + 2.8)
 	var post_sweep: Dictionary = chunk.call("get_preview_state")
 	_assert_true(int(post_sweep.get("swept_count", 0)) >= 1,
 		"the surge sweeps a member standing in the band (swept=%d)" % int(post_sweep.get("swept_count", 0)))

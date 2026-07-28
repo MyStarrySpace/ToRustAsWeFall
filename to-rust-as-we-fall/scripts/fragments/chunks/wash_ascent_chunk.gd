@@ -61,10 +61,9 @@ const WASH_SECTIONS := [
 ]
 const WASH_GRACE := 4.0            # quiet seconds after reset before the first surge
 const TELEGRAPH_LEAD := 1.2        # channel brightens this long before the water arrives
-const FLOOD_SWEEP_INTERVAL := 0.4  # recheck cadence while a surge is up
 const DANGER_Z := 2.0              # authoring-frame band the surge overtops (z < this)
 const VALVE_HOLD_WINDOW := 14.0    # how long the bay valve quiets section 0
-const SWEEP_STAMINA_COST := 8.0
+const SWEEP_HP_BITE := 6.0         # the kit-owned fail-forward price per sweep
 const PARTY_IDS := ["aster", "peris", "endo"]
 
 var _props_root: Node3D
@@ -76,10 +75,7 @@ var _wall_cells: Array = []
 var _channel_segments: Array = []   # [{node, s, mats: [StandardMaterial3D]}]
 var _channel_base_energy: Dictionary = {}
 
-var _cadence_t0 := -1.0
-var _flood_counts: Array = []       # onsets fired per section (analytic recurrence index)
-var _flooding: Array = []
-var _valve_hold_until := -1.0
+var _channels: Array = []           # the composed Channel kit objects, one per section
 var _swept_count := 0
 var _terminal_logged := false
 var _phase := "ready"
@@ -94,6 +90,7 @@ func _build_chunk() -> void:
 	_realize_markers(_props_root)
 	_warp_lights(_props_root)
 	_derive_wall_cells()
+	_build_wash_channels()
 	_build_interactables()
 	if not _unresolved.is_empty():
 		push_error("wash_ascent: unresolved placements: %s" % [_unresolved])
@@ -520,114 +517,69 @@ func _set_wash_state(section: int, state: String) -> void:
 				- DECK_TOP + 0.02 + water_lift
 			(water as Node3D).transform = lifted
 
-func _wash_tag(kind: String, i: int) -> String:
-	return "wash_ascent_%s_%d" % [kind, i]
+## THE COMPOSITION (P-KIT): the wash is three reusable Channel kit objects — the
+## kit owns cadence, catch, carry, and the fail-forward bite; this chunk supplies
+## only SPATIAL POLICY (where "downstream" lands) and binds its piece-built water
+## display to the kit's signals. See docs/GAMEPLAY_OBJECTS.md.
+func _build_wash_channels() -> void:
+	for i in range(WASH_SECTIONS.size()):
+		var sec: Dictionary = WASH_SECTIONS[i]
+		var s0 := float(sec["s0"])
+		var s1 := float(sec["s1"])
+		var ch := Channel.new()
+		ch.name = "WashChannel%d" % i
+		ch.owns_visuals = false                    # the piece water sheets are the view
+		ch.telegraph_lead = TELEGRAPH_LEAD
+		ch.configure((s0 + s1) * 0.5, (s1 - s0) * 0.5, 1.4,
+			float(sec["period"]), float(sec["dur"]), WASH_GRACE + float(sec["phase"]),
+			"wash_ascent_ch%d" % i, 0.6)           # band: z -0.8 .. DANGER_Z
+		ch.telegraphed.connect(_on_channel_telegraph.bind(i))
+		ch.flood_started.connect(_set_wash_state.bind(i, "flood"))
+		ch.flood_ended.connect(_on_channel_flood_ended.bind(i))
+		add_child(ch)
+		_channels.append(ch)
 
-## Arm (or re-arm) the cadence from the current tick. Called from reset_preview_state
-## — the host invokes that after build and on every reload, so the scene is live in
-## play and headless alike.
+## Arm (or re-arm) the kit cadences. Called from reset_preview_state — the host
+## invokes that after build and on every reload, so play and headless match.
 func reset_preview_state() -> void:
-	_cancel_wash_events()
 	_phase = "active"
 	_swept_count = 0
 	_terminal_logged = false
-	_valve_hold_until = -1.0
-	var sched = _get_scheduler()
-	_cadence_t0 = float(sched.get_current_tick()) if sched != null else 0.0
-	_flood_counts = []
-	_flooding = []
-	for i in range(WASH_SECTIONS.size()):
-		_flood_counts.append(0)
-		_flooding.append(false)
-		_set_wash_state(i, "idle")
-		_schedule_section(i)
-
-func _cancel_wash_events() -> void:
-	var sched = _get_scheduler()
-	if sched == null:
-		return
-	for i in range(WASH_SECTIONS.size()):
-		for kind in ["telegraph", "onset", "off", "sweep", "valve"]:
-			sched.cancel_tag(_wash_tag(kind, i))
-
-## The analytic recurrence: onset_k = t0 + grace + phase + period*k. The next onset
-## for a section is always computable from data — never discovered by sampling.
-func _section_next_onset(i: int) -> float:
-	var sec: Dictionary = WASH_SECTIONS[i]
-	return _cadence_t0 + WASH_GRACE + float(sec["phase"]) \
-		+ float(sec["period"]) * float(_flood_counts[i])
-
-func _schedule_section(i: int) -> void:
-	var sched = _get_scheduler()
-	if sched == null:
-		return
-	var onset := _section_next_onset(i)
-	if _valve_hold_until > onset and i == 0:
-		return                                     # the valve owns this window; re-armed on release
-	var now := float(sched.get_current_tick())
-	var lead := maxf(0.0, onset - TELEGRAPH_LEAD - now)
-	sched.cancel_tag(_wash_tag("telegraph", i))
-	sched.schedule_after(lead, _telegraph_section.bind(i), _wash_tag("telegraph", i))
-	sched.schedule_after(maxf(0.0, onset - now), _flood_onset.bind(i), _wash_tag("onset", i))
-
-func _telegraph_section(i: int) -> void:
-	if _phase != "active":
-		return
-	_set_wash_state(i, "telegraph")
-
-func _flood_onset(i: int) -> void:
-	if _phase != "active":
-		return
-	_flooding[i] = true
-	_flood_counts[i] += 1
-	_set_wash_state(i, "flood")
-	_sweep_section(i)
-	var sched = _get_scheduler()
-	if sched == null:
-		return
-	var dur := float(WASH_SECTIONS[i]["dur"])
-	var rechecks := ceili(dur / FLOOD_SWEEP_INTERVAL)
-	for k in range(1, rechecks + 1):
-		sched.schedule_after(FLOOD_SWEEP_INTERVAL * float(k), _sweep_section.bind(i),
-			_wash_tag("sweep", i))
-	# Self-reschedule without cancelling the in-dispatch tag (scheduler bookkeeping law).
-	sched.schedule_after(dur, _flood_off.bind(i), _wash_tag("off", i))
-
-func _flood_off(i: int) -> void:
-	if i < _flooding.size():
-		_flooding[i] = false
-	_set_wash_state(i, "idle")
-	_schedule_section(i)
-
-## The sweep: anyone standing in the surge band of a live section is carried back
-## to the section's mouth — fail-forward (lose the crossing, not the run), priced
-## in stamina, and MOBILE on landing. Pure data-layer; the warp renders it.
-func _sweep_section(i: int) -> void:
-	if _phase != "active" or i >= _flooding.size() or not _flooding[i]:
-		return
 	var gs = _get_game_state()
-	if gs == null:
-		return
+	var sched = _get_scheduler()
+	for i in range(_channels.size()):
+		var ch: Channel = _channels[i]
+		ch.reset()
+		ch.clear_sweep_refractory()
+		if gs != null:
+			ch.set_sweep(gs, PARTY_IDS, _sweep_landing.bind(i), {
+				"party_hp": SWEEP_HP_BITE,
+				"refractory": 4.0,
+				"travel_speed": 7.0,
+				"on_swept": _on_swept.bind(i),
+			})
+		if sched != null:
+			ch.start(sched, gs)
+		_set_wash_state(i, "idle")
+
+## The one spatial policy this chunk supplies the kit: a swept member lands MOBILE
+## at the section's mouth, spread by identity so a party never stacks one cell.
+func _sweep_landing(id: String, _origin: Vector3, i: int) -> Vector3:
 	var s0 := float(WASH_SECTIONS[i]["s0"])
-	var s1 := float(WASH_SECTIONS[i]["s1"])
-	var caught: Array = []
-	for char_id in PARTY_IDS:
-		if not gs.characters.has(char_id):
-			continue
-		var p := _get_character_position(char_id)
-		if p.x >= s0 and p.x <= s1 and p.z < DANGER_Z:
-			caught.append(char_id)
-	if caught.is_empty():
-		return
-	for idx in range(caught.size()):
-		var char_id: String = caught[idx]
-		gs.command_stop(char_id)
-		gs.snap_character_to(char_id,
-			Vector3(maxf(s0 - 1.5, 1.0), DECK_TOP, 3.2 + 0.9 * float(idx)))
-		_adjust_character_stat(char_id, "stamina", -SWEEP_STAMINA_COST)
+	return Vector3(maxf(s0 - 1.5, 1.0), DECK_TOP,
+		3.0 + 0.9 * float(absi(hash(id)) % 3))
+
+func _on_swept(_id: String, _i: int) -> void:
 	_swept_count += 1
-	_show_note("The surge takes %s. The channel gives nothing back." %
-		("them" if caught.size() > 1 else "one of you"), 2.4)
+	_show_note("The surge takes one of you. The channel gives nothing back.", 2.4)
+
+func _on_channel_telegraph(i: int) -> void:
+	if _phase == "active":
+		_set_wash_state(i, "telegraph")
+
+func _on_channel_flood_ended(i: int) -> void:
+	if _phase == "active":
+		_set_wash_state(i, "idle")
 
 # --- Interactables: the valve, the terminal, the portal ---
 
@@ -650,56 +602,98 @@ func _build_interactables() -> void:
 		Interactable.InteractableType.INSPECTION)
 	portal.consequence_preview = "The ring hums. Wherever it goes, it is not here."
 	_wire_trigger(portal, _on_portal)
+	_build_lonely_flure()
 	var map = get_coord_map()
 	warp_interactables_onto_coord_map(map)
+
+## The lonely flure is the REAL kit object (the lure_relay composition shape) —
+## an iron decoy with an empty target list: it fires, and nothing answers. The
+## piece at the marker is its body; the beat is the wiring working.
+func _build_lonely_flure() -> void:
+	var gs = _get_game_state()
+	var marker := _props_root.find_child("LonelyFlure", true, false) if _props_root else null
+	if gs == null or not (marker is Node3D):
+		return
+	var flure: Flure = Flure.new()
+	flure.name = "LonelyFlureObject"
+	flure.authority_id = "wash_ascent_lonely_flure"
+	flure.configure(gs, (marker as Node3D).global_position, [], 32.0, 1.4,
+		Color(0.95, 0.62, 0.14))
+	flure.one_shot = false
+	flure.description = "Light the lonely flure"
+	flure.tutorial_label = "LIGHT THE FLURE"
+	flure.flure_activated.connect(_on_lonely_flure_lit)
+	add_child(flure)
+	_register_interactable(flure)
+	# the library piece at the marker is the flure's BODY; the kit's own glow
+	# bulb stays off so no self-drawn primitive reaches the visible scene
+	var glow := flure.find_child("Glow", true, false)
+	if glow is Node3D:
+		(glow as Node3D).visible = false
+
+## Concealment is DERIVED state ticked from hide-zone proximity (the engine
+## rebuilds it on replay from logged movement): crouching into the capbage's
+## span is a full hide. No enemies walk this slice yet — the wiring is what
+## makes the element real for the compositions that add them.
+func _tick_concealment() -> void:
+	var gs = _get_game_state()
+	if gs == null or not gs.has_method("set_character_concealment"):
+		return
+	var marker := _props_root.find_child("HideCapbage", true, false) if _props_root else null
+	if not (marker is Node3D):
+		return
+	var hide_pos: Vector3 = (marker as Node3D).position
+	for char_id in PARTY_IDS:
+		if not gs.characters.has(char_id):
+			continue
+		var p: Vector3 = gs.get_position(char_id)
+		var near := Vector2(p.x - hide_pos.x, p.z - hide_pos.z).length() < 1.1
+		gs.set_character_concealment(char_id,
+			gs.CONCEAL_FULL if near else gs.CONCEAL_NONE)
+
+func _process(_delta: float) -> void:
+	_tick_concealment()
+
+func headless_process(_delta: float) -> void:
+	_tick_concealment()
 
 func _wire_trigger(interactable: Area3D, cb: Callable) -> void:
 	if interactable != null and interactable.has_signal("interacted"):
 		interactable.connect("interacted", cb)
 
+## The valve speaks the kit's verb: Channel.hold() ends any in-flight flood and
+## skips swallowed onsets to the next analytic beat. The view reacts through the
+## kit's own signals; this handler adds only the note and the held display.
 func _on_valve(_args = null) -> void:
-	var sched = _get_scheduler()
-	if sched == null or _phase != "active":
+	if _phase != "active" or _channels.is_empty():
 		return
-	var now := float(sched.get_current_tick())
-	_valve_hold_until = now + VALVE_HOLD_WINDOW
-	for kind in ["telegraph", "onset", "sweep", "off"]:
-		sched.cancel_tag(_wash_tag(kind, 0))
-	if 0 < _flooding.size():
-		_flooding[0] = false
+	(_channels[0] as Channel).hold(VALVE_HOLD_WINDOW)
 	_set_wash_state(0, "held")
-	# Recurrence index advances past every onset the hold swallows, so release
-	# re-arms at the next analytic beat rather than firing a stale backlog.
-	while _section_next_onset(0) < _valve_hold_until:
-		_flood_counts[0] += 1
-	sched.schedule_after(VALVE_HOLD_WINDOW, _on_valve_release, _wash_tag("valve", 0))
 	_show_note("// VALVE HELD // the near channel runs quiet", 2.2)
 	_set_preview_step("wash_ascent_valve_held")
 
-func _on_valve_release() -> void:
-	_valve_hold_until = -1.0
-	_set_wash_state(0, "idle")
-	_schedule_section(0)
-	if _phase == "active":
-		_show_note("// PRESSURE RETURNING // the channel is live again", 2.0)
-
 func _on_terminal(_args = null) -> void:
-	var sched = _get_scheduler()
-	if sched == null:
-		return
 	_terminal_logged = true
-	var now := float(sched.get_current_tick())
 	var soonest := INF
-	for i in range(WASH_SECTIONS.size()):
-		soonest = minf(soonest, maxf(0.0, _section_next_onset(i) - now))
+	for ch in _channels:
+		soonest = minf(soonest, maxf(0.0, float((ch as Channel).get_state().get("next_onset_in", INF))))
 	_show_note("// CADENCE LOGGED // next surge in %.0fs" % soonest, 2.6)
 	_set_preview_step("wash_ascent_cadence_logged")
 
+## The ring exit is a thin completion, DELIBERATELY not claiming shelter
+## semantics — the canonical win object (exit_shelter: rest-to-complete,
+## downed-guarded, sanctuary region) lives loader-side today and is on the
+## P-KIT extraction ledger; when it becomes a class, this composes it.
 func _on_portal(_args = null) -> void:
 	_phase = "complete"
-	_cancel_wash_events()
+	for ch in _channels:
+		(ch as Channel).reset()
 	_show_note("The ring takes you. The coil keeps climbing without you.", 3.0)
 	_set_preview_step("wash_ascent_complete")
+
+func _on_lonely_flure_lit(pulled: int) -> void:
+	_show_note("The flure sings. Nothing answers." if pulled == 0
+		else "The flure sings, and something turns toward it.", 2.6)
 
 # --- Preview host contract ---
 
@@ -751,19 +745,17 @@ func get_preview_lighting_profile() -> Dictionary:
 	}
 
 func get_preview_state() -> Dictionary:
-	var sched = _get_scheduler()
-	var now := float(sched.get_current_tick()) if sched != null else 0.0
 	var onsets: Array = []
-	for i in range(WASH_SECTIONS.size()):
-		onsets.append(_section_next_onset(i) - now)
+	for ch in _channels:
+		onsets.append(float((ch as Channel).get_state().get("next_onset_in", -1.0)))
 	return {
 		"placed": _placed_count,
 		"unresolved": _unresolved.duplicate(),
 		"wall_cells": _wall_cells.size(),
 		"phase": _phase,
-		"cadence_t0": _cadence_t0,
+		"channels": _channels.size(),
 		"next_onsets_in": onsets,
 		"swept_count": _swept_count,
-		"valve_hold_until": _valve_hold_until,
+		"valve_hold_until": (_channels[0] as Channel).held_until() if not _channels.is_empty() else -1.0,
 		"terminal_logged": _terminal_logged,
 	}
