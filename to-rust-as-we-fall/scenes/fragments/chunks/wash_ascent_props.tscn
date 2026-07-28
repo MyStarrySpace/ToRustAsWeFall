@@ -285,7 +285,7 @@ metadata/mount = "floor"
 metadata/cluster = "overgrowth"
 
 [node name="HideCapbage" type="Marker3D" parent="Overgrowth"]
-transform = Transform3D(0.921, 0, -0.389, 0, 1, 0, 0.389, 0, 0.921, 20.8, 0.1, 6.8)
+transform = Transform3D(0.921, 0, -0.389, 0, 1, 0, 0.389, 0, 0.921, 20.8, 0.1, 6.3)
 metadata/piece = "capbage"
 metadata/mount = "floor"
 metadata/cluster = "overgrowth"

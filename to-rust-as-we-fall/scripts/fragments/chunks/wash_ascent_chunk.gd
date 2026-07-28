@@ -115,7 +115,7 @@ func _warp_transform(flat: Transform3D, stretch := 1.0) -> Transform3D:
 	return Transform3D(
 		ChannelsArc.basis_at(s)
 			* Basis.from_scale(Vector3(1.0, 1.0, stretch))
-			* Basis(Vector3.UP, -PI * 0.5 - flat_yaw),
+			* Basis(Vector3.UP, -PI * 0.5 + flat_yaw),
 		ChannelsArc.arc_pos(s, lane) + Vector3(0.0, flat.origin.y - DECK_TOP, 0.0))
 
 func _run_stretch(flat_z: float) -> float:
