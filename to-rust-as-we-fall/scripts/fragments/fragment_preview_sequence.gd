@@ -47,6 +47,7 @@ const BOSS_SHOWCASE_CHUNK_SCENE := preload("res://scenes/fragments/chunks/boss_s
 const LOCKOUT_CHASE_CHUNK_SCENE := preload("res://scenes/fragments/chunks/lockout_chase_chunk.tscn")
 const INFLAMMASHUNT_CHUNK_SCENE := preload("res://scenes/fragments/chunks/inflammashunt_chunk.tscn")
 const AGHORA_BAZAAR_CHUNK_SCENE := preload("res://scenes/fragments/chunks/aghora_bazaar_chunk.tscn")
+const WASH_ASCENT_CHUNK_SCENE := preload("res://scenes/fragments/chunks/wash_ascent_chunk.tscn")
 const SightMaskBakerScript := preload("res://scripts/game/world/sight_mask_baker.gd")
 const PREVIEW_EMPHASIS_TAG := "preview_event_emphasis"
 const DEFAULT_PREVIEW_EDGE_SCROLL_MARGIN := 6.0
@@ -88,6 +89,7 @@ const CHUNK_SCENES := {
 	"lockout_chase": LOCKOUT_CHASE_CHUNK_SCENE,
 	"inflammashunt": INFLAMMASHUNT_CHUNK_SCENE,
 	"aghora_bazaar": AGHORA_BAZAAR_CHUNK_SCENE,
+	"wash_ascent": WASH_ASCENT_CHUNK_SCENE,
 }
 
 # The fragment menu, ordered along the combine-characters learning ramp (its `stage` ascending). Each
@@ -208,6 +210,11 @@ const PREVIEW_ENTRIES := [
 	# The archetype PIECE LIBRARY gallery: every visual body in
 	# ArchetypePieceLibrary on its own plinth (bodies, never verbs).
 	{"id": "archetype_gallery", "chunk": "archetype_gallery", "title": "Archetype Piece Library", "stage": 1},
+	# WASH ASCENT — the from-scratch rebuild (director's restart contract): placements
+	# are SCENE NODES in wash_ascent_props.tscn, every visible mesh a library piece
+	# (zero primitives, linted), runs measured from real AABBs, storytelling placement
+	# (decaying approach / kept bay / measured manifold / overgrown portal ledge).
+	{"id": "wash_ascent", "chunk": "wash_ascent", "title": "Wash Ascent (Rebuilt)", "stage": 5},
 ]
 
 ## The menu entry for an id (or {} if none).
@@ -336,7 +343,7 @@ const PREVIEW_ABILITY_TAG_PREFIX := "fragment_preview:ability:"
 # (the --test-fragment-preview-registry test enforces it). Empty = the picker (preview_menu).
 @export_enum("stacks", "rings", "lockout", "mother_flure", "survival_range",
 	"endo_junction_stretch", "generated_stretch",
-	"refuge_run", "channels_wash_intro", "lure_relay", "distract_gate", "puzzle_atom", "push_lab", "rest_lab", "flora_garden", "dusk_run", "showcase_gallery", "wash_relay", "data_fragment", "shape_grammar", "creature_grammar", "archetype_gallery", "architecture_showcase", "geometry_lab", "set_piece_showcase", "boss_showcase", "aghora_bazaar", "lockout_chase", "inflammashunt") var preview_chunk := "stacks"
+	"refuge_run", "channels_wash_intro", "lure_relay", "distract_gate", "puzzle_atom", "push_lab", "rest_lab", "flora_garden", "dusk_run", "showcase_gallery", "wash_relay", "data_fragment", "shape_grammar", "creature_grammar", "archetype_gallery", "architecture_showcase", "geometry_lab", "set_piece_showcase", "boss_showcase", "aghora_bazaar", "lockout_chase", "inflammashunt", "wash_ascent") var preview_chunk := "stacks"
 @export var scene_title_override := ""
 @export var preview_chunk_config: Dictionary = {}
 

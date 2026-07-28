@@ -862,6 +862,9 @@ func _ready() -> void:
 			"--test-wash-relay-prop-survey":
 				ran_test = true
 				await _test_wash_relay_prop_survey()
+			"--test-wash-ascent":
+				ran_test = true
+				await _test_wash_ascent()
 			"--test-leaving-facility":
 				ran_test = true
 				await _test_leaving_facility()
@@ -1549,6 +1552,7 @@ func _run_all_tests() -> void:
 	_test_ability_data()
 	_test_canon_fauna_names()
 	await _test_wash_relay_prop_survey()
+	await _test_wash_ascent()
 	await _test_overlay_facility_gating()
 	await _test_leaving_facility()
 	await _test_showcase()
@@ -27539,6 +27543,156 @@ func _test_channels_wash_intro_capture() -> void:
 
 # HID it (and it sat off the helix anyway), leaving the player no always-on "about-to-flood" tell. This drives
 # the REAL environment path (coord_map installed => hide_flat_graybox ran) and asserts every strip is still
+
+# THE RESTART LAWS (director 2026-07-28, wash_ascent): the from-scratch scene must
+# contain ZERO primitive meshes (every visible mesh is an archetype library piece —
+# no BoxMesh/CylinderMesh "light-language" self-exemptions), every props-scene
+# placement must RESOLVE (unknown piece ids are loud), and the placed props must
+# survey clean: supported by the structure pieces beneath/behind them, and no
+# cross-cluster interpenetration (OBB corner test — world AABBs of rotated pieces
+# balloon and cry wolf). Placements live in wash_ascent_props.tscn; this test is
+# what keeps the restart honest.
+func _test_wash_ascent() -> void:
+	_test_name = "Wash Ascent"
+	var inst = await _instantiate_preview_chunk_and_wait("wash_ascent", 8)
+	if inst == null:
+		_assert_true(false, "wash_ascent instantiates")
+		return
+	for i in range(6):
+		await get_tree().process_frame
+	var chunk = inst.find_child("Chunk_wash_ascent", true, false)
+	if chunk == null:
+		_assert_true(false, "wash_ascent chunk present")
+		inst.queue_free(); await get_tree().process_frame; return
+	# 1) every placement resolved, and the scene is substantial
+	var state: Dictionary = chunk.call("get_preview_state")
+	_assert_true((state.get("unresolved", []) as Array).is_empty(),
+		"every props-scene placement resolves to a library piece: %s" % [state.get("unresolved")])
+	_assert_true(int(state.get("placed", 0)) >= 40,
+		"the scene is substantial (%d pieces placed)" % int(state.get("placed", 0)))
+	_assert_true(int(state.get("wall_cells", 0)) >= 5,
+		"walkability derives from placed blockers (%d wall cells)" % int(state.get("wall_cells", 0)))
+	# 2) ZERO primitives: every visible mesh is a library/GLB ArrayMesh
+	var primitives: Array = []
+	var stack: Array = [chunk]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		if n is MeshInstance3D and (n as MeshInstance3D).mesh != null \
+				and (n as MeshInstance3D).mesh is PrimitiveMesh:
+			primitives.append("%s (%s)" % [n.name, (n as MeshInstance3D).mesh.get_class()])
+		for c in n.get_children():
+			stack.append(c)
+	_assert_true(primitives.is_empty(),
+		"ZERO primitive meshes in the built scene (%d): %s" % [primitives.size(),
+			", ".join(PackedStringArray(primitives.slice(0, 6)))])
+	# 3) survey: props (story pieces) vs statics (structure_* clusters)
+	var props: Array = []
+	var statics: Array = []
+	for piece in _wa_meta_nodes(chunk, "archetype_piece_id"):
+		if not piece.has_meta("mount"):
+			continue
+		if str(piece.get_meta("cluster", "")).begins_with("structure"):
+			statics.append(piece)
+		else:
+			props.append(piece)
+	_assert_true(props.size() >= 20 and statics.size() >= 40,
+		"the survey found the scene (%d props, %d structure pieces)" % [props.size(), statics.size()])
+	var floaters: Array = []
+	for prop in props:
+		var p3 := prop as Node3D
+		var aabb: AABB = _wa_world_aabb(p3)
+		var mount := str(p3.get_meta("mount", "floor"))
+		var supported := false
+		for st in statics:
+			var sa: AABB = _wa_world_aabb(st as Node3D)
+			match mount:
+				"floor", "water":
+					if absf(sa.end.y - aabb.position.y) < 0.3 \
+							or (aabb.position.y > sa.position.y - 0.05 and aabb.position.y < sa.end.y + 0.05):
+						var px := not (aabb.position.x > sa.end.x or aabb.end.x < sa.position.x)
+						var pz := not (aabb.position.z > sa.end.z or aabb.end.z < sa.position.z)
+						if px and pz:
+							supported = true
+				"wall", "ceiling", "attached":
+					if aabb.intersects(sa.grow(0.3)):
+						supported = true
+			if supported:
+				break
+		if mount == "attached" and not supported:
+			for other in props:
+				if other != prop and str((other as Node).get_meta("cluster", "")) == str(p3.get_meta("cluster", "")) \
+						and aabb.grow(0.6).intersects(_wa_world_aabb(other as Node3D)):
+					supported = true
+					break
+		if not supported:
+			floaters.append(p3.name)
+	_assert_true(floaters.is_empty(),
+		"every prop is SUPPORTED by the structure (%d floaters): %s" % [floaters.size(),
+			", ".join(PackedStringArray(floaters))])
+	var clashes: Array = []
+	for i2 in range(props.size()):
+		for j2 in range(i2 + 1, props.size()):
+			var pa := props[i2] as Node3D
+			var pb := props[j2] as Node3D
+			if str(pa.get_meta("cluster", pa.name)) == str(pb.get_meta("cluster", pb.name)):
+				continue
+			var la: AABB = _wa_local_aabb(pa)
+			var lb: AABB = _wa_local_aabb(pb)
+			var small := pa if la.get_volume() <= lb.get_volume() else pb
+			var big := pb if la.get_volume() <= lb.get_volume() else pa
+			var sb: AABB = _wa_local_aabb(small)
+			var bb: AABB = _wa_local_aabb(big).grow(-0.03)
+			if bb.size.x <= 0.0 or bb.size.y <= 0.0 or bb.size.z <= 0.0:
+				continue
+			var to_big: Transform3D = big.global_transform.affine_inverse() * small.global_transform
+			var inside := 0
+			for ci in range(8):
+				if bb.has_point(to_big * sb.get_endpoint(ci)):
+					inside += 1
+			if bb.has_point(to_big * sb.get_center()):
+				inside += 2
+			if inside >= 3:
+				clashes.append("%s x %s" % [small.name, big.name])
+	_assert_true(clashes.is_empty(),
+		"props do not interpenetrate across clusters (%d): %s" % [clashes.size(),
+			", ".join(PackedStringArray(clashes))])
+	inst.queue_free()
+	await get_tree().process_frame
+
+func _wa_meta_nodes(root: Node, meta_key: String) -> Array:
+	var out: Array = []
+	var stack: Array = [root]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		if n is Node3D and n.has_meta(meta_key):
+			out.append(n)
+		for c in n.get_children():
+			stack.append(c)
+	return out
+
+func _wa_local_aabb(piece: Node3D) -> AABB:
+	return _wa_aabb_in(piece, Transform3D.IDENTITY)
+
+func _wa_world_aabb(piece: Node3D) -> AABB:
+	return _wa_aabb_in(piece, piece.global_transform)
+
+func _wa_aabb_in(piece: Node3D, base: Transform3D) -> AABB:
+	var total := AABB()
+	var first := true
+	var stack: Array = [[piece as Node, base]]
+	while not stack.is_empty():
+		var entry: Array = stack.pop_back()
+		var n: Node = entry[0]
+		var t: Transform3D = entry[1]
+		if n is Node3D and n != piece:
+			t = t * (n as Node3D).transform
+		if n is MeshInstance3D and (n as MeshInstance3D).mesh != null:
+			var world: AABB = t * (n as MeshInstance3D).mesh.get_aabb()
+			total = world if first else total.merge(world)
+			first = false
+		for c in n.get_children():
+			stack.append([c, t])
+	return total
 
 # The MEASUREMENT law (director: "intersecting geometry as if we weren't
 # measuring"): every prop the chunk places must be SUPPORTED by real geometry
