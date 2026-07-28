@@ -27578,7 +27578,11 @@ func _test_wash_ascent() -> void:
 	while not stack.is_empty():
 		var n: Node = stack.pop_back()
 		if n is MeshInstance3D and (n as MeshInstance3D).mesh != null \
-				and (n as MeshInstance3D).mesh is PrimitiveMesh:
+				and (n as MeshInstance3D).mesh is PrimitiveMesh \
+				and n.name != "InteractableProgressRing":
+			# The dwell progress ring is the interaction system's shared feedback
+			# cosmetic (outline-grammar family), not level dressing — the ONLY
+			# named exemption; level geometry never gets one.
 			primitives.append("%s (%s)" % [n.name, (n as MeshInstance3D).mesh.get_class()])
 		for c in n.get_children():
 			stack.append(c)
@@ -27652,10 +27656,40 @@ func _test_wash_ascent() -> void:
 			if bb.has_point(to_big * sb.get_center()):
 				inside += 2
 			if inside >= 3:
-				clashes.append("%s x %s" % [small.name, big.name])
+				clashes.append("%s[%s] x %s[%s]" % [small.name,
+					small.get_meta("archetype_piece_id", "?"),
+					big.name, big.get_meta("archetype_piece_id", "?")])
 	_assert_true(clashes.is_empty(),
 		"props do not interpenetrate across clusters (%d): %s" % [clashes.size(),
 			", ".join(PackedStringArray(clashes))])
+	# 4) THE SPIRAL + THE WASH (restored): the helix coord map is installed, the
+	# cadence is analytic data, the surge really sweeps, and the valve really holds.
+	_assert_true(chunk.call("get_coord_map") != null, "the chunk exposes the helix coord map")
+	var wstate: Dictionary = chunk.call("get_preview_state")
+	_assert_true(str(wstate.get("phase", "")) == "active", "the wash cadence is armed after reset")
+	var onsets: Array = wstate.get("next_onsets_in", [])
+	_assert_true(onsets.size() == 3 and float(onsets[0]) > 0.0,
+		"next onsets are analytic numbers, not sampled guesses: %s" % [onsets])
+	inst.call("headless_set_character_position", "aster", Vector3(6.0, 0.1, 1.0))
+	inst.call("headless_advance", float(onsets[0]) + 0.3)
+	var post_sweep: Dictionary = chunk.call("get_preview_state")
+	_assert_true(int(post_sweep.get("swept_count", 0)) >= 1,
+		"the surge sweeps a member standing in the band (swept=%d)" % int(post_sweep.get("swept_count", 0)))
+	var aster_pos: Vector3 = chunk.call("_get_character_position", "aster")
+	_assert_true(aster_pos.z > 2.0 and aster_pos.x < 6.0,
+		"the swept member lands MOBILE behind the section mouth, out of the band (%s)" % aster_pos)
+	# the valve quiets section 0 for its whole hold window
+	chunk.call("_on_valve")
+	var held: Dictionary = chunk.call("get_preview_state")
+	var sched_now: float = float(held.get("valve_hold_until", -1.0))
+	_assert_true(sched_now > 0.0 and float((held.get("next_onsets_in", [0.0]) as Array)[0]) >= 0.0,
+		"the valve owns a hold window (until tick %.1f)" % sched_now)
+	var pre_hold_swept := int(held.get("swept_count", 0))
+	inst.call("headless_set_character_position", "aster", Vector3(6.0, 0.1, 1.0))
+	inst.call("headless_advance", 10.0)
+	var during_hold: Dictionary = chunk.call("get_preview_state")
+	_assert_true(int(during_hold.get("swept_count", 0)) == pre_hold_swept,
+		"no surge fires in the held section during the valve window")
 	inst.queue_free()
 	await get_tree().process_frame
 

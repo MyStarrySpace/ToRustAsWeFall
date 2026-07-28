@@ -213,13 +213,13 @@ metadata/accent = "water"
 metadata/energy = 0.45
 
 [node name="ManifoldLamp" type="Marker3D" parent="ManifoldRun"]
-transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 21.3, 2.25, 8.1)
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 20.3, 2.25, 8.1)
 metadata/piece = "red_bar_lamp"
 metadata/mount = "wall"
 metadata/cluster = "manifold"
 
 [node name="ManifoldLampSpill" type="OmniLight3D" parent="ManifoldRun"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 21.3, 2.05, 7.2)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20.3, 2.05, 7.2)
 light_color = Color(0.95, 0.3, 0.18, 1)
 light_energy = 0.9
 omni_range = 4.5

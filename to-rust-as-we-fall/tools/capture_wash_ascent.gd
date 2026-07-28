@@ -44,15 +44,22 @@ func _initialize() -> void:
 	var cam := Camera3D.new()
 	get_root().add_child(cam)
 	cam.make_current()
+	# Cameras live in ARC space {s, lane, h} and resolve through ChannelsArc, so the
+	# shots follow the coil: the overview reads the climb from outside the rim, the
+	# closeups stand on (or just off) the deck like a player's eye would.
 	var shots := [
-		{"name": "ascent_overview", "cam": Vector3(13.0, 10.0, -9.5), "at": Vector3(13.0, 0.6, 4.5), "fov": 55.0},
-		{"name": "ascent_bay", "cam": Vector3(5.6, 3.0, -0.6), "at": Vector3(11.5, 1.1, 6.2), "fov": 55.0},
-		{"name": "ascent_portal", "cam": Vector3(18.6, 1.9, 3.0), "at": Vector3(24.3, 1.9, 3.0), "fov": 50.0},
-		{"name": "ascent_approach", "cam": Vector3(-1.8, 2.2, 0.2), "at": Vector3(4.0, 0.8, 4.6), "fov": 58.0},
+		{"name": "ascent_overview", "cam": [13.0, 17.0, 7.5], "at": [13.0, 0.0, 0.0], "fov": 60.0},
+		{"name": "ascent_bay", "cam": [12.0, 5.5, 2.6], "at": [11.5, -3.0, 1.1], "fov": 55.0},
+		{"name": "ascent_portal", "cam": [18.6, 1.0, 1.8], "at": [24.3, 1.0, 1.6], "fov": 50.0},
+		{"name": "ascent_approach", "cam": [-2.5, 2.0, 2.1], "at": [4.0, 0.0, 0.7], "fov": 58.0},
 	]
 	for shot in shots:
 		cam.fov = float(shot["fov"])
-		cam.look_at_from_position(shot["cam"], shot["at"], Vector3.UP)
+		var c: Array = shot["cam"]
+		var a: Array = shot["at"]
+		var cam_pos: Vector3 = ChannelsArc.arc_pos(float(c[0]), float(c[1])) + Vector3(0, float(c[2]), 0)
+		var at_pos: Vector3 = ChannelsArc.arc_pos(float(a[0]), float(a[1])) + Vector3(0, float(a[2]), 0)
+		cam.look_at_from_position(cam_pos, at_pos, Vector3.UP)
 		for _j in range(8):
 			await process_frame
 		_hide_labels(scene)
