@@ -122,8 +122,9 @@ void fragment() {
 
 	// FRESNEL: edge-on view brightens toward foam — the subtle surface response the
 	// flat decal look lacked. Cheap scalar; identical on Forward+ and compat.
-	float fres = pow(1.0 - clamp(dot(normalize(v_normal), normalize(CAMERA_POSITION_WORLD - v_world)), 0.0, 1.0), fresnel_power) * fresnel_strength;
-	col = mix(col, foam_color, clamp(fres, 0.0, 0.6));
+	// (edge_fres, distinct from the foam-band `fres` declared above.)
+	float edge_fres = pow(1.0 - clamp(dot(normalize(v_normal), normalize(CAMERA_POSITION_WORLD - v_world)), 0.0, 1.0), fresnel_power) * fresnel_strength;
+	col = mix(col, foam_color, clamp(edge_fres, 0.0, 0.6));
 	ALBEDO = col;
 	ROUGHNESS = 0.18;
 	METALLIC = 0.0;
