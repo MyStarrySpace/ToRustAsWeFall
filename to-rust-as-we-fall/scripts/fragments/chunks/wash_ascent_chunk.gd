@@ -27,11 +27,13 @@ extends "res://scripts/scene_chunks/scene_chunk.gd"
 ## rides the OUTER rim — the falls pour outward, the coil climbs ~3.5 m over the
 ## slice. The warp is a pure function; the scene nodes stay the one source of truth.
 ##
-## THE WASH (restored): the channel surges on a data-driven cadence and overtops
-## the FRONT BAND of the walkway (z < DANGER_Z — the rail line marks the safe
-## boundary; the authored rail gaps are the risky crossings). Everything rides the
-## scheduler analytically (onset = t0 + grace + phase + period*k), so 1x and 10x
-## are identical: telegraph pulse, flood, sweep rechecks, valve hold, re-arm.
+## THE WASH (the gate): three channel sections surge on their own data-driven
+## cadences and flood the WHOLE walkway width across their span — the dry gaps
+## between sections are the safe ground, and crossing a section means running
+## its dry beat. Everything rides the scheduler analytically (onset = t0 +
+## grace + phase + period*k), so 1x and 10x are identical: telegraph pulse,
+## flood, sweep rechecks, valve hold, re-arm. The flood is HELICAL WATER BANDS
+## (modeled arcs, one per unit of s, one shared appearance), never tiled sheets.
 
 const PROPS_SCENE := preload("res://scenes/fragments/chunks/wash_ascent_props.tscn")
 
@@ -54,10 +56,12 @@ const BLOCKING_PIECES := ["shelter", "workbench", "forage_cache", "terminal",
 
 ## The wash cadence — pure data, one section per stretch of the channel. Onsets are
 ## computed analytically from these numbers; nothing samples per-frame.
+## Section spans are INTEGER s so the 1-s helical water bands cover each span
+## EXACTLY — the visible flood edge IS the kill-predicate edge, never a lie.
 const WASH_SECTIONS := [
 	{"s0": 2.0, "s1": 9.0, "period": 9.0, "dur": 2.4, "phase": 0.0},
 	{"s0": 11.0, "s1": 17.0, "period": 11.0, "dur": 2.6, "phase": 4.0},
-	{"s0": 19.0, "s1": 24.5, "period": 13.0, "dur": 2.8, "phase": 8.0},
+	{"s0": 19.0, "s1": 24.0, "period": 13.0, "dur": 2.8, "phase": 8.0},
 ]
 const WASH_GRACE := 4.0            # quiet seconds after reset before the first surge
 const TELEGRAPH_LEAD := 1.2        # channel brightens this long before the water arrives
@@ -75,7 +79,8 @@ var _placed_count := 0
 var _unresolved: Array = []
 var _wall_cells: Array = []
 var _channel_segments: Array = []   # [{node, s, mats: [StandardMaterial3D]}]
-var _section_water: Array = []      # [{node, s}] — trough + deck flood sheets
+var _section_water: Array = []      # [{node, s0, kind}] — helical water bands
+var _channel_span := Vector2.ZERO   # flat s range the trough actually covers
 var _channel_base_energy: Dictionary = {}
 
 var _channels: Array = []           # the composed Channel kit objects, one per section
@@ -110,14 +115,24 @@ func _build_chunk() -> void:
 ## less arc at the outer radii (gaps) and more at the inner (overlap), so RUN pieces
 ## fan into wedges by (R0 + lane)/R0 — the same trick the old GLB baked into its
 ## arc bands. Story props stay rigid (stretch 1): their footprints don't gap.
-func _warp_transform(flat: Transform3D, stretch := 1.0) -> Transform3D:
+func _warp_transform(flat: Transform3D, stretch := 1.0, tilt := false) -> Transform3D:
 	var s := flat.origin.x
 	var lane := LANE_CENTER - flat.origin.z
 	# The change of frame flat->helix is RotY(-PI/2); composing the piece's FULL
 	# flat basis (not just an extracted yaw) also carries vertical rotations —
 	# the pipe router's elbows and risers warp correctly through the same path.
+	# `tilt` pitches the piece about the helix RIGHT axis so its forward (+s)
+	# direction rides the CLIMB SLOPE at its radius — run pieces (deck tiles,
+	# rails, walls, channel) meet edge-to-edge as a continuous ramp instead of
+	# terraced steps (the "disconnected tiles" bug: every piece was horizontal
+	# at its center height while the helix climbed KCLIMB per s under it).
+	# Story props stay untilted: they STAND on the ramp.
+	var tilt_basis := Basis.IDENTITY
+	if tilt:
+		var slope := ChannelsArc.KCLIMB / ((ChannelsArc.R0 + lane) * ChannelsArc.KTHETA)
+		tilt_basis = Basis(Vector3(1.0, 0.0, 0.0), -atan(slope))
 	return Transform3D(
-		ChannelsArc.basis_at(s)
+		ChannelsArc.basis_at(s) * tilt_basis
 			* Basis.from_scale(Vector3(1.0, 1.0, stretch))
 			* Basis(Vector3.UP, -PI * 0.5) * flat.basis.orthonormalized(),
 		ChannelsArc.arc_pos(s, lane) + Vector3(0.0, flat.origin.y - DECK_TOP, 0.0))
@@ -223,7 +238,9 @@ func _realize_row(marker: Node3D, variant_ids: Array, count: int, skip_spans: Ar
 		var align := aabb.position.x * (flat_pitch / pitch) if rigid_arc else aabb.position.x
 		var flat := marker.global_transform \
 			* Transform3D(Basis.IDENTITY, Vector3(start - align, 0.0, 0.0))
-		var piece := _spawn_piece(pid, flat, 1.0 if rigid_arc else stretch)
+		# tangential runs ride the climb slope (the ramp); radial runs are level
+		var piece := _spawn_piece(pid, flat, 1.0 if rigid_arc else stretch,
+			not radial)
 		if piece == null:
 			continue
 		_stamp(piece, mount, cluster, true)
@@ -242,16 +259,19 @@ func _flat_in_spans(x: float, spans: Array) -> bool:
 			return true
 	return false
 
-## The channel run is three pieces working together: the trough segments meeting
-## mouth-to-mouth, a bolted JOINT COLLAR clamped over every interior seam (real
-## pipe-run infrastructure — the seam notch was a flagged artifact), and one
-## SURGE WATER sheet riding each segment, hidden at idle: the wash raises real
-## modeled water now, not a glow change.
+## The channel run is the trough segments meeting mouth-to-mouth plus a bolted
+## JOINT COLLAR clamped over every interior seam (real pipe-run infrastructure —
+## the seam notch was a flagged artifact). The trough's live water is NOT tiled
+## per segment anymore: helical WATER BANDS (one modeled piece per unit of s,
+## curved along the arc with the climb baked in) cover the whole channel span —
+## see _build_section_water.
 func _realize_channel_run(marker: Node3D, count: int) -> void:
 	var pitch := _piece_aabb("water_channel").size.x
 	var stretch := _run_stretch(marker.global_transform.origin.z)
 	var flat_pitch := pitch / stretch
 	var n := int(floor(float(count) * pitch / flat_pitch + 0.001))
+	_channel_span = Vector2(marker.global_transform.origin.x,
+		marker.global_transform.origin.x + float(n) * flat_pitch)
 	# variation cycle (director: "more variations of the side channel part") —
 	# a fixed rhythm through the three trough silhouettes, never per-tile noise
 	var variants := ["water_channel", "water_channel_b", "water_channel_c",
@@ -260,20 +280,15 @@ func _realize_channel_run(marker: Node3D, count: int) -> void:
 		var start := float(k) * flat_pitch
 		var flat := marker.global_transform \
 			* Transform3D(Basis.IDENTITY, Vector3(start + flat_pitch * 0.5, 0.0, 0.0))
-		var seg := _spawn_piece(str(variants[k % variants.size()]), flat, 1.0)
+		var seg := _spawn_piece(str(variants[k % variants.size()]), flat, 1.0, true)
 		if seg == null:
 			continue
 		_stamp(seg, "floor", "structure_channel", true)
-		var water := _spawn_piece("water_surface", flat, 1.0)
-		if water != null:
-			_stamp(water, "floor", "structure_channel", true)
-			water.visible = false
-			_register_section_water(water, flat.origin.x)
 		_register_channel_segment(seg, flat.origin.x - flat_pitch * 0.5)
 		if k > 0:
 			var seam := marker.global_transform \
 				* Transform3D(Basis.IDENTITY, Vector3(start, 0.0, 0.0))
-			var collar := _spawn_piece("channel_collar", seam, 1.0)
+			var collar := _spawn_piece("channel_collar", seam, 1.0, true)
 			if collar != null:
 				_stamp(collar, "floor", "structure_channel", true)
 
@@ -302,11 +317,21 @@ func _realize_pipe_route(marker: Node3D) -> void:
 			(extra[cell] as Array).append(Vector3i(int(d[0]), int(d[1]), int(d[2])))
 	var cells := PipeGrid.rasterize(waypoints)
 	var cluster := str(marker.get_meta("cluster", "pipes"))
+	# The pipe lattice rides the same tiling laws as every other tangential run:
+	# x-cells advance at 1/stretch in flat s so rigid 1 m pieces meet mouth-to-
+	# mouth on the arc (no 32% overlap at the inner radius), and tangential
+	# straights tilt onto the climb ramp so joints never terrace. Elbows and
+	# risers stay upright — their flanges absorb the rake at the corners.
+	var pipe_stretch := _run_stretch(marker.global_transform.origin.z)
 	for pick in PipeGrid.resolve(cells, extra):
 		var cell: Vector3i = pick["cell"]
 		var flat := marker.global_transform * Transform3D(pick["basis"] as Basis,
-			Vector3(cell) + Vector3(0.5, 0.5, 0.0))
-		var piece := _spawn_piece(str(pick["piece"]), flat)
+			Vector3((float(cell.x) + 0.5) / pipe_stretch,
+				float(cell.y) + 0.5, float(cell.z)))
+		var axis: Vector3 = (pick["basis"] as Basis) * Vector3(1, 0, 0)
+		var tangential := str(pick["piece"]).begins_with("pipe_straight") \
+			and absf(axis.x) > 0.9
+		var piece := _spawn_piece(str(pick["piece"]), flat, 1.0, tangential)
 		if piece != null:
 			_stamp(piece, "attached", cluster, true)
 
@@ -371,12 +396,22 @@ func _realize_deck_run(marker: Node3D) -> void:
 	var dims: Vector2i = marker.get_meta("deck_run")
 	var surface := str(marker.get_meta("surface", "mixed"))
 	var pitch := _piece_aabb("deck_planks").size.x
+	# ONE GLOBAL LATTICE (director: "use more of a grid"): every deck run snaps
+	# its cells to the SAME flat-frame grid (multiples of the tile pitch from
+	# s=0 / z=0), so seam angles are shared across all rows AND all deck runs —
+	# adjacent decks merge into one polar grid instead of each marker starting
+	# its own offset lattice. Cell indices are global; the marker only says
+	# which rectangle of the shared lattice it fills.
+	var i0 := roundi(marker.global_transform.origin.x / pitch)
+	var j0 := roundi(marker.global_transform.origin.z / pitch)
 	for i in range(dims.x):
 		for j in range(dims.y):
-			var pid := _deck_tile_id(surface, i, j)
-			var flat := marker.global_transform * Transform3D(Basis.IDENTITY,
-				Vector3((float(i) + 0.5) * pitch, 0.0, (float(j) + 0.5) * pitch))
-			var piece := _spawn_piece(pid, flat, _run_stretch(flat.origin.z))
+			var pid := _deck_tile_id(surface, i0 + i, j0 + j)
+			var flat := Transform3D(Basis.IDENTITY, Vector3(
+				(float(i0 + i) + 0.5) * pitch,
+				marker.global_transform.origin.y,
+				(float(j0 + j) + 0.5) * pitch))
+			var piece := _spawn_piece(pid, flat, _run_stretch(flat.origin.z), true)
 			if piece == null:
 				continue
 			_stamp(piece, "floor", "structure_deck", true)
@@ -392,15 +427,36 @@ func _realize_deck_run(marker: Node3D) -> void:
 			piece.add_child(body)
 
 ## Instantiate + warp + parent one piece; the flat transform is the authoring truth.
-func _spawn_piece(pid: String, flat: Transform3D, stretch := 1.0) -> Node3D:
+func _spawn_piece(pid: String, flat: Transform3D, stretch := 1.0, tilt := false) -> Node3D:
 	var piece := ArchetypePieceLibrary.instantiate(pid)
 	if piece == null:
 		_unresolved.append(pid)
 		return null
-	piece.transform = _warp_transform(flat, stretch)
+	piece.transform = _warp_transform(flat, stretch, tilt)
 	_realized_root.add_child(piece)
 	_placed_count += 1
 	return piece
+
+## A helical WATER BAND is a world-arc piece (baked curved around the axis, like
+## the drum shells), NOT a warped-flat piece: band k covers s in [s0, s0+1] and
+## is placed by pure rotation about the axis plus the climb height — bands tile
+## mouth-to-mouth by construction. The bake runs toward NEGATIVE Blender angle,
+## which lands as +s under Basis(UP, -theta) placement (verified by the datum
+## probe in the wash-ascent test, never by eye).
+func _spawn_water_band(pid: String, s0: float) -> Node3D:
+	var piece := ArchetypePieceLibrary.instantiate(pid)
+	if piece == null:
+		_unresolved.append(pid)
+		return null
+	piece.transform = _water_band_transform(s0, 0.0)
+	_realized_root.add_child(piece)
+	_placed_count += 1
+	return piece
+
+func _water_band_transform(s0: float, y_off: float) -> Transform3D:
+	return Transform3D(
+		Basis(Vector3.UP, -(ChannelsArc.A0 + s0 * ChannelsArc.KTHETA)),
+		Vector3(0.0, ChannelsArc.arc_pos(s0, 0.0).y + y_off, 0.0))
 
 ## The props scene's light nodes are authored flat like everything else — clone
 ## each onto the helix (the props root stays hidden as pure data).
@@ -494,30 +550,6 @@ func _scale_emission(piece: Node3D, scale: float) -> void:
 		for c in n.get_children():
 			stack.append(c)
 
-## Deck flood sheets are MURKY WASH WATER, not the trough's lit surface: the
-## emission collapses to a faint sheen and the albedo drops toward silt, so the
-## surge reads as a dark mass crossing the lamplight — never a lightbox (the
-## grunge law holds even mid-flood; the trough water keeps its full glow).
-func _murk_flood_sheet(piece: Node3D) -> void:
-	var stack: Array = [piece]
-	while not stack.is_empty():
-		var n: Node = stack.pop_back()
-		if n is MeshInstance3D and (n as MeshInstance3D).mesh != null:
-			var mi := n as MeshInstance3D
-			for si in range(mi.mesh.get_surface_count()):
-				var mat := mi.get_active_material(si)
-				if mat is StandardMaterial3D:
-					var dup := (mat as StandardMaterial3D).duplicate() as StandardMaterial3D
-					dup.albedo_color = Color(dup.albedo_color.r * 0.22,
-						dup.albedo_color.g * 0.27, dup.albedo_color.b * 0.30,
-						dup.albedo_color.a)
-					dup.roughness = 0.25
-					if dup.emission_enabled:
-						dup.emission_energy_multiplier *= 0.18
-					mi.set_surface_override_material(si, dup)
-		for c in n.get_children():
-			stack.append(c)
-
 ## The accent is a hue CUE riding shaded albedo, never a repaint (the grunge law).
 ## Materials are shared across clones, so each surface is duplicated before tinting.
 func _tint_accent(piece: Node3D, color: Color, energy: float) -> void:
@@ -592,27 +624,32 @@ func _register_channel_segment(piece: Node3D, flat_s: float) -> void:
 		_channel_base_energy[m] = (m as StandardMaterial3D).emission_energy_multiplier
 	_channel_segments.append({"node": piece, "s": flat_s, "mats": mats})
 
-## Every wash-water sheet (the trough's AND the deck-covering flood sheets) is
-## registered against its own flat s so a section flood raises exactly its span.
-func _register_section_water(water: Node3D, flat_s: float) -> void:
-	_section_water.append({"node": water, "s": flat_s})
+## Every helical water band is registered against the flat s it STARTS at, so a
+## section state change raises exactly the bands inside its span.
+func _register_water_band(band: Node3D, s0: float, kind: String) -> void:
+	_section_water.append({"node": band, "s0": s0, "kind": kind})
 
-## The one wash-state display: "idle" (bare trough), "telegraph" (glow rises,
-## the water sheet surfaces low), "flood" (the sheet rides high and bright),
-## "held" (valve-quieted: dimmer than idle, no water).
+## The one wash-state display: "idle" (baked trickle only), "telegraph" (glow
+## rises, the TROUGH's water line surfaces), "flood" (trough brims over and the
+## deck bands cover the walkway), "held" (valve-quieted: dim, dry).
+## Trough lifts: telegraph puts the water line between the baked snake and the
+## rim; flood brims it just over the rim. The deck flood rides above the grate
+## tops (0.19) but far under the rails. All bands share ONE material — the
+## appearance never splits between the trough and the walkway.
 func _set_wash_state(section: int, state: String) -> void:
 	if section < 0 or section >= WASH_SECTIONS.size():
 		return
 	var s0 := float(WASH_SECTIONS[section]["s0"])
 	var s1 := float(WASH_SECTIONS[section]["s1"])
 	var band := 1.0
-	var water_on := false
-	var water_lift := 0.0
+	var trough_on := false
+	var deck_on := false
+	var trough_lift := 0.0
 	match state:
 		"telegraph":
-			band = 2.4; water_on = true; water_lift = 0.06
+			band = 2.4; trough_on = true; trough_lift = 0.14
 		"flood":
-			band = 4.5; water_on = true; water_lift = 0.16
+			band = 4.5; trough_on = true; deck_on = true; trough_lift = 0.24
 		"held":
 			band = 0.5
 	for seg in _channel_segments:
@@ -623,16 +660,142 @@ func _set_wash_state(section: int, state: String) -> void:
 			(m as StandardMaterial3D).emission_energy_multiplier = \
 				float(_channel_base_energy.get(m, 1.0)) * band
 	for entry in _section_water:
-		var ws := float(entry["s"])
-		if ws < s0 or ws > s1:
+		var mid_s := float(entry["s0"]) + 0.5
+		if mid_s < s0 or mid_s > s1:
 			continue
 		var water = entry["node"]
-		if water is Node3D and is_instance_valid(water):
-			(water as Node3D).visible = water_on
-			var lifted: Transform3D = (water as Node3D).transform
-			lifted.origin.y = ChannelsArc.arc_pos(ws, 0.0).y \
-				- DECK_TOP + 0.02 + water_lift
-			(water as Node3D).transform = lifted
+		if not (water is Node3D and is_instance_valid(water)):
+			continue
+		var w := water as Node3D
+		if str(entry["kind"]) == "trough":
+			w.visible = trough_on
+			w.transform = _water_band_transform(float(entry["s0"]), trough_lift)
+		else:
+			w.visible = deck_on
+			w.transform = _water_band_transform(float(entry["s0"]), 0.20)
+
+## One display truth: repaint every section from the kit's ACTUAL state. The
+## bands are signal-driven, and two seams bypass signals — Channel.reset()
+## (ring completion) cancels a live flood without emitting flood_ended, and a
+## save-snapshot restore lands mid-flood with no synthetic signals at all.
+## Without this sync, the first leaves a phantom flood frozen on a dry
+## walkway; the second leaves INVISIBLE kill water. Both violate the law that
+## the visible flood edge IS the kill-predicate edge.
+func _sync_wash_display() -> void:
+	for i in range(_channels.size()):
+		var ch = _channels[i]
+		var flooding: bool = ch != null and is_instance_valid(ch) \
+			and bool(ch.call("is_flooding"))
+		_set_wash_state(i, "flood" if flooding else "idle")
+
+func on_game_state_snapshot_restored() -> void:
+	_sync_wash_display()
+
+# --- Datum probes: the tiling laws are MEASURED, never eyeballed ---
+
+## Worst world-space gap between a deck tile's seam-edge midpoint and the
+## analytic helix surface at that point. Horizontal (untilted) tiles terrace by
+## ~KCLIMB*pitch/2 (~0.13 m); the ramp lattice must hold near zero.
+func measure_deck_seam_error() -> float:
+	var worst := 0.0
+	for piece in _realized_root.get_children():
+		if not (piece is Node3D):
+			continue
+		if str((piece as Node3D).get_meta("cluster", "")) != "structure_deck":
+			continue
+		for ex in [-1.0, 1.0]:
+			var edge_mid: Vector3 = (piece as Node3D).global_transform \
+				* Vector3(float(ex), 0.0, 0.0)
+			var arc: Dictionary = ChannelsArc.world_to_arc(edge_mid)
+			# tile BASES sit DECK_TOP below the walk surface (tops flush with it)
+			var expected := ChannelsArc.arc_pos(float(arc["s"]), 0.0).y - DECK_TOP
+			worst = maxf(worst, absf(edge_mid.y - expected))
+	return worst
+
+## Water-band datum probe: counts per kind, the fitted climb of a deck band's
+## vertices vs the canonical KCLIMB/KTHETA (the sign catches a mirrored bake or
+## placement — the drum's symmetric shells never could), and the emission
+## spread across every band water material (the ONE-APPEARANCE law, measured).
+func measure_water_bands() -> Dictionary:
+	var deck_count := 0
+	var trough_count := 0
+	var w_min := Vector3.ONE * 1e9
+	var w_max := Vector3.ONE * -1e9
+	var slope := 0.0
+	var slope_done := false
+	var sources: Array = []
+	for entry in _section_water:
+		var node = entry["node"]
+		if not (node is Node3D and is_instance_valid(node)):
+			continue
+		if str(entry["kind"]) == "deck":
+			deck_count += 1
+		else:
+			trough_count += 1
+		sources.append([node, str(entry["kind"]) == "deck"])
+	# the troughs' BAKED snake water must match the bands too — the one-
+	# appearance law covers every visible water in the scene, not just bands
+	for seg in _channel_segments:
+		if seg["node"] is Node3D and is_instance_valid(seg["node"]):
+			sources.append([seg["node"], false])
+	for src in sources:
+		var stack: Array = [src[0]]
+		while not stack.is_empty():
+			var n: Node = stack.pop_back()
+			if n is MeshInstance3D and (n as MeshInstance3D).mesh != null:
+				var mi := n as MeshInstance3D
+				for si in range(mi.mesh.get_surface_count()):
+					var mat := mi.get_active_material(si)
+					if mat is StandardMaterial3D \
+							and (mat as StandardMaterial3D).emission_enabled:
+						var sm := mat as StandardMaterial3D
+						# WATER is blue-dominant; foam emits near-gray. The
+						# comparable quantity is color x energy — a <=1.0
+						# authored strength bakes into the color on export,
+						# so raw energy alone measures nothing.
+						if sm.emission.b > sm.emission.r * 1.4:
+							var w := Vector3(sm.emission.r, sm.emission.g,
+								sm.emission.b) * sm.emission_energy_multiplier
+							w_min = w_min.min(w)
+							w_max = w_max.max(w)
+				if not slope_done and bool(src[1]):
+					slope = _band_vertex_slope(mi)
+					slope_done = true
+			for c in n.get_children():
+				stack.append(c)
+	var spread := (w_max - w_min).length() if w_max.x >= w_min.x else 0.0
+	return {"deck": deck_count, "trough": trough_count,
+		"emission_spread": spread, "climb_slope": slope}
+
+## Least-squares dy/dtheta over a band mesh's world vertices (theta unwrapped
+## near the band's start). The canonical helix climbs KCLIMB/KTHETA per radian.
+func _band_vertex_slope(mi: MeshInstance3D) -> float:
+	var arrays: Array = mi.mesh.surface_get_arrays(0)
+	var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var xform := mi.global_transform
+	var t0 := 0.0
+	var first := true
+	var sum_t := 0.0
+	var sum_y := 0.0
+	var sum_tt := 0.0
+	var sum_ty := 0.0
+	var n := 0
+	for v in verts:
+		var w: Vector3 = xform * v
+		var t := atan2(w.z, w.x)
+		if first:
+			t0 = t
+			first = false
+		t = wrapf(t - t0, -PI, PI)
+		sum_t += t
+		sum_y += w.y
+		sum_tt += t * t
+		sum_ty += t * w.y
+		n += 1
+	var denom := float(n) * sum_tt - sum_t * sum_t
+	if absf(denom) < 1e-9:
+		return 0.0
+	return (float(n) * sum_ty - sum_t * sum_y) / denom
 
 ## THE COMPOSITION (P-KIT): the wash is three reusable Channel kit objects — the
 ## kit owns cadence, catch, carry, and the fail-forward bite; this chunk supplies
@@ -655,26 +818,25 @@ func _build_wash_channels() -> void:
 		ch.flood_ended.connect(_on_channel_flood_ended.bind(i))
 		add_child(ch)
 		_channels.append(ch)
-		# THE FLOOD SHEETS: modeled water covering the section's whole walkway
-		# span, hidden at idle — the full-width surge is VISIBLE water rising
-		# over the deck, not a glow trick.
-		var sheet_aabb := _piece_aabb("water_surface")
-		var sheet_pitch := sheet_aabb.size.x
-		var zrow := 0.4 + sheet_aabb.size.z * 0.5
-		while zrow < DECK_D - 0.3:
-			var srow := s0
-			while srow < s1 - 0.2:
-				var sflat := Transform3D(Basis.IDENTITY,
-					Vector3(srow + sheet_pitch * 0.5, 0.0, zrow))
-				var sheet := _spawn_piece("water_surface", sflat,
-					_run_stretch(zrow) * 1.03)
-				if sheet != null:
-					_stamp(sheet, "floor", "structure_channel", true)
-					_murk_flood_sheet(sheet)
-					sheet.visible = false
-					_register_section_water(sheet, sflat.origin.x)
-				srow += sheet_pitch
-			zrow += sheet_aabb.size.z * 0.96
+		# THE SURGE: helical deck bands — one modeled arc of water per unit of
+		# s, spanning the whole walkway width, hidden at idle. Integer section
+		# spans mean the bands cover the kill zone EXACTLY, mouth-to-mouth.
+		for k in range(int(s1 - s0)):
+			var band := _spawn_water_band("water_band_deck", s0 + float(k))
+			if band != null:
+				_stamp(band, "floor", "structure_channel", true)
+				band.visible = false
+				_register_water_band(band, s0 + float(k), "deck")
+	# The trough's own risen water line: the same bands at the channel's radius,
+	# covering exactly the span the trough run measured out.
+	var t0 := _channel_span.x
+	while t0 + 1.0 <= _channel_span.y + 0.001:
+		var trough := _spawn_water_band("water_band_trough", t0)
+		if trough != null:
+			_stamp(trough, "floor", "structure_channel", true)
+			trough.visible = false
+			_register_water_band(trough, t0, "trough")
+		t0 += 1.0
 
 ## Arm (or re-arm) the kit cadences. Called from reset_preview_state — the host
 ## invokes that after build and on every reload, so play and headless match.
@@ -839,6 +1001,7 @@ func _on_ring_rest_completed(_members: Array) -> void:
 	_phase = "complete"
 	for ch in _channels:
 		(ch as Channel).reset()
+	_sync_wash_display()
 	_show_note("The ring takes you. The coil keeps climbing without you.", 3.0)
 	_set_preview_step("wash_ascent_complete")
 
@@ -908,15 +1071,18 @@ func get_grid_data() -> Dictionary:
 		"wall_cells": _wall_cells,
 	}
 
+## The whole party spawns STRICTLY before section 0's mouth (s0 = 2.0, and the
+## Channel catch is boundary-inclusive) — nobody boots standing on the visible
+## kill edge, and every offset stays on the deck (x > 0).
 func get_spawn_positions() -> Dictionary:
-	var anchor := Vector3(2.0, DECK_TOP, 3.0)
+	var anchor := Vector3(1.2, DECK_TOP, 3.0)
 	var marker := _props_root.find_child("SpawnPlayer", true, false) if _props_root else null
 	if marker is Node3D:
 		anchor = (marker as Node3D).global_position
 	return {
 		"aster": anchor,
-		"peris": anchor + Vector3(-1.2, 0.0, 1.2),
-		"endo": anchor + Vector3(-1.6, 0.0, -1.4),
+		"peris": anchor + Vector3(-0.6, 0.0, 1.4),
+		"endo": anchor + Vector3(-0.9, 0.0, -1.2),
 	}
 
 func get_preview_anchors() -> Dictionary:

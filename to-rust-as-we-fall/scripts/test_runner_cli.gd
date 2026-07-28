@@ -27649,6 +27649,26 @@ func _test_wash_ascent() -> void:
 	_assert_true(primitives.is_empty(),
 		"ZERO primitive meshes in the built scene (%d): %s" % [primitives.size(),
 			", ".join(PackedStringArray(primitives.slice(0, 6)))])
+	# 2.5) THE TILING LAWS, measured (director: "the tiles look disconnected"):
+	# deck tiles meet the analytic helix surface at their seam edges (the ramp
+	# lattice — horizontal tiles terrace ~0.13 m and go red), and the helical
+	# water bands cover the sections, CLIMB with the coil (a mirrored bake or
+	# placement flips the fitted slope negative), and wear ONE appearance.
+	var seam_err: float = chunk.call("measure_deck_seam_error")
+	_assert_true(seam_err < 0.05,
+		"deck tiles meet the helix at their seams (worst %.3f m)" % seam_err)
+	var wb: Dictionary = chunk.call("measure_water_bands")
+	_assert_true(int(wb.get("deck", 0)) == 18 and int(wb.get("trough", 0)) >= 20,
+		"helical water bands cover the sections + trough (deck %d, trough %d)" % [
+			int(wb.get("deck", 0)), int(wb.get("trough", 0))])
+	var canon_slope: float = ChannelsArc.KCLIMB / ChannelsArc.KTHETA
+	_assert_true(float(wb.get("climb_slope", 0.0)) > 0.0 \
+			and absf(float(wb.get("climb_slope", 0.0)) - canon_slope) < canon_slope * 0.2,
+		"the water bands CLIMB with the helix (slope %.2f vs canonical %.2f)" % [
+			float(wb.get("climb_slope", 0.0)), canon_slope])
+	_assert_true(float(wb.get("emission_spread", 1.0)) < 0.05,
+		"ONE water appearance across bands AND trough snakes (color x energy spread %.3f)" % \
+			float(wb.get("emission_spread", 1.0)))
 	# 3) survey: props (story pieces) vs statics (structure_* clusters)
 	var props: Array = []
 	var statics: Array = []
