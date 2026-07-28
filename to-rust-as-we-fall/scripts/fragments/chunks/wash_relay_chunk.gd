@@ -28,6 +28,12 @@ const WASH_AUTHORITY_VERSION := 8
 const WASH_AUTHORITY_KEY := "chunk:wash_relay"
 const WASH_CADENCE_SAVE_EPSILON := 0.00001
 const SPATIAL_AUTHORITY_INTERVAL := 0.1
+## Flow-strip telegraph levels. Idle stays a floor-line whisper — upstream coil
+## turns are visible across the void, and bright idle strips read as floating
+## dashes from any distance. The pre-surge (1.1) and flooding (2.6) jumps carry
+## the warning; calm marks a plate-held / quiesced section below idle.
+const STRIP_IDLE_ENERGY := 0.18
+const STRIP_CALM_ENERGY := 0.06
 const SPATIAL_AUTHORITY_TAG := "wash_spatial_authority"
 const WASH_CONTROL_POSITION_TOLERANCE := 0.25
 const WASH_CONTROL_HEIGHT_TOLERANCE := 1.25
@@ -407,7 +413,7 @@ func _build_chunk() -> void:
 		# direct-child box before, so it both vanished and sat off the helix on the real channels.glb scene).
 		# _warped_box authors size as (lane-extent, height, s-extent) and gives a StandardMaterial3D _set_strip drives.
 		var strip := _warped_box(_strip_root, cx, 0.0, Vector3(FLOOR_Z_HALF * 1.7, 0.06, w),
-			_section_color(t) * 0.6, _section_color(t), 0.4, 0.03)
+			_section_color(t) * 0.6, _section_color(t), STRIP_IDLE_ENERGY, 0.03)
 		_flow_strips.append(strip)
 		# ONE flow terminal, at the section whose safe window is deliberately too narrow to
 		# time by eye (director redesign 2026-07-25: the nine per-section SCAN FLOW gauges
@@ -505,6 +511,15 @@ func _build_flow_terminal(strip: Node3D) -> void:
 	else:
 		body.transform = Transform3D(Basis(Vector3.UP, PI), Vector3(0.0, -0.5, 0.0))
 		term.add_child(body)
+		# the matrix head casts its own green spill — without it the dark wood
+		# body vanishes at night and the screen floats as a bare glowing slab
+		var screen_spill := OmniLight3D.new()
+		screen_spill.light_color = Color(0.36, 0.91, 0.5)
+		screen_spill.light_energy = 0.8
+		screen_spill.omni_range = 3.2
+		screen_spill.shadow_enabled = false
+		screen_spill.position = Vector3(0.0, 1.05, 0.5)
+		term.add_child(screen_spill)
 	_outline_interactable_child(term, body, "FlowTerminal", 1.5)
 	_configure_wash_control(
 		term, "flow_terminal", "flow_terminal", FLOW_ASSIST_SECTION,
@@ -791,8 +806,8 @@ func _build_section_setpieces() -> void:
 				_setpiece_arch(root, x0 + 0.7, base, 3.6)
 				# the flush SOURCE reads as a grounded manifold (nothing exists at
 				# height to hang a spout from — measured, not assumed)
-				_setpiece_piece(root, "junction", cx, 3.4, 0.0, PI * 0.5,
-					Color(0.2, 0.65, 1.0), 0.7, sec_cluster, "floor", false, 1.25)
+				_setpiece_piece(root, "junction", cx, 3.8, 0.0, PI * 0.5,
+					Color(0.2, 0.65, 1.0), 0.45, sec_cluster, "floor", false, 1.25)
 				_setpiece_rail_run(root, x0, x1, -3.25, base, 0.5, sec_cluster)
 			'current':
 				for lane in [-2.8, 2.8]:
@@ -875,7 +890,10 @@ func _tint_piece(piece: Node3D, color: Color, energy: float) -> void:
 					var dup := (mat as StandardMaterial3D).duplicate() as StandardMaterial3D
 					dup.emission_enabled = true
 					dup.emission = color
-					dup.emission_energy_multiplier = energy
+					# The tint is a hue CUE riding the piece's shaded albedo, never a
+					# repaint: at full energy the emission swamps the lighting term and
+					# the whole piece photographs as a flat colored cutout in dark bays.
+					dup.emission_energy_multiplier = energy * 0.3
 					mi.set_surface_override_material(si, dup)
 		for c in n.get_children():
 			stack.append(c)
@@ -1879,6 +1897,10 @@ func _build_concept_props() -> void:
 			"wall", true, "fin_%d" % roundi(ts))
 		_warp_piece("red_bar_lamp", ts, 11.25, 1.7, -PI * 0.5, root, "BarLamp",
 			"wall", true, "fin_%d" % roundi(ts))
+		# a lamp LIGHTS its fin — without the spill the fixture and tracery are
+		# invisible and the emissive bar hovers as a bare red slab in the dark
+		_rig_omni(root, ts, 10.4, 2.1,
+			LevelPalette.color("channels", "lamp_red"), 1.1, 5.5)
 	# the reservoir platform stands in the drum's crown water (plate D)
 	var platform := ArchetypePieceLibrary.instantiate("reservoir_platform")
 	if platform != null:
@@ -1888,6 +1910,15 @@ func _build_concept_props() -> void:
 		platform.set_meta("embed_ok", true)          # its skirt sits IN the crown water
 		platform.set_meta("cluster", "crown")
 		root.add_child(platform)
+		# a work light over the platform: the neon crown ring backlights everything
+		# up top, so without its own fill the platform is a black silhouette
+		var work_light := OmniLight3D.new()
+		work_light.light_color = Color(0.75, 0.9, 1.0)
+		work_light.light_energy = 1.0
+		work_light.omni_range = 7.0
+		work_light.shadow_enabled = false
+		work_light.position = Vector3(0.55, 18.3, -0.35)
+		root.add_child(work_light)
 
 ## STRUCTURAL SCAFFOLDING: the coil reads as BUILT — truss bays hang under the
 ## deck run, legs carry the branch piers, racked pipes ride the outer rim, and
@@ -3690,7 +3721,10 @@ func _flood_onset(i: int) -> void:
 		_learn_surge_timing_if_near(i)
 		_flooding[i] = true
 		_sweep_flooded_section(i)       # immediate capture at the onset
-		_set_strip(i, 2.6)
+		# once the wash arrives the WATER is the signal — the strip sits under it,
+		# and a submerged strip at full energy shines through as floating dashes.
+		# The pre-surge brightness (1.1) is the telegraph; the flood extinguishes it.
+		_set_strip(i, 0.0)
 		_play_water_surge(i)            # COSMETIC: a foam/spray accent + rise-pop as the section floods
 		if str(SECTIONS[i]["type"]) == "sluice":
 			_set_sluice(i, true)            # the gate slams shut — the threshold is impassable
@@ -3718,7 +3752,7 @@ func _set_flood_off(i: int) -> void:
 	_flooding[i] = false
 	if i < _section_flood_until.size():
 		_section_flood_until[i] = -1.0
-	_set_strip(i, 0.4)
+	_set_strip(i, STRIP_IDLE_ENERGY)
 	if i < SECTIONS.size() and str(SECTIONS[i]["type"]) == "sluice":
 		_set_sluice(i, false)               # the gate lifts — the threshold opens again
 
@@ -4414,7 +4448,7 @@ func _on_pressure_vent_closed() -> void:
 	if is_instance_valid(_drain_flora_interactable):
 		_set_causal_feedback_latched(_drain_flora_interactable, false)
 	if PRESSURE_VENT_SECTION < _flow_strips.size():
-		_set_strip(PRESSURE_VENT_SECTION, 0.4)
+		_set_strip(PRESSURE_VENT_SECTION, STRIP_IDLE_ENERGY)
 	if _phase == 'active':
 		_show_message('// PRESSURE RETURNING // the jet manifold is live again', 2.2)
 	_publish_wash_authority()
@@ -5015,7 +5049,7 @@ func _quiesce_wash_hazards() -> void:
 			_section_flood_until[i] = -1.0
 		if i < SECTIONS.size() and str(SECTIONS[i]["type"]) == "sluice":
 			_set_sluice(i, false)
-		_set_strip(i, 0.15)
+		_set_strip(i, STRIP_CALM_ENERGY)
 	for segs in _section_water:
 		for seg in segs:
 			if is_instance_valid(seg):
@@ -5152,7 +5186,7 @@ func _sample_held_control_truth() -> void:
 				all_held = false
 		if all_held != bool(_plate_held[i]):
 			_plate_held[i] = all_held
-			_set_strip(i, 0.15 if all_held else 0.4)
+			_set_strip(i, STRIP_CALM_ENERGY if all_held else STRIP_IDLE_ENERGY)
 			if dis == "override":
 				var control = _override_controls.get(i, null)
 				if is_instance_valid(control):
@@ -5736,7 +5770,7 @@ func reset_preview_state() -> void:
 				gs.set_character_distracted(enemy.char_id, false)
 				gs.snap_character_to(enemy.char_id, _enemy_spawn_for(enemy.char_id))
 	for i in range(_flow_strips.size()):
-		_set_strip(i, 0.4)
+		_set_strip(i, STRIP_IDLE_ENERGY)
 	for i in range(_lure_meshes.size()):
 		_set_lure_emission(i, 0.6)
 	_ensure_wash_control_registry_shapes()

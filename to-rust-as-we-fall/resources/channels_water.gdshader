@@ -127,6 +127,8 @@ void fragment() {
 	ALBEDO = col;
 	ROUGHNESS = 0.18;
 	METALLIC = 0.0;
-	EMISSION = col * emission_strength * vis * reveal_emission;   // overhead blockers soften but remain visibly teal
+	// the ripple texture MODULATES the glow — at full flood a flat emission
+	// washed every ripple out and the water photographed as a plastic slab
+	EMISSION = col * (0.55 + 0.45 * ripple) * emission_strength * vis * reveal_emission;
 	ALPHA = clamp((water_alpha + foam * 0.1) * vis * reveal_alpha, 0.0, 1.0);
 }

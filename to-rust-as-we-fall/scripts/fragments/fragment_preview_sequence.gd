@@ -869,7 +869,12 @@ func _force_nearest_filter(node: Node) -> void:
 			for i in range(mesh.get_surface_count()):
 				var m := mi.get_active_material(i)
 				if m is BaseMaterial3D:
-					(m as BaseMaterial3D).texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+					# NEAREST WITH mipmaps: crisp pixel-art tiles up close, but distant
+					# grazing-angle geometry averages instead of sparkling — plain NEAREST
+					# keeps every far tile motif hard white, so upstream walkway decks
+					# read as rows of floating dashes across the void.
+					(m as BaseMaterial3D).texture_filter = \
+						BaseMaterial3D.TEXTURE_FILTER_NEAREST_WITH_MIPMAPS
 	for c in node.get_children():
 		_force_nearest_filter(c)
 

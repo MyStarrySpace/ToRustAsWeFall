@@ -35,6 +35,13 @@ func _init() -> void:
 		# swept label can't come back before the capture (the RICH LYSATE leak).
 		scene.set_process(false)
 		_hide_labels(scene)
+	if OS.get_environment("CHARS") != "keep":
+		_hide_debug_layers(scene)
+	# HIDE_MATCH=<substr> hides every node whose name contains the substring —
+	# audit-by-elimination: rerun with a guess to learn what a mystery pixel is.
+	var hide_match := OS.get_environment("HIDE_MATCH")
+	if hide_match != "":
+		_hide_matching(scene, hide_match)
 	var st = scene.get("_overlay_states")
 	if st is Dictionary:
 		for k in (st as Dictionary).keys():
@@ -101,6 +108,15 @@ func _init() -> void:
 		var img := get_root().get_texture().get_image()
 		img.save_png(out_dir.path_join(str(shot["name"]) + ".png"))
 		img.save_jpg(out_dir.path_join(str(shot["name"]) + ".jpg"), 0.88)
+		# PROBE_PX="x,y;x,y" (with PROBE_SHOT=<name>, default full_flood): print every
+		# visible mesh whose projected bounds cover each pixel — the "what IS that
+		# thing in frame?" instrument for auditing a mystery element in a capture.
+		var probe_px := OS.get_environment("PROBE_PX")
+		var probe_shot := OS.get_environment("PROBE_SHOT")
+		if probe_shot == "":
+			probe_shot = "full_flood"
+		if probe_px != "" and str(shot["name"]) == probe_shot:
+			_probe_pixels(cam, probe_px)
 		print("[MONEY] %s" % shot["name"])
 	print("[MONEY] done -> %s" % out_dir)
 	quit()
@@ -122,3 +138,68 @@ func _defade(n: Node) -> void:
 		(n as ColorRect).visible = false
 	for c in n.get_children():
 		_defade(c)
+
+
+## A STILL can't communicate "consequence unfolding" — the staged flood LATCHES
+## every causal link, so the arcs photograph as floating debug dashes. Character
+## bodies are placeholder capsules, not set dressing. Both layers hide for
+## beauty shots (CHARS=keep restores them).
+func _hide_debug_layers(n: Node) -> void:
+	var scr: Variant = n.get_script()
+	if scr != null:
+		var path := str(scr.resource_path)
+		if path.ends_with("causal_feedback_link.gd") or path.ends_with("characters/player.gd") 				or path.ends_with("ai/npc.gd") or path.ends_with("ai/enemy.gd") 				or path.ends_with("ai/chain_enemy.gd"):
+			if n is Node3D:
+				(n as Node3D).visible = false
+			return
+	for c in n.get_children():
+		_hide_debug_layers(c)
+
+func _hide_matching(n: Node, needle: String) -> void:
+	if n.name.to_lower().contains(needle.to_lower()):
+		if n is Node3D:
+			(n as Node3D).visible = false
+		return
+	for c in n.get_children():
+		_hide_matching(c, needle)
+
+func _probe_pixels(cam: Camera3D, spec: String) -> void:
+	var pts: Array = []
+	for part in spec.split(";", false):
+		var xy := part.split(",", false)
+		if xy.size() == 2:
+			pts.append(Vector2(float(xy[0]), float(xy[1])))
+	var stack: Array = [get_root() as Node]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		for c in n.get_children():
+			stack.append(c)
+		if not (n is MeshInstance3D):
+			continue
+		var mi := n as MeshInstance3D
+		if mi.mesh == null or not mi.is_visible_in_tree():
+			continue
+		var aabb: AABB = mi.global_transform * mi.get_aabb()
+		var rect_min := Vector2(INF, INF)
+		var rect_max := Vector2(-INF, -INF)
+		var any_front := false
+		for i in range(8):
+			var corner: Vector3 = aabb.position + Vector3(
+				aabb.size.x * float(i & 1),
+				aabb.size.y * float((i >> 1) & 1),
+				aabb.size.z * float((i >> 2) & 1))
+			if cam.is_position_behind(corner):
+				continue
+			any_front = true
+			var sp: Vector2 = cam.unproject_position(corner)
+			rect_min = rect_min.min(sp)
+			rect_max = rect_max.max(sp)
+		if not any_front:
+			continue
+		var area: float = (rect_max.x - rect_min.x) * (rect_max.y - rect_min.y)
+		for p in pts:
+			if p.x >= rect_min.x and p.x <= rect_max.x and p.y >= rect_min.y and p.y <= rect_max.y:
+				var dist: float = cam.global_position.distance_to(aabb.get_center())
+				print("[PROBE] px(%d,%d) <- %s  dist=%.1f  rect=%.0fx%.0f" % [
+					int(p.x), int(p.y), n.get_path(), dist,
+					rect_max.x - rect_min.x, rect_max.y - rect_min.y])
