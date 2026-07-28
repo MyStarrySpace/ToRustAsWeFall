@@ -62,20 +62,20 @@ func _init() -> void:
 	var shots := [
 		{"name": "curecumin_portal", "cam": Vector3(8.7, 3.0, 3.9), "at": Vector3(4.7, 2.0, 0.7),
 			"falls": 0.0, "fov": 50.0},
-		{"name": "branch_spur", "cam": Vector3(-19.5, 7.6, 13.2), "at": Vector3(-15.3, 5.3, 9.5),
+		{"name": "branch_spur", "cam": Vector3(-19.9, 8.6, 14.0), "at": Vector3(-15.6, 5.2, 9.9),
 			"falls": 0.0, "fov": 52.0},
 		{"name": "lonely_flure", "cam": Vector3(7.6, 11.6, -3.6), "at": Vector3(3.76, 10.0, -2.6),
 			"falls": 0.0, "fov": 48.0},
 		{"name": "drum_face", "cam": Vector3(5.8, 2.6, 4.4), "at": Vector3(2.86, 1.8, 1.96),
 			"falls": 0.0, "fov": 46.0},
-		{"name": "full_flood", "cam": Vector3(3.6, 4.1, 7.7), "at": Vector3(8.2, 2.2, 7.3),
+		{"name": "full_flood", "cam": Vector3(4.4, 2.9, 8.6), "at": Vector3(9.5, 1.6, 6.4),
 			"falls": 1.0, "fov": 58.0},
 		{"name": "the_ascent", "cam": Vector3(-9.1, 7.1, 6.3), "at": Vector3(-11.0, 6.6, -0.9),
 			"falls": 0.45, "fov": 60.0},
 		{"name": "summit_crown", "cam": Vector3(5.5, 18.5, 7.5), "at": Vector3(0.0, 15.5, 0.0),
 			"falls": 0.0, "fov": 50.0},
-		{"name": "neck_garden", "cam": Vector3(-1.16, 9.7, -0.75), "at": Vector3(-1.6, 7.1, -1.85),
-			"falls": 0.0, "fov": 62.0},
+		# neck_garden retired: the carved pocket's true frame is unprobed — every
+		# eyeballed camera clips the neck shell. Re-add after a datum probe of it.
 	]
 	var dressing = chunk.get("_dressing") if chunk != null else null
 	for shot in shots:
