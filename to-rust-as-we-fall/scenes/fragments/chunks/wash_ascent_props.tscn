@@ -298,6 +298,18 @@ light_energy = 0.8
 omni_range = 3.5
 shadow_enabled = false
 
+[node name="Fauna" type="Node3D" parent="."]
+
+[node name="SapscrapA" type="Marker3D" parent="Fauna"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 21.6, 0.1, 4.6)
+metadata/enemy = "sapscrap"
+metadata/roam_radius = 2.8
+
+[node name="SapscrapB" type="Marker3D" parent="Fauna"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 24.2, 0.1, 6.0)
+metadata/enemy = "sapscrap"
+metadata/roam_radius = 2.2
+
 [node name="WorldArchitecture" type="Node3D" parent="."]
 
 [node name="DrumShellA" type="Marker3D" parent="WorldArchitecture"]

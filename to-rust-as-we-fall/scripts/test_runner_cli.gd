@@ -27633,6 +27633,9 @@ func _test_wash_ascent() -> void:
 	var stack: Array = [chunk]
 	while not stack.is_empty():
 		var n: Node = stack.pop_back()
+		if n is Enemy:
+			continue   # characters are not level dressing; creature bodies are the
+			           # creature-grammar pipeline's open item, tracked separately
 		if n is MeshInstance3D and (n as MeshInstance3D).mesh != null \
 				and (n as MeshInstance3D).mesh is PrimitiveMesh \
 				and (n as MeshInstance3D).is_visible_in_tree() \
@@ -27749,6 +27752,47 @@ func _test_wash_ascent() -> void:
 	var during_hold: Dictionary = chunk.call("get_preview_state")
 	_assert_true(int(during_hold.get("swept_count", 0)) == pre_hold_swept,
 		"no surge fires in the held section during the valve window")
+	# 5) THE FAUNA + THE WIN: canonical Sapscraps roam the reclaimed end, the flure
+	# pulls one (ecology law: scavengers answer an iron decoy), and the ring exit is
+	# the kit win object — refusing while the party is scattered, committing when
+	# everyone stands on the pad.
+	var wstate2: Dictionary = chunk.call("get_preview_state")
+	_assert_true(int(wstate2.get("fauna", 0)) >= 2,
+		"canonical fauna roam the slice (%d)" % int(wstate2.get("fauna", 0)))
+	var flure_node = chunk.find_child("LonelyFlureObject", true, false)
+	_assert_true(flure_node != null, "the lonely flure is the REAL kit object")
+	if flure_node != null:
+		# the kit demands the actor physically AT the source (no remote firing)
+		inst.call("headless_set_character_position", "aster", Vector3(2.2, 0.1, 4.8))
+		for _f in range(3):
+			await get_tree().process_frame
+		flure_node.call("_trigger")
+		inst.call("headless_advance", 1.5)
+		var lured := 0
+		var foe_states: Array = []
+		for foe_id in ["sapscrap_0", "sapscrap_1"]:
+			var foe = chunk.call("_fauna_by_id", foe_id)
+			if foe != null:
+				foe_states.append(str(foe.call("get_state")))
+				if str(foe.call("get_state")) == "lured":
+					lured += 1
+		_assert_true(lured >= 1, "the flure pulls a sapscrap (%d lured; states %s)" % [lured, foe_states])
+	var ring = chunk.find_child("AscentPortal", true, false)
+	_assert_true(ring is ExitShelter, "the ring exit IS the kit win object (ExitShelter)")
+	var refusals: Array = []
+	ring.connect("rest_refused", func(reason, missing): refusals.append([reason, missing]))
+	inst.call("headless_set_character_position", "aster", Vector3(22.5, 0.1, 3.0))
+	inst.call("headless_set_character_position", "peris", Vector3(2.0, 0.1, 3.0))
+	inst.call("headless_set_character_position", "endo", Vector3(22.0, 0.1, 3.6))
+	ring.call("_on_rest_requested")
+	_assert_true(not bool(ring.call("is_completed")),
+		"the ring REFUSES while the party is scattered")
+	inst.call("headless_set_character_position", "peris", Vector3(21.8, 0.1, 2.6))
+	ring.call("_on_rest_requested")
+	_assert_true(bool(ring.call("is_completed")), "everyone on the pad -> the win commits (refusals: %s)" % [refusals])
+	var final_state: Dictionary = chunk.call("get_preview_state")
+	_assert_true(str(final_state.get("phase", "")) == "complete",
+		"the scenario completes through the kit win object")
 	inst.queue_free()
 	await get_tree().process_frame
 

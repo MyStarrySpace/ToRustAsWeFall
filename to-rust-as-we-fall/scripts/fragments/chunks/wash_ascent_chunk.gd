@@ -76,6 +76,8 @@ var _channel_segments: Array = []   # [{node, s, mats: [StandardMaterial3D]}]
 var _channel_base_energy: Dictionary = {}
 
 var _channels: Array = []           # the composed Channel kit objects, one per section
+var _fauna: Dictionary = {}         # char_id -> Enemy (canonical Sapscraps; placeholder bodies)
+var _ring_exit: ExitShelter = null
 var _swept_count := 0
 var _terminal_logged := false
 var _phase := "ready"
@@ -170,6 +172,8 @@ func _realize_markers(node: Node) -> void:
 			_skip_set(n3), "floor", "structure_rail")
 	elif n3.has_meta("pipe_route"):
 		_realize_pipe_route(n3)
+	elif n3.has_meta("enemy"):
+		_spawn_fauna(n3)
 
 func _realize_piece(marker: Node3D) -> void:
 	var pid := str(marker.get_meta("piece"))
@@ -557,10 +561,21 @@ func reset_preview_state() -> void:
 				"refractory": 4.0,
 				"travel_speed": 7.0,
 				"on_swept": _on_swept.bind(i),
+				"enemy_resolver": _fauna_by_id,
+				"enemy_damage": 10.0,
+				"enemy_stun": 2.5,
 			})
 		if sched != null:
 			ch.start(sched, gs)
 		_set_wash_state(i, "idle")
+	if _ring_exit != null:
+		_ring_exit.reset_shelter()
+	for id_v in _fauna.keys():
+		var enemy = _fauna[id_v]
+		if is_instance_valid(enemy) and gs != null and gs.characters.has(str(id_v)):
+			var anchor: Vector3 = enemy.get_meta("roam_anchor", gs.get_position(str(id_v)))
+			gs.snap_character_to(str(id_v), anchor)
+			enemy.set_roam(anchor, float(enemy.get_meta("roam_radius", 3.0)))
 
 ## The one spatial policy this chunk supplies the kit: a swept member lands MOBILE
 ## at the section's mouth, spread by identity so a party never stacks one cell.
@@ -596,12 +611,18 @@ func _build_interactables() -> void:
 		Interactable.InteractableType.INSPECTION)
 	terminal.consequence_preview = "Aster reads the channel's rhythm — the next surge becomes a number, not a guess."
 	_wire_trigger(terminal, _on_terminal)
-	var portal := _add_interactable(self, "AscentPortal",
-		"Step through the ring", Vector3(22.5, DECK_TOP, 3.0),
-		"ENTER THE RING", "", 1.4, true, 1.9,
-		Interactable.InteractableType.INSPECTION)
-	portal.consequence_preview = "The ring hums. Wherever it goes, it is not here."
-	_wire_trigger(portal, _on_portal)
+	# THE WIN goes through the kit's win object — click-gated, downed-guarded,
+	# everyone on the pad, ONE atomic party rest (see ExitShelter's header).
+	var ring_exit := ExitShelter.new()
+	ring_exit.name = "AscentPortal"
+	ring_exit.configure_shelter(_get_game_state(), Vector3(22.5, DECK_TOP, 3.0),
+		Vector2(2.2, 2.2), PARTY_IDS, "ENTER THE RING", 1.9)
+	ring_exit.consequence_preview = "The ring hums. Gather everyone on the pad and step through together."
+	ring_exit.rest_completed.connect(_on_ring_rest_completed)
+	ring_exit.rest_refused.connect(_on_ring_rest_refused)
+	add_child(ring_exit)
+	_register_interactable(ring_exit)
+	_ring_exit = ring_exit
 	_build_lonely_flure()
 	var map = get_coord_map()
 	warp_interactables_onto_coord_map(map)
@@ -617,8 +638,9 @@ func _build_lonely_flure() -> void:
 	var flure: Flure = Flure.new()
 	flure.name = "LonelyFlureObject"
 	flure.authority_id = "wash_ascent_lonely_flure"
-	flure.configure(gs, (marker as Node3D).global_position, [], 32.0, 1.4,
+	flure.configure(gs, (marker as Node3D).global_position, _fauna.keys(), 32.0, 1.4,
 		Color(0.95, 0.62, 0.14))
+	flure.set_enemy_resolver(_fauna_by_id)
 	flure.one_shot = false
 	flure.description = "Light the lonely flure"
 	flure.tutorial_label = "LIGHT THE FLURE"
@@ -680,16 +702,45 @@ func _on_terminal(_args = null) -> void:
 	_show_note("// CADENCE LOGGED // next surge in %.0fs" % soonest, 2.6)
 	_set_preview_step("wash_ascent_cadence_logged")
 
-## The ring exit is a thin completion, DELIBERATELY not claiming shelter
-## semantics — the canonical win object (exit_shelter: rest-to-complete,
-## downed-guarded, sanctuary region) lives loader-side today and is on the
-## P-KIT extraction ledger; when it becomes a class, this composes it.
-func _on_portal(_args = null) -> void:
+func _on_ring_rest_completed(_members: Array) -> void:
 	_phase = "complete"
 	for ch in _channels:
 		(ch as Channel).reset()
 	_show_note("The ring takes you. The coil keeps climbing without you.", 3.0)
 	_set_preview_step("wash_ascent_complete")
+
+func _on_ring_rest_refused(reason: String, _missing: Array) -> void:
+	if reason == "downed":
+		_show_note("// THE RING WAITS // no one gets left on the deck", 2.4)
+	else:
+		_show_note("// THE RING WAITS // gather everyone on the pad", 2.4)
+
+## Canonical fauna from a scene-node marker (roster: Sapscraps — scavengers, the
+## species an iron decoy CAN pull). The body is the Enemy base's placeholder
+## capsule — honestly flagged until the creature-grammar hookup. Roam is local
+## wander (no pathfinding) anchored at the marker; detection sees the party.
+func _spawn_fauna(marker: Node3D) -> void:
+	var gs = _get_game_state()
+	if gs == null:
+		return
+	var enemy := Enemy.new()
+	enemy.char_id = "%s_%d" % [str(marker.get_meta("enemy")), _fauna.size()]
+	enemy.name = "Enemy_%s" % enemy.char_id
+	enemy.position = marker.position
+	enemy._detection_targets.assign(PARTY_IDS)
+	_realized_root.add_child(enemy)
+	enemy.game_state = gs
+	if not gs.characters.has(enemy.char_id):
+		gs.register_character(enemy.char_id, enemy.position, enemy.move_speed,
+			{"detection_range": float(enemy.detection_range)})
+	enemy.activate()
+	enemy.set_meta("roam_anchor", marker.position)
+	enemy.set_meta("roam_radius", float(marker.get_meta("roam_radius", 3.0)))
+	enemy.set_roam(marker.position, float(marker.get_meta("roam_radius", 3.0)))
+	_fauna[enemy.char_id] = enemy
+
+func _fauna_by_id(id: String):
+	return _fauna.get(id)
 
 func _on_lonely_flure_lit(pulled: int) -> void:
 	_show_note("The flure sings. Nothing answers." if pulled == 0
@@ -758,4 +809,5 @@ func get_preview_state() -> Dictionary:
 		"swept_count": _swept_count,
 		"valve_hold_until": (_channels[0] as Channel).held_until() if not _channels.is_empty() else -1.0,
 		"terminal_logged": _terminal_logged,
+		"fauna": _fauna.size(),
 	}
