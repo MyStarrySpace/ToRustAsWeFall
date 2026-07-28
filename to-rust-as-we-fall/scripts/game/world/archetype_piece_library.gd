@@ -57,6 +57,7 @@ const DRESSING_MANIFEST := {
 	"pipe_straight_valve": "PipeStraightValve",
 	"sapscrap_body": "SapscrapBody", "drum_crown": "DrumCrown",
 	"pipe_bracket": "PipeBracket", "cage_lamp": "CageLamp",
+	"water_channel_b": "WaterChannelB", "water_channel_c": "WaterChannelC",
 }
 
 # Only the PackedScene is cached; each call instantiates, clones the named

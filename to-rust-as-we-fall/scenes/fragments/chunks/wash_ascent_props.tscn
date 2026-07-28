@@ -37,7 +37,7 @@ metadata/surface = "mixed"
 [node name="WallBack" type="Marker3D" parent="Structure"]
 transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 26, 0.1, 8.2)
 metadata/wall_run = 13
-metadata/skip = "5"
+metadata/skip_spans = "13.5-15.8"
 
 [node name="ChannelFront" type="Marker3D" parent="Structure"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -0.6)
@@ -46,11 +46,12 @@ metadata/channel_run = 10
 [node name="RailFront" type="Marker3D" parent="Structure"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.1, 0.06)
 metadata/rail_run = 12
-metadata/skip = "1,4"
+metadata/skip_spans = "2.0-4.2 8.2-10.4"
 
 [node name="RailEndCap" type="Marker3D" parent="Structure"]
-transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 25.94, 0.1, 0)
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 25.94, 0.1, 0.4)
 metadata/rail_run = 3
+metadata/radial = true
 
 [node name="Approach" type="Node3D" parent="."]
 
@@ -92,12 +93,6 @@ metadata/mount = "wall"
 metadata/cluster = "approach"
 
 [node name="MaintenanceBay" type="Node3D" parent="."]
-
-[node name="Dwelling" type="Marker3D" parent="MaintenanceBay"]
-transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 11.6, 0.1, 5.9)
-metadata/piece = "shelter"
-metadata/mount = "floor"
-metadata/cluster = "bay"
 
 [node name="Workbench" type="Marker3D" parent="MaintenanceBay"]
 transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 8.9, 0.1, 7.4)
@@ -169,18 +164,11 @@ light_energy = 1.0
 omni_range = 4.5
 shadow_enabled = false
 
-[node name="DwellingLamp" type="Marker3D" parent="MaintenanceBay"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 10.9, 1.72, 5.2)
+[node name="BenchCageLamp" type="Marker3D" parent="MaintenanceBay"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8.9, 1.82, 7.55)
 metadata/piece = "cage_lamp"
 metadata/mount = "attached"
 metadata/cluster = "bay"
-
-[node name="DwellingGlow" type="OmniLight3D" parent="MaintenanceBay"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 11.6, 1.9, 5.9)
-light_color = Color(1, 0.72, 0.42, 1)
-light_energy = 0.9
-omni_range = 4.0
-shadow_enabled = false
 
 [node name="Terminal" type="Marker3D" parent="MaintenanceBay"]
 transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 16.4, 0.1, 7.5)
