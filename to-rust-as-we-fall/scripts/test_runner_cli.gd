@@ -27558,7 +27558,7 @@ func _test_wash_relay_prop_survey() -> void:
 		_assert_true(false, "chunk present")
 		inst.queue_free(); await get_tree().process_frame; return
 	var props: Array = []
-	for root_name in ["OrganicProps", "ConceptProps", "Scaffolding"]:
+	for root_name in ["OrganicProps", "ConceptProps", "Scaffolding", "SetpieceSilhouettes"]:
 		var root = chunk.find_child(root_name, false, false)
 		if root == null:
 			continue
@@ -27567,7 +27567,8 @@ func _test_wash_relay_prop_survey() -> void:
 				props.append(child)
 			elif child is Node3D:
 				for sub in (child as Node3D).get_children():
-					if sub is MeshInstance3D and (sub as MeshInstance3D).mesh != null:
+					if sub is MeshInstance3D and (sub as MeshInstance3D).mesh != null \
+							and sub.has_meta("mount"):
 						props.append(sub)
 	_assert_true(props.size() >= 20, "the survey found the placed props (%d)" % props.size())
 	# static level geometry = every OTHER visible mesh in the scene
@@ -27606,6 +27607,19 @@ func _test_wash_relay_prop_survey() -> void:
 				"wall", "ceiling":
 					if inter.size.x > 0.005 or inter.size.z > 0.005 or aabb.intersects(sa.grow(0.25)):
 						supported = true
+		if mount == "attached":
+			# supported by CONTACT with a cluster-mate (an arch header on its legs)
+			var my_cluster := str(mi.get_meta("cluster", ""))
+			var grown: AABB = aabb.grow(0.35)
+			for other in props:
+				if other == mi:
+					continue
+				if str((other as Node).get_meta("cluster", "")) != my_cluster:
+					continue
+				var oa: AABB = (other as MeshInstance3D).global_transform * (other as MeshInstance3D).get_aabb()
+				if grown.intersects(oa):
+					supported = true
+					break
 		if not supported:
 			floaters.append(mi.name)
 		# buried = OBB corners (world AABBs of warped backdrops balloon and swallow

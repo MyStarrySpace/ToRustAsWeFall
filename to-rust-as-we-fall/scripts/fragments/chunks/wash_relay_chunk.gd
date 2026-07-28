@@ -778,61 +778,68 @@ func _build_section_setpieces() -> void:
 		root.name = 'Setpiece%02d_%s' % [i + 1, kind.capitalize()]
 		_setpiece_root.add_child(root)
 		var base := _section_color(kind)
+		var sec_cluster := "sec_%d" % i
 		match kind:
 			'flush':
 				_setpiece_arch(root, x0 + 0.7, base, 3.6)
-				_setpiece_mesh(root, 'Spout', cx, 3.15, Vector3(1.1, 1.15, 1.8),
-					Color(0.16, 0.2, 0.24), Color(0.2, 0.65, 1.0), 0.8, 3.0)
-				_setpiece_mesh(root, 'LowerLip', cx, -3.25, Vector3(0.45, 0.7, span),
-					base * 0.5, base, 0.7, 0.35)
+				# the flush SOURCE reads as a grounded manifold (nothing exists at
+				# height to hang a spout from — measured, not assumed)
+				_setpiece_piece(root, "junction", cx, 3.4, 0.0, PI * 0.5,
+					Color(0.2, 0.65, 1.0), 0.7, sec_cluster, "floor", false, 1.25)
+				_setpiece_rail_run(root, x0, x1, -3.25, base, 0.5, sec_cluster)
 			'current':
 				for lane in [-2.8, 2.8]:
-					_setpiece_mesh(root, 'CurrentRail', cx, lane, Vector3(0.28, 0.75, span),
-						base * 0.55, Color(0.2, 0.75, 1.0), 0.75, 0.45)
+					_setpiece_rail_run(root, x0, x1, lane, Color(0.2, 0.75, 1.0), 0.55, sec_cluster)
 				for sc in [x0 + 1.0, cx, x1 - 1.0]:
 					_setpiece_mesh(root, 'FlowFin', sc, 0.0, Vector3(3.6, 0.08, 0.5),
-						base * 0.45, base, 1.0, 0.12)
+						base * 0.45, base, 1.0, 0.12)   # floor light-language: flow chevrons
 			'jet':
 				_setpiece_arch(root, cx, Color(0.32, 0.48, 0.72), 3.9)
 				for sc in [x0 + 1.0, cx, x1 - 1.0]:
 					for lane in [-2.45, 2.45]:
-						_setpiece_mesh(root, 'JetNozzle', sc, lane, Vector3(0.72, 0.6, 0.72),
-							Color(0.12, 0.16, 0.22), Color(0.35, 0.8, 1.0), 1.15, 0.32)
+						# nozzle hardware = a small junction manifold with open bores
+						_setpiece_piece(root, "junction", sc, lane, 0.0, 0.0,
+							Color(0.35, 0.8, 1.0), 0.6, sec_cluster, "floor", false, 0.55)
 			'plate':
 				for lane in [-1.15, 1.15]:
-					_setpiece_mesh(root, 'BridgeRail', cx, lane, Vector3(0.16, 0.55, span),
-						Color(0.16, 0.17, 0.2), base, 0.7, 0.35)
-				_setpiece_mesh(root, 'PlatePylon', x0 - 0.65, -2.7, Vector3(0.8, 1.8, 0.8),
-					Color(0.24, 0.18, 0.08), Color(1.0, 0.7, 0.2), 1.4, 0.9)
+					_setpiece_rail_run(root, x0, x1, lane, base, 0.5, sec_cluster)
+				# the hold-station is a valve column, amber
+				_setpiece_piece(root, "water_control", x0 - 0.65, -2.7, 0.0, 0.0,
+					Color(1.0, 0.7, 0.2), 0.9, sec_cluster, "floor", false, 1.4)
 			'sluice':
 				_setpiece_arch(root, x0 + 0.25, Color(0.32, 0.16, 0.1), 4.3)
 				_setpiece_arch(root, x1 - 0.25, Color(0.32, 0.16, 0.1), 4.3)
-				_setpiece_mesh(root, 'SluiceHeader', cx, 0.0, Vector3(7.4, 0.6, span),
-					Color(0.13, 0.14, 0.17), Color(1.0, 0.34, 0.18), 0.55, 4.15)
+				# the overhead header is trussed between the arch legs
+				for hl in [-2.7, -0.9, 0.9, 2.7]:
+					_setpiece_piece(root, "scaffold_truss", cx, hl, 4.15, 0.0,
+						Color(1.0, 0.34, 0.18), 0.5, "arch_%d" % roundi((x0 + 0.25) * 10.0),
+						"attached", true)
 			'patrol':
 				for lane in [-3.15, 3.15]:
-					_setpiece_mesh(root, 'HideCowl', cx, lane, Vector3(1.35, 2.2, span * 0.42),
-						Color(0.12, 0.14, 0.18), Color(0.15, 0.85, 0.9), 0.6, 1.1)
+					# the hide alcove wears the library's hide piece, teal-tinted
+					_setpiece_piece(root, "hide_slot", cx, lane, 0.0,
+						PI * 0.5 if lane > 0.0 else -PI * 0.5,
+						Color(0.15, 0.85, 0.9), 0.45, sec_cluster, "floor", false, 1.05)
 				_setpiece_arch(root, x1 - 0.5, base, 3.7)
 			'lure':
 				for sc in [x0 + 0.55, x1 - 0.55]:
 					_setpiece_arch(root, sc, Color(0.38, 0.17, 0.4), 3.5)
-				_setpiece_mesh(root, 'LureBeacon', cx, 0.0, Vector3(0.7, 2.9, 0.7),
-					Color(0.2, 0.11, 0.22), Color(1.0, 0.35, 0.9), 1.3, 2.2)
+				# the beacon is a scaffold leg burning magenta
+				_setpiece_piece(root, "scaffold_leg", cx, 0.0, 0.0, 0.0,
+					Color(1.0, 0.35, 0.9), 1.1, sec_cluster)
 			'basin':
 				for sc in [x0 + 1.0, cx, x1 - 1.0]:
-					_setpiece_mesh(root, 'PumpTower', sc, 3.15, Vector3(1.0, 3.0, 1.0),
-						Color(0.13, 0.18, 0.22), Color(0.2, 0.65, 1.0), 0.9, 1.5)
+					# pump columns: tall valve stations along the basin rim
+					_setpiece_piece(root, "water_control", sc, 3.15, 0.0, 0.0,
+						Color(0.2, 0.65, 1.0), 0.7, sec_cluster, "floor", false, 2.0)
 				for lane in [-3.35, 3.35]:
-					_setpiece_mesh(root, 'BasinRim', cx, lane, Vector3(0.35, 0.7, span),
-						base * 0.45, base, 0.65, 0.35)
+					_setpiece_rail_run(root, x0, x1, lane, base, 0.45, sec_cluster)
 			'double_plate':
 				for lane in [-DOUBLE_PLATE_Z, DOUBLE_PLATE_Z]:
-					_setpiece_mesh(root, 'CrewPylon', x0 - 0.55, lane, Vector3(0.8, 2.0, 0.8),
-						Color(0.25, 0.18, 0.08), Color(1.0, 0.72, 0.18), 1.5, 1.0)
+					_setpiece_piece(root, "water_control", x0 - 0.55, lane, 0.0, 0.0,
+						Color(1.0, 0.72, 0.18), 1.0, sec_cluster, "floor", false, 1.55)
 				for lane in [-1.0, 1.0]:
-					_setpiece_mesh(root, 'FinalRail', cx, lane, Vector3(0.16, 0.62, span),
-						Color(0.16, 0.17, 0.2), base, 0.8, 0.4)
+					_setpiece_rail_run(root, x0, x1, lane, base, 0.55, sec_cluster)
 				_setpiece_arch(root, x1 - 0.35, base, 4.0)
 		_section_setpiece_count += 1
 
@@ -844,12 +851,62 @@ func _setpiece_mesh(parent: Node3D, node_name: String, s: float, lane: float, si
 	return mesh
 
 
+## Section-identity TINT for a placed piece: every surface material is duplicated
+## once and given the section's emission colour — the wayfinding-by-colour law
+## survives the primitive-to-piece swap.
+func _tint_piece(piece: Node3D, color: Color, energy: float) -> void:
+	if piece == null:
+		return
+	var stack: Array = [piece]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		if n is MeshInstance3D and (n as MeshInstance3D).mesh != null:
+			var mi := n as MeshInstance3D
+			for si in range(mi.mesh.get_surface_count()):
+				var mat := mi.get_active_material(si)
+				if mat is StandardMaterial3D:
+					var dup := (mat as StandardMaterial3D).duplicate() as StandardMaterial3D
+					dup.emission_enabled = true
+					dup.emission = color
+					dup.emission_energy_multiplier = energy
+					mi.set_surface_override_material(si, dup)
+		for c in n.get_children():
+			stack.append(c)
+
+
+## A tinted piece placed on the setpiece layer (rides the warp, carries survey meta).
+func _setpiece_piece(parent: Node3D, pid: String, s: float, lane: float, y_off: float,
+		yaw: float, tint: Color, energy: float, cluster: String,
+		mount := "floor", embed := false, piece_scale := 1.0) -> Node3D:
+	var piece := _warp_piece(pid, s, lane, y_off, yaw, parent, pid.capitalize(),
+		mount, embed, cluster)
+	if piece == null:
+		return null
+	if piece_scale != 1.0:
+		piece.transform = piece.transform.scaled_local(Vector3.ONE * piece_scale)
+	if energy > 0.0:
+		_tint_piece(piece, tint, energy)
+	return piece
+
+
+## The section ARCH is two scaffold legs (scaled to the arch height), tinted.
 func _setpiece_arch(parent: Node3D, s: float, color: Color, height: float) -> void:
+	var cluster := "arch_%d" % roundi(s * 10.0)
 	for lane in [-3.35, 3.35]:
-		_setpiece_mesh(parent, 'ArchPost', s, lane, Vector3(0.5, height, 0.55),
-			Color(0.12, 0.14, 0.17), color, 0.55, height * 0.5)
-	_setpiece_mesh(parent, 'ArchLintel', s, 0.0, Vector3(7.2, 0.45, 0.65),
-		Color(0.13, 0.15, 0.18), color, 0.8, height)
+		_setpiece_piece(parent, "scaffold_leg", s, lane, 0.0, 0.0, color, 0.5,
+			cluster, "floor", false, height / 3.2)
+	for hl in [-2.7, -0.9, 0.9, 2.7]:                    # the lintel, trussed leg-to-leg
+		_setpiece_piece(parent, "scaffold_truss", s, hl, height - 1.15, 0.0,
+			color, 0.45, cluster, "attached", true)
+
+
+## A low RAIL RUN along a span: railing_run modules tiled every 2 m, tinted.
+func _setpiece_rail_run(parent: Node3D, x0: float, x1: float, lane: float,
+		tint: Color, energy: float, cluster: String) -> void:
+	var s := x0 + 1.0
+	while s < x1 - 0.6:
+		_setpiece_piece(parent, "railing_run", s, lane, 0.0, -PI * 0.5, tint, energy, cluster)
+		s += 2.0
 
 
 # --- Branch puzzle offshoots ---
