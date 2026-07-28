@@ -304,7 +304,8 @@ func _apply_vasculature_overlay(piece: Node3D) -> void:
 	var mat := ShaderMaterial.new()
 	mat.shader = shader
 	for tex_name in ["vein_albedo", "vein_emissive", "vein_normal"]:
-		var file := {"vein_albedo": "vasculature_albedo", "vein_emissive": "vasculature_emissive",
+		var file: String = {"vein_albedo": "vasculature_albedo",
+			"vein_emissive": "vasculature_emissive",
 			"vein_normal": "vasculature_normal"}[tex_name]
 		var tex = load("res://resources/textures/vasculature/%s.png" % file)
 		if tex != null:

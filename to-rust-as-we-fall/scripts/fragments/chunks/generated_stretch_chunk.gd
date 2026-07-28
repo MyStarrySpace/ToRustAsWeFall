@@ -5448,12 +5448,23 @@ func _build_hydraulic_puzzle() -> void:
 	var scavenger := EnemyScript.new() as Node3D
 	if scavenger != null:
 		scavenger.name = "HydraulicCargoScavenger"
-		scavenger.set("display_name", "Lysate scavenger")
-		scavenger.set("color", Color(0.44, 0.24, 0.10))
+		# CANONICAL IDENTITY (docs/SCAVENGER_CARGO_BEAT.md): the forager is a
+		# SAPSCRAP — roster species, library body. The base capsule and eye
+		# lights hide; the C3 palp body from the contact sheet is the read.
+		scavenger.set("display_name", "Sapscrap")
+		scavenger.set("color", Color(0.24, 0.10, 0.20))
 		scavenger.set("detection_range", 0.0)
 		scavenger.set("move_speed", 2.15)
 		scavenger.position = _bridge_scavenger_route[0]
 		add_child(scavenger)
+		var scav_body := ArchetypePieceLibrary.instantiate("sapscrap_body")
+		if scav_body != null:
+			for c in scavenger.get_children():
+				if c is MeshInstance3D:
+					(c as MeshInstance3D).visible = false
+				elif c is Light3D:
+					(c as Light3D).visible = false
+			scavenger.add_child(scav_body)
 		_hydraulic_scavenger = scavenger
 		_attach_hydraulic_scavenger_authority(scavenger)
 
