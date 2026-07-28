@@ -88,6 +88,9 @@ func _realize_piece(marker: Node3D) -> void:
 	var accent := str(marker.get_meta("accent", ""))
 	if ACCENTS.has(accent):
 		_tint_accent(piece, ACCENTS[accent], float(marker.get_meta("energy", 0.5)))
+	var emission_scale := float(marker.get_meta("emission_scale", 1.0))
+	if emission_scale < 1.0:
+		_scale_emission(piece, emission_scale)
 	_placed_count += 1
 
 ## A measured row: pieces laid along the marker's local +X, pitch = the piece's
@@ -193,6 +196,23 @@ func _combined_aabb(node: Node, xf: Transform3D) -> AABB:
 		for c in n.get_children():
 			stack.append([c, t])
 	return total
+
+## A marker's `emission_scale` calms a piece's BAKED glow (a sign band, a screen)
+## without touching its albedo — the grunge law's answer to a too-hot fixture.
+func _scale_emission(piece: Node3D, scale: float) -> void:
+	var stack: Array = [piece]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		if n is MeshInstance3D and (n as MeshInstance3D).mesh != null:
+			var mi := n as MeshInstance3D
+			for si in range(mi.mesh.get_surface_count()):
+				var mat := mi.get_active_material(si)
+				if mat is StandardMaterial3D and (mat as StandardMaterial3D).emission_enabled:
+					var dup := (mat as StandardMaterial3D).duplicate() as StandardMaterial3D
+					dup.emission_energy_multiplier *= scale
+					mi.set_surface_override_material(si, dup)
+		for c in n.get_children():
+			stack.append(c)
 
 ## The accent is a hue CUE riding shaded albedo, never a repaint (the grunge law).
 ## Materials are shared across clones, so each surface is duplicated before tinting.

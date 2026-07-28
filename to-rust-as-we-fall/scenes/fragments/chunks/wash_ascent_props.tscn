@@ -142,6 +142,7 @@ transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 15.0, 2.0, 8.12)
 metadata/piece = "gate_sign"
 metadata/mount = "wall"
 metadata/cluster = "bay"
+metadata/emission_scale = 0.35
 
 [node name="DoorLamp" type="Marker3D" parent="MaintenanceBay"]
 transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 13.6, 2.45, 8.1)
@@ -211,6 +212,19 @@ metadata/mount = "floor"
 metadata/cluster = "manifold"
 metadata/accent = "water"
 metadata/energy = 0.45
+
+[node name="ManifoldLamp" type="Marker3D" parent="ManifoldRun"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 21.3, 2.25, 8.1)
+metadata/piece = "red_bar_lamp"
+metadata/mount = "wall"
+metadata/cluster = "manifold"
+
+[node name="ManifoldLampSpill" type="OmniLight3D" parent="ManifoldRun"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 21.3, 2.05, 7.2)
+light_color = Color(0.95, 0.3, 0.18, 1)
+light_energy = 0.9
+omni_range = 4.5
+shadow_enabled = false
 
 [node name="PortalLedge" type="Node3D" parent="."]
 
