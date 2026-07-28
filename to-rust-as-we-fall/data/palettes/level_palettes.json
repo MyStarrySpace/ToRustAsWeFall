@@ -98,5 +98,11 @@
     "scarpet_blade_deep": "#3d6b2c",
     "scarpet_senesce": "#b5561f",
     "seefern_vein_core": "#e8f7f0"
+  },
+  "fauna": {
+    "sapscrap_chitin": "#3d1a33",
+    "sapscrap_plate": "#54254a",
+    "sapscrap_clamp": "#8a3178",
+    "sapscrap_tell": "#d955b8"
   }
 }

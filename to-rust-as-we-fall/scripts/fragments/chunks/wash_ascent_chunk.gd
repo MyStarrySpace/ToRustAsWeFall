@@ -165,8 +165,8 @@ func _realize_markers(node: Node) -> void:
 			_skip_set(n3), "wall", "structure_wall")
 	elif n3.has_meta("channel_run"):
 		_realize_channel_run(n3, int(n3.get_meta("channel_run")))
-	elif n3.has_meta("drum_shell"):
-		_realize_drum_shell(n3)
+	elif n3.has_meta("drum_shell") or n3.has_meta("world_piece"):
+		_realize_world_arc(n3)
 	elif n3.has_meta("rail_run"):
 		_realize_row(n3, ["railing_run"], int(n3.get_meta("rail_run")),
 			_skip_set(n3), "floor", "structure_rail")
@@ -271,15 +271,17 @@ func _realize_pipe_route(marker: Node3D) -> void:
 		if piece != null:
 			_stamp(piece, "attached", cluster, true)
 
-## The drum shell is WORLD architecture — anchored on the coil's axis, not the
-## flat frame. The marker contributes its yaw angle (degrees) and height only.
-func _realize_drum_shell(marker: Node3D) -> void:
-	var piece := ArchetypePieceLibrary.instantiate("drum_shell")
+## Drum architecture is WORLD-anchored — on the coil's axis, not the flat frame.
+## The marker contributes the piece id (world_piece, default drum_shell), its yaw
+## angle in degrees, and its height.
+func _realize_world_arc(marker: Node3D) -> void:
+	var pid := str(marker.get_meta("world_piece", "drum_shell"))
+	var angle := float(marker.get_meta("angle", marker.get_meta("drum_shell", 0.0)))
+	var piece := ArchetypePieceLibrary.instantiate(pid)
 	if piece == null:
-		_unresolved.append("drum_shell")
+		_unresolved.append(pid)
 		return
-	piece.transform = Transform3D(
-		Basis(Vector3.UP, deg_to_rad(float(marker.get_meta("drum_shell")))),
+	piece.transform = Transform3D(Basis(Vector3.UP, deg_to_rad(angle)),
 		Vector3(0.0, marker.position.y, 0.0))
 	_stamp(piece, "floor", "structure_drum", true)
 	_realized_root.add_child(piece)
@@ -734,6 +736,16 @@ func _spawn_fauna(marker: Node3D) -> void:
 		gs.register_character(enemy.char_id, enemy.position, enemy.move_speed,
 			{"detection_range": float(enemy.detection_range)})
 	enemy.activate()
+	# the canonical BODY from the library replaces the base placeholder capsule
+	# (the Enemy's cosmetic pulses act on its own _mesh and safely no-op here)
+	var body := ArchetypePieceLibrary.instantiate("sapscrap_body")
+	if body != null:
+		for c in enemy.get_children():
+			if c is MeshInstance3D:
+				(c as MeshInstance3D).visible = false
+			elif c is Light3D:
+				(c as Light3D).visible = false
+		enemy.add_child(body)
 	enemy.set_meta("roam_anchor", marker.position)
 	enemy.set_meta("roam_radius", float(marker.get_meta("roam_radius", 3.0)))
 	enemy.set_roam(marker.position, float(marker.get_meta("roam_radius", 3.0)))
