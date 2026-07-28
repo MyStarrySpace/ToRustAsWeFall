@@ -418,8 +418,18 @@ func _build_chunk() -> void:
 		if str(s["disable"]) == "override":
 			var ov := _add_interactable(self, "Override%d" % i, "Flow override", Vector3(x1 + 1.5, 0.5, 0.0),
 				"OVERRIDE", "", 1.0, false, 1.6, Interactable.InteractableType.INSPECTION, false)
-			var ovm := _add_box(ov, Vector3(0.0, 0.1, 0.0), Vector3(0.6, 1.0, 0.4), Color(0.2, 0.45, 0.5),
-				Color(0.3, 0.9, 1.0), 1.0)   # a console post (child -> rides the helix warp)
+			# the override body is the Terminal PIECE (no placeholder box); the teal
+			# affordance stays as a small emissive cap on its head
+			var ovm: Node3D = ArchetypePieceLibrary.instantiate("terminal")
+			if ovm == null:
+				ovm = _add_box(ov, Vector3(0.0, 0.1, 0.0), Vector3(0.6, 1.0, 0.4),
+					Color(0.2, 0.45, 0.5), Color(0.3, 0.9, 1.0), 1.0)
+			else:
+				ovm.transform = Transform3D(Basis(Vector3.UP, PI).scaled(Vector3.ONE * 0.8),
+					Vector3(0.0, -0.5, 0.0))
+				ov.add_child(ovm)
+				_add_box(ov, Vector3(0.0, 0.78, -0.14), Vector3(0.3, 0.1, 0.06),
+					Color(0.2, 0.45, 0.5), Color(0.3, 0.9, 1.0), 1.2)
 			_outline_interactable_child(ov, ovm, "Override%d" % i, 1.6)
 			_configure_wash_control(
 				ov, "override:%d" % i, "override", i,
@@ -990,17 +1000,26 @@ func _build_branches() -> void:
 
 
 func _add_reward_cradle(cache: Node3D, node_name: String) -> MeshInstance3D:
-	var cradle := MeshInstance3D.new()
-	cradle.name = node_name
-	var mesh := CylinderMesh.new()
-	mesh.top_radius = 0.42
-	mesh.bottom_radius = 0.5
-	mesh.height = 0.14
-	mesh.radial_segments = 18
-	cradle.mesh = mesh
-	cradle.position = Vector3(0.0, -0.3, 0.0)
-	cradle.material_override = _make_material(
-		Color(0.12, 0.14, 0.12), Color(0.32, 0.45, 0.2), 0.2)
+	# the cradle body is the ForageCache PIECE (a real lidded basin, not a disc)
+	var piece := ArchetypePieceLibrary.instantiate("forage_cache")
+	var cradle: MeshInstance3D
+	if piece is MeshInstance3D:
+		cradle = piece as MeshInstance3D
+		cradle.name = node_name
+		cradle.transform = Transform3D(Basis(Vector3.UP, 0.4).scaled(Vector3.ONE * 0.72),
+			Vector3(0.0, -0.42, 0.0))
+	else:
+		cradle = MeshInstance3D.new()
+		cradle.name = node_name
+		var mesh := CylinderMesh.new()
+		mesh.top_radius = 0.42
+		mesh.bottom_radius = 0.5
+		mesh.height = 0.14
+		mesh.radial_segments = 18
+		cradle.mesh = mesh
+		cradle.position = Vector3(0.0, -0.3, 0.0)
+		cradle.material_override = _make_material(
+			Color(0.12, 0.14, 0.12), Color(0.32, 0.45, 0.2), 0.2)
 	cache.add_child(cradle)
 	return cradle
 
@@ -1201,8 +1220,14 @@ func _build_pressure_bridge() -> void:
 	_configure_wash_control(
 		_pressure_valve, "pressure_valve", "pressure_valve", -1,
 		_on_pressure_valve.bind(_pressure_valve))
-	var wheel := _add_box(_pressure_valve, Vector3(0.0, 0.65, 0.0), Vector3(0.9, 1.3, 0.55),
-		Color(0.12, 0.3, 0.34), Color(0.2, 0.9, 1.0), 1.2)
+	# the valve body is the WaterControl PIECE (bolted column + spoked wheel)
+	var wheel: Node3D = ArchetypePieceLibrary.instantiate("water_control")
+	if wheel == null:
+		wheel = _add_box(_pressure_valve, Vector3(0.0, 0.65, 0.0), Vector3(0.9, 1.3, 0.55),
+			Color(0.12, 0.3, 0.34), Color(0.2, 0.9, 1.0), 1.2)
+	else:
+		wheel.transform = Transform3D(Basis(Vector3.UP, PI), Vector3(0.0, -0.5, 0.0))
+		_pressure_valve.add_child(wheel)
 	_outline_interactable_child(_pressure_valve, wheel, 'PressureValve', 1.65)
 	if PRESSURE_VENT_SECTION < _flow_strips.size():
 		_add_causal_feedback_link(_pressure_valve, _flow_strips[PRESSURE_VENT_SECTION], Color(0.2, 0.9, 1.0), {
@@ -1707,7 +1732,7 @@ func _material_response_walk(node: Node, cache: Dictionary) -> void:
 ## THE REASSEMBLY (director: "the level isn't using the new assets yet"): place the
 ## concept-pass assemblies. All are BODIES riding the helix warp; gameplay untouched.
 func _warp_piece(pid: String, s_pos: float, lane: float, y_off: float, yaw: float,
-		parent: Node3D, tag: String) -> Node3D:
+		parent: Node3D, tag: String, mount := "floor", embed_ok := false, cluster := "") -> Node3D:
 	var piece := ArchetypePieceLibrary.instantiate(pid)
 	if piece == null:
 		return null
@@ -1715,6 +1740,9 @@ func _warp_piece(pid: String, s_pos: float, lane: float, y_off: float, yaw: floa
 		ChannelsArc.basis_at(s_pos) * Basis(Vector3.UP, yaw),
 		ChannelsArc.arc_pos(s_pos, lane) + Vector3(0.0, y_off, 0.0))
 	piece.name = "%s_%d" % [tag, roundi(s_pos * 10.0)]
+	piece.set_meta("mount", mount)
+	piece.set_meta("embed_ok", embed_ok)
+	piece.set_meta("cluster", cluster if cluster != "" else piece.name)
 	parent.add_child(piece)
 	return piece
 
@@ -1726,25 +1754,35 @@ func _build_concept_props() -> void:
 	# behind the pad, console beside it, turned pad-rings under it, the pier's
 	# broken end past the ledge lip. The pad's plain fixture arch is hidden — the
 	# masonry ring IS the aperture now (the live lens keeps hovering in its bore).
-	_warp_piece("portal_ring_ornate", 1.6, -7.55, 0.0, PI * 0.5, root, "CureRing")
-	_warp_piece("portal_console", 2.85, -6.5, 0.0, PI * 0.5 + 0.3, root, "CureConsole")
-	_warp_piece("portal_pad_rings", 1.6, -6.2, 0.02, 0.0, root, "CurePadRings")
-	_warp_piece("broken_pier", 1.6, -8.3, -0.02, PI, root, "CurePier")
+	# MEASURED: PadLedge_001 top sits at y=1.075, 0.135 BELOW the arc line; the
+	# pier hangs off the ledge's free s-end (the old lane -8.3 was inside the drum)
+	_warp_piece("portal_ring_ornate", 1.6, -7.35, -0.135, PI * 0.5, root, "CureRing",
+		"floor", false, "cure")
+	_warp_piece("portal_console", 2.85, -6.5, -0.135, PI * 0.5 + 0.3, root, "CureConsole",
+		"floor", false, "cure")
+	_warp_piece("portal_pad_rings", 1.6, -6.2, -0.115, 0.0, root, "CurePadRings",
+		"floor", false, "cure")
+	_warp_piece("broken_pier", 3.55, -5.4, -0.135, -PI * 0.5, root, "CurePier",
+		"floor", false, "cure")
 	if _cure_portals.size() > 0 and is_instance_valid(_cure_portals[0]):
 		var arch: Node = (_cure_portals[0] as Node).find_child("PortalArch", true, false)
 		if arch != null:
 			(arch as Node3D).visible = false
-	# vascular tracery panels claim the outer wall fins (plate G: a WEB, not arches)
-	for ts in [8.5, 30.0, 41.0, 65.0, 75.5]:
-		_warp_piece("wall_tracery", ts, 11.3, 0.15, -PI * 0.5, root, "Tracery")
-	# red bar lamps give the rig's red pools a FIXTURE on the wall
-	for ls in [10.0, 30.0, 50.0, 70.0]:
-		_warp_piece("red_bar_lamp", ls, 11.15, 2.3, -PI * 0.5, root, "BarLamp")
+	# vascular tracery + bar lamps mount on the REAL wall fins (measured: fins
+	# exist only at s 4.0 / 55.1 / 62.4, inner faces at lane ~10.85)
+	for ts in [4.0, 55.1, 62.4]:
+		_warp_piece("wall_tracery", ts, 10.85, 0.2, -PI * 0.5, root, "Tracery",
+			"wall", true, "fin_%d" % roundi(ts))
+		_warp_piece("red_bar_lamp", ts, 11.25, 1.7, -PI * 0.5, root, "BarLamp",
+			"wall", true, "fin_%d" % roundi(ts))
 	# the reservoir platform stands in the drum's crown water (plate D)
 	var platform := ArchetypePieceLibrary.instantiate("reservoir_platform")
 	if platform != null:
 		platform.transform = Transform3D(Basis(Vector3.UP, 2.2), Vector3(0.55, 16.42, -0.35))
 		platform.name = "CrownPlatform"
+		platform.set_meta("mount", "floor")
+		platform.set_meta("embed_ok", true)          # its skirt sits IN the crown water
+		platform.set_meta("cluster", "crown")
 		root.add_child(platform)
 
 ## STRUCTURAL SCAFFOLDING: the coil reads as BUILT — truss bays hang under the
@@ -1757,15 +1795,20 @@ func _build_structural_scaffold() -> void:
 	var s_pos := 4.0
 	while s_pos < 84.0:
 		if not (s_pos > 18.0 and s_pos < 23.5):            # the broken-coil gap stays bare
-			_warp_piece("scaffold_truss", s_pos, 0.0, -1.42, -PI * 0.5, root, "Truss")
+			_warp_piece("scaffold_truss", s_pos, 0.0, -1.42, -PI * 0.5, root, "Truss",
+				"ceiling", false, "truss_%d" % roundi(s_pos))
 		s_pos += 6.0
 	for gap_mid in GAP_MIDS_SCAFFOLD:                      # legs under the branch piers
 		for ds in [-0.8, 0.8]:
-			_warp_piece("scaffold_leg", gap_mid + ds, 7.5, -3.28, 0.0, root, "PierLeg")
+			_warp_piece("scaffold_leg", gap_mid + ds, 7.5, -3.28, 0.0, root, "PierLeg",
+				"ceiling", false, "pier_%d" % roundi(gap_mid))
 	for rs in [21.0, 23.0, 25.0]:                          # pressure-pocket edge railings
-		_warp_piece("railing_run", rs, -10.2, 0.0, -PI * 0.5, root, "PocketRail")
-	for ps in [34.2, 36.2]:                                # racked pipe runs, outer rim
-		_warp_piece("pipe_rack", ps, 4.95, 0.0, -PI * 0.5, root, "PipeRack")
+		_warp_piece("railing_run", rs, -10.2, 0.24, -PI * 0.5, root, "PocketRail",
+			"floor", true, "pocket")   # the pressure room is a VOID carved through the
+			                            # drum-neck shell; the shell's convex box reads solid
+	for ps in [8.0, 50.0]:                                 # racked pipe runs, outer rim (33-47 = wall-skip, no rim there)
+		_warp_piece("pipe_rack", ps, 4.3, 0.0, -PI * 0.5, root, "PipeRack",
+			"floor", false, "rack")                  # measured: 4.95 hung over the falls void
 
 const GAP_MIDS_SCAFFOLD: Array = [12.5, 28.5, 54.5, 62.5, 72.5]
 
@@ -1782,7 +1825,7 @@ func _build_organic_props() -> void:
 	# Vein trunks hug the drum: {angle (atan2(x,z)), base y, scale}. The first two sit
 	# in the drum_face / curecumin money-shot views; the rest spread the overgrowth.
 	var trunks := [
-		{"a": 1.62, "y": 0.55, "s": 1.0},
+		{"a": 0.67, "y": 0.55, "s": 1.0},
 		{"a": 0.95, "y": 0.5, "s": 0.85},
 		{"a": 2.18, "y": 8.6, "s": 1.15},
 		{"a": 3.6, "y": 4.4, "s": 1.0},
@@ -1798,12 +1841,18 @@ func _build_organic_props() -> void:
 			Basis(Vector3.UP, a).scaled(Vector3.ONE * float(t["s"])),
 			radial * (drum_r + 0.05) + Vector3(0.0, float(t["y"]), 0.0))
 		trunk.name = "VeinTrunk_%d" % roundi(a * 100.0)
+		trunk.set_meta("mount", "wall")
+		trunk.set_meta("embed_ok", true)             # the growth hugs INTO the drum skin
+		trunk.set_meta("cluster", "trunk_%d" % roundi(a * 100.0))
 		root.add_child(trunk)
 		var cluster := ArchetypePieceLibrary.instantiate("biolume_cluster")
 		if cluster != null:
 			cluster.transform = Transform3D(Basis(Vector3.UP, a + 0.9),
 				radial * (drum_r + 0.55) + Vector3(0.35 * sin(a + 1.6), float(t["y"]) + 0.02, 0.35 * cos(a + 1.6)))
 			cluster.name = "Biolume_%d" % roundi(a * 100.0)
+			cluster.set_meta("mount", "wall")
+			cluster.set_meta("embed_ok", true)       # the colony nests in the trunk's roots
+			cluster.set_meta("cluster", "trunk_%d" % roundi(a * 100.0))
 			root.add_child(cluster)
 		# each trunk's bulb nest casts real light so the overgrowth pools violet
 		var glow := OmniLight3D.new()
@@ -1816,10 +1865,13 @@ func _build_organic_props() -> void:
 	# The porthole assembly at the drum-face money shot (the painted porthole spot).
 	var port := ArchetypePieceLibrary.instantiate("porthole")
 	if port != null:
-		var pa := 1.30
+		var pa := 0.07
 		port.transform = Transform3D(Basis(Vector3.UP, pa).scaled(Vector3.ONE * 1.35),
 			Vector3(sin(pa), 0.0, cos(pa)) * (drum_r + 0.02) + Vector3(0.0, 0.85, 0.0))
 		port.name = "PortholeFace"
+		port.set_meta("mount", "wall")
+		port.set_meta("embed_ok", true)              # backing flange embeds in the drum
+		port.set_meta("cluster", "drum")
 		root.add_child(port)
 	# The neon crown: one CONTINUOUS bright tube riding posts over the drum rim.
 	var crown := MeshInstance3D.new()
@@ -1837,6 +1889,9 @@ func _build_organic_props() -> void:
 	tube.emission_energy_multiplier = 3.4
 	crown.material_override = tube
 	crown.position = Vector3(0.0, 16.9, 0.0)
+	crown.set_meta("mount", "wall")
+	crown.set_meta("embed_ok", true)
+	crown.set_meta("cluster", "crown")
 	root.add_child(crown)
 	var post_mat := StandardMaterial3D.new()
 	post_mat.albedo_color = Color(0.13, 0.13, 0.16)
@@ -1849,7 +1904,10 @@ func _build_organic_props() -> void:
 		cyl.height = 0.55
 		post.mesh = cyl
 		post.material_override = post_mat
-		post.position = Vector3(sin(pa2), 0.0, cos(pa2)) * 3.79 + Vector3(0.0, 16.65, 0.0)
+		post.position = Vector3(sin(pa2), 0.0, cos(pa2)) * 3.62 + Vector3(0.0, 16.65, 0.0)
+		post.set_meta("mount", "wall")
+		post.set_meta("embed_ok", true)
+		post.set_meta("cluster", "crown")
 		root.add_child(post)
 
 ## A reflection probe over the play space so the WET deck + drum actually REFLECT the

@@ -66,7 +66,7 @@ func _init() -> void:
 			"falls": 0.0, "fov": 52.0},
 		{"name": "lonely_flure", "cam": Vector3(7.6, 11.6, -3.6), "at": Vector3(3.76, 10.0, -2.6),
 			"falls": 0.0, "fov": 48.0},
-		{"name": "drum_face", "cam": Vector3(6.3, 2.6, 3.9), "at": Vector3(3.1, 1.8, 1.45),
+		{"name": "drum_face", "cam": Vector3(5.8, 2.6, 4.4), "at": Vector3(2.86, 1.8, 1.96),
 			"falls": 0.0, "fov": 46.0},
 		{"name": "full_flood", "cam": Vector3(3.6, 4.1, 7.7), "at": Vector3(8.2, 2.2, 7.3),
 			"falls": 1.0, "fov": 58.0},

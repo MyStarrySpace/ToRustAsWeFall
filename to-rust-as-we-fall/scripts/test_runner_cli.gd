@@ -859,6 +859,9 @@ func _ready() -> void:
 			"--test-canon-fauna-names":
 				ran_test = true
 				_test_canon_fauna_names()
+			"--test-wash-relay-prop-survey":
+				ran_test = true
+				await _test_wash_relay_prop_survey()
 			"--test-leaving-facility":
 				ran_test = true
 				await _test_leaving_facility()
@@ -1545,6 +1548,7 @@ func _run_all_tests() -> void:
 	await _test_grid_port_robustness()
 	_test_ability_data()
 	_test_canon_fauna_names()
+	await _test_wash_relay_prop_survey()
 	await _test_overlay_facility_gating()
 	await _test_leaving_facility()
 	await _test_showcase()
@@ -27535,6 +27539,131 @@ func _test_channels_wash_intro_capture() -> void:
 
 # HID it (and it sat off the helix anyway), leaving the player no always-on "about-to-flood" tell. This drives
 # the REAL environment path (coord_map installed => hide_flat_graybox ran) and asserts every strip is still
+
+# The MEASUREMENT law (director: "intersecting geometry as if we weren't
+# measuring"): every prop the chunk places must be SUPPORTED by real geometry
+# and must not interpenetrate its neighbours. Pieces declare their mount via
+# meta ("mount": floor/wall/ceiling/water, "embed_ok": true for wall-huggers);
+# undeclared pieces default to floor. AABB-based so it runs headless.
+func _test_wash_relay_prop_survey() -> void:
+	_test_name = "Wash Relay Prop Survey"
+	var inst = await _instantiate_preview_chunk_and_wait("wash_relay", 8)
+	if inst == null:
+		_assert_true(false, "wash_relay instantiates")
+		return
+	for i in range(6):
+		await get_tree().process_frame
+	var chunk = inst.find_child("Chunk_wash_relay", true, false)
+	if chunk == null:
+		_assert_true(false, "chunk present")
+		inst.queue_free(); await get_tree().process_frame; return
+	var props: Array = []
+	for root_name in ["OrganicProps", "ConceptProps", "Scaffolding"]:
+		var root = chunk.find_child(root_name, false, false)
+		if root == null:
+			continue
+		for child in root.get_children():
+			if child is MeshInstance3D and (child as MeshInstance3D).mesh != null:
+				props.append(child)
+			elif child is Node3D:
+				for sub in (child as Node3D).get_children():
+					if sub is MeshInstance3D and (sub as MeshInstance3D).mesh != null:
+						props.append(sub)
+	_assert_true(props.size() >= 20, "the survey found the placed props (%d)" % props.size())
+	# static level geometry = every OTHER visible mesh in the scene
+	var statics: Array = []
+	var stack: Array = [inst]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		if n is MeshInstance3D and (n as MeshInstance3D).mesh != null \
+				and (n as MeshInstance3D).is_visible_in_tree() and not props.has(n):
+			statics.append(n)
+		for c in n.get_children():
+			stack.append(c)
+	var floaters: Array = []
+	var buried: Array = []
+	for prop in props:
+		var mi := prop as MeshInstance3D
+		var aabb: AABB = mi.global_transform * mi.get_aabb()
+		var mount := str(mi.get_meta("mount", "floor"))
+		var supported := false
+		var overlap_vol := 0.0
+		for st in statics:
+			var sa: AABB = (st as MeshInstance3D).global_transform * (st as MeshInstance3D).get_aabb()
+			var inter: AABB = aabb.intersection(sa)
+			if inter.size.x > 0.01 and inter.size.y > 0.01 and inter.size.z > 0.01:
+				overlap_vol = maxf(overlap_vol, inter.get_volume())   # deepest single embed, never a sum
+			match mount:
+				"floor", "water":
+					# something solid within 0.3 below the base, overlapping in plan
+					if absf(sa.position.y + sa.size.y - aabb.position.y) < 0.3 \
+							or (aabb.position.y > sa.position.y - 0.05 \
+							and aabb.position.y < sa.position.y + sa.size.y + 0.05):
+						var px := not (aabb.position.x > sa.end.x or aabb.end.x < sa.position.x)
+						var pz := not (aabb.position.z > sa.end.z or aabb.end.z < sa.position.z)
+						if px and pz:
+							supported = true
+				"wall", "ceiling":
+					if inter.size.x > 0.005 or inter.size.z > 0.005 or aabb.intersects(sa.grow(0.25)):
+						supported = true
+		if not supported:
+			floaters.append(mi.name)
+		# buried = OBB corners (world AABBs of warped backdrops balloon and swallow
+		# props falsely): count this prop's local-box corners inside a static's
+		# LOCAL box; 6+ of 9 (centre counts double) = genuinely encased.
+		if not bool(mi.get_meta("embed_ok", false)):
+			var pb: AABB = mi.get_aabb()
+			for st2 in statics:
+				var smi := st2 as MeshInstance3D
+				var sbb: AABB = smi.get_aabb().grow(-0.02)
+				var into: Transform3D = smi.global_transform.affine_inverse() * mi.global_transform
+				var inside2 := 0
+				for ci in range(8):
+					if sbb.has_point(into * pb.get_endpoint(ci)):
+						inside2 += 1
+				if sbb.has_point(into * pb.get_center()):
+					inside2 += 2
+				if inside2 >= 6:
+					buried.append("%s (in %s)" % [mi.name, smi.name])
+					break
+	var clashes: Array = []
+	for i in range(props.size()):
+		for j in range(i + 1, props.size()):
+			var ca := str((props[i] as Node).get_meta("cluster", props[i].name))
+			var cb := str((props[j] as Node).get_meta("cluster", props[j].name))
+			if ca == cb:
+				continue                              # designed nestings share a cluster
+			# OBB corner test: world AABBs of ROTATED pieces inflate hugely and cry
+			# wolf — instead, count the smaller piece's local-box corners that land
+			# inside the larger piece's LOCAL box. Corners inside = real overlap.
+			var mi_a := props[i] as MeshInstance3D
+			var mi_b := props[j] as MeshInstance3D
+			var vol_a: float = (mi_a.global_transform * mi_a.get_aabb()).get_volume()
+			var vol_b: float = (mi_b.global_transform * mi_b.get_aabb()).get_volume()
+			var small_mi: MeshInstance3D = mi_a if vol_a <= vol_b else mi_b
+			var big_mi: MeshInstance3D = mi_b if vol_a <= vol_b else mi_a
+			var sb: AABB = small_mi.get_aabb()
+			var bb: AABB = big_mi.get_aabb().grow(-0.03)
+			var to_big: Transform3D = big_mi.global_transform.affine_inverse() * small_mi.global_transform
+			var inside := 0
+			for ci in range(8):
+				if bb.has_point(to_big * sb.get_endpoint(ci)):
+					inside += 1
+			if bb.has_point(to_big * sb.get_center()):
+				inside += 2
+			if inside >= 3:
+				clashes.append("%s x %s (%d corners in)" % [props[i].name, props[j].name, inside])
+	_assert_true(floaters.is_empty(),
+		"every placed prop is SUPPORTED by real geometry (%d floaters): %s"
+			% [floaters.size(), ", ".join(floaters.slice(0, 8))])
+	_assert_true(buried.is_empty(),
+		"no prop is BURIED in level geometry (%d): %s" % [buried.size(), ", ".join(buried.slice(0, 8))])
+	_assert_true(clashes.is_empty(),
+		"placed props do not interpenetrate each other (%d): %s"
+			% [clashes.size(), ", ".join(clashes.slice(0, 8))])
+	inst.queue_free()
+	await get_tree().process_frame
+
 # visible AND rides the helix (co-located with the warped section water). Structurally uncatchable by graybox tests.
 func _test_wash_relay_telegraph_visible() -> void:
 	_test_name = "Wash Relay Telegraph Visible"
