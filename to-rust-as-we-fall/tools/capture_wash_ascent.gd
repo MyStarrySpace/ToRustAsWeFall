@@ -53,13 +53,26 @@ func _initialize() -> void:
 		{"name": "ascent_portal", "cam": [18.6, 1.0, 1.8], "at": [24.3, 1.0, 1.6], "fov": 50.0},
 		{"name": "ascent_approach", "cam": [-2.5, 2.0, 2.1], "at": [4.0, 0.0, 0.7], "fov": 58.0},
 		{"name": "ascent_surge", "cam": [10.5, 8.0, 3.4], "at": [14.5, 2.0, 0.6],
-			"fov": 56.0, "flood": 1},
+			"fov": 56.0, "wash": [1, "flood"]},
+		# THE PUZZLE VOCABULARY — one portrait per element (director's ask):
+		{"name": "puzzle_valve", "cam": [6.9, 6.2, 1.7], "at": [9.2, 2.9, 0.7],
+			"fov": 50.0},
+		{"name": "puzzle_terminal", "cam": [14.4, -0.2, 1.5], "at": [16.4, -3.4, 1.0],
+			"fov": 48.0},
+		{"name": "puzzle_telegraph", "cam": [3.6, 7.2, 2.3], "at": [6.6, 4.2, 0.2],
+			"fov": 52.0, "wash": [0, "telegraph"]},
+		{"name": "puzzle_rail_gap", "cam": [0.6, 6.4, 1.7], "at": [3.2, 3.0, 0.3],
+			"fov": 52.0},
 	]
 	var chunk: Node = scene.find_child("Chunk_wash_ascent", true, false)
 	for shot in shots:
-		if shot.has("flood") and chunk != null:
-			# stage the surge visual for the still (state setter only — no scheduler)
-			chunk.call("_set_wash_state", int(shot["flood"]), "flood")
+		if chunk != null:
+			# stage the declared wash state for the still (state setter only — no
+			# scheduler), and clear it again so no state leaks into later shots
+			for i in range(3):
+				chunk.call("_set_wash_state", i, "idle")
+			if shot.has("wash"):
+				chunk.call("_set_wash_state", int(shot["wash"][0]), str(shot["wash"][1]))
 		cam.fov = float(shot["fov"])
 		var c: Array = shot["cam"]
 		var a: Array = shot["at"]
