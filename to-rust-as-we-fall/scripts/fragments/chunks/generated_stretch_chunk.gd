@@ -65,6 +65,7 @@ const HYDRAULIC_CATCH_RECEIPT_COMPLETE := "complete"
 const HYDRAULIC_CATCH_COMMIT_DELAY := 0.001
 const BRIDGE_SCAVENGER_DORMANT := "dormant"
 const BRIDGE_SCAVENGER_APPROACHING_RACK := "approaching_rack"
+const BRIDGE_SCAVENGER_RIDING_CARGO := "riding_cargo"
 const BRIDGE_SCAVENGER_RETREATING_TO_LYSATE := "retreating_to_lysate"
 const BRIDGE_SCAVENGER_CLEAR := "clear"
 const BRIDGE_SCAVENGER_CONTACT_EPSILON := 0.01
@@ -4194,6 +4195,7 @@ func _restore_generated_runtime_authority() -> bool:
 	if _bridge_scavenger_phase not in [
 		BRIDGE_SCAVENGER_DORMANT,
 		BRIDGE_SCAVENGER_APPROACHING_RACK,
+		BRIDGE_SCAVENGER_RIDING_CARGO,
 		BRIDGE_SCAVENGER_RETREATING_TO_LYSATE,
 		BRIDGE_SCAVENGER_CLEAR,
 	]:
@@ -4806,6 +4808,12 @@ func _attach_hydraulic_scavenger_authority(scavenger: Node3D) -> bool:
 	var arrived_callback := Callable(self, "_on_hydraulic_scavenger_arrived")
 	if not gs.character_arrived.is_connected(arrived_callback):
 		gs.character_arrived.connect(arrived_callback)
+	var ride_finished := Callable(self, "_on_bridge_scavenger_ride_finished")
+	if gs.has_signal("external_traversal_finished") 			and not gs.external_traversal_finished.is_connected(ride_finished):
+		gs.external_traversal_finished.connect(ride_finished)
+	var ride_cancelled := Callable(self, "_on_bridge_scavenger_ride_cancelled")
+	if gs.has_signal("external_traversal_cancelled") 			and not gs.external_traversal_cancelled.is_connected(ride_cancelled):
+		gs.external_traversal_cancelled.connect(ride_cancelled)
 	if scavenger.has_method("set_detection_targets"):
 		scavenger.call("set_detection_targets", [])
 	if scavenger.has_method("activate"):
@@ -6376,6 +6384,17 @@ func _reconcile_hydraulic_scavenger_after_restore() -> void:
 				_bridge_scavenger_motion_intent = BRIDGE_SCAVENGER_INTENT_NONE
 			elif _bridge_scavenger_motion_intent == BRIDGE_SCAVENGER_INTENT_APPROACH:
 				_command_hydraulic_scavenger_motion(BRIDGE_SCAVENGER_INTENT_APPROACH, false)
+		BRIDGE_SCAVENGER_RIDING_CARGO:
+			if gs.is_external_traversal_active(character_id):
+				pass  # the locked ride resumes with the scheduler
+			else:
+				var now := _hydraulic_sequence_tick()
+				if _bridge_cargo_fall_end_tick >= 0.0 and now < _bridge_cargo_fall_end_tick:
+					_begin_bridge_scavenger_ride(false, _bridge_cargo_fall_end_tick - now)
+				else:
+					_bridge_scavenger_phase = BRIDGE_SCAVENGER_RETREATING_TO_LYSATE
+					_bridge_scavenger_motion_intent = BRIDGE_SCAVENGER_INTENT_RETREAT
+					_command_hydraulic_scavenger_motion(BRIDGE_SCAVENGER_INTENT_RETREAT, false)
 		BRIDGE_SCAVENGER_RETREATING_TO_LYSATE:
 			if _bridge_scavenger_is_at_route_index(3):
 				_on_bridge_scavenger_cleared(false)
@@ -6496,6 +6515,49 @@ func _update_hydraulic_cargo_pose(_intro_elapsed: float, now: float) -> void:
 			)
 
 
+## THE RIDE (docs/SCAVENGER_CARGO_BEAT.md, settled decision): the Sapscrap does
+## not jump clear — it rides the cargo down on ONE locked GameState traversal
+## spanning exactly the fall window, then steps off at the route's ground
+## waypoint and begins the retreat. Same authority family as the Channel carry,
+## so every save seam restores the same way it does for swept bodies.
+func _begin_bridge_scavenger_ride(publish := true, duration_override := -1.0) -> void:
+	var gs := _hydraulic_scavenger_state()
+	var character_id := _hydraulic_scavenger_character_id()
+	if gs == null or not gs.characters.has(character_id) 			or _bridge_scavenger_route.size() < 4:
+		return
+	var render_origin: Vector3 = gs.get_render_position(character_id) 		if gs.has_method("get_render_position") else gs.get_position(character_id)
+	var destination: Vector3 = _bridge_scavenger_route[2]
+	var duration := duration_override if duration_override > 0.0 		else BRIDGE_CARGO_FALL_DURATION
+	gs.command_external_traversal(character_id,
+		_bridge_scavenger_ride_traversal_id(), destination, render_origin,
+		destination, maxf(0.05, duration), &"locked")
+	if publish:
+		_publish_generated_runtime_authority()
+
+
+func _bridge_scavenger_ride_traversal_id() -> StringName:
+	return StringName("bridge_cargo_ride:%s" % _hydraulic_scavenger_character_id())
+
+
+func _on_bridge_scavenger_ride_finished(character_id: String, traversal_id: StringName) -> void:
+	if character_id != _hydraulic_scavenger_character_id() 			or traversal_id != _bridge_scavenger_ride_traversal_id() 			or _bridge_scavenger_phase != BRIDGE_SCAVENGER_RIDING_CARGO:
+		return
+	_bridge_scavenger_phase = BRIDGE_SCAVENGER_RETREATING_TO_LYSATE
+	_bridge_scavenger_motion_intent = BRIDGE_SCAVENGER_INTENT_RETREAT
+	_command_hydraulic_scavenger_motion(BRIDGE_SCAVENGER_INTENT_RETREAT)
+	_publish_generated_runtime_authority()
+
+
+func _on_bridge_scavenger_ride_cancelled(
+	character_id: String, traversal_id: StringName, _reason: StringName
+) -> void:
+	if character_id != _hydraulic_scavenger_character_id() 			or traversal_id != _bridge_scavenger_ride_traversal_id() 			or _bridge_scavenger_phase != BRIDGE_SCAVENGER_RIDING_CARGO:
+		return
+	# A cancelled ride (restore churn, forced stop) never strands the beat: the
+	# reconcile pass re-commands the remaining ride or lands the retreat.
+	_bridge_scavenger_motion_intent = BRIDGE_SCAVENGER_INTENT_NONE
+
+
 func _on_bridge_scavenger_contact(publish := true) -> void:
 	if not _hydraulic_enabled() \
 			or _bridge_intro_start_tick < 0.0 \
@@ -6503,8 +6565,8 @@ func _on_bridge_scavenger_contact(publish := true) -> void:
 			or _bridge_scavenger_phase != BRIDGE_SCAVENGER_APPROACHING_RACK \
 			or not _bridge_scavenger_is_at_route_index(1):
 		return
-	_bridge_scavenger_phase = BRIDGE_SCAVENGER_RETREATING_TO_LYSATE
-	_bridge_scavenger_motion_intent = BRIDGE_SCAVENGER_INTENT_RETREAT
+	_bridge_scavenger_phase = BRIDGE_SCAVENGER_RIDING_CARGO
+	_bridge_scavenger_motion_intent = BRIDGE_SCAVENGER_INTENT_NONE
 	_bridge_cargo_phase = BRIDGE_CARGO_FALLING
 	_bridge_cargo_fall_start_tick = _hydraulic_sequence_tick()
 	_bridge_cargo_fall_end_tick = _bridge_cargo_fall_start_tick + BRIDGE_CARGO_FALL_DURATION
@@ -6514,7 +6576,7 @@ func _on_bridge_scavenger_contact(publish := true) -> void:
 	if publish:
 		_publish_generated_runtime_authority()
 		_publish_bridge_cargo_compatibility("scavenger_dislodged_cargo")
-	_command_hydraulic_scavenger_motion(BRIDGE_SCAVENGER_INTENT_RETREAT, publish)
+	_begin_bridge_scavenger_ride(publish)
 	if publish:
 		_hydraulic_focus(_hydraulic_bridge_cargo, false, 2.2)
 		_request_preview_shake(0.12, 7.5)

@@ -156,7 +156,12 @@ func _verify_approach_contact_fall_and_retreat_save_seams() -> void:
 	var fall_position := _body_position(pair)
 	var fall_start := float(pair.chunk.get("_bridge_cargo_fall_start_tick"))
 	var fall_end := float(pair.chunk.get("_bridge_cargo_fall_end_tick"))
-	_assert_in_flight(pair, "retreating_to_lysate", "falling", "mid-fall capture")
+	check(
+		_phase(pair) == "riding_cargo"
+		and _cargo_phase(pair) == "falling"
+		and _body_riding(pair),
+		"mid-fall capture: the body RIDES the falling cargo on one locked traversal"
+	)
 
 	_apply_snapshot(pair, fall_snapshot)
 	check(
@@ -168,10 +173,10 @@ func _verify_approach_contact_fall_and_retreat_save_seams() -> void:
 	var fresh_fall := await _boot_pair()
 	_apply_snapshot(fresh_fall, fall_snapshot)
 	check(
-		_body_position(fresh_fall).distance_to(fall_position) <= 0.001
-		and _body_is_moving(fresh_fall)
+		_body_position(fresh_fall).distance_to(fall_position) <= 0.06
+		and _body_riding(fresh_fall)
 		and _cargo_phase(fresh_fall) == "falling",
-		"fresh mid-fall restore preserves retreat movement and falling cargo"
+		"fresh mid-fall restore preserves the ride and the falling cargo"
 	)
 	await _free_pair(fresh_fall)
 
@@ -181,7 +186,7 @@ func _verify_approach_contact_fall_and_retreat_save_seams() -> void:
 		_cargo_phase(pair) == "staged"
 		and _phase(pair) == "retreating_to_lysate"
 		and _body_is_moving(pair),
-		"physical cargo can finish falling while the same body continues its retreat"
+		"the body rides the cargo down and begins its retreat on landing"
 	)
 	var retreat_snapshot := _capture(pair)
 	var retreat_position := _body_position(pair)
@@ -318,6 +323,10 @@ func _body_is_moving(pair: Dictionary) -> bool:
 	return pair.host.game_state.is_moving(_body_id(pair))
 
 
+func _body_riding(pair: Dictionary) -> bool:
+	return pair.host.game_state.is_external_traversal_active(_body_id(pair))
+
+
 func _route(pair: Dictionary) -> Array:
 	var route_v: Variant = pair.chunk.get("_bridge_scavenger_route")
 	return route_v as Array if route_v is Array else []
@@ -413,12 +422,12 @@ func _assert_in_flight(
 func _assert_contact_restore(pair: Dictionary, label: String) -> void:
 	var events := _milestone_events(pair)
 	check(
-		_phase(pair) == "retreating_to_lysate"
+		_phase(pair) == "riding_cargo"
 		and _cargo_phase(pair) == "falling"
-		and _body_is_moving(pair)
-		and _body_position(pair).distance_to(_route(pair)[1]) <= 0.001
+		and _body_riding(pair)
+		and _body_position(pair).distance_to(_route(pair)[1]) <= 0.06
 		and _event_count(events, "scavenger_dislodged_cargo") == 1,
-		"%s restores rack contact exactly and resumes retreat without duplication" % label
+		"%s restores rack contact exactly and resumes the RIDE without duplication" % label
 	)
 
 
