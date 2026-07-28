@@ -1,4 +1,4 @@
-extends Node
+extends SceneTree
 
 ## Focused Wash Relay browser-play regression. Boots the real FragmentPreview
 ## and inspects its existing live follow camera (never a test-only camera).
@@ -17,7 +17,7 @@ var failures: Array[String] = []
 var checks := 0
 
 
-func _ready() -> void:
+func _init() -> void:
 	call_deferred("_run")
 
 
@@ -37,9 +37,9 @@ func _run() -> void:
 	preview.set("preview_menu", false)
 	preview.set("preview_chunk", "wash_relay")
 	preview.set("suppress_scene_change", true)
-	get_tree().root.add_child(preview)
+	root.add_child(preview)
 	for _frame in range(16):
-		await get_tree().process_frame
+		await process_frame
 
 	var chunk: Node = preview.get("_active_chunk")
 	var camera: Camera3D = preview.get("_camera")
@@ -53,14 +53,14 @@ func _run() -> void:
 		await verify_water(preview, chunk, camera, gs)
 
 	preview.queue_free()
-	await get_tree().process_frame
-	await get_tree().process_frame
+	await process_frame
+	await process_frame
 	if failures.is_empty():
 		print("\nWASH RELAY VISUAL CONTRACT PASS (%d checks)" % checks)
-		get_tree().quit(0)
+		quit(0)
 	else:
 		print("\nWASH RELAY VISUAL CONTRACT FAIL (%d/%d failed)" % [failures.size(), checks])
-		get_tree().quit(1)
+		quit(1)
 
 
 func verify_camera(preview: Node, chunk: Node, camera: Camera3D, gs) -> void:
@@ -86,7 +86,7 @@ func verify_camera(preview: Node, chunk: Node, camera: Camera3D, gs) -> void:
 
 	var camera_id := camera.get_instance_id()
 	preview.call("_select_character", "peris")
-	await get_tree().process_frame
+	await process_frame
 	camera = preview.get("_camera")
 	check(camera.get_instance_id() == camera_id and camera.get("target") == characters.get("peris"),
 		"selection retargets the same follow camera")
@@ -106,7 +106,7 @@ func verify_camera(preview: Node, chunk: Node, camera: Camera3D, gs) -> void:
 	if camera.has_method("apply_follow_profile"):
 		camera.call("apply_follow_profile", profile, true)
 	for _frame in range(6):
-		await get_tree().process_frame
+		await process_frame
 
 	var flat: Vector3 = gs.get_position("peris")
 	var points := [
@@ -129,7 +129,7 @@ func verify_water(preview: Node, chunk: Node, _camera: Camera3D, gs) -> void:
 	chunk.call("_update", 0.0)
 	chunk.call("_flood_onset", 0)
 	chunk.call("_update", 0.0)
-	await get_tree().process_frame
+	await process_frame
 	var shown: Array = (chunk.call("get_preview_state") as Dictionary).get("water_shown", [])
 	check(not shown.is_empty() and bool(shown[0]), "a live flood still shows section water")
 
@@ -199,14 +199,28 @@ func verify_guidance(preview: Node, chunk: Node, camera: Camera3D, gs) -> void:
 		"spawn presents one opening objective instead of nine simultaneous demands")
 
 	var climb: Node = chunk.find_child("ClimbLine", true, false)
-	var rope: MeshInstance3D = chunk.get("_rope_mesh") as MeshInstance3D
-	check(climb != null and not bool(climb.call("is_interaction_enabled")) and rope != null and not rope.visible,
-		"premature CLIMB click/hover target and rope both begin hidden")
-	chunk.call("_on_sloperope")
-	check(bool(climb.call("is_interaction_enabled")) and rope.visible,
-		"dropping the sloperope reveals and enables CLIMB together")
+	var vine: Node3D = chunk.get("_rope_mesh") as Node3D
+	var vine_meshes: Array[Node] = vine.find_children("*", "MeshInstance3D", true, false) \
+		if vine != null else []
+	check(climb != null and not bool(climb.call("is_interaction_enabled"))
+		and vine != null and not vine.visible and not vine_meshes.is_empty(),
+		"premature CLIMB target begins hidden while retaining its modeled pothos vine")
+	gs.snap_character_to("peris", chunk.RETURN_LANDING)
+	chunk.call("_on_sloperope", "peris")
+	check(not bool(climb.call("is_interaction_enabled")) and not vine.visible,
+		"retired Wash helper cannot reveal the vine without an exact source receipt")
+	var tend_source: Node = chunk.find_child("ClimbvineTendAnchor", true, false)
+	check(tend_source != null, "upper physical TEND source is present")
+	if tend_source != null:
+		tend_source.set("active_character", "peris")
+		check(bool(tend_source.call("_trigger", false)),
+			"exact upper Interactable and Peris body commit deployment")
+	gs.scheduler.advance_ticks(chunk.SLOPEROPE_DEPLOY_DURATION + EPS)
+	await process_frame
+	check(bool(climb.call("is_interaction_enabled")) and vine.visible,
+		"Peris tending the upper anchor visibly grows and enables CLIMB after deployment")
 	chunk.call("reset_preview_state")
-	check(not bool(climb.call("is_interaction_enabled")) and not rope.visible,
+	check(not bool(climb.call("is_interaction_enabled")) and not vine.visible,
 		"reset cannot leak the early CLIMB affordance back in")
 
 	var sections: Array = state.get("sections", [])
@@ -223,7 +237,7 @@ func verify_guidance(preview: Node, chunk: Node, camera: Camera3D, gs) -> void:
 		if (label as Label3D).text.contains("OPTIONAL"):
 			optional_labels += 1
 	check(optional_labels == int(state.get("branch_count", 0)) + 1,
-		"every salvage branch and the drain cache explicitly say OPTIONAL")
+		"every lysate branch and the drain source explicitly say OPTIONAL")
 	check((chunk.get("_causal_feedback_links") as Array).size() >= 3,
 		"held overrides reuse the perception-aware cause/effect link system")
 
@@ -234,7 +248,7 @@ func verify_guidance(preview: Node, chunk: Node, camera: Camera3D, gs) -> void:
 		gs.snap_character_to(str(preview.get("_active_char_id")), Vector3(float(first["x0"]) - 0.3, 0.5, 0.0))
 		chunk.call("_update", 0.0)
 		for _frame in range(6):
-			await get_tree().process_frame
+			await process_frame
 		var opening: Node3D = guidance.get_child(0) as Node3D
 		var marker: Node3D = opening.find_child("DestinationMarker", true, false) as Node3D
 		var cue: Node3D = opening.find_child("DecisionCue", true, false) as Node3D

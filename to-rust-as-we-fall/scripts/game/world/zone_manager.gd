@@ -66,13 +66,13 @@ func enter_zone(zone_id: StringName) -> void:
 				_zone_state[zone_id] = transformed
 	zone_entered.emit(zone_id)
 
-## Enter a hub and rest the party.
-func enter_hub(hub_id: StringName, gs: GameState, party: Array) -> void:
+## Enter a hub. Arrival changes location/progression only; shelter rest is an explicit
+## GameState command and never occurs as a side effect of a portal or zone transition.
+func enter_hub(hub_id: StringName, _gs: GameState, _party: Array) -> void:
 	if not hubs.has(hub_id):
 		return
 	current_hub = hub_id
 	hub_entered.emit(hub_id)
-	Hub.restore_party(gs, party)
 
 ## Attempt a gate pass and emit pass/block signals.
 func try_pass_gate(gate_id: StringName, gs: GameState, party: Array) -> bool:
@@ -146,6 +146,7 @@ func retreat_to_last_hub(gs: GameState, party: Array) -> bool:
 		return false
 	if not hubs.has(current_hub):
 		return false
-	Hub.restore_party(gs, party)
+	if not Hub.revive_party_after_wipe(gs, party):
+		return false
 	party_retreated.emit(current_hub)
 	return true

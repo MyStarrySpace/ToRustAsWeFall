@@ -5,8 +5,12 @@ extends RefCounted
 ##
 ## States are named strings. Each may register on_enter / on_exit / on_update callbacks. Timed
 ## transitions and per-state scheduled work ride the EventScheduler, so they respect pause +
-## fast-forward and replay deterministically (the FSM holds DERIVED state — it never writes to the
-## EventLog; transitions are reproduced from the same scheduler callbacks on replay).
+## fast-forward during an uninterrupted run. That does NOT make the FSM snapshot-authoritative:
+## EventScheduler saves its clock, not Callables, and this class does not serialize `_current`.
+## Every gameplay owner must commit its phase, stable context, and absolute deadlines to GameState
+## (or another explicit save contract), then rebuild one callback per deadline after a load. An FSM
+## may remain purely derived only when its owner proves that reconstruction path; presentation-only
+## and non-persistent harness FSMs must be called out explicitly.
 ##
 ## A single scheduler TAG owns every timer a state arms; transitioning cancels that tag, so no stale
 ## timer from the old state can fire after you've left it (the pattern enemy.gd hand-rolled with

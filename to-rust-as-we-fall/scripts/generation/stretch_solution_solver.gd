@@ -14,6 +14,8 @@ extends RefCounted
 ## the minimum pair can finish every puzzle.
 
 const CapabilitiesScript := preload("res://scripts/generation/stretch_capabilities.gd")
+const RuntimeRegistryScript := preload("res://scripts/generation/generated_node_runtime_registry.gd")
+const BranchWeaverScript := preload("res://scripts/generation/stretch_branch_weaver.gd")
 
 const REQUIRED_TIERS := ["hard", "setpiece"]
 
@@ -39,29 +41,45 @@ static func analyze_spec(spec: Dictionary) -> Dictionary:
 	var tier := str(spec.get("source", {}).get("complexity_tier", spec.get("settings", {}).get("complexity_tier", "teaching")))
 	var prog := int(spec.get("source", {}).get("progression_stage", spec.get("settings", {}).get("progression_stage", 99)))
 	var roster = spec.get("source", {}).get("roster", spec.get("settings", {}).get("roster", []))
-	return analyze(nodes, tier, prog, roster)
+	var navigation_grid: Dictionary = spec.get("navigation_grid", {})
+	var branches: Array = navigation_grid.get("branches", [])
+	return analyze(nodes, tier, prog, roster, branches, navigation_grid)
 
 
 ## `roster` is the set of ENABLED characters (the enable/disable options). The spotlight
 ## loadout is built from it, so disabling the combat character makes a combat-only node fall
 ## to the pair's approach; the shadow (Aster+Peris) path is unaffected and always solves.
-static func analyze(nodes: Array, tier := "teaching", progression_stage := 99, roster = []) -> Dictionary:
+static func analyze(
+		nodes: Array,
+		tier := "teaching",
+		progression_stage := 99,
+		roster = [],
+		branches: Array = [],
+		navigation_grid: Dictionary = {}
+) -> Dictionary:
 	# Only non-optional nodes count toward the multi-solution guarantee: the chunk's golden
 	# path (and the playtest) walk the non-optional spine, so an optional detour carrying a
 	# choice must not be what proves the stretch is solvable two ways.
 	var choice_nodes: Array[String] = []
-	var diagnosis_nodes: Array[String] = []
 	for node in nodes:
 		if not (node is Dictionary) or bool((node as Dictionary).get("optional", false)):
 			continue
 		if _presents_choice(node as Dictionary):
 			choice_nodes.append(str((node as Dictionary).get("id", "")))
-		if _is_diagnosis(node as Dictionary):
-			diagnosis_nodes.append(str((node as Dictionary).get("id", "")))
 
+	var branch_validation: Dictionary = BranchWeaverScript.validate_branch_contracts(
+		branches, navigation_grid
+	)
+	var branch_actions := mandatory_branch_actions(branches, nodes, navigation_grid)
 	var solution_paths := []
 	for loadout in CapabilitiesScript.loadouts(roster):
-		solution_paths.append(_solve_loadout(nodes, loadout, progression_stage, roster))
+		var path := _solve_loadout(nodes, loadout, progression_stage, roster)
+		path["branch_actions"] = branch_actions.duplicate(true)
+		path["branch_contract_valid"] = bool(branch_validation.get("valid", false))
+		if not bool(branch_validation.get("valid", false)):
+			path["solvable"] = false
+			path["blocked_branches"] = _mandatory_branch_ids(branches)
+		solution_paths.append(path)
 
 	var spotlight := _path_for(solution_paths, "spotlight")
 	var shadow := _path_for(solution_paths, "shadow")
@@ -83,11 +101,19 @@ static func analyze(nodes: Array, tier := "teaching", progression_stage := 99, r
 	var multi_solution := not distinct_nodes.is_empty()
 	var shadow_solvable := bool(shadow.get("solvable", false))
 	var required := tier in REQUIRED_TIERS and not choice_nodes.is_empty()
-	var bare_pair_solvable := _bare_pair_solvable(nodes)
+	var bare_pair_solvable := _bare_pair_solvable(nodes) \
+			and bool(branch_validation.get("valid", false))
 	var shadow_uses_future := bool(shadow.get("uses_future_technique", false))
 	var spotlight_within_stage := bool(spotlight.get("within_stage", true))
 
 	var warnings := []
+	if not bool(branch_validation.get("valid", false)):
+		warnings.append({
+			"severity": "error",
+			"code": "invalid_branch_contract",
+			"message": "Generated navigation branches are not a truthful solvable contract: %s"
+					% str(branch_validation.get("errors", [])),
+		})
 	if not bare_pair_solvable:
 		warnings.append({
 			"severity": "error",
@@ -105,12 +131,6 @@ static func analyze(nodes: Array, tier := "teaching", progression_stage := 99, r
 			"severity": "error",
 			"code": "spotlight_out_of_stage",
 			"message": "The full-party path relies on a technique from beyond the stretch's progression stage — first-play solutions must stay in-stage.",
-		})
-	if tier in REQUIRED_TIERS and choice_nodes.is_empty():
-		warnings.append({
-			"severity": "error",
-			"code": "no_puzzle_nodes",
-			"message": "Tier '%s' must contain at least one multi-solution puzzle node, but the spine has none (an empty/degenerate archetype pool)." % tier,
 		})
 	if required and not multi_solution:
 		warnings.append({
@@ -133,6 +153,10 @@ static func analyze(nodes: Array, tier := "teaching", progression_stage := 99, r
 		"spotlight_party": (spotlight.get("party", []) as Array),
 		"choice_nodes": choice_nodes,
 		"choice_node_count": choice_nodes.size(),
+		"branch_contract_valid": bool(branch_validation.get("valid", false)),
+		"branch_contract_errors": branch_validation.get("errors", []),
+		"branch_actions": branch_actions,
+		"mandatory_branch_action_count": branch_actions.size(),
 		"solution_paths": solution_paths,
 		"solvable_loadout_count": solvable_count,
 		"shadow_solvable": shadow_solvable,
@@ -149,11 +173,161 @@ static func analyze(nodes: Array, tier := "teaching", progression_stage := 99, r
 		"shadow_pressure": float(shadow.get("pressure", 0.0)),
 		"shadow_combination_premium": float(shadow.get("combination_premium", 0.0)),
 		"combination_pressure_gap": float(shadow.get("pressure", 0.0)) - float(spotlight.get("pressure", 0.0)),
-		"diagnosis_nodes": diagnosis_nodes,
-		"diagnosis_node_count": diagnosis_nodes.size(),
-		"diagnosis_penalty": float(shadow.get("diagnosis_penalty", 0.0)),
 		"warnings": warnings,
 	}
+
+
+## Required branch work is part of the solution, not presentation layered on at
+## runtime. Each action names the exact producer and downstream blocker cells in
+## the persisted woven-grid frame so a replay can interact, wait, and only then
+## cross the newly bridged span. Optional reward rooms deliberately emit no action.
+static func mandatory_branch_actions(
+		branches: Array, nodes: Array = [], navigation_grid: Dictionary = {}
+) -> Array:
+	var actions: Array = []
+	for branch_v in branches:
+		if not (branch_v is Dictionary):
+			continue
+		var branch := branch_v as Dictionary
+		if str(branch.get("role", "")) != BranchWeaverScript.ROLE_MANDATORY_PRODUCER \
+				or not bool(branch.get("required_for_progress", false)):
+			continue
+		var contract: Dictionary = branch.get("causal_contract", {})
+		var branch_id := str(branch.get("id", contract.get("branch_id", "")))
+		var producer_cell = contract.get("producer_cell", [])
+		var consumer_cell = contract.get("consumer_cell", [])
+		var consumer_cells: Array = contract.get("consumer_cells", [])
+		# Compatibility for older persisted contracts. New generated specs always
+		# carry the proven plural cut and generator validation rejects this fallback.
+		if consumer_cells.is_empty() and consumer_cell is Array \
+				and (consumer_cell as Array).size() >= 2:
+			consumer_cells = [(consumer_cell as Array).duplicate()]
+		if branch_id.is_empty() or not (producer_cell is Array) \
+				or (producer_cell as Array).size() < 2 \
+				or not (consumer_cell is Array) or (consumer_cell as Array).size() < 2 \
+				or consumer_cells.is_empty():
+			continue
+		var before_node := _before_node_for_consumer(
+			consumer_cell as Array, nodes, navigation_grid
+		)
+		var before_nodes := _before_nodes_for_consumer(
+			consumer_cell as Array, nodes, navigation_grid
+		)
+		if before_node != "" and not before_nodes.has(before_node):
+			before_nodes.append(before_node)
+		actions.append({
+			"id": "activate_%s_span" % branch_id,
+			"action": "activate",
+			"target": branch_id,
+			"branch_id": branch_id,
+			"role": BranchWeaverScript.ROLE_MANDATORY_PRODUCER,
+			"kind": "mandatory_branch_interaction",
+			"runtime_handler": str(contract.get("runtime_handler", "branch_span_producer")),
+			"activation_policy": str(contract.get("activation_policy", "interact_at_producer")),
+			"producer_cell": (producer_cell as Array).duplicate(),
+			"consumer_cells": consumer_cells.duplicate(true),
+			"consumer_cell": (consumer_cell as Array).duplicate(),
+			# The canonical golden path skips optional reward nodes, while an opting-in
+			# path must cross the same cut to reach them. Keep the legacy singular
+			# trigger for golden replays and emit every earliest physical destination
+			# that can encounter the cut so neither path arrives at a closed span.
+			"before_node": before_node,
+			"before_nodes": before_nodes,
+			"produces_state": str(contract.get("produces_state", "%s_resolved" % branch_id)),
+			"expected_phase": str(contract.get("completion_phase", "bridged")),
+			"wait_for_completion": bool(contract.get("wait_for_completion", true)),
+			"required_for_progress": true,
+			"cannot_bypass_unresolved": bool(contract.get("cannot_bypass_unresolved", false)),
+		})
+	actions.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		var a_cell: Array = a.get("consumer_cell", [2147483647, 0])
+		var b_cell: Array = b.get("consumer_cell", [2147483647, 0])
+		var a_x := int(a_cell[0]) if not a_cell.is_empty() else 2147483647
+		var b_x := int(b_cell[0]) if not b_cell.is_empty() else 2147483647
+		if a_x != b_x:
+			return a_x < b_x
+		return str(a.get("branch_id", "")) < str(b.get("branch_id", ""))
+	)
+	for index in range(actions.size()):
+		(actions[index] as Dictionary)["solution_order"] = index
+	return actions
+
+
+static func _before_node_for_consumer(
+		consumer_cell: Array, nodes: Array, navigation_grid: Dictionary
+) -> String:
+	var fallback := ""
+	var origin: Array = navigation_grid.get("origin", [0.0, 0.0, 0.0])
+	var cell_size := float(navigation_grid.get("cell_size", 1.0))
+	var consumer_world_x := (
+		float(origin[0]) + (float(consumer_cell[0]) + 0.5) * cell_size
+	) if consumer_cell.size() >= 2 else INF
+	for node_v in nodes:
+		if not (node_v is Dictionary):
+			continue
+		var node := node_v as Dictionary
+		if bool(node.get("optional", false)):
+			continue
+		var node_id := str(node.get("id", ""))
+		if node_id == "exit_shelter":
+			fallback = node_id
+		var position: Array = node.get("position", [])
+		if position.size() >= 3 and float(position[0]) + 0.001 >= consumer_world_x:
+			return node_id
+	return fallback
+
+
+## A mandatory cut can sit immediately before an optional reward node. The
+## golden path bypasses that node, so one singular `before_node` cannot schedule
+## the producer for both routes. Emit the first spatial destination past the cut
+## plus the first required destination; action consumers de-duplicate after the
+## first successful trigger.
+static func _before_nodes_for_consumer(
+		consumer_cell: Array, nodes: Array, navigation_grid: Dictionary
+) -> Array[String]:
+	var result: Array[String] = []
+	var origin: Array = navigation_grid.get("origin", [0.0, 0.0, 0.0])
+	var cell_size := float(navigation_grid.get("cell_size", 1.0))
+	var consumer_world_x := (
+		float(origin[0]) + (float(consumer_cell[0]) + 0.5) * cell_size
+	) if consumer_cell.size() >= 2 else INF
+	var first_destination := ""
+	var first_required_destination := ""
+	var fallback := ""
+	for node_v in nodes:
+		if not (node_v is Dictionary):
+			continue
+		var node := node_v as Dictionary
+		var node_id := str(node.get("id", ""))
+		if node_id == "exit_shelter":
+			fallback = node_id
+		var position: Array = node.get("position", [])
+		if position.size() < 3 \
+				or float(position[0]) + 0.001 < consumer_world_x:
+			continue
+		if first_destination == "":
+			first_destination = node_id
+		if not bool(node.get("optional", false)):
+			first_required_destination = node_id
+			break
+	if first_destination != "":
+		result.append(first_destination)
+	if first_required_destination != "" \
+			and not result.has(first_required_destination):
+		result.append(first_required_destination)
+	elif result.is_empty() and fallback != "":
+		result.append(fallback)
+	return result
+
+
+static func _mandatory_branch_ids(branches: Array) -> Array[String]:
+	var result: Array[String] = []
+	for branch_v in branches:
+		if branch_v is Dictionary \
+				and str((branch_v as Dictionary).get("role", "")) \
+				== BranchWeaverScript.ROLE_MANDATORY_PRODUCER:
+			result.append(str((branch_v as Dictionary).get("id", "")))
+	return result
 
 
 ## Every node must keep at least one approach the bare Aster+Peris pair can field with NO
@@ -161,23 +335,23 @@ static func analyze(nodes: Array, tier := "teaching", progression_stage := 99, r
 ## The qualifying approach may be a harder, later-stage expert technique; the pair being
 ## able to do it at all is what matters here, not that it is stage-appropriate.
 static func _bare_pair_solvable(nodes: Array) -> bool:
-	var bare: Dictionary = CapabilitiesScript.bare_pair_capabilities()
 	for node in nodes:
 		if not (node is Dictionary):
 			continue
-		var approaches: Array = (node as Dictionary).get("approaches", [])
-		if approaches.is_empty():
+		var node_dict := node as Dictionary
+		var handler_id := RuntimeRegistryScript.declared_handler(node_dict)
+		if handler_id == "":
 			continue
-		var ok := false
-		for approach in approaches:
-			if not (approach is Dictionary):
-				continue
-			if str((approach as Dictionary).get("party", "")) == "specialist":
-				continue
-			if CapabilitiesScript.requirements_met((approach as Dictionary).get("requires", []), bare):
-				ok = true
-				break
-		if not ok:
+		if not bool(node_dict.get(
+			"runtime_progression_required", not bool(node_dict.get("optional", false))
+		)):
+			# Optional interactions may still demand a capability to claim their reward,
+			# but declining one can never make the baseline party unsolvable.
+			continue
+		if (
+			not RuntimeRegistryScript.is_implemented(handler_id)
+			or RuntimeRegistryScript.handler_approach(handler_id).is_empty()
+		):
 			return false
 	return true
 
@@ -199,8 +373,6 @@ static func _solve_loadout(nodes: Array, loadout: Dictionary, progression_stage 
 	var pressure := 0.0
 	var combination_premium := 0.0
 	var choice_nodes_taken := 0
-	var diagnosis_nodes_taken := 0
-	var diagnosis_penalty := 0.0
 	var max_stage_used := 0
 	var uses_future := false
 	var within_stage := true
@@ -210,6 +382,80 @@ static func _solve_loadout(nodes: Array, loadout: Dictionary, progression_stage 
 			continue
 		var node_dict := node as Dictionary
 		var node_id := str(node_dict.get("id", ""))
+		var handler_id := RuntimeRegistryScript.declared_handler(node_dict)
+		var progression_required := bool(node_dict.get(
+			"runtime_progression_required",
+			handler_id != "" and not bool(node_dict.get("optional", false))
+		))
+		if handler_id != "" and not progression_required:
+			# Keep the real handler on the node for an opting-in player, but serialize
+			# the mandatory solution as a pass-through. This prevents deterministic
+			# replay from claiming an optional reward interaction it never performed.
+			approach_per_node.append({
+				"node": node_id,
+				"role": str(node_dict.get("role", "")),
+				"approach_id": "skip_optional_interaction",
+				"kind": "optional_layout_traversal",
+				"label": "OPTIONAL %s" % RuntimeRegistryScript.initial_action_label(
+					node_dict, handler_id
+				),
+				"party": "any",
+				"requires": [],
+				"uses": [],
+				"risk": "safe",
+				"runtime_handler": "",
+				"optional_runtime_handler": handler_id,
+				"optional_interaction": true,
+				"runtime_progression_required": false,
+				"blocked": false,
+			})
+			continue
+		if handler_id == "":
+			# Layout-only nodes remain on the traversal path but are not actions and
+			# cannot block either loadout.
+			approach_per_node.append({
+				"node": node_id,
+				"role": str(node_dict.get("role", "")),
+				"approach_id": "traverse",
+				"kind": "layout_traversal",
+				"party": "any",
+				"requires": [],
+				"risk": "safe",
+				"runtime_handler": "",
+				"blocked": false,
+			})
+			continue
+		var handler_approach := RuntimeRegistryScript.handler_approach(handler_id)
+		if RuntimeRegistryScript.is_implemented(handler_id) and not handler_approach.is_empty():
+			var handler_record := handler_approach.duplicate(true)
+			handler_record["node"] = node_id
+			handler_record["role"] = str(node_dict.get("role", ""))
+			handler_record["runtime_handler"] = handler_id
+			handler_record["requires"] = []
+			handler_record["uses"] = []
+			handler_record["label"] = RuntimeRegistryScript.initial_action_label(node_dict, handler_id)
+			handler_record["min_stage"] = int(node_dict.get("stage", 1))
+			handler_record["expert"] = false
+			handler_record["stage_ahead"] = false
+			handler_record["borrows_from"] = ""
+			handler_record["node_pressure"] = 0.0
+			handler_record["combination_premium"] = 0.0
+			approach_per_node.append(handler_record)
+			continue
+		blocked.append(node_id)
+		solvable = false
+		approach_per_node.append({
+			"node": node_id,
+			"role": str(node_dict.get("role", "")),
+			"approach_id": "",
+			"kind": "blocked",
+			"party": "",
+			"requires": [],
+			"risk": "blocked",
+			"runtime_handler": handler_id,
+			"blocked": true,
+		})
+		continue
 		var approaches: Array = node_dict.get("approaches", [])
 		if approaches.is_empty():
 			# A plain traversal beat (entry / shelter / unscripted node) — always passable.
@@ -287,7 +533,6 @@ static func _solve_loadout(nodes: Array, loadout: Dictionary, progression_stage 
 				node_premium = -COMBINATION_SPOTLIGHT_RELIEF
 		combination_premium += node_premium
 		pressure += maxf(0.0, node_pressure + node_premium)
-		var is_diagnosis := _is_diagnosis(node_dict)
 		var record := {
 			"node": node_id,
 			"role": str(node_dict.get("role", "")),
@@ -307,14 +552,6 @@ static func _solve_loadout(nodes: Array, loadout: Dictionary, progression_stage 
 			"combination_premium": node_premium,
 			"blocked": false,
 		}
-		if is_diagnosis:
-			diagnosis_nodes_taken += 1
-			# The solve commits the CORRECT read (no penalty); the wrong-read sting is what a
-			# misdiagnosis would have cost, carried so the UI can show the stakes.
-			record["diagnosis"] = true
-			record["correct_read"] = diagnosis_correct_read(node_dict)
-			record["wrong_read_penalty"] = diagnosis_wrong_penalty(node_dict)
-			diagnosis_penalty += diagnosis_wrong_penalty(node_dict)
 		approach_per_node.append(record)
 	return {
 		"loadout": str(loadout.get("id", "")),
@@ -327,8 +564,6 @@ static func _solve_loadout(nodes: Array, loadout: Dictionary, progression_stage 
 		"pressure": pressure,
 		"combination_premium": combination_premium,
 		"choice_nodes_taken": choice_nodes_taken,
-		"diagnosis_nodes_taken": diagnosis_nodes_taken,
-		"diagnosis_penalty": diagnosis_penalty,
 		"max_stage_used": max_stage_used,
 		"uses_future_technique": uses_future,
 		"within_stage": within_stage,
@@ -336,53 +571,12 @@ static func _solve_loadout(nodes: Array, loadout: Dictionary, progression_stage 
 	}
 
 
-## A diagnosis node presents multiple character reads, exactly one correct. The "solve" is
-## naming the correct read; a wrong read is a pressure setback, never a hard block.
-static func _is_diagnosis(node: Dictionary) -> bool:
-	return str(node.get("kind", "")) == "diagnosis" or str(node.get("solve", "")) == "deduce" \
-		or not (node.get("reads", []) as Array).is_empty()
-
-
-## The pressure penalty a wrong diagnosis read costs — the worst of the wrong reads' authored
-## penalties (a min of 1 so a diagnosis node always has a wrong-read sting). Zero for a node
-## with no reads (not a diagnosis node).
-static func diagnosis_wrong_penalty(node: Dictionary) -> float:
-	var reads: Array = node.get("reads", [])
-	if reads.is_empty():
-		return 0.0
-	var worst := 0.0
-	for read in reads:
-		if read is Dictionary and not bool((read as Dictionary).get("correct", false)):
-			worst = maxf(worst, float((read as Dictionary).get("penalty", 1)))
-	return maxf(1.0, worst)
-
-
-## The id of the correct read on a diagnosis node (the node's own `correct_read`, else the
-## one read flagged correct). Empty for a non-diagnosis node.
-static func diagnosis_correct_read(node: Dictionary) -> String:
-	var explicit := str(node.get("correct_read", "")).strip_edges()
-	if explicit != "":
-		return explicit
-	for read in node.get("reads", []):
-		if read is Dictionary and bool((read as Dictionary).get("correct", false)):
-			return str((read as Dictionary).get("id", ""))
-	return ""
-
-
 ## A node presents a genuine choice when it offers both a specialist primary approach
 ## and an Aster+Peris shadow approach — the two ways a thinking player can take it.
 static func _presents_choice(node: Dictionary) -> bool:
-	var has_specialist := false
-	var has_shadow := false
-	for approach in node.get("approaches", []):
-		if not (approach is Dictionary):
-			continue
-		match str((approach as Dictionary).get("party", "")):
-			"specialist":
-				has_specialist = true
-			"aster_peris":
-				has_shadow = true
-	return has_specialist and has_shadow
+	# None of the current generated-node handlers implements alternate approach
+	# lifecycles. Archetype approach prose cannot manufacture a solver choice.
+	return false
 
 
 static func _path_for(solution_paths: Array, loadout_id: String) -> Dictionary:

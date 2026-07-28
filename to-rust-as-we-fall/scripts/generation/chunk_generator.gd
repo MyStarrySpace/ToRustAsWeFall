@@ -50,25 +50,37 @@ static func _compose_attempt(stages: Array, seed: int) -> Dictionary:
 	var widths: Array = []
 	var w := 2                                    # borders
 	for i in range(n + 1):
-		var cw := _ri(rng, 4, 6)                  # per-chamber interior width (seeded variety)
+		var stage_arch := str(stages[i]).split(":")[0] if i < n else ""
+		# Watched races need a real three-body staging footprint plus approach space.
+		# Six or seven cells keeps every possible lateral slot at least four cells
+		# from the post while retaining seeded length variety.
+		var cw := _ri(rng, 6, 7) if stage_arch == "distract" else _ri(rng, 4, 6)
 		widths.append(cw)
 		w += cw + (1 if i < n else 0)             # chamber + its gate column
 	var g := _room(w, h)
 	var start := Vector2i(1, h / 2)
 	g[start] = SYM_START
 	var gates: Array = []
-	var chamber_spans: Array = []                 # [{x0, x1}] interiors, for pillar seeding
+	var chamber_spans: Array = []                 # [{x0, x1, path_blockers}] interiors, for pillar seeding
 	var cx := 1
 	for i in range(n):
 		var chamber_x0 := cx
 		var gate_col := chamber_x0 + int(widths[i])
-		chamber_spans.append({"x0": chamber_x0, "x1": gate_col - 1})
 		var parts := str(stages[i]).split(":")
 		var arch := parts[0]
 		var variant := parts[1] if parts.size() > 1 else ""
+		# A distract chamber is a formation-and-timing test. Random blocking pillars turn
+		# that into an unpreviewed navigation test: a side member can be braided through
+		# the watch fan even though the generated launch and centre route are safe. Keep
+		# portable decoration there, but reserve the whole executable chamber topology.
+		chamber_spans.append({
+			"x0": chamber_x0,
+			"x1": gate_col - 1,
+			"path_blockers": arch != "distract",
+		})
 		gates.append(_stage(g, chamber_x0, gate_col, gate_col, h, arch, rng, variant))
 		cx = gate_col + 1
-	chamber_spans.append({"x0": cx, "x1": w - 2})
+	chamber_spans.append({"x0": cx, "x1": w - 2, "path_blockers": true})
 	var end := Vector2i(w - 2, h / 2)
 	g[end] = SYM_END
 	var chunk := {
@@ -85,14 +97,30 @@ static func _seed_pillars(chunk: Dictionary, spans: Array, rng: SeededRng) -> vo
 	var g: Dictionary = chunk["grid"]
 	var h := int(chunk["h"])
 	var placed: Array = []
+	# A distract gate's east-side comprehension landing is part of its executable
+	# three-body route. Final/next-chamber decoration used to place a pillar on one
+	# of those slots; the generic rally resolver silently shifted that character,
+	# while the authored pad and strategy proof described a different solution.
+	var reserved := {}
+	for gate_v in (chunk.get("gates", []) as Array):
+		var gate := gate_v as Dictionary
+		if str(gate.get("arch", "")) != "distract":
+			continue
+		for gate_cell_v in (gate.get("cells", []) as Array):
+			var gate_cell := gate_cell_v as Vector2i
+			for east_steps in range(1, 3):
+				reserved[gate_cell + Vector2i(east_steps, 0)] = true
 	for span in spans:
+		if not bool(span.get("path_blockers", true)):
+			continue
 		var x0 := int(span["x0"])
 		var x1 := int(span["x1"])
 		if x1 - x0 < 3:
 			continue
 		for _p in range(_ri(rng, 0, 2)):
 			var cell := Vector2i(_ri(rng, x0 + 1, x1 - 1), _ri(rng, 2, h - 3))
-			if str(g.get(cell, "")) == SYM_FLOOR and absi(cell.y - h / 2) >= 1:
+			if not reserved.has(cell) and str(g.get(cell, "")) == SYM_FLOOR \
+					and absi(cell.y - h / 2) >= 1:
 				g[cell] = SYM_WALL
 				placed.append(cell)
 	if placed.is_empty():
@@ -155,7 +183,7 @@ static func _stage(g: Dictionary, chamber_x0: int, chamber_x1: int, gate_col: in
 			var v: String = variant if variant != "" else str(["lure", "patrol", "twin"][_ri(rng, 0, 2)])
 			match v:
 				"patrol":
-					# WHEN-register gate: no flure. A TALLER watched gap (5 rows) with the sentry pacing
+					# WHEN-register gate: no flure. A TALLER watched gap (6 rows) with the sentry pacing
 					# inside it — the window is crossing the far rows while it walks the other end. A
 					# carved side-alcove was tried first and verify() caught it as a hole straight
 					# through the 1-cell band; the tall-gap form keeps the invariant by construction.
@@ -165,7 +193,7 @@ static func _stage(g: Dictionary, chamber_x0: int, chamber_x1: int, gate_col: in
 					var lane_p: Array = []
 					for c0 in cells:
 						var cyp := (c0 as Vector2i).y
-						if cyp >= g_mid - 1 and cyp <= g_mid + 3:
+						if cyp >= g_mid - 2 and cyp <= g_mid + 4:
 							lane_p.append(c0)
 						else:
 							g[c0] = SYM_WALL
@@ -173,13 +201,19 @@ static func _stage(g: Dictionary, chamber_x0: int, chamber_x1: int, gate_col: in
 						g[lc] = "!"
 					var sentry_p := Vector2i(gate_col, g_mid)
 					g[sentry_p] = "s"
-					var far := Vector2i(gate_col, g_mid + 3)
-					var conceal_p := Vector2i(clampi(chamber_x0 + 1, chamber_x0, gate_col - 1), h - 2)
+					var far := Vector2i(gate_col, g_mid + 4)
+					# The green cell is the actual launch position for the readable beat: safely
+					# west of the post and on the row opposite its far endpoint.  An arbitrary
+					# bottom-corner pocket made the sign and the executable solution disagree.
+					# Keep the three-body launch on the far side of the patrol beat.
+					# The opening extends one extra row north so every formation slot
+					# has its own lane instead of serializing at the wall.
+					var conceal_p := Vector2i(chamber_x0 + 1, g_mid - 1)
 					g[conceal_p] = "c"
 					return {"cells": lane_p, "open_row": -1, "mechanism": conceal_p, "sym": "!", "arch": arch,
 						"variant": "patrol", "patrol_far": far,
 						"elements": [{"sym": "s", "cell": sentry_p}, {"sym": "c", "cell": conceal_p}],
-						"role": "patrolled gap — read the sentry's beat from the pocket, cross the far rows in its look-away"}
+						"role": "patrolled gap — prepare on the launch, read the far beat, cross the opposite rows"}
 				"twin":
 					# Two gaps, two watchers, ONE flure: luring pulls the NORTH sentry only — its gap
 					# clears while the south watcher keeps its own. Crossing the wrong gap still bites.
@@ -187,49 +221,70 @@ static func _stage(g: Dictionary, chamber_x0: int, chamber_x1: int, gate_col: in
 					var lane_s: Array = []
 					for c0 in cells:
 						var cy := (c0 as Vector2i).y
-						if cy == 2 or cy == 3:
+						if cy >= 3 and cy <= 5:
 							lane_n.append(c0)
-						elif cy == h - 4 or cy == h - 3:
+						elif cy >= h - 4 and cy <= h - 2:
 							lane_s.append(c0)
 						else:
 							g[c0] = SYM_WALL
 					for lc in lane_n + lane_s:
 						g[lc] = "!"
 					var s_n := Vector2i(gate_col, 3)
-					var s_s := Vector2i(gate_col, h - 4)
+					var s_s := Vector2i(gate_col, h - 3)
 					g[s_n] = "s"
 					g[s_s] = "s"
 					mech = Vector2i(clampi(chamber_x0 + 1, chamber_x0, gate_col - 1), 1)
 					g[mech] = "F"
-					var conceal_t := Vector2i(clampi(chamber_x0 + 1, chamber_x0, gate_col - 1), h - 2)
-					var elems_t: Array = [{"sym": "F", "cell": mech}, {"sym": "s", "cell": s_n}, {"sym": "s", "cell": s_s}]
+					# Launch beside the linked NORTH lane, far enough west that a three-body
+					# formation remains outside both posted watch fans.  The south lane stays
+					# visibly red and has no equivalent launch affordance.
+					# The gold formation is one row away from its flure and three
+					# rows from the unlinked red watcher. Its three slots line up
+					# exactly with rows 3..5 of the north opening.
+					var conceal_t := Vector2i(chamber_x0 + 1, s_n.y + 1)
+					var elems_t: Array = [{"sym": "F", "cell": mech}, {"sym": "s", "cell": s_n},
+						{"sym": "s", "cell": s_s}, {"sym": "c", "cell": conceal_t}]
 					if g.get(conceal_t) == SYM_FLOOR:
 						g[conceal_t] = "c"
-						elems_t.append({"sym": "c", "cell": conceal_t})
 					return {"cells": lane_n + lane_s, "open_row": -1, "mechanism": mech, "sym": "!", "arch": arch,
 						"variant": "twin", "lured_sentry": s_n, "other_sentry": s_s,
 						"elements": elems_t,
-						"role": "twin watch — the flure pulls only the NORTH watcher; cross ITS gap, the south one still bites"}
+						"role": "twin watch — rally gold, Peris tends and returns; cross NORTH while south stays hot"}
 				_:
 					# The classic: flure pocket, conceal pocket, static in-gap sentry. Gap row drifts.
-					var g_mid_l := _ri(rng, 3, h - 4)
-					var lane_l := _carve_gap(g, cells, gate_col, g_mid_l)
-					var sentry_l := Vector2i(gate_col, g_mid_l)
-					g[sentry_l] = "s"
 					var flip := _ri(rng, 0, 1) == 1     # seeded N/S flip of flure vs conceal pockets
 					var fy := 1 if not flip else h - 2
-					var cy2 := h - 2 if not flip else 1
+					# Bound the causal path itself. If a watcher can spawn at the far
+					# opposite edge from its flure, no legal gear that is faster than
+					# walk and slower than RUN can make the return race meaningful.
+					# Keeping the post 2..4 rows from the endpoint preserves seeded
+					# variation while guaranteeing the taught speed choice can exist.
+					var g_mid_l := _ri(rng, fy + 2, mini(fy + 4, h - 4)) \
+						if fy < h / 2 else _ri(rng, maxi(3, fy - 4), fy - 2)
+					var launch_row := g_mid_l + (1 if fy < g_mid_l else -1)
+					# Centre the executable opening on the formation, not the watcher.
+					# The watcher still posts in its edge cell while all three party
+					# lanes remain open and at least two cells from the flure endpoint.
+					var lane_l := _carve_gap(g, cells, gate_col, launch_row)
+					var sentry_l := Vector2i(gate_col, g_mid_l)
+					g[sentry_l] = "s"
+					# Put the flure in the chamber's rear side pocket.  The watcher then
+					# traverses a visible side route instead of parking on the party's gap
+					# approach, and Peris's launch-to-flure trip stays short and readable.
 					mech = Vector2i(clampi(chamber_x0 + 1, chamber_x0, gate_col - 1), fy)
 					g[mech] = "F"
-					var conceal_l := Vector2i(clampi(chamber_x0 + 1, chamber_x0, gate_col - 1), cy2)
-					var elems_l: Array = [{"sym": "F", "cell": mech}, {"sym": "s", "cell": sentry_l}]
+					# This is not decorative concealment: it is the launch/regroup state that
+					# makes the causal loop executable. It is centered on the same three-row
+					# opening and displaced away from the flure's distracted detection bubble.
+					var conceal_l := Vector2i(chamber_x0 + 1, launch_row)
+					var elems_l: Array = [{"sym": "F", "cell": mech}, {"sym": "s", "cell": sentry_l},
+						{"sym": "c", "cell": conceal_l}]
 					if g.get(conceal_l) == SYM_FLOOR:
 						g[conceal_l] = "c"
-						elems_l.append({"sym": "c", "cell": conceal_l})
 					return {"cells": lane_l, "open_row": -1, "mechanism": mech, "sym": "!", "arch": arch,
 						"variant": "lure",
 						"elements": elems_l,
-						"role": "watched gap — tend the flure so the sentry commits off its watch, then cross the lane"}
+						"role": "watched gap — rally green; Peris tends and returns; sprint as the watcher races home"}
 	# default: a plain wall + a lever
 	g[mech] = "L"
 	return {"cells": cells, "open_row": -1, "mechanism": mech, "sym": "=", "arch": "lever",
@@ -331,15 +386,15 @@ static func _solve_text(gates: Array) -> String:
 static func _shadow_text(gates: Array) -> String:
 	var a := str(gates[0]["arch"])
 	match a:
-		"holdfast": return "Aster+Peris: Aster TRACE times the wash's dark window; Peris BLOOM causeways one lane — cross unheld."
+		"holdfast": return "Aster+Peris: Aster scans the wash gauge for the dark window; Peris tends a causeway on one fertile lane — cross unheld."
 		"redirect": return "Aster+Peris: Peris Hushbloom-stuns the charger at the commit (no dodge window)."
-		"vinebridge": return "Aster+Peris: Peris plants+BLOOMs the vine herself; Aster times/EMPs the guard instead of the flure."
+		"vinebridge": return "Aster+Peris: Peris plants and tends the vine herself; Aster reads the guard's timing or uses EMP instead of the flure."
 		"split": return "Aster+Peris (two bodies): Aster hacks one plate to a timed latch while Peris holds the other, then dashes."
 		"distract":
 			match str(gates[0].get("variant", "lure")):
-				"patrol": return "Aster+Peris: Peris grows a BLOOM lane light to mark the safe row; Aster calls the beat — cross split, one per window."
-				"twin": return "Aster+Peris: no flure spent — TRACE both watchers' idle drift, stage in the pocket, thread the north gap in the overlap of their look-aways."
-				_: return "Aster+Peris: Aster TRACE reads the sentry's beat; stage in the conceal pocket (c) and slip the look-away window — no flure spent."
+				"patrol": return "Aster+Peris: Peris reads the flora-lit safe row; Aster reads the patrol beat — cross split, one per window."
+				"twin": return "Aster+Peris: no flure spent — inspect both watchers' idle drift, stage in the pocket, thread the north gap in the overlap of their look-aways."
+				_: return "Aster+Peris: Aster reads the sentry's beat from its world tell; stage in the conceal pocket (c) and slip the look-away window — no flure spent."
 	return "Aster+Peris compose the same skeleton with substitute variants."
 
 static func _legend(gates: Array) -> Dictionary:
@@ -498,7 +553,13 @@ static func safe_passage(chunk: Dictionary) -> Dictionary:
 			targets.append(gates[i + 1]["mechanism"])
 			for e3 in gates[i + 1].get("elements", []):
 				if str(e3["sym"]) == "c":
-					targets.append(e3["cell"])
+					var launch := e3["cell"] as Vector2i
+					# The live party resolver can orient its three-body formation on either
+					# axis according to the approach. Prove the entire plus-shaped staging
+					# footprint, not just the clicked centre cell.
+					for offset in [Vector2i.ZERO, Vector2i.LEFT, Vector2i.RIGHT,
+							Vector2i.UP, Vector2i.DOWN]:
+						targets.append(launch + offset)
 		else:
 			targets.append(chunk["end"])
 		var ok := _safe_flood(grid, entries, targets, fan)

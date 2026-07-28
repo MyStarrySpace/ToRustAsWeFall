@@ -5,8 +5,12 @@ extends "res://scripts/tutorial/tutorial_sequence.gd"
 
 var _has_moved := false
 var _has_drunk := false
+var _drink_item_id := ""
+var _drink_source_trigger_consumed := 0
+var _active_aster_source_receipt: Dictionary = {}
 
 var _ron
+var _ron_operation_commit_active := false
 var _terminal  # Forecasting terminal interactable.
 var _drink_machine  # Drink machine interactable.
 var _hud  # GameHUD with ATP bar and portrait.
@@ -26,211 +30,24 @@ var _terminal_screen_lowfi: MeshInstance3D
 var _terminal_screen_detail: Node3D
 var _terminal_screen_readout: Label3D
 var _terminal_prev_camera_target: Node3D
+var _terminal_return_camera_state: Dictionary = {}
 var _terminal_focus_active := false  # true while the screen is up (guards re-click mid-focus)
 
 # Exploration beat (post-drink, pre-Tag-Day)
 @export var show_graybox_room := false  # the imported room model is the environment; flip on for graybox dev
 @export var show_high_res_room := true
 var _explore_hallway_gate  # Interactable at hallway exit
-const EXPLORE_MIN_TIME := 12.0  # scheduler ticks before the workspace-progress reminder
+# Optional-read coverage telemetry. These targets never gate the hallway.
 const WORKSPACE_THREAD_REQUIRED := {
 	"glass": 1,
 	"paintings": 2,
 	"awards": 2,
 	"jstore": 2,
 }
-# The post-inspection fault desk is an active circuit, never a clock gate. Each case sends Aster
-# to three already-visible room objects, stages the LAST candidate he reviewed, and asks him to
-# commit that cause at the existing terminal. The discriminating third trace prevents a blind
-# two-object coin flip while keeping every clue on something the player already learned to inspect.
-const FAULT_EVIDENCE_WORK_SECONDS := 2.4
-const FAULT_COMMIT_ATP_COST := 5.0
-const FAULT_WRONG_ATP_COST := 1.0
-const FAULT_DRINK_RECOVERY_SECONDS := 0.8
-const ASTER_ROUTE_SPEED_FALLBACK := 3.0
-const WORKSPACE_OBSERVATION_SECONDS_PER_BEAT := 2.0
-const FAULT_SYNTHESIS_SECONDS_PER_CASE := 18.0
-const PROTOCOL_SYNTHESIS_SECONDS_PER_OPERATION := 16.0
-const ASTER_INACTIVE_PRESENTATION_SECONDS := 88.0
-const FAULT_EVIDENCE_SOURCES := {
-	"glass": {
-		"zone": "GlassBeadZone",
-		"target": "RoomTargetGlassBeadGame",
-		"node": "FaultEvidenceGlass",
-		"marker": "GlassBeadZoneMarker",
-		"label": "TRACE GLASS TOPOLOGY",
-	},
-	"painting_teal": {
-		"zone": "macabre_tealZone",
-		"target": "RoomTargetMacabreTealPainting",
-		"node": "FaultEvidenceTeal",
-		"marker": "MacabreTealZoneMarker",
-		"label": "COMPARE TEAL TRACE",
-	},
-	"painting_ash": {
-		"zone": "hunter_ashZone",
-		"target": "RoomTargetHunterAshPainting",
-		"node": "FaultEvidenceAsh",
-		"marker": "HunterAshZoneMarker",
-		"label": "COMPARE ASH TRACE",
-	},
-	"awards": {
-		"zone": "AwardsCenterZone",
-		"target": "RoomTargetAwardsShelf",
-		"node": "FaultEvidenceAwards",
-		"marker": "AwardsCenterZoneMarker",
-		"label": "TRACE CREDIT LEDGER",
-	},
-	"jstore": {
-		"zone": "JStoreMainZone",
-		"target": "RoomTargetJStoreShelf",
-		"node": "FaultEvidenceJStore",
-		"marker": "JStoreMainZoneMarker",
-		"label": "TRACE FAULT ARCHIVE",
-	},
-}
-const FAULT_REVIEW_CASES := [
-	{
-		"id": "normalization_recurrence",
-		"brief": "FAULT 1/2: recurrence follows normalization; a local connector loss should not repeat across barriers.",
-		"evidence": ["awards", "glass", "jstore"],
-		"candidates": ["glass", "jstore"],
-		"correct": "jstore",
-		"clues": {
-			"awards": "Credit ledger: the reward posted after support maintenance, not before it.",
-			"glass": "Glass topology: one missing connector remains local instead of recurring across barriers.",
-			"jstore": "Fault archive: the same drift returns immediately after normalization retries.",
-		},
-		"wrong_clue": "Connector loss would stay local. Recheck the J-store recurrence trace, stage another candidate, then recommit.",
-	},
-	{
-		"id": "thermal_band_drift",
-		"brief": "FAULT 2/2: only one visual band widens as the barrier temperature climbs.",
-		"evidence": ["painting_teal", "glass", "painting_ash"],
-		"candidates": ["painting_teal", "painting_ash"],
-		"correct": "painting_ash",
-		"clues": {
-			"painting_teal": "Teal trace: its geometry stays flat through the heat band.",
-			"glass": "Glass topology: every node remains connected, ruling out a missing-link cascade.",
-			"painting_ash": "Ash trace: the outer band widens in step with the temperature rise.",
-		},
-		"wrong_clue": "The teal trace stays flat. Recheck the heat-linked ash band, stage another candidate, then recommit.",
-	},
-]
-
-# Two transfer protocols follow diagnosis: a short ordered phase walk and an authorship
-# handoff. Each ends in one visible execution rather than another multi-station lap.
-# All pads are projected into open floor lanes; none changes the room model or drink-machine clearance.
-const WORKSPACE_PROTOCOL_ORDER := ["phase_alignment", "authorship_handoff"]
-const WORKSPACE_PROTOCOLS := {
-	"phase_alignment": {
-		"step": "workspace_protocol_phase_alignment",
-		"label": "BARRIER PHASE WALK",
-		"tint": Color(0.28, 0.72, 1.0),
-		"ordered_evidence": true,
-		"evidence": ["phase_origin", "phase_mid", "phase_return"],
-		"choices": ["phase_sweep", "phase_isolate"],
-		"execution_sites": {
-			"phase_sweep": ["phase_sweep_execution"],
-			"phase_isolate": ["phase_isolate_execution"],
-		},
-		"next": "authorship_handoff",
-	},
-	"load_balance": {
-		"step": "workspace_protocol_load_balance",
-		"label": "FORECAST LOAD BALANCE",
-		"tint": Color(0.44, 0.92, 0.58),
-		"ordered_evidence": false,
-		"evidence": ["load_source", "load_regulator", "load_reserve", "load_sink"],
-		"choices": ["load_hold_reserve", "load_open_throughput"],
-		"execution_sites": {
-			"load_hold_reserve": ["reserve_anchor", "reserve_divert", "reserve_seal"],
-			"load_open_throughput": ["throughput_open", "throughput_bridge", "throughput_lock"],
-		},
-		"next": "authorship_handoff",
-	},
-	"authorship_handoff": {
-		"step": "workspace_protocol_authorship_handoff",
-		"label": "REPAIR AUTHORSHIP HANDOFF",
-		"tint": Color(0.94, 0.66, 0.28),
-		"ordered_evidence": false,
-		"evidence": ["authorship_ledger", "authorship_signature", "authorship_support"],
-		"choices": ["authorship_name_crew", "authorship_publish_operator"],
-		"execution_sites": {
-			"authorship_name_crew": ["crew_handoff_execution"],
-			"authorship_publish_operator": ["operator_handoff_execution"],
-		},
-		"next": "",
-	},
-}
-
-const WORKSPACE_PROTOCOL_SITES := {
-	"phase_origin": {"protocol": "phase_alignment", "kind": "evidence", "pos": Vector3(2.0, 0.12, 12.0), "dwell": 2.0, "label": "READ ORIGIN PHASE", "display": "ORIGIN", "finding": "The barrier reference begins half a cycle ahead of Aster's forecast."},
-	"phase_north": {"protocol": "phase_alignment", "kind": "evidence", "pos": Vector3(3.3, 0.12, 10.4), "dwell": 5.0, "label": "ALIGN NORTH NODE", "display": "NORTH", "finding": "The north node preserves the offset instead of accumulating it."},
-	"phase_mid": {"protocol": "phase_alignment", "kind": "evidence", "pos": Vector3(2.2, 0.12, 8.2), "dwell": 2.0, "label": "ALIGN MID NODE", "display": "MID", "finding": "The middle node exposes one recoverable discontinuity."},
-	"phase_south": {"protocol": "phase_alignment", "kind": "evidence", "pos": Vector3(3.1, 0.12, 6.0), "dwell": 5.0, "label": "ALIGN SOUTH NODE", "display": "SOUTH", "finding": "The south node can accept either a full sweep or a local isolate."},
-	"phase_return": {"protocol": "phase_alignment", "kind": "evidence", "pos": Vector3(2.0, 0.12, 3.9), "dwell": 2.0, "label": "CLOSE PHASE LOOP", "display": "RETURN", "finding": "The return pulse arrives inside tolerance and unlocks two valid calibrations."},
-	"phase_sweep": {"protocol": "phase_alignment", "kind": "choice", "pos": Vector3(4.0, 0.12, 4.6), "dwell": 1.0, "label": "PLAN FULL SWEEP", "display": "SWEEP", "finding": "A full sweep maximizes forecast fidelity but exposes the entire lattice."},
-	"phase_isolate": {"protocol": "phase_alignment", "kind": "choice", "pos": Vector3(4.0, 0.12, 6.2), "dwell": 1.0, "label": "PLAN LOCAL ISOLATE", "display": "ISOLATE", "finding": "A local isolate protects the room while accepting a narrower forecast."},
-	"phase_sweep_execution": {"protocol": "phase_alignment", "kind": "execution", "pos": Vector3(4.6, 0.12, 9.5), "dwell": 2.5, "label": "EXECUTE PHASE SWEEP", "display": "SWEEP", "finding": "The full lattice resolves into one high-fidelity forecast band."},
-	"phase_isolate_execution": {"protocol": "phase_alignment", "kind": "execution", "pos": Vector3(2.0, 0.12, 7.1), "dwell": 2.5, "label": "EXECUTE ISOLATE", "display": "ISOLATE", "finding": "The unstable segment is isolated without disturbing the room perimeter."},
-
-	"load_source": {"protocol": "load_balance", "kind": "evidence", "pos": Vector3(2.0, 0.12, 2.4), "dwell": 5.5, "label": "MEASURE SOURCE LOAD", "display": "SOURCE", "finding": "The source has enough margin for either reserve or throughput routing."},
-	"load_regulator": {"protocol": "load_balance", "kind": "evidence", "pos": Vector3(4.5, 0.12, 3.2), "dwell": 5.5, "label": "MEASURE REGULATOR", "display": "REGULATOR", "finding": "The regulator can hold a reserve only if the sink remains below threshold."},
-	"load_reserve": {"protocol": "load_balance", "kind": "evidence", "pos": Vector3(3.8, 0.12, 6.7), "dwell": 5.5, "label": "MEASURE RESERVE", "display": "RESERVE", "finding": "The reserve lane carries slower recovery with no attribution loss."},
-	"load_sink": {"protocol": "load_balance", "kind": "evidence", "pos": Vector3(7.3, 0.12, 6.1), "dwell": 5.5, "label": "MEASURE SINK", "display": "SINK", "finding": "The sink can absorb a fast pass but leaves less thermal margin."},
-	"load_hold_reserve": {"protocol": "load_balance", "kind": "choice", "pos": Vector3(3.5, 0.12, 9.0), "dwell": 3.2, "label": "PLAN RESERVE HOLD", "display": "RESERVE", "finding": "Aster chooses a slower reserve-preserving route."},
-	"load_open_throughput": {"protocol": "load_balance", "kind": "choice", "pos": Vector3(6.1, 0.12, 8.8), "dwell": 3.2, "label": "PLAN THROUGHPUT", "display": "THROUGHPUT", "finding": "Aster chooses a fast route with a narrower thermal margin."},
-	"reserve_anchor": {"protocol": "load_balance", "kind": "execution", "pos": Vector3(2.0, 0.12, 10.4), "dwell": 5.2, "label": "ANCHOR RESERVE", "display": "ANCHOR", "finding": "The reserve anchor takes the first share of the forecast load."},
-	"reserve_divert": {"protocol": "load_balance", "kind": "execution", "pos": Vector3(3.8, 0.12, 11.7), "dwell": 5.2, "label": "DIVERT LOAD", "display": "DIVERT", "finding": "The excess load moves away from the fragile sink."},
-	"reserve_seal": {"protocol": "load_balance", "kind": "execution", "pos": Vector3(5.7, 0.12, 10.5), "dwell": 5.2, "label": "SEAL RESERVE ROUTE", "display": "SEAL", "finding": "The slower route closes with a stable recovery margin."},
-	"throughput_open": {"protocol": "load_balance", "kind": "execution", "pos": Vector3(7.4, 0.12, 9.5), "dwell": 5.2, "label": "OPEN FAST LANE", "display": "OPEN", "finding": "The fast lane accepts the leading edge of the load."},
-	"throughput_bridge": {"protocol": "load_balance", "kind": "execution", "pos": Vector3(5.8, 0.12, 11.8), "dwell": 5.2, "label": "BRIDGE LOAD", "display": "BRIDGE", "finding": "A temporary bridge keeps the high-throughput band coherent."},
-	"throughput_lock": {"protocol": "load_balance", "kind": "execution", "pos": Vector3(3.5, 0.12, 10.2), "dwell": 5.2, "label": "LOCK FAST ROUTE", "display": "LOCK", "finding": "The route locks before its thermal margin collapses."},
-
-	"authorship_ledger": {"protocol": "authorship_handoff", "kind": "evidence", "pos": Vector3(7.0, 0.12, 13.2), "dwell": 2.2, "label": "READ CREDIT LEDGER", "display": "LEDGER", "finding": "The ledger credits Aster while omitting every support-crew identifier."},
-	"authorship_signature": {"protocol": "authorship_handoff", "kind": "evidence", "pos": Vector3(4.8, 0.12, 12.8), "dwell": 2.2, "label": "READ REPAIR SIGNATURE", "display": "SIGNATURE", "finding": "The repair signature still preserves the support team's method."},
-	"authorship_support": {"protocol": "authorship_handoff", "kind": "evidence", "pos": Vector3(2.2, 0.12, 12.0), "dwell": 2.2, "label": "READ SUPPORT CONTEXT", "display": "CONTEXT", "finding": "A private context channel can carry the names without exposing them publicly."},
-	"authorship_name_crew": {"protocol": "authorship_handoff", "kind": "choice", "pos": Vector3(2.5, 0.12, 9.0), "dwell": 1.0, "label": "PLAN CREW CONTEXT", "display": "CREW", "finding": "Aster preserves the support crew's names in the handoff context."},
-	"authorship_publish_operator": {"protocol": "authorship_handoff", "kind": "choice", "pos": Vector3(5.0, 0.12, 9.2), "dwell": 1.0, "label": "PLAN OPERATOR RECORD", "display": "OPERATOR", "finding": "Aster accepts the public operator record while retaining the repair signature."},
-	"crew_context_execution": {"protocol": "authorship_handoff", "kind": "execution", "pos": Vector3(2.2, 0.12, 6.8), "dwell": 5.8, "label": "SEAL CREW CONTEXT", "display": "CONTEXT", "finding": "The crew context is sealed into the private maintenance record."},
-	"crew_handoff_execution": {"protocol": "authorship_handoff", "kind": "execution", "pos": Vector3(3.8, 0.12, 5.0), "dwell": 2.5, "label": "HAND OFF CREW RECORD", "display": "HANDOFF", "finding": "The signed handoff carries the crew's work forward."},
-	"operator_signature_execution": {"protocol": "authorship_handoff", "kind": "execution", "pos": Vector3(6.3, 0.12, 6.0), "dwell": 5.8, "label": "SEAL OPERATOR RECORD", "display": "OPERATOR", "finding": "The operator record is sealed without erasing the underlying signature."},
-	"operator_handoff_execution": {"protocol": "authorship_handoff", "kind": "execution", "pos": Vector3(4.8, 0.12, 4.0), "dwell": 2.5, "label": "HAND OFF OPERATOR RECORD", "display": "HANDOFF", "finding": "The public handoff retains a verifiable link to the support repair."},
-}
 var _explore_gate_unlocked := false
 var _explore_gate_fired := false
 var _workspace_thread_counts: Dictionary = {}
 var _workspace_zone_counts: Dictionary = {}
-var _fault_evidence_interactables: Dictionary = {}
-var _fault_case_evidence: Dictionary = {}
-var _fault_evidence_review_counts: Dictionary = {}
-var _fault_commit_history: Array = []
-var _fault_case_index := -1
-var _fault_selected_candidate := ""
-var _fault_correct_commits := 0
-var _fault_wrong_commits := 0
-var _fault_wrong_atp_spent := 0.0
-var _fault_case_wrong_penalized := false
-var _fault_drink_recoveries := 0
-var _fault_terminal_pending := false
-var _fault_circuit_started := false
-var _fault_circuit_complete := false
-var _fault_last_clue := ""
-var _workspace_protocol_layer: Node3D
-var _workspace_protocol_groups: Dictionary = {}
-var _workspace_protocol_sites: Dictionary = {}
-var _workspace_protocol_visuals: Dictionary = {}
-var _workspace_protocol_phase := ""
-var _workspace_protocol_evidence: Dictionary = {}
-var _workspace_protocol_choices: Dictionary = {}
-var _workspace_protocol_execution_progress: Dictionary = {}
-var _workspace_protocol_execution_history: Array = []
-var _workspace_protocol_completed: Dictionary = {}
-var _workspace_protocol_effects: Dictionary = {}
-var _workspace_protocol_decisions := 0
-var _workspace_protocol_started := false
-var _workspace_protocol_complete := false
 const HALLWAY_EXIT_CELL := Vector2i(8, 13)  # east edge of the real room, just inside the wall border
 
 # Grid system
@@ -250,6 +67,50 @@ const GLASS_BEAD_SCENE := preload("res://scenes/tutorial/glass_bead_game_display
 # Start below max ATP so the drink refill is visible.
 const ATP_START := 6.0
 const ATP_MAX := GameState.ATP_MAX_PIPS
+const DRINK_AUTHORITY_KEY := "runtime:aster_sim:drink_machine"
+const DRINK_AUTHORITY_VERSION := 2
+const DRINK_PHASE_AVAILABLE := "available"
+const DRINK_PHASE_ENDOCYTOSING := "endocytosing"
+const DRINK_PHASE_CONSUMED := "consumed"
+const DRINK_ENDOCYTOSIS_DURATION := 2.0
+const DRINK_VISUAL_COLOR := Color(0.36, 0.86, 1.0)
+const ASTER_TERMINAL_SOURCE_ID := "AsterForecastTerminal"
+const ASTER_DRINK_SOURCE_ID := "AsterDrinkMachine"
+const ASTER_TERMINAL_ACTION := "terminal_read"
+const ASTER_DRINK_ACTION := "drink_dispense"
+const ASTER_INTERACTION_POSITION_TOLERANCE := 0.35
+const ASTER_INTERACTION_HEIGHT_TOLERANCE := 1.35
+
+# The intro approach, monitor focus, and outgoing fade are observable gameplay
+# phases.  Their callbacks are deliberately not serialized by EventScheduler, so
+# this versioned GameState record owns the causal work and the absolute deadlines;
+# camera/dialogue are only presenters reconstructed from it.
+const SEQUENCE_AUTHORITY_KEY := "runtime:aster_sim:sequence_authority"
+const SEQUENCE_AUTHORITY_VERSION := 2
+const SEQUENCE_AUTHORITY_CONTRACT := "aster_sim_sequence_v2"
+
+const RON_PHASE_IDLE := "idle"
+const RON_PHASE_APPROACHING := "approaching"
+const RON_PHASE_GREETING := "greeting"
+const RON_PHASE_COMPLETE := "complete"
+const RON_APPROACH_RETRY_SECONDS := 0.25
+const RON_APPROACH_ARRIVAL_RADIUS := 0.2
+
+const TERMINAL_PHASE_IDLE := "idle"
+const TERMINAL_PHASE_ACTIVE := "active"
+const TERMINAL_PHASE_SETTLING := "settling"
+const TERMINAL_PHASE_COMPLETE := "complete"
+const TERMINAL_MODE_TUTORIAL := "tutorial"
+const TERMINAL_MODE_REREAD := "reread"
+const TERMINAL_SETTLE_DURATION := 0.4
+const TERMINAL_FOCUS_AUTHORITY_TAG := "aster_terminal_authority_focus"
+const TERMINAL_SETTLE_AUTHORITY_TAG := "aster_terminal_authority_settle"
+
+const TRANSITION_PHASE_IDLE := "idle"
+const TRANSITION_PHASE_FADING := "fading"
+const TRANSITION_PHASE_COMPLETE := "complete"
+const TRANSITION_DURATION := 2.5
+const TRANSITION_AUTHORITY_TAG := "aster_transition_authority"
 
 # --- Virtual overrides ---
 
@@ -307,6 +168,13 @@ func _setup_ui() -> void:
 	_hud.bind_game_state(_game_state, "aster")
 
 func _begin() -> void:
+	_connect_drink_authority_signals()
+	_connect_sequence_authority_signals()
+	_ensure_aster_interaction_sources_registered()
+	if _game_state.get_world_state(DRINK_AUTHORITY_KEY, null) == null:
+		_publish_drink_authority(DRINK_PHASE_AVAILABLE)
+	if _game_state.get_world_state(SEQUENCE_AUTHORITY_KEY, null) == null:
+		_publish_sequence_authority(_baseline_sequence_authority())
 	_add_screen_effect("ChromaticAberration", preload("res://resources/chromatic_aberration.gdshader"))
 	_enable_outline_preview()
 	_connect_outline_feedback_sources(self)
@@ -362,6 +230,8 @@ func _on_process(_delta: float, _spd: float) -> void:
 	# GameHud handles ATP updates.
 	_update_fades()
 	_update_show_terminal()
+	_sync_drink_item_visual()
+	_update_ron_approach_authority()
 
 	for i in range(_data_displays.size()):
 		var d := _data_displays[i]
@@ -370,360 +240,57 @@ func _on_process(_delta: float, _spd: float) -> void:
 
 func headless_get_state() -> Dictionary:
 	var state := super.headless_get_state()
-	var fault_case := _current_fault_case()
 	state["explore_gate_unlocked"] = _explore_gate_unlocked
-	state["workspace_thread_counts"] = _workspace_thread_counts.duplicate(true)
-	state["workspace_thread_required"] = WORKSPACE_THREAD_REQUIRED.duplicate(true)
+	state["workspace_read_counts"] = _workspace_thread_counts.duplicate(true)
+	state["workspace_read_targets"] = WORKSPACE_THREAD_REQUIRED.duplicate(true)
 	state["workspace_zone_counts"] = _workspace_zone_counts.duplicate(true)
-	state["workspace_threads_complete"] = _workspace_completed_thread_count()
-	state["workspace_thread_total"] = WORKSPACE_THREAD_REQUIRED.size()
-	state["workspace_review_complete"] = _workspace_review_complete()
-	state["fault_review_started"] = _fault_circuit_started
-	state["fault_review_complete"] = _fault_circuit_complete
-	state["fault_case_index"] = _fault_case_index
-	state["fault_case_number"] = _fault_case_index + 1 if not fault_case.is_empty() else 0
-	state["fault_case_total"] = FAULT_REVIEW_CASES.size()
-	state["fault_case_id"] = str(fault_case.get("id", ""))
-	state["fault_evidence_collected"] = _fault_case_evidence.keys()
-	state["fault_evidence_required"] = (fault_case.get("evidence", []) as Array).duplicate()
-	state["fault_commit_candidates"] = (fault_case.get("candidates", []) as Array).duplicate()
-	state["fault_selected_candidate"] = _fault_selected_candidate
-	state["fault_correct_commits"] = _fault_correct_commits
-	state["fault_wrong_commits"] = _fault_wrong_commits
-	state["fault_wrong_atp_spent"] = _fault_wrong_atp_spent
-	state["fault_wrong_atp_cost_cap"] = FAULT_WRONG_ATP_COST * FAULT_REVIEW_CASES.size()
-	state["fault_drink_recoveries"] = _fault_drink_recoveries
-	state["fault_terminal_pending"] = _fault_terminal_pending
-	state["fault_evidence_review_counts"] = _fault_evidence_review_counts.duplicate(true)
-	state["fault_commit_history"] = _fault_commit_history.duplicate(true)
-	state["fault_last_clue"] = _fault_last_clue
-	state["workspace_protocol_started"] = _workspace_protocol_started
-	state["workspace_protocol_complete"] = _workspace_protocol_complete
-	state["workspace_protocol_phase"] = _workspace_protocol_phase
-	state["workspace_protocol_evidence"] = _workspace_protocol_evidence.duplicate(true)
-	state["workspace_protocol_choices"] = _workspace_protocol_choices.duplicate(true)
-	state["workspace_protocol_execution_progress"] = _workspace_protocol_execution_progress.duplicate(true)
-	state["workspace_protocol_execution_history"] = _workspace_protocol_execution_history.duplicate(true)
-	state["workspace_protocol_completed"] = _workspace_protocol_completed.duplicate(true)
-	state["workspace_protocol_effects"] = _workspace_protocol_effects.duplicate(true)
-	state["workspace_protocol_decision_count"] = _workspace_protocol_decisions
+	state["workspace_reads_complete"] = _workspace_completed_thread_count()
+	state["workspace_read_target_count"] = WORKSPACE_THREAD_REQUIRED.size()
+	state["workspace_reads_optional"] = true
 	state["aster_atp"] = _game_state.get_stat("aster", "atp") if _game_state != null else 0.0
+	var drink_authority := _read_drink_authority()
+	state["drink_phase"] = str(drink_authority.get("phase", DRINK_PHASE_AVAILABLE))
+	state["drink_item_id"] = str(drink_authority.get("item_id", ""))
+	state["drink_endocytosing"] = _game_state.is_endocytosing("aster") if _game_state != null else false
+	state["has_drunk"] = _has_drunk
+	state["sequence_authority"] = _sequence_authority_state()
 	return state
 
 func get_playtime_contract() -> Dictionary:
-	var evidence_review_count := 0
-	for raw_case in FAULT_REVIEW_CASES:
-		var case_data: Dictionary = raw_case
-		evidence_review_count += (case_data.get("evidence", []) as Array).size()
-	var move_speed := maxf(float(_player.move_speed) if _player != null else ASTER_ROUTE_SPEED_FALLBACK, 0.1)
-	var mandatory_recoveries := maxi(
-		0,
-		int(ceil((FAULT_COMMIT_ATP_COST * FAULT_REVIEW_CASES.size()) / float(ATP_MAX))) - 1
-	)
-	var opening_route_meters := _opening_route_meters()
-	var workspace_fault_route_meters := _workspace_and_fault_minimum_route_meters()
-	var protocol_route_meters := _workspace_protocol_minimum_route_meters()
-	var traversal_seconds := (opening_route_meters + workspace_fault_route_meters + protocol_route_meters) / move_speed
-	var workspace_observation_seconds := _workspace_required_beat_count() * WORKSPACE_OBSERVATION_SECONDS_PER_BEAT
-	var fault_work_seconds := evidence_review_count * FAULT_EVIDENCE_WORK_SECONDS \
-		+ mandatory_recoveries * FAULT_DRINK_RECOVERY_SECONDS
-	var opening_and_handoff_work_seconds := 2.0 * FAULT_DRINK_RECOVERY_SECONDS
-	var protocol_work_seconds := _workspace_protocol_shortest_work_seconds()
-	var planning_seconds := workspace_observation_seconds \
-		+ FAULT_REVIEW_CASES.size() * FAULT_SYNTHESIS_SECONDS_PER_CASE \
-		+ WORKSPACE_PROTOCOL_ORDER.size() * PROTOCOL_SYNTHESIS_SECONDS_PER_OPERATION
-	var evidence_and_diagnosis_seconds := fault_work_seconds + opening_and_handoff_work_seconds
-	var meaningful_active_seconds := traversal_seconds + planning_seconds \
-		+ evidence_and_diagnosis_seconds + protocol_work_seconds
-	var total_play_seconds := meaningful_active_seconds + ASTER_INACTIVE_PRESENTATION_SECONDS
-	var fault_review_seconds := _fault_minimum_route_meters() / move_speed \
-		+ fault_work_seconds + FAULT_REVIEW_CASES.size() * FAULT_SYNTHESIS_SECONDS_PER_CASE
-	var decision_count := FAULT_REVIEW_CASES.size() + WORKSPACE_PROTOCOL_ORDER.size()
-	var branch_count := 0
-	for raw_case in FAULT_REVIEW_CASES:
-		branch_count += ((raw_case as Dictionary).get("candidates", []) as Array).size()
-	for protocol_id in WORKSPACE_PROTOCOL_ORDER:
-		branch_count += (WORKSPACE_PROTOCOLS[str(protocol_id)].get("choices", []) as Array).size()
+	var move_speed := maxf(float(_player.move_speed) if _player != null else GameState.WALK_SPEED, 0.1)
+	var start := _contract_marker_position("AsterStart", Vector3(4.5, 0.0, 11.5))
+	var terminal := _contract_marker_position("TerminalInteract", Vector3(6.4, 0.0, 7.75))
+	var drink := _contract_marker_position("DrinkMachineApproach", Vector3(7.0, 0.0, 3.08))
+	var hallway := _contract_marker_position("HallwayExit", Vector3(8.4, 0.0, 13.5))
+	var mandatory_route_meters := _horizontal_distance(start, terminal) \
+		+ _horizontal_distance(terminal, drink) + _horizontal_distance(drink, hallway)
+	var mandatory_active_seconds := mandatory_route_meters / move_speed + TERMINAL_FOCUS_DURATION + 1.6
+	var optional_worldbuilding_seconds := 60.0
+	var meaningful_active_seconds := mandatory_active_seconds + optional_worldbuilding_seconds
 	return {
 		"target_id": "aster_sim",
 		"meaningful_active_seconds": meaningful_active_seconds,
-		"total_play_seconds": total_play_seconds,
+		"total_play_seconds": meaningful_active_seconds + 24.0,
 		"max_dead_gap_seconds": 3.0,
-		"max_single_mode_seconds": 42.0,
-		"decision_count": decision_count,
-		"branch_count": branch_count,
+		"max_single_mode_seconds": 30.0,
+		"decision_count": 1,
+		"branch_count": WORKSPACE_THREAD_REQUIRED.size(),
 		"category_seconds": {
-			"exploration_and_traversal": traversal_seconds,
-			"evidence_and_diagnosis": evidence_and_diagnosis_seconds,
-			"protocol_execution": protocol_work_seconds,
-			"planning_and_decisions": planning_seconds,
+			"required_traversal_and_interaction": mandatory_active_seconds,
+			"optional_worldbuilding": optional_worldbuilding_seconds,
 		},
-		"required_first_clear_seconds": 300.0,
-		"target_min_seconds": 300.0,
-		"target_max_seconds": 480.0,
-		"modeled_first_clear_seconds": total_play_seconds,
-		"meaningful_active_ratio": meaningful_active_seconds / total_play_seconds,
-		"inactive_presentation_seconds": ASTER_INACTIVE_PRESENTATION_SECONDS,
-		"modeled_fault_review_seconds": fault_review_seconds,
-		"fault_review_station_work_seconds": fault_work_seconds,
-		"minimum_fault_route_meters": _fault_minimum_route_meters(),
-		"opening_route_meters": opening_route_meters,
-		"workspace_and_fault_route_meters": workspace_fault_route_meters,
-		"workspace_protocol_route_meters": protocol_route_meters,
-		"total_measured_route_meters": opening_route_meters + workspace_fault_route_meters + protocol_route_meters,
-		"movement_speed_meters_per_second": move_speed,
-		"mandatory_evidence_reviews": evidence_review_count,
-		"evidence_work_seconds_each": FAULT_EVIDENCE_WORK_SECONDS,
-		"mandatory_terminal_commits": FAULT_REVIEW_CASES.size(),
-		"commit_atp_cost_each": FAULT_COMMIT_ATP_COST,
-		"wrong_commit_atp_cost_each": FAULT_WRONG_ATP_COST,
-		"wrong_commit_atp_cost_cap": FAULT_WRONG_ATP_COST * FAULT_REVIEW_CASES.size(),
-		"mandatory_drink_recoveries": mandatory_recoveries,
-		"workspace_observation_beat_count": _workspace_required_beat_count(),
-		"mandatory_protocol_count": WORKSPACE_PROTOCOL_ORDER.size(),
-		"mandatory_protocol_evidence_count": _workspace_protocol_evidence_count(),
-		"mandatory_protocol_action_count": _workspace_protocol_shortest_action_count(),
-		"protocol_site_count": WORKSPACE_PROTOCOL_SITES.size(),
-		"workspace_protocol_work_seconds": protocol_work_seconds,
-		"hard_idle_lock_seconds": 0.0,
-		"mode_segments": {
-			"longest_story_exchange": 42.0,
-			"fault_evidence_work": FAULT_EVIDENCE_WORK_SECONDS,
-			"longest_protocol_station": 6.0,
-			"fault_case_synthesis": FAULT_SYNTHESIS_SECONDS_PER_CASE,
-			"protocol_synthesis": PROTOCOL_SYNTHESIS_SECONDS_PER_OPERATION,
-		},
-		"timing_basis": "exact shortest geometry from Aster's start through terminal, drink approach, all four workspace threads, two preserved fault cases, two distinct spatial protocols, and hallway; only authored timed work plus explicit observation/synthesis is active; dialogue, focus shots, fades, and idle are excluded from the active floor",
+		"required_first_clear_seconds": mandatory_active_seconds,
+		"target_min_seconds": 30.0,
+		"target_max_seconds": 90.0,
+		"modeled_first_clear_seconds": meaningful_active_seconds,
+		"mandatory_route_meters": mandatory_route_meters,
+		"mandatory_optional_reads": 0,
+		"optional_interactable_count": WORKSPACE_THREAD_REQUIRED.size(),
+		"progression_gate": "hallway",
+		"free_exploration": true,
+		"timing_basis": "terminal and drink teaching, direct hallway progression, plus an optional 30-90 second workspace exploration beat",
 	}
 
-func _workspace_required_beat_count() -> int:
-	var count := 0
-	for required in WORKSPACE_THREAD_REQUIRED.values():
-		count += int(required)
-	return count
-
-func _workspace_protocol_evidence_count() -> int:
-	var count := 0
-	for protocol_id in WORKSPACE_PROTOCOL_ORDER:
-		count += (WORKSPACE_PROTOCOLS[str(protocol_id)].get("evidence", []) as Array).size()
-	return count
-
-func _workspace_protocol_shortest_action_count() -> int:
-	var count := 0
-	for protocol_id_variant in WORKSPACE_PROTOCOL_ORDER:
-		var protocol: Dictionary = WORKSPACE_PROTOCOLS[str(protocol_id_variant)]
-		count += (protocol.get("evidence", []) as Array).size() + 1
-		var shortest_execution := 1000000
-		for choice_id_variant in protocol.get("choices", []):
-			var execution: Array = (protocol.get("execution_sites", {}) as Dictionary).get(str(choice_id_variant), [])
-			shortest_execution = mini(shortest_execution, execution.size())
-		count += 0 if shortest_execution == 1000000 else shortest_execution
-	return count
-
-func _workspace_protocol_shortest_work_seconds() -> float:
-	var total := 0.0
-	for protocol_id_variant in WORKSPACE_PROTOCOL_ORDER:
-		var protocol: Dictionary = WORKSPACE_PROTOCOLS[str(protocol_id_variant)]
-		for evidence_id_variant in protocol.get("evidence", []):
-			total += float(WORKSPACE_PROTOCOL_SITES[str(evidence_id_variant)].get("dwell", 0.0))
-		var shortest_branch := INF
-		for choice_id_variant in protocol.get("choices", []):
-			var choice_id := str(choice_id_variant)
-			var branch_work := float(WORKSPACE_PROTOCOL_SITES[choice_id].get("dwell", 0.0))
-			for execution_id_variant in (protocol.get("execution_sites", {}) as Dictionary).get(choice_id, []):
-				branch_work += float(WORKSPACE_PROTOCOL_SITES[str(execution_id_variant)].get("dwell", 0.0))
-			shortest_branch = minf(shortest_branch, branch_work)
-		total += 0.0 if is_inf(shortest_branch) else shortest_branch
-	return total
-
-func _opening_route_meters() -> float:
-	var start := _contract_marker_position("AsterStart", Vector3(4.5, 0.0, 11.5))
-	var terminal := _fault_terminal_contract_position()
-	var drink_approach := _contract_marker_position("DrinkMachineApproach", Vector3(7.0, 0.0, 3.08))
-	return _horizontal_distance(start, terminal) + _horizontal_distance(terminal, drink_approach)
-
-func _workspace_and_fault_minimum_route_meters() -> float:
-	var survey_ids := ["glass", "painting_teal", "awards", "jstore"]
-	var survey_positions: Array[Vector3] = []
-	for evidence_id in survey_ids:
-		survey_positions.append(_fault_evidence_contract_position(str(evidence_id)))
-	var start := _contract_marker_position("DrinkMachineApproach", Vector3(7.0, 0.0, 3.08))
-	var terminal := _fault_terminal_contract_position()
-	var first_case: Dictionary = FAULT_REVIEW_CASES[0]
-	var first_ids: Array = first_case.get("evidence", [])
-	var best := INF
-	for survey_order_variant in _index_permutations(survey_positions.size()):
-		var survey_order: Array = survey_order_variant
-		var previous := start
-		var distance := 0.0
-		for raw_index in survey_order:
-			var next: Vector3 = survey_positions[int(raw_index)]
-			distance += _horizontal_distance(previous, next)
-			previous = next
-		for fault_order_variant in _index_permutations(first_ids.size()):
-			var fault_order: Array = fault_order_variant
-			var ordered_ids: Array[String] = []
-			for raw_index in fault_order:
-				ordered_ids.append(str(first_ids[int(raw_index)]))
-			if not _fault_order_stages_correct(first_case, ordered_ids):
-				continue
-			var fault_distance := distance
-			var fault_previous := previous
-			for evidence_id in ordered_ids:
-				var next := _fault_evidence_contract_position(evidence_id)
-				fault_distance += _horizontal_distance(fault_previous, next)
-				fault_previous = next
-			fault_distance += _horizontal_distance(fault_previous, terminal)
-			best = minf(best, fault_distance)
-	var total := 0.0 if is_inf(best) else best
-	for case_index in range(1, FAULT_REVIEW_CASES.size()):
-		total += _fault_case_minimum_route_from(FAULT_REVIEW_CASES[case_index], terminal)
-	return total
-
-func _fault_minimum_route_meters() -> float:
-	var total := 0.0
-	for raw_case in FAULT_REVIEW_CASES:
-		total += _fault_case_minimum_route_meters(raw_case as Dictionary)
-	return total
-
-func _fault_case_minimum_route_meters(case_data: Dictionary) -> float:
-	return _fault_case_minimum_route_from(case_data, _fault_terminal_contract_position())
-
-func _fault_case_minimum_route_from(case_data: Dictionary, start_position: Vector3) -> float:
-	var ids: Array = case_data.get("evidence", [])
-	if ids.is_empty():
-		return 0.0
-	var terminal_position := _fault_terminal_contract_position()
-	var best := INF
-	for permutation_variant in _index_permutations(ids.size()):
-		var permutation: Array = permutation_variant
-		var order: Array[String] = []
-		for raw_index in permutation:
-			order.append(str(ids[int(raw_index)]))
-		if not _fault_order_stages_correct(case_data, order):
-			continue
-		var distance := 0.0
-		var previous := start_position
-		for evidence_id in order:
-			var next := _fault_evidence_contract_position(str(evidence_id))
-			distance += _horizontal_distance(previous, next)
-			previous = next
-		distance += _horizontal_distance(previous, terminal_position)
-		best = minf(best, distance)
-	return 0.0 if best == INF else best
-
-func _fault_order_stages_correct(case_data: Dictionary, order: Array[String]) -> bool:
-	var correct := str(case_data.get("correct", ""))
-	var other_candidate := ""
-	for candidate in (case_data.get("candidates", []) as Array):
-		if str(candidate) != correct:
-			other_candidate = str(candidate)
-			break
-	return other_candidate == "" or order.find(correct) > order.find(other_candidate)
-
-func _workspace_protocol_minimum_route_meters() -> float:
-	var states: Array = [{"position": _fault_terminal_contract_position(), "distance": 0.0}]
-	for protocol_id_variant in WORKSPACE_PROTOCOL_ORDER:
-		var protocol_id := str(protocol_id_variant)
-		var protocol: Dictionary = WORKSPACE_PROTOCOLS[protocol_id]
-		var next_states: Array = []
-		for state_variant in states:
-			var state: Dictionary = state_variant
-			for choice_id_variant in protocol.get("choices", []):
-				var route := _workspace_protocol_choice_route(
-					protocol_id, state.get("position", Vector3.ZERO), str(choice_id_variant)
-				)
-				next_states.append({
-					"position": route.get("end_position", state.get("position", Vector3.ZERO)),
-					"distance": float(state.get("distance", 0.0)) + float(route.get("distance", 0.0)),
-				})
-		states = next_states
-	var hallway := _contract_marker_position("HallwayExit", Vector3(8.4, 0.0, 13.5))
-	var best := INF
-	for state_variant in states:
-		var state: Dictionary = state_variant
-		best = minf(best, float(state.get("distance", 0.0))
-			+ _horizontal_distance(state.get("position", Vector3.ZERO), hallway))
-	return 0.0 if is_inf(best) else best
-
-func _workspace_protocol_choice_route(protocol_id: String, start_position: Vector3, choice_id: String) -> Dictionary:
-	var protocol: Dictionary = WORKSPACE_PROTOCOLS[protocol_id]
-	var evidence_ids: Array = protocol.get("evidence", [])
-	var choice_position := _workspace_protocol_site_position(choice_id)
-	var distance := 0.0
-	var previous := start_position
-	if bool(protocol.get("ordered_evidence", false)):
-		for evidence_id_variant in evidence_ids:
-			var next := _workspace_protocol_site_position(str(evidence_id_variant))
-			distance += _horizontal_distance(previous, next)
-			previous = next
-		distance += _horizontal_distance(previous, choice_position)
-	else:
-		distance += _shortest_protocol_evidence_route(previous, evidence_ids, choice_position)
-	previous = choice_position
-	for execution_id_variant in (protocol.get("execution_sites", {}) as Dictionary).get(choice_id, []):
-		var next := _workspace_protocol_site_position(str(execution_id_variant))
-		distance += _horizontal_distance(previous, next)
-		previous = next
-	return {"distance": distance, "end_position": previous}
-
-func _shortest_protocol_evidence_route(start_position: Vector3, evidence_ids: Array, end_position: Vector3) -> float:
-	if evidence_ids.is_empty():
-		return _horizontal_distance(start_position, end_position)
-	var best := INF
-	for order_variant in _index_permutations(evidence_ids.size()):
-		var order: Array = order_variant
-		var previous := start_position
-		var distance := 0.0
-		for raw_index in order:
-			var next := _workspace_protocol_site_position(str(evidence_ids[int(raw_index)]))
-			distance += _horizontal_distance(previous, next)
-			previous = next
-		distance += _horizontal_distance(previous, end_position)
-		best = minf(best, distance)
-	return 0.0 if is_inf(best) else best
-
-func _index_permutations(count: int) -> Array:
-	var remaining: Array[int] = []
-	for index in range(count):
-		remaining.append(index)
-	var out: Array = []
-	_append_index_permutations([], remaining, out)
-	return out
-
-func _append_index_permutations(prefix: Array, remaining: Array[int], out: Array) -> void:
-	if remaining.is_empty():
-		out.append(prefix.duplicate())
-		return
-	for index in range(remaining.size()):
-		var next_prefix := prefix.duplicate()
-		next_prefix.append(remaining[index])
-		var next_remaining := remaining.duplicate()
-		next_remaining.remove_at(index)
-		_append_index_permutations(next_prefix, next_remaining, out)
-
-func _fault_terminal_contract_position() -> Vector3:
-	if _terminal != null and is_instance_valid(_terminal):
-		return _terminal.global_position
-	var marker := _placement_node("TerminalInteract")
-	return marker.global_position if marker != null else Vector3(6.4, 0.0, 7.75)
-
-func _fault_evidence_contract_position(evidence_id: String) -> Vector3:
-	var live = _fault_evidence_interactables.get(evidence_id)
-	if live is Node3D and is_instance_valid(live):
-		return (live as Node3D).global_position
-	var config: Dictionary = FAULT_EVIDENCE_SOURCES.get(evidence_id, {})
-	var source := find_child(str(config.get("zone", "")), true, false) as Node3D
-	if source != null:
-		return source.global_position
-	var marker := _placement_node(str(config.get("marker", "")))
-	return marker.global_position if marker != null else Vector3.ZERO
-
-func _workspace_protocol_site_position(site_id: String) -> Vector3:
-	var live = _workspace_protocol_sites.get(site_id)
-	if live is Node3D and is_instance_valid(live):
-		return (live as Node3D).global_position
-	return WORKSPACE_PROTOCOL_SITES.get(site_id, {}).get("pos", Vector3.ZERO)
 
 func _contract_marker_position(marker_name: String, fallback: Vector3) -> Vector3:
 	var marker := _placement_node(marker_name)
@@ -839,6 +406,606 @@ func _update_show_terminal() -> void:
 		_has_moved = true
 		_terminal.hide_tutorial_label()
 
+
+# --- Portable sequence authority ---------------------------------------------------------------
+
+func _baseline_sequence_authority() -> Dictionary:
+	return {
+		"version": SEQUENCE_AUTHORITY_VERSION,
+		"contract": SEQUENCE_AUTHORITY_CONTRACT,
+		"ron": _baseline_ron_authority(),
+		"terminal": _baseline_terminal_authority(),
+		"transition": _baseline_transition_authority(),
+	}
+
+
+func _baseline_ron_authority() -> Dictionary:
+	return {
+		"phase": RON_PHASE_IDLE,
+		"started_at": -1.0,
+		"arrived_at": -1.0,
+		"completed_at": -1.0,
+		"endpoint": [],
+		"next_retry_tick": -1.0,
+		"operation_counter": 0,
+		"active_operation_id": "",
+		"operations": [],
+		"interruptions": [],
+	}
+
+
+func _baseline_terminal_authority() -> Dictionary:
+	return {
+		"phase": TERMINAL_PHASE_IDLE,
+		"mode": "",
+		"started_at": -1.0,
+		"deadline": -1.0,
+		"tutorial_complete": false,
+		"return_move_enabled": true,
+		"return_camera": {},
+		"source_data_id": ASTER_TERMINAL_SOURCE_ID,
+		"source_trigger_count": 0,
+	}
+
+
+func _baseline_transition_authority() -> Dictionary:
+	return {
+		"phase": TRANSITION_PHASE_IDLE,
+		"started_at": -1.0,
+		"deadline": -1.0,
+		"completed_at": -1.0,
+		"camera": {},
+		"move_enabled_before": true,
+	}
+
+
+func _sequence_authority_state() -> Dictionary:
+	if _game_state == null:
+		return {}
+	var raw: Variant = _game_state.get_world_state(SEQUENCE_AUTHORITY_KEY, null)
+	if not (raw is Dictionary):
+		return {}
+	var authority := raw as Dictionary
+	var version := int(authority.get("version", 0))
+	var contract := str(authority.get("contract", ""))
+	if version == 1 and contract == "aster_sim_sequence_v1":
+		authority = _migrate_aster_sequence_authority_v1(authority)
+	elif version != SEQUENCE_AUTHORITY_VERSION \
+			or contract != SEQUENCE_AUTHORITY_CONTRACT:
+		return {}
+	return authority.duplicate(true)
+
+
+func _migrate_aster_sequence_authority_v1(raw: Dictionary) -> Dictionary:
+	var migrated := raw.duplicate(true)
+	migrated["version"] = SEQUENCE_AUTHORITY_VERSION
+	migrated["contract"] = SEQUENCE_AUTHORITY_CONTRACT
+	var terminal: Dictionary = migrated.get("terminal", {})
+	terminal["source_data_id"] = ASTER_TERMINAL_SOURCE_ID
+	# Version 1 already knew whether the focus was active/complete, but it did not
+	# own an exact source edge. Burn all registry history visible in that snapshot
+	# so an old trigger can never masquerade as a new physical read.
+	terminal["source_trigger_count"] = maxi(
+		0, _aster_source_trigger_count(_terminal))
+	migrated["terminal"] = terminal
+	return migrated
+
+
+func _publish_sequence_authority(authority: Dictionary) -> void:
+	if _game_state == null:
+		return
+	authority["version"] = SEQUENCE_AUTHORITY_VERSION
+	authority["contract"] = SEQUENCE_AUTHORITY_CONTRACT
+	_game_state.set_world_state(SEQUENCE_AUTHORITY_KEY, authority.duplicate(true))
+
+
+func _sequence_authority_section(section: String) -> Dictionary:
+	var authority := _sequence_authority_state()
+	var value: Variant = authority.get(section, null)
+	return (value as Dictionary).duplicate(true) if value is Dictionary else {}
+
+
+func _publish_sequence_authority_section(section: String, value: Dictionary) -> void:
+	var authority := _sequence_authority_state()
+	if authority.is_empty():
+		authority = _baseline_sequence_authority()
+	authority[section] = value.duplicate(true)
+	_publish_sequence_authority(authority)
+
+
+func _authority_v3_data(value: Variant) -> Array:
+	if not (value is Vector3) or not (value as Vector3).is_finite():
+		return []
+	var vector := value as Vector3
+	return [vector.x, vector.y, vector.z]
+
+
+func _authority_v3(value: Variant) -> Vector3:
+	if not (value is Array) or (value as Array).size() != 3:
+		return Vector3.INF
+	var encoded := value as Array
+	for component in encoded:
+		if typeof(component) not in [TYPE_INT, TYPE_FLOAT] \
+				or not is_finite(float(component)):
+			return Vector3.INF
+	var result := Vector3(float(encoded[0]), float(encoded[1]), float(encoded[2]))
+	return result if result.is_finite() else Vector3.INF
+
+
+func _authority_finite_number(value: Variant) -> bool:
+	return typeof(value) in [TYPE_INT, TYPE_FLOAT] and is_finite(float(value))
+
+
+func _authority_transform_data(value: Transform3D) -> Dictionary:
+	return {
+		"basis_x": _authority_v3_data(value.basis.x),
+		"basis_y": _authority_v3_data(value.basis.y),
+		"basis_z": _authority_v3_data(value.basis.z),
+		"origin": _authority_v3_data(value.origin),
+	}
+
+
+func _authority_transform(value: Variant) -> Transform3D:
+	if not (value is Dictionary):
+		return Transform3D.IDENTITY
+	var encoded := value as Dictionary
+	var basis_x := _authority_v3(encoded.get("basis_x", null))
+	var basis_y := _authority_v3(encoded.get("basis_y", null))
+	var basis_z := _authority_v3(encoded.get("basis_z", null))
+	var origin := _authority_v3(encoded.get("origin", null))
+	if not basis_x.is_finite() or not basis_y.is_finite() \
+			or not basis_z.is_finite() or not origin.is_finite():
+		return Transform3D.IDENTITY
+	return Transform3D(Basis(basis_x, basis_y, basis_z), origin)
+
+
+func _capture_authority_camera_state() -> Dictionary:
+	if _camera == null:
+		return {}
+	var view: Dictionary = (
+		_camera.capture_view_state() if _camera.has_method("capture_view_state") else {}
+	)
+	var target_id := ""
+	var target: Variant = view.get("target", _camera.target)
+	if target == _player:
+		target_id = "aster"
+	elif target == _ron:
+		target_id = "ron"
+	var lock_override: Variant = view.get("lock_offset_override", null)
+	var transform_v: Variant = view.get("global_transform", _camera.global_transform)
+	var transform: Transform3D = (
+		transform_v as Transform3D if transform_v is Transform3D else _camera.global_transform
+	)
+	return {
+		"target_id": target_id,
+		"follow_offset": _authority_v3_data(view.get("follow_offset", _camera.follow_offset)),
+		"pan_offset": _authority_v3_data(view.get("pan_offset", Vector3.ZERO)),
+		"view_yaw": float(view.get("view_yaw", 0.0)),
+		"view_zoom": float(view.get("view_zoom", 1.0)),
+		"locked": bool(view.get("locked", false)),
+		"lock_position": _authority_v3_data(view.get("lock_position", Vector3.ZERO)),
+		"lock_offset_override": (
+			_authority_v3_data(lock_override as Vector3) if lock_override is Vector3 else null
+		),
+		"global_transform": _authority_transform_data(transform),
+	}
+
+
+func _valid_authority_camera_state(value: Variant) -> bool:
+	if not (value is Dictionary):
+		return false
+	var state := value as Dictionary
+	for required_key in [
+		"target_id", "follow_offset", "pan_offset", "view_yaw", "view_zoom",
+		"locked", "lock_position", "lock_offset_override", "global_transform",
+	]:
+		if not state.has(required_key):
+			return false
+	if str(state.get("target_id", "")) not in ["", "aster", "ron"]:
+		return false
+	if not (state.get("target_id", null) is String) \
+			or not (state.get("locked", null) is bool):
+		return false
+	for key in ["follow_offset", "pan_offset", "lock_position"]:
+		if not _authority_v3(state.get(key, null)).is_finite():
+			return false
+	var lock_override: Variant = state.get("lock_offset_override", null)
+	if lock_override != null and not _authority_v3(lock_override).is_finite():
+		return false
+	var yaw_v: Variant = state.get("view_yaw", null)
+	var zoom_v: Variant = state.get("view_zoom", null)
+	if not _authority_finite_number(yaw_v) or not _authority_finite_number(zoom_v):
+		return false
+	var yaw := float(yaw_v)
+	var zoom := float(zoom_v)
+	var transform_v: Variant = state.get("global_transform", null)
+	if not is_finite(yaw) or not is_finite(zoom) or zoom <= 0.0 or zoom > 10.0 \
+			or not (transform_v is Dictionary):
+		return false
+	var transform := transform_v as Dictionary
+	for key in ["basis_x", "basis_y", "basis_z", "origin"]:
+		if not _authority_v3(transform.get(key, null)).is_finite():
+			return false
+	if absf(_authority_transform(transform).basis.determinant()) <= 0.0001:
+		return false
+	return true
+
+
+func _apply_authority_camera_state(encoded: Dictionary) -> void:
+	if _camera == null or not _valid_authority_camera_state(encoded):
+		return
+	var target: Node3D = null
+	match str(encoded.get("target_id", "")):
+		"aster":
+			target = _player
+		"ron":
+			target = _ron
+	var lock_override: Variant = encoded.get("lock_offset_override", null)
+	var decoded := {
+		"target": target,
+		"follow_offset": _authority_v3(encoded.get("follow_offset", null)),
+		"pan_offset": _authority_v3(encoded.get("pan_offset", null)),
+		"view_yaw": float(encoded.get("view_yaw", 0.0)),
+		"view_zoom": float(encoded.get("view_zoom", 1.0)),
+		"global_transform": _authority_transform(encoded.get("global_transform", null)),
+		"locked": bool(encoded.get("locked", false)),
+		"lock_position": _authority_v3(encoded.get("lock_position", null)),
+		"lock_offset_override": (
+			_authority_v3(lock_override) if lock_override != null else null
+		),
+	}
+	if _camera.has_method("restore_view_state"):
+		_camera.restore_view_state(decoded)
+	else:
+		_camera.target = target
+		_camera.follow_offset = decoded["follow_offset"]
+		_camera.unlock()
+
+
+func _connect_sequence_authority_signals() -> void:
+	if _game_state == null:
+		return
+	if not _game_state.character_arrived.is_connected(_on_aster_sim_character_arrived):
+		_game_state.character_arrived.connect(_on_aster_sim_character_arrived)
+
+
+func _ron_approach_endpoint() -> Vector3:
+	# Aster cannot move during the intro, so the authored spawn is the stable causal
+	# context. Using his later live position here would mutate the historical endpoint
+	# after he walks to the terminal and make an otherwise valid old receipt fail load.
+	var aster_position := _placement_or_grid("AsterStart", Vector2i(4, 10), _grid.origin.y)
+	var desired := aster_position + Vector3(1.5, 0.0, 0.5)
+	if _grid != null:
+		desired = _grid.nearest_walkable_world(desired)
+	return desired
+
+
+func _ron_is_at_approach_endpoint(record: Dictionary) -> bool:
+	if _game_state == null or not _game_state.characters.has("ron") \
+			or _game_state.is_moving("ron"):
+		return false
+	var endpoint := _authority_v3(record.get("endpoint", null))
+	return endpoint.is_finite() \
+		and _game_state.get_position("ron").distance_to(endpoint) <= RON_APPROACH_ARRIVAL_RADIUS
+
+
+func _ron_has_accepted_approach_receipt(record: Dictionary) -> bool:
+	var endpoint := _authority_v3(record.get("endpoint", null))
+	if not endpoint.is_finite():
+		return false
+	var operations_v: Variant = record.get("operations", null)
+	if not (operations_v is Array):
+		return false
+	for operation_v in operations_v as Array:
+		if not (operation_v is Dictionary):
+			continue
+		var operation := operation_v as Dictionary
+		if bool(operation.get("accepted", false)) \
+				and str(operation.get("actor_id", "")) == "ron" \
+				and str(operation.get("kind", "")) == "move_to_pos" \
+				and _authority_v3(operation.get("endpoint", null)).distance_to(endpoint) \
+					<= RON_APPROACH_ARRIVAL_RADIUS:
+			return true
+	return false
+
+
+func _valid_ron_authority(record: Dictionary) -> bool:
+	var phase := str(record.get("phase", ""))
+	if phase == RON_PHASE_IDLE:
+		return _authority_finite_number(record.get("started_at", null)) \
+			and _authority_finite_number(record.get("next_retry_tick", null)) \
+			and float(record.get("started_at", -1.0)) < 0.0 \
+			and float(record.get("next_retry_tick", -1.0)) < 0.0
+	if phase not in [RON_PHASE_APPROACHING, RON_PHASE_GREETING, RON_PHASE_COMPLETE]:
+		return false
+	var endpoint := _authority_v3(record.get("endpoint", null))
+	var canonical_endpoint := _ron_approach_endpoint()
+	var started_v: Variant = record.get("started_at", null)
+	if not _authority_finite_number(started_v):
+		return false
+	var started_at := float(started_v)
+	if not endpoint.is_finite() or endpoint.distance_to(canonical_endpoint) \
+			> RON_APPROACH_ARRIVAL_RADIUS or not is_finite(started_at) or started_at < 0.0:
+		return false
+	var operations_v: Variant = record.get("operations", null)
+	var interruptions_v: Variant = record.get("interruptions", null)
+	if not (operations_v is Array) or not (interruptions_v is Array) \
+			or int(record.get("operation_counter", -1)) < 0:
+		return false
+	for operation_v in operations_v as Array:
+		if not (operation_v is Dictionary):
+			return false
+		var operation := operation_v as Dictionary
+		if str(operation.get("operation_id", "")) == "" \
+				or str(operation.get("actor_id", "")) != "ron" \
+				or str(operation.get("kind", "")) != "move_to_pos" \
+				or not (operation.get("accepted", null) is bool) \
+				or _authority_v3(operation.get("endpoint", null)).distance_to(endpoint) \
+					> RON_APPROACH_ARRIVAL_RADIUS \
+				or not _authority_finite_number(operation.get("committed_at", null)):
+			return false
+	for interruption_v in interruptions_v as Array:
+		if not (interruption_v is Dictionary):
+			return false
+		var interruption := interruption_v as Dictionary
+		if str(interruption.get("operation_id", "")) == "" \
+				or not _authority_finite_number(interruption.get("observed_at", null)) \
+				or not _authority_v3(interruption.get("position", null)).is_finite():
+			return false
+	if phase == RON_PHASE_APPROACHING:
+		var retry_v: Variant = record.get("next_retry_tick", null)
+		if not _authority_finite_number(retry_v):
+			return false
+		var retry := float(retry_v)
+		return is_finite(retry) and retry >= started_at
+	if not _ron_has_accepted_approach_receipt(record):
+		return false
+	var arrived_v: Variant = record.get("arrived_at", null)
+	if not _authority_finite_number(arrived_v):
+		return false
+	var arrived_at := float(arrived_v)
+	if not is_finite(arrived_at) or arrived_at < started_at \
+			or float(record.get("next_retry_tick", -1.0)) >= 0.0:
+		return false
+	if phase == RON_PHASE_COMPLETE:
+		var completed_v: Variant = record.get("completed_at", null)
+		if not _authority_finite_number(completed_v):
+			return false
+		var completed_at := float(completed_v)
+		return is_finite(completed_at) and completed_at >= arrived_at
+	return true
+
+
+func _valid_terminal_authority(record: Dictionary) -> bool:
+	var phase := str(record.get("phase", ""))
+	if not _authority_finite_number(record.get("started_at", null)) \
+			or not _authority_finite_number(record.get("deadline", null)) \
+			or not (record.get("tutorial_complete", null) is bool) \
+			or str(record.get("source_data_id", "")) != ASTER_TERMINAL_SOURCE_ID \
+			or int(record.get("source_trigger_count", -1)) < 0:
+		return false
+	var started_at := float(record.get("started_at", -1.0))
+	var deadline := float(record.get("deadline", -1.0))
+	match phase:
+		TERMINAL_PHASE_IDLE:
+			return started_at < 0.0 and deadline < 0.0 \
+				and not bool(record.get("tutorial_complete", true))
+		TERMINAL_PHASE_ACTIVE:
+			var mode := str(record.get("mode", ""))
+			return mode in [TERMINAL_MODE_TUTORIAL, TERMINAL_MODE_REREAD] \
+				and is_finite(started_at) and is_finite(deadline) \
+				and started_at >= 0.0 and deadline > started_at \
+				and (record.get("return_move_enabled", null) is bool) \
+				and _valid_authority_camera_state(record.get("return_camera", null)) \
+				and (mode == TERMINAL_MODE_REREAD) \
+					== bool(record.get("tutorial_complete", false))
+		TERMINAL_PHASE_SETTLING:
+			return str(record.get("mode", "")) == TERMINAL_MODE_TUTORIAL \
+				and is_finite(started_at) and is_finite(deadline) \
+				and started_at >= 0.0 and deadline > started_at \
+				and not bool(record.get("tutorial_complete", true)) \
+				and (record.get("return_move_enabled", null) is bool) \
+				and _valid_authority_camera_state(record.get("return_camera", null))
+		TERMINAL_PHASE_COMPLETE:
+			return started_at >= 0.0 and deadline < 0.0 \
+				and bool(record.get("tutorial_complete", false))
+		_:
+			return false
+
+
+func _valid_transition_authority(record: Dictionary) -> bool:
+	var phase := str(record.get("phase", ""))
+	if not _authority_finite_number(record.get("started_at", null)) \
+			or not _authority_finite_number(record.get("deadline", null)):
+		return false
+	var started_at := float(record.get("started_at", -1.0))
+	var deadline := float(record.get("deadline", -1.0))
+	match phase:
+		TRANSITION_PHASE_IDLE:
+			return started_at < 0.0 and deadline < 0.0
+		TRANSITION_PHASE_FADING:
+			return is_finite(started_at) and is_finite(deadline) \
+				and started_at >= 0.0 and deadline > started_at \
+				and (record.get("move_enabled_before", null) is bool) \
+				and _valid_authority_camera_state(record.get("camera", null))
+		TRANSITION_PHASE_COMPLETE:
+			var completed_v: Variant = record.get("completed_at", null)
+			if not _authority_finite_number(completed_v):
+				return false
+			var completed_at := float(completed_v)
+			return is_finite(started_at) and is_finite(deadline) \
+				and is_finite(completed_at) and started_at >= 0.0 \
+				and deadline > started_at and completed_at >= deadline \
+				and (record.get("move_enabled_before", null) is bool) \
+				and _valid_authority_camera_state(record.get("camera", null))
+		_:
+			return false
+
+
+# --- Exact Aster interaction sources ----------------------------------------------------------
+
+func _ensure_aster_interaction_sources_registered() -> void:
+	_configure_aster_interaction_source(
+		_terminal, ASTER_TERMINAL_SOURCE_ID, ASTER_TERMINAL_ACTION)
+	_configure_aster_interaction_source(
+		_drink_machine, ASTER_DRINK_SOURCE_ID, ASTER_DRINK_ACTION)
+
+
+func _configure_aster_interaction_source(
+		source: Node, data_id: String, action_id: String) -> void:
+	if _game_state == null or not is_instance_valid(source):
+		return
+	if not _game_state.has_interactable(data_id):
+		var source_position := (
+			(source as Node3D).global_position if source is Node3D else Vector3.ZERO
+		)
+		var source_type := int(source.get("interactable_type"))
+		_game_state.register_interactable({
+			"id": data_id,
+			"position": source_position,
+			"requires_hold": source_type == Interactable.InteractableType.HOLD_ACTION,
+			"interactable_type": source_type,
+			"hold_time": float(source.get("dwell_time")),
+			"one_shot": true,
+			"required_character": "aster",
+			"radius": float(source.get("interaction_radius")),
+			"tutorial_label": str(source.get("tutorial_label")),
+			"catalog_id": str(source.get("interactable_id")),
+			"enabled": bool(source.get("interaction_enabled")),
+		})
+	if source.has_method("bind_data"):
+		source.call("bind_data", _game_state, data_id)
+	source.set("one_shot", true)
+	source.set("required_character", "aster")
+	if source.has_method("set_pre_trigger_validator"):
+		source.call(
+			"set_pre_trigger_validator",
+			_validate_aster_source_trigger.bind(action_id, source)
+		)
+
+
+func _validate_aster_source_trigger(
+		source: Node, actor: String, action_id: String, expected_source: Node) -> bool:
+	return is_instance_valid(source) and source == expected_source \
+		and (
+			(action_id == ASTER_TERMINAL_ACTION and source == _terminal)
+			or (action_id == ASTER_DRINK_ACTION and source == _drink_machine)
+		) \
+		and _aster_actor_ready_at_source(source, actor) \
+		and _aster_source_action_ready(action_id)
+
+
+func _aster_actor_ready_at_source(source: Node, actor: String) -> bool:
+	if _game_state == null or not is_instance_valid(source) or not (source is Node3D) \
+			or actor != "aster" or not _game_state.characters.has(actor) \
+			or not _game_state.is_narratively_available(actor) \
+			or _game_state.is_downed(actor) or _game_state.is_knocked_down(actor) \
+			or _game_state.is_moving(actor) or _game_state.is_resting(actor) \
+			or _game_state.is_dodging(actor) or _game_state.is_endocytosing(actor) \
+			or _game_state.is_external_traversal_active(actor) \
+			or _game_state.is_dragging(actor) or _game_state.is_field_restoring(actor) \
+			or _game_state.is_pushing(actor):
+		return false
+	var source_position := (source as Node3D).global_position
+	if _game_state.grid != null and _game_state.grid.level_count > 1 \
+			and int(_game_state.get_character_level(actor)) != int(
+				_game_state.grid.level_for_y(source_position.y)):
+		return false
+	var actor_position := _game_state.get_position(actor)
+	var radius := float(source.get("interaction_radius")) \
+		+ ASTER_INTERACTION_POSITION_TOLERANCE
+	return Vector2(actor_position.x, actor_position.z).distance_to(
+		Vector2(source_position.x, source_position.z)) <= radius \
+		and absf(actor_position.y - source_position.y) \
+			<= ASTER_INTERACTION_HEIGHT_TOLERANCE
+
+
+func _aster_source_action_ready(action_id: String) -> bool:
+	if action_id == ASTER_TERMINAL_ACTION:
+		if _terminal_focus_active:
+			return false
+		var terminal := _sequence_authority_section("terminal")
+		var phase := str(terminal.get("phase", TERMINAL_PHASE_IDLE))
+		return (
+			_current_step == "show_terminal" and phase == TERMINAL_PHASE_IDLE
+		) or (
+			_terminal_story_has_passed() and phase == TERMINAL_PHASE_COMPLETE
+		)
+	if action_id != ASTER_DRINK_ACTION:
+		return false
+	var drink_phase := str(
+		_read_drink_authority().get("phase", DRINK_PHASE_AVAILABLE))
+	if drink_phase == DRINK_PHASE_AVAILABLE:
+		return _current_step == "walk_to_drink" \
+			and _game_state.has_free_hands("aster")
+	return drink_phase == DRINK_PHASE_CONSUMED or _has_drunk
+
+
+func _aster_source_trigger_count(source: Node) -> int:
+	if _game_state == null or not is_instance_valid(source):
+		return -1
+	var data_id := str(source.get("data_id"))
+	if data_id == "" or not _game_state.has_interactable(data_id):
+		return -1
+	return int(_game_state.get_interactable(data_id).get("trigger_count", -1))
+
+
+func _aster_source_receipt(
+		source: Node, action_id: String, consumed_count: int) -> Dictionary:
+	if not is_instance_valid(source):
+		return {}
+	var actor := str(source.get("active_character"))
+	if not _validate_aster_source_trigger(source, actor, action_id, source) \
+			or not bool(source.get("one_shot")) or not bool(source.get("_used")) \
+			or bool(source.get("interaction_enabled")):
+		return {}
+	var data_id := str(source.get("data_id"))
+	if data_id == "" or not _game_state.has_interactable(data_id):
+		return {}
+	var registry := _game_state.get_interactable(data_id)
+	var trigger_count := int(registry.get("trigger_count", -1))
+	if not bool(registry.get("one_shot", false)) \
+			or not bool(registry.get("triggered", false)) \
+			or bool(registry.get("enabled", true)) \
+			or str(registry.get("last_trigger_character", "")) != actor \
+			or trigger_count != consumed_count + 1:
+		return {}
+	return {
+		"action": action_id,
+		"source_data_id": data_id,
+		"actor": actor,
+		"trigger_count": trigger_count,
+	}
+
+
+func _aster_source_receipt_is_active(
+		receipt: Dictionary, action_id: String, source: Node) -> bool:
+	return not receipt.is_empty() \
+		and receipt == _active_aster_source_receipt \
+		and str(receipt.get("action", "")) == action_id \
+		and str(receipt.get("source_data_id", "")) == str(source.get("data_id")) \
+		and str(receipt.get("actor", "")) == "aster" \
+		and int(receipt.get("trigger_count", -1)) \
+			== _aster_source_trigger_count(source)
+
+
+func _set_aster_source_projection(source: Node, enabled: bool) -> void:
+	if _game_state == null or not is_instance_valid(source):
+		return
+	var data_id := str(source.get("data_id"))
+	if data_id != "" and _game_state.has_interactable(data_id):
+		var registry := _game_state.get_interactable(data_id)
+		if enabled and bool(registry.get("triggered", false)):
+			# Owner-derived rearm: reset clears only the one-shot spent bit. Its
+			# trigger_count remains the monotonic receipt identity.
+			source.call("reset")
+		elif bool(registry.get("enabled", true)) != enabled:
+			_game_state.set_interactable_enabled(data_id, enabled)
+	if source.has_method("restore_one_shot_presenter"):
+		source.call("restore_one_shot_presenter", false, enabled)
+	elif source.has_method("set_interaction_enabled"):
+		source.call("set_interaction_enabled", enabled)
+
 # --- Event-driven steps ---
 
 func _start_fade_in() -> void:
@@ -849,7 +1016,7 @@ func _start_fade_in() -> void:
 func _start_working() -> void:
 	_enter_step("working")
 	# Brief settle after the fade, then Ron warps in (no long dead-air idle).
-	_scheduler.schedule_after(0.5, _start_ron_warp_in, "ron_warp_in")
+	_schedule_portable_method(0.5, _start_ron_warp_in, "ron_warp_in")
 
 func _start_ron_warp_in() -> void:
 	_enter_step("ron_warp_in")
@@ -862,23 +1029,170 @@ func _start_ron_warp_in() -> void:
 		portal.play(WarpPortal.GREEN, 1.4)
 		if _ron.has_method("warp_in"):
 			_ron.warp_in(1.3)
-	_scheduler.schedule_after(1.3, _start_ron_approaches, "ron_approaches")
+	_schedule_portable_method(1.3, _start_ron_approaches, "ron_approaches")
 
 func _start_ron_approaches() -> void:
 	_enter_step("ron_approaches")
 	_hide_thought()
-	_ron.walk_to(_player.global_position + Vector3(1.5, 0, 0.5))
-	_scheduler.schedule_after(3.0, _start_ron_greeting, "ron_greeting")
+	_player.set_move_enabled(false)
+	_restore_ron_post_warp_presenter()
+	var now := float(_scheduler.get_current_tick())
+	var record := _baseline_ron_authority()
+	record["phase"] = RON_PHASE_APPROACHING
+	record["started_at"] = now
+	record["endpoint"] = _authority_v3_data(_ron_approach_endpoint())
+	record["next_retry_tick"] = now
+	_publish_sequence_authority_section("ron", record)
+	_update_ron_approach_authority()
 
 func _start_ron_greeting() -> void:
+	var record := _sequence_authority_section("ron")
+	if not _valid_ron_authority(record):
+		return
+	var phase := str(record.get("phase", ""))
+	if phase == RON_PHASE_APPROACHING:
+		if not _ron_has_accepted_approach_receipt(record) \
+				or not _ron_is_at_approach_endpoint(record):
+			return
+		record["phase"] = RON_PHASE_GREETING
+		record["arrived_at"] = float(_scheduler.get_current_tick())
+		record["next_retry_tick"] = -1.0
+		record["active_operation_id"] = ""
+		_publish_sequence_authority_section("ron", record)
+	elif phase != RON_PHASE_GREETING:
+		return
+	_present_ron_greeting()
+
+
+func _present_ron_greeting() -> void:
 	_enter_step("ron_greeting")
-	_ron.stop()
-	DialogueData.say_to(_dialogue, "aster_sim.ron.greeting")
-	DialogueData.say_to(_dialogue, "aster_sim.ron.name")
-	_dialogue.dialogue_finished.connect(
-		func(): _scheduler.schedule_after(0, _start_show_terminal, "show_terminal"),
-		CONNECT_ONE_SHOT
+	_player.set_move_enabled(false)
+	_restore_ron_post_warp_presenter()
+	_clear_dialogue_presenter_for_restore()
+	_dialogue_chain(
+		["aster_sim.ron.greeting", "aster_sim.ron.name"],
+		_on_ron_greeting_finished
 	)
+
+
+func _on_ron_greeting_finished() -> void:
+	var record := _sequence_authority_section("ron")
+	if not _valid_ron_authority(record) \
+			or str(record.get("phase", "")) != RON_PHASE_GREETING:
+		return
+	# Presentation cannot launder an interrupted approach.  If another system moved
+	# Ron during the greeting, return to the same saved endpoint and only greet once
+	# his body is physically there again.
+	if not _ron_is_at_approach_endpoint(record):
+		record["phase"] = RON_PHASE_APPROACHING
+		record["arrived_at"] = -1.0
+		record["next_retry_tick"] = float(_scheduler.get_current_tick())
+		_publish_sequence_authority_section("ron", record)
+		_enter_step("ron_approaches")
+		return
+	record["phase"] = RON_PHASE_COMPLETE
+	record["completed_at"] = float(_scheduler.get_current_tick())
+	_publish_sequence_authority_section("ron", record)
+	_start_show_terminal()
+
+
+func _on_aster_sim_character_arrived(char_id: String) -> void:
+	if char_id == "ron" and not _ron_operation_commit_active:
+		_update_ron_approach_authority()
+
+
+func _restore_ron_post_warp_presenter() -> void:
+	if _ron == null or not is_instance_valid(_ron):
+		return
+	if _ron.has_method("_set_warp_dissolve"):
+		_ron.call("_set_warp_dissolve", 1.05)
+	var label: Node = _ron.get_node_or_null("Label3D")
+	if label is Label3D:
+		(label as Label3D).modulate.a = 0.7
+
+
+func _update_ron_approach_authority() -> void:
+	if _game_state == null or _scheduler == null:
+		return
+	var record := _sequence_authority_section("ron")
+	if not _valid_ron_authority(record) \
+			or str(record.get("phase", "")) != RON_PHASE_APPROACHING:
+		return
+	if _ron_is_at_approach_endpoint(record):
+		if _ron_has_accepted_approach_receipt(record):
+			_start_ron_greeting()
+		else:
+			var now_without_receipt := float(_scheduler.get_current_tick())
+			if now_without_receipt + 0.000001 \
+					>= float(record.get("next_retry_tick", now_without_receipt)):
+				_issue_ron_approach_operation(record)
+		return
+	var endpoint := _authority_v3(record.get("endpoint", null))
+	var active_operation_id := str(record.get("active_operation_id", ""))
+	var movement_matches := _game_state.is_moving("ron") \
+		and _game_state.get_destination("ron").distance_to(endpoint) \
+			<= RON_APPROACH_ARRIVAL_RADIUS
+	if movement_matches:
+		return
+	if active_operation_id != "":
+		var interruptions := (record.get("interruptions", []) as Array).duplicate(true)
+		interruptions.append({
+			"operation_id": active_operation_id,
+			"observed_at": float(_scheduler.get_current_tick()),
+			"reason": "destination_replaced" if _game_state.is_moving("ron") else "stopped_early",
+			"position": _authority_v3_data(_game_state.get_position("ron")),
+		})
+		record["interruptions"] = interruptions
+		record["active_operation_id"] = ""
+		_publish_sequence_authority_section("ron", record)
+	var now := float(_scheduler.get_current_tick())
+	if now + 0.000001 < float(record.get("next_retry_tick", now)):
+		return
+	_issue_ron_approach_operation(record)
+
+
+func _issue_ron_approach_operation(record: Dictionary) -> void:
+	if _game_state == null or _scheduler == null:
+		return
+	var endpoint := _authority_v3(record.get("endpoint", null))
+	if not endpoint.is_finite():
+		return
+	var attempt := int(record.get("operation_counter", 0)) + 1
+	var operation_id := "ron_approach:%d" % attempt
+	var accepted := false
+	var rejection := "movement_locked"
+	if _game_state.can_accept_move_command("ron"):
+		_ron_operation_commit_active = true
+		accepted = _game_state.command_move_to_pos("ron", endpoint)
+		_ron_operation_commit_active = false
+		if accepted:
+			accepted = (
+				(_game_state.is_moving("ron")
+					and _game_state.get_destination("ron").distance_to(endpoint)
+						<= RON_APPROACH_ARRIVAL_RADIUS)
+				or _ron_is_at_approach_endpoint(record)
+			)
+			rejection = "" if accepted else "endpoint_not_committed"
+		else:
+			rejection = "command_rejected"
+	var operations := (record.get("operations", []) as Array).duplicate(true)
+	operations.append({
+		"operation_id": operation_id,
+		"actor_id": "ron",
+		"kind": "move_to_pos",
+		"accepted": accepted,
+		"rejection": rejection,
+		"committed_at": float(_scheduler.get_current_tick()),
+		"endpoint": _authority_v3_data(endpoint),
+	})
+	record["operations"] = operations
+	record["operation_counter"] = attempt
+	record["active_operation_id"] = operation_id if accepted else ""
+	record["next_retry_tick"] = float(_scheduler.get_current_tick()) \
+		+ RON_APPROACH_RETRY_SECONDS
+	_publish_sequence_authority_section("ron", record)
+	if _ron_is_at_approach_endpoint(record):
+		_start_ron_greeting()
 
 func _start_show_terminal() -> void:
 	_enter_step("show_terminal")
@@ -892,43 +1206,176 @@ func _start_show_terminal() -> void:
 
 func _on_terminal_interacted() -> void:
 	if _terminal_focus_active:
-		return  # already showing the screen; ignore re-clicks mid-focus
-	if _current_step == "fault_review":
-		_on_fault_terminal_interacted()
-	elif _current_step == "show_terminal":
+		return
+	var record := _sequence_authority_section("terminal")
+	var receipt := _aster_source_receipt(
+		_terminal,
+		ASTER_TERMINAL_ACTION,
+		int(record.get("source_trigger_count", 0))
+	)
+	if receipt.is_empty():
+		return
+	record["source_data_id"] = ASTER_TERMINAL_SOURCE_ID
+	record["source_trigger_count"] = int(receipt.get("trigger_count", 0))
+	_publish_sequence_authority_section("terminal", record)
+	_active_aster_source_receipt = receipt
+	if _current_step == "show_terminal":
 		_scheduler.cancel_tag("drink_redirect")
 		# The controller already walked Aster to the reading spot (queued glow on the desk in his colour
 		# while en route); the FIRST read drives the tutorial forward.
-		_start_terminal_focus()
+		_start_terminal_focus_from_source_receipt(receipt)
 	else:
 		# Later reads just re-show the screen — the monitor stays readable, but the tutorial doesn't move.
-		_replay_terminal_focus()
+		_replay_terminal_focus_from_source_receipt(receipt)
+	_active_aster_source_receipt.clear()
 
 # Aster has reached the terminal's reading spot → frame the screen from the FRONT, swap in the detailed
 # readout, hold a beat, then continue. Scheduler-driven so it runs headless and respects F.
 func _start_terminal_focus() -> void:
-	_enter_step("terminal_focus")
-	_player.set_move_enabled(false)
-	_begin_terminal_screen_focus()
-	_scheduler.schedule_after(TERMINAL_FOCUS_DURATION, _end_terminal_focus, "terminal_focus")
+	# Retired automation seam. The exact terminal receipt owns every real read.
+	pass
+
+
+func _start_terminal_focus_from_source_receipt(receipt: Dictionary) -> void:
+	_begin_terminal_focus_authority(TERMINAL_MODE_TUTORIAL, receipt)
 
 func _end_terminal_focus() -> void:
-	_end_terminal_screen_focus()
-	_player.set_move_enabled(true)
-	_rearm_interactable(_terminal)  # the monitor stays re-readable after the first time
-	_start_terminal_data()
+	var record := _sequence_authority_section("terminal")
+	_on_terminal_authority_deadline(
+		str(record.get("phase", "")),
+		str(record.get("mode", "")),
+		float(record.get("deadline", -1.0))
+	)
 
 ## Re-read the monitor after the tutorial has moved past it: same screen + framing, but no step change
 ## and no progression — purely a look.
 func _replay_terminal_focus() -> void:
-	_player.set_move_enabled(false)
-	_begin_terminal_screen_focus()
-	_scheduler.schedule_after(TERMINAL_FOCUS_DURATION, _end_terminal_reread, "terminal_reread")
+	# Retired automation seam. A reread still requires Aster at the terminal.
+	pass
+
+
+func _replay_terminal_focus_from_source_receipt(receipt: Dictionary) -> void:
+	_begin_terminal_focus_authority(TERMINAL_MODE_REREAD, receipt)
 
 func _end_terminal_reread() -> void:
-	_end_terminal_screen_focus()
-	_player.set_move_enabled(true)
+	_end_terminal_focus()
+
+
+func _begin_terminal_focus_authority(mode: String, source_receipt: Dictionary = {}) -> void:
+	if _scheduler == null or mode not in [TERMINAL_MODE_TUTORIAL, TERMINAL_MODE_REREAD]:
+		return
+	if not _aster_source_receipt_is_active(
+			source_receipt, ASTER_TERMINAL_ACTION, _terminal):
+		return
+	var existing := _sequence_authority_section("terminal")
+	if int(existing.get("source_trigger_count", -1)) \
+			!= int(source_receipt.get("trigger_count", -2)):
+		return
+	if mode == TERMINAL_MODE_TUTORIAL:
+		if _valid_terminal_authority(existing) \
+				and bool(existing.get("tutorial_complete", false)):
+			return
+		_enter_step("terminal_focus")
+	else:
+		if not _valid_terminal_authority(existing) \
+				or not bool(existing.get("tutorial_complete", false)):
+			return
+	var now := float(_scheduler.get_current_tick())
+	var record := _baseline_terminal_authority()
+	record["phase"] = TERMINAL_PHASE_ACTIVE
+	record["mode"] = mode
+	record["started_at"] = now
+	record["deadline"] = now + TERMINAL_FOCUS_DURATION
+	record["tutorial_complete"] = mode == TERMINAL_MODE_REREAD
+	record["return_move_enabled"] = (
+		bool(_player.is_move_enabled()) if _player != null \
+			and _player.has_method("is_move_enabled") else true
+	)
+	record["return_camera"] = _capture_authority_camera_state()
+	record["source_data_id"] = ASTER_TERMINAL_SOURCE_ID
+	record["source_trigger_count"] = int(source_receipt.get("trigger_count", 0))
+	_publish_sequence_authority_section("terminal", record)
+	_apply_terminal_focus_presenter(record)
+	_arm_terminal_authority(record)
+
+
+func _apply_terminal_focus_presenter(record: Dictionary) -> void:
+	_terminal_return_camera_state = (
+		(record.get("return_camera", {}) as Dictionary).duplicate(true)
+	)
+	if _player != null:
+		_player.set_move_enabled(false)
+	_begin_terminal_screen_focus(_terminal_return_camera_state)
+
+
+func _arm_terminal_authority(record: Dictionary, currently_firing_tag := "") -> void:
+	if _scheduler == null:
+		return
+	# The shipped native scheduler's pop-next path retires its live-count after
+	# invoking the callback. Cancelling that currently firing handle from inside
+	# itself would double-retire it and hide the newly chained callback from
+	# pending_count(), even though the heap still contains it.
+	if currently_firing_tag != TERMINAL_FOCUS_AUTHORITY_TAG:
+		_scheduler.cancel_tag(TERMINAL_FOCUS_AUTHORITY_TAG)
+	if currently_firing_tag != TERMINAL_SETTLE_AUTHORITY_TAG:
+		_scheduler.cancel_tag(TERMINAL_SETTLE_AUTHORITY_TAG)
+	# Retire the old local tags as well, so a same-presenter rollback cannot keep a
+	# callback from the discarded future alive.
+	_scheduler.cancel_tag("terminal_focus")
+	_scheduler.cancel_tag("terminal_reread")
+	var phase := str(record.get("phase", ""))
+	if phase not in [TERMINAL_PHASE_ACTIVE, TERMINAL_PHASE_SETTLING]:
+		return
+	var mode := str(record.get("mode", ""))
+	var deadline := float(record.get("deadline", -1.0))
+	var now := float(_scheduler.get_current_tick())
+	if deadline <= now:
+		_on_terminal_authority_deadline(phase, mode, deadline)
+	else:
+		var authority_tag := TERMINAL_FOCUS_AUTHORITY_TAG \
+			if phase == TERMINAL_PHASE_ACTIVE else TERMINAL_SETTLE_AUTHORITY_TAG
+		_scheduler.schedule_at(
+			deadline,
+			_on_terminal_authority_deadline.bind(phase, mode, deadline),
+			authority_tag
+		)
+
+
+func _on_terminal_authority_deadline(
+		expected_phase: String,
+		expected_mode: String,
+		expected_deadline: float
+	) -> void:
+	var record := _sequence_authority_section("terminal")
+	if not _valid_terminal_authority(record) \
+			or str(record.get("phase", "")) != expected_phase \
+			or str(record.get("mode", "")) != expected_mode \
+			or not is_equal_approx(float(record.get("deadline", -1.0)), expected_deadline):
+		return
+	if expected_phase == TERMINAL_PHASE_ACTIVE:
+		_end_terminal_screen_focus(record.get("return_camera", {}) as Dictionary)
+		if _player != null:
+			_player.set_move_enabled(bool(record.get("return_move_enabled", true)))
+		if expected_mode == TERMINAL_MODE_REREAD:
+			record["phase"] = TERMINAL_PHASE_COMPLETE
+			record["mode"] = ""
+			record["deadline"] = -1.0
+			record["return_camera"] = {}
+			_publish_sequence_authority_section("terminal", record)
+			_rearm_interactable(_terminal)
+			return
+		_start_terminal_data(record, TERMINAL_FOCUS_AUTHORITY_TAG)
+		return
+	if expected_phase != TERMINAL_PHASE_SETTLING:
+		return
+	record["phase"] = TERMINAL_PHASE_COMPLETE
+	record["mode"] = ""
+	record["deadline"] = -1.0
+	record["tutorial_complete"] = true
+	record["return_camera"] = {}
+	_publish_sequence_authority_section("terminal", record)
 	_rearm_interactable(_terminal)
+	_start_ron_drinks()
 
 ## Re-arm a one-shot interactable so it can be used again (its trigger disabled it). Safe for a
 ## HOLD_ACTION too: the dwell only re-fires on a fresh body-enter, so re-arming while the character is
@@ -953,8 +1400,12 @@ func _screen_facing() -> Vector3:
 			return f.normalized()
 	return Vector3(1, 0, 0)
 
-func _begin_terminal_screen_focus() -> void:
+func _begin_terminal_screen_focus(return_camera_state: Dictionary = {}) -> void:
 	_terminal_focus_active = true
+	if return_camera_state.is_empty():
+		_terminal_return_camera_state = _capture_authority_camera_state()
+	else:
+		_terminal_return_camera_state = return_camera_state.duplicate(true)
 	if _terminal_screen_lowfi != null:
 		_terminal_screen_lowfi.visible = false
 	var facing := _screen_facing()
@@ -967,14 +1418,17 @@ func _begin_terminal_screen_focus() -> void:
 	if label != null:
 		label.visible = false
 	if _camera != null:
-		_terminal_prev_camera_target = _camera.target
+		var target_id := str(_terminal_return_camera_state.get("target_id", ""))
+		_terminal_prev_camera_target = _player if target_id == "aster" else (
+			_ron if target_id == "ron" else null
+		)
 		# Sit the camera back along the monitor's facing (on the chair side) and a little up, looking at
 		# the screen head-on — parallel to the display, not edge-on. Fixed override so it ignores whatever
 		# gameplay angle the player left the camera at.
 		var off := facing * TERMINAL_FOCUS_BACK + Vector3(0.0, TERMINAL_FOCUS_RISE, 0.0)
 		_camera.lock_to(_terminal_screen_world, off)
 
-func _end_terminal_screen_focus() -> void:
+func _end_terminal_screen_focus(return_camera_state: Dictionary = {}) -> void:
 	_terminal_focus_active = false
 	if _terminal_screen_detail != null:
 		_terminal_screen_detail.visible = false
@@ -983,31 +1437,50 @@ func _end_terminal_screen_focus() -> void:
 	var label = _player.get_node_or_null("Label3D") if _player != null else null
 	if label != null:
 		label.visible = true
+	var saved_camera := return_camera_state
+	if saved_camera.is_empty():
+		saved_camera = _terminal_return_camera_state
 	if _camera != null:
-		_camera.target = _terminal_prev_camera_target
-		_camera.unlock()
+		if _valid_authority_camera_state(saved_camera):
+			_apply_authority_camera_state(saved_camera)
+		else:
+			_camera.target = _terminal_prev_camera_target
+			_camera.unlock()
+	_terminal_return_camera_state.clear()
 
-func _start_terminal_data() -> void:
+func _start_terminal_data(
+		active_record: Dictionary = {},
+		currently_firing_tag := ""
+	) -> void:
 	_enter_step("terminal_data")
 	# Brief beat for the screen-focus camera to settle back before Ron pipes up.
-	_scheduler.schedule_after(0.4, _start_ron_drinks, "ron_drinks")
+	var record := active_record.duplicate(true)
+	if record.is_empty():
+		record = _sequence_authority_section("terminal")
+	if not _valid_terminal_authority(record) \
+			or str(record.get("phase", "")) != TERMINAL_PHASE_ACTIVE \
+			or str(record.get("mode", "")) != TERMINAL_MODE_TUTORIAL:
+		return
+	var now := float(_scheduler.get_current_tick())
+	record["phase"] = TERMINAL_PHASE_SETTLING
+	record["started_at"] = now
+	record["deadline"] = now + TERMINAL_SETTLE_DURATION
+	_publish_sequence_authority_section("terminal", record)
+	_arm_terminal_authority(record, currently_firing_tag)
 
 func _start_ron_drinks() -> void:
 	_enter_step("ron_drinks")
 	# Ron points out the drink machine BEFORE the prompt appears, so grabbing a drink reads as a
 	# response to him rather than coming out of nowhere. The prompt opens as he finishes the line.
-	DialogueData.say_to(_dialogue, "aster_sim.ron.drinks")
-	_dialogue.dialogue_finished.connect(
-		func(): _scheduler.schedule_after(0, _start_walk_to_drink, "walk_to_drink"),
-		CONNECT_ONE_SHOT
-	)
+	_dialogue_chain(["aster_sim.ron.drinks"], _start_walk_to_drink)
 
 func _start_walk_to_drink() -> void:
 	_enter_step("walk_to_drink")
 	if _drink_machine and _drink_machine.has_method("set_interaction_enabled"):
 		_drink_machine.set_interaction_enabled(true)
 	_drink_machine.show_tutorial_label()
-	# Hint if the player skips the drink too long.
+	# Presentation-only hint if the player skips the drink too long. Losing this callback on load
+	# cannot unlock, complete, or otherwise mutate the drink/story authority.
 	_scheduler.schedule_after(8.0, _show_drink_redirect, "drink_redirect")
 
 func _show_drink_redirect() -> void:
@@ -1015,24 +1488,620 @@ func _show_drink_redirect() -> void:
 		_show_thought(DialogueData.text("aster_sim.drink_redirect.thought"))
 
 func _on_drink_interacted() -> void:
-	if _current_step == "fault_review" and _fault_circuit_started and not _fault_circuit_complete:
-		_recover_fault_review_atp()
-	elif not _has_drunk and _current_step == "walk_to_drink":
-		# First drink: the ATP tutorial.
-		_has_drunk = true
+	var authority := _read_drink_authority()
+	var phase := str(authority.get("phase", DRINK_PHASE_AVAILABLE))
+	var receipt := _aster_source_receipt(
+		_drink_machine, ASTER_DRINK_ACTION, _drink_source_trigger_consumed)
+	if receipt.is_empty():
+		return
+	_drink_source_trigger_consumed = int(receipt.get("trigger_count", 0))
+	_publish_drink_authority(
+		phase, str(authority.get("item_id", "")))
+	_active_aster_source_receipt = receipt
+	if phase == DRINK_PHASE_AVAILABLE and _current_step == "walk_to_drink":
+		# First drink: dispense a real lysate item, put it in Aster's hand, and let the
+		# canonical endocytosis state own both the two-second action and the ATP change.
 		_scheduler.cancel_tag("drink_redirect")
-		_start_drink()
-	elif _has_drunk and _current_step == "drink":
+		_start_drink_from_source_receipt(receipt)
+	elif phase == DRINK_PHASE_CONSUMED or _has_drunk:
 		# Already topped up — Aster waves it off, with a glance toward Tag Day.
 		_show_thought(DialogueData.text("aster_sim.drink_again.thought"))
 		_rearm_interactable(_drink_machine)
+	_active_aster_source_receipt.clear()
 
 func _start_drink() -> void:
+	# Retired automation seam. Dispensing begins only from the exact machine edge.
+	pass
+
+
+func _start_drink_from_source_receipt(source_receipt: Dictionary) -> void:
+	if not _aster_source_receipt_is_active(
+			source_receipt, ASTER_DRINK_ACTION, _drink_machine):
+		return
+	var authority := _read_drink_authority()
+	var phase := str(authority.get("phase", DRINK_PHASE_AVAILABLE))
+	if phase == DRINK_PHASE_CONSUMED:
+		_has_drunk = true
+		_rearm_interactable(_drink_machine)
+		return
+	if phase == DRINK_PHASE_ENDOCYTOSING:
+		_drink_item_id = str(authority.get("item_id", ""))
+		if _drink_machine != null and _drink_machine.has_method("set_interaction_enabled"):
+			_drink_machine.set_interaction_enabled(false)
+		_sync_drink_item_visual()
+		return
+	if _game_state == null or not _game_state.has_free_hands("aster"):
+		_show_drink_failure("Aster needs a free hand for the drink.")
+		_rearm_interactable(_drink_machine)
+		return
 	_enter_step("drink")
-	_game_state.set_stat("aster", "atp", ATP_MAX)
 	_hide_thought()
-	_rearm_interactable(_drink_machine)  # stays usable; a second go gives the "all good on drinks" line
-	_scheduler.schedule_after(2.0, _start_ron_move_fast, "ron_move_fast")
+	if _drink_machine != null and _drink_machine.has_method("set_interaction_enabled"):
+		_drink_machine.set_interaction_enabled(false)
+	var aster_position := _game_state.get_position("aster")
+	_drink_item_id = spawn_preview_item("lysate", aster_position, {
+		"display_name": "Machine Lysate",
+		"atp_restore": maxf(0.0, ATP_MAX - _game_state.get_stat("aster", "atp")),
+		"endocytosis_duration": DRINK_ENDOCYTOSIS_DURATION,
+		"aster_drink_authority": DRINK_AUTHORITY_KEY,
+	})
+	if _drink_item_id == "" or not pick_up_preview_item("aster", _drink_item_id):
+		_abort_drink_dispense("The machine cannot place the drink in Aster's hand.")
+		return
+	if not endocytose_preview_item("aster", _drink_item_id):
+		_abort_drink_dispense("Aster cannot drink while another action owns movement.")
+		return
+	_publish_drink_authority(DRINK_PHASE_ENDOCYTOSING, _drink_item_id)
+	_sync_drink_item_visual()
+
+
+func _connect_drink_authority_signals() -> void:
+	if _game_state == null:
+		return
+	if not _game_state.item_endocytosed.is_connected(_on_drink_item_endocytosed):
+		_game_state.item_endocytosed.connect(_on_drink_item_endocytosed)
+
+
+func _publish_drink_authority(phase: String, item_id := "") -> void:
+	if _game_state == null:
+		return
+	_game_state.set_world_state(DRINK_AUTHORITY_KEY, {
+		"version": DRINK_AUTHORITY_VERSION,
+		"authority_id": DRINK_AUTHORITY_KEY,
+		"phase": phase,
+		"item_id": item_id,
+		"source_data_id": ASTER_DRINK_SOURCE_ID,
+		"source_trigger_count": _drink_source_trigger_consumed,
+	})
+
+
+func _read_drink_authority() -> Dictionary:
+	var baseline := {
+		"version": DRINK_AUTHORITY_VERSION,
+		"authority_id": DRINK_AUTHORITY_KEY,
+		"phase": DRINK_PHASE_AVAILABLE,
+		"item_id": "",
+		"source_data_id": ASTER_DRINK_SOURCE_ID,
+		"source_trigger_count": _drink_source_trigger_consumed,
+	}
+	var result := baseline
+	if _game_state != null:
+		var raw: Variant = _game_state.get_world_state(DRINK_AUTHORITY_KEY, null)
+		var saved_source_count := _drink_source_trigger_consumed
+		if raw is Dictionary:
+			var raw_record := raw as Dictionary
+			var raw_version := int(raw_record.get("version", 0))
+			if raw_version == DRINK_AUTHORITY_VERSION \
+					and str(raw_record.get("authority_id", "")) == DRINK_AUTHORITY_KEY \
+					and str(raw_record.get("source_data_id", "")) == ASTER_DRINK_SOURCE_ID:
+				saved_source_count = maxi(
+					0, int(raw_record.get("source_trigger_count", 0)))
+			elif raw_version == 1 \
+					and str(raw_record.get("authority_id", "")) == DRINK_AUTHORITY_KEY:
+				# Version 1 knew the item/phase but not the source edge. Burn
+				# every trigger visible in that save before accepting a new one.
+				saved_source_count = maxi(
+					0, _aster_source_trigger_count(_drink_machine))
+		_drink_source_trigger_consumed = saved_source_count
+		# The in-flight action has one authority, not two: the tagged GameState item in
+		# Aster's hand plus GameState's saved endocytosis timer. The world record is the
+		# semantic receipt, but losing/corrupting that receipt cannot erase already-paid
+		# action time or let a reload skip to the consumed endpoint.
+		var active_item_id := _active_aster_drink_item_id()
+		if active_item_id != "":
+			result = {
+				"version": DRINK_AUTHORITY_VERSION,
+				"authority_id": DRINK_AUTHORITY_KEY,
+				"phase": DRINK_PHASE_ENDOCYTOSING,
+				"item_id": active_item_id,
+				"source_data_id": ASTER_DRINK_SOURCE_ID,
+				"source_trigger_count": saved_source_count,
+			}
+		else:
+			if raw is Dictionary:
+				var saved := raw as Dictionary
+				var phase := str(saved.get("phase", ""))
+				var item_id := str(saved.get("item_id", ""))
+				var valid_receipt := (
+					int(saved.get("version", 0)) in [1, DRINK_AUTHORITY_VERSION]
+					and str(saved.get("authority_id", "")) == DRINK_AUTHORITY_KEY
+					and phase in [DRINK_PHASE_AVAILABLE, DRINK_PHASE_CONSUMED]
+					and item_id == ""
+				)
+				if valid_receipt:
+					result = baseline.duplicate(true)
+					result["phase"] = phase
+					result["source_trigger_count"] = saved_source_count
+	return result
+
+
+func _active_aster_drink_item_id() -> String:
+	if _game_state == null or not _game_state.is_endocytosing("aster"):
+		return ""
+	for item_id_variant in _game_state.get_hand_items("aster"):
+		var item_id := str(item_id_variant)
+		if not _game_state.items.has(item_id):
+			continue
+		var item := _game_state.items[item_id] as Dictionary
+		var properties := item.get("properties", {}) as Dictionary
+		if str(properties.get("aster_drink_authority", "")) == DRINK_AUTHORITY_KEY \
+				and str(item.get("holder", "")) == "aster" \
+				and str(item.get("location", "")) == "hand":
+			return item_id
+	return ""
+
+
+func _on_drink_item_endocytosed(char_id: String, item_id: String, effect: String) -> void:
+	if char_id != "aster" or item_id == "":
+		return
+	var raw: Variant = _game_state.get_world_state(DRINK_AUTHORITY_KEY, null)
+	var receipt_matches := raw is Dictionary \
+			and str((raw as Dictionary).get("item_id", "")) == item_id
+	if item_id != _drink_item_id and not receipt_matches:
+		return
+	if effect != "digest":
+		_drink_item_id = ""
+		_retire_drink_item_visual(item_id)
+		_publish_drink_authority(DRINK_PHASE_AVAILABLE)
+		_rearm_interactable(_drink_machine)
+		_start_walk_to_drink()
+		_show_drink_failure("That was not a usable drink. The machine is ready to try again.")
+		return
+	_drink_item_id = ""
+	_retire_drink_item_visual(item_id)
+	_publish_drink_authority(DRINK_PHASE_CONSUMED)
+	_has_drunk = true
+	_rearm_interactable(_drink_machine)
+	if _current_step == "drink":
+		_start_ron_move_fast()
+
+
+func _abort_drink_dispense(message: String) -> void:
+	var failed_item_id := _drink_item_id
+	_drink_item_id = ""
+	if failed_item_id != "":
+		remove_preview_item(failed_item_id)
+	_publish_drink_authority(DRINK_PHASE_AVAILABLE)
+	_has_drunk = false
+	_rearm_interactable(_drink_machine)
+	_start_walk_to_drink()
+	_show_drink_failure(message)
+
+
+func _show_drink_failure(message: String) -> void:
+	if _hud != null and _hud.has_method("show_message"):
+		_hud.show_message(message, 2.4)
+	elif _tutorial_prompt != null and _tutorial_prompt.has_method("show_prompt"):
+		_tutorial_prompt.show_prompt(message, 2.4)
+
+
+func _retire_drink_item_visual(item_id: String) -> void:
+	if not _chunk_item_nodes.has(item_id):
+		return
+	var node: Node3D = _chunk_item_nodes[item_id]
+	if is_instance_valid(node):
+		node.queue_free()
+	_chunk_item_nodes.erase(item_id)
+
+
+func _sync_drink_item_visual() -> void:
+	if _drink_item_id == "" or _game_state == null:
+		return
+	if not _game_state.items.has(_drink_item_id):
+		_retire_drink_item_visual(_drink_item_id)
+		_drink_item_id = ""
+		return
+	_ensure_chunk_item_node(_drink_item_id)
+	var node := _chunk_item_nodes.get(_drink_item_id) as Node3D
+	if node == null or not is_instance_valid(node):
+		return
+	var material: StandardMaterial3D = null
+	if node is MeshInstance3D:
+		material = (node as MeshInstance3D).material_override as StandardMaterial3D
+	if material != null:
+		material.albedo_color = DRINK_VISUAL_COLOR
+		material.emission = DRINK_VISUAL_COLOR.lightened(0.1)
+	var item := _game_state.items[_drink_item_id] as Dictionary
+	if str(item.get("location", "ground")) == "hand" and str(item.get("holder", "")) == "aster":
+		var aster_world := _game_state.get_render_position("aster")
+		node.global_position = aster_world + Vector3(0.42, 1.05, 0.10)
+		var tick := _scheduler.get_current_tick() if _scheduler != null else 0.0
+		var pulse := 1.0 + sin(tick * 8.0) * 0.08
+		node.scale = Vector3.ONE * pulse
+	else:
+		var item_position: Vector3 = item.get("position", Vector3.ZERO)
+		node.global_position = item_position + Vector3(0.0, 0.42, 0.0)
+		node.scale = Vector3.ONE
+
+
+func on_game_state_snapshot_restored() -> void:
+	_connect_drink_authority_signals()
+	_connect_sequence_authority_signals()
+	_ensure_aster_interaction_sources_registered()
+	_reconcile_aster_interaction_source_receipts()
+	var previous_item_id := _drink_item_id
+	var authority := _read_drink_authority()
+	var phase := str(authority.get("phase", DRINK_PHASE_AVAILABLE))
+	_drink_item_id = str(authority.get("item_id", "")) if phase == DRINK_PHASE_ENDOCYTOSING else ""
+	_has_drunk = phase == DRINK_PHASE_CONSUMED
+	if previous_item_id != "" and previous_item_id != _drink_item_id:
+		_retire_drink_item_visual(previous_item_id)
+	if phase == DRINK_PHASE_ENDOCYTOSING:
+		_restore_drink_machine_presenter(false)
+		_sync_drink_item_visual()
+	else:
+		if phase == DRINK_PHASE_AVAILABLE and _current_step == "drink":
+			# An absent/rejected authority record cannot retain a future story step.
+			_current_step = "walk_to_drink"
+		_restore_drink_machine_presenter(
+			phase == DRINK_PHASE_CONSUMED or _current_step == "walk_to_drink"
+		)
+	_restore_sequence_authority_after_snapshot()
+
+
+func _reconcile_aster_interaction_source_receipts() -> void:
+	if _game_state == null:
+		return
+	var sequence_authority := _sequence_authority_state()
+	if not sequence_authority.is_empty():
+		var raw_sequence: Variant = _game_state.get_world_state(
+			SEQUENCE_AUTHORITY_KEY, null)
+		var terminal: Dictionary = sequence_authority.get("terminal", {})
+		var terminal_source_count := maxi(
+			0, _aster_source_trigger_count(_terminal))
+		var terminal_committed := maxi(
+			0, int(terminal.get("source_trigger_count", 0)))
+		var sequence_changed := not (raw_sequence is Dictionary) \
+			or int((raw_sequence as Dictionary).get("version", 0)) \
+				!= SEQUENCE_AUTHORITY_VERSION
+		if terminal_source_count > terminal_committed:
+			# Snapshot seam: Interactable accepted Aster synchronously but the
+			# terminal owner had not begun. Burn that edge without showing data.
+			terminal["source_trigger_count"] = terminal_source_count
+			terminal["source_data_id"] = ASTER_TERMINAL_SOURCE_ID
+			sequence_authority["terminal"] = terminal
+			sequence_changed = true
+		if sequence_changed:
+			_publish_sequence_authority(sequence_authority)
+
+	var raw_drink: Variant = _game_state.get_world_state(DRINK_AUTHORITY_KEY, null)
+	var active_item_id := _active_aster_drink_item_id()
+	var drink := _read_drink_authority()
+	var drink_source_count := maxi(
+		0, _aster_source_trigger_count(_drink_machine))
+	var drink_changed := raw_drink is Dictionary \
+		and int((raw_drink as Dictionary).get("version", 0)) \
+			!= DRINK_AUTHORITY_VERSION
+	if drink_source_count != _drink_source_trigger_consumed:
+		# A newer count is the accepted-before-owner seam; a lower count means
+		# snapshot absence/legacy registration retracted later history. In both
+		# directions the registry in this save is the next receipt baseline.
+		_drink_source_trigger_consumed = drink_source_count
+		drink["source_trigger_count"] = drink_source_count
+		drink_changed = raw_drink is Dictionary
+	if drink_changed or active_item_id != "" and not (raw_drink is Dictionary):
+		_publish_drink_authority(
+			str(drink.get("phase", DRINK_PHASE_AVAILABLE)),
+			str(drink.get("item_id", ""))
+		)
+
+
+func _restore_sequence_authority_after_snapshot() -> void:
+	if _scheduler == null or _game_state == null:
+		return
+	_cancel_sequence_authority_callbacks()
+	# A same-presenter rollback may still be showing a focus from the discarded
+	# future.  Retire it through its saved return view before inspecting the older
+	# record, so the old lock cannot become the new baseline camera.
+	if _terminal_focus_active:
+		_end_terminal_screen_focus()
+	_clear_dialogue_presenter_for_restore()
+	if _sequence_authority_state().is_empty():
+		_publish_sequence_authority(_baseline_sequence_authority())
+	_restore_ron_authority_after_snapshot()
+	_restore_terminal_authority_after_snapshot()
+	_restore_transition_authority_after_snapshot()
+
+
+func _cancel_sequence_authority_callbacks() -> void:
+	if _scheduler == null:
+		return
+	for tag in [
+		TERMINAL_FOCUS_AUTHORITY_TAG,
+		TERMINAL_SETTLE_AUTHORITY_TAG,
+		TRANSITION_AUTHORITY_TAG,
+		"terminal_focus",
+		"terminal_reread",
+		"ron_greeting",
+		"complete",
+	]:
+		_scheduler.cancel_tag(tag)
+
+
+func _clear_dialogue_presenter_for_restore() -> void:
+	if _dialogue == null:
+		return
+	for connection_v in _dialogue.dialogue_finished.get_connections():
+		var connection := connection_v as Dictionary
+		_dialogue.dialogue_finished.disconnect(connection.callable)
+	_dialogue.clear()
+	_dlg_chain_keys.clear()
+	_dlg_chain_index = 0
+	_dlg_chain_next = Callable()
+	_dlg_chain_delay = 0.0
+
+
+func _ron_story_has_passed() -> bool:
+	return _current_step in [
+		"show_terminal", "terminal_focus", "terminal_data", "ron_drinks",
+		"walk_to_drink", "drink", "ron_move_fast", "explore_workspace",
+		"tag_notify", "walk_to_exit", "transition_out", "complete",
+	]
+
+
+func _restore_ron_authority_after_snapshot() -> void:
+	var record := _sequence_authority_section("ron")
+	if not _valid_ron_authority(record):
+		_repair_ron_authority_for_saved_step()
+		return
+	var phase := str(record.get("phase", ""))
+	if phase != RON_PHASE_IDLE:
+		_restore_ron_post_warp_presenter()
+	match phase:
+		RON_PHASE_APPROACHING:
+			if _current_step not in ["ron_approaches", "ron_greeting"]:
+				_repair_ron_authority_for_saved_step()
+				return
+			_current_step = "ron_approaches"
+			_player.set_move_enabled(false)
+			_update_ron_approach_authority()
+		RON_PHASE_GREETING:
+			if _current_step not in ["ron_approaches", "ron_greeting"] \
+					or not _ron_is_at_approach_endpoint(record):
+				_restart_ron_approach_from_physical_state(record)
+				return
+			_present_ron_greeting()
+		RON_PHASE_COMPLETE:
+			if not _ron_story_has_passed():
+				_restart_ron_approach_from_physical_state(record)
+		RON_PHASE_IDLE:
+			if _current_step in ["ron_approaches", "ron_greeting"]:
+				_restart_ron_approach_from_physical_state(record)
+			elif _ron_story_has_passed():
+				_repair_ron_authority_for_saved_step()
+
+
+func _repair_ron_authority_for_saved_step() -> void:
+	if _current_step in ["ron_approaches", "ron_greeting"]:
+		_restart_ron_approach_from_physical_state({})
+		return
+	if _ron_story_has_passed():
+		var now := float(_scheduler.get_current_tick())
+		var completed := _baseline_ron_authority()
+		completed["phase"] = RON_PHASE_COMPLETE
+		completed["started_at"] = now
+		completed["arrived_at"] = now
+		completed["completed_at"] = now
+		completed["endpoint"] = _authority_v3_data(_ron_approach_endpoint())
+		_publish_sequence_authority_section("ron", completed)
+		return
+	_publish_sequence_authority_section("ron", _baseline_ron_authority())
+
+
+func _restart_ron_approach_from_physical_state(prior: Dictionary) -> void:
+	var now := float(_scheduler.get_current_tick())
+	var record := _baseline_ron_authority()
+	record["phase"] = RON_PHASE_APPROACHING
+	record["started_at"] = now
+	record["endpoint"] = _authority_v3_data(_ron_approach_endpoint())
+	record["next_retry_tick"] = now
+	if prior.get("operations", null) is Array:
+		record["operations"] = (prior.get("operations", []) as Array).duplicate(true)
+		record["operation_counter"] = int(prior.get(
+			"operation_counter", (record["operations"] as Array).size()))
+	if prior.get("interruptions", null) is Array:
+		record["interruptions"] = (prior.get("interruptions", []) as Array).duplicate(true)
+	_current_step = "ron_approaches"
+	_player.set_move_enabled(false)
+	_restore_ron_post_warp_presenter()
+	_publish_sequence_authority_section("ron", record)
+	_update_ron_approach_authority()
+
+
+func _terminal_story_has_passed() -> bool:
+	return _current_step in [
+		"ron_drinks", "walk_to_drink", "drink", "ron_move_fast",
+		"explore_workspace", "tag_notify", "walk_to_exit", "transition_out", "complete",
+	]
+
+
+func _restore_terminal_authority_after_snapshot() -> void:
+	var record := _sequence_authority_section("terminal")
+	if not _valid_terminal_authority(record):
+		_repair_terminal_authority_for_saved_step()
+		return
+	var phase := str(record.get("phase", ""))
+	match phase:
+		TERMINAL_PHASE_ACTIVE:
+			var mode := str(record.get("mode", ""))
+			if mode == TERMINAL_MODE_TUTORIAL and _current_step != "terminal_focus":
+				_repair_terminal_authority_for_saved_step()
+				return
+			if mode == TERMINAL_MODE_REREAD \
+					and (_current_step == "terminal_focus" or not _terminal_story_has_passed() \
+						and _current_step != "terminal_data"):
+				_repair_terminal_authority_for_saved_step()
+				return
+			if mode == TERMINAL_MODE_TUTORIAL:
+				_current_step = "terminal_focus"
+			_set_aster_source_projection(_terminal, false)
+			_apply_terminal_focus_presenter(record)
+			_arm_terminal_authority(record)
+		TERMINAL_PHASE_SETTLING:
+			if _current_step != "terminal_data":
+				_repair_terminal_authority_for_saved_step()
+				return
+			_end_terminal_screen_focus(record.get("return_camera", {}) as Dictionary)
+			_player.set_move_enabled(bool(record.get("return_move_enabled", true)))
+			_set_aster_source_projection(_terminal, false)
+			_arm_terminal_authority(record)
+		TERMINAL_PHASE_COMPLETE:
+			if _current_step in ["terminal_focus", "terminal_data"]:
+				_repair_terminal_authority_for_saved_step()
+				return
+			if _terminal_story_has_passed():
+				_restore_terminal_idle_presenter(true)
+			elif _current_step == "show_terminal":
+				_publish_sequence_authority_section(
+					"terminal", _baseline_terminal_authority())
+				_restore_terminal_idle_presenter(true)
+		TERMINAL_PHASE_IDLE:
+			if _current_step in ["terminal_focus", "terminal_data"]:
+				_repair_terminal_authority_for_saved_step()
+			elif _terminal_story_has_passed():
+				_repair_terminal_authority_for_saved_step()
+			elif _current_step == "show_terminal":
+				# An accepted-before-owner snapshot deliberately burns the old
+				# monotonic edge above, but it must also retract that one-shot's
+				# spent presenter/registry bit. Otherwise the save looks
+				# actionable while GameState still rejects the required retry.
+				_restore_terminal_idle_presenter(true)
+
+
+func _repair_terminal_authority_for_saved_step() -> void:
+	if _current_step == "terminal_focus":
+		# The focus animation is not proof of a terminal read. A missing/edited
+		# receipt returns to the exact physical source instead of granting focus.
+		_current_step = "show_terminal"
+		_player.set_move_enabled(true)
+		var retry := _baseline_terminal_authority()
+		retry["source_trigger_count"] = maxi(
+			0, _aster_source_trigger_count(_terminal))
+		_publish_sequence_authority_section("terminal", retry)
+		_restore_terminal_idle_presenter(true)
+		return
+	if _current_step == "terminal_data":
+		# Without the active/settling record there is no proof the screen was paid
+		# for. Return to the readable terminal rather than granting an instant focus.
+		_current_step = "show_terminal"
+		_player.set_move_enabled(true)
+		_restore_terminal_idle_presenter(true)
+		var retry := _baseline_terminal_authority()
+		retry["source_trigger_count"] = maxi(
+			0, _aster_source_trigger_count(_terminal))
+		_publish_sequence_authority_section("terminal", retry)
+		return
+	if _terminal_story_has_passed():
+		var now := float(_scheduler.get_current_tick())
+		var complete := _baseline_terminal_authority()
+		complete["phase"] = TERMINAL_PHASE_COMPLETE
+		complete["started_at"] = now
+		complete["tutorial_complete"] = true
+		complete["source_trigger_count"] = maxi(
+			0, _aster_source_trigger_count(_terminal))
+		_publish_sequence_authority_section("terminal", complete)
+		_restore_terminal_idle_presenter(true)
+		return
+	var baseline := _baseline_terminal_authority()
+	baseline["source_trigger_count"] = maxi(
+		0, _aster_source_trigger_count(_terminal))
+	_publish_sequence_authority_section("terminal", baseline)
+	_restore_terminal_idle_presenter(_current_step == "show_terminal")
+
+
+func _restore_terminal_idle_presenter(enabled: bool) -> void:
+	if _terminal_focus_active:
+		_end_terminal_screen_focus()
+	if _terminal_screen_detail != null:
+		_terminal_screen_detail.visible = false
+	if _terminal_screen_lowfi != null:
+		_terminal_screen_lowfi.visible = true
+	_set_aster_source_projection(_terminal, enabled)
+
+
+func _restore_transition_authority_after_snapshot() -> void:
+	var record := _sequence_authority_section("transition")
+	if not _valid_transition_authority(record):
+		_repair_transition_authority_for_saved_step()
+		return
+	var phase := str(record.get("phase", ""))
+	match phase:
+		TRANSITION_PHASE_FADING:
+			if _current_step != "transition_out":
+				_repair_transition_authority_for_saved_step()
+				return
+			requested_scene_change = ""
+			_apply_transition_presenter(record)
+			_arm_transition_authority(record)
+		TRANSITION_PHASE_COMPLETE:
+			if _current_step == "transition_out":
+				_complete()
+			elif _current_step == "complete":
+				_player.set_move_enabled(false)
+				var camera_v: Variant = record.get("camera", null)
+				if camera_v is Dictionary:
+					_apply_authority_camera_state(camera_v as Dictionary)
+				_fade_start_tick = float(record.get("started_at", _scheduler.get_current_tick()))
+				_update_fades()
+				# A crash can leave the transition autosave as the newest slot before
+				# Godot swaps scenes. Re-applying the committed handoff is idempotent;
+				# never strand a legitimate load on the fully black source scene.
+				requested_scene_change = "res://scenes/tutorial/peris_sim.tscn"
+				if not suppress_scene_change:
+					call_deferred("_resume_completed_transition")
+			else:
+				_repair_transition_authority_for_saved_step()
+		TRANSITION_PHASE_IDLE:
+			if _current_step in ["transition_out", "complete"]:
+				_repair_transition_authority_for_saved_step()
+
+
+func _repair_transition_authority_for_saved_step() -> void:
+	if _current_step in ["transition_out", "complete"]:
+		requested_scene_change = ""
+		# A missing or edited deadline cannot turn load into a scene skip. Rebuild
+		# the complete fade from the restored physical/camera state.
+		_current_step = "walk_to_exit"
+		if _fade_rect != null:
+			_fade_rect.color = Color(0.05, 0.03, 0.01, 0.0)
+		_publish_sequence_authority_section("transition", _baseline_transition_authority())
+		_start_transition_out()
+		return
+	_publish_sequence_authority_section("transition", _baseline_transition_authority())
+
+
+func _resume_completed_transition() -> void:
+	var record := _sequence_authority_section("transition")
+	if not _valid_transition_authority(record) \
+			or str(record.get("phase", "")) != TRANSITION_PHASE_COMPLETE:
+		return
+	get_tree().change_scene_to_file("res://scenes/tutorial/peris_sim.tscn")
+
+
+func _restore_drink_machine_presenter(enabled: bool) -> void:
+	if _drink_machine == null or not is_instance_valid(_drink_machine):
+		return
+	_set_aster_source_projection(_drink_machine, enabled)
 
 func _start_ron_move_fast() -> void:
 	_enter_step("ron_move_fast")
@@ -1041,56 +2110,37 @@ func _start_ron_move_fast() -> void:
 		_ron.walk_to(_placement_or_position(
 			"RonExitTarget",
 			Vector3(hallway_world.x - 1.0, 0.0, hallway_world.z)
-	))
-	DialogueData.say_to(_dialogue, "aster_sim.ron.move_fast")
+		))
 	_dialogue_chain([
+		"aster_sim.ron.move_fast",
 		"aster_sim.ron.lighting",
 		"aster_sim.aster.lighting",
 		"aster_sim.ron.tag_day_jobs",
-	], func(): _scheduler.schedule_after(0, _start_explore_workspace, "explore_workspace"))
+	], _start_explore_workspace)
 
 func _start_explore_workspace() -> void:
 	_enter_step("explore_workspace")
-	# The room itself is the active beat: each thread reveals a different part of Aster's relationship
-	# to work, status, and private pleasure. Time only drives a reminder; waiting can never open the exit.
+	# The room objects establish Aster through optional detail. The hallway itself is the
+	# progression gate: attempting to leave advances to Tag Day without requiring a checklist.
 	_reset_workspace_progress()
-	_reset_fault_review_state()
 	_build_exploration_objects()
-	_build_workspace_protocols()
-	_reset_workspace_protocol_state()
 	_explore_gate_unlocked = false
 	_explore_gate_fired = false
 	if _tutorial_prompt != null and _tutorial_prompt.has_method("show_prompt"):
 		_tutorial_prompt.show_prompt(
-			"Look around Aster's workspace: game, paintings, awards, and J-stores.",
+			"Look around Aster's workspace, then continue through the hallway when you're ready.",
 			5.0
 		)
-	_scheduler.schedule_after(EXPLORE_MIN_TIME, _show_workspace_progress_hint, "explore_progress_hint")
+	_unlock_exploration_gate()
 
 func _unlock_exploration_gate() -> void:
-	# Compatibility seam for callers that used the old timer callback. The gate still obeys the
-	# characterization contract; calling this method cannot bypass the four active-play threads.
-	_maybe_unlock_exploration_gate()
-
-func _maybe_unlock_exploration_gate() -> void:
-	if _explore_gate_unlocked or not _workspace_review_complete():
-		return
-	if not _fault_circuit_started:
-		_start_fault_review_circuit()
-		return
-	if not _fault_circuit_complete:
-		return
-	if not _workspace_protocol_started:
-		_start_workspace_protocol_operation(str(WORKSPACE_PROTOCOL_ORDER[0]))
-		return
-	if not _workspace_protocol_complete:
+	if _explore_gate_unlocked:
 		return
 	_explore_gate_unlocked = true
-	_scheduler.cancel_tag("explore_progress_hint")
-	if _explore_hallway_gate and _explore_hallway_gate.has_method("show_tutorial_label"):
-		_explore_hallway_gate.show_tutorial_label()
-	if _tutorial_prompt != null and _tutorial_prompt.has_method("show_prompt"):
-		_tutorial_prompt.show_prompt("Fault review complete. Continue to the hallway.", 3.0)
+
+func _maybe_unlock_exploration_gate() -> void:
+	# Optional room reads still report telemetry, but never gate the hallway.
+	_unlock_exploration_gate()
 
 func _reset_workspace_progress() -> void:
 	_workspace_thread_counts.clear()
@@ -1098,41 +2148,6 @@ func _reset_workspace_progress() -> void:
 		_workspace_thread_counts[thread_id] = 0
 	_workspace_zone_counts.clear()
 
-func _reset_fault_review_state() -> void:
-	_fault_evidence_interactables.clear()
-	_fault_case_evidence.clear()
-	_fault_evidence_review_counts.clear()
-	_fault_commit_history.clear()
-	_fault_case_index = -1
-	_fault_selected_candidate = ""
-	_fault_correct_commits = 0
-	_fault_wrong_commits = 0
-	_fault_wrong_atp_spent = 0.0
-	_fault_case_wrong_penalized = false
-	_fault_drink_recoveries = 0
-	_fault_terminal_pending = false
-	_fault_circuit_started = false
-	_fault_circuit_complete = false
-	_fault_last_clue = ""
-
-func _reset_workspace_protocol_state() -> void:
-	_workspace_protocol_phase = ""
-	_workspace_protocol_evidence.clear()
-	_workspace_protocol_choices.clear()
-	_workspace_protocol_execution_progress.clear()
-	_workspace_protocol_execution_history.clear()
-	_workspace_protocol_completed.clear()
-	_workspace_protocol_effects.clear()
-	_workspace_protocol_decisions = 0
-	_workspace_protocol_started = false
-	_workspace_protocol_complete = false
-	if is_instance_valid(_workspace_protocol_layer):
-		_workspace_protocol_layer.visible = false
-	for group in _workspace_protocol_groups.values():
-		if is_instance_valid(group):
-			group.visible = false
-	for site_id in _workspace_protocol_sites:
-		_set_workspace_protocol_site_enabled(str(site_id), false)
 
 func _register_workspace_zone(zone: Node, thread_id: String, contribution_limit: int) -> void:
 	if zone == null or not zone.has_signal("interacted"):
@@ -1170,544 +2185,8 @@ func _workspace_completed_thread_count() -> int:
 func _workspace_review_complete() -> bool:
 	return _workspace_completed_thread_count() == WORKSPACE_THREAD_REQUIRED.size()
 
-func _show_workspace_progress_hint() -> void:
-	if _current_step != "explore_workspace" or _explore_gate_unlocked:
-		return
-	var remaining: Array[String] = []
-	for thread_id in WORKSPACE_THREAD_REQUIRED:
-		if int(_workspace_thread_counts.get(thread_id, 0)) < int(WORKSPACE_THREAD_REQUIRED[thread_id]):
-			remaining.append(_workspace_thread_label(str(thread_id)))
-	if _tutorial_prompt != null and _tutorial_prompt.has_method("show_prompt"):
-		_tutorial_prompt.show_prompt(
-			"Workspace review %d/%d — still to inspect: %s." % [
-				_workspace_completed_thread_count(),
-				WORKSPACE_THREAD_REQUIRED.size(),
-				", ".join(remaining),
-			],
-			6.0
-		)
 
-func _workspace_thread_label(thread_id: String) -> String:
-	match thread_id:
-		"glass":
-			return "glass bead game"
-		"paintings":
-			return "paintings"
-		"awards":
-			return "awards"
-		"jstore":
-			return "J-stores"
-		_:
-			return thread_id
 
-func _start_fault_review_circuit() -> void:
-	if _fault_circuit_started:
-		return
-	_fault_circuit_started = true
-	_fault_circuit_complete = false
-	_fault_case_index = 0
-	_enter_step("fault_review")
-	_scheduler.cancel_tag("explore_progress_hint")
-	_build_fault_review_interactables()
-	_rearm_interactable(_terminal)
-	_rearm_interactable(_drink_machine)
-	_start_fault_case()
-
-func _build_fault_review_interactables() -> void:
-	if not _fault_evidence_interactables.is_empty():
-		return
-	for evidence_id in FAULT_EVIDENCE_SOURCES:
-		var config: Dictionary = FAULT_EVIDENCE_SOURCES[evidence_id]
-		var source := find_child(str(config.get("zone", "")), true, false) as Node3D
-		if source == null:
-			continue
-		if source.has_method("set_interaction_enabled"):
-			source.call("set_interaction_enabled", false)
-		var parent := source.get_parent() as Node3D
-		if parent == null:
-			continue
-		var evidence := _create_interactable(
-			parent,
-			source.position,
-			str(config.get("node", "FaultEvidence")),
-			float(source.get("interaction_radius")),
-			FAULT_EVIDENCE_WORK_SECONDS,
-			str(config.get("label", "REVIEW FAULT EVIDENCE")),
-			false,
-			Interactable.InteractableType.TIMED_ACTION
-		)
-		# Data registration represents click-gated actions as non-hold interactions; the view's
-		# explicit TIMED_ACTION restores the scheduler-backed work ring after Aster arrives.
-		evidence.set("interactable_type", Interactable.InteractableType.TIMED_ACTION)
-		evidence.set("dwell_time", FAULT_EVIDENCE_WORK_SECONDS)
-		evidence.set("one_shot", false)
-		evidence.set("required_character", "aster")
-		evidence.set("description", "Fault Evidence: %s" % _fault_evidence_label(str(evidence_id)))
-		evidence.set("consequence_preview", "Add this trace to the current fault comparison.")
-		evidence.set_meta("fault_evidence_id", str(evidence_id))
-		evidence.interacted.connect(_on_fault_evidence_reviewed.bind(str(evidence_id)))
-		evidence.set_interaction_enabled(false)
-		_fault_evidence_interactables[str(evidence_id)] = evidence
-		var target := find_child(str(config.get("target", "")), true, false)
-		_set_room_target_interaction_delegate(target, evidence)
-
-	# The journalism approach shares the awards geometry. It keeps its original name and first line,
-	# but yields picking to the one timed ledger trace during the fault circuit.
-	var journalism_zone := find_child("AwardsJournalismZone", true, false)
-	if journalism_zone != null and journalism_zone.has_method("set_interaction_enabled"):
-		journalism_zone.call("set_interaction_enabled", false)
-
-func _start_fault_case() -> void:
-	var case_data := _current_fault_case()
-	if case_data.is_empty():
-		_complete_fault_review_circuit()
-		return
-	_fault_case_evidence.clear()
-	_fault_selected_candidate = ""
-	_fault_case_wrong_penalized = false
-	_fault_last_clue = str(case_data.get("brief", ""))
-	_set_fault_evidence_enabled(case_data.get("evidence", []) as Array)
-	_rearm_interactable(_terminal)
-	if _terminal != null and _terminal.has_method("hide_tutorial_label"):
-		_terminal.hide_tutorial_label()
-	_update_fault_terminal_readout()
-	_show_fault_prompt(
-		"%s\nReview %s. The last candidate traced is staged for the terminal." % [
-			str(case_data.get("brief", "")),
-			_fault_evidence_list_text(case_data.get("evidence", []) as Array),
-		],
-		8.0
-	)
-
-func _set_fault_evidence_enabled(required: Array) -> void:
-	for evidence_id in _fault_evidence_interactables:
-		var evidence = _fault_evidence_interactables[evidence_id]
-		if evidence == null or not is_instance_valid(evidence):
-			continue
-		if required.has(str(evidence_id)):
-			_rearm_interactable(evidence)
-			# Dense evidence sets identify themselves through the shared hover verb/readout.
-			# Keeping every fixed-size Label3D visible at once makes picking ambiguous.
-			if evidence.has_method("hide_tutorial_label_immediate"):
-				evidence.hide_tutorial_label_immediate()
-		else:
-			evidence.set_interaction_enabled(false)
-
-func _on_fault_evidence_reviewed(evidence_id: String) -> void:
-	if _current_step != "fault_review" or _fault_circuit_complete or _fault_terminal_pending:
-		return
-	var case_data := _current_fault_case()
-	var required: Array = case_data.get("evidence", [])
-	if not required.has(evidence_id):
-		return
-	_fault_case_evidence[evidence_id] = true
-	_fault_evidence_review_counts[evidence_id] = int(_fault_evidence_review_counts.get(evidence_id, 0)) + 1
-	var candidates: Array = case_data.get("candidates", [])
-	if candidates.has(evidence_id):
-		_fault_selected_candidate = evidence_id
-	var clues: Dictionary = case_data.get("clues", {})
-	_fault_last_clue = str(clues.get(evidence_id, "Evidence registered."))
-	var message := "%s\nEvidence %d/%d." % [
-		_fault_last_clue,
-		_fault_case_evidence.size(),
-		required.size(),
-	]
-	if _fault_case_evidence_complete():
-		message += " Candidate staged: %s. Check the terminal to commit, or trace another candidate to change it." % \
-			_fault_evidence_label(_fault_selected_candidate)
-		if _terminal != null and _terminal.has_method("show_tutorial_label"):
-			_terminal.show_tutorial_label()
-	_show_fault_prompt(message, 7.0)
-	_update_fault_terminal_readout()
-
-func _on_fault_terminal_interacted() -> void:
-	if _fault_terminal_pending:
-		return
-	if _fault_circuit_complete:
-		_replay_terminal_focus()
-		return
-	var case_data := _current_fault_case()
-	if not _fault_case_evidence_complete():
-		var missing := _fault_missing_evidence()
-		_fault_last_clue = "Trace the missing evidence first: %s." % _fault_evidence_list_text(missing)
-		_show_fault_prompt(_fault_last_clue, 6.0)
-		_rearm_interactable(_terminal)
-		_update_fault_terminal_readout()
-		return
-	if _fault_selected_candidate == "":
-		_fault_last_clue = "Trace one of the two candidate objects again to stage a commit."
-		_show_fault_prompt(_fault_last_clue, 6.0)
-		_rearm_interactable(_terminal)
-		_update_fault_terminal_readout()
-		return
-	var atp := _game_state.get_stat("aster", "atp")
-	if atp < FAULT_COMMIT_ATP_COST:
-		_fault_last_clue = "Commit needs %d ATP; the evidence stays staged. Refill at the drink machine, then return." % \
-			int(FAULT_COMMIT_ATP_COST)
-		_show_fault_prompt(_fault_last_clue, 7.0)
-		_rearm_interactable(_terminal)
-		_rearm_interactable(_drink_machine)
-		if _drink_machine != null and _drink_machine.has_method("show_tutorial_label"):
-			_drink_machine.show_tutorial_label()
-		_update_fault_terminal_readout()
-		return
-	_fault_terminal_pending = true
-	_player.set_move_enabled(false)
-	_update_fault_terminal_readout()
-	_begin_terminal_screen_focus()
-	_scheduler.schedule_after(
-		TERMINAL_FOCUS_DURATION,
-		_resolve_fault_terminal_commit,
-		"fault_terminal_commit"
-	)
-
-func _resolve_fault_terminal_commit() -> void:
-	if not _fault_terminal_pending or _fault_circuit_complete:
-		return
-	_fault_terminal_pending = false
-	_end_terminal_screen_focus()
-	_player.set_move_enabled(true)
-	var case_data := _current_fault_case()
-	var candidate := _fault_selected_candidate
-	var correct := candidate == str(case_data.get("correct", ""))
-	if not correct:
-		var penalty := 0.0
-		if not _fault_case_wrong_penalized:
-			penalty = minf(FAULT_WRONG_ATP_COST, _game_state.get_stat("aster", "atp"))
-			_game_state.adjust_stat("aster", "atp", -penalty)
-			_fault_wrong_atp_spent += penalty
-			_fault_case_wrong_penalized = true
-		_fault_wrong_commits += 1
-		_fault_commit_history.append({
-			"case_id": str(case_data.get("id", "")),
-			"candidate": candidate,
-			"correct": false,
-			"atp_cost": penalty,
-		})
-		_fault_selected_candidate = ""
-		_fault_last_clue = str(case_data.get("wrong_clue", "Recheck the discriminating trace and recommit."))
-		var cost_text := "-%d ATP" % int(penalty) if penalty > 0.0 else "ATP penalty already capped for this case"
-		_show_fault_prompt("Commit rejected (%s). %s" % [cost_text, _fault_last_clue], 9.0)
-		_rearm_interactable(_terminal)
-		_update_fault_terminal_readout()
-		return
-
-	_game_state.adjust_stat("aster", "atp", -FAULT_COMMIT_ATP_COST)
-	_fault_correct_commits += 1
-	_fault_commit_history.append({
-		"case_id": str(case_data.get("id", "")),
-		"candidate": candidate,
-		"correct": true,
-		"atp_cost": FAULT_COMMIT_ATP_COST,
-	})
-	_fault_last_clue = "Commit accepted: %s." % _fault_evidence_label(candidate)
-	_fault_case_index += 1
-	if _fault_case_index >= FAULT_REVIEW_CASES.size():
-		_complete_fault_review_circuit()
-	else:
-		_start_fault_case()
-
-func _recover_fault_review_atp() -> void:
-	if _fault_terminal_pending:
-		_rearm_interactable(_drink_machine)
-		return
-	var before := _game_state.get_stat("aster", "atp")
-	_has_drunk = true
-	if before < ATP_MAX:
-		_game_state.set_stat("aster", "atp", ATP_MAX)
-		_fault_drink_recoveries += 1
-		_fault_last_clue = "ATP restored to %d/%d. The staged evidence and commit remain intact." % [
-			int(ATP_MAX), int(ATP_MAX),
-		]
-	else:
-		_fault_last_clue = "ATP is already full; return to the active evidence circuit."
-	_show_fault_prompt(_fault_last_clue, 6.0)
-	_rearm_interactable(_drink_machine)
-	if _drink_machine != null and _drink_machine.has_method("hide_tutorial_label"):
-		_drink_machine.hide_tutorial_label()
-	_update_fault_terminal_readout()
-
-func _complete_fault_review_circuit() -> void:
-	_fault_circuit_complete = true
-	_fault_terminal_pending = false
-	_fault_selected_candidate = ""
-	for evidence in _fault_evidence_interactables.values():
-		if evidence != null and is_instance_valid(evidence):
-			evidence.set_interaction_enabled(false)
-	_rearm_interactable(_terminal)
-	_update_fault_terminal_readout()
-	_maybe_unlock_exploration_gate()
-
-func _start_workspace_protocol_operation(protocol_id: String) -> void:
-	if not WORKSPACE_PROTOCOLS.has(protocol_id) or not _fault_circuit_complete:
-		return
-	_workspace_protocol_started = true
-	_workspace_protocol_complete = false
-	_workspace_protocol_phase = protocol_id
-	_workspace_protocol_evidence[protocol_id] = {}
-	_workspace_protocol_execution_progress[protocol_id] = 0
-	var protocol: Dictionary = WORKSPACE_PROTOCOLS[protocol_id]
-	_enter_step(str(protocol.get("step", "workspace_protocol")))
-	if is_instance_valid(_workspace_protocol_layer):
-		_workspace_protocol_layer.visible = true
-	for group_id_variant in _workspace_protocol_groups:
-		var group_id := str(group_id_variant)
-		var group = _workspace_protocol_groups[group_id]
-		if is_instance_valid(group):
-			group.visible = group_id == protocol_id
-	for site_id_variant in _workspace_protocol_sites:
-		_set_workspace_protocol_site_enabled(str(site_id_variant), false)
-	var evidence: Array = protocol.get("evidence", [])
-	if bool(protocol.get("ordered_evidence", false)):
-		if not evidence.is_empty():
-			_set_workspace_protocol_site_enabled(str(evidence[0]), true, true)
-	else:
-		for evidence_id_variant in evidence:
-			_set_workspace_protocol_site_enabled(str(evidence_id_variant), true, true)
-	_update_workspace_protocol_readout()
-	if _tutorial_prompt != null and _tutorial_prompt.has_method("show_prompt"):
-		var instruction := "Follow the marked phase nodes in order." if bool(protocol.get("ordered_evidence", false)) \
-			else "Survey every marked instrument in any order."
-		_tutorial_prompt.show_prompt("%s // %s" % [str(protocol.get("label", "WORKSPACE PROTOCOL")), instruction], 8.0)
-
-func _set_workspace_protocol_site_enabled(site_id: String, enabled: bool, show_label: bool = false) -> void:
-	var site = _workspace_protocol_sites.get(site_id)
-	if not is_instance_valid(site):
-		return
-	if enabled and site.has_method("reset"):
-		site.reset()
-	if site.has_method("set_interaction_enabled"):
-		site.set_interaction_enabled(enabled)
-	# Protocol pads use hover/action feedback; never fill the room with simultaneous
-	# fixed-size labels. `show_label` remains in the API for compatibility with callers.
-	if site.has_method("hide_tutorial_label_immediate"):
-		site.hide_tutorial_label_immediate()
-
-func _on_workspace_protocol_site_interacted(site_id: String) -> void:
-	if not _workspace_protocol_started or _workspace_protocol_complete or not WORKSPACE_PROTOCOL_SITES.has(site_id):
-		return
-	var spec: Dictionary = WORKSPACE_PROTOCOL_SITES[site_id]
-	var protocol_id := str(spec.get("protocol", ""))
-	if protocol_id != _workspace_protocol_phase or not WORKSPACE_PROTOCOLS.has(protocol_id):
-		return
-	var site = _workspace_protocol_sites.get(site_id)
-	if not is_instance_valid(site) or not site.is_interaction_enabled():
-		return
-	var protocol: Dictionary = WORKSPACE_PROTOCOLS[protocol_id]
-	var kind := str(spec.get("kind", "evidence"))
-	if kind == "evidence":
-		_resolve_workspace_protocol_evidence(protocol_id, site_id, protocol, spec)
-	elif kind == "choice":
-		_resolve_workspace_protocol_choice(protocol_id, site_id, protocol, spec)
-	elif kind == "execution":
-		_resolve_workspace_protocol_execution(protocol_id, site_id, protocol, spec)
-
-func _resolve_workspace_protocol_evidence(
-		protocol_id: String, site_id: String, protocol: Dictionary, spec: Dictionary
-	) -> void:
-	var completed: Dictionary = _workspace_protocol_evidence.get(protocol_id, {})
-	if bool(completed.get(site_id, false)):
-		return
-	var evidence: Array = protocol.get("evidence", [])
-	if bool(protocol.get("ordered_evidence", false)):
-		var expected_index := completed.size()
-		if expected_index >= evidence.size() or str(evidence[expected_index]) != site_id:
-			_rearm_interactable(_workspace_protocol_sites.get(site_id))
-			return
-	completed[site_id] = true
-	_workspace_protocol_evidence[protocol_id] = completed
-	_set_workspace_protocol_site_enabled(site_id, false)
-	_show_fault_prompt(str(spec.get("finding", "Protocol evidence recorded.")), 5.0)
-	if completed.size() < evidence.size():
-		if bool(protocol.get("ordered_evidence", false)):
-			_set_workspace_protocol_site_enabled(str(evidence[completed.size()]), true, true)
-		_update_workspace_protocol_readout()
-		return
-	for choice_id_variant in protocol.get("choices", []):
-		_set_workspace_protocol_site_enabled(str(choice_id_variant), true, true)
-	_show_fault_prompt("Evidence complete. Commit one marked protocol plan.", 6.0)
-	_update_workspace_protocol_readout()
-
-func _resolve_workspace_protocol_choice(
-		protocol_id: String, site_id: String, protocol: Dictionary, spec: Dictionary
-	) -> void:
-	if not _workspace_protocol_evidence_complete(protocol_id):
-		_rearm_interactable(_workspace_protocol_sites.get(site_id))
-		return
-	_workspace_protocol_choices[protocol_id] = site_id
-	_workspace_protocol_decisions += 1
-	_workspace_protocol_execution_progress[protocol_id] = 0
-	for choice_id_variant in protocol.get("choices", []):
-		_set_workspace_protocol_site_enabled(str(choice_id_variant), false)
-	var execution: Array = (protocol.get("execution_sites", {}) as Dictionary).get(site_id, [])
-	if not execution.is_empty():
-		_set_workspace_protocol_site_enabled(str(execution[0]), true, true)
-	_show_fault_prompt("%s Execute the committed route at every marked station." % str(spec.get("finding", "Plan committed.")), 7.0)
-	_update_workspace_protocol_readout()
-
-func _resolve_workspace_protocol_execution(
-		protocol_id: String, site_id: String, protocol: Dictionary, spec: Dictionary
-	) -> void:
-	var choice_id := str(_workspace_protocol_choices.get(protocol_id, ""))
-	var execution: Array = (protocol.get("execution_sites", {}) as Dictionary).get(choice_id, [])
-	var progress := int(_workspace_protocol_execution_progress.get(protocol_id, 0))
-	if progress >= execution.size() or str(execution[progress]) != site_id:
-		_rearm_interactable(_workspace_protocol_sites.get(site_id))
-		return
-	_set_workspace_protocol_site_enabled(site_id, false)
-	_workspace_protocol_execution_history.append({
-		"protocol": protocol_id,
-		"choice": choice_id,
-		"site": site_id,
-	})
-	progress += 1
-	_workspace_protocol_execution_progress[protocol_id] = progress
-	_show_fault_prompt(str(spec.get("finding", "Protocol execution recorded.")), 5.0)
-	if progress < execution.size():
-		_set_workspace_protocol_site_enabled(str(execution[progress]), true, true)
-		_update_workspace_protocol_readout()
-		return
-	_workspace_protocol_completed[protocol_id] = true
-	_apply_workspace_protocol_choice(protocol_id, choice_id)
-	var next_protocol := str(protocol.get("next", ""))
-	if next_protocol != "":
-		_start_workspace_protocol_operation(next_protocol)
-	else:
-		_complete_workspace_protocols()
-
-func _workspace_protocol_evidence_complete(protocol_id: String) -> bool:
-	if not WORKSPACE_PROTOCOLS.has(protocol_id):
-		return false
-	var completed: Dictionary = _workspace_protocol_evidence.get(protocol_id, {})
-	return completed.size() == (WORKSPACE_PROTOCOLS[protocol_id].get("evidence", []) as Array).size()
-
-func _apply_workspace_protocol_choice(protocol_id: String, choice_id: String) -> void:
-	match choice_id:
-		"phase_sweep":
-			_workspace_protocol_effects["alignment_mode"] = "full_sweep"
-			_workspace_protocol_effects["forecast_fidelity"] = "high"
-		"phase_isolate":
-			_workspace_protocol_effects["alignment_mode"] = "local_isolate"
-			_workspace_protocol_effects["room_exposure"] = "contained"
-		"load_hold_reserve":
-			_workspace_protocol_effects["load_mode"] = "reserve_hold"
-			_workspace_protocol_effects["thermal_margin"] = "wide"
-		"load_open_throughput":
-			_workspace_protocol_effects["load_mode"] = "fast_throughput"
-			_workspace_protocol_effects["thermal_margin"] = "narrow"
-		"authorship_name_crew":
-			_workspace_protocol_effects["authorship_mode"] = "crew_context"
-			_workspace_protocol_effects["support_context_preserved"] = true
-		"authorship_publish_operator":
-			_workspace_protocol_effects["authorship_mode"] = "operator_record"
-			_workspace_protocol_effects["repair_signature_preserved"] = true
-	_workspace_protocol_effects["last_protocol"] = protocol_id
-
-func _complete_workspace_protocols() -> void:
-	_workspace_protocol_complete = true
-	_workspace_protocol_phase = "complete"
-	for site_id_variant in _workspace_protocol_sites:
-		_set_workspace_protocol_site_enabled(str(site_id_variant), false)
-	_enter_step("explore_workspace")
-	_update_workspace_protocol_readout()
-	_maybe_unlock_exploration_gate()
-
-func _update_workspace_protocol_readout() -> void:
-	if _terminal_screen_readout == null:
-		return
-	if _workspace_protocol_complete:
-		_terminal_screen_readout.text = "WORKSPACE VALIDATION // CLEARED\n\n%d/%d protocols executed.\nAlignment: %s\nAuthorship: %s" % [
-			_workspace_protocol_completed.size(),
-			WORKSPACE_PROTOCOL_ORDER.size(),
-			str(_workspace_protocol_effects.get("alignment_mode", "recorded")),
-			str(_workspace_protocol_effects.get("authorship_mode", "recorded")),
-		]
-		return
-	if not WORKSPACE_PROTOCOLS.has(_workspace_protocol_phase):
-		return
-	var protocol: Dictionary = WORKSPACE_PROTOCOLS[_workspace_protocol_phase]
-	var evidence: Dictionary = _workspace_protocol_evidence.get(_workspace_protocol_phase, {})
-	var choice := str(_workspace_protocol_choices.get(_workspace_protocol_phase, "none"))
-	var execution_progress := int(_workspace_protocol_execution_progress.get(_workspace_protocol_phase, 0))
-	_terminal_screen_readout.text = "WORKSPACE VALIDATION // %s\n\nEVIDENCE: %d/%d\nPLAN: %s\nEXECUTION: %d" % [
-		str(protocol.get("label", "PROTOCOL")), evidence.size(),
-		(protocol.get("evidence", []) as Array).size(), choice, execution_progress,
-	]
-
-func _current_fault_case() -> Dictionary:
-	if _fault_case_index < 0 or _fault_case_index >= FAULT_REVIEW_CASES.size():
-		return {}
-	return FAULT_REVIEW_CASES[_fault_case_index]
-
-func _fault_case_evidence_complete() -> bool:
-	var case_data := _current_fault_case()
-	for evidence_id in (case_data.get("evidence", []) as Array):
-		if not _fault_case_evidence.has(str(evidence_id)):
-			return false
-	return not case_data.is_empty()
-
-func _fault_missing_evidence() -> Array:
-	var missing := []
-	for evidence_id in (_current_fault_case().get("evidence", []) as Array):
-		if not _fault_case_evidence.has(str(evidence_id)):
-			missing.append(str(evidence_id))
-	return missing
-
-func _fault_evidence_label(evidence_id: String) -> String:
-	match evidence_id:
-		"glass":
-			return "glass topology"
-		"painting_teal":
-			return "teal trace"
-		"painting_ash":
-			return "ash trace"
-		"awards":
-			return "credit ledger"
-		"jstore":
-			return "J-store fault archive"
-		_:
-			return evidence_id
-
-func _fault_evidence_list_text(evidence_ids: Array) -> String:
-	var labels: Array[String] = []
-	for evidence_id in evidence_ids:
-		labels.append(_fault_evidence_label(str(evidence_id)))
-	return ", ".join(labels)
-
-func _show_fault_prompt(text: String, duration: float) -> void:
-	if _tutorial_prompt != null and _tutorial_prompt.has_method("show_prompt"):
-		_tutorial_prompt.show_prompt(text, duration)
-
-func _update_fault_terminal_readout() -> void:
-	if _terminal_screen_readout == null:
-		return
-	if _fault_circuit_complete:
-		_terminal_screen_readout.text = \
-			"FAULT REVIEW // CLEARED\n\n%d/%d causes committed.\nWorkspace disconnect route released." % [
-				_fault_correct_commits,
-				FAULT_REVIEW_CASES.size(),
-			]
-		return
-	var case_data := _current_fault_case()
-	if case_data.is_empty():
-		return
-	var evidence_lines: Array[String] = []
-	for evidence_id in (case_data.get("evidence", []) as Array):
-		evidence_lines.append("[%s] %s" % [
-			"X" if _fault_case_evidence.has(str(evidence_id)) else " ",
-			_fault_evidence_label(str(evidence_id)),
-		])
-	var staged := _fault_evidence_label(_fault_selected_candidate) if _fault_selected_candidate != "" else "none"
-	_terminal_screen_readout.text = \
-		"FAULT REVIEW // CASE %d/%d\n%s\n\n%s\n\nSTAGED: %s\nATP: %d/%d" % [
-			_fault_case_index + 1,
-			FAULT_REVIEW_CASES.size(),
-			str(case_data.get("brief", "")),
-			"\n".join(evidence_lines),
-			staged,
-			int(_game_state.get_stat("aster", "atp")),
-			int(ATP_MAX),
-		]
 
 func _on_exploration_gate_interacted() -> void:
 	if not _explore_gate_unlocked or _explore_gate_fired:
@@ -1717,28 +2196,86 @@ func _on_exploration_gate_interacted() -> void:
 
 func _start_tag_notify() -> void:
 	_enter_step("tag_notify")
-	DialogueData.say_to(_dialogue, "aster_sim.device.tag_verify")
-	DialogueData.say_to(_dialogue, "aster_sim.ron.tag_notify")
-	_dialogue.dialogue_finished.connect(
-		func(): _scheduler.schedule_after(0, _start_walk_to_exit, "walk_to_exit"),
-		CONNECT_ONE_SHOT
+	_dialogue_chain(
+		["aster_sim.device.tag_verify", "aster_sim.ron.tag_notify"],
+		_start_walk_to_exit
 	)
 
 func _start_walk_to_exit() -> void:
 	_enter_step("walk_to_exit")
-	DialogueData.say_to(_dialogue, "aster_sim.tag_routine")
-	_dialogue.dialogue_finished.connect(
-		func(): _scheduler.schedule_after(0, _start_transition_out, "transition_out"),
-		CONNECT_ONE_SHOT
-	)
+	_dialogue_chain(["aster_sim.tag_routine"], _start_transition_out)
 
 func _start_transition_out() -> void:
+	var existing := _sequence_authority_section("transition")
+	if _valid_transition_authority(existing) \
+			and str(existing.get("phase", "")) == TRANSITION_PHASE_FADING:
+		_apply_transition_presenter(existing)
+		_arm_transition_authority(existing)
+		return
 	_enter_step("transition_out")
-	_player.set_move_enabled(false)
-	_fade_start_tick = _scheduler.get_current_tick()
-	_scheduler.schedule_after(2.5, _complete, "complete")
+	var now := float(_scheduler.get_current_tick())
+	var record := _baseline_transition_authority()
+	record["phase"] = TRANSITION_PHASE_FADING
+	record["started_at"] = now
+	record["deadline"] = now + TRANSITION_DURATION
+	record["camera"] = _capture_authority_camera_state()
+	record["move_enabled_before"] = (
+		bool(_player.is_move_enabled()) if _player != null \
+			and _player.has_method("is_move_enabled") else true
+	)
+	requested_scene_change = ""
+	_publish_sequence_authority_section("transition", record)
+	_apply_transition_presenter(record)
+	_arm_transition_authority(record)
+
+
+func _apply_transition_presenter(record: Dictionary) -> void:
+	_current_step = "transition_out"
+	if _player != null:
+		_player.set_move_enabled(false)
+	var camera_v: Variant = record.get("camera", null)
+	if camera_v is Dictionary and _valid_authority_camera_state(camera_v):
+		_apply_authority_camera_state(camera_v as Dictionary)
+	_fade_start_tick = float(record.get("started_at", _scheduler.get_current_tick()))
+	_update_fades()
+
+
+func _arm_transition_authority(record: Dictionary) -> void:
+	if _scheduler == null:
+		return
+	_scheduler.cancel_tag(TRANSITION_AUTHORITY_TAG)
+	_scheduler.cancel_tag("complete")
+	if not _valid_transition_authority(record) \
+			or str(record.get("phase", "")) != TRANSITION_PHASE_FADING:
+		return
+	var deadline := float(record.get("deadline", -1.0))
+	var now := float(_scheduler.get_current_tick())
+	if deadline <= now:
+		_on_transition_authority_deadline(deadline)
+	else:
+		_scheduler.schedule_at(
+			deadline,
+			_on_transition_authority_deadline.bind(deadline),
+			TRANSITION_AUTHORITY_TAG
+		)
+
+
+func _on_transition_authority_deadline(expected_deadline: float) -> void:
+	var record := _sequence_authority_section("transition")
+	if not _valid_transition_authority(record) \
+			or str(record.get("phase", "")) != TRANSITION_PHASE_FADING \
+			or not is_equal_approx(float(record.get("deadline", -1.0)), expected_deadline):
+		return
+	record["phase"] = TRANSITION_PHASE_COMPLETE
+	record["completed_at"] = maxf(float(_scheduler.get_current_tick()), expected_deadline)
+	_publish_sequence_authority_section("transition", record)
+	_complete()
 
 func _complete() -> void:
+	var record := _sequence_authority_section("transition")
+	if not _valid_transition_authority(record) \
+			or str(record.get("phase", "")) != TRANSITION_PHASE_COMPLETE:
+		return
 	_enter_step("complete")
 	_change_scene_or_record("res://scenes/tutorial/peris_sim.tscn")
 
@@ -2105,213 +2642,6 @@ func _build_exploration_objects() -> void:
 	_build_jstore_shelf(env)
 	_build_hallway_exit(env)
 
-func _build_workspace_protocols() -> void:
-	if Engine.is_editor_hint() or is_instance_valid(_workspace_protocol_layer):
-		return
-	_workspace_protocol_layer = Node3D.new()
-	_workspace_protocol_layer.name = "AsterWorkspaceProtocols"
-	add_child(_workspace_protocol_layer)
-	for protocol_id_variant in WORKSPACE_PROTOCOL_ORDER:
-		_build_workspace_protocol_group(str(protocol_id_variant))
-	_workspace_protocol_layer.visible = false
-
-func _build_workspace_protocol_group(protocol_id: String) -> void:
-	var protocol: Dictionary = WORKSPACE_PROTOCOLS[protocol_id]
-	var tint: Color = protocol.get("tint", Color(0.35, 0.75, 1.0))
-	var group := Node3D.new()
-	group.name = "AsterProtocolGroup_%s" % protocol_id
-	_workspace_protocol_layer.add_child(group)
-	_workspace_protocol_groups[protocol_id] = group
-	_add_workspace_protocol_frame(group, protocol_id, protocol, tint)
-	for site_id_variant in WORKSPACE_PROTOCOL_SITES:
-		var site_id := str(site_id_variant)
-		var spec: Dictionary = WORKSPACE_PROTOCOL_SITES[site_id]
-		if str(spec.get("protocol", "")) == protocol_id:
-			_spawn_workspace_protocol_site(group, site_id, spec, tint)
-	var datum_index := 0
-	var evidence: Array = protocol.get("evidence", [])
-	for index in range(1, evidence.size()):
-		_add_workspace_protocol_datum(
-			group, protocol_id, datum_index,
-			_workspace_protocol_site_position(str(evidence[index - 1])),
-			_workspace_protocol_site_position(str(evidence[index])), tint
-		)
-		datum_index += 1
-	if evidence.is_empty():
-		return
-	var branch_origin := _workspace_protocol_site_position(str(evidence[-1]))
-	for choice_id_variant in protocol.get("choices", []):
-		var choice_id := str(choice_id_variant)
-		var choice_position := _workspace_protocol_site_position(choice_id)
-		_add_workspace_protocol_datum(group, protocol_id, datum_index, branch_origin, choice_position, tint)
-		datum_index += 1
-		var previous := choice_position
-		for execution_id_variant in (protocol.get("execution_sites", {}) as Dictionary).get(choice_id, []):
-			var next := _workspace_protocol_site_position(str(execution_id_variant))
-			_add_workspace_protocol_datum(group, protocol_id, datum_index, previous, next, tint)
-			datum_index += 1
-			previous = next
-
-func _spawn_workspace_protocol_site(
-		parent: Node3D, site_id: String, spec: Dictionary, tint: Color
-	) -> void:
-	var position: Vector3 = spec.get("pos", Vector3.ZERO)
-	var kind := str(spec.get("kind", "evidence"))
-	var meshes: Array = []
-	var base := MeshInstance3D.new()
-	base.name = "AsterProtocolVisual_%s_Base" % site_id
-	var base_mesh := CylinderMesh.new()
-	base_mesh.top_radius = 0.24 if kind == "evidence" else 0.29
-	base_mesh.bottom_radius = 0.29 if kind == "evidence" else 0.34
-	base_mesh.height = 0.08
-	base.mesh = base_mesh
-	base.material_override = _workspace_protocol_material(tint.darkened(0.45), 0.45)
-	base.position = position + Vector3(0.0, 0.04, 0.0)
-	parent.add_child(base)
-	meshes.append(base)
-
-	var beacon := MeshInstance3D.new()
-	beacon.name = "AsterProtocolVisual_%s_Beacon" % site_id
-	var beacon_mesh := CylinderMesh.new()
-	beacon_mesh.top_radius = 0.04
-	beacon_mesh.bottom_radius = 0.10 if kind == "evidence" else 0.14
-	beacon_mesh.height = 0.52 if kind == "evidence" else 0.68
-	beacon.mesh = beacon_mesh
-	var beacon_color := tint
-	if kind == "choice":
-		beacon_color = Color(1.0, 0.72, 0.25)
-	elif kind == "execution":
-		beacon_color = Color(0.48, 1.0, 0.62)
-	beacon.material_override = _workspace_protocol_material(beacon_color, 2.2)
-	beacon.position = position + Vector3(0.0, beacon_mesh.height * 0.5 + 0.08, 0.0)
-	parent.add_child(beacon)
-	meshes.append(beacon)
-
-	var glyph := MeshInstance3D.new()
-	glyph.name = "AsterProtocolVisual_%s_Glyph" % site_id
-	var glyph_mesh := BoxMesh.new()
-	glyph_mesh.size = Vector3(0.30 if kind == "choice" else 0.20, 0.045, 0.30 if kind == "execution" else 0.20)
-	glyph.mesh = glyph_mesh
-	glyph.material_override = _workspace_protocol_material(beacon_color.lightened(0.18), 2.8)
-	glyph.position = position + Vector3(0.0, beacon.position.y - position.y + beacon_mesh.height * 0.5 + 0.04, 0.0)
-	glyph.rotation.y = PI * 0.25
-	parent.add_child(glyph)
-	meshes.append(glyph)
-
-	var target := _create_graybox_outline_target(
-		parent, "AsterProtocolTarget_%s" % site_id,
-		position + Vector3(0.0, 0.40, 0.0), Vector3(0.9, 1.0, 0.9),
-		meshes, "aster_protocol_%s" % site_id, 0.9
-	)
-	var interactable_spec := {
-		"position": position,
-		"radius": 0.9,
-		"hold_time": float(spec.get("dwell", 5.0)),
-		"one_shot": false,
-		"requires_hold": false,
-		"required_character": "aster",
-		"tutorial_label": str(spec.get("label", "RUN PROTOCOL")),
-		"description": "Workspace Protocol: %s" % str(spec.get("display", site_id)),
-		"enabled": false,
-	}
-	var site := InteractableFactory.spawn(
-		_game_state, parent, "AsterProtocol_%s" % site_id, interactable_spec,
-		_scheduler, _dialogue, "aster"
-	)
-	site.set("interactable_type", Interactable.InteractableType.TIMED_ACTION)
-	site.set("dwell_time", float(spec.get("dwell", 5.0)))
-	site.set("one_shot", false)
-	site.set("required_character", "aster")
-	match kind:
-		"evidence":
-			site.set("consequence_preview", "Record this reading in the current model.")
-		"choice":
-			site.set("consequence_preview", "Select this intervention route.")
-		"execution":
-			site.set("consequence_preview", "Apply the selected route to the workspace system.")
-	site.set_meta("workspace_protocol_site_id", site_id)
-	_set_room_target_interaction_delegate(target, site)
-	_connect_interactable_outline_feedback(site)
-	site.interacted.connect(_on_workspace_protocol_site_interacted.bind(site_id))
-	site.set_interaction_enabled(false)
-	_workspace_protocol_sites[site_id] = site
-	_workspace_protocol_visuals[site_id] = target
-
-func _add_workspace_protocol_frame(
-		parent: Node3D, protocol_id: String, protocol: Dictionary, tint: Color
-	) -> void:
-	var evidence: Array = protocol.get("evidence", [])
-	if evidence.is_empty():
-		return
-	var origin := _workspace_protocol_site_position(str(evidence[0]))
-	var frame := Node3D.new()
-	frame.name = "AsterProtocolFrame_%s" % protocol_id
-	parent.add_child(frame)
-	for x_offset in [-0.72, 0.72]:
-		var post := MeshInstance3D.new()
-		var post_mesh := BoxMesh.new()
-		post_mesh.size = Vector3(0.055, 1.05, 0.055)
-		post.mesh = post_mesh
-		post.material_override = _workspace_protocol_material(tint, 1.6)
-		post.position = origin + Vector3(x_offset, 0.56, 0.0)
-		frame.add_child(post)
-	var header := MeshInstance3D.new()
-	var header_mesh := BoxMesh.new()
-	header_mesh.size = Vector3(1.50, 0.06, 0.06)
-	header.mesh = header_mesh
-	header.material_override = _workspace_protocol_material(tint, 2.0)
-	header.position = origin + Vector3(0.0, 1.08, 0.0)
-	frame.add_child(header)
-	var label := Label3D.new()
-	label.name = "AsterProtocolLabel_%s" % protocol_id
-	label.text = "// %s //" % str(protocol.get("label", "WORKSPACE PROTOCOL"))
-	label.font_size = 40
-	label.pixel_size = 0.0015
-	label.fixed_size = true
-	label.no_depth_test = true
-	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	label.modulate = tint.lightened(0.2)
-	label.outline_modulate = Color(0.01, 0.02, 0.04, 0.9)
-	label.outline_size = 8
-	label.position = origin + Vector3(0.0, 1.28, 0.0)
-	frame.add_child(label)
-	var light := OmniLight3D.new()
-	light.name = "AsterProtocolLight_%s" % protocol_id
-	light.position = origin + Vector3(0.0, 1.65, 0.0)
-	light.light_color = tint
-	light.light_energy = 0.32
-	light.omni_range = 3.2
-	light.shadow_enabled = false
-	frame.add_child(light)
-
-func _add_workspace_protocol_datum(
-		parent: Node3D, protocol_id: String, index: int,
-		start: Vector3, finish: Vector3, tint: Color
-	) -> void:
-	var delta := finish - start
-	delta.y = 0.0
-	var length := delta.length()
-	if length <= 0.05:
-		return
-	var datum := MeshInstance3D.new()
-	datum.name = "AsterProtocolDatum_%s_%02d" % [protocol_id, index]
-	var mesh := BoxMesh.new()
-	mesh.size = Vector3(0.035, 0.012, length)
-	datum.mesh = mesh
-	datum.material_override = _workspace_protocol_material(tint.darkened(0.15), 1.1)
-	datum.position = (start + finish) * 0.5 + Vector3(0.0, 0.015, 0.0)
-	datum.rotation.y = atan2(delta.x, delta.z)
-	parent.add_child(datum)
-
-func _workspace_protocol_material(color: Color, emission_energy: float) -> StandardMaterial3D:
-	var material := StandardMaterial3D.new()
-	material.albedo_color = color
-	material.metallic = 0.45
-	material.roughness = 0.30
-	material.emission_enabled = true
-	material.emission = color
-	material.emission_energy_multiplier = emission_energy
-	return material
 
 func _build_glass_bead_game(parent: Node3D) -> void:
 	var bead_cell := Vector2i(7, 5)
@@ -2461,8 +2791,17 @@ func _build_awards_shelf(parent: Node3D) -> void:
 			0.9,
 			0.6
 		)
+		var model_journalism_zone := _make_exploration_zone(
+			parent,
+			_local_for_parent(parent, _placement_or_position("AwardsJournalismZoneMarker", world + Vector3(0, 0, 0.6))),
+			"AwardsJournalismZone",
+			"aster.sim_expand.awards.journalism_line",
+			0.9,
+			0.6
+		)
 		_set_room_target_interaction_delegate(model_target, model_center_zone)
 		_register_workspace_zone(model_center_zone, "awards", 2)
+		_register_workspace_zone(model_journalism_zone, "awards", 1)
 		return
 	var meshes: Array = []
 	var shelf := MeshInstance3D.new()
@@ -2501,8 +2840,17 @@ func _build_awards_shelf(parent: Node3D) -> void:
 		0.9,
 		0.6
 	)
+	var journalism_zone := _make_exploration_zone(
+		parent,
+		_local_for_parent(parent, _placement_or_position("AwardsJournalismZoneMarker", world + Vector3(0, 0, 0.6))),
+		"AwardsJournalismZone",
+		"aster.sim_expand.awards.journalism_line",
+		0.9,
+		0.6
+	)
 	_set_room_target_interaction_delegate(target, center_zone)
 	_register_workspace_zone(center_zone, "awards", 2)
+	_register_workspace_zone(journalism_zone, "awards", 1)
 
 func _build_jstore_shelf(parent: Node3D) -> void:
 	var shelf_cell := Vector2i(14, 5)

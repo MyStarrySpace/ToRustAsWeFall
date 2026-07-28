@@ -8,14 +8,18 @@ const BaseShape := preload("res://scripts/generation/base_shape_builder.gd")
 const Survey := preload("res://scripts/generation/building_survey.gd")
 const Builder := preload("res://scripts/generation/infrastructure_structure_builder.gd")
 const Filler := preload("res://scripts/generation/building_filler.gd")
-const Operation := preload("res://scripts/game/objects/infrastructure_operation.gd")
-const ServiceField := preload("res://scripts/game/objects/infrastructure_service_field.gd")
+const HostScript := preload("res://scripts/fragments/chunk_host_stub.gd")
+const SceneChunkScript := preload("res://scripts/scene_chunks/scene_chunk.gd")
 
 const KINDS := ["fabrication_hall", "bonded_warehouse", "reclamation_works",
 	"distribution_substation"]
 const SEEDS := [0, 1, 17, 113, 997]
 
-func _init() -> void:
+func _initialize() -> void:
+	call_deferred("_run")
+
+
+func _run() -> void:
 	var failures: Array[String] = []
 	for kind_v in KINDS:
 		var kind := str(kind_v)
@@ -48,9 +52,9 @@ func _init() -> void:
 			if vertices < 72:
 				failures.append("%s seed %d has too little construction geometry (%d vertices)" % [kind, int(seed_v), vertices])
 
-	_expect_link(failures, "fabrication_hall", "bonded_warehouse", "fabricated_goods")
-	_expect_link(failures, "distribution_substation", "fabrication_hall", "electricity")
-	_expect_link(failures, "fabrication_hall", "reclamation_works", "wastewater")
+	await _expect_link(failures, "fabrication_hall", "bonded_warehouse", "fabricated_goods")
+	await _expect_link(failures, "distribution_substation", "fabrication_hall", "electricity")
+	await _expect_link(failures, "fabrication_hall", "reclamation_works", "wastewater")
 
 	if failures.is_empty():
 		print("[INFRASTRUCTURE CATALOG] PASS: 4 measured editable structures, %d seed surveys, 3 causal links" % (KINDS.size() * SEEDS.size()))
@@ -75,25 +79,70 @@ func _expect_link(failures: Array[String], a_kind: String, b_kind: String, commo
 			or str(operation_spec.get("receiver_action", "")) in ["INTERACT", "CLICK", "USE"]:
 		failures.append("%s operation falls back to a generic click verb" % commodity)
 
-	# The reusable controller must preserve the staged model: the environmental consequence cannot
-	# resolve until a typed service has first been routed to the receiver.
-	var field := ServiceField.new()
-	field.configure({
-		"commodity": commodity,
-		"damage_per_second": float(operation_spec.get("damage_per_second", 0.0)),
-		"safe_concealment": bool(operation_spec.get("safe_concealment", false)),
-	})
-	var operation := Operation.new()
-	operation.configure(operation_spec)
-	operation.add_child(field)
-	operation.bind_runtime(null, null, field)
-	if operation.complete_operation():
-		failures.append("%s consequence resolves before the source service is routed" % commodity)
-	if not operation.route_service() or not bool(operation.get_state().get("routed", false)):
-		failures.append("%s source action did not route its service" % commodity)
-	if not operation.complete_operation() or not bool(field.get_state().get("resolved", false)):
-		failures.append("%s receiver action did not change the environmental field" % commodity)
-	operation.free()
+	# Exercise the production interaction grammar, not retired controller verbs. The exact source
+	# launches a physical scheduler-owned payload; only its arrival enables the exact receiver.
+	operation_spec["operation_id"] = "catalog_%s" % commodity
+	operation_spec["source_control_pos"] = Vector3.ZERO
+	operation_spec["receiver_control_pos"] = Vector3(3.0, 0.0, 0.0)
+	operation_spec["effect_pos"] = Vector3(6.0, 0.0, 0.0)
+	operation_spec["transit_speed"] = 2.0
+	var host = HostScript.new()
+	host.setup()
+	host.register_party({"aster": Vector3.ZERO})
+	root.add_child(host)
+	var chunk = SceneChunkScript.new()
+	chunk.attach_chunk_host(host, "catalog_%s" % commodity)
+	host.add_child(chunk)
+	await process_frame
+	var built: Dictionary = chunk.call("_add_infrastructure_operation", operation_spec)
+	await process_frame
+	var operation = built.get("operation")
+	var field = built.get("field")
+	var source_control = built.get("source_control")
+	var receiver_control = built.get("receiver_control")
+	if operation == null or source_control == null or receiver_control == null or field == null:
+		failures.append("%s operation did not materialize its physical fixtures" % commodity)
+		host.queue_free()
+		await process_frame
+		return
+	if bool(operation.call("route_service")) or bool(operation.call("complete_operation")):
+		failures.append("%s retired direct verbs still bypass physical controls" % commodity)
+	if bool(receiver_control.call("is_interaction_enabled")):
+		failures.append("%s receiver starts enabled before commodity transit" % commodity)
+
+	source_control.set("active_character", "aster")
+	host.set_preview_character_position("aster", (source_control as Node3D).global_position)
+	if not bool(source_control.call("_trigger", false)):
+		failures.append("%s exact source control did not accept its physical actor" % commodity)
+	var in_transit: Dictionary = operation.call("get_state")
+	if str(in_transit.get("phase", "")) != operation.PHASE_IN_TRANSIT \
+			or bool(in_transit.get("receiver_enabled", true)) \
+			or bool((in_transit.get("field", {}) as Dictionary).get("resolved", true)):
+		failures.append("%s source did not create a gated physical transit" % commodity)
+	var arrival_tick := float(in_transit.get("arrival_tick", -1.0))
+	host.scheduler.advance_ticks(
+		maxf(0.0, arrival_tick - float(host.scheduler.get_current_tick()) - 0.001)
+	)
+	if str((operation.call("get_state") as Dictionary).get("phase", "")) \
+			!= operation.PHASE_IN_TRANSIT:
+		failures.append("%s commodity arrived before its route deadline" % commodity)
+	host.scheduler.advance_ticks(0.001)
+	if str((operation.call("get_state") as Dictionary).get("phase", "")) \
+			!= operation.PHASE_ARRIVED \
+			or not bool(receiver_control.call("is_interaction_enabled")):
+		failures.append("%s commodity arrival did not enable the exact receiver" % commodity)
+	if bool((field.call("get_state") as Dictionary).get("resolved", false)):
+		failures.append("%s arrival resolved the field before receiver commissioning" % commodity)
+
+	receiver_control.set("active_character", "aster")
+	host.set_preview_character_position("aster", (receiver_control as Node3D).global_position)
+	if not bool(receiver_control.call("_trigger", false)) \
+			or str((operation.call("get_state") as Dictionary).get("phase", "")) \
+				!= operation.PHASE_COMPLETED \
+			or not bool((field.call("get_state") as Dictionary).get("resolved", false)):
+		failures.append("%s exact receiver did not resolve its environmental field" % commodity)
+	host.queue_free()
+	await process_frame
 
 func _landmark(kind: String) -> Dictionary:
 	var spec: Dictionary = BaseShape.generate(kind, 0)

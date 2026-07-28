@@ -9,25 +9,31 @@ const LevelDecoratorScript := preload("res://scripts/generation/level_decorator.
 var _routing_mode := "safe"
 var _sector_gates_open: Array[bool] = [false, false, false]
 var _sector_route_choices: Array[String] = ["", "", ""]
+var _sector_gates: Array[PartyGate3D] = []
 var _sector_gate_visuals: Array[MeshInstance3D] = []
 var _sector_route_interactables: Array = []
-var _field_site_interactables: Array = []
-var _field_protocol_progress: Array[int] = [0, 0, 0]
-var _field_protocol_ready: Array[bool] = [false, false, false]
-var _field_completed_site_ids: Array[String] = []
 var _cache_interactable
 var _cache_mesh: Node3D
 var _cache_item_id := ""
 var _cache_collected := false
-var _resource_decision := ""
-var _recover_interactable
-var _shield_interactable
+var _cache_phase := "available"
+var _cache_claimed_by := ""
+var _cache_claim_serial := 0
+var _restoring_cache_authority := false
 var _lookout_interactable
 var _lookout_surveyed := false
-var _third_sector_shielded := false
 var _iron_damage_total := 0.0
 var _iron_exposure_seconds := 0.0
 var _sectors_entered: Array[String] = []
+var _iron_hazard_active := false
+var _iron_hazard_next_tick := -1.0
+var _restoring_iron_hazard := false
+var _endo_join_signal_game_state: GameState
+var _shelter_party_gate: PartyGate3D
+var _shelter_interactable
+var _restoring_shelter_authority := false
+var _leaving_source_committed_counts: Dictionary = {}
+var _restoring_leaving_source_authority := false
 
 var _peris
 var _endo
@@ -62,14 +68,58 @@ const CORRIDOR_X_MAX := 218.0
 const CORRIDOR_HALF_WIDTH := 15.0
 const CORRIDOR_LENGTH := CORRIDOR_X_MAX - CORRIDOR_X_MIN
 const CACHE_POS := Vector3(65, 0, 11.5)
-const RESOURCE_MANIFOLD_POS := Vector3(123, 0, 6.5)
 const LOOKOUT_POS := Vector3(129, 0, -11.5)
 const IRON_DAMAGE_PER_SEC := 1.7
-const SCOUTED_DAMAGE_MULTIPLIER := 0.55
+const IRON_DAMAGE_INTERVAL := 0.5
+const IRON_HAZARD_AUTHORITY_VERSION := 1
+const IRON_HAZARD_AUTHORITY_KEY := "runtime:leaving_facility_sequence:iron_hazard"
+const IRON_HAZARD_TAG := "leaving_facility_iron_hazard"
+const CACHE_AUTHORITY_VERSION := 1
+const CACHE_AUTHORITY_KEY := "runtime:leaving_facility_sequence:side_cache"
+const CACHE_AUTHORITY_CONTRACT := "leaving_facility_side_cache/v1"
+const CACHE_SOURCE_FIXTURE := "LeavingFacilityCache"
+const CACHE_ITEM_TYPE := "lysate"
+const CACHE_PHASE_AVAILABLE := "available"
+const CACHE_PHASE_CLAIMING := "claiming"
+const CACHE_PHASE_CLAIMED := "claimed"
+const ENDO_JOIN_AUTHORITY_VERSION := 1
+const ENDO_JOIN_AUTHORITY_KEY := "runtime:leaving_facility_sequence:endo_join"
+const ENDO_JOIN_AUTHORITY_CONTRACT := "leaving_facility_endo_join/v1"
+const ENDO_JOIN_TAG := "leaving_facility_endo_join"
+const ENDO_JOIN_DELAY := 3.5
+const ENDO_JOIN_PHASE_ABSENT := "absent"
+const ENDO_JOIN_PHASE_PENDING := "pending"
+const ENDO_JOIN_PHASE_JOINED := "joined"
+const PARTY_IDS := ["aster", "peris", "endo"]
+const SHELTER_HALF_SIZE := Vector2(4.25, 3.25)
+const SHELTER_READY_RADIUS := 3.2
+const SHELTER_GATE_AUTHORITY_ID := "leaving_facility_shelter_1_party"
+const SHELTER_GATE_OPEN_DURATION := 0.75
+const SHELTER_REST_AUTHORITY_VERSION := 1
+const SHELTER_REST_AUTHORITY_KEY := "runtime:leaving_facility_sequence:shelter_rest"
+const SHELTER_REST_AUTHORITY_CONTRACT := "leaving_facility_shelter_rest/v1"
+const SHELTER_REST_PHASE_IDLE := "idle"
+const SHELTER_REST_PHASE_COMMITTING := "committing"
+const SHELTER_REST_PHASE_DAWN_PENDING := "dawn_pending"
+const SHELTER_REST_PHASE_COMPLETE := "complete"
+const SHELTER_DAWN_DELAY := 0.5
+const SHELTER_DAWN_TAG := "leaving_facility_shelter_dawn"
+const SHELTER_REST_COMMIT_TAG := "leaving_facility_shelter_rest_commit"
 const ROUTE_REGROUP_RADIUS := 8.0
-const FIELD_ROLE_RADIUS := 9.0
-const FIELD_SITE_WORK_SECONDS := 8.0
+const SECTOR_GATE_OPEN_DURATION := 1.25
+const SECTOR_GATE_REVALIDATION_RADIUS := 20.5
+const SECTOR_GATE_CLOSED_Y := 1.25
+const SECTOR_GATE_OPEN_Y := 4.1
+const SECTOR_GATE_CONTEXT_CONTRACT := "leaving_facility_route_gate/v1"
 const MODELED_FIXED_TRANSITION_SECONDS := 12.5
+const LEAVING_SOURCE_AUTHORITY_VERSION := 1
+const LEAVING_SOURCE_AUTHORITY_CONTRACT := "leaving_facility_exact_sources/v1"
+const LEAVING_SOURCE_AUTHORITY_KEY := "runtime:leaving_facility_sequence:exact_sources"
+const LEAVING_SOURCE_CACHE := "cache"
+const LEAVING_SOURCE_LOOKOUT := "lookout"
+const LEAVING_SOURCE_SHELTER := "shelter"
+const LEAVING_SOURCE_POSITION_TOLERANCE := 0.35
+const LEAVING_SOURCE_HEIGHT_TOLERANCE := 1.25
 
 # Each sector owns one recoverable risk field and a route seal.  Cautious routing
 # pays the longer marked detour; direct routing crosses the field and pays HP.
@@ -111,47 +161,6 @@ const IRON_SECTORS := [
 	},
 ]
 
-# Each iron seal is preceded by an ordered five-station field protocol. The
-# stations alternate across the full corridor width: the route becomes a spatial
-# read-and-repair problem instead of a long empty walk. Aster issues each click,
-# while the named party specialist must physically reach their station before
-# its work can resolve. Only the current station is enabled, so the authored
-# traversal below is also the honest shortest first-clear route.
-const FIELD_PROTOCOLS := [
-	{
-		"id": "bleedway_stabilization",
-		"label": "BLEEDWAY STABILIZATION",
-		"sites": [
-			{"id": "bleedway_datum", "pos": Vector3(10, 0, -10), "role": "aster", "verb": "TRACE DATUM", "color": Color(0.30, 0.66, 0.92)},
-			{"id": "bleedway_runoff", "pos": Vector3(18, 0, 10), "role": "peris", "verb": "SAMPLE RUNOFF", "color": Color(0.84, 0.58, 0.24)},
-			{"id": "bleedway_conduit", "pos": Vector3(27, 0, -10), "role": "endo", "verb": "BRACE CONDUIT", "color": Color(0.38, 0.72, 0.55)},
-			{"id": "bleedway_filter", "pos": Vector3(36, 0, 10), "role": "peris", "verb": "PACK FILTER", "color": Color(0.84, 0.58, 0.24)},
-			{"id": "bleedway_relay", "pos": Vector3(43, 0, -10), "role": "aster", "verb": "ALIGN RELAY", "color": Color(0.30, 0.66, 0.92)},
-		],
-	},
-	{
-		"id": "sump_recovery",
-		"label": "FERRIC SUMP RECOVERY",
-		"sites": [
-			{"id": "sump_grate", "pos": Vector3(57, 0, 10), "role": "endo", "verb": "LIFT GRATE", "color": Color(0.38, 0.72, 0.55)},
-			{"id": "sump_deposit", "pos": Vector3(68, 0, -10), "role": "peris", "verb": "READ DEPOSIT", "color": Color(0.84, 0.58, 0.24)},
-			{"id": "sump_bus", "pos": Vector3(80, 0, 10), "role": "aster", "verb": "PATCH BUS", "color": Color(0.30, 0.66, 0.92)},
-			{"id": "sump_vent", "pos": Vector3(94, 0, -10), "role": "endo", "verb": "VENT SUMP", "color": Color(0.38, 0.72, 0.55)},
-			{"id": "sump_flow", "pos": Vector3(106, 0, 10), "role": "peris", "verb": "VERIFY FLOW", "color": Color(0.84, 0.58, 0.24)},
-		],
-	},
-	{
-		"id": "lattice_isolation",
-		"label": "IRON LATTICE ISOLATION",
-		"sites": [
-			{"id": "lattice_map", "pos": Vector3(121, 0, -10), "role": "aster", "verb": "MAP LATTICE", "color": Color(0.30, 0.66, 0.92)},
-			{"id": "lattice_spine", "pos": Vector3(132, 0, 10), "role": "endo", "verb": "GROUND SPINE", "color": Color(0.38, 0.72, 0.55)},
-			{"id": "lattice_seam", "pos": Vector3(145, 0, -10), "role": "peris", "verb": "TREAT SEAM", "color": Color(0.84, 0.58, 0.24)},
-			{"id": "lattice_shunt", "pos": Vector3(158, 0, 10), "role": "aster", "verb": "TUNE SHUNT", "color": Color(0.30, 0.66, 0.92)},
-			{"id": "lattice_bypass", "pos": Vector3(169, 0, -10), "role": "endo", "verb": "LOCK BYPASS", "color": Color(0.38, 0.72, 0.55)},
-		],
-	},
-]
 var _grid: GridWorld
 const OUTDOOR_STEPS := [
 	"first_corridor",
@@ -159,6 +168,17 @@ const OUTDOOR_STEPS := [
 	"dusk_approaches",
 	"second_iron",
 	"reach_shelter",
+]
+const ENDO_JOINED_STEPS := [
+	"endo_joins",
+	"first_corridor",
+	"safe_route_lesson",
+	"dusk_approaches",
+	"second_iron",
+	"reach_shelter",
+	"first_rest",
+	"dawn",
+	"complete",
 ]
 
 # --- Virtual method overrides ---
@@ -222,6 +242,9 @@ func _build_characters() -> void:
 	_endo = _create_npc("Endo", Color(0.4, 0.67, 0.53))
 	_endo.position = EXIT_POS + Vector3(3, 0, -2)
 	_endo.visible = false
+	# Hidden nodes are still live nodes. Keep the not-yet-present body inert until
+	# the authoritative roster transaction commits the join.
+	_endo.process_mode = Node.PROCESS_MODE_DISABLED
 	if not Engine.is_editor_hint():
 		_endo.grid_world = _grid
 	chars.add_child(_endo)
@@ -232,11 +255,290 @@ func _build_characters() -> void:
 
 func _register_characters() -> void:
 	_game_state.grid = _grid
-	_register_gs_character("aster", _player, GameState.WALK_SPEED, {"hp": GameState.HP_MAX, "stamina": GameState.STAMINA_MAX})
-	_register_gs_character("peris", _peris, 2.5, {"hp": GameState.HP_MAX, "stamina": GameState.STAMINA_MAX})
-	_register_gs_character("endo", _endo, 2.5, {"hp": GameState.HP_MAX})
+	_register_gs_character("aster", _player, GameState.WALK_SPEED, {
+		"hp": GameState.HP_MAX, "stamina": GameState.STAMINA_MAX, "atp": 4.0})
+	_register_gs_character("peris", _peris, 2.5, {
+		"hp": GameState.HP_MAX, "stamina": GameState.STAMINA_MAX, "atp": 4.0})
+	# Endo has an authored entrance. Preparing his node is not the same operation as
+	# admitting a character to GameState: registered characters drive range queries,
+	# hazards, fog, causal-link visibility, and other gameplay even when their node is
+	# hidden. The saved join record below is the only authority that may add him.
+	_configure_endo_presenter()
+	_game_state.set_party(["aster", "peris"])
+	_publish_endo_join_authority(_baseline_endo_join_authority())
+	_wire_endo_join_signals()
 	_game_state.set_route_mode(true)
+	_game_state.set_day_length(_game_clock.get_cycle_duration_seconds())
 	_build_route_gameplay()
+
+
+func _baseline_endo_join_authority() -> Dictionary:
+	return {
+		"version": ENDO_JOIN_AUTHORITY_VERSION,
+		"contract": ENDO_JOIN_AUTHORITY_CONTRACT,
+		"character_id": "endo",
+		"phase": ENDO_JOIN_PHASE_ABSENT,
+		"start_tick": -1.0,
+		"deadline": -1.0,
+		"joined_tick": -1.0,
+	}
+
+
+func _endo_join_authority_state() -> Dictionary:
+	if _game_state == null:
+		return {}
+	var raw: Variant = _game_state.get_world_state(ENDO_JOIN_AUTHORITY_KEY, null)
+	return (raw as Dictionary).duplicate(true) if raw is Dictionary else {}
+
+
+func _valid_endo_join_authority(raw: Variant) -> bool:
+	if not (raw is Dictionary):
+		return false
+	var saved := raw as Dictionary
+	if int(saved.get("version", 0)) != ENDO_JOIN_AUTHORITY_VERSION \
+			or str(saved.get("contract", "")) != ENDO_JOIN_AUTHORITY_CONTRACT \
+			or str(saved.get("character_id", "")) != "endo":
+		return false
+	var phase := str(saved.get("phase", ""))
+	var start_tick := float(saved.get("start_tick", -1.0))
+	var deadline := float(saved.get("deadline", -1.0))
+	var joined_tick := float(saved.get("joined_tick", -1.0))
+	match phase:
+		ENDO_JOIN_PHASE_ABSENT:
+			return start_tick < 0.0 and deadline < 0.0 and joined_tick < 0.0
+		ENDO_JOIN_PHASE_PENDING:
+			return is_finite(start_tick) and is_finite(deadline) \
+				and start_tick >= 0.0 and deadline > start_tick and joined_tick < 0.0
+		ENDO_JOIN_PHASE_JOINED:
+			return is_finite(start_tick) and is_finite(deadline) and is_finite(joined_tick) \
+				and start_tick >= 0.0 and deadline > start_tick and joined_tick >= deadline
+		_:
+			return false
+
+
+func _publish_endo_join_authority(authority: Dictionary) -> void:
+	if _game_state == null:
+		return
+	_game_state.set_world_state(ENDO_JOIN_AUTHORITY_KEY, authority.duplicate(true))
+
+
+## Prepare a stable presenter id for save attachment without registering a body.
+## GameState.deserialize can then restore a post-join snapshot onto the same node,
+## while a pre-join snapshot still has no gameplay character to see or target.
+func _configure_endo_presenter() -> void:
+	if not is_instance_valid(_endo) or _game_state == null:
+		return
+	_endo.set("game_state", _game_state)
+	_endo.set("char_id", "endo")
+	_endo.set("grid_world", _grid)
+	_game_state_character_nodes["endo"] = _endo
+
+
+func _wire_endo_join_signals() -> void:
+	if _game_state == _endo_join_signal_game_state:
+		return
+	if _endo_join_signal_game_state != null \
+			and _endo_join_signal_game_state.world_state_changed.is_connected(
+				_on_endo_join_world_state_changed):
+		_endo_join_signal_game_state.world_state_changed.disconnect(
+			_on_endo_join_world_state_changed)
+	_endo_join_signal_game_state = _game_state
+	if _game_state != null and not _game_state.world_state_changed.is_connected(
+			_on_endo_join_world_state_changed):
+		_game_state.world_state_changed.connect(_on_endo_join_world_state_changed)
+
+
+func _on_endo_join_world_state_changed(key: String, _value: Variant) -> void:
+	if key == ENDO_JOIN_AUTHORITY_KEY:
+		_sync_endo_presence_from_authority()
+
+
+func _set_endo_presenter_present(present: bool) -> void:
+	if not is_instance_valid(_endo):
+		return
+	_endo.visible = present
+	_endo.process_mode = Node.PROCESS_MODE_INHERIT if present else Node.PROCESS_MODE_DISABLED
+
+
+func _endo_is_authoritatively_joined() -> bool:
+	if _game_state == null:
+		return false
+	var saved := _endo_join_authority_state()
+	return _valid_endo_join_authority(saved) \
+		and str(saved.get("phase", "")) == ENDO_JOIN_PHASE_JOINED \
+		and _game_state.characters.has("endo")
+
+
+func _remove_endo_from_authoritative_roster() -> void:
+	if _game_state == null:
+		return
+	var party := _game_state.get_party()
+	if party.has("endo"):
+		party.erase("endo")
+		_game_state.set_party(party)
+	if _game_state.characters.has("endo"):
+		_game_state.unregister_character("endo")
+
+
+func _sync_endo_presence_from_authority() -> void:
+	var saved := _endo_join_authority_state()
+	if not _valid_endo_join_authority(saved):
+		_set_endo_presenter_present(false)
+		return
+	var phase := str(saved.get("phase", ENDO_JOIN_PHASE_ABSENT))
+	if phase != ENDO_JOIN_PHASE_JOINED:
+		# A pre-join save must also retract a same-presenter future timeline.
+		_remove_endo_from_authoritative_roster()
+		_set_endo_presenter_present(false)
+		return
+	# A semantic joined flag cannot mint a body. Normal saves contain both the
+	# story record and the serialized character; malformed ones fail closed.
+	var registered := _game_state != null and _game_state.characters.has("endo")
+	if not registered and _game_state != null and _game_state.get_party().has("endo"):
+		var party := _game_state.get_party()
+		party.erase("endo")
+		_game_state.set_party(party)
+	_set_endo_presenter_present(registered)
+
+
+func _baseline_shelter_rest_authority() -> Dictionary:
+	return {
+		"version": SHELTER_REST_AUTHORITY_VERSION,
+		"contract": SHELTER_REST_AUTHORITY_CONTRACT,
+		"phase": SHELTER_REST_PHASE_IDLE,
+		"party_ids": PARTY_IDS.duplicate(),
+		"shelter_center": GameEvent.v3_to_arr(SHELTER_POS),
+		"shelter_half_size": [SHELTER_HALF_SIZE.x, SHELTER_HALF_SIZE.y],
+		"start_tick": -1.0,
+		"dawn_deadline": -1.0,
+		"start_day": -1,
+		"start_time": -1.0,
+		"dawn_day": -1,
+		"atp_before": {},
+		"cost_applied": false,
+	}
+
+
+func _shelter_rest_authority_state() -> Dictionary:
+	if _game_state == null:
+		return {}
+	var raw: Variant = _game_state.get_world_state(SHELTER_REST_AUTHORITY_KEY, null)
+	return (raw as Dictionary).duplicate(true) if raw is Dictionary else {}
+
+
+func _valid_shelter_rest_authority(raw: Variant) -> bool:
+	if not raw is Dictionary:
+		return false
+	var saved := raw as Dictionary
+	if int(saved.get("version", 0)) != SHELTER_REST_AUTHORITY_VERSION \
+			or str(saved.get("contract", "")) != SHELTER_REST_AUTHORITY_CONTRACT \
+			or saved.get("party_ids", []) != PARTY_IDS:
+		return false
+	var center_v: Variant = saved.get("shelter_center", [])
+	var half_v: Variant = saved.get("shelter_half_size", [])
+	if not center_v is Array or not half_v is Array \
+			or (center_v as Array).size() != 3 or (half_v as Array).size() != 2 \
+			or not GameEvent.arr_to_v3(center_v as Array).is_equal_approx(SHELTER_POS) \
+			or not Vector2(
+				float((half_v as Array)[0]), float((half_v as Array)[1])
+			).is_equal_approx(SHELTER_HALF_SIZE):
+		return false
+	var phase := str(saved.get("phase", ""))
+	if phase == SHELTER_REST_PHASE_IDLE:
+		return float(saved.get("start_tick", -1.0)) < 0.0 \
+			and float(saved.get("dawn_deadline", -1.0)) < 0.0 \
+			and not bool(saved.get("cost_applied", false))
+	if phase not in [
+		SHELTER_REST_PHASE_COMMITTING,
+		SHELTER_REST_PHASE_DAWN_PENDING,
+		SHELTER_REST_PHASE_COMPLETE,
+	]:
+		return false
+	var start_tick := float(saved.get("start_tick", -1.0))
+	var dawn_deadline := float(saved.get("dawn_deadline", -1.0))
+	var atp_before_v: Variant = saved.get("atp_before", {})
+	if not is_finite(start_tick) or start_tick < 0.0 \
+			or not is_finite(dawn_deadline) or dawn_deadline <= start_tick \
+			or int(saved.get("start_day", -1)) < 1 or not atp_before_v is Dictionary:
+		return false
+	for char_id in PARTY_IDS:
+		if not (atp_before_v as Dictionary).has(char_id) \
+				or float((atp_before_v as Dictionary).get(char_id, -1.0)) < 1.0:
+			return false
+	if phase == SHELTER_REST_PHASE_COMMITTING:
+		return not bool(saved.get("cost_applied", false))
+	return bool(saved.get("cost_applied", false)) \
+		and int(saved.get("dawn_day", -1)) >= int(saved.get("start_day", -1)) + 1
+
+
+func _publish_shelter_rest_authority(authority: Dictionary) -> void:
+	if _restoring_shelter_authority or _game_state == null:
+		return
+	_game_state.set_world_state(SHELTER_REST_AUTHORITY_KEY, authority.duplicate(true))
+
+
+func _party_inside_authored_shelter() -> bool:
+	if _game_state == null or _shelter_party_gate == null \
+			or not _shelter_party_gate.is_satisfied():
+		return false
+	for char_id in PARTY_IDS:
+		if not _game_state.characters.has(char_id) or _game_state.is_downed(char_id):
+			return false
+		var pos := _game_state.get_position(char_id)
+		if absf(pos.x - SHELTER_POS.x) > SHELTER_HALF_SIZE.x \
+				or absf(pos.z - SHELTER_POS.z) > SHELTER_HALF_SIZE.y \
+				or not _game_state.is_at_shelter(char_id):
+			return false
+	return true
+
+
+func _shelter_rest_outcome_matches(authority: Dictionary) -> bool:
+	if _game_state == null:
+		return false
+	var start_day := int(authority.get("start_day", -1))
+	if _game_state.get_game_day() < start_day + 1 \
+			or _game_state.get_time_of_day() > GameState.DAWN_TIME + 0.0001:
+		return false
+	var atp_before := authority.get("atp_before", {}) as Dictionary
+	for char_id in PARTY_IDS:
+		if not _game_state.characters.has(char_id) \
+				or not is_equal_approx(
+					_game_state.get_stat(char_id, "atp"),
+					float(atp_before.get(char_id, -1.0)) - 1.0):
+			return false
+	return true
+
+
+func _on_shelter_settle_requested(source: Node = null) -> bool:
+	var receipt := _consume_leaving_source_receipt(
+		source, LEAVING_SOURCE_SHELTER)
+	if receipt.is_empty() or _shelter_party_gate == null:
+		return false
+	if not _shelter_party_gate.begin_open({
+		"contract": SHELTER_REST_AUTHORITY_CONTRACT,
+		"shelter": "Shelter 1",
+		"party_ids": PARTY_IDS.duplicate(),
+	}):
+		_project_leaving_sources()
+		return false
+	_project_leaving_sources()
+	if _hud != null:
+		_hud.show_message("Shelter 1 checks the whole conscious party. Stay together while it settles.", 2.2)
+	return true
+
+
+func _on_shelter_party_blocked(reason: StringName) -> void:
+	_project_leaving_sources()
+	if _hud != null:
+		var member := str(reason).trim_prefix("missing_").trim_prefix("unavailable_").trim_prefix("out_of_range_")
+		_hud.show_message(
+			"Shelter 1 is waiting for %s." % (member.capitalize() if not member.is_empty() else "the whole party"),
+			1.8)
+
+
+func _on_shelter_party_ready() -> void:
+	if _current_step == "second_iron" and _party_inside_authored_shelter():
+		_start_reach_shelter()
 
 func _setup_ui() -> void:
 	_hud = preload("res://scenes/ui/game_hud.tscn").instantiate()
@@ -252,10 +554,16 @@ func _recenter_party_camera() -> void:
 		return
 	var centroid := Vector3.ZERO
 	var visible_count := 0
-	for character in [_player, _peris, _endo]:
-		if is_instance_valid(character) and character.visible:
-			centroid += character.global_position
-			visible_count += 1
+	for entry in [["aster", _player], ["peris", _peris], ["endo", _endo]]:
+		var char_id := str(entry[0])
+		var character: Node3D = entry[1] as Node3D
+		if not is_instance_valid(character) or not character.visible \
+				or _game_state == null or not _game_state.characters.has(char_id):
+			continue
+		if char_id == "endo" and not _endo_is_authoritatively_joined():
+			continue
+		centroid += character.global_position
+		visible_count += 1
 	if visible_count > 0:
 		_camera.recenter_on(centroid / float(visible_count))
 
@@ -271,15 +579,16 @@ func _on_process(delta: float, spd: float) -> void:
 	if outdoor:
 		_advance_game_clock(delta * spd)
 
-	# Iron damage when standing on iron
+	# Iron lighting is presentation-only. Damage runs on the fixed scheduler cadence below.
 	if outdoor and _current_step != "reach_shelter":
-		_check_iron_damage(delta * spd)
+		_update_iron_lights()
 
 	# NPC follow behavior
 	_update_npc_follow()
 
 	# Per-frame visual updates
 	_update_fades()
+	_update_sector_gate_visuals()
 
 	# Position-based step triggers
 	if _current_step == "first_corridor":
@@ -291,10 +600,6 @@ func _on_process(delta: float, spd: float) -> void:
 		var px: float = _game_state.get_position("aster").x
 		if px > MIDPOINT.x - 1.0:
 			_start_dusk_approaches()
-	elif _current_step == "second_iron":
-		var px: float = _game_state.get_position("aster").x
-		if px > SHELTER_POS.x - 2.0:
-			_start_reach_shelter()
 
 func _update_fades() -> void:
 	if _current_step == "fade_in":
@@ -309,10 +614,11 @@ func _update_npc_follow() -> void:
 		var peris_pos := _game_state.get_position("peris")
 		if aster_pos.distance_to(peris_pos) > 2.5 and not _game_state.is_moving("peris"):
 			_game_state.command_move_to_pos("peris", aster_pos + Vector3(-1.2, 0, 0.8))
-		# Endo follows
-		var endo_pos := _game_state.get_position("endo")
-		if aster_pos.distance_to(endo_pos) > 3.0 and not _game_state.is_moving("endo"):
-			_game_state.command_move_to_pos("endo", aster_pos + Vector3(-1.2, 0, -0.8))
+		# Follow is a roster capability, not a property of the prebuilt hidden node.
+		if _endo_is_authoritatively_joined():
+			var endo_pos := _game_state.get_position("endo")
+			if aster_pos.distance_to(endo_pos) > 3.0 and not _game_state.is_moving("endo"):
+				_game_state.command_move_to_pos("endo", aster_pos + Vector3(-1.2, 0, -0.8))
 
 # --- Route gameplay ---
 
@@ -321,142 +627,528 @@ func _build_route_gameplay() -> void:
 	if environment == null:
 		return
 	_sector_route_interactables.clear()
-	_field_site_interactables.clear()
 	for sector_index in range(IRON_SECTORS.size()):
 		var sector: Dictionary = IRON_SECTORS[sector_index]
 		var safe_station := _create_interactable(
 			environment, sector["safe_station"], "Sector%dSafeStation" % (sector_index + 1),
-			2.0, 3.5, "REGROUP / WORK SAFE SEAL", false, Interactable.InteractableType.TIMED_ACTION)
+			2.0, 3.5, "REGROUP / WORK SAFE SEAL", true, Interactable.InteractableType.TIMED_ACTION)
 		safe_station.set("interactable_type", Interactable.InteractableType.TIMED_ACTION)
-		safe_station.interacted.connect(
-			Callable(self, "_on_sector_route_station_completed").bind(sector_index, "safe"))
+		_configure_leaving_source(
+			safe_station, _leaving_route_action_id(sector_index, "safe"))
 		safe_station.interaction_requested.connect(
 			Callable(self, "_on_route_station_requested").bind("safe"))
 		_add_route_station_mesh(safe_station, Color(0.22, 0.58, 0.42), "SAFE")
 		var direct_station := _create_interactable(
 			environment, sector["direct_station"], "Sector%dDirectStation" % (sector_index + 1),
-			2.0, 2.0, "REGROUP / FORCE DIRECT SEAL", false, Interactable.InteractableType.TIMED_ACTION)
+			2.0, 2.0, "REGROUP / FORCE DIRECT SEAL", true, Interactable.InteractableType.TIMED_ACTION)
 		direct_station.set("interactable_type", Interactable.InteractableType.TIMED_ACTION)
-		direct_station.interacted.connect(
-			Callable(self, "_on_sector_route_station_completed").bind(sector_index, "direct"))
+		_configure_leaving_source(
+			direct_station, _leaving_route_action_id(sector_index, "direct"))
 		direct_station.interaction_requested.connect(
 			Callable(self, "_on_route_station_requested").bind("direct"))
 		_add_route_station_mesh(direct_station, Color(0.72, 0.24, 0.08), "DIRECT")
 		_sector_route_interactables.append([safe_station, direct_station])
-		# The seal is the protocol's final decision, not a shortcut around its
-		# fieldwork. The low-level commit method stays callable for deterministic
-		# compatibility tests, while real clicks arrive through the guarded wrapper.
+		# Only the next physically reachable seal advertises an action. Opening it
+		# exposes the following pair without inserting an abstract checklist.
 		safe_station.set_interaction_enabled(false)
 		direct_station.set_interaction_enabled(false)
-
-	_build_field_protocol_interactables(environment)
+	_setup_sector_gate_authority()
+	_restore_sector_gate_progression()
 
 	_cache_interactable = _create_interactable(
 		environment, CACHE_POS, "LeavingFacilityCache", 2.0, 2.5, "SALVAGE LYSATE",
-		false, Interactable.InteractableType.TIMED_ACTION)
+		true, Interactable.InteractableType.TIMED_ACTION)
 	_cache_interactable.set("interactable_type", Interactable.InteractableType.TIMED_ACTION)
-	_cache_interactable.interacted.connect(_on_cache_collected)
+	_configure_leaving_source(_cache_interactable, LEAVING_SOURCE_CACHE)
 	_cache_mesh = _add_route_station_mesh(_cache_interactable, Color(0.67, 0.55, 0.25), "CACHE")
-
-	_recover_interactable = _create_interactable(
-		environment, RESOURCE_MANIFOLD_POS + Vector3(-1.8, 0, 0), "LysateRecoverStation",
-		1.8, 1.5, "METABOLIZE", true, Interactable.InteractableType.TIMED_ACTION)
-	_recover_interactable.set("interactable_type", Interactable.InteractableType.TIMED_ACTION)
-	_recover_interactable.interacted.connect(Callable(self, "_resolve_resource_decision").bind("recover"))
-	_add_route_station_mesh(_recover_interactable, Color(0.48, 0.7, 0.35), "RECOVER")
-	_recover_interactable.set_interaction_enabled(false)
-
-	_shield_interactable = _create_interactable(
-		environment, RESOURCE_MANIFOLD_POS + Vector3(1.8, 0, 0), "LysateShieldStation",
-		1.8, 1.5, "PRIME SHUNT", true, Interactable.InteractableType.TIMED_ACTION)
-	_shield_interactable.set("interactable_type", Interactable.InteractableType.TIMED_ACTION)
-	_shield_interactable.interacted.connect(Callable(self, "_resolve_resource_decision").bind("shield"))
-	_add_route_station_mesh(_shield_interactable, Color(0.28, 0.62, 0.7), "SHIELD")
-	_shield_interactable.set_interaction_enabled(false)
+	_retract_cache_to_source(true, false)
 
 	_lookout_interactable = _create_interactable(
 		environment, LOOKOUT_POS, "IronLookoutSurvey", 2.0, 3.0, "SURVEY LATTICE",
 		true, Interactable.InteractableType.TIMED_ACTION)
 	_lookout_interactable.set("interactable_type", Interactable.InteractableType.TIMED_ACTION)
-	_lookout_interactable.interacted.connect(_on_lookout_surveyed)
+	_configure_leaving_source(_lookout_interactable, LEAVING_SOURCE_LOOKOUT)
 	_add_route_station_mesh(_lookout_interactable, Color(0.36, 0.68, 0.74), "LOOKOUT")
 
-func _build_field_protocol_interactables(environment: Node3D) -> void:
-	for sector_index in range(FIELD_PROTOCOLS.size()):
-		var protocol: Dictionary = FIELD_PROTOCOLS[sector_index]
-		var sector_sites: Array = []
-		var sites: Array = protocol["sites"]
-		for site_index in range(sites.size()):
-			var site: Dictionary = sites[site_index]
-			var role := str(site["role"])
-			var verb := str(site["verb"])
-			var station := _create_interactable(
-				environment,
-				site["pos"],
-				"Sector%dProtocol%d" % [sector_index + 1, site_index + 1],
-				2.0,
-				FIELD_SITE_WORK_SECONDS,
-				"%s / %s" % [role.to_upper(), verb],
-				false,
-				Interactable.InteractableType.TIMED_ACTION
-			)
-			station.set("interactable_type", Interactable.InteractableType.TIMED_ACTION)
-			station.set("description", "%s: %s" % [role.capitalize(), verb.to_lower()])
-			station.set_meta("field_site_id", str(site["id"]))
-			station.set_meta("field_role", role)
-			station.interacted.connect(
-				Callable(self, "_on_field_site_completed").bind(sector_index, site_index))
-			station.interaction_requested.connect(
-				Callable(self, "_on_field_site_requested").bind(sector_index, site_index))
-			var assembly := _add_route_station_mesh(
-				station, site["color"], "%s %d" % [role.to_upper(), site_index + 1])
-			_add_field_station_detail(assembly, role, site_index)
-			station.set_interaction_enabled(false)
-			sector_sites.append(station)
-		_field_site_interactables.append(sector_sites)
-	_activate_field_protocol(0)
+	# Shelter 1 is one authored spatial mechanism, not a region invented around whichever body
+	# happened to reach the corridor endpoint first. The interactable asks for commitment; PartyGate3D
+	# checks the complete conscious trio both at commitment and at its short settle endpoint.
+	_game_state.add_shelter_region(
+		Vector2(SHELTER_POS.x - SHELTER_HALF_SIZE.x, SHELTER_POS.z - SHELTER_HALF_SIZE.y),
+		Vector2(SHELTER_POS.x + SHELTER_HALF_SIZE.x, SHELTER_POS.z + SHELTER_HALF_SIZE.y)
+	)
+	_shelter_party_gate = PartyGate3D.new()
+	_shelter_party_gate.name = "Shelter1PartyGate"
+	_shelter_party_gate.position = SHELTER_POS
+	_shelter_party_gate.required_members = PackedStringArray(PARTY_IDS)
+	_shelter_party_gate.readiness_radius = SHELTER_READY_RADIUS
+	_shelter_party_gate.authority_id = SHELTER_GATE_AUTHORITY_ID
+	_shelter_party_gate.opening_duration = SHELTER_GATE_OPEN_DURATION
+	environment.add_child(_shelter_party_gate)
+	_shelter_party_gate.setup(_game_state, null, 0, PARTY_IDS)
+	_shelter_party_gate.opened.connect(_on_shelter_party_ready)
+	_shelter_party_gate.blocked.connect(_on_shelter_party_blocked)
+	_shelter_interactable = _create_interactable(
+		environment, SHELTER_POS, "Shelter1SettleInteractable", 2.4, 1.0,
+		"SETTLE PARTY AT SHELTER 1", true, Interactable.InteractableType.TIMED_ACTION)
+	_shelter_interactable.set("interactable_type", Interactable.InteractableType.TIMED_ACTION)
+	_configure_leaving_source(_shelter_interactable, LEAVING_SOURCE_SHELTER)
+	_shelter_interactable.set_interaction_enabled(false)
+	_add_route_station_mesh(_shelter_interactable, Color(0.88, 0.63, 0.28), "SHELTER 1")
+	_publish_shelter_rest_authority(_baseline_shelter_rest_authority())
+	_initialize_leaving_source_authority()
 
-func _add_field_station_detail(assembly: Node3D, role: String, site_index: int) -> void:
-	# Distinct silhouettes let the player read who owns the next task before the
-	# label is legible: Aster gets a data vane, Peris sample wells, Endo a brace.
-	var detail_mat := StandardMaterial3D.new()
-	detail_mat.albedo_color = Color(0.17, 0.19, 0.21)
-	detail_mat.metallic = 0.55
-	detail_mat.roughness = 0.42
-	if role == "aster":
-		var vane := MeshInstance3D.new()
-		vane.name = "DataVane"
-		var vane_mesh := BoxMesh.new()
-		vane_mesh.size = Vector3(0.08, 0.82, 0.62)
-		vane.mesh = vane_mesh
-		vane.material_override = detail_mat
-		vane.position = Vector3(0, 1.25, 0)
-		vane.rotation.y = float(site_index) * 0.16
-		assembly.add_child(vane)
-	elif role == "peris":
-		for well_index in range(3):
-			var well := MeshInstance3D.new()
-			well.name = "SampleWell%d" % well_index
-			var well_mesh := CylinderMesh.new()
-			well_mesh.top_radius = 0.10
-			well_mesh.bottom_radius = 0.13
-			well_mesh.height = 0.38 + 0.08 * well_index
-			well.mesh = well_mesh
-			well.material_override = detail_mat
-			well.position = Vector3(-0.24 + well_index * 0.24, 1.20, 0)
-			assembly.add_child(well)
+
+func _leaving_route_action_id(sector_index: int, route_choice: String) -> String:
+	return "route:%d:%s" % [sector_index, route_choice]
+
+
+func _leaving_source_action_ids() -> Array[String]:
+	var actions: Array[String] = []
+	for sector_index in range(IRON_SECTORS.size()):
+		actions.append(_leaving_route_action_id(sector_index, "safe"))
+		actions.append(_leaving_route_action_id(sector_index, "direct"))
+	actions.append(LEAVING_SOURCE_CACHE)
+	actions.append(LEAVING_SOURCE_LOOKOUT)
+	actions.append(LEAVING_SOURCE_SHELTER)
+	return actions
+
+
+func _leaving_route_action_context(action_id: String) -> Dictionary:
+	var parts := action_id.split(":")
+	if parts.size() != 3 or parts[0] != "route" \
+			or not parts[1].is_valid_int() or parts[2] not in ["safe", "direct"]:
+		return {}
+	var sector_index := int(parts[1])
+	if sector_index < 0 or sector_index >= IRON_SECTORS.size():
+		return {}
+	return {
+		"sector_index": sector_index,
+		"route_choice": str(parts[2]),
+	}
+
+
+func _leaving_source_for_action(action_id: String) -> Node:
+	var route := _leaving_route_action_context(action_id)
+	if not route.is_empty():
+		var sector_index := int(route.get("sector_index", -1))
+		var choice_index := 0 if str(route.get("route_choice", "")) == "safe" else 1
+		if sector_index >= 0 and sector_index < _sector_route_interactables.size():
+			var pair: Array = _sector_route_interactables[sector_index]
+			if choice_index < pair.size():
+				return pair[choice_index]
+		return null
+	match action_id:
+		LEAVING_SOURCE_CACHE:
+			return _cache_interactable
+		LEAVING_SOURCE_LOOKOUT:
+			return _lookout_interactable
+		LEAVING_SOURCE_SHELTER:
+			return _shelter_interactable
+		_:
+			return null
+
+
+func _leaving_source_data_id(action_id: String) -> String:
+	var route := _leaving_route_action_context(action_id)
+	if not route.is_empty():
+		var suffix := "SafeStation" \
+			if str(route.get("route_choice", "")) == "safe" else "DirectStation"
+		return "Sector%d%s" % [int(route.get("sector_index", -1)) + 1, suffix]
+	match action_id:
+		LEAVING_SOURCE_CACHE:
+			return "LeavingFacilityCache"
+		LEAVING_SOURCE_LOOKOUT:
+			return "IronLookoutSurvey"
+		LEAVING_SOURCE_SHELTER:
+			return "Shelter1SettleInteractable"
+		_:
+			return ""
+
+
+func _configure_leaving_source(source: Node, action_id: String) -> void:
+	if not is_instance_valid(source):
+		return
+	source.set("one_shot", true)
+	source.set_meta("leaving_source_action", action_id)
+	source.call(
+		"set_pre_trigger_validator",
+		_validate_leaving_source_trigger.bind(action_id, source))
+	var callback := _on_leaving_source_interacted.bind(action_id, source)
+	if not source.is_connected("interacted", callback):
+		source.connect("interacted", callback)
+	_ensure_leaving_source_registry_contract(source)
+
+
+func _on_leaving_source_interacted(action_id: String, source: Node) -> void:
+	var route := _leaving_route_action_context(action_id)
+	if not route.is_empty():
+		_on_sector_route_station_completed(
+			int(route.get("sector_index", -1)),
+			str(route.get("route_choice", "")),
+			source)
+		return
+	match action_id:
+		LEAVING_SOURCE_CACHE:
+			_on_cache_collected(source)
+		LEAVING_SOURCE_LOOKOUT:
+			_on_lookout_surveyed(source)
+		LEAVING_SOURCE_SHELTER:
+			_on_shelter_settle_requested(source)
+
+
+func _validate_leaving_source_trigger(
+		source: Node,
+		actor: String,
+		action_id: String,
+		expected_source: Node
+	) -> bool:
+	return is_instance_valid(source) and source == expected_source \
+		and source == _leaving_source_for_action(action_id) \
+		and _leaving_actor_ready_at_source(source, actor) \
+		and _leaving_source_action_ready(action_id) \
+		and _leaving_action_physical_preflight(action_id, actor)
+
+
+func _leaving_source_action_ready(action_id: String) -> bool:
+	var route := _leaving_route_action_context(action_id)
+	if not route.is_empty():
+		var sector_index := int(route.get("sector_index", -1))
+		if not _endo_is_authoritatively_joined() \
+				or sector_index != _next_sector_gate_index() \
+				or sector_index >= _sector_gates.size():
+			return false
+		return str(_sector_gates[sector_index].get_authority_state().get(
+			"phase", PartyGate3D.PHASE_CLOSED)) == PartyGate3D.PHASE_CLOSED
+	match action_id:
+		LEAVING_SOURCE_CACHE:
+			return _cache_phase == CACHE_PHASE_AVAILABLE and _cache_item_at_source()
+		LEAVING_SOURCE_LOOKOUT:
+			return not _lookout_surveyed
+		LEAVING_SOURCE_SHELTER:
+			if _current_step != "second_iron" \
+					or str(_shelter_rest_authority_state().get(
+						"phase", SHELTER_REST_PHASE_IDLE)) != SHELTER_REST_PHASE_IDLE:
+				return false
+			return _shelter_party_gate != null and str(
+				_shelter_party_gate.get_authority_state().get(
+					"phase", PartyGate3D.PHASE_CLOSED)
+			) == PartyGate3D.PHASE_CLOSED
+		_:
+			return false
+
+
+func _leaving_action_physical_preflight(
+		action_id: String, actor: String
+	) -> bool:
+	var route := _leaving_route_action_context(action_id)
+	if not route.is_empty():
+		var source := _leaving_source_for_action(action_id)
+		return _leaving_party_ready_at(
+			_leaving_source_data_position(source), ROUTE_REGROUP_RADIUS)
+	match action_id:
+		LEAVING_SOURCE_CACHE:
+			return _game_state.has_free_hands(actor, 1)
+		LEAVING_SOURCE_LOOKOUT:
+			return true
+		LEAVING_SOURCE_SHELTER:
+			return _party_inside_authored_shelter() \
+				and _leaving_party_action_ready()
+		_:
+			return false
+
+
+func _leaving_character_action_ready(character_id: String) -> bool:
+	return _game_state != null and _game_state.characters.has(character_id) \
+		and _game_state.get_party().has(character_id) \
+		and _game_state.is_narratively_available(character_id) \
+		and _game_state.get_stat(character_id, "hp") > 0.0 \
+		and not _game_state.is_downed(character_id) \
+		and not _game_state.is_knocked_down(character_id) \
+		and not _game_state.is_moving(character_id) \
+		and not _game_state.is_resting(character_id) \
+		and not _game_state.is_dodging(character_id) \
+		and not _game_state.is_endocytosing(character_id) \
+		and not _game_state.is_external_traversal_active(character_id) \
+		and not _game_state.is_dragging(character_id) \
+		and not _game_state.is_field_restoring(character_id) \
+		and not _game_state.is_pushing(character_id)
+
+
+func _leaving_actor_ready_at_source(source: Node, actor: String) -> bool:
+	if _game_state == null or not is_instance_valid(source) \
+			or not (source is Node3D) or actor not in PARTY_IDS \
+			or not _leaving_character_action_ready(actor):
+		return false
+	var source_position := _leaving_source_data_position(source)
+	if not source_position.is_finite():
+		return false
+	if _game_state.grid != null and _game_state.grid.level_count > 1 \
+			and int(_game_state.get_character_level(actor)) != int(
+				_game_state.grid.level_for_y(source_position.y)):
+		return false
+	var actor_position: Vector3 = _game_state.get_position(actor)
+	var radius := float(source.get("interaction_radius")) \
+		+ LEAVING_SOURCE_POSITION_TOLERANCE
+	return Vector2(actor_position.x, actor_position.z).distance_to(
+		Vector2(source_position.x, source_position.z)) <= radius \
+		and absf(actor_position.y - source_position.y) \
+			<= LEAVING_SOURCE_HEIGHT_TOLERANCE
+
+
+func _leaving_party_action_ready() -> bool:
+	for character_id in PARTY_IDS:
+		if not _leaving_character_action_ready(character_id):
+			return false
+	return true
+
+
+func _leaving_party_ready_at(position: Vector3, radius: float) -> bool:
+	if not position.is_finite() or not _leaving_party_action_ready():
+		return false
+	for character_id in PARTY_IDS:
+		var member_position: Vector3 = _game_state.get_position(character_id)
+		if Vector2(member_position.x, member_position.z).distance_to(
+				Vector2(position.x, position.z)) > radius \
+				or absf(member_position.y - position.y) \
+					> LEAVING_SOURCE_HEIGHT_TOLERANCE:
+			return false
+	return true
+
+
+func _leaving_source_data_position(source: Node) -> Vector3:
+	if _game_state == null or not is_instance_valid(source):
+		return Vector3.INF
+	var data_id := str(source.get("data_id"))
+	if data_id != "" and _game_state.has_interactable(data_id):
+		var position_v: Variant = _game_state.get_interactable(data_id).get(
+			"position", Vector3.INF)
+		if position_v is Vector3:
+			return position_v
+	if source is Node3D:
+		var world_position := (source as Node3D).global_position
+		if _game_state.coord_map != null \
+				and _game_state.coord_map.has_method("to_data"):
+			return _game_state.coord_map.to_data(world_position)
+		return world_position
+	return Vector3.INF
+
+
+func _leaving_source_registry_count(action_id: String) -> int:
+	if _game_state == null:
+		return -1
+	var data_id := _leaving_source_data_id(action_id)
+	if data_id == "" or not _game_state.has_interactable(data_id):
+		return -1
+	return int(_game_state.get_interactable(data_id).get("trigger_count", -1))
+
+
+func _leaving_source_receipt_count(source: Node, action_id: String) -> int:
+	if not is_instance_valid(source) or source != _leaving_source_for_action(action_id):
+		return -1
+	var actor := str(source.get("active_character"))
+	if not _validate_leaving_source_trigger(source, actor, action_id, source) \
+			or not bool(source.get("one_shot")) or not bool(source.get("_used")) \
+			or bool(source.get("interaction_enabled")):
+		return -1
+	var data_id := str(source.get("data_id"))
+	if _game_state == null or data_id != _leaving_source_data_id(action_id) \
+			or not _game_state.has_interactable(data_id):
+		return -1
+	var receipt: Dictionary = _game_state.get_interactable(data_id)
+	var trigger_count := int(receipt.get("trigger_count", -1))
+	if not bool(receipt.get("one_shot", false)) \
+			or not bool(receipt.get("triggered", false)) \
+			or bool(receipt.get("enabled", true)) \
+			or str(receipt.get("last_trigger_character", "")) != actor \
+			or trigger_count <= int(
+				_leaving_source_committed_counts.get(action_id, 0)):
+		return -1
+	return trigger_count
+
+
+func _consume_leaving_source_receipt(
+		source: Node, action_id: String
+	) -> Dictionary:
+	var trigger_count := _leaving_source_receipt_count(source, action_id)
+	if trigger_count < 0:
+		return {}
+	var actor := str(source.get("active_character"))
+	_leaving_source_committed_counts[action_id] = trigger_count
+	# The source edge commits before PartyGate, item, knowledge, or rest authority can emit.
+	_publish_leaving_source_authority()
+	return {
+		"action": action_id,
+		"actor": actor,
+		"trigger_count": trigger_count,
+	}
+
+
+func _baseline_leaving_source_authority() -> Dictionary:
+	var counts := {}
+	for action_id in _leaving_source_action_ids():
+		counts[action_id] = 0
+	return {
+		"version": LEAVING_SOURCE_AUTHORITY_VERSION,
+		"contract": LEAVING_SOURCE_AUTHORITY_CONTRACT,
+		"committed_counts": counts,
+	}
+
+
+func _leaving_source_authority_state() -> Dictionary:
+	if _game_state == null:
+		return {}
+	var raw: Variant = _game_state.get_world_state(
+		LEAVING_SOURCE_AUTHORITY_KEY, null)
+	return (raw as Dictionary).duplicate(true) if raw is Dictionary else {}
+
+
+func _valid_leaving_source_authority(raw: Variant) -> bool:
+	if not raw is Dictionary:
+		return false
+	var saved := raw as Dictionary
+	var counts_v: Variant = saved.get("committed_counts", null)
+	if int(saved.get("version", 0)) != LEAVING_SOURCE_AUTHORITY_VERSION \
+			or str(saved.get("contract", "")) != LEAVING_SOURCE_AUTHORITY_CONTRACT \
+			or not counts_v is Dictionary:
+		return false
+	var counts := counts_v as Dictionary
+	for action_id in _leaving_source_action_ids():
+		if not counts.has(action_id) or int(counts.get(action_id, -1)) < 0:
+			return false
+	return true
+
+
+func _initialize_leaving_source_authority() -> void:
+	if _game_state == null:
+		return
+	var saved := _leaving_source_authority_state()
+	if _valid_leaving_source_authority(saved):
+		_leaving_source_committed_counts = (
+			saved.get("committed_counts", {}) as Dictionary).duplicate(true)
+		return
+	_leaving_source_committed_counts.clear()
+	for action_id in _leaving_source_action_ids():
+		_leaving_source_committed_counts[action_id] = 0
+	_publish_leaving_source_authority()
+
+
+func _publish_leaving_source_authority() -> void:
+	if _restoring_leaving_source_authority or _game_state == null:
+		return
+	var counts := {}
+	for action_id in _leaving_source_action_ids():
+		counts[action_id] = maxi(
+			0, int(_leaving_source_committed_counts.get(action_id, 0)))
+	_game_state.set_world_state(LEAVING_SOURCE_AUTHORITY_KEY, {
+		"version": LEAVING_SOURCE_AUTHORITY_VERSION,
+		"contract": LEAVING_SOURCE_AUTHORITY_CONTRACT,
+		"committed_counts": counts,
+	})
+
+
+func _ensure_leaving_source_registry_contract(source: Node) -> void:
+	if _game_state == null or not is_instance_valid(source):
+		return
+	var data_id := str(source.get("data_id"))
+	if data_id == "" or not _game_state.has_interactable(data_id):
+		return
+	var spec: Dictionary = _game_state.get_interactable(data_id)
+	if bool(spec.get("one_shot", false)):
+		return
+	spec["one_shot"] = true
+	_game_state.interactables[data_id] = spec
+
+
+func _rearm_leaving_source(source: Node) -> void:
+	if not is_instance_valid(source):
+		return
+	if source.is_node_ready():
+		source.call("reset")
+		return
+	var data_id := str(source.get("data_id"))
+	if _game_state != null and data_id != "" \
+			and _game_state.has_interactable(data_id):
+		_game_state.reset_interactable(data_id)
+	source.set("_used", false)
+	source.set("interaction_enabled", true)
+
+
+func _set_leaving_source_enabled(source: Node, enabled: bool) -> void:
+	if not is_instance_valid(source):
+		return
+	_ensure_leaving_source_registry_contract(source)
+	var data_id := str(source.get("data_id"))
+	if _game_state == null or data_id == "" \
+			or not _game_state.has_interactable(data_id):
+		return
+	var spec: Dictionary = _game_state.get_interactable(data_id)
+	if enabled:
+		if bool(spec.get("triggered", false)):
+			_rearm_leaving_source(source)
+		else:
+			_game_state.set_interactable_enabled(data_id, true)
+			if source.has_method("restore_one_shot_presenter"):
+				source.call("restore_one_shot_presenter", false, true)
+		return
+	_game_state.set_interactable_enabled(data_id, false)
+	if source.has_method("restore_one_shot_presenter"):
+		source.call(
+			"restore_one_shot_presenter",
+			bool(spec.get("triggered", false)),
+			false)
+
+
+func _project_leaving_sources() -> void:
+	for action_id in _leaving_source_action_ids():
+		_set_leaving_source_enabled(
+			_leaving_source_for_action(action_id),
+			_leaving_source_action_ready(action_id))
+
+
+func _restore_leaving_source_authority() -> void:
+	if _game_state == null:
+		return
+	_restoring_leaving_source_authority = true
+	var raw := _leaving_source_authority_state()
+	var migrated := not _valid_leaving_source_authority(raw)
+	_leaving_source_committed_counts.clear()
+	if not migrated:
+		_leaving_source_committed_counts = (
+			raw.get("committed_counts", {}) as Dictionary).duplicate(true)
 	else:
-		for side_index in range(2):
-			var side := -1.0 if side_index == 0 else 1.0
-			var brace := MeshInstance3D.new()
-			brace.name = "LoadBrace%d" % (side_index + 1)
-			var brace_mesh := BoxMesh.new()
-			brace_mesh.size = Vector3(0.12, 0.75, 0.12)
-			brace.mesh = brace_mesh
-			brace.material_override = detail_mat
-			brace.position = Vector3(side * 0.31, 1.18, 0)
-			brace.rotation.z = side * 0.32
-			assembly.add_child(brace)
+		for action_id in _leaving_source_action_ids():
+			_leaving_source_committed_counts[action_id] = maxi(
+				0, _leaving_source_registry_count(action_id))
+	var reconciled := false
+	for action_id in _leaving_source_action_ids():
+		var registry_count := maxi(0, _leaving_source_registry_count(action_id))
+		var committed_count := maxi(
+			0, int(_leaving_source_committed_counts.get(action_id, 0)))
+		if registry_count > committed_count:
+			# The exact source fired, but its semantic owner did not. Burn that edge and rearm only
+			# when the physical mechanism/item/knowledge/rest phase is still genuinely ready.
+			_leaving_source_committed_counts[action_id] = registry_count
+			reconciled = true
+	_restoring_leaving_source_authority = false
+	_project_leaving_sources()
+	if migrated or reconciled:
+		_publish_leaving_source_authority()
+
+
+func _setup_sector_gate_authority() -> void:
+	for sector_index in range(_sector_gates.size()):
+		var gate := _sector_gates[sector_index]
+		var opening_callback := Callable(self, "_on_sector_gate_opening_started").bind(sector_index)
+		var opened_callback := Callable(self, "_on_sector_gate_opened").bind(sector_index)
+		var blocked_callback := Callable(self, "_on_sector_gate_blocked").bind(sector_index)
+		if not gate.opening_started.is_connected(opening_callback):
+			gate.opening_started.connect(opening_callback)
+		if not gate.opened.is_connected(opened_callback):
+			gate.opened.connect(opened_callback)
+		if not gate.blocked.is_connected(blocked_callback):
+			gate.blocked.connect(blocked_callback)
+		gate.setup(_game_state, _grid, 0, ["aster", "peris", "endo"])
 
 func _add_route_station_mesh(interactable: Node3D, color: Color, station_label: String) -> Node3D:
 	var assembly := Node3D.new()
@@ -509,91 +1201,24 @@ func _bind_route_station_outline(interactable: Node3D, assembly: Node3D, station
 		_collect_mesh_instances(assembly), "leaving_facility.%s" % station_label.to_lower(), 0.8)
 	_set_room_target_interaction_delegate(target, interactable)
 
-func _activate_field_protocol(sector_index: int) -> void:
-	if sector_index < 0 or sector_index >= _field_site_interactables.size():
+func _set_sector_route_available(sector_index: int, available: bool) -> void:
+	if sector_index < 0 or sector_index >= _sector_route_interactables.size():
 		return
-	if _field_protocol_ready[sector_index]:
-		return
-	var site_index := _field_protocol_progress[sector_index]
-	var sector_sites: Array = _field_site_interactables[sector_index]
-	if site_index < 0 or site_index >= sector_sites.size():
-		return
-	var station: Node = sector_sites[site_index]
-	station.set_interaction_enabled(true)
-	station.call_deferred("show_tutorial_label")
-	if _hud != null:
-		var protocol: Dictionary = FIELD_PROTOCOLS[sector_index]
-		var site: Dictionary = (protocol["sites"] as Array)[site_index]
-		_hud.show_message("%s %d/%d: %s needs to %s." % [
-			str(protocol["label"]), site_index + 1, sector_sites.size(),
-			str(site["role"]).capitalize(), str(site["verb"]).to_lower()], 3.2)
-
-func _on_field_site_requested(
-		_target: Node,
-		world_position: Vector3,
-		sector_index: int,
-		site_index: int
-	) -> void:
-	if sector_index < 0 or sector_index >= FIELD_PROTOCOLS.size():
-		return
-	var sites: Array = FIELD_PROTOCOLS[sector_index]["sites"]
-	if site_index < 0 or site_index >= sites.size():
-		return
-	var role := str((sites[site_index] as Dictionary)["role"])
-	if _game_state != null and role != "aster":
-		# The specialist walks to a free side of the instrument while Aster's
-		# shared interaction controller approaches the click point itself.
-		var side := -1.0 if site_index % 2 == 0 else 1.0
-		_game_state.command_move_to_pos(role, world_position + Vector3(0, 0, side * 1.25))
-
-func _on_field_site_completed(sector_index: int, site_index: int) -> void:
-	if sector_index < 0 or sector_index >= FIELD_PROTOCOLS.size():
-		return
-	if _field_protocol_ready[sector_index] or site_index != _field_protocol_progress[sector_index]:
-		return
-	var sites: Array = FIELD_PROTOCOLS[sector_index]["sites"]
-	if site_index < 0 or site_index >= sites.size():
-		return
-	var site: Dictionary = sites[site_index]
-	var role := str(site["role"])
-	var site_pos: Vector3 = site["pos"]
-	if _game_state == null or _game_state.get_position(role).distance_to(site_pos) > FIELD_ROLE_RADIUS:
-		if _hud != null:
-			_hud.show_message("%s must reach the marked instrument before the work can resolve." % role.capitalize(), 2.4)
-		return
-
-	var station: Node = (_field_site_interactables[sector_index] as Array)[site_index]
-	station.set_interaction_enabled(false)
-	_field_completed_site_ids.append(str(site["id"]))
-	_field_protocol_progress[sector_index] += 1
-	_set_field_station_completed_visual(station, role)
-	if _field_protocol_progress[sector_index] < sites.size():
-		_activate_field_protocol(sector_index)
-		return
-
-	_field_protocol_ready[sector_index] = true
 	for seal_station in _sector_route_interactables[sector_index]:
-		seal_station.set_interaction_enabled(true)
-		seal_station.call_deferred("show_tutorial_label")
-	if _hud != null:
-		_hud.show_message("%s complete. Regroup and choose SAFE or DIRECT at the seal." % str(FIELD_PROTOCOLS[sector_index]["label"]), 3.4)
+		_set_leaving_source_enabled(seal_station, available)
+		if available:
+			seal_station.call_deferred("show_tutorial_label")
 
-func _set_field_station_completed_visual(station: Node, role: String) -> void:
-	if station == null:
-		return
-	for label_node in station.find_children("*", "Label3D", true, false):
-		var label := label_node as Label3D
-		label.text = "DONE / %s" % role.to_upper()
-		label.modulate = Color(0.38, 0.63, 0.47, 0.72)
-
-func _on_sector_route_station_completed(sector_index: int, route_choice: String) -> void:
-	if sector_index < 0 or sector_index >= _field_protocol_ready.size():
-		return
-	if not _field_protocol_ready[sector_index]:
-		if _hud != null:
-			_hud.show_message("Finish this sector's five field stations before working the seal.", 2.5)
-		return
-	_on_sector_route_committed(sector_index, route_choice)
+func _on_sector_route_station_completed(
+		sector_index: int,
+		route_choice: String,
+		source: Node = null
+	) -> bool:
+	var action_id := _leaving_route_action_id(sector_index, route_choice)
+	var receipt := _consume_leaving_source_receipt(source, action_id)
+	if receipt.is_empty():
+		return false
+	return _commit_sector_route(sector_index, route_choice)
 
 func _set_gate_grid_open(gate_x: float, opened: bool) -> void:
 	if _grid == null:
@@ -615,109 +1240,420 @@ func _on_route_station_requested(_target: Node, world_position: Vector3, route_c
 	if _game_state != null:
 		_game_state.command_move_to_pos("aster", world_position)
 
-func _on_sector_route_committed(sector_index: int, route_choice: String) -> void:
-	# Low-level state mutation intentionally remains available to deterministic
-	# test drivers. Player clicks use _on_sector_route_station_completed, which
-	# enforces the full field protocol before it reaches this method.
+## Compatibility surface retained for old callers and malicious/manual signal tests.
+## A route consequence is accepted only through the exact registered source receipt.
+func _on_sector_route_committed(
+		_sector_index: int, _route_choice: String
+	) -> bool:
+	return false
+
+
+func _commit_sector_route(sector_index: int, route_choice: String) -> bool:
 	if sector_index < 0 or sector_index >= _sector_gates_open.size():
-		return
-	if _sector_gates_open[sector_index]:
-		return
+		return false
+	if not _endo_is_authoritatively_joined():
+		if _hud != null:
+			_hud.show_message("Wait for the full party before working the route seal.", 1.8)
+		_project_leaving_sources()
+		return false
+	if route_choice not in ["safe", "direct"]:
+		_project_leaving_sources()
+		return false
+	if sector_index != _next_sector_gate_index():
+		if _hud != null:
+			_hud.show_message("Open the route seals in corridor order.", 1.8)
+		_project_leaving_sources()
+		return false
+	if sector_index >= _sector_gates.size():
+		_project_leaving_sources()
+		return false
 	var station_pos: Vector3 = IRON_SECTORS[sector_index]["safe_station" if route_choice == "safe" else "direct_station"]
 	var missing_party: Array[String] = []
 	for char_id in ["aster", "peris", "endo"]:
-		if _game_state.get_position(char_id).distance_to(station_pos) > ROUTE_REGROUP_RADIUS:
+		if not _game_state.characters.has(char_id) \
+				or _game_state.get_position(char_id).distance_to(station_pos) > ROUTE_REGROUP_RADIUS:
 			missing_party.append(char_id.capitalize())
 	if not missing_party.is_empty():
 		if _hud != null:
 			_hud.show_message("The seal needs the whole party. Regroup with %s." % ", ".join(missing_party), 2.3)
-		return
-	_sector_gates_open[sector_index] = true
-	_sector_route_choices[sector_index] = route_choice
+		_project_leaving_sources()
+		return false
+	var sector: Dictionary = IRON_SECTORS[sector_index]
+	var context := {
+		"contract": SECTOR_GATE_CONTEXT_CONTRACT,
+		"sector_index": sector_index,
+		"sector_id": str(sector["id"]),
+		"route_choice": route_choice,
+		"commit_order": sector_index,
+	}
+	if not _sector_gates[sector_index].begin_open(context):
+		_project_leaving_sources()
+		return false
 	_apply_routing_mode(route_choice, false)
-	_set_gate_grid_open(float(IRON_SECTORS[sector_index]["gate_x"]), true)
-	for interactable in _sector_route_interactables[sector_index]:
-		if interactable != null:
-			interactable.set_interaction_enabled(false)
-	if sector_index < _sector_gate_visuals.size() and _sector_gate_visuals[sector_index] != null:
-		_sector_gate_visuals[sector_index].visible = false
+	_project_leaving_sources()
+	return true
+
+
+func _on_sector_gate_opening_started(sector_index: int) -> void:
+	_restore_sector_gate_progression()
+	if _hud != null:
+		_hud.show_message("%s seal is lifting. Keep the party together." %
+			str(IRON_SECTORS[sector_index]["label"]), 1.8)
+
+
+func _on_sector_gate_opened(sector_index: int) -> void:
+	_restore_sector_gate_progression()
+	var route_choice := _sector_route_choices[sector_index]
 	if _hud != null:
 		_hud.show_message("%s seal opened via %s route." % [
 			str(IRON_SECTORS[sector_index]["label"]), route_choice.to_upper()], 2.0)
-	if sector_index + 1 < FIELD_PROTOCOLS.size():
-		_activate_field_protocol(sector_index + 1)
 
-func _on_cache_collected() -> void:
-	if _cache_collected:
+
+func _on_sector_gate_blocked(reason: StringName, sector_index: int) -> void:
+	_restore_sector_gate_progression()
+	if _hud != null:
+		var detail := str(reason).trim_prefix("out_of_range_").trim_prefix("unavailable_")
+		_hud.show_message("%s seal stopped; regroup with %s and work it again." % [
+			str(IRON_SECTORS[sector_index]["label"]), detail.capitalize()], 2.3)
+
+
+func _next_sector_gate_index() -> int:
+	for sector_index in range(_sector_gates.size()):
+		var phase := str(_sector_gates[sector_index].get_authority_state().get(
+			"phase", PartyGate3D.PHASE_CLOSED))
+		if phase == PartyGate3D.PHASE_OPEN:
+			continue
+		if phase == PartyGate3D.PHASE_CLOSED:
+			return sector_index
+		# A seal that is visibly opening owns the one active commitment. A later
+		# station cannot be used during its saved window.
+		return -1
+	return -1
+
+
+func _sector_gate_context(saved: Dictionary) -> Dictionary:
+	var context_v: Variant = saved.get("context", {})
+	return (context_v as Dictionary).duplicate(true) if context_v is Dictionary else {}
+
+
+func _sector_gate_record_is_valid(sector_index: int, saved: Dictionary) -> bool:
+	var phase := str(saved.get("phase", PartyGate3D.PHASE_CLOSED))
+	if phase == PartyGate3D.PHASE_CLOSED:
+		return true
+	if phase not in [PartyGate3D.PHASE_OPENING, PartyGate3D.PHASE_OPEN]:
+		return false
+	var start_tick := float(saved.get("start_tick", -1.0))
+	var end_tick := float(saved.get("end_tick", -1.0))
+	if not is_finite(start_tick) or not is_finite(end_tick) or end_tick <= start_tick:
+		return false
+	var context := _sector_gate_context(saved)
+	var route_choice := str(context.get("route_choice", ""))
+	return str(context.get("contract", "")) == SECTOR_GATE_CONTEXT_CONTRACT \
+		and int(context.get("sector_index", -1)) == sector_index \
+		and int(context.get("commit_order", -1)) == sector_index \
+		and str(context.get("sector_id", "")) == str(IRON_SECTORS[sector_index]["id"]) \
+		and route_choice in ["safe", "direct"]
+
+
+## Project scene-local arrays, station affordances, GridWorld cells, and the lift
+## presenter from PartyGate3D records. These are all derived views: only the
+## versioned gate records survive a save.
+func _restore_sector_gate_progression() -> void:
+	if _grid == null or _game_state == null:
 		return
-	_cache_item_id = _game_state.spawn_item("lysate", CACHE_POS, {
+	for sector_index in range(_sector_route_interactables.size()):
+		_set_sector_route_available(sector_index, false)
+	var prefix_open := true
+	var opening_seen := false
+	var roster_ready := _endo_is_authoritatively_joined()
+	for sector_index in range(_sector_gates.size()):
+		var gate := _sector_gates[sector_index]
+		var saved := gate.get_authority_state()
+		var phase := str(saved.get("phase", PartyGate3D.PHASE_CLOSED))
+		var valid := not saved.is_empty() and _sector_gate_record_is_valid(sector_index, saved)
+		if not roster_ready and phase != PartyGate3D.PHASE_CLOSED:
+			valid = false
+		if phase != PartyGate3D.PHASE_CLOSED and (not prefix_open or opening_seen):
+			valid = false
+		if not valid:
+			gate.restore_closed_baseline()
+			saved = gate.get_authority_state()
+			phase = PartyGate3D.PHASE_CLOSED
+		var context := _sector_gate_context(saved)
+		_sector_gates_open[sector_index] = phase == PartyGate3D.PHASE_OPEN
+		_sector_route_choices[sector_index] = str(context.get("route_choice", "")) \
+			if phase != PartyGate3D.PHASE_CLOSED else ""
+		_set_gate_grid_open(float(IRON_SECTORS[sector_index]["gate_x"]),
+			phase == PartyGate3D.PHASE_OPEN)
+		if phase == PartyGate3D.PHASE_OPENING:
+			opening_seen = true
+			prefix_open = false
+		elif phase == PartyGate3D.PHASE_CLOSED:
+			prefix_open = false
+	if not opening_seen and roster_ready:
+		var next_sector := _sector_gates_open.find(false)
+		if next_sector >= 0:
+			_set_sector_route_available(next_sector, true)
+	_update_sector_gate_visuals()
+
+
+func _update_sector_gate_visuals() -> void:
+	var now := float(_scheduler.get_current_tick()) if _scheduler != null else 0.0
+	for sector_index in range(mini(_sector_gates.size(), _sector_gate_visuals.size())):
+		var saved := _sector_gates[sector_index].get_authority_state()
+		var phase := str(saved.get("phase", PartyGate3D.PHASE_CLOSED))
+		var progress := 0.0
+		if phase == PartyGate3D.PHASE_OPEN:
+			progress = 1.0
+		elif phase == PartyGate3D.PHASE_OPENING:
+			var start_tick := float(saved.get("start_tick", now))
+			var end_tick := float(saved.get("end_tick", start_tick + SECTOR_GATE_OPEN_DURATION))
+			progress = clampf((now - start_tick) / maxf(end_tick - start_tick, 0.000001), 0.0, 1.0)
+		# Smoothstep is a presenter sample only. The saved endpoint still owns
+		# collision and GridWorld commitment.
+		var eased := progress * progress * (3.0 - 2.0 * progress)
+		var panel := _sector_gate_visuals[sector_index]
+		panel.visible = true
+		panel.position.y = lerpf(SECTOR_GATE_CLOSED_Y, SECTOR_GATE_OPEN_Y, eased)
+
+func _baseline_cache_authority() -> Dictionary:
+	return {
+		"version": CACHE_AUTHORITY_VERSION,
+		"contract": CACHE_AUTHORITY_CONTRACT,
+		"source_fixture": CACHE_SOURCE_FIXTURE,
+		"source_position": GameEvent.v3_to_arr(CACHE_POS),
+		"item_type": CACHE_ITEM_TYPE,
+		"item_id": _cache_item_id,
+		"phase": CACHE_PHASE_AVAILABLE,
+		"claimed_by": "",
+		"claim_serial": 0,
+	}
+
+
+func _cache_authority_state() -> Dictionary:
+	var state := _baseline_cache_authority()
+	state["item_id"] = _cache_item_id
+	state["phase"] = _cache_phase
+	state["claimed_by"] = _cache_claimed_by
+	state["claim_serial"] = _cache_claim_serial
+	return state
+
+
+func _valid_cache_authority(raw: Variant) -> bool:
+	if not raw is Dictionary:
+		return false
+	var saved := raw as Dictionary
+	if int(saved.get("version", 0)) != CACHE_AUTHORITY_VERSION \
+			or str(saved.get("contract", "")) != CACHE_AUTHORITY_CONTRACT \
+			or str(saved.get("source_fixture", "")) != CACHE_SOURCE_FIXTURE \
+			or str(saved.get("item_type", "")) != CACHE_ITEM_TYPE:
+		return false
+	var source_v: Variant = saved.get("source_position", [])
+	if not source_v is Array or (source_v as Array).size() != 3 \
+			or not GameEvent.arr_to_v3(source_v as Array).is_equal_approx(CACHE_POS):
+		return false
+	var phase := str(saved.get("phase", ""))
+	var claimed_by := str(saved.get("claimed_by", ""))
+	var serial := int(saved.get("claim_serial", -1))
+	if str(saved.get("item_id", "")) == "" or serial < 0:
+		return false
+	if phase == CACHE_PHASE_AVAILABLE:
+		return claimed_by == "" and serial >= 0
+	if phase in [CACHE_PHASE_CLAIMING, CACHE_PHASE_CLAIMED]:
+		return claimed_by != "" and serial >= 1
+	return false
+
+
+func _publish_cache_authority() -> void:
+	if _restoring_cache_authority or _game_state == null:
+		return
+	_game_state.set_world_state(CACHE_AUTHORITY_KEY, _cache_authority_state())
+
+
+func _spawn_cache_source_item(properties: Dictionary = {}) -> String:
+	var item_properties := {
 		"display_name": "Iron-route Lysate",
 		"visual_color": Color(0.72, 0.64, 0.34),
 		"atp_restore": 2.0,
-	})
-	if not _game_state.pick_up_item("aster", _cache_item_id):
-		_game_state.remove_item(_cache_item_id)
-		_cache_item_id = ""
-		if _hud != null:
-			_hud.show_message("Aster needs a free hand for the lysate.", 1.8)
-		return
-	_cache_collected = true
-	if _cache_mesh != null:
-		_cache_mesh.visible = false
-	_cache_interactable.set_interaction_enabled(false)
-	for decision in [_recover_interactable, _shield_interactable]:
-		decision.set_interaction_enabled(true)
-		decision.call_deferred("show_tutorial_label")
-	if _hud != null:
-		_hud.show_message("Lysate secured: metabolize it now, or prime the Iron Lattice shunt.", 3.2)
+		"source_authority": CACHE_AUTHORITY_KEY,
+		"source_fixture": CACHE_SOURCE_FIXTURE,
+		"endocytosis_allowed": true,
+	}
+	item_properties.merge(properties, true)
+	return spawn_preview_item(CACHE_ITEM_TYPE, CACHE_POS, item_properties)
 
-func _resolve_resource_decision(decision: String) -> void:
-	if _resource_decision != "":
+
+func _is_cache_item(item_id: String) -> bool:
+	if _game_state == null or not _game_state.items.has(item_id):
+		return false
+	var item: Dictionary = _game_state.items[item_id]
+	var properties: Dictionary = item.get("properties", {})
+	return str(item.get("type", "")) == CACHE_ITEM_TYPE \
+		and str(properties.get("source_authority", "")) == CACHE_AUTHORITY_KEY \
+		and str(properties.get("source_fixture", "")) == CACHE_SOURCE_FIXTURE
+
+
+func _find_cache_item_id() -> String:
+	if _game_state == null:
+		return ""
+	var candidates: Array[String] = []
+	for item_id_v in _game_state.items.keys():
+		var item_id := str(item_id_v)
+		if _is_cache_item(item_id):
+			candidates.append(item_id)
+	candidates.sort()
+	return candidates[0] if not candidates.is_empty() else ""
+
+
+func _remove_cache_items(except_id := "") -> void:
+	if _game_state == null:
 		return
-	if _cache_item_id == "" or not _game_state.items.has(_cache_item_id):
-		if _hud != null:
-			_hud.show_message("The manifold needs the side-cache lysate.", 1.8)
-		return
+	var remove_ids: Array[String] = []
+	for item_id_v in _game_state.items.keys():
+		var item_id := str(item_id_v)
+		if item_id != except_id and _is_cache_item(item_id):
+			remove_ids.append(item_id)
+	for item_id in remove_ids:
+		remove_preview_item(item_id)
+
+
+func _cache_item_at_source() -> bool:
+	if not _is_cache_item(_cache_item_id):
+		return false
 	var item: Dictionary = _game_state.items[_cache_item_id]
-	if str(item.get("holder", "")) != "aster":
-		if _hud != null:
-			_hud.show_message("Aster must be carrying the lysate.", 1.8)
-		return
-	_resource_decision = decision
-	_game_state.remove_item(_cache_item_id)
-	_cache_item_id = ""
-	if decision == "recover":
-		_game_state.adjust_stat("aster", "hp", 24.0)
-		_game_state.adjust_stat("aster", "stamina", 20.0)
-		if _hud != null:
-			_hud.show_message("Aster metabolizes the lysate: health and stamina restored.", 2.4)
-	else:
-		_third_sector_shielded = true
-		_clear_sector_risk(2)
-		if _hud != null:
-			_hud.show_message("Lysate floods the shunt. The Iron Lattice direct line is cold.", 2.6)
-	for interactable in [_recover_interactable, _shield_interactable]:
-		interactable.set_interaction_enabled(false)
+	return str(item.get("location", "")) == "ground" \
+		and (item.get("position", CACHE_POS) as Vector3).distance_to(CACHE_POS) <= 0.05
 
-func _clear_sector_risk(sector_index: int) -> void:
-	if _grid == null or sector_index < 0 or sector_index >= IRON_SECTORS.size():
-		return
-	var sector: Dictionary = IRON_SECTORS[sector_index]
-	var center: Vector3 = sector["center"]
-	var half_size: Vector2 = sector["half_size"]
-	var a := _grid.world_to_grid(Vector3(center.x - half_size.x, 0, center.z - half_size.y))
-	var b := _grid.world_to_grid(Vector3(center.x + half_size.x, 0, center.z + half_size.y))
-	for z in range(mini(a.y, b.y), maxi(a.y, b.y) + 1):
-		for x in range(mini(a.x, b.x), maxi(a.x, b.x) + 1):
-			_grid.clear_cell_risk(Vector2i(x, z))
 
-func _on_lookout_surveyed() -> void:
-	if _lookout_surveyed:
+func _cache_item_holder() -> String:
+	if not _is_cache_item(_cache_item_id):
+		return ""
+	return str((_game_state.items[_cache_item_id] as Dictionary).get("holder", ""))
+
+
+func _apply_cache_interactable_state() -> void:
+	var available := _cache_phase == CACHE_PHASE_AVAILABLE and _cache_item_at_source()
+	_cache_collected = _cache_phase == CACHE_PHASE_CLAIMED and not _cache_item_at_source()
+	if is_instance_valid(_cache_interactable):
+		_set_leaving_source_enabled(_cache_interactable, available)
+	if is_instance_valid(_cache_mesh):
+		_cache_mesh.visible = available
+	_refresh_chunk_item_presenters()
+
+
+## Snapshot absence and old boolean-only scenes cannot identify a carrier or a particular item. They
+## therefore retract to one visible source item instead of manufacturing ownership in Aster's hand.
+func _retract_cache_to_source(publish_state := true, legacy_recovery := true) -> void:
+	_remove_cache_items()
+	var source_properties := {"legacy_source_recovery": true} if legacy_recovery else {}
+	_cache_item_id = _spawn_cache_source_item(source_properties)
+	_cache_phase = CACHE_PHASE_AVAILABLE
+	_cache_claimed_by = ""
+	_cache_claim_serial = 0
+	_cache_collected = false
+	_apply_cache_interactable_state()
+	if publish_state:
+		_publish_cache_authority()
+
+
+func _restore_cache_authority() -> void:
+	var raw: Variant = _game_state.get_world_state(CACHE_AUTHORITY_KEY, null) \
+		if _game_state != null else null
+	if not _valid_cache_authority(raw):
+		_retract_cache_to_source()
 		return
-	_lookout_surveyed = true
-	_lookout_interactable.set_interaction_enabled(false)
+	var saved := raw as Dictionary
+	_restoring_cache_authority = true
+	_cache_item_id = str(saved.get("item_id", ""))
+	_cache_phase = str(saved.get("phase", CACHE_PHASE_AVAILABLE))
+	_cache_claimed_by = str(saved.get("claimed_by", ""))
+	_cache_claim_serial = int(saved.get("claim_serial", 0))
+
+	if not _is_cache_item(_cache_item_id):
+		_cache_item_id = _find_cache_item_id()
+	_remove_cache_items(_cache_item_id)
+	match _cache_phase:
+		CACHE_PHASE_AVAILABLE:
+			# A moved item without a published reservation is malformed history. Return exactly
+			# one item to the authored cache instead of accepting an unexplained carrier.
+			if not _cache_item_at_source():
+				_remove_cache_items()
+				_cache_item_id = _spawn_cache_source_item()
+			_cache_claimed_by = ""
+		CACHE_PHASE_CLAIMING:
+			if not _is_cache_item(_cache_item_id):
+				_cache_item_id = _spawn_cache_source_item()
+				_cache_phase = CACHE_PHASE_AVAILABLE
+				_cache_claimed_by = ""
+			elif _cache_item_at_source():
+				_cache_phase = CACHE_PHASE_AVAILABLE
+				_cache_claimed_by = ""
+			elif _cache_item_holder() == _cache_claimed_by:
+				_cache_phase = CACHE_PHASE_CLAIMED
+			# A different holder is not silently retargeted or accepted: remain CLAIMING and
+			# disabled so the malformed save cannot grant the reward transaction.
+		CACHE_PHASE_CLAIMED:
+			if _cache_item_at_source():
+				_cache_phase = CACHE_PHASE_AVAILABLE
+				_cache_claimed_by = ""
+	_restoring_cache_authority = false
+	_apply_cache_interactable_state()
+	_publish_cache_authority()
+
+
+## The timed lid/work interaction only requests this exact source-item transfer. GameState owns the
+## distance and hand checks, while CLAIMING is published first so a pickup-signal save has one honest
+## interpretation on either a same-presenter or fresh-presenter restore.
+func _on_cache_collected(source: Node = null) -> bool:
+	var receipt := _consume_leaving_source_receipt(
+		source, LEAVING_SOURCE_CACHE)
+	if receipt.is_empty():
+		return false
+	var actor := str(receipt.get("actor", ""))
+	if actor == "" or _game_state == null or not _game_state.characters.has(actor):
+		_project_leaving_sources()
+		return false
+	if not _game_state.has_free_hands(actor, 1):
+		if _hud != null:
+			_hud.show_message("%s needs a free hand for the lysate." % actor.capitalize(), 1.8)
+		_project_leaving_sources()
+		return false
+
+	_cache_phase = CACHE_PHASE_CLAIMING
+	_cache_claimed_by = actor
+	_cache_claim_serial += 1
+	_apply_cache_interactable_state()
+	_publish_cache_authority()
+	if not pick_up_preview_item(actor, _cache_item_id):
+		_cache_phase = CACHE_PHASE_AVAILABLE
+		_cache_claimed_by = ""
+		_apply_cache_interactable_state()
+		_publish_cache_authority()
+		if _hud != null:
+			_hud.show_message("The lysate remains in the cache; stand close with one hand free.", 1.8)
+		return false
+
+	_cache_phase = CACHE_PHASE_CLAIMED
+	_cache_collected = true
+	_apply_cache_interactable_state()
+	_publish_cache_authority()
 	if _hud != null:
-		_hud.show_message("Lookout mapped: Iron Lattice exposure reduced by 45%.", 2.5)
+		_hud.show_message("%s secured the lysate for later endocytosis or shelter rest." % actor.capitalize(), 2.8)
+	return true
+
+func _on_lookout_surveyed(source: Node = null) -> bool:
+	var receipt := _consume_leaving_source_receipt(
+		source, LEAVING_SOURCE_LOOKOUT)
+	if receipt.is_empty():
+		return false
+	_lookout_surveyed = true
+	_publish_iron_hazard_authority()
+	_project_leaving_sources()
+	if _hud != null:
+		_hud.show_message(
+			"Lookout mapped: the third lattice pulses every %.1f s. SAFE beacons remain the mitigation." \
+			% IRON_DAMAGE_INTERVAL, 3.0)
+	return true
 
 func headless_get_anchor_positions() -> Dictionary:
 	var anchors := {
@@ -729,40 +1665,48 @@ func headless_get_anchor_positions() -> Dictionary:
 		"sector_2_iron": IRON_2_POS,
 		"sector_2_safe": SAFE_2_WAYPOINT,
 		"sector_2_gate": Vector3(float(IRON_SECTORS[1]["gate_x"]), 0, 0),
-		"resource_manifold": RESOURCE_MANIFOLD_POS,
 		"lookout": LOOKOUT_POS,
 		"sector_3_iron": IRON_3_POS,
 		"sector_3_safe": SAFE_3_WAYPOINT,
 		"sector_3_gate": Vector3(float(IRON_SECTORS[2]["gate_x"]), 0, 0),
 		"shelter": SHELTER_POS,
 	}
-	var protocol_anchors := {}
-	for protocol in FIELD_PROTOCOLS:
-		var site_anchors := {}
-		for site in protocol["sites"]:
-			site_anchors[str(site["id"])] = site["pos"]
-		protocol_anchors[str(protocol["id"])] = site_anchors
-	anchors["field_protocols"] = protocol_anchors
 	return anchors
 
 func headless_get_state() -> Dictionary:
 	var state := super.headless_get_state()
+	var sector_gate_phases: Array[String] = []
+	var sector_gate_contexts: Array[Dictionary] = []
+	for gate in _sector_gates:
+		var saved := gate.get_authority_state()
+		sector_gate_phases.append(str(saved.get("phase", PartyGate3D.PHASE_CLOSED)))
+		sector_gate_contexts.append(_sector_gate_context(saved))
 	state.merge({
 		"routing_mode": _routing_mode,
 		"route_cautious": _game_state.is_route_cautious() if _game_state != null else true,
 		"sector_gates_open": _sector_gates_open.duplicate(),
 		"sector_route_choices": _sector_route_choices.duplicate(),
-		"field_protocol_progress": _field_protocol_progress.duplicate(),
-		"field_protocol_ready": _field_protocol_ready.duplicate(),
-		"field_completed_site_ids": _field_completed_site_ids.duplicate(),
-		"field_protocol_count": FIELD_PROTOCOLS.size(),
-		"mandatory_field_site_count": _mandatory_field_site_count(),
+		"sector_gate_phases": sector_gate_phases,
+		"sector_gate_contexts": sector_gate_contexts,
+		"endo_join_authority": _endo_join_authority_state(),
+		"endo_registered": _game_state != null and _game_state.characters.has("endo"),
+		"endo_in_party": _game_state != null and _game_state.get_party().has("endo"),
+		"endo_visible": is_instance_valid(_endo) and _endo.visible,
+		"endo_present": _endo_is_authoritatively_joined(),
+		"shelter_gate_phase": str(_shelter_party_gate.get_authority_state().get(
+			"phase", PartyGate3D.PHASE_CLOSED)) if _shelter_party_gate != null else "missing",
+		"shelter_party_ready": _party_inside_authored_shelter(),
+		"shelter_rest_authority": _shelter_rest_authority_state(),
 		"sectors_entered": _sectors_entered.duplicate(),
 		"cache_collected": _cache_collected,
 		"cache_item_id": _cache_item_id,
-		"resource_decision": _resource_decision,
+		"cache_phase": _cache_phase,
+		"cache_claimed_by": _cache_claimed_by,
+		"cache_claim_serial": _cache_claim_serial,
+		"cache_item_at_source": _cache_item_at_source(),
+		"cache_item_holder": _cache_item_holder(),
 		"lookout_surveyed": _lookout_surveyed,
-		"third_sector_shielded": _third_sector_shielded,
+		"source_committed_counts": _leaving_source_committed_counts.duplicate(true),
 		"iron_damage_total": _iron_damage_total,
 		"iron_exposure_seconds": _iron_exposure_seconds,
 		"authored_route_meters": SHELTER_POS.x - EXIT_POS.x,
@@ -772,25 +1716,15 @@ func headless_get_state() -> Dictionary:
 	}, true)
 	return state
 
-func _mandatory_field_site_count() -> int:
-	var count := 0
-	for protocol in FIELD_PROTOCOLS:
-		count += (protocol["sites"] as Array).size()
-	return count
-
-func _mandatory_field_work_seconds() -> float:
-	return float(_mandatory_field_site_count()) * FIELD_SITE_WORK_SECONDS
-
-func _modeled_field_route_meters(route_choice := "direct") -> float:
+func _modeled_route_meters(route_choice := "direct") -> float:
 	var total := 0.0
 	var cursor := EXIT_POS
-	for sector_index in range(FIELD_PROTOCOLS.size()):
-		var protocol: Dictionary = FIELD_PROTOCOLS[sector_index]
-		for site in protocol["sites"]:
-			var site_pos: Vector3 = site["pos"]
-			total += cursor.distance_to(site_pos)
-			cursor = site_pos
+	for sector_index in range(IRON_SECTORS.size()):
 		var sector: Dictionary = IRON_SECTORS[sector_index]
+		if route_choice == "safe":
+			var waypoint: Vector3 = sector["safe_waypoint"]
+			total += cursor.distance_to(waypoint)
+			cursor = waypoint
 		var station_pos: Vector3 = sector["safe_station" if route_choice == "safe" else "direct_station"]
 		total += cursor.distance_to(station_pos)
 		cursor = station_pos
@@ -805,25 +1739,24 @@ func get_playtime_contract() -> Dictionary:
 	# work, and fixed transitions; dialogue reading time is deliberately excluded.
 	# The sprint allowance uses the live full-stamina economy (100 / 15 s drain at
 	# 6 m/s = 40 m). Everything after that is priced at the live 3 m/s walk speed.
-	var direct_field_route_meters := _modeled_field_route_meters("direct")
-	var safe_field_route_meters := _modeled_field_route_meters("safe")
+	var direct_route_meters := _modeled_route_meters("direct")
+	var safe_route_meters := _modeled_route_meters("safe")
 	var run_drain := 15.0
 	if _game_state != null:
 		run_drain = maxf(0.001, float(_game_state.run_stamina_drain_per_sec))
 	var sprint_seconds_available := GameState.STAMINA_MAX / run_drain
-	var sprint_distance := minf(direct_field_route_meters, sprint_seconds_available * GameState.RUN_SPEED)
+	var sprint_distance := minf(direct_route_meters, sprint_seconds_available * GameState.RUN_SPEED)
 	var traversal_seconds := (
 		sprint_distance / GameState.RUN_SPEED
-		+ (direct_field_route_meters - sprint_distance) / GameState.WALK_SPEED
+		+ (direct_route_meters - sprint_distance) / GameState.WALK_SPEED
 	)
-	var field_work_seconds := _mandatory_field_work_seconds()
 	var direct_seal_work_seconds := float(IRON_SECTORS.size()) * 2.0
-	var mandatory_interaction_seconds := field_work_seconds + direct_seal_work_seconds
+	var mandatory_interaction_seconds := direct_seal_work_seconds
 	var active_seconds := traversal_seconds + mandatory_interaction_seconds
 	var modeled_total_seconds := active_seconds + MODELED_FIXED_TRANSITION_SECONDS
 	return {
-		"target_minutes": Vector2(4.0, 6.0),
-		"target_first_clear_seconds": Vector2(240.0, 360.0),
+		"target_minutes": Vector2(1.25, 2.0),
+		"target_first_clear_seconds": Vector2(75.0, 120.0),
 		"modeled_shortest_clean_first_clear_seconds": modeled_total_seconds,
 		"modeled_meaningful_active_seconds": active_seconds,
 		"meaningful_active_seconds": active_seconds,
@@ -831,26 +1764,22 @@ func get_playtime_contract() -> Dictionary:
 		"modeled_active_ratio": active_seconds / modeled_total_seconds,
 		"modeled_traversal_seconds": traversal_seconds,
 		"modeled_mandatory_interaction_seconds": mandatory_interaction_seconds,
-		"modeled_field_work_seconds": field_work_seconds,
 		"modeled_direct_seal_work_seconds": direct_seal_work_seconds,
 		"modeled_fixed_transition_seconds": MODELED_FIXED_TRANSITION_SECONDS,
 		"dialogue_seconds_in_model": 0.0,
 		"idle_padding_seconds": 0.0,
-		"model_basis": "shortest ordered direct protocol route; one full stamina bar; dialogue excluded",
+		"model_basis": "shortest direct seal route; one full stamina bar; dialogue excluded",
 		"critical_route_meters": SHELTER_POS.x - EXIT_POS.x,
-		"shortest_field_route_meters": direct_field_route_meters,
-		"safe_field_route_estimate_meters": safe_field_route_meters,
-		"direct_route_estimate_meters": direct_field_route_meters,
+		"shortest_route_meters": direct_route_meters,
+		"safe_route_estimate_meters": safe_route_meters,
+		"direct_route_estimate_meters": direct_route_meters,
 		"sprint_distance_allowance_meters": sprint_distance,
-		"mandatory_field_protocols": FIELD_PROTOCOLS.size(),
-		"mandatory_field_actions": _mandatory_field_site_count(),
 		"mandatory_seal_actions": IRON_SECTORS.size(),
-		"mandatory_route_actions": _mandatory_field_site_count() + IRON_SECTORS.size(),
+		"mandatory_route_actions": IRON_SECTORS.size(),
 		"mandatory_party_regroups": IRON_SECTORS.size(),
 		"optional_branches": ["lysate_cache", "iron_lookout"],
-		"resource_choices": ["recover_now", "shield_iron_lattice"],
 		"route_choices_per_sector": ["safe", "direct"],
-		"decision_count": IRON_SECTORS.size() + 1,
+		"decision_count": IRON_SECTORS.size(),
 		"branch_count": IRON_SECTORS.size() + 2,
 	}
 
@@ -873,20 +1802,104 @@ func _start_facility_exit() -> void:
 	t.tween_property(_camera, "follow_offset", orig_offset + Vector3(3, 0, 0), 1.5)
 	t.tween_interval(0.5)
 	t.tween_property(_camera, "follow_offset", orig_offset, 1.0)
-	_scheduler.schedule_after(3.5, _start_endo_joins, "endo_joins")
+	_begin_endo_join_wait()
+
+
+func _begin_endo_join_wait() -> void:
+	if _scheduler == null or _game_state == null:
+		return
+	var saved := _endo_join_authority_state()
+	if _valid_endo_join_authority(saved):
+		var phase := str(saved.get("phase", ENDO_JOIN_PHASE_ABSENT))
+		if phase == ENDO_JOIN_PHASE_PENDING:
+			_arm_endo_join_from_authority()
+			return
+		if phase == ENDO_JOIN_PHASE_JOINED:
+			_sync_endo_presence_from_authority()
+			return
+	var now := float(_scheduler.get_current_tick())
+	var pending := _baseline_endo_join_authority()
+	pending["phase"] = ENDO_JOIN_PHASE_PENDING
+	pending["start_tick"] = now
+	pending["deadline"] = now + ENDO_JOIN_DELAY
+	_publish_endo_join_authority(pending)
+	_arm_endo_join_from_authority()
+
+
+func _arm_endo_join_from_authority() -> void:
+	if _scheduler == null:
+		return
+	_scheduler.cancel_tag(ENDO_JOIN_TAG)
+	var saved := _endo_join_authority_state()
+	if not _valid_endo_join_authority(saved) \
+			or str(saved.get("phase", "")) != ENDO_JOIN_PHASE_PENDING:
+		return
+	var now := float(_scheduler.get_current_tick())
+	var deadline := float(saved.get("deadline", now))
+	if deadline <= now:
+		_commit_endo_join()
+		return
+	_scheduler.schedule_at(deadline, _commit_endo_join, ENDO_JOIN_TAG)
+
+
+func _commit_endo_join() -> void:
+	if _scheduler == null or _game_state == null:
+		return
+	var saved := _endo_join_authority_state()
+	if not _valid_endo_join_authority(saved) \
+			or str(saved.get("phase", "")) != ENDO_JOIN_PHASE_PENDING:
+		return
+	var now := float(_scheduler.get_current_tick())
+	var deadline := float(saved.get("deadline", now))
+	if now + 0.000001 < deadline:
+		_arm_endo_join_from_authority()
+		return
+	# Register the physical body and party membership before publishing JOINED. These operations
+	# emit no gameplay signal; therefore the first observable join signal can only see a complete
+	# roster/body transaction. The entrance move is a subsequent, separately authoritative action.
+	if not _prepare_endo_join_body():
+		return
+	saved["phase"] = ENDO_JOIN_PHASE_JOINED
+	saved["joined_tick"] = maxf(now, deadline)
+	_publish_endo_join_authority(saved)
+	_start_endo_joins()
+
+
+func _prepare_endo_join_body() -> bool:
+	if _game_state == null or not is_instance_valid(_endo):
+		return false
+	if not _game_state.characters.has("endo"):
+		_endo.position = EXIT_POS + Vector3(3, 0, -2)
+		_register_gs_character("endo", _endo, 2.5, {
+			"hp": GameState.HP_MAX, "stamina": GameState.STAMINA_MAX, "atp": 4.0})
+	var party := _game_state.get_party()
+	for required_id in PARTY_IDS:
+		if not party.has(required_id) and _game_state.characters.has(required_id):
+			party.append(required_id)
+	if not party.has("endo"):
+		_remove_endo_from_authoritative_roster()
+		return false
+	if _game_state.get_party() != party:
+		_game_state.set_party(party)
+	_set_endo_presenter_present(true)
+	return true
 
 func _start_endo_joins() -> void:
+	var saved := _endo_join_authority_state()
+	if not _valid_endo_join_authority(saved) \
+			or str(saved.get("phase", "")) != ENDO_JOIN_PHASE_JOINED:
+		return
 	_current_step = "endo_joins"
-	_endo.visible = true
+	_sync_endo_presence_from_authority()
+	_restore_sector_gate_progression()
 	_game_state.command_move_to_pos("endo", EXIT_POS + Vector3(1.5, 0, -0.8))
-	DialogueData.say_to(_dialogue, "facility.endo.shelters")
-	_dialogue.dialogue_finished.connect(
-		func(): _scheduler.schedule_after(0, _start_first_corridor, "first_corridor"),
-		CONNECT_ONE_SHOT
-	)
+	_dialogue_chain(["facility.endo.shelters"], _start_first_corridor)
 
 func _start_first_corridor() -> void:
+	if not _endo_is_authoritatively_joined():
+		return
 	_current_step = "first_corridor"
+	_start_iron_hazard_cadence()
 	_player.set_move_enabled(true)
 	if _hud:
 		_hud.show_routing_toggle("safe")
@@ -896,12 +1909,9 @@ func _start_first_corridor() -> void:
 		if not _hud.run_toggled.is_connected(_on_run_toggled):
 			_hud.run_toggled.connect(_on_run_toggled)
 		_hud.show_message(
-			"Reach Shelter 1. Follow each numbered field protocol, then regroup and choose SAFE or DIRECT at its seal.",
+			"Reach Shelter 1. At each iron field, regroup and choose the SAFE detour or DIRECT crossing.",
 			6.0
 		)
-		# Registration activates the first station before the HUD exists; repeat its
-		# actionable assignment once play and input are live.
-		_activate_field_protocol(0)
 	_set_game_time(_game_day, _game_time, true)
 
 func _start_safe_route_lesson() -> void:
@@ -911,20 +1921,32 @@ func _start_dusk_approaches() -> void:
 	_current_step = "dusk_approaches"
 	_set_game_time(_game_day, 0.4, true)
 	DialogueData.say_to(_dialogue, "facility.endo.dusk")
-	_scheduler.schedule_after(4.0, _start_second_iron, "second_iron")
+	_schedule_portable_method(4.0, _start_second_iron, "second_iron")
 
 func _start_second_iron() -> void:
 	_current_step = "second_iron"
+	_project_leaving_sources()
 
 func _start_reach_shelter() -> void:
+	if not _party_inside_authored_shelter():
+		_on_shelter_party_blocked(&"out_of_range_party")
+		return
 	_current_step = "reach_shelter"
+	_stop_iron_hazard_cadence()
+	if _shelter_interactable != null:
+		_shelter_interactable.set_interaction_enabled(false)
+	for char_id in PARTY_IDS:
+		_game_state.command_stop(char_id)
 	_player.set_move_enabled(false)
 	DialogueData.say_to(_dialogue, "facility.endo.shelter")
-	_scheduler.schedule_after(2.5, _start_first_rest, "first_rest")
+	_schedule_portable_method(2.5, _start_first_rest, "first_rest")
 
 func _start_first_rest() -> void:
 	_current_step = "first_rest"
 	_set_game_time(_game_day, 0.55, true)
+	if not _party_inside_authored_shelter() or not _game_state.can_party_rest(PARTY_IDS):
+		_reject_shelter_rest("The whole conscious party must be settled, still, and able to pay one ATP each.")
+		return
 	# Night transition: dim world, pulse iron threat
 	var t := create_tween()
 	t.tween_property(_dir_light, "light_energy", 0.05, 1.5)
@@ -934,34 +1956,83 @@ func _start_first_rest() -> void:
 		lt.tween_property(light, "light_energy", 3.5, 0.8)
 		lt.tween_property(light, "light_energy", 1.5, 0.8)
 	DialogueData.say_to(_dialogue, "facility.endo.rest")
-	# The REAL rest mechanism: the shelter zone is here, the clock is past nightfall, and
-	# bedding Aster down triggers the night skip (which heals and lands the clock on dawn).
-	var aster_pos := _game_state.get_position("aster")
-	_game_state.add_shelter_region(
-		Vector2(aster_pos.x - 3.0, aster_pos.z - 3.0), Vector2(aster_pos.x + 3.0, aster_pos.z + 3.0))
-	_game_state.set_game_clock(_game_day, 0.55)
-	# BOTH dawn paths arm (first one wins; _start_dawn re-entry is step-guarded): the night skip
-	# fires only when EVERY conscious character sleeps — Endo at full HP can't rest, so the skip
-	# may never come and the narrative beat must still reach dawn (the contract driver caught the
-	# deadlock when only the rest-refused branch had the fallback).
-	_game_state.night_skipped.connect(
-		func(_day): _scheduler.schedule_after(0.5, _start_dawn, "dawn"), CONNECT_ONE_SHOT)
-	_dialogue.dialogue_finished.connect(
-		func(): _scheduler.schedule_after(0, _start_dawn, "dawn"),
-		CONNECT_ONE_SHOT
-	)
-	_game_state.command_rest("aster")
+	var now := float(_scheduler.get_current_tick())
+	var authority := _baseline_shelter_rest_authority()
+	authority["phase"] = SHELTER_REST_PHASE_COMMITTING
+	authority["start_tick"] = now
+	authority["dawn_deadline"] = now + SHELTER_DAWN_DELAY
+	authority["start_day"] = _game_state.get_game_day()
+	authority["start_time"] = _game_state.get_time_of_day()
+	var atp_before := {}
+	for char_id in PARTY_IDS:
+		atp_before[char_id] = _game_state.get_stat(char_id, "atp")
+	authority["atp_before"] = atp_before
+	# COMMITTING is published before cost. A save on this signal is truthfully pre-payment; the
+	# canonical party command below then changes every ATP/rest/night fact before its first signal.
+	_publish_shelter_rest_authority(authority)
+	_complete_shelter_rest_commit(authority)
+
+
+func _complete_shelter_rest_commit(authority: Dictionary) -> void:
+	if not _game_state.command_party_rest(PARTY_IDS):
+		_publish_shelter_rest_authority(_baseline_shelter_rest_authority())
+		_reject_shelter_rest("The party rest transaction was refused without charging anyone.")
+		return
+	if not _shelter_rest_outcome_matches(authority):
+		# This cannot happen after a successful night batch; retain COMMITTING so a diagnostic save
+		# never lies by calling a partial result complete.
+		_reject_shelter_rest("Shelter 1 could not produce a complete dawn. No partial result is accepted.", false)
+		return
+	authority["phase"] = SHELTER_REST_PHASE_DAWN_PENDING
+	authority["cost_applied"] = true
+	authority["dawn_day"] = _game_state.get_game_day()
+	_publish_shelter_rest_authority(authority)
+	_arm_shelter_dawn(authority)
+
+
+func _reject_shelter_rest(message: String, reset_authority := true) -> void:
+	_scheduler.cancel_tag(SHELTER_DAWN_TAG)
+	if reset_authority:
+		_publish_shelter_rest_authority(_baseline_shelter_rest_authority())
+	_current_step = "second_iron"
+	if _shelter_party_gate != null:
+		_shelter_party_gate.restore_closed_baseline()
+	_project_leaving_sources()
+	_player.set_move_enabled(true)
+	_start_iron_hazard_cadence()
+	if _hud != null:
+		_hud.show_message(message, 2.8)
+
+
+func _arm_shelter_dawn(authority: Dictionary) -> void:
+	if _scheduler == null:
+		return
+	_scheduler.cancel_tag(SHELTER_DAWN_TAG)
+	var deadline := float(authority.get("dawn_deadline", -1.0))
+	var now := float(_scheduler.get_current_tick())
+	if deadline <= now + 0.000001:
+		_scheduler.schedule_after(0.000001, _start_dawn, SHELTER_DAWN_TAG)
+	else:
+		_scheduler.schedule_at(deadline, _start_dawn, SHELTER_DAWN_TAG)
 
 func _start_dawn() -> void:
 	if _current_step != "first_rest":
 		return
 	_current_step = "dawn"
-	_set_game_time(_game_day + 1, 0.05, true)
-	DialogueData.say_to(_dialogue, "facility.dawn")
-	_dialogue.dialogue_finished.connect(
-		func(): _current_step = "complete",
-		CONNECT_ONE_SHOT
-	)
+	_sync_game_clock_from_authority(true)
+	var authority := _shelter_rest_authority_state()
+	if _valid_shelter_rest_authority(authority):
+		if str(authority.get("phase", "")) == SHELTER_REST_PHASE_COMMITTING \
+				and _shelter_rest_outcome_matches(authority):
+			authority["cost_applied"] = true
+			authority["dawn_day"] = _game_state.get_game_day()
+		authority["phase"] = SHELTER_REST_PHASE_COMPLETE
+		_publish_shelter_rest_authority(authority)
+	_dialogue_chain(["facility.dawn"], _complete_facility_sequence)
+
+
+func _complete_facility_sequence() -> void:
+	_current_step = "complete"
 
 # --- Routing ---
 
@@ -991,34 +2062,236 @@ func _toggle_routing() -> void:
 
 # --- Iron damage ---
 
-func _check_iron_damage(game_delta: float) -> void:
+## The scheduler owns iron contact outcomes. The versioned record survives callback-heap clearing,
+## preserves the exact next tick, and also carries the cumulative QA evidence that used to reset.
+func _start_iron_hazard_cadence() -> void:
+	if _scheduler == null or _game_state == null:
+		return
+	if _iron_hazard_active:
+		return
+	_iron_hazard_active = true
+	_arm_iron_hazard_at(float(_scheduler.get_current_tick()) + IRON_DAMAGE_INTERVAL)
+
+
+func _stop_iron_hazard_cadence() -> void:
+	if _scheduler != null:
+		_scheduler.cancel_tag(IRON_HAZARD_TAG)
+	_iron_hazard_active = false
+	_iron_hazard_next_tick = -1.0
+	_publish_iron_hazard_authority()
+
+
+func _arm_iron_hazard_at(deadline: float) -> void:
+	if _scheduler == null or not _iron_hazard_active:
+		return
+	_scheduler.cancel_tag(IRON_HAZARD_TAG)
+	_iron_hazard_next_tick = maxf(float(_scheduler.get_current_tick()), deadline)
+	_publish_iron_hazard_authority()
+	_scheduler.schedule_at(_iron_hazard_next_tick, _on_iron_hazard_tick, IRON_HAZARD_TAG)
+
+
+func _on_iron_hazard_tick() -> void:
+	if not _iron_hazard_active or _scheduler == null:
+		return
+	_iron_hazard_next_tick = -1.0
+	_apply_iron_damage_tick()
+	_arm_iron_hazard_at(float(_scheduler.get_current_tick()) + IRON_DAMAGE_INTERVAL)
+
+
+func _apply_iron_damage_tick() -> void:
+	if _game_state == null or not OUTDOOR_STEPS.has(_current_step) \
+			or _current_step == "reach_shelter":
+		return
 	var aster_pos := _game_state.get_position("aster")
 	for sector_index in range(IRON_SECTORS.size()):
 		var sector: Dictionary = IRON_SECTORS[sector_index]
 		var center: Vector3 = sector["center"]
 		var half_size: Vector2 = sector["half_size"]
-		var sector_active := false
 		if abs(aster_pos.x - center.x) <= half_size.x + 2.0 and not _sectors_entered.has(str(sector["id"])):
 			_sectors_entered.append(str(sector["id"]))
 			if _hud != null:
 				_hud.show_message("%s: SAFE follows the outer beacons; DIRECT crosses the iron." % str(sector["label"]), 3.0)
 		for char_id in ["aster", "peris", "endo"]:
+			if not _game_state.characters.has(char_id) or _game_state.get_stat(char_id, "hp") <= 0.0:
+				continue
+			if char_id == "endo" and not _endo_is_authoritatively_joined():
+				continue
 			var pos := _game_state.get_position(char_id)
 			if abs(pos.x - center.x) > half_size.x or abs(pos.z - center.z) > half_size.y:
 				continue
-			if sector_index == 2 and _third_sector_shielded:
-				continue
-			sector_active = true
-			var multiplier := SCOUTED_DAMAGE_MULTIPLIER if sector_index == 2 and _lookout_surveyed else 1.0
+			# Surveying reveals the cadence and route; information cannot physically weaken iron.
+			var multiplier := 1.0
 			if char_id == "endo":
 				multiplier *= 1.15
-			var damage := IRON_DAMAGE_PER_SEC * multiplier * game_delta
-			_game_state.adjust_stat(char_id, "hp", -damage)
+			var damage := IRON_DAMAGE_PER_SEC * multiplier * IRON_DAMAGE_INTERVAL
+			_game_state.adjust_stat(char_id, "hp", -damage, IRON_HAZARD_TAG)
 			_iron_damage_total += damage
-			_iron_exposure_seconds += game_delta
+			_iron_exposure_seconds += IRON_DAMAGE_INTERVAL
+
+
+func _update_iron_lights() -> void:
+	if _game_state == null:
+		return
+	for sector_index in range(IRON_SECTORS.size()):
+		var sector: Dictionary = IRON_SECTORS[sector_index]
+		var center: Vector3 = sector["center"]
+		var half_size: Vector2 = sector["half_size"]
+		var sector_active := false
+		for char_id in ["aster", "peris", "endo"]:
+			if not _game_state.characters.has(char_id):
+				continue
+			if char_id == "endo" and not _endo_is_authoritatively_joined():
+				continue
+			var pos := _game_state.get_position(char_id)
+			if abs(pos.x - center.x) <= half_size.x and abs(pos.z - center.z) <= half_size.y:
+				sector_active = true
+				break
 		if sector_active and sector_index < _iron_lights.size():
 			var light := _iron_lights[sector_index]
-			light.light_energy = 3.0 + sin(Time.get_ticks_msec() * 0.01) * 1.5  # @rendering_only — iron light pulse
+			light.light_energy = 3.0 + sin(Time.get_ticks_msec() * 0.01) * 1.5  # @rendering_only
+
+
+func _publish_iron_hazard_authority() -> void:
+	if _restoring_iron_hazard or _game_state == null:
+		return
+	_game_state.set_world_state(IRON_HAZARD_AUTHORITY_KEY, {
+		"version": IRON_HAZARD_AUTHORITY_VERSION,
+		"active": _iron_hazard_active,
+		"next_tick": _iron_hazard_next_tick,
+		"damage_total": _iron_damage_total,
+		"exposure_seconds": _iron_exposure_seconds,
+		"sectors_entered": _sectors_entered.duplicate(),
+		"lookout_surveyed": _lookout_surveyed,
+	})
+
+
+func _restore_shelter_rest_authority() -> void:
+	if _scheduler == null or _game_state == null:
+		return
+	_scheduler.cancel_tag(SHELTER_DAWN_TAG)
+	_scheduler.cancel_tag(SHELTER_REST_COMMIT_TAG)
+	_restoring_shelter_authority = true
+	_sync_game_clock_from_authority(_current_step != "fade_in")
+	if _shelter_party_gate != null:
+		_shelter_party_gate.on_game_state_snapshot_restored()
+	var authority := _shelter_rest_authority_state()
+	if not _valid_shelter_rest_authority(authority):
+		authority = _baseline_shelter_rest_authority()
+	var phase := str(authority.get("phase", SHELTER_REST_PHASE_IDLE))
+	match phase:
+		SHELTER_REST_PHASE_COMMITTING:
+			_current_step = "first_rest"
+			if _shelter_rest_outcome_matches(authority):
+				_arm_shelter_dawn(authority)
+			else:
+				# A save made by the COMMITTING publication owns the pending transaction even
+				# though no ATP was paid yet. Resume on the scheduler after attachment rather
+				# than mutating or emitting gameplay from the restore hook itself.
+				_scheduler.schedule_after(
+					0.000001,
+					_complete_shelter_rest_commit.bind(authority.duplicate(true)),
+					SHELTER_REST_COMMIT_TAG)
+		SHELTER_REST_PHASE_DAWN_PENDING:
+			_current_step = "first_rest"
+			if _shelter_rest_outcome_matches(authority):
+				_arm_shelter_dawn(authority)
+			else:
+				# A paid semantic record without the canonical dawn is malformed. It cannot
+				# grant progression; preserve inspection state but arm no consequence.
+				_current_step = "second_iron"
+		SHELTER_REST_PHASE_COMPLETE:
+			_current_step = "dawn" if _current_step != "complete" else "complete"
+		_:
+			# `reach_shelter` is now a legitimate portable pre-commit phase: the party is
+			# physically settled and the saved named continuation owns the exact hand-off to
+			# `_start_first_rest`. Only later phases require a committed rest transaction.
+			if _current_step in ["first_rest", "dawn"]:
+				_current_step = "second_iron"
+	_restoring_shelter_authority = false
+	var rest_committed := phase in [
+		SHELTER_REST_PHASE_COMMITTING,
+		SHELTER_REST_PHASE_DAWN_PENDING,
+		SHELTER_REST_PHASE_COMPLETE,
+	]
+	if _shelter_interactable != null:
+		_shelter_interactable.set_interaction_enabled(
+			_current_step == "second_iron" and not rest_committed)
+	if _player != null and _player.has_method("restore_move_input_enabled"):
+		_player.restore_move_input_enabled(
+			not rest_committed and _current_step != "reach_shelter"
+		)
+
+
+func _restore_endo_join_authority() -> void:
+	if _scheduler == null or _game_state == null:
+		return
+	_scheduler.cancel_tag(ENDO_JOIN_TAG)
+	_configure_endo_presenter()
+	_wire_endo_join_signals()
+	var saved := _endo_join_authority_state()
+	if not _valid_endo_join_authority(saved):
+		# Saves from before the roster contract existed still carry an authoritative
+		# sequence step and serialized character roster. Migrate only when those two
+		# independent facts agree; a semantic later step may never invent a missing body.
+		if ENDO_JOINED_STEPS.has(_current_step) and _game_state.characters.has("endo"):
+			var now := float(_scheduler.get_current_tick())
+			saved = _baseline_endo_join_authority()
+			saved["phase"] = ENDO_JOIN_PHASE_JOINED
+			saved["start_tick"] = maxf(0.0, now - ENDO_JOIN_DELAY)
+			saved["deadline"] = maxf(0.000001, now)
+			if float(saved["deadline"]) <= float(saved["start_tick"]):
+				saved["start_tick"] = maxf(0.0, float(saved["deadline"]) - ENDO_JOIN_DELAY)
+			saved["joined_tick"] = float(saved["deadline"])
+		else:
+			saved = _baseline_endo_join_authority()
+		_publish_endo_join_authority(saved)
+	_sync_endo_presence_from_authority()
+	if str(saved.get("phase", "")) == ENDO_JOIN_PHASE_PENDING:
+		_arm_endo_join_from_authority()
+
+
+func on_game_state_snapshot_restored() -> void:
+	if _scheduler == null or _game_state == null:
+		return
+	_restore_endo_join_authority()
+	_restore_shelter_rest_authority()
+	# Validate the ordered gate prefix before child PartyGate3D presenters attach.
+	# This closes malformed/out-of-order records to the physical baseline rather
+	# than granting a route skip on load.
+	_restore_sector_gate_progression()
+	_restore_cache_authority()
+	_scheduler.cancel_tag(IRON_HAZARD_TAG)
+	_restoring_iron_hazard = true
+	_iron_hazard_active = false
+	_iron_hazard_next_tick = -1.0
+	_iron_damage_total = 0.0
+	_iron_exposure_seconds = 0.0
+	_sectors_entered.clear()
+	_lookout_surveyed = false
+	var saved_v: Variant = _game_state.get_world_state(IRON_HAZARD_AUTHORITY_KEY, null)
+	if saved_v is Dictionary:
+		var saved := saved_v as Dictionary
+		if int(saved.get("version", 0)) == IRON_HAZARD_AUTHORITY_VERSION:
+			_iron_hazard_active = bool(saved.get("active", false))
+			_iron_hazard_next_tick = float(saved.get("next_tick", -1.0))
+			_iron_damage_total = maxf(0.0, float(saved.get("damage_total", 0.0)))
+			_iron_exposure_seconds = maxf(0.0, float(saved.get("exposure_seconds", 0.0)))
+			for sector_v in saved.get("sectors_entered", []):
+				var sector_id := str(sector_v)
+				if sector_id != "" and not _sectors_entered.has(sector_id):
+					_sectors_entered.append(sector_id)
+			_lookout_surveyed = bool(saved.get("lookout_surveyed", false))
+			if _iron_hazard_active and _iron_hazard_next_tick >= 0.0:
+				_arm_iron_hazard_at(_iron_hazard_next_tick)
+	_restoring_iron_hazard = false
+	if is_instance_valid(_lookout_interactable):
+		if _lookout_surveyed:
+			_lookout_interactable.set_interaction_enabled(false)
+		else:
+			_lookout_interactable.reset()
+			_lookout_interactable.set_interaction_enabled(true)
+	_restore_leaving_source_authority()
+
 
 # --- Environment ---
 
@@ -1063,7 +2336,6 @@ func _build_environment() -> void:
 		_add_sector_gate_visual(env, sector_index)
 		_add_sector_identity(env, sector_index)
 	_add_side_branch_markers(env)
-	_add_protocol_measurement_datums(env)
 
 	_dir_light = DirectionalLight3D.new()
 	_dir_light.rotation_degrees = Vector3(-50, 20, 0)
@@ -1087,16 +2359,22 @@ func _build_environment() -> void:
 	_apply_time_of_day_visuals()
 
 func _advance_game_clock(delta_seconds: float) -> void:
-	if delta_seconds <= 0.0:
+	if delta_seconds <= 0.0 or _game_state == null:
 		return
-	var next_clock: Dictionary = _game_clock.advance(_game_day, _game_time, delta_seconds)
-	_game_day = int(next_clock.get("day", _game_day))
-	_game_time = float(next_clock.get("time", _game_time))
-	_sync_game_time_display()
+	# Gameplay time is the scheduler-analytic GameState clock. Render delta only decides when its
+	# current projection is sampled for the HUD/lighting; it never advances the simulation.
+	_sync_game_clock_from_authority(true)
 
 func _set_game_time(day: int, time_of_day: float, show_time := true) -> void:
-	_game_day = maxi(day, 1)
-	_game_time = clampf(float(time_of_day), 0.0, 1.0)
+	if _game_state != null:
+		_game_state.set_game_clock(maxi(day, 1), clampf(float(time_of_day), 0.0, 1.0))
+	_sync_game_clock_from_authority(show_time)
+
+
+func _sync_game_clock_from_authority(show_time := true) -> void:
+	if _game_state != null:
+		_game_day = _game_state.get_game_day()
+		_game_time = _game_state.get_time_of_day()
 	if _hud != null:
 		if show_time:
 			_hud.show_time(_game_day, _game_time)
@@ -1168,10 +2446,41 @@ func _add_iron_patch(parent: Node3D, pos: Vector3, half_size := Vector2(2.0, 2.0
 func _add_sector_gate_visual(parent: Node3D, sector_index: int) -> void:
 	var sector: Dictionary = IRON_SECTORS[sector_index]
 	var gate_x := float(sector["gate_x"])
-	# Side pylons frame the only traversable opening. The gate panel is visual;
-	# GridWorld owns the actual seal so headless and rendered play agree.
+	# Side pylons frame the only traversable opening. PartyGate3D owns the
+	# scheduled lift and physical blocker; this sequence changes the central
+	# GridWorld cells only when that mechanism reaches its saved endpoint.
 	_add_wall(parent, Vector3(gate_x, 1.45, -9.2), Vector3(0.45, 2.9, 11.6), Color(0.11, 0.1, 0.1))
 	_add_wall(parent, Vector3(gate_x, 1.45, 9.2), Vector3(0.45, 2.9, 11.6), Color(0.11, 0.1, 0.1))
+	var gate := PartyGate3D.new()
+	gate.name = "SectorGateMechanism%d" % (sector_index + 1)
+	gate.position = Vector3(gate_x, 0.0, 0.0)
+	gate.authority_id = "leaving_facility_sector_gate_%d" % sector_index
+	gate.required_members = PackedStringArray(["aster", "peris", "endo"])
+	gate.readiness_radius = SECTOR_GATE_REVALIDATION_RADIUS
+	gate.opening_duration = SECTOR_GATE_OPEN_DURATION
+	gate.navigation_padding = Vector2(0.15, 0.15)
+	parent.add_child(gate)
+
+	var markers := Node3D.new()
+	markers.name = "Markers"
+	gate.add_child(markers)
+	var anchor := Marker3D.new()
+	anchor.name = "InteractionAnchor"
+	markers.add_child(anchor)
+
+	var blocker_body := StaticBody3D.new()
+	blocker_body.name = "RubbleBlocker"
+	blocker_body.collision_layer = 1
+	blocker_body.collision_mask = 0
+	gate.add_child(blocker_body)
+	var blocker_shape := CollisionShape3D.new()
+	blocker_shape.name = "BlockerShape"
+	var blocker_box := BoxShape3D.new()
+	blocker_box.size = Vector3(0.42, 2.5, 6.0)
+	blocker_shape.shape = blocker_box
+	blocker_shape.position = Vector3(0.0, SECTOR_GATE_CLOSED_Y, 0.0)
+	blocker_body.add_child(blocker_shape)
+
 	var panel := MeshInstance3D.new()
 	panel.name = "SectorGate%d" % (sector_index + 1)
 	var mesh := BoxMesh.new()
@@ -1183,8 +2492,9 @@ func _add_sector_gate_visual(parent: Node3D, sector_index: int) -> void:
 	mat.emission = Color(0.62, 0.2, 0.04)
 	mat.emission_energy_multiplier = 0.25
 	panel.material_override = mat
-	panel.position = Vector3(gate_x, 1.25, 0)
-	parent.add_child(panel)
+	panel.position = Vector3(0.0, SECTOR_GATE_CLOSED_Y, 0.0)
+	gate.add_child(panel)
+	_sector_gates.append(gate)
 	_sector_gate_visuals.append(panel)
 
 func _add_sector_identity(parent: Node3D, sector_index: int) -> void:
@@ -1212,143 +2522,6 @@ func _add_sector_identity(parent: Node3D, sector_index: int) -> void:
 	label.modulate = Color(0.93, 0.52, 0.22, 0.9)
 	label.position = Vector3(center.x - float((sector["half_size"] as Vector2).x) - 3.0, 2.25, -CORRIDOR_HALF_WIDTH + 0.35)
 	parent.add_child(label)
-
-func _add_protocol_measurement_datums(parent: Node3D) -> void:
-	var grid_mat := StandardMaterial3D.new()
-	grid_mat.albedo_color = Color(0.17, 0.36, 0.34, 0.78)
-	grid_mat.emission_enabled = true
-	grid_mat.emission = Color(0.08, 0.28, 0.25)
-	grid_mat.emission_energy_multiplier = 0.42
-	grid_mat.roughness = 0.68
-	var link_mat := StandardMaterial3D.new()
-	link_mat.albedo_color = Color(0.36, 0.27, 0.12, 0.82)
-	link_mat.emission_enabled = true
-	link_mat.emission = Color(0.42, 0.22, 0.06)
-	link_mat.emission_energy_multiplier = 0.34
-	link_mat.roughness = 0.74
-	var arch_mat := StandardMaterial3D.new()
-	arch_mat.albedo_color = Color(0.16, 0.19, 0.20)
-	arch_mat.metallic = 0.45
-	arch_mat.roughness = 0.52
-
-	for sector_index in range(FIELD_PROTOCOLS.size()):
-		var protocol: Dictionary = FIELD_PROTOCOLS[sector_index]
-		var sites: Array = protocol["sites"]
-		var first_pos: Vector3 = (sites[0] as Dictionary)["pos"]
-		var last_pos: Vector3 = (sites[sites.size() - 1] as Dictionary)["pos"]
-		var grid_x0 := first_pos.x - 3.0
-		var grid_x1 := last_pos.x + 3.0
-		for lane_index in range(3):
-			var lane_z := -10.0 + lane_index * 10.0
-			_add_floor_measure_strip(
-				parent,
-				"FieldGridSector%dLane%d" % [sector_index + 1, lane_index + 1],
-				Vector3((grid_x0 + grid_x1) * 0.5, 0.019, lane_z),
-				Vector3(grid_x1 - grid_x0, 0.012, 0.10),
-				grid_mat
-			)
-		for site_index in range(sites.size()):
-			var site: Dictionary = sites[site_index]
-			var pos: Vector3 = site["pos"]
-			_add_floor_measure_strip(
-				parent,
-				"FieldDatumSector%dSite%d" % [sector_index + 1, site_index + 1],
-				Vector3(pos.x, 0.021, 0),
-				Vector3(0.13, 0.014, 25.5),
-				grid_mat
-			)
-			var measure_label := Label3D.new()
-			measure_label.name = "FieldMeasureLabelSector%dSite%d" % [sector_index + 1, site_index + 1]
-			measure_label.text = "%03d m  /  %s-%d" % [int(pos.x), str(protocol["id"]).to_upper(), site_index + 1]
-			measure_label.font_size = 24
-			measure_label.pixel_size = 0.0065
-			measure_label.modulate = Color(0.49, 0.78, 0.70, 0.84)
-			measure_label.outline_modulate = Color(0.02, 0.03, 0.035, 0.95)
-			measure_label.outline_size = 7
-			measure_label.position = Vector3(pos.x, 0.055, -13.2)
-			measure_label.rotation_degrees.x = -90.0
-			parent.add_child(measure_label)
-			if site_index > 0:
-				var previous: Vector3 = (sites[site_index - 1] as Dictionary)["pos"]
-				_add_floor_link(
-					parent,
-					"FieldLinkSector%dSegment%d" % [sector_index + 1, site_index],
-					previous,
-					pos,
-					link_mat
-				)
-		_add_protocol_arch(parent, sector_index, grid_x0 - 0.8, "Entry", arch_mat)
-		_add_protocol_arch(parent, sector_index, grid_x1 + 0.8, "Exit", arch_mat)
-
-func _add_floor_measure_strip(
-		parent: Node3D,
-		strip_name: String,
-		pos: Vector3,
-		size: Vector3,
-		material: Material
-	) -> void:
-	var strip := MeshInstance3D.new()
-	strip.name = strip_name
-	var strip_mesh := BoxMesh.new()
-	strip_mesh.size = size
-	strip.mesh = strip_mesh
-	strip.material_override = material
-	strip.position = pos
-	parent.add_child(strip)
-
-func _add_floor_link(
-		parent: Node3D,
-		link_name: String,
-		from_pos: Vector3,
-		to_pos: Vector3,
-		material: Material
-	) -> void:
-	var delta := to_pos - from_pos
-	var link := MeshInstance3D.new()
-	link.name = link_name
-	var link_mesh := BoxMesh.new()
-	link_mesh.size = Vector3(delta.length(), 0.016, 0.16)
-	link.mesh = link_mesh
-	link.material_override = material
-	link.position = from_pos.lerp(to_pos, 0.5) + Vector3(0, 0.024, 0)
-	link.rotation.y = -atan2(delta.z, delta.x)
-	parent.add_child(link)
-
-func _add_protocol_arch(
-		parent: Node3D,
-		sector_index: int,
-		x_pos: float,
-		suffix: String,
-		material: Material
-	) -> void:
-	var arch := Node3D.new()
-	arch.name = "ProtocolArchSector%d%s" % [sector_index + 1, suffix]
-	arch.position.x = x_pos
-	parent.add_child(arch)
-	for side in [-1.0, 1.0]:
-		var upright := MeshInstance3D.new()
-		var upright_mesh := BoxMesh.new()
-		upright_mesh.size = Vector3(0.24, 2.7, 0.36)
-		upright.mesh = upright_mesh
-		upright.material_override = material
-		upright.position = Vector3(0, 1.35, side * 13.4)
-		arch.add_child(upright)
-	var beam := MeshInstance3D.new()
-	var beam_mesh := BoxMesh.new()
-	beam_mesh.size = Vector3(0.28, 0.24, 27.1)
-	beam.mesh = beam_mesh
-	beam.material_override = material
-	beam.position = Vector3(0, 2.64, 0)
-	arch.add_child(beam)
-	var arch_label := Label3D.new()
-	arch_label.text = "%s / %s" % [str(FIELD_PROTOCOLS[sector_index]["label"]), suffix.to_upper()]
-	arch_label.font_size = 29
-	arch_label.pixel_size = 0.007
-	arch_label.modulate = Color(0.68, 0.76, 0.70, 0.82)
-	arch_label.outline_modulate = Color(0.02, 0.025, 0.03, 0.95)
-	arch_label.outline_size = 8
-	arch_label.position = Vector3(0, 2.35, -7.0)
-	arch.add_child(arch_label)
 
 func _add_side_branch_markers(parent: Node3D) -> void:
 	for branch in [
@@ -1396,24 +2569,34 @@ func _add_detour_markers(parent: Node3D, iron_pos: Vector3, waypoint: Vector3, c
 		parent.add_child(marker)
 
 func _add_shelter(parent: Node3D, pos: Vector3) -> void:
-	_add_wall(parent, pos + Vector3(0, 1.0, -2.5), Vector3(3, 2, 0.2), Color(0.14, 0.13, 0.12))
-	_add_wall(parent, pos + Vector3(0, 1.0, 2.5), Vector3(3, 2, 0.2), Color(0.14, 0.13, 0.12))
-	_add_wall(parent, pos + Vector3(1.5, 1.0, 0), Vector3(0.2, 2, 5), Color(0.14, 0.13, 0.12))
-	_add_wall(parent, pos + Vector3(0, 2.0, 0), Vector3(3, 0.15, 5), Color(0.12, 0.11, 0.1))
+	# The visible Shelter 1 shell and the authoritative PartyGate use the same fixed footprint.
+	# It stays open toward the approach (-X), while its other three walls make the exact settle
+	# volume readable without relying on an invisible Aster-only coordinate threshold.
+	var width := SHELTER_HALF_SIZE.x * 2.0
+	var depth := SHELTER_HALF_SIZE.y * 2.0
+	var wall_color := Color(0.14, 0.13, 0.12)
+	_add_wall(parent, pos + Vector3(0, 1.15, -SHELTER_HALF_SIZE.y),
+		Vector3(width, 2.3, 0.25), wall_color)
+	_add_wall(parent, pos + Vector3(0, 1.15, SHELTER_HALF_SIZE.y),
+		Vector3(width, 2.3, 0.25), wall_color)
+	_add_wall(parent, pos + Vector3(SHELTER_HALF_SIZE.x, 1.15, 0),
+		Vector3(0.25, 2.3, depth), wall_color)
+	_add_wall(parent, pos + Vector3(0, 2.3, 0),
+		Vector3(width, 0.15, depth), Color(0.12, 0.11, 0.1))
 
 	var light := OmniLight3D.new()
 	light.position = pos + Vector3(0, 1.5, 0)
 	light.light_color = Color(0.8, 0.6, 0.35)
 	light.light_energy = 2.5
-	light.omni_range = 5.0
+	light.omni_range = maxf(width, depth)
 	parent.add_child(light)
 
 	var lbl := Label3D.new()
-	lbl.text = "SHELTER"
+	lbl.text = "SHELTER 1"
 	lbl.font_size = 36
 	lbl.pixel_size = 0.01
 	lbl.modulate = Color(0.4, 0.5, 0.7, 0.6)
-	lbl.position = pos + Vector3(0, 2.3, 0)
+	lbl.position = pos + Vector3(0, 2.65, 0)
 	lbl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	parent.add_child(lbl)
 

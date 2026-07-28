@@ -577,9 +577,8 @@ static func build_html(playtest_report: Dictionary) -> String:
         : "NEAR MISS";
       const chunk = snapshot.chunk || {};
       const chainStates = Object.keys(chunk.produced_chain_states || {}).length;
-      const nestedReady = Object.keys(chunk.prepared_nested_nodes || {}).length;
       const delivered = (chunk.delivered_resource_nodes || []).length;
-      chunkEl.textContent = `phase=${chunk.route_phase || "-"}  party=${(chunk.active_party || partyIds).join("+")}  resources=${chunk.resources_collected ?? 0}  chain_states=${chainStates}  nested_ready=${nestedReady}  delivered=${delivered}  shelter=${chunk.shelter_rested ? "rested" : "not yet"}  damage=${Number(chunk.risky_damage_total || 0).toFixed(1)}`;
+      chunkEl.textContent = `phase=${chunk.route_phase || "-"}  party=${(chunk.active_party || partyIds).join("+")}  resources=${chunk.resources_collected ?? 0}  chain_states=${chainStates}  delivered=${delivered}  shelter=${chunk.shelter_rested ? "rested" : "not yet"}  damage=${Number(chunk.risky_damage_total || 0).toFixed(1)}`;
       scrub.value = String(index);
       readout.textContent = `t ${Number(snapshot.time || 0).toFixed(1)}s · ${playbackRate.toFixed(2)}x`;
     }

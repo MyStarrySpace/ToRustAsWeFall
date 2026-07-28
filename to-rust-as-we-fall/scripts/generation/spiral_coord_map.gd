@@ -6,9 +6,9 @@ extends RefCounted
 ## stays flat (grid, movement, detection, traversibility all unchanged); only the WORLD render + click inverse go
 ## through here, so the player walks a straight linear grid while the world is a big spiral around a centre. Height
 ## DESCENDS monotonically with progress (entry at the top, exit shelter at the bottom), so the spiral never self-
-## collides, world->flat is exact (turn picked by height), and a "drop down" to the turn directly below is a
-## shortcut FORWARD toward the exit. Build it from the level's navigation_grid: s = progress along the level (data
-## x, normalised to 0), lane = lateral offset (data z, centred).
+## collides and world->flat is exact (turn picked by height). Stacked turns provide anchors for gated lower->upper
+## recovery climbvines; they are not always-on forward drops. Build it from the level's navigation_grid: s =
+## progress along the level (data x, normalised to 0), lane = lateral offset (data z, centred).
 
 var center := Vector3.ZERO
 var r0 := 9.0            # helix radius at the path centreline (lane 0)
@@ -21,8 +21,8 @@ var lane_center := 0.0  # data-world z of the path centreline
 
 ## Build from a unified_grid_v1 grid_data. `turns` ~ how many times the level wraps; `min_radius`/
 ## `descent_per_turn` shape the spiral. The helix DESCENDS (kclimb < 0): each full turn drops
-## `descent_per_turn` world-units, so the cell one turn ahead sits directly below — the geometry that makes
-## a drop-down pad a real shortcut.
+## `descent_per_turn` world-units, so the cell one turn ahead sits directly below — the geometry that lets a tended
+## climbvine grow down to a later turn and provide a physical return to already-resolved ground.
 ##
 ## The warp PRESERVES THE METRIC at the centreline: ktheta * r0 = 1 (the ChannelsArc invariant), so one flat
 ## data unit of s sweeps exactly one world-unit of arc at lane 0 — adjacent cells stay one cell apart on the
@@ -46,8 +46,8 @@ static func from_grid(grid_data: Dictionary, turns := 0.0, min_radius := 0.0, de
 	m.kclimb = -(descent_per_turn * eff_turns / maxf(1.0, w))   # -> descent_per_turn world-units of DROP per full turn
 	return m
 
-## Flat cells (data-x span) per full turn of the helix — the forward jump a drop-down to the turn directly below
-## covers. Positive; independent of climb/descent direction.
+## Flat cells (data-x span) per full turn of the helix — the separation between a recovery climbvine's upper and
+## lower anchors. Positive; independent of climb/descent direction.
 func period_s() -> float:
 	return absf(TAU / ktheta) if ktheta != 0.0 else INF
 

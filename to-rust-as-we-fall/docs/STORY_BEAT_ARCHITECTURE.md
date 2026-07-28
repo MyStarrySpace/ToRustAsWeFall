@@ -43,7 +43,7 @@ A story beat must not own:
 - per-frame polling that can be expressed as a semantic event;
 - a second copy of state already authoritative in `GameState` or another mechanic.
 
-The scene adapter may own presentation and the authored consequence of a decision. For example, the reusable Junction beat decides that `scout` was selected; the Elevator adapter applies that choice to its Flure-window tuning and updates its prompt.
+The scene adapter may own presentation and the authored consequence of a beat. For example, the reusable Junction beat records completion of Peris's contextual `tend_plant` action; the Elevator adapter then owns the dusk transition and begins streaming the following gauntlet. Optional shelter inspections remain world-building interactions rather than cast abilities or preparation currencies.
 
 ## Causal puzzle mechanics
 

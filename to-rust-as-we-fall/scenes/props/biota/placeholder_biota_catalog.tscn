@@ -1,0 +1,23 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/props/biota/placeholder_seefern.tscn" id="1_seefern"]
+[ext_resource type="PackedScene" path="res://scenes/props/biota/placeholder_hushbloom.tscn" id="2_hushbloom"]
+[ext_resource type="PackedScene" path="res://scenes/props/biota/placeholder_scarpet.tscn" id="3_scarpet"]
+[ext_resource type="PackedScene" path="res://scenes/props/biota/placeholder_sapscrap.tscn" id="4_sapscrap"]
+
+[node name="PlaceholderBiotaCatalog" type="Node3D"]
+metadata/catalog_contract = "biota_placeholder_catalog_v1"
+metadata/editor_catalog = true
+metadata/runtime_gameplay = false
+
+[node name="placeholder_seefern_v1" parent="." instance=ExtResource("1_seefern")]
+position = Vector3(-3.3, 0, 0)
+
+[node name="placeholder_hushbloom_v1" parent="." instance=ExtResource("2_hushbloom")]
+position = Vector3(-1.1, 0, 0)
+
+[node name="placeholder_scarpet_v1" parent="." instance=ExtResource("3_scarpet")]
+position = Vector3(1.1, 0, 0)
+
+[node name="placeholder_sapscrap_v1" parent="." instance=ExtResource("4_sapscrap")]
+position = Vector3(3.3, 0, 0)

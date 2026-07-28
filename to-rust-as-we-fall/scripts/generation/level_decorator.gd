@@ -76,16 +76,6 @@ const ACT1_PROFILES := {
 		"glow": TERMINAL_GREEN, "light": Color(0.24, 0.48, 0.40),
 		"signs": ["LOWER DECK / ROUTE READ", "FLURE LANE  <", "IRON FIELD  >"],
 	},
-	"elevator_junction_field_annex": {
-		"x0": 135.84, "x1": 192.34, "width": 12.0, "wall_height": 3.0, "ground_y": -4.0,
-		"seed": 0xE1E7A70, "program": "hydraulic", "spacing": 9.0,
-		"floor_tile": "deck_metal", "wall_tile": "facility_metal",
-		"floor_tint": Color(0.08, 0.13, 0.14), "wall_tint": Color(0.11, 0.17, 0.18),
-		"trim": Color(0.30, 0.49, 0.48), "inset": Color(0.025, 0.045, 0.05),
-		"service": Color(0.14, 0.24, 0.24), "rust": Color(0.40, 0.17, 0.06),
-		"glow": Color(0.35, 0.90, 0.70), "light": Color(0.27, 0.56, 0.50),
-		"signs": ["DESCENT POWER", "SHELTER ECOLOGY", "FLURE RELAY"],
-	},
 	"elevator_flure_relay": {
 		"x0": 150.34, "x1": 226.34, "width": 14.0, "wall_height": 3.0, "ground_y": -4.0,
 		"seed": 0xF1A2E2, "program": "boundary", "spacing": 9.0,

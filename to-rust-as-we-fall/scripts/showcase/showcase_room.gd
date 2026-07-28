@@ -17,8 +17,16 @@ const STATION_EDGE_COLOR := Color(0.17, 0.18, 0.2)
 const DEFAULT_HP := 100.0
 const DAMAGE_IFRAME := 0.8
 const IRON_DAMAGE_PER_SEC := 8.0
+const IRON_DAMAGE_INTERVAL := 0.25
 const PENDULUM_MIN_DAMAGE := 10.0
 const PHYSICS_MIN_DAMAGE := 8.0
+
+const DAMAGE_AUTHORITY_VERSION := 1
+const DAMAGE_AUTHORITY_KEY := "runtime:showcase_room:damage"
+const DAMAGE_PHASE_ACTIVE := "active"
+const DAMAGE_PHASE_RESOLVING := "resolving"
+const IRON_DAMAGE_TAG := "showcase_iron_damage"
+const DAMAGE_RESOLVE_TAG := "showcase_damage_resolve"
 
 const SHOWCASE_FLURE_DURATION := 8.0
 const HIDE_LURE_DURATION := 6.0
@@ -115,8 +123,6 @@ var _characters_root: Node3D
 var _hazards_root: Node3D
 
 var _characters: Dictionary = {}
-var _character_hp: Dictionary = {}
-var _character_iframes: Dictionary = {}
 var _active_char_id := ""
 var _perception_cycle := 0
 var _run_active := false
@@ -189,7 +195,6 @@ func _register_characters() -> void:
 			"hp": GameState.HP_MAX,
 			"stamina": GameState.STAMINA_MAX,
 		})
-		_character_hp[char_id] = GameState.HP_MAX
 
 	for enemy in _enemy_nodes:
 		enemy.game_state = _game_state
@@ -228,6 +233,9 @@ func _setup_ui() -> void:
 func _begin() -> void:
 	_game_state.physics_collision.connect(_on_physics_collision)
 	_game_state.pendulum_hit.connect(_on_pendulum_hit)
+	_game_state.stat_changed.connect(_on_showcase_stat_changed)
+	_game_state.character_downed.connect(_on_showcase_character_downed)
+	_game_state.character_restored.connect(_on_showcase_character_restored)
 
 	for enemy in _enemy_nodes:
 		enemy.hit_target.connect(_on_enemy_hit)
@@ -237,6 +245,8 @@ func _begin() -> void:
 	_reset_physics_station()
 	_reset_hide_encounter()
 	_set_showcase_flure_active(false)
+	_start_damage_authority()
+	_sync_all_character_stats()
 
 	for interactable in _interactables:
 		interactable.dialogue_box = _dialogue
@@ -258,7 +268,6 @@ func _on_process(delta: float, spd: float) -> void:
 		interactable.active_character = _active_char_id
 
 	_update_followers()
-	_apply_iron_damage(delta, spd)
 	_update_pendulum_visuals()
 	_update_hide_encounter(delta, spd)
 
@@ -322,7 +331,7 @@ func _select_character(char_id: String) -> void:
 
 	_active_char_id = char_id
 	_player = _characters[char_id]
-	_player.set_move_enabled(true)
+	_player.set_move_enabled(not _game_state.is_downed(char_id))
 	_player.set_running(_run_active)
 	if _camera:
 		_camera.target = _player
@@ -368,45 +377,261 @@ func _update_followers() -> void:
 		return
 	var leader: CharacterBody3D = _characters[_active_char_id]
 	for char_id in _characters.keys():
-		if char_id == _active_char_id or _character_hp.get(char_id, 0.0) <= 0.0:
+		if char_id == _active_char_id or _game_state.get_stat(char_id, "hp") <= 0.0:
 			continue
 		var follower: CharacterBody3D = _characters[char_id]
 		if follower.global_position.distance_to(leader.global_position) > 2.8 and not _game_state.is_moving(char_id):
 			_game_state.command_move_to_pos(char_id, leader.global_position + FOLLOW_OFFSETS[char_id])
 
-func _apply_iron_damage(delta: float, spd: float) -> void:
-	for char_id in _characters.keys():
-		if _character_hp.get(char_id, 0.0) <= 0.0:
+## Showcase damage is still deliberately simple, but it now belongs to the same truthful
+## simulation as the rest of the game. GameState owns HP/downed state. This versioned record owns
+## the fixed iron cadence, discrete-impact i-frame deadlines, and any damage transaction caught
+## between its commitment signal and its canonical stat write.
+func _start_damage_authority() -> void:
+	if _scheduler == null or _game_state == null:
+		return
+	var record := _damage_authority_record()
+	if record.is_empty():
+		record = {
+			"version": DAMAGE_AUTHORITY_VERSION,
+			"phase": DAMAGE_PHASE_ACTIVE,
+			"next_iron_tick": float(_scheduler.get_current_tick()) + IRON_DAMAGE_INTERVAL,
+			"iframe_deadlines": {},
+			"transaction_serial": 0,
+		}
+		_game_state.set_world_state(DAMAGE_AUTHORITY_KEY, record)
+	_attach_damage_authority(record)
+
+
+func _damage_authority_record() -> Dictionary:
+	if _game_state == null:
+		return {}
+	var value: Variant = _game_state.get_world_state(DAMAGE_AUTHORITY_KEY, null)
+	if not value is Dictionary:
+		return {}
+	var record := (value as Dictionary).duplicate(true)
+	if int(record.get("version", 0)) != DAMAGE_AUTHORITY_VERSION:
+		return {}
+	var phase := str(record.get("phase", ""))
+	if phase not in [DAMAGE_PHASE_ACTIVE, DAMAGE_PHASE_RESOLVING]:
+		return {}
+	if not record.get("iframe_deadlines", {}) is Dictionary:
+		return {}
+	return record
+
+
+func _attach_damage_authority(record: Dictionary) -> void:
+	if _scheduler == null:
+		return
+	_scheduler.cancel_tag(IRON_DAMAGE_TAG)
+	_scheduler.cancel_tag(DAMAGE_RESOLVE_TAG)
+	if record.is_empty():
+		return
+	if str(record.get("phase", "")) == DAMAGE_PHASE_RESOLVING:
+		# Restore performs no consequence. The already-committed transaction resumes on the
+		# scheduler lane at the saved tick, so pause/fast-forward/replay retain one outcome.
+		_scheduler.schedule_at(
+			float(_scheduler.get_current_tick()),
+			_resolve_pending_damage,
+			DAMAGE_RESOLVE_TAG
+		)
+		return
+	var deadline := float(record.get("next_iron_tick", -1.0))
+	if deadline < 0.0:
+		return
+	_arm_iron_damage_tick(deadline)
+
+
+func _arm_iron_damage_tick(deadline: float) -> void:
+	if _scheduler == null:
+		return
+	_scheduler.cancel_tag(IRON_DAMAGE_TAG)
+	var scheduled_tick := maxf(float(_scheduler.get_current_tick()), deadline)
+	_scheduler.schedule_at(
+		scheduled_tick,
+		_on_iron_damage_tick.bind(deadline),
+		IRON_DAMAGE_TAG
+	)
+
+
+func _on_iron_damage_tick(expected_deadline: float) -> void:
+	var record := _damage_authority_record()
+	if record.is_empty() or str(record.get("phase", "")) != DAMAGE_PHASE_ACTIVE:
+		return
+	if not is_equal_approx(float(record.get("next_iron_tick", -1.0)), expected_deadline):
+		return
+	var now := float(_scheduler.get_current_tick())
+	record["next_iron_tick"] = maxf(now, expected_deadline) + IRON_DAMAGE_INTERVAL
+	var results: Array[Dictionary] = []
+	for char_id_v in _characters.keys():
+		var char_id := str(char_id_v)
+		if not _game_state.characters.has(char_id) \
+				or _game_state.get_stat(char_id, "hp") <= 0.0:
 			continue
-		var node: CharacterBody3D = _characters[char_id]
-		var cpos := node.global_position
-		for patch in _iron_patches:
-			var ppos: Vector3 = patch.pos
-			var psz: Vector3 = patch.size
-			if absf(cpos.x - ppos.x) <= psz.x / 2.0 and absf(cpos.z - ppos.z) <= psz.z / 2.0:
-				_apply_damage(char_id, IRON_DAMAGE_PER_SEC * delta * spd, "iron bloom", true)
-				break
+		if not _position_is_in_iron(_game_state.get_position(char_id)):
+			continue
+		results.append(_make_damage_result(
+			char_id,
+			IRON_DAMAGE_PER_SEC * IRON_DAMAGE_INTERVAL,
+			"iron bloom"
+		))
+	_commit_damage_results(record, results)
 
-func _apply_damage(char_id: String, amount: float, source: String, continuous := false) -> void:
-	if not _character_hp.has(char_id):
-		return
-	var now := _scheduler.get_current_tick()
-	if not continuous and now < _character_iframes.get(char_id, -INF):
-		return
+
+func _position_is_in_iron(position: Vector3) -> bool:
+	for patch in _iron_patches:
+		var patch_position: Vector3 = patch.pos
+		var patch_size: Vector3 = patch.size
+		if absf(position.x - patch_position.x) <= patch_size.x / 2.0 \
+				and absf(position.z - patch_position.z) <= patch_size.z / 2.0:
+			return true
+	return false
+
+
+func _apply_damage(char_id: String, amount: float, source: String, continuous := false) -> bool:
+	if _game_state == null or _scheduler == null \
+			or not _game_state.characters.has(char_id) or amount <= 0.0:
+		return false
+	var record := _damage_authority_record()
+	if record.is_empty() or str(record.get("phase", "")) != DAMAGE_PHASE_ACTIVE:
+		return false
+	var hp_before := _game_state.get_stat(char_id, "hp")
+	if hp_before <= 0.0:
+		return false
+	var now := float(_scheduler.get_current_tick())
 	if not continuous:
-		_character_iframes[char_id] = now + DAMAGE_IFRAME
+		var iframe_deadlines := (record.get("iframe_deadlines", {}) as Dictionary).duplicate(true)
+		if now < float(iframe_deadlines.get(char_id, -1.0)):
+			return false
+		iframe_deadlines[char_id] = now + DAMAGE_IFRAME
+		record["iframe_deadlines"] = iframe_deadlines
+	var applied := _commit_damage_results(record, [
+		_make_damage_result(char_id, amount, source),
+	])
+	if applied and not continuous and _hud != null:
+		_hud.show_message(
+			"%s hit by %s" % [CHARACTER_DISPLAY_NAMES.get(char_id, char_id), source],
+			1.2
+		)
+	return applied
 
-	var new_hp := maxf(0.0, _character_hp[char_id] - amount)
-	_character_hp[char_id] = new_hp
-	_hud.set_portrait_stat(char_id, "hp", new_hp)
-	if new_hp <= 0.0:
-		_hud.set_portrait_status(char_id, "downed")
-		_characters[char_id].set_move_enabled(false)
-	else:
-		_flash_character(_characters[char_id], Color(1.0, 0.6, 0.55, 0.6))
 
-	if not continuous:
-		_hud.show_message("%s hit by %s" % [CHARACTER_DISPLAY_NAMES[char_id], source], 1.2)
+func _make_damage_result(char_id: String, amount: float, source: String) -> Dictionary:
+	var hp_before := _game_state.get_stat(char_id, "hp")
+	return {
+		"actor_id": char_id,
+		"source": source,
+		"amount": amount,
+		"hp_before": hp_before,
+		"hp_after": maxf(0.0, hp_before - amount),
+	}
+
+
+func _commit_damage_results(record: Dictionary, results: Array) -> bool:
+	if _game_state == null or _scheduler == null \
+			or str(record.get("phase", "")) != DAMAGE_PHASE_ACTIVE:
+		return false
+	if results.is_empty():
+		# The cadence still advances authoritatively while nobody is exposed, but an empty beat
+		# is not a damage transaction and needs no resolving phase.
+		_game_state.set_world_state(DAMAGE_AUTHORITY_KEY, record)
+		_attach_damage_authority(record)
+		return false
+	record["phase"] = DAMAGE_PHASE_RESOLVING
+	record["committed_tick"] = float(_scheduler.get_current_tick())
+	record["transaction_serial"] = int(record.get("transaction_serial", 0)) + 1
+	record["damage_results"] = results.duplicate(true)
+	# The transaction is authoritative before any stat signal can request a save. A save at this
+	# seam resumes the exact absolute result instead of either granting immunity or double damage.
+	_game_state.set_world_state(DAMAGE_AUTHORITY_KEY, record)
+	_resolve_pending_damage()
+	return not results.is_empty()
+
+
+func _resolve_pending_damage() -> void:
+	if _scheduler != null:
+		_scheduler.cancel_tag(DAMAGE_RESOLVE_TAG)
+	var record := _damage_authority_record()
+	if record.is_empty() or str(record.get("phase", "")) != DAMAGE_PHASE_RESOLVING:
+		return
+	for result_v in record.get("damage_results", []):
+		if not result_v is Dictionary:
+			continue
+		var result := result_v as Dictionary
+		var char_id := str(result.get("actor_id", ""))
+		if char_id == "" or not _game_state.characters.has(char_id):
+			continue
+		var target_hp := maxf(0.0, float(result.get("hp_after", 0.0)))
+		var current_hp := _game_state.get_stat(char_id, "hp")
+		var applied_now := false
+		# A signal-time save may already contain this exact stat write. Never repeat it; if
+		# another committed source made HP even lower, this transaction cannot heal it.
+		if current_hp > target_hp + 0.0001:
+			_game_state.set_stat(char_id, "hp", target_hp, str(result.get("source", "showcase")))
+			applied_now = true
+		if target_hp <= 0.0 and not _game_state.is_downed(char_id):
+			_game_state.down_character(char_id)
+		elif applied_now and _characters.has(char_id):
+			_flash_character(_characters[char_id], Color(1.0, 0.6, 0.55, 0.6))
+	record["phase"] = DAMAGE_PHASE_ACTIVE
+	record.erase("committed_tick")
+	record.erase("damage_results")
+	_game_state.set_world_state(DAMAGE_AUTHORITY_KEY, record)
+	_attach_damage_authority(record)
+
+
+func on_game_state_snapshot_restored() -> void:
+	if _scheduler == null or _game_state == null:
+		return
+	_sync_all_character_stats()
+	_attach_damage_authority(_damage_authority_record())
+
+
+func _on_showcase_stat_changed(char_id: String, stat: String, value: float) -> void:
+	if not _characters.has(char_id):
+		return
+	if _hud != null:
+		match stat:
+			"hp", "atp":
+				_hud.set_portrait_stat(char_id, stat, value)
+			"stamina":
+				_hud.set_portrait_stat(char_id, "sta", value)
+	if stat == "hp":
+		_sync_character_health_presentation(char_id)
+
+
+func _on_showcase_character_downed(char_id: String) -> void:
+	_sync_character_health_presentation(char_id)
+
+
+func _on_showcase_character_restored(char_id: String) -> void:
+	_sync_character_health_presentation(char_id)
+
+
+func _sync_all_character_stats() -> void:
+	if _game_state == null:
+		return
+	for char_id_v in _characters.keys():
+		var char_id := str(char_id_v)
+		if not _game_state.characters.has(char_id):
+			continue
+		if _hud != null:
+			_hud.set_portrait_stat(char_id, "hp", _game_state.get_stat(char_id, "hp"))
+			_hud.set_portrait_stat(char_id, "sta", _game_state.get_stat(char_id, "stamina"))
+			_hud.set_portrait_stat(char_id, "atp", _game_state.get_stat(char_id, "atp"))
+		_sync_character_health_presentation(char_id)
+
+
+func _sync_character_health_presentation(char_id: String) -> void:
+	if not _characters.has(char_id) or not _game_state.characters.has(char_id):
+		return
+	var hp := _game_state.get_stat(char_id, "hp")
+	var downed := hp <= 0.0 or _game_state.is_downed(char_id)
+	if _hud != null:
+		_hud.set_portrait_stat(char_id, "hp", hp)
+		_hud.set_portrait_status(char_id, "downed" if downed else "")
+	var node: CharacterBody3D = _characters[char_id]
+	node.set_move_enabled(not downed and char_id == _active_char_id)
 
 func _flash_character(node: CharacterBody3D, color: Color) -> void:
 	if node == null:
@@ -423,7 +648,15 @@ func _on_enemy_hit(target_id: String, damage: float) -> void:
 		"damage": damage,
 		"tick": _scheduler.get_current_tick(),
 	})
-	_apply_damage(target_id, damage, "enemy charge")
+	# Enemy._resolve_strike already committed this exact damage through GameState before emitting
+	# hit_target. This listener is presentation/instrumentation only; applying damage here again was
+	# a showroom-only second simulation.
+	_sync_character_health_presentation(target_id)
+	if _hud != null and CHARACTER_DISPLAY_NAMES.has(target_id):
+		_hud.show_message(
+			"%s hit by enemy charge" % CHARACTER_DISPLAY_NAMES[target_id],
+			1.2
+		)
 
 func _on_physics_collision(obj_id: String, collider_id: String, impulse: Vector3) -> void:
 	_physics_event_log.append({
@@ -480,10 +713,22 @@ func get_station_positions() -> Dictionary:
 	}
 
 func get_character_hp(char_id: String) -> float:
-	return _character_hp.get(char_id, 0.0)
+	return _game_state.get_stat(char_id, "hp") if _game_state != null else 0.0
 
 func headless_get_anchor_positions() -> Dictionary:
 	return get_station_positions()
+
+
+func _character_hp_snapshot() -> Dictionary:
+	var snapshot := {}
+	if _game_state == null:
+		return snapshot
+	for char_id_v in _characters.keys():
+		var char_id := str(char_id_v)
+		if _game_state.characters.has(char_id):
+			snapshot[char_id] = _game_state.get_stat(char_id, "hp")
+	return snapshot
+
 
 func headless_get_state() -> Dictionary:
 	var flure_anchor: Vector3 = _cell_world(SHOWCASE_FLURE_CELL, 0.5)
@@ -495,7 +740,8 @@ func headless_get_state() -> Dictionary:
 	var flure_count := maxf(1.0, float(_flure_enemies.size()))
 	return {
 		"active_character": _active_char_id,
-		"character_hp": _character_hp.duplicate(true),
+		"character_hp": _character_hp_snapshot(),
+		"damage_authority": _damage_authority_record(),
 		"enemy": {
 			"standard": {
 				"state": _standard_enemy.get_state() if _standard_enemy else "",
@@ -549,22 +795,19 @@ func headless_set_character_position(char_id: String, pos: Vector3) -> void:
 		_game_state._recompute_pendulum_predictions()
 
 func headless_set_character_hp(char_id: String, hp: float) -> void:
-	if not _character_hp.has(char_id):
+	if _game_state == null or not _game_state.characters.has(char_id):
 		return
-	var new_hp := clampf(hp, 0.0, DEFAULT_HP)
-	_character_hp[char_id] = new_hp
-	_character_iframes[char_id] = -1000.0
-	if _hud:
-		_hud.set_portrait_stat(char_id, "hp", new_hp)
-		_hud.set_portrait_status(char_id, "downed" if new_hp <= 0.0 else "")
-	if _game_state and _game_state.characters.has(char_id):
-		_game_state.characters[char_id].stats["hp"] = new_hp
-	if _characters.has(char_id):
-		var node: CharacterBody3D = _characters[char_id]
-		if new_hp <= 0.0:
-			node.set_move_enabled(false)
-		elif char_id == _active_char_id:
-			node.set_move_enabled(true)
+	var new_hp := clampf(hp, 0.0, _game_state.get_stat_cap(char_id, "hp"))
+	if new_hp > 0.0 and _game_state.is_downed(char_id):
+		_game_state.restore_character(char_id)
+	_game_state.set_stat(char_id, "hp", new_hp, "showcase_headless_fixture")
+	var record := _damage_authority_record()
+	if not record.is_empty():
+		var iframe_deadlines := (record.get("iframe_deadlines", {}) as Dictionary).duplicate(true)
+		iframe_deadlines.erase(char_id)
+		record["iframe_deadlines"] = iframe_deadlines
+		_game_state.set_world_state(DAMAGE_AUTHORITY_KEY, record)
+	_sync_character_health_presentation(char_id)
 
 func activate_showcase_flure() -> void:
 	_on_showcase_flure_activated()

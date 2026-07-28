@@ -1,11 +1,10 @@
 extends Node
 
-## Focused structural, gameplay-gate, and duration audit for the long-form Channels pass.
-## Run:
-##   ../Godot_v4.7-stable_win64_console.exe --headless --path . \
-##     res://tools/verify_channels_longform_extension.tscn
+## Focused regression for the restored Channels causal core.
+## The filename is retained so existing CI entry points keep working.
 
 const ACT1_SCENE := preload("res://scenes/tutorial/act1.tscn")
+const ACT1_SOURCE_PATH := "res://scripts/tutorial/act1_sequence.gd"
 
 var _failures: Array[String] = []
 
@@ -29,9 +28,10 @@ func _run() -> void:
 		_failures.append("Act 1 Channels instance boots")
 		_finish()
 		return
-	_verify_structure_and_duration(act1)
-	_verify_operation_gates(act1)
-	_verify_optional_exploration(act1)
+	_verify_causal_structure(act1)
+	_verify_window_handoffs(act1)
+	_verify_optional_worldbuilding(act1)
+	_verify_shelter_rest_authority(act1)
 	await _dispose(act1)
 	_finish()
 
@@ -46,190 +46,220 @@ func _spawn_channels() -> Node:
 	return act1
 
 
-func _verify_structure_and_duration(act1: Node) -> void:
-	print("\n=== Channels long-form structure and duration ===")
-	var field_root := act1.find_child("ChannelsFieldwork", true, false)
-	_check(field_root != null, "Channels owns a dedicated long-form fieldwork layer")
-	_check(act1.find_children("ChannelsField_*", "Interactable", true, false).size() == 52,
-		"30 evidence sites, 12 decisions, 4 branch executions, and 6 optional findings are real Interactables")
-	_check(act1.find_children("ChannelsFieldFrame_*", "Node3D", true, false).size() == 6,
-		"all six operations have measured structural frames")
-	_check(act1.find_children("ChannelsFieldLight_*", "OmniLight3D", true, false).size() == 6,
-		"each operation has a WebGL-safe authored landmark light")
-	var landmark_root := act1.find_child("ChannelsOperationLandmarks", true, false)
-	_check(landmark_root != null, "Channels owns a dedicated operation-landmark layer")
-	_check(act1.find_children("ChannelsLandmarkRoom_*", "Node3D", true, false).size() == 6,
-		"all six operations have a distinct macro-scale hydraulic landmark")
-	_check(act1.find_children("ChannelsLandmarkWater_*", "MeshInstance3D", true, false).size() >= 12,
-		"operation landmarks visibly connect the main race to local basins")
-	_check(act1.find_children("ChannelsLandmarkSilhouette_*", "MeshInstance3D", true, false).size() >= 24,
-		"operation landmarks carry substantial, differentiated silhouettes")
-	_check(act1.find_children("ChannelsLandmarkLabel_*", "Label3D", true, false).size() == 6,
-		"each hydraulic room names its operation at landmark scale")
-	_check(landmark_root == null or landmark_root.find_children("*", "CollisionShape3D", true, false).is_empty(),
-		"macro landmarks preserve the authored traversal and interaction clearance")
-	_check(act1.find_children("ChannelsFieldDatum_*", "MeshInstance3D", true, false).size() >= 46,
-		"continuous emissive measurement datums connect evidence and decision branches")
-	_check(act1.find_child("LevelDecoration", true, false) != null,
-		"the fieldwork remains inside the shared building-quality LevelDecorator pass")
-
-	var role_counts := {"aster": 0, "peris": 0, "endo": 0}
-	var timed_actions := 0
-	var outlined := 0
-	var registered_roles := 0
-	var routed_requests := 0
-	for node in act1.find_children("ChannelsField_*", "Interactable", true, false):
-		var role := str(node.get("required_character"))
-		if role_counts.has(role):
-			role_counts[role] += 1
-		if int(node.get("interactable_type")) == Interactable.InteractableType.TIMED_ACTION:
-			timed_actions += 1
-		if node.get("_outline_target") != null:
-			outlined += 1
-		if node.interaction_requested.get_connections().size() >= 2:
-			routed_requests += 1
-		var data_id := str(node.get("data_id"))
-		if data_id != "" and act1._game_state.has_interactable(data_id):
-			var registered: Dictionary = act1._game_state.get_interactable(data_id)
-			if str(registered.get("required_character", "")) == role:
-				registered_roles += 1
-	_check(timed_actions == 52, "every field station is a click-gated timed action")
-	_check(outlined == 52, "every visible field instrument binds object-level outline feedback")
-	_check(registered_roles == 52, "every specialist requirement is authoritative in GameState (got %d/52)" % registered_roles)
-	_check(routed_requests == 52, "every station routes its specialist and regroups the party through the shared controller")
-	_check(int(role_counts["aster"]) >= 12 and int(role_counts["peris"]) >= 12 and int(role_counts["endo"]) >= 10,
-		"fieldwork distributes substantive reads across Aster, Peris, and Endo")
+func _verify_causal_structure(act1: Node) -> void:
+	print("\n=== Channels causal structure ===")
+	var source := FileAccess.get_file_as_string(ACT1_SOURCE_PATH)
+	_check(not source.contains("CHANNELS_FIELD_OPERATIONS"), "retired operation table is absent")
+	_check(not source.contains("CHANNELS_FIELD_SITES"), "retired evidence-site table is absent")
+	_check(not source.contains("_start_channels_field_operation"), "retired field-operation dispatcher is absent")
+	_check(act1.find_child("ChannelsFieldwork", true, false) == null,
+		"no mandatory fieldwork layer is constructed")
+	_check(act1.find_child("ChannelsOperationLandmarks", true, false) == null,
+		"no checklist rooms remain after the authored hydraulic route")
+	var optional_sites := act1.find_children("ChannelsOptional_*", "Interactable", true, false)
+	_check(optional_sites.size() == act1.CHANNELS_OPTIONAL_SITES.size(),
+		"the six optional worldbuilding reads remain real interactables")
 
 	var contract: Dictionary = act1.get_channels_playtime_contract()
-	var first_clear := float(contract.get("modeled_first_clear_seconds", 0.0))
-	var meaningful_active := float(contract.get("meaningful_active_seconds", 0.0))
-	var route_meters := float(contract.get("shortest_field_route_meters", 0.0))
-	var active_ratio := float(contract.get("modeled_active_ratio", 0.0))
-	_check(first_clear >= 1200.0, "modeled shortest first clear reaches twenty minutes (%.1fs)" % first_clear)
-	_check(first_clear <= 1800.0, "modeled shortest first clear stays inside thirty minutes (%.1fs)" % first_clear)
-	_check(meaningful_active >= 1200.0,
-		"meaningful active play itself reaches the canonical twenty-minute floor (%.1fs)" % meaningful_active)
-	_check(route_meters >= 1100.0, "exact shortest-route search still yields a substantive field route (%.1fm)" % route_meters)
-	_check(active_ratio >= 0.70, "modeled meaningful-active ratio clears the pacing floor (%.1f%%)" % (active_ratio * 100.0))
-	_check(int(contract.get("mandatory_operation_count", 0)) == 6, "the contract measures all six operations")
-	_check(int(contract.get("mandatory_evidence_count", 0)) == 30, "the contract measures thirty unique evidence actions")
-	_check(int(contract.get("mandatory_resolution_action_count", 0)) == 2,
-		"both consequential resource branches require a distinct execution action")
-	_check(int(contract.get("decision_count", 0)) >= 6, "at least six planning/timing decisions remain in the first clear")
-	_check(int(contract.get("branch_count", 0)) >= 3, "recovery and pressure tradeoffs exceed the three-branch target")
-	print("  INFO: modeled first clear %.1fs, active %.1f%%, exact field route %.1fm" % [
-		first_clear, active_ratio * 100.0, route_meters,
-	])
+	_check(str(contract.get("measurement_kind", "")) == "causal_structure_not_first_clear_elapsed",
+		"contract reports causal structure, not synthetic first-clear time")
+	_check(int(contract.get("window_count", 0)) == 2,
+		"both hydraulic timing windows remain in the causal core")
+	_check(int(contract.get("mandatory_checklist_operation_count", -1)) == 0
+		and int(contract.get("mandatory_checklist_action_count", -1)) == 0,
+		"contract contains no mandatory checklist padding")
+	_check(not contract.has("meaningful_active_seconds")
+		and not contract.has("modeled_first_clear_seconds")
+		and not contract.has("target_min_seconds"),
+		"contract makes no unobserved duration claim")
+	var beats: Array = contract.get("required_causal_beats", [])
+	for beat in [
+		"memory_at_body", "window_one_lure_and_flow", "flure_flush",
+		"window_two_lure_and_flow", "lure_hide_run_encounter", "shelter_rest_and_shortcut",
+	]:
+		_check(beats.has(beat), "causal measurement retains %s" % beat)
+
+	var lane_state: Dictionary = act1.get("_channels_window_lanes")
+	_check(lane_state.size() == 2, "both playable window lanes are constructed")
+	for window_id in ["window_one", "window_two"]:
+		var lane: Dictionary = lane_state.get(window_id, {})
+		_check(not lane.is_empty(), "%s has authored state" % window_id)
+		_check((lane.get("periodic_channels", []) as Array).size() >= 3,
+			"%s exposes multiple flow phases to read" % window_id)
+		_check((lane.get("enemy_ids", []) as Array).size() > 0,
+			"%s has registered Enemy bodies whose wash outcome follows the timing prediction" % window_id)
 
 
-func _verify_operation_gates(act1: Node) -> void:
-	print("\n=== Channels evidence and decision gates ===")
-	act1._scheduler.clear()
-	act1._dialogue.clear()
-	var operation_order := ["intake", "memory", "harvest", "relay", "signal", "escape"]
-	for operation_id in operation_order:
-		act1._scheduler.clear()
-		act1._dialogue.clear()
-		act1._start_channels_field_operation(operation_id)
-		var operation: Dictionary = act1.CHANNELS_FIELD_OPERATIONS[operation_id]
-		_check(str(act1._current_step) == str(operation.get("step", "")),
-			"%s enters its own player-controlled step" % operation_id)
-		var evidence: Array = operation.get("evidence", [])
-		var choices: Array = operation.get("choices", [])
-		for choice_id in choices:
-			var early_choice: Node = act1._channels_field_sites[str(choice_id)]
-			_check(not early_choice.is_interaction_enabled(),
-				"%s choice stays disabled before evidence" % operation_id)
-
-		# GameState, not just the view, rejects the wrong specialist at the first site.
-		var first_id := str(evidence[0])
-		var first_site: Node = act1._channels_field_sites[first_id]
-		var first_spec: Dictionary = act1.CHANNELS_FIELD_SITES[first_id]
-		var required := str(first_spec.get("role", ""))
-		var wrong := "peris" if required != "peris" else "aster"
-		first_site.set("active_character", wrong)
-		first_site.call("_trigger", false)
-		var phase_state: Dictionary = (act1.headless_get_state().get("channels_fieldwork", {}) as Dictionary)
-		var completed_by_operation: Dictionary = phase_state.get("completed_evidence", {})
-		_check(not bool((completed_by_operation.get(operation_id, {}) as Dictionary).get(first_id, false)),
-			"%s rejects the wrong specialist without consuming evidence" % first_id)
-
-		for evidence_id_variant in evidence:
-			var evidence_id := str(evidence_id_variant)
-			var site: Node = act1._channels_field_sites[evidence_id]
-			var spec: Dictionary = act1.CHANNELS_FIELD_SITES[evidence_id]
-			site.set("active_character", str(spec.get("role", "")))
-			site.call("_trigger", false)
-		for choice_id in choices:
-			var unlocked_choice: Node = act1._channels_field_sites[str(choice_id)]
-			_check(unlocked_choice.is_interaction_enabled(),
-				"%s unlocks decisions only after all five distinct reads" % operation_id)
-
-		var valid_choices: Array = operation.get("valid_choices", [])
-		var invalid_choice := ""
-		for choice_id in choices:
-			if not valid_choices.has(choice_id):
-				invalid_choice = str(choice_id)
-				break
-		if invalid_choice != "":
-			var invalid_site: Node = act1._channels_field_sites[invalid_choice]
-			invalid_site.set("active_character", str(act1.CHANNELS_FIELD_SITES[invalid_choice].get("role", "")))
-			invalid_site.call("_trigger", false)
-			_check(str(act1._channels_field_phase) == operation_id,
-				"%s keeps an evidence-conflicting answer in the operation" % operation_id)
-			_check(int(act1._channels_field_attempts.get(operation_id, 0)) == 1,
-				"%s records the rejected inference without adding a wait/reset timer" % operation_id)
-
-		var valid_choice := str(valid_choices[0])
-		var valid_site: Node = act1._channels_field_sites[valid_choice]
-		valid_site.set("active_character", str(act1.CHANNELS_FIELD_SITES[valid_choice].get("role", "")))
-		valid_site.call("_trigger", false)
-		var resolution_sites: Dictionary = operation.get("resolution_sites", {})
-		if resolution_sites.has(valid_choice):
-			var pending_state: Dictionary = (act1.headless_get_state().get("channels_fieldwork", {}) as Dictionary)
-			_check(not bool((pending_state.get("operations_completed", {}) as Dictionary).get(operation_id, false)),
-				"%s does not resolve from a menu choice alone" % operation_id)
-			var resolution_id := str(resolution_sites[valid_choice])
-			var resolution_site: Node = act1._channels_field_sites[resolution_id]
-			_check(resolution_site.is_interaction_enabled(),
-				"%s opens its chosen spatial execution branch" % operation_id)
-			resolution_site.set("active_character", str(act1.CHANNELS_FIELD_SITES[resolution_id].get("role", "")))
-			resolution_site.call("_trigger", false)
-		var field_state: Dictionary = (act1.headless_get_state().get("channels_fieldwork", {}) as Dictionary)
-		_check(bool((field_state.get("operations_completed", {}) as Dictionary).get(operation_id, false)),
-			"%s resolves through a supported evidence decision" % operation_id)
-		_check(str((field_state.get("choices", {}) as Dictionary).get(operation_id, "")) == valid_choice,
-			"%s preserves its committed outcome" % operation_id)
-
-	var final_field_state: Dictionary = (act1.headless_get_state().get("channels_fieldwork", {}) as Dictionary)
-	_check(int(final_field_state.get("operation_count", 0)) == 6,
-		"all six long-form operations are independently completion-gated")
-	_check(int(final_field_state.get("decision_count", 0)) == 6,
-		"the completed play path records six explicit field decisions")
-	_check(str((final_field_state.get("choices", {}) as Dictionary).get("harvest", "")) == "harvest_reserve",
-		"the harvest resource allocation survives later operations")
-	_check(str((final_field_state.get("choices", {}) as Dictionary).get("relay", "")) == "relay_pressure",
-		"the relay pressure tradeoff survives later operations")
+func _verify_window_handoffs(act1: Node) -> void:
+	print("\n=== Channels direct causal handoffs ===")
+	_check(_wash_window_through_real_channel(act1, "window_one"),
+		"the first Flure leads its registered Enemy pack into a real carrying current")
+	var window_one: Dictionary = act1._channels_window_lanes["window_one"]
+	for char_id in act1.CHANNELS_PARTY_IDS:
+		act1.headless_set_character_position(char_id, window_one["goal_pos"])
+	act1._evaluate_channels_window_authority()
+	_check(str(act1._current_step) == "channels_to_flure",
+		"full-party first-window arrival hands to the ferrolure beat")
+	_check(_wash_window_through_real_channel(act1, "window_two"),
+		"the second Flure leads its registered Enemy pack into a real carrying current")
+	var window_two: Dictionary = act1._channels_window_lanes["window_two"]
+	for char_id in act1.CHANNELS_PARTY_IDS:
+		act1.headless_set_character_position(char_id, window_two["goal_pos"])
+	act1._evaluate_channels_window_authority()
+	_check(str(act1._current_step) == "channels_to_encounter",
+		"full-party second-window arrival hands to the lure-hide-run encounter")
 
 
-func _verify_optional_exploration(act1: Node) -> void:
-	print("\n=== Channels optional return reads ===")
-	act1._scheduler.clear()
-	act1._dialogue.clear()
+func _wash_window_through_real_channel(act1: Node, window_id: String) -> bool:
+	act1.start_channels_window_puzzle(window_id)
+	act1._scheduler.resume()
+	var lane: Dictionary = act1._channels_window_lanes.get(window_id, {})
+	var flure := act1._valid_channels_flure(lane) as Flure
+	if not _trigger_flure(act1, flure, "peris"):
+		return false
+	var entries: Array = lane.get("periodic_channels", [])
+	var enemy_ids: Array = lane.get("enemy_ids", [])
+	if entries.is_empty() or enemy_ids.is_empty():
+		return false
+	var entry: Dictionary = entries[0]
+	var channel: Channel = entry.get("channel")
+	var channel_position: Vector3 = entry.get("position", Vector3.ZERO)
+	if not is_instance_valid(channel):
+		return false
+	# Keep the party clear of the forced contact used by this focused verifier. The production
+	# route earns that separation by timing the crossing after the visible carry.
+	var safe_observer_position := channel_position + Vector3(-40.0, 0.0, 40.0)
+	for char_id in act1.CHANNELS_PARTY_IDS:
+		act1.headless_set_character_position(char_id, safe_observer_position)
+	for enemy_id_v in enemy_ids:
+		var enemy_id := str(enemy_id_v)
+		act1._game_state.command_stop(enemy_id)
+		act1._game_state.snap_character_to(enemy_id, channel_position)
+	channel.flood_now()
+	act1.headless_advance(0.061, 0.001)
+	var last_arrival := -1.0
+	for enemy_id_v in enemy_ids:
+		var traversal: Dictionary = act1._game_state.get_external_traversal_state(
+			str(enemy_id_v))
+		if str(traversal.get("traversal_id", "")).begins_with("channel_sweep/"):
+			last_arrival = maxf(last_arrival, float(traversal.get("end_tick", -1.0)))
+	if last_arrival < 0.0:
+		return false
+	act1.headless_advance(
+		maxf(0.0, last_arrival - float(act1._scheduler.get_current_tick())) + 0.01,
+		0.01)
+	lane = act1._channels_window_lanes.get(window_id, {})
+	return act1._channels_scope_is_fully_swept(
+		lane.get("enemy_ids", []), lane.get("swept_ids", []))
+
+
+func _trigger_flure(act1: Node, flure: Flure, actor: String) -> bool:
+	if flure == null:
+		return false
+	act1._game_state.command_stop(actor)
+	act1._game_state.snap_character_to(actor, flure.get_source_data_position())
+	act1._select_character(actor)
+	flure.active_character = actor
+	return bool(flure.call("_trigger", false))
+
+
+func _verify_optional_worldbuilding(act1: Node) -> void:
+	print("\n=== Channels optional worldbuilding ===")
+	act1.prepare_channels_fragment()
+	var seed_spec: Dictionary = act1.CHANNELS_OPTIONAL_SITES["optional_seed_cache"]
+	var report_spec: Dictionary = act1.CHANNELS_OPTIONAL_SITES["optional_report_stub"]
+	_check(str(seed_spec.get("verb", "")).begins_with("INSPECT")
+			and not str(seed_spec.get("finding", "")).contains("recover")
+			and str(seed_spec.get("finding", "")).contains("leaves"),
+		"the seed cache is explicitly inspected in place rather than falsely collected")
+	_check(str(report_spec.get("verb", "")).begins_with("READ")
+			and not str(report_spec.get("finding", "")).contains("recover")
+			and str(report_spec.get("finding", "")).contains("in place"),
+		"the fixed report page is explicitly read in place rather than falsely collected")
+	var seed_visual: Node = act1.get("_channels_optional_visuals").get("optional_seed_cache")
+	var report_visual: Node = act1.get("_channels_optional_visuals").get("optional_report_stub")
+	_check(seed_visual != null
+			and seed_visual.find_child("SeedCacheCradle", true, false) != null
+			and seed_visual.find_children("SealedSeedPod*", "MeshInstance3D", true, false).size() == 4,
+		"seed evidence has a distinct visible cradle with four sealed pods")
+	_check(report_visual != null
+			and report_visual.find_child("ReportLectern", true, false) != null
+			and report_visual.find_child("FixedReportPage", true, false) != null,
+		"report evidence has a distinct fixed lectern and readable page assembly")
+	for site_id_variant in act1.CHANNELS_OPTIONAL_SITES.keys():
+		var site_id := str(site_id_variant)
+		var site: Node = act1.get("_channels_optional_sites").get(site_id)
+		_check(site != null and not site.is_interaction_enabled(),
+			"%s does not gate the authored route" % site_id)
 	act1._start_channels_explore()
-	var optional_nodes := []
-	for site_id in act1.CHANNELS_OPTIONAL_SITES.keys():
-		var site: Node = act1._channels_field_sites[str(site_id)]
-		optional_nodes.append(site)
-		_check(site.is_interaction_enabled(), "%s opens only in post-shelter exploration" % site_id)
-	var first_optional: Node = optional_nodes[0]
-	var optional_id := str(act1.CHANNELS_OPTIONAL_SITES.keys()[0])
-	first_optional.set("active_character", str(act1.CHANNELS_OPTIONAL_SITES[optional_id].get("role", "")))
-	first_optional.call("_trigger", false)
-	var state: Dictionary = (act1.headless_get_state().get("channels_fieldwork", {}) as Dictionary)
-	_check(int(state.get("optional_count", 0)) == 1,
-		"optional exploration records a finding without gating the Stacks exit")
-	_check(str(act1._current_step) == "channels_explore", "an optional read leaves campaign progression under player control")
+	var first_id := str(act1.CHANNELS_OPTIONAL_SITES.keys()[0])
+	var first_site: Node = act1.get("_channels_optional_sites").get(first_id)
+	for site_id_variant in act1.CHANNELS_OPTIONAL_SITES.keys():
+		var site_id := str(site_id_variant)
+		var site: Node = act1.get("_channels_optional_sites").get(site_id)
+		_check(site != null and site.is_interaction_enabled(),
+			"%s opens only in free exploration" % site_id)
+
+	var required := str(act1.CHANNELS_OPTIONAL_SITES[first_id].get("role", ""))
+	var wrong := "peris" if required != "peris" else "aster"
+	first_site.set("active_character", wrong)
+	first_site.call("_trigger", false)
+	var optional_state: Dictionary = act1.headless_get_state().get("channels_optional_worldbuilding", {})
+	_check(int(optional_state.get("optional_count", 0)) == 0,
+		"wrong specialist cannot consume an optional read")
+	first_site.set("active_character", required)
+	first_site.call("_trigger", false)
+	optional_state = act1.headless_get_state().get("channels_optional_worldbuilding", {})
+	_check(int(optional_state.get("optional_count", 0)) == 1,
+		"correct specialist records one optional finding")
+	_check(str(act1._current_step) == "channels_explore",
+		"optional worldbuilding never becomes a progression gate")
+
+
+func _verify_shelter_rest_authority(act1: Node) -> void:
+	print("\n=== Channels shelter rest authority ===")
+	act1.prepare_channels_fragment()
+	for char_id in ["aster", "peris", "endo"]:
+		act1.headless_set_character_position(char_id, act1.CHANNELS_SHELTER_POS)
+		act1._game_state.set_stat(char_id, "hp", 80.0)
+		act1._game_state.set_stat(char_id, "stamina", 20.0)
+		act1._game_state.set_stat(char_id, "atp", 3.0)
+	act1._current_step = "channels_shelter"
+	act1._on_channels_shelter_party_arrived()
+	_check(act1._channels_shelter_reached and not act1._channels_party_recuperated
+		and not act1._channels_shelter_interactable.interaction_enabled,
+		"party arrival keeps the proximity hearth locked throughout its introduction")
+	for char_id in ["aster", "peris", "endo"]:
+		_check(not act1._game_state.is_resting(char_id)
+				and is_equal_approx(act1._game_state.get_stat(char_id, "atp"), 3.0),
+			"%s remains unpaid and awake before REST PARTY" % char_id)
+	act1._dialogue.clear()
+	act1._enable_channels_shelter_rest()
+	_check(act1._channels_shelter_interactable.interaction_enabled,
+		"the named introduction completion arms the explicit REST PARTY control")
+	act1._select_character("aster")
+	act1._channels_shelter_interactable.active_character = "aster"
+	_check(bool(act1._channels_shelter_interactable._trigger(false)),
+		"REST PARTY enters through the real Channels hearth interaction")
+	_check(act1._channels_party_recuperated,
+		"present conscious party members can begin the explicit shelter rest")
+	for char_id in ["aster", "peris", "endo"]:
+		_check(act1._game_state.is_resting(char_id), "%s rests through GameState" % char_id)
+		_check(is_equal_approx(act1._game_state.get_stat(char_id, "atp"), 2.0),
+			"%s pays the shared one-pip rest cost" % char_id)
+		_check(is_equal_approx(act1._game_state.get_stat(char_id, "hp"), 80.0),
+			"%s is not healed instantly by scene-local mutation" % char_id)
+	act1.headless_advance(1.1, 0.05)
+	for char_id in ["aster", "peris", "endo"]:
+		_check(act1._game_state.get_stat(char_id, "hp") > 80.0
+			and act1._game_state.get_stat(char_id, "hp") < act1._game_state.get_stat_cap(char_id, "hp"),
+			"%s recovers incrementally while resting" % char_id)
+	act1.headless_advance(22.0, 0.05)
+	for char_id in ["aster", "peris", "endo"]:
+		_check(is_equal_approx(
+			act1._game_state.get_stat(char_id, "hp"),
+			act1._game_state.get_stat_cap(char_id, "hp")
+		), "%s completes recovery through the shared rest loop" % char_id)
 
 
 func _dispose(act1: Node) -> void:
@@ -244,8 +274,10 @@ func _dispose(act1: Node) -> void:
 
 func _finish() -> void:
 	if _failures.is_empty():
-		print("Channels long-form extension verification: ALL PASSED")
+		print("\nChannels causal-core verification: ALL PASSED")
 		get_tree().quit(0)
 	else:
-		print("Channels long-form extension verification: %d FAILED" % _failures.size())
+		print("\nChannels causal-core verification: %d FAILED" % _failures.size())
+		for failure in _failures:
+			print("  - %s" % failure)
 		get_tree().quit(1)

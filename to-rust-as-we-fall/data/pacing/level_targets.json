@@ -5,7 +5,7 @@
 		"target_basis": {
 			"explicit": "A first-clear duration is stated directly in an authored level or puzzle document.",
 			"operative": "An existing project-wide workflow establishes the duration as the current production standard.",
-			"planning": "A provisional production target introduced here; playtests may revise it without changing canon."
+			"planning": "A provisional playtest hypothesis, never a content quota. Duration and count misses are advisory; they cannot justify mandatory interactions that are absent from canon."
 		},
 		"authored_metrics": {
 			"meaningful_active_seconds": "Time spent traversing, exploring, planning, deciding, interacting, or executing a hazard. Passive waits and non-interactive presentation do not count.",
@@ -76,7 +76,7 @@
 			"first_clear_seconds": {"minimum": 75, "maximum": 150},
 			"min_decisions": 1,
 			"min_branches": 2,
-			"basis_note": "Compact first-night teaching beat: one three-specialist causal circuit, with no repeated solved-model loops."
+			"basis_note": "Planning hypothesis for the compact first-night information-versus-health route choice. Validate with human first-clear playtests; never add interactions to meet this band."
 		},
 		{
 			"id": "channels",

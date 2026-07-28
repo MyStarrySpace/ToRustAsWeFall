@@ -81,13 +81,13 @@ func _run() -> void:
 	var hud = HudScene.instantiate()
 	root.add_child(hud)
 	await process_frame
-	hud.call("add_ability", "aster_focus", "FOCUS", "1", Color(0.3, 0.6, 1.0), "", "aster")
+	hud.call("add_ability", "emp", "EMP", "1", Color(0.3, 0.6, 1.0), "", "aster")
 	check((hud.call("get_hud_contract") as Dictionary).get("abilities", {}).size() == 1,
 		"HUD registers the current chunk ability")
 	hud.call("clear_abilities")
 	check((hud.call("get_hud_contract") as Dictionary).get("abilities", {}).is_empty(),
 		"HUD clears old chunk abilities before regeneration")
-	hud.call("add_ability", "aster_focus", "FOCUS", "1", Color(0.3, 0.6, 1.0), "", "aster")
+	hud.call("add_ability", "emp", "EMP", "1", Color(0.3, 0.6, 1.0), "", "aster")
 	check((hud.call("get_hud_contract") as Dictionary).get("abilities", {}).size() == 1,
 		"same ability can be registered cleanly after regeneration")
 	hud.free()

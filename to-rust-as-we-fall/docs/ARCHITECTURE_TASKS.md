@@ -45,12 +45,12 @@ Pairs with #1. Without this, replays diverge and everything downstream (#3, #11,
 - [x] **2.2** `SeededRng` wraps `RandomNumberGenerator`; constructor requires an explicit seed. — [scripts/system/random/seeded_rng.gd](scripts/system/random/seeded_rng.gd)
 - [x] **2.3** `RngRegistry` keyed by `(system_name, birth_id)`. Seeds derive from `base_seed * 1000003 ^ hash(system_name) * 1000003 ^ birth_id` — XOR alone collapses too many keys, so we mix with a large odd prime first. — [scripts/system/random/rng_registry.gd](scripts/system/random/rng_registry.gd)
 - [~] **2.4** `GameState.base_seed` exists with `set_base_seed(value)` setter that re-seeds the registry. `EventLog.base_seed` carries it through save/replay; `GameState.replay` re-seeds from the log. **Pending:** title-screen + pause-menu UI for player-visible seed entry (UI work, not engine work).
-- [~] **2.5** RNG consumption events. The schema and registry support per-spawn `birth_id` derivation, so a Techo born at event N gets a deterministic seed without explicit logging. **No RNG-consumption events emitted yet** because no game system uses RNG; will be added per-system as systems land.
+- [~] **2.5** RNG consumption events. The schema and registry support per-spawn `birth_id` derivation, so a Sapscrap born at event N gets a deterministic seed without explicit logging. **No RNG-consumption events emitted yet** because no game system uses RNG; will be added per-system as systems land.
 
 **Open issue — SeededRng.set_state pitfall:** the initial implementation set `_rng.state = 0` after `_rng.seed = seed_value`, which discarded the seed's effect (every instance produced identical output). Fixed by removing the state reset; the seed setter on `RandomNumberGenerator` derives the initial state. Documented in code so it doesn't regress.
 
 **Success conditions**
-- [x] `--test-rng-determinism`: 6/6. Same seed → same value sequence (across multiple systems). Different seed → different sequence (same system). Per-system isolation: extra `ai.techo` calls do not perturb `loot` output. Per-spawn isolation: same system with different `birth_id`s produces independent streams. `GameState.replay` propagates the log's `base_seed` and re-seeds the registry.
+- [x] `--test-rng-determinism`: 6/6. Same seed → same value sequence (across multiple systems). Different seed → different sequence (same system). Per-system isolation: extra `ai.sapscrap` calls do not perturb `loot` output. Per-spawn isolation: same system with different `birth_id`s produces independent streams. `GameState.replay` propagates the log's `base_seed` and re-seeds the registry.
 - [x] `--test-rng-no-wallclock`: walks `scripts/`, fails if any `.gd` line uses a wall-clock pattern (`randi`, `randf`, `randomize`, `RandomNumberGenerator.new`, `Time.get_ticks_*`, `Time.get_unix_time_from_system`) outside the allowlist or without `@rendering_only` / `@rendering_only_file`. Currently passing on a clean tree.
 - [x] Two replays of the same event stream produce identical logs when re-recorded — closed by `--test-determinism-rerecord` (covered under #12). The test currently exercises non-RNG commands; extending to RNG-dependent systems lands alongside the first game system that uses `RngRegistry`.
 
@@ -117,20 +117,20 @@ Game-shape primitives. Zones are data; hubs and gates are nodes with explicit ro
 
 **Design decision (locked in by 6.1–6.4):** Zone is a plain `Resource` with exported fields so scenes can declare zones in `.tres` files. Hub and Gate are `RefCounted` data classes, not `Node3D` — they're referenced by scene-level nodes via id. `ZoneManager` is `RefCounted` (not an autoload) so tests can construct one per scenario. This decouples the model from the scene tree; when we later need a scene-tree integration, a Node wrapper can hold a ZoneManager reference.
 
-**Design decision (locked in by 6.5):** narrative-availability is a per-character bool stored in `stats["narrative_available"]`. `down_character` / `restore_character` are logged commands (emit through `_emit`). They're issued by combat code (on HP → 0) and by hubs (on rest). Both are replay-safe because they go through the event log.
+**Design decision (corrected 2026-07-21):** narrative-availability is a per-character bool stored in `stats["narrative_available"]`. `down_character` / checkpoint-only `restore_character` are logged commands. Hub arrival never invokes recovery. Normal healing, stamina restoration, and revival are owned by explicit shelter rest; ATP is replenished only by lysate.
 
 - [x] **6.1** `Zone` resource with `id`, `display_name`, `hub_ids`, `spoke_ids`, `gate_ids`. — [scripts/game/world/zone.gd](scripts/game/world/zone.gd). (The `essential_third` field was removed when #8 was dropped.)
-- [x] **6.2** `Hub` class with `id`, `zone_id`, `position`, `radius`, and a `restore_party(gs, party)` static helper. Entering a hub triggers `restore_character` for every party member — each restore goes through the log. — [scripts/game/world/hub.gd](scripts/game/world/hub.gd)
+- [x] **6.2** `Hub` class with `id`, `zone_id`, `position`, and `radius`. Entering a hub records location/progression only. Its separately named `revive_party_after_wipe` checkpoint escape preserves ATP and must not be presented as rest. — [scripts/game/world/hub.gd](scripts/game/world/hub.gd)
 - [x] **6.3** `Gate` class with `required_members` and `try_pass(gs, party) -> bool`. Emits either `passed` or `blocked(reason: StringName)` exactly once per call. Reasons are `missing_<id>` (not in party) or `unavailable_<id>` (downed / narratively unavailable). — [scripts/game/world/gate.gd](scripts/game/world/gate.gd)
 - [x] **6.4** `ZoneManager` with registries for zones/hubs/gates and signals `zone_entered`, `zone_exited`, `hub_entered`, `gate_passed`, `gate_blocked`, `spoke_completed`. Tracks current zone, hub, completed spokes, and passed gates. `is_hub_reachable(hub_id)` returns true only for hubs in the currently-active zone — implements the "old hubs fall out of practical reach" semantics. **Not an autoload** — instantiated per scene. — [scripts/game/world/zone_manager.gd](scripts/game/world/zone_manager.gd)
-- [x] **6.5** Hub-rest flow: `down_character` and `restore_character` commands on GameState, both logged. Rest sets HP/stamina to declared max values (from `stats.max_hp` / `stats.max_stamina`) and ATP to `GameState.ATP_MAX_PIPS`, and flips `narrative_available` to true.
+- [x] **6.5** Shelter-rest flow: `command_rest` requires physical shelter presence and ATP, spends ATP up front, restores HP/stamina over scheduled time, and owns ordinary shelter recovery. `restore_character` is reserved for checkpoint/wipe reset and never refills ATP.
 
-**Open issue — evaluate_mechanisms / enter_hub auto-trigger:** scenes today must call `zm.enter_hub(...)` manually when the party reaches the hub's radius. Automating this via movement-arrival signals is straightforward (detection prediction pattern) but deferred until the first scene wires a live hub.
+**Open issue — evaluate_mechanisms / enter_hub auto-trigger:** scenes today must call `zm.enter_hub(...)` manually when the party reaches the hub's radius. Automating arrival is straightforward, but it must remain a location signal and must not trigger rest.
 
 **Open issue — party membership is test-side:** ZoneManager's methods take an explicit `party: Array` parameter rather than querying a canonical source. With #8 dropped, the canonical party model is just "who's currently recruited" — arrives alongside #9 (cohesion) and recruitment flow.
 
 **Success conditions**
-- [x] `--test-hub-rest-restore`: 7/7. Down a character; HP/stamina zero; narrative-available flips false. Rest at hub; HP/stamina restored to declared max, ATP to full, narrative-available true.
+- [x] `--test-hub-rest-restore`: hub arrival leaves HP/stamina/ATP unchanged; an explicit rest inside its shelter region spends ATP and then restores HP/stamina.
 - [x] `--test-gate-block`: 8/8. Gate requiring Endo blocks without Endo (reason `missing_endo`). Adding a downed Endo still blocks (reason `unavailable_endo`). Restoring Endo and retrying → passes once.
 - [x] `--test-zone-progression`: 17/17. Two-zone scripted run: enter zone A, both A hubs reachable, zone B's not. Enter hub, mark spoke complete, pass gate. Enter zone B → `zone_exited(channels)` fires, zone A hubs fall out of reach, zone B hub becomes reachable.
 
@@ -138,13 +138,13 @@ Game-shape primitives. Zones are data; hubs and gates are nodes with explicit ro
 
 ## 7. Failure / recovery model
 
-No game-over. Downed ≠ dead. Retreat to hub = full recovery.
+No game-over. Downed ≠ dead. A wipe retreat is checkpoint recovery, not a source of ATP and not a substitute for the shelter-rest loop.
 
 **API shape (locked in by 7.1–7.4):**
-- `down_character` / `restore_character`: combat and rest, fully recoverable, logged commands (added in #6).
+- `down_character` / `restore_character`: combat down and checkpoint reset, logged commands (added in #6). The reset preserves ATP.
 - `die_scripted(char_id)`: the ONLY path to permanent death. Sets `stats.dead = true`, emits `character_died(char_id, true)`. The `scripted` flag on the signal is always true because `die_scripted` is the sole emission site; the parameter is there to document intent and to make the lint explicit.
 - `is_downed(char_id)` / `is_party_downed(party)`: queries.
-- `ZoneManager.retreat_to_last_hub(gs, party) -> bool`: restores every party member and fires `party_retreated(hub_id)`. Returns false if no hub has been entered yet (the party has nowhere to retreat TO — scenes should prevent this by ensuring a hub is entered before spokes begin).
+- `ZoneManager.retreat_to_last_hub(gs, party) -> bool`: performs the separately named wipe-revival escape and fires `party_retreated(hub_id)`. It preserves ATP. Returns false if no hub has been entered yet.
 
 - [x] **7.1** `downed` state as `stats.narrative_available == false` (set by `down_character`). Not a separate state-machine node — the existing stat dict carries the flag, which is reachable via `is_downed(char_id)`.
 - [~] **7.2** "Remove any remaining game over code paths". **Machinery in place:** `retreat_to_last_hub` + `party_retreated` signal give scenes the replacement. **Existing content not migrated:** `tutorial/elevator_sequence.gd` has a "We Fell" game-over path at `_start_game_over()` (iron spill failure). Migration is content work — when the elevator scene is rewritten, swap the fade-and-end for `zm.retreat_to_last_hub` + a specific retreat point. Flagged here; not changed in this slice.
@@ -152,7 +152,7 @@ No game-over. Downed ≠ dead. Retreat to hub = full recovery.
 - [x] **7.4** Downed-party-recovery primitive. Game code can check `gs.is_party_downed(party)` in its spoke loop and call `zm.retreat_to_last_hub(gs, party)` when it returns true. Auto-trigger on every `character_downed` signal is a straightforward extension; left to scene code because the "spoke loop" is scene-specific.
 
 **Success conditions**
-- [x] `--test-no-game-over`: 12/12. Down all party members in a spoke → no `game_over`-style signal, no `character_died`, `is_party_downed` is true. `retreat_to_last_hub` returns true, emits `party_retreated(hub_channels)`, every member's HP/stamina restored to max, narrative-available true. Retreat without a prior hub returns false cleanly.
+- [x] `--test-no-game-over`: a full down emits no death, retreat returns to the last checkpoint and makes the party available without refilling ATP; retreat without a prior hub returns false cleanly.
 - [x] `--test-scripted-death-only`: 1/1. Walks `scripts/` (excluding the test runner itself, which references the signal name in lint strings and docstrings). Flags any `character_died.emit(` call outside `die_scripted`. Negative-test verified with a sentinel function.
 
 ---

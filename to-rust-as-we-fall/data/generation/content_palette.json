@@ -6,10 +6,8 @@
     "flure": {"display_name": "Flure", "support": "implemented", "tags": ["iron_decoy", "lure"]},
     "mother_flure": {"display_name": "Mother Flure", "support": "implemented", "tags": ["setpiece", "root", "flure"]},
     "hushbloom": {"display_name": "Hushbloom", "support": "implemented", "tags": ["stun", "defense"]},
-    "doma": {"display_name": "Doma", "support": "implemented", "tags": ["tight_cover", "hide"]},
-    "snapbloom": {"display_name": "Snapbloom", "support": "implemented", "tags": ["repellent", "camouflage"]},
-    "capbage": {"display_name": "Capbage", "support": "placeholder", "tags": ["gdd", "harvest", "food"]},
-    "gasafoetida": {"display_name": "Gasafoetida", "support": "placeholder", "tags": ["gdd", "gas", "combustible"]},
+    "capbage": {"display_name": "Capbage", "support": "implemented", "tags": ["tight_cover", "hide", "cache"]},
+    "gasafoetida": {"display_name": "Gasafoetida", "support": "placeholder", "tags": ["repellent", "gas", "combustible"]},
     "climbvine": {"display_name": "Climbvine", "support": "placeholder", "tags": ["traversal", "bridge", "height"]},
     "resolution_roots": {"display_name": "Resolution Roots", "support": "placeholder", "tags": ["puzzle_only", "stabilize", "break"]},
     "forget_me_nots": {"display_name": "Forget-me-nots", "support": "placeholder", "tags": ["relationship", "memory", "ambient"]}

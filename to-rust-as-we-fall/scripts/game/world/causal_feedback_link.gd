@@ -303,7 +303,9 @@ func _process(_delta: float) -> void:
 	# Rendering-only wall time keeps the packet/pulse alive during a gameplay planning
 	# pause and rechecks the live party sight roster as characters move. It never feeds
 	# the scheduler or any gameplay decision.
+	var perf_started := PerformanceTrace.begin()
 	_refresh_visibility()
+	PerformanceTrace.end(&"draw", &"causal_feedback.process", perf_started, name, 1)
 
 
 func _build_visuals() -> void:

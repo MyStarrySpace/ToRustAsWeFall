@@ -10,10 +10,16 @@ extends Enemy
 
 const HESITATION_FACTOR := 0.45
 const HESITATION_POLL := 0.4
+const NATURALIZER_AUTHORITY_VERSION := 1
+const NATURALIZER_AUTHORITY_PREFIX := "runtime:naturalizer:"
+const _RESTORE_POLL_EPSILON := 0.000001
 
 var _hesitation_zones: Array = []   # [{pos: Vector3, radius: float}]
 var _hesitating := false
 var _nat_base_speed := 0.0
+var _hesitation_poll_deadline := -1.0
+var _naturalizer_authority_initialized := false
+var _restoring_naturalizer_authority := false
 var _scan_ring: MeshInstance3D
 
 func _ready() -> void:
@@ -31,11 +37,29 @@ func _ready() -> void:
 	_nat_base_speed = move_speed
 
 func add_hesitation_zone(pos: Vector3, radius: float) -> void:
-	_hesitation_zones.append({"pos": pos, "radius": radius})
+	var safe_radius := maxf(0.0, radius)
+	for zone_v in _hesitation_zones:
+		var zone := zone_v as Dictionary
+		if (zone.get("pos", Vector3.ZERO) as Vector3).is_equal_approx(pos) \
+				and is_equal_approx(float(zone.get("radius", 0.0)), safe_radius):
+			# Scene wiring is replayed when a fresh presenter is built. The saved zone is already
+			# authoritative, so the duplicate authored call must not restart its cadence.
+			return
+	_hesitation_zones.append({"pos": pos, "radius": safe_radius})
 	_arm_hesitation_poll()
+	_publish_naturalizer_authority()
 
 func activate() -> void:
+	var had_saved_authority := _has_saved_naturalizer_authority()
 	super.activate()
+	# Enemy.activate() invokes the virtual restore hook when it finds a saved enemy phase. Avoid
+	# publishing scene defaults over that record before the hook has rebuilt this subclass too.
+	if had_saved_authority:
+		if not _naturalizer_authority_initialized:
+			_restore_naturalizer_authority()
+		return
+	_naturalizer_authority_initialized = true
+	_publish_naturalizer_authority()
 	_arm_hesitation_poll()
 
 func _hes_tag() -> String:
@@ -45,8 +69,33 @@ func _arm_hesitation_poll() -> void:
 	var sched = _get_scheduler()
 	if sched == null or _hesitation_zones.is_empty():
 		return
+	_schedule_hesitation_poll_at(float(sched.get_current_tick()) + HESITATION_POLL)
+
+func _schedule_hesitation_poll_at(deadline: float) -> void:
+	var sched = _get_scheduler()
+	if sched == null or _hesitation_zones.is_empty():
+		_hesitation_poll_deadline = -1.0
+		_publish_naturalizer_authority()
+		return
+	# The native scheduler removes a fired handle from its live set before invoking us, but retains
+	# that stale handle in the tag index. Clearing the tag before scheduling its successor keeps the
+	# recurring index bounded and also retracts any accidental duplicate poll.
 	sched.cancel_tag(_hes_tag())
-	sched.schedule_after(HESITATION_POLL, _hesitation_poll, _hes_tag())
+	_hesitation_poll_deadline = deadline
+	var remaining := maxf(_RESTORE_POLL_EPSILON,
+		deadline - float(sched.get_current_tick()))
+	sched.schedule_after(remaining,
+		_run_hesitation_poll.bind(deadline), _hes_tag())
+	_publish_naturalizer_authority()
+
+func _run_hesitation_poll(expected_deadline: float) -> void:
+	# An idempotent restore or a newly-authored zone supersedes the old callback. Tag cancellation is
+	# the first guard; the absolute-deadline token also makes stale callbacks harmless by construction.
+	if _hesitation_poll_deadline < 0.0 \
+			or not is_equal_approx(_hesitation_poll_deadline, expected_deadline):
+		return
+	_hesitation_poll_deadline = -1.0
+	_hesitation_poll()
 
 func _hesitation_poll() -> void:
 	if game_state != null and game_state.characters.has(char_id) and is_alive():
@@ -63,11 +112,107 @@ func _hesitation_poll() -> void:
 			game_state.change_move_speed(char_id,
 				_nat_base_speed * HESITATION_FACTOR if inside else _nat_base_speed)
 	var sched = _get_scheduler()
-	if sched != null:
-		sched.schedule_after(HESITATION_POLL, _hesitation_poll, _hes_tag())
+	if sched != null and not _hesitation_zones.is_empty() and is_alive():
+		_schedule_hesitation_poll_at(
+			float(sched.get_current_tick()) + HESITATION_POLL)
+	else:
+		_hesitation_poll_deadline = -1.0
+		_publish_naturalizer_authority()
 
 func is_hesitating() -> bool:
 	return _hesitating
+
+## Naturalizer's environmental lever is a separate gameplay phase layered over Enemy's FSM. It
+## therefore owns a stable sibling record: scheduler snapshots restore clocks, never Callables.
+func _naturalizer_authority_key() -> String:
+	return NATURALIZER_AUTHORITY_PREFIX + char_id if char_id != "" else ""
+
+func _has_saved_naturalizer_authority() -> bool:
+	if game_state == null or not game_state.has_method("get_world_state"):
+		return false
+	var key := _naturalizer_authority_key()
+	if key == "":
+		return false
+	var saved: Variant = game_state.get_world_state(key, {})
+	return saved is Dictionary \
+			and int(saved.get("version", 0)) == NATURALIZER_AUTHORITY_VERSION \
+			and str(saved.get("char_id", char_id)) == char_id
+
+func _publish_naturalizer_authority() -> void:
+	if _restoring_naturalizer_authority or not _naturalizer_authority_initialized:
+		return
+	if game_state == null or not game_state.has_method("set_world_state"):
+		return
+	var key := _naturalizer_authority_key()
+	if key == "":
+		return
+	var zone_data: Array = []
+	for zone_v in _hesitation_zones:
+		var zone := zone_v as Dictionary
+		var pos: Vector3 = zone.get("pos", Vector3.ZERO)
+		zone_data.append({
+			"pos": [pos.x, pos.y, pos.z],
+			"radius": maxf(0.0, float(zone.get("radius", 0.0))),
+		})
+	game_state.set_world_state(key, {
+		"version": NATURALIZER_AUTHORITY_VERSION,
+		"char_id": char_id,
+		"hesitating": _hesitating,
+		"base_speed": _nat_base_speed,
+		"hesitation_zones": zone_data,
+		"poll_armed": _hesitation_poll_deadline >= 0.0,
+		"next_poll_tick": _hesitation_poll_deadline,
+	})
+
+func on_game_state_snapshot_restored() -> void:
+	super.on_game_state_snapshot_restored()
+	_restore_naturalizer_authority()
+
+
+func _exit_tree() -> void:
+	var sched = _get_scheduler()
+	if sched != null:
+		sched.cancel_tag(_hes_tag())
+	_hesitation_poll_deadline = -1.0
+	super._exit_tree()
+
+func _restore_naturalizer_authority() -> void:
+	var sched = _get_scheduler()
+	if sched != null:
+		sched.cancel_tag(_hes_tag())
+	_hesitation_poll_deadline = -1.0
+	if not _has_saved_naturalizer_authority():
+		# Absence is authoritative during same-node rollback: zones and hesitation added after the
+		# snapshot must disappear with their callbacks. GameState already restored the saved speed.
+		_hesitation_zones.clear()
+		_hesitating = false
+		_naturalizer_authority_initialized = false
+		return
+
+	var saved: Dictionary = game_state.get_world_state(_naturalizer_authority_key(), {})
+	_restoring_naturalizer_authority = true
+	_hesitating = bool(saved.get("hesitating", false))
+	_nat_base_speed = maxf(0.0, float(saved.get("base_speed", move_speed)))
+	_hesitation_zones.clear()
+	for zone_v in (saved.get("hesitation_zones", []) as Array):
+		var zone := zone_v as Dictionary
+		var pos_data: Array = zone.get("pos", [0.0, 0.0, 0.0])
+		if pos_data.size() < 3:
+			continue
+		_hesitation_zones.append({
+			"pos": Vector3(float(pos_data[0]), float(pos_data[1]), float(pos_data[2])),
+			"radius": maxf(0.0, float(zone.get("radius", 0.0))),
+		})
+	if bool(saved.get("poll_armed", false)) and not _hesitation_zones.is_empty() and is_alive():
+		var deadline := float(saved.get("next_poll_tick", -1.0))
+		if deadline >= 0.0 and sched != null:
+			_hesitation_poll_deadline = deadline
+			var remaining := maxf(_RESTORE_POLL_EPSILON,
+				deadline - float(sched.get_current_tick()))
+			sched.schedule_after(remaining,
+				_run_hesitation_poll.bind(deadline), _hes_tag())
+	_restoring_naturalizer_authority = false
+	_naturalizer_authority_initialized = true
 
 ## Clean white enforcement body + the rotating scanner ring (TASKS 20.6's read), cool blue lamps.
 func _build_visual() -> void:

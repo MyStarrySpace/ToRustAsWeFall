@@ -281,11 +281,47 @@ func _realize_world_arc(marker: Node3D) -> void:
 	if piece == null:
 		_unresolved.append(pid)
 		return
-	piece.transform = Transform3D(Basis(Vector3.UP, deg_to_rad(angle)),
-		Vector3(0.0, marker.position.y, 0.0))
-	_stamp(piece, "floor", "structure_drum", true)
+	var rad := float(marker.get_meta("radius", 0.0))
+	var ang := deg_to_rad(angle)
+	# radius-bearing markers (portholes, fittings) mount ON the drum face at that
+	# angle, facing outward; arc pieces (shell/crown) anchor on the axis itself
+	var origin := Vector3(rad * cos(ang), marker.position.y, rad * sin(ang)) 		if rad > 0.0 else Vector3(0.0, marker.position.y, 0.0)
+	var basis := Basis(Vector3.UP, -ang + PI * 0.5) if rad > 0.0 		else Basis(Vector3.UP, ang)
+	piece.transform = Transform3D(basis, origin)
+	_stamp(piece, "floor" if rad <= 0.0 else "attached", "structure_drum", true)
+	if pid == "drum_shell":
+		_apply_vasculature_overlay(piece)
 	_realized_root.add_child(piece)
 	_placed_count += 1
+
+## The director-approved Voronoi-BRANCH vasculature (grown veins, not the retired
+## uniform web) rides the drum shells as a world-triplanar overlay — the organic
+## register reclaiming the iron, dense nowhere, budding into biolume tips.
+func _apply_vasculature_overlay(piece: Node3D) -> void:
+	var shader := load("res://resources/vasculature_overlay.gdshader")
+	if shader == null:
+		return
+	var mat := ShaderMaterial.new()
+	mat.shader = shader
+	for tex_name in ["vein_albedo", "vein_emissive", "vein_normal"]:
+		var file := {"vein_albedo": "vasculature_albedo", "vein_emissive": "vasculature_emissive",
+			"vein_normal": "vasculature_normal"}[tex_name]
+		var tex = load("res://resources/textures/vasculature/%s.png" % file)
+		if tex != null:
+			mat.set_shader_parameter(tex_name, tex)
+	var stack: Array = [piece]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		if n is MeshInstance3D and (n as MeshInstance3D).mesh != null:
+			var mi := n as MeshInstance3D
+			for si in range(mi.mesh.get_surface_count()):
+				var base := mi.get_active_material(si)
+				if base is BaseMaterial3D:
+					var dup := (base as BaseMaterial3D).duplicate() as BaseMaterial3D
+					dup.next_pass = mat
+					mi.set_surface_override_material(si, dup)
+		for c in n.get_children():
+			stack.append(c)
 
 ## Deck runs lay nx × nz two-metre tiles in the marker's local frame, each tile
 ## individually warped (the strip polygonalizes in flat space, curves per-tile).

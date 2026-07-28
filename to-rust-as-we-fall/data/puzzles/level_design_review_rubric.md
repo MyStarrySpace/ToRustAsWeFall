@@ -37,6 +37,7 @@ If the answer to any of these is `no`, the design needs revision even if the tot
 - Can a model error be distinguished from a control, timing, camera, or visibility error?
 - Is the critical path readable without relying on tooltips or outside explanation?
 - Does the beat support the campaign fantasy of guiding a vulnerable, specialized party through a dangerous expedition?
+- For generated content, does the identical spec remain completable by ideal, resource-aware play under Scarcity, with every easier setting acting only as a monotone pressure relaxation?
 
 ## Systems-Thinking Diagnostic
 
@@ -181,6 +182,10 @@ Score notes:
 - Can the beat be tested headlessly?
 - Are anchors, state reads, and helper methods exposed cleanly?
 - Will this beat still compose well once chained into a larger level?
+- Is generation independent of difficulty settings?
+- Do replay artifacts record both a stable content fingerprint and the applied pressure projection?
+- Does every active gameplay state-machine phase become authoritative at commitment and survive
+  save/load/replay, rather than existing only in a scene animation until completion?
 
 Score notes:
 

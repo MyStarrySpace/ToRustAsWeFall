@@ -34,6 +34,7 @@ const TRANSCRIPT_MAX := 40
 const SCROLL_STEP := 36.0
 ## Faded color for previously-shown lines in the transcript.
 const HISTORY_COLOR_HEX := "55565f"
+const SAVE_STATE_VERSION := 1
 
 var _queue: Array[Dictionary] = []
 var _current_text := ""
@@ -328,8 +329,20 @@ func _show_next() -> void:
 	_speaker_label.text = _current_speaker
 	_speaker_label.visible = _current_speaker != ""
 
+	_apply_current_style()
+
+	_panel.visible = true
+	_active = true
+	_render_visible()
+
+
+func _apply_current_style() -> void:
+	if _panel == null or _text_label == null or _speaker_label == null:
+		return
 	# Style the panel + in-progress text color based on type.
 	var panel_style := _panel.get_theme_stylebox("panel") as StyleBoxFlat
+	if panel_style == null:
+		return
 	match _style:
 		"poem":
 			_text_label.add_theme_color_override("default_color", Color(0.62, 0.62, 0.68))
@@ -351,10 +364,6 @@ func _show_next() -> void:
 			_text_label.add_theme_color_override("default_color", Color(0.78, 0.78, 0.84))
 			panel_style.border_color = Color(0.18, 0.2, 0.28, 0.7)
 			_speaker_label.add_theme_color_override("font_color", Color(0.45, 0.65, 0.9, 0.95))
-
-	_panel.visible = true
-	_active = true
-	_render_visible()
 
 # --- Pagination ---
 
@@ -404,6 +413,74 @@ func _paginate(text: String) -> Array[Vector2i]:
 	return pages
 
 # --- Public API ---
+
+## Portable UI-lane state. The sequence owns the continuation; the dialogue box owns exactly which
+## page/character the player was reading. Saving both prevents a reload from either skipping an
+## unread line or losing the only dialogue_finished signal that advances the story.
+func snapshot_state() -> Dictionary:
+	return {
+		"version": SAVE_STATE_VERSION,
+		"queue": _queue.duplicate(true),
+		"current_text": _current_text,
+		"current_speaker": _current_speaker,
+		"displayed_chars": _displayed_chars,
+		"hold_timer": _hold_timer,
+		"active": _active,
+		"waiting_for_input": _waiting_for_input,
+		"cutscene_mode": _cutscene_mode,
+		"style": _style,
+		"page_index": _page_index,
+		"transcript": _transcript.duplicate(true),
+	}
+
+
+func restore_state(snapshot: Dictionary) -> bool:
+	if int(snapshot.get("version", 0)) != SAVE_STATE_VERSION:
+		clear()
+		return false
+	var queued: Variant = snapshot.get("queue", [])
+	var transcript: Variant = snapshot.get("transcript", [])
+	if not queued is Array or not transcript is Array:
+		clear()
+		return false
+	_queue.clear()
+	_queue.assign((queued as Array).duplicate(true))
+	_current_text = str(snapshot.get("current_text", ""))
+	_current_speaker = str(snapshot.get("current_speaker", ""))
+	_hold_timer = maxf(0.0, float(snapshot.get("hold_timer", 0.0)))
+	_active = bool(snapshot.get("active", false)) and _current_text != ""
+	_waiting_for_input = bool(snapshot.get("waiting_for_input", false))
+	_cutscene_mode = bool(snapshot.get("cutscene_mode", false))
+	_style = str(snapshot.get("style", "normal"))
+	_transcript.clear()
+	_transcript.assign((transcript as Array).duplicate(true))
+	while _transcript.size() > TRANSCRIPT_MAX:
+		_transcript.pop_front()
+	_rebuild_history_cache()
+	_pages = _paginate(_current_text)
+	_page_index = clampi(int(snapshot.get("page_index", 0)), 0, maxi(0, _pages.size() - 1))
+	var page := _pages[_page_index]
+	_displayed_chars = clampf(
+		float(snapshot.get("displayed_chars", 0.0)), float(page.x), float(page.y)
+	)
+	_advance_held = false
+	_user_scrolled = false
+	if _panel != null:
+		_panel.visible = _active
+	if not _active:
+		if _text_label != null:
+			_text_label.text = ""
+		if _continue_hint != null:
+			_continue_hint.text = ""
+		return true
+	if _speaker_label != null:
+		_speaker_label.text = _current_speaker
+		_speaker_label.visible = _current_speaker != ""
+	_apply_current_style()
+	_render_visible()
+	if _displayed_chars >= float(page.y):
+		_show_continue_hint()
+	return true
 
 ## Queue a single line of dialogue
 func say(text: String, speaker := "", style := "normal", wait := false) -> void:

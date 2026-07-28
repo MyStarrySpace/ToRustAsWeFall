@@ -7,6 +7,7 @@ const SLOT_MANIFEST := "manifest.json"
 const CAPTURE_DIRNAME := "captures"
 
 var active_slot_id := AUTOSAVE_SLOT
+var _campaign_state: Dictionary = {}
 
 func _ready() -> void:
 	ensure_slot_dirs(active_slot_id)
@@ -52,13 +53,44 @@ func build_save_payload(scene_root: Node, reason := "autosave") -> Dictionary:
 		"scene_path": scene_path,
 		"scene_name": scene_name,
 		"scene_state": scene_state,
+		"campaign_state": _campaign_state.duplicate(true),
 		"journal": _get_journal_state(),
 	}
 
 func load_slot_payload(slot_id := active_slot_id) -> Dictionary:
 	if not has_slot(slot_id):
+		# A missing active slot is a new campaign, not permission to reuse a handoff
+		# retained in memory from a slot that was just cleared or replaced.
+		if slot_id == active_slot_id:
+			_campaign_state.clear()
 		return {}
-	return _read_json(get_slot_manifest_path(slot_id))
+	var payload := _read_json(get_slot_manifest_path(slot_id))
+	var campaign_v: Variant = payload.get("campaign_state", {})
+	_campaign_state = (campaign_v as Dictionary).duplicate(true) \
+		if campaign_v is Dictionary else {}
+	return payload
+
+
+## Portable progression shared by consecutive tutorial scenes. Scene-local GameState
+## still owns active mechanics; this small manifest map only carries explicit handoffs
+## (for example, which of Peris's two authored visits comes next).
+func set_campaign_state(key: String, value: Variant) -> void:
+	if key == "":
+		return
+	_campaign_state[key] = value.duplicate(true) \
+		if value is Dictionary or value is Array else value
+
+
+func get_campaign_state(key: String, default: Variant = null) -> Variant:
+	var value: Variant = _campaign_state.get(key, default)
+	return value.duplicate(true) if value is Dictionary or value is Array else value
+
+
+func clear_campaign_state(key := "") -> void:
+	if key == "":
+		_campaign_state.clear()
+	else:
+		_campaign_state.erase(key)
 
 func restore_journal_from_slot(slot_id := active_slot_id) -> void:
 	var payload := load_slot_payload(slot_id)
@@ -73,6 +105,8 @@ func clear_slot(slot_id := active_slot_id) -> void:
 	var slot_dir := ProjectSettings.globalize_path(get_slot_dir(slot_id))
 	if DirAccess.dir_exists_absolute(slot_dir):
 		_remove_dir_recursive(slot_dir)
+	if slot_id == active_slot_id:
+		_campaign_state.clear()
 	ensure_slot_dirs(slot_id)
 
 func _get_journal_state() -> Dictionary:

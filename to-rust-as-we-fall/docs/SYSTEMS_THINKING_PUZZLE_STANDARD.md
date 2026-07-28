@@ -194,6 +194,13 @@ These are starting hypotheses for puzzle structures, not recipes or guaranteed t
 ### Deterministic Replay
 
 - Record the state and player intervention needed to reconstruct consequences.
+- Every gameplay-relevant state-machine phase is authoritative GameState from the moment of
+  commitment, not view-local animation state. Active traversals, carries, interactions, hazards,
+  and interruptions must survive save/load and replay with their origin, destination or target,
+  start/end tick, progress rule, and interruption policy intact.
+- Presentation derives from authoritative state. Never leave a character logically at an origin
+  while animating them elsewhere and commit only on arrival; queries, saves, collision, targeting,
+  or reloads would then expose an exploitable second reality.
 - Replays should let us compare intended prediction with actual outcome at normal pace.
 - Mark moments of model revision, confusion, tension, and solved-state repetition.
 - A deterministic result is not automatically legible; the replay must expose the relevant causal

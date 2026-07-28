@@ -14,8 +14,19 @@ const KIND_MOVE_TO_CELL := &"move_to_cell"
 const KIND_MOVE_CROSS_LEVEL := &"move_cross_level"  # pathfind to a cell on another floor (over ladders/ramps)
 const KIND_MOVE_TO_POS := &"move_to_pos"
 const KIND_WALK_PATH := &"walk_path"
+## A mechanism-owned traversal whose data and render paths may differ (climbvine, crawl seam,
+## moving ferry). GameState owns the rider from the logged commitment through derived completion.
+const KIND_BEGIN_EXTERNAL_TRAVERSAL := &"begin_external_traversal"
+const KIND_CANCEL_EXTERNAL_TRAVERSAL := &"cancel_external_traversal"
 const KIND_STOP := &"stop"
 const KIND_CHANGE_SPEED := &"change_speed"
+
+# --- Scheduler-owned mechanism phases ---
+# A scene node may present these phases, but GameState owns the logged commitment, tick-derived
+# progress, completion, save/load, and replay. This keeps deployed gates truthful even when the
+# presenting scene did not exist when a save or deterministic replay was reconstructed.
+const KIND_BEGIN_MECHANISM_PHASE := &"begin_mechanism_phase"
+const KIND_RESET_MECHANISM_PHASE := &"reset_mechanism_phase"
 
 # --- Stats and running ---
 # adjust_stat/reset_characters_to_full replay through set_stat.
@@ -54,6 +65,10 @@ const KIND_DODGE_ROLL := &"dodge_roll"
 # Rest/stop are the player commands; the per-second healing ticks, the ally revive, and the
 # night skip are DERIVED (scheduler-driven, no-emit) and rebuild identically on replay.
 const KIND_REST := &"rest"
+## One shelter commitment for a complete, settled roster. Validation and every ATP/rest mutation
+## happen as one batch before GameState emits any per-member feedback, so a signal-time save cannot
+## observe one sleeper paid while a later member is still uncommitted.
+const KIND_PARTY_REST := &"party_rest"
 const KIND_STOP_REST := &"stop_rest"
 const KIND_SET_GAME_CLOCK := &"set_game_clock"  # day + time-of-day beats (scripted or night skip)
 const KIND_SET_DAY_LENGTH := &"set_day_length"  # enables the RUNNING clock (seconds per full day; 0 = scripted-beats only)
@@ -61,7 +76,7 @@ const KIND_SET_DAY_LENGTH := &"set_day_length"  # enables the RUNNING clock (sec
 # --- The floral network (GDD: Peris's flora tending / the mycelial information layer) ---
 const KIND_PLANT_FLORA := &"plant_flora"      # consumes a carried seed; a new growth at a position
 const KIND_TEND_FLORA := &"tend_flora"        # Peris tends a growth: it advances at the next day rollover
-const KIND_HARVEST_FLORA := &"harvest_flora"  # an established growth yields a restorative item (per day)
+const KIND_HARVEST_FLORA := &"harvest_flora"  # a species-authored growth yields its carried tool
 const KIND_ADD_SHELTER := &"add_shelter"        # shelter zones are data-layer state, replayed like interactables
 const KIND_FIELD_RESTORE := &"field_restore"    # the field revive: long cast, high stamina, no shelter needed
 
@@ -110,8 +125,12 @@ const ALL_KINDS: Array[StringName] = [
 	KIND_MOVE_CROSS_LEVEL,
 	KIND_MOVE_TO_POS,
 	KIND_WALK_PATH,
+	KIND_BEGIN_EXTERNAL_TRAVERSAL,
+	KIND_CANCEL_EXTERNAL_TRAVERSAL,
 	KIND_STOP,
 	KIND_CHANGE_SPEED,
+	KIND_BEGIN_MECHANISM_PHASE,
+	KIND_RESET_MECHANISM_PHASE,
 	KIND_SNAP_POSITION,
 	KIND_SPAWN_ITEM,
 	KIND_REMOVE_ITEM,
@@ -130,6 +149,7 @@ const ALL_KINDS: Array[StringName] = [
 	KIND_UNREGISTER_PENDULUM,
 	KIND_DODGE_ROLL,
 	KIND_REST,
+	KIND_PARTY_REST,
 	KIND_STOP_REST,
 	KIND_SET_GAME_CLOCK,
 	KIND_SET_DAY_LENGTH,

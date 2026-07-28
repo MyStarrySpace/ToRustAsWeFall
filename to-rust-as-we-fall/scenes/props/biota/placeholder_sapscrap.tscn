@@ -1,0 +1,42 @@
+[gd_scene load_steps=7 format=3]
+
+[ext_resource type="Mesh" path="res://resources/models/shared/biota_placeholders/sapscrap/sapscrap_body.obj" id="1_body_mesh"]
+[ext_resource type="Texture2D" path="res://resources/models/shared/biota_placeholders/sapscrap/sapscrap_body.png" id="2_body_texture"]
+[ext_resource type="Mesh" path="res://resources/models/shared/biota_placeholders/sapscrap/sapscrap_signal.obj" id="3_signal_mesh"]
+[ext_resource type="Texture2D" path="res://resources/models/shared/biota_placeholders/sapscrap/sapscrap_signal.png" id="4_signal_texture"]
+
+[sub_resource type="StandardMaterial3D" id="BodyMaterial"]
+albedo_texture = ExtResource("2_body_texture")
+roughness = 0.7
+metallic = 0.12
+texture_filter = 0
+
+[sub_resource type="StandardMaterial3D" id="SignalMaterial"]
+albedo_texture = ExtResource("4_signal_texture")
+roughness = 0.4
+emission_enabled = true
+emission = Color(0.98, 0.49, 0.12, 1)
+emission_energy_multiplier = 0.9
+emission_texture = ExtResource("4_signal_texture")
+texture_filter = 0
+
+[node name="PlaceholderSapscrap" type="Node3D"]
+metadata/asset_contract = "editable_3d_v1"
+metadata/editable_asset_root = "res://resources/models/shared/biota_placeholders/sapscrap"
+metadata/visual_identity = "placeholder_sapscrap_v1"
+metadata/biota_category = "fauna"
+metadata/species = "sapscrap"
+metadata/placeholder = true
+
+[node name="Body" type="MeshInstance3D" parent="."]
+material_override = SubResource("BodyMaterial")
+mesh = ExtResource("1_body_mesh")
+
+[node name="Signal" type="MeshInstance3D" parent="."]
+material_override = SubResource("SignalMaterial")
+mesh = ExtResource("3_signal_mesh")
+metadata/signal_role = "active_clamp_palp"
+
+[node name="FacingSocket" type="Marker3D" parent="."]
+position = Vector3(0, 0.22, 1.06)
+metadata/socket_role = "forward"

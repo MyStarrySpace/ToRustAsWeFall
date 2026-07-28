@@ -6,6 +6,12 @@ extends RefCounted
 ## The analyzer does not inspect scene trees, advance a scheduler, or read files. Callers provide
 ## a target dictionary and a measured/authored metrics dictionary, which keeps the contract usable
 ## from headless probes, editor tooling, generated-level tests, and human-playtest exports alike.
+##
+## Provenance matters: explicit and operative targets are enforceable because they cite an
+## approved source. A planning target is only a hypothesis for a future playtest. Its duration,
+## decision, and branch bands therefore report warnings instead of authorizing extra mandatory
+## interactions merely to make a model reach a number. Anti-padding invariants remain hard errors
+## for every provenance tier.
 
 const SCHEMA := "trawf_level_pacing_targets_v1"
 
@@ -105,6 +111,8 @@ static func analyze(target: Dictionary, authored_metrics: Dictionary, rules: Dic
 		})
 	var minimum_seconds := float(band.get("minimum", 0.0))
 	var maximum_seconds := float(band.get("maximum", 0.0))
+	var target_basis := str(target.get("target_basis", ""))
+	var planning_target := target_basis == "planning"
 
 	var active_ok := _require_number(authored_metrics, "meaningful_active_seconds", errors)
 	var total_ok := _require_number(authored_metrics, "total_play_seconds", errors)
@@ -124,9 +132,9 @@ static func analyze(target: Dictionary, authored_metrics: Dictionary, rules: Dic
 		if meaningful_active_seconds < 0.0:
 			_add_error(errors, "active_negative", "meaningful_active_seconds cannot be negative.", "meaningful_active_seconds", meaningful_active_seconds, 0.0)
 		elif meaningful_active_seconds < minimum_seconds:
-			_add_error(errors, "below_duration_band", "Meaningful active play is below the first-clear minimum.", "meaningful_active_seconds", meaningful_active_seconds, minimum_seconds)
+			_add_pacing_band_issue(errors, warnings, planning_target, "below_duration_band", "Meaningful active play is below the first-clear minimum.", "meaningful_active_seconds", meaningful_active_seconds, minimum_seconds)
 		elif meaningful_active_seconds > maximum_seconds:
-			_add_error(errors, "above_duration_band", "Meaningful active play is above the first-clear maximum.", "meaningful_active_seconds", meaningful_active_seconds, maximum_seconds)
+			_add_pacing_band_issue(errors, warnings, planning_target, "above_duration_band", "Meaningful active play is above the first-clear maximum.", "meaningful_active_seconds", meaningful_active_seconds, maximum_seconds)
 
 	if total_ok:
 		if total_play_seconds <= 0.0:
@@ -166,11 +174,11 @@ static func analyze(target: Dictionary, authored_metrics: Dictionary, rules: Dic
 	if decisions_ok:
 		var min_decisions := int(target.get("min_decisions", 0))
 		if decision_count < min_decisions:
-			_add_error(errors, "decisions", "The authored route has too few consequential decisions.", "decision_count", decision_count, min_decisions)
+			_add_pacing_band_issue(errors, warnings, planning_target, "decisions", "The authored route has too few consequential decisions.", "decision_count", decision_count, min_decisions)
 	if branches_ok:
 		var min_branches := int(target.get("min_branches", 0))
 		if branch_count < min_branches:
-			_add_error(errors, "branches", "The authored route has too few route, strategy, or exploration branches.", "branch_count", branch_count, min_branches)
+			_add_pacing_band_issue(errors, warnings, planning_target, "branches", "The authored route has too few route, strategy, or exploration branches.", "branch_count", branch_count, min_branches)
 
 	var categories_variant: Variant = authored_metrics.get("category_seconds", null)
 	if not categories_variant is Dictionary:
@@ -203,6 +211,8 @@ static func analyze(target: Dictionary, authored_metrics: Dictionary, rules: Dic
 
 	computed["minimum_seconds"] = minimum_seconds
 	computed["maximum_seconds"] = maximum_seconds
+	computed["target_basis"] = target_basis
+	computed["planning_band_advisory"] = planning_target
 	return _make_report(errors, warnings, {
 		"target_id": str(target.get("id", "")),
 		"computed": computed,
@@ -318,6 +328,33 @@ static func _add_error(
 	if limit != null:
 		issue["limit"] = limit
 	errors.append(issue)
+
+
+static func _add_pacing_band_issue(
+	errors: Array,
+	warnings: Array,
+	planning_target: bool,
+	code: String,
+	message: String,
+	field: String = "",
+	actual: Variant = null,
+	limit: Variant = null
+) -> void:
+	var issue := {
+		"code": code,
+		"message": message,
+		"advisory": planning_target,
+	}
+	if not field.is_empty():
+		issue["field"] = field
+	if actual != null:
+		issue["actual"] = actual
+	if limit != null:
+		issue["limit"] = limit
+	if planning_target:
+		warnings.append(issue)
+	else:
+		errors.append(issue)
 
 
 static func _make_report(errors: Array, warnings: Array, extras: Dictionary = {}) -> Dictionary:

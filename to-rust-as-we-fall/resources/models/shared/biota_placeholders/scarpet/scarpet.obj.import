@@ -1,0 +1,25 @@
+[remap]
+
+importer="wavefront_obj"
+importer_version=1
+type="Mesh"
+uid="uid://iegnhot3qpjm"
+path="res://.godot/imported/scarpet.obj-f386ff8a9e25922626c99536bcb9af27.mesh"
+
+[deps]
+
+files=["res://.godot/imported/scarpet.obj-f386ff8a9e25922626c99536bcb9af27.mesh"]
+
+source_file="res://resources/models/shared/biota_placeholders/scarpet/scarpet.obj"
+dest_files=["res://.godot/imported/scarpet.obj-f386ff8a9e25922626c99536bcb9af27.mesh", "res://.godot/imported/scarpet.obj-f386ff8a9e25922626c99536bcb9af27.mesh"]
+
+[params]
+
+generate_tangents=true
+generate_lods=true
+generate_shadow_mesh=true
+generate_lightmap_uv2=false
+generate_lightmap_uv2_texel_size=0.2
+scale_mesh=Vector3(1, 1, 1)
+offset_mesh=Vector3(0, 0, 0)
+force_disable_mesh_compression=false

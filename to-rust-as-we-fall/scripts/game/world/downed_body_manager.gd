@@ -10,11 +10,19 @@ extends Node3D
 ## fires on arrival, inside the drag pickup radius) and it RIDES the body — a carried friend stays
 ## clickable at the carrier's heel. Hover shows the fallen character's real silhouette through the
 ## shared outline system when their scene node has meshes.
+##
+## Body Areas and outline targets are prepared one per rendered frame while the party is healthy.
+## A lethal stat write must not allocate physics/UI nodes or scan a large scene tree synchronously.
 
 var _gs
 var _search_root: Node
-var _bodies := {}          # downed char_id -> Interactable
-var _outline_targets := {} # downed char_id -> OutlineSurfaceTarget (freed with the body zone)
+var _bodies := {}          # active/downed char_id -> Interactable
+var _prepared_bodies := {} # char_id -> disabled pooled Interactable (also includes active bodies)
+var _outline_targets := {} # char_id -> pooled OutlineSurfaceTarget
+var _prepare_queue: Array[Dictionary] = []
+var _queued_ids := {}
+
+const SYNC_TICK := 0.2
 
 func setup(state, root: Node = null) -> void:
 	_gs = state
@@ -27,11 +35,41 @@ func setup(state, root: Node = null) -> void:
 		_gs.character_restored.connect(_on_character_up)
 	if not _gs.character_revived.is_connected(_on_character_up):
 		_gs.character_revived.connect(_on_character_up)
-
-const SYNC_TICK := 0.2
+	if _search_root != null and _search_root.has_method("get_game_state_character_nodes"):
+		var registered: Dictionary = _search_root.call("get_game_state_character_nodes")
+		for raw_id in registered.keys():
+			prepare_character(str(raw_id), registered[raw_id])
 
 func _process(_delta: float) -> void:
+	_prepare_next_body()
 	_sync_bodies()   # live smoothness; the DATA truth rides the scheduler tick below
+
+## Add a newly registered controllable character to the staged prewarm queue.
+## Enemies and lightweight NPCs are GameState characters too, but only player
+## bodies participate in the carry/revive interaction.
+func prepare_character(cid: String, node: Node3D) -> void:
+	if cid == "" or node == null or not is_instance_valid(node) or node is Enemy \
+			or not (node is CharacterBody3D) or _prepared_bodies.has(cid) or _queued_ids.has(cid):
+		return
+	_prepare_queue.append({"id": cid, "node": node})
+	_queued_ids[cid] = true
+
+func _prepare_next_body() -> void:
+	if _prepare_queue.is_empty():
+		return
+	var entry: Dictionary = _prepare_queue.pop_front()
+	var cid := str(entry.get("id", ""))
+	_queued_ids.erase(cid)
+	var node = entry.get("node")
+	if cid != "" and node is Node3D and is_instance_valid(node):
+		_prepare_body(cid, node as Node3D)
+
+func has_prepared_body(cid: String) -> bool:
+	return _prepared_bodies.has(cid) and is_instance_valid(_prepared_bodies[cid])
+
+func get_prepared_body(cid: String) -> Interactable:
+	var body = _prepared_bodies.get(cid)
+	return body as Interactable if body is Interactable and is_instance_valid(body) else null
 
 ## The zone rides the body (a carried friend moves) and the verb reads the carry state. Runs BOTH
 ## per-frame (live) and on a scheduler tick — so a headless test that jumps the scheduler without
@@ -58,13 +96,32 @@ func _on_sync_tick() -> void:
 		_arm_sync_tick()
 
 func _on_character_downed(cid: String) -> void:
+	var perf_started := PerformanceTrace.begin()
 	if _gs == null or _bodies.has(cid):
+		PerformanceTrace.end(&"update", &"downed_body.activate", perf_started, cid, 0)
 		return
-	var node := _find_char_node(cid)
-	if node is Enemy:
-		return   # fallen fauna are not friends to carry
+	var it := get_prepared_body(cid)
+	if it == null:
+		# Compatibility for a character registered/downed before a render frame had
+		# a chance to drain the queue. The host registry keeps this O(1).
+		var node := _find_char_node(cid)
+		if node is Enemy or node == null:
+			PerformanceTrace.end(&"update", &"downed_body.activate", perf_started, cid, 0)
+			return
+		_prepare_body(cid, node)
+		it = get_prepared_body(cid)
+	if it == null:
+		PerformanceTrace.end(&"update", &"downed_body.activate", perf_started, cid, 0)
+		return
+	_activate_body(cid, it)
+	PerformanceTrace.end(&"update", &"downed_body.activate", perf_started, cid, 1)
+
+func _prepare_body(cid: String, node: Node3D) -> void:
+	if has_prepared_body(cid):
+		return
+	var perf_started := PerformanceTrace.begin()
 	var it := Interactable.new()
-	it.name = "DownedBody_%s" % cid
+	it.name = "PreparedDownedBody_%s" % cid
 	var cs := CollisionShape3D.new()
 	cs.name = "CollisionShape3D"
 	var sh := SphereShape3D.new()
@@ -76,39 +133,73 @@ func _on_character_downed(cid: String) -> void:
 	it.one_shot = false
 	it.description = "Carry %s" % cid.capitalize()
 	it.tutorial_label = "CARRY"
+	it.interaction_enabled = false
+	var tree_entry_started := PerformanceTrace.begin()
 	add_child(it)
-	it.position = _gs.get_position(cid)
+	PerformanceTrace.end(&"draw", &"downed_body.tree_entry", tree_entry_started, cid, 1)
+	it.set_interaction_enabled(false)
+	if _gs != null and _gs.characters.has(cid):
+		it.position = _gs.get_position(cid)
 	it.interacted.connect(_on_body_clicked.bind(cid))
+	var outline_started := PerformanceTrace.begin()
 	_wire_body_outline(it, cid, node)
-	# Register with the host like any chunk interactable — this is what wires the REAL play paths:
-	# click servicing (bind_interaction_target on every character), hover feedback, the scheduler,
-	# and the active-character sync. A zone that skips this looks alive in tests and is dead in play.
-	if _search_root != null and is_instance_valid(_search_root) and _search_root.has_method("register_preview_interactable"):
+	PerformanceTrace.end(&"draw", &"downed_body.outline", outline_started, cid,
+		int(_outline_targets.has(cid)))
+	_prepared_bodies[cid] = it
+	PerformanceTrace.end(&"draw", &"downed_body.prepare", perf_started, cid, 1)
+
+func _activate_body(cid: String, it: Interactable) -> void:
+	it.name = "DownedBody_%s" % cid
+	it.position = _gs.get_position(cid)
+	it.set_interaction_enabled(true)
+	_set_outline_pickable(cid, true)
+	# Register with the host like any chunk interactable — this wires click
+	# servicing, hover feedback, the scheduler, and active-character sync.
+	if _search_root != null and is_instance_valid(_search_root) \
+			and _search_root.has_method("register_preview_interactable"):
+		var registration_started := PerformanceTrace.begin()
 		_search_root.call("register_preview_interactable", it)
+		PerformanceTrace.end(&"update", &"downed_body.register_interactable",
+			registration_started, cid, 1)
 	_bodies[cid] = it
 	_arm_sync_tick()
 
-## Hover lights the fallen character's REAL silhouette (their scene node's meshes) through the shared
-## outline system — the same grammar as every object. No meshes (headless / pure-data char) → the
-## zone still works, only the visual is skipped.
+## Hover lights the fallen character's REAL body mesh through the shared outline
+## system. A character can expose its explicit body meshes so path previews,
+## ability markers, and other utility descendants never become part of the body.
 func _wire_body_outline(it: Interactable, cid: String, node: Node3D) -> void:
 	if node == null:
 		return
 	var meshes: Array = []
-	for m in node.find_children("*", "MeshInstance3D", true, false):
-		meshes.append(m)
+	if node.has_method("get_downed_outline_meshes"):
+		for mesh in node.call("get_downed_outline_meshes"):
+			meshes.append(mesh)
+	else:
+		for mesh in node.find_children("*", "MeshInstance3D", true, false):
+			meshes.append(mesh)
 	if meshes.is_empty():
 		return
 	var mgr := OutlineFeedbackManager.ensure(self)
 	if mgr == null:
 		return
-	var target := mgr.outline_meshes(node, "DownedOutline_%s" % cid, meshes, "downed_" + cid, 1.3)
+	var target := mgr.outline_meshes(node, "DownedOutline_%s" % cid, meshes,
+		"downed_" + cid, 1.3, {"hover_enabled": false})
 	if target == null:
 		return
 	if target.has_method("set_interaction_delegate"):
 		target.call("set_interaction_delegate", it)
 	it.set_outline_target(target)
 	_outline_targets[cid] = target
+
+func _set_outline_pickable(cid: String, active: bool) -> void:
+	var target = _outline_targets.get(cid)
+	if target == null or not is_instance_valid(target):
+		return
+	if not active and target.has_method("set_hover_feedback"):
+		target.call("set_hover_feedback", false)
+	target.set("hover_enabled", active)
+	target.set("collision_layer", 4 if active else 0)
+	target.set("input_ray_pickable", active)
 
 func _on_body_clicked(cid: String) -> void:
 	if _gs == null or not _bodies.has(cid):
@@ -133,31 +224,30 @@ func _on_character_up(cid: String) -> void:
 		return
 	var it = _bodies[cid]
 	if is_instance_valid(it):
-		# queue_free is DEFERRED: the dying node holds its name until end of frame, and a fresh zone
-		# created the same frame (revive -> reset -> re-down) would get auto-renamed past every
-		# find_child lookup. Vacate the canonical name before letting go.
-		it.name = str(it.name) + "_gone"
-		it.queue_free()
+		it.set_interaction_enabled(false)
+		it.name = "PreparedDownedBody_%s" % cid
+	_set_outline_pickable(cid, false)
 	_bodies.erase(cid)
-	var target = _outline_targets.get(cid)
-	if target != null and is_instance_valid(target):
-		target.queue_free()
-	_outline_targets.erase(cid)
 
 func _exit_tree() -> void:
 	if _gs != null and _gs.scheduler != null:
 		_gs.scheduler.cancel_tag("downed_body_sync")
 
 func _toast(text: String) -> void:
-	if _search_root != null and is_instance_valid(_search_root) and _search_root.has_method("show_preview_message"):
+	if _search_root != null and is_instance_valid(_search_root) \
+			and _search_root.has_method("show_preview_message"):
 		_search_root.call("show_preview_message", text, 2.0)
 
 func _find_char_node(char_id: String) -> Node3D:
 	if _search_root == null or not is_instance_valid(_search_root):
 		return null
-	for n in _search_root.find_children("*", "", true, false):
-		if n == self or is_ancestor_of(n):
+	if _search_root.has_method("get_game_state_character_node"):
+		return _search_root.call("get_game_state_character_node", char_id) as Node3D
+	if _search_root.has_method("get_preview_character_node"):
+		return _search_root.call("get_preview_character_node", char_id) as Node3D
+	for node in _search_root.find_children("*", "", true, false):
+		if node == self or is_ancestor_of(node):
 			continue
-		if n is Node3D and "char_id" in n and str(n.char_id) == char_id:
-			return n
+		if node is Node3D and "char_id" in node and str(node.char_id) == char_id:
+			return node
 	return null

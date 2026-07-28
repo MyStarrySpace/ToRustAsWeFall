@@ -56,7 +56,7 @@ size = Vector3(0.12, 0.12, 4.0)
 
 [sub_resource type="BoxMesh" id="RailShort"]
 material = SubResource("FrameMaterial")
-size = Vector3(1.5, 0.12, 0.12)
+size = Vector3(1.3, 0.12, 0.12)
 
 [sub_resource type="CylinderMesh" id="SignalSocketMesh"]
 material = SubResource("SignalMaterial")
@@ -80,7 +80,7 @@ size = Vector3(4.6, 1.2, 0.2)
 size = Vector3(0.2, 1.2, 4.0)
 
 [sub_resource type="BoxShape3D" id="RailShortShape"]
-size = Vector3(1.5, 1.2, 0.2)
+size = Vector3(1.3, 1.2, 0.2)
 
 [node name="ElevatorGratedPlatforms" type="Node3D"]
 metadata/archetype_id = "2"
@@ -127,19 +127,19 @@ position = Vector3(12.8, 0.6, 0)
 shape = SubResource("RailSideShape")
 
 [node name="SignalSouthRailLeft" type="CollisionShape3D" parent="RailCollision"]
-position = Vector3(-2.02, 0.6, 2.05)
+position = Vector3(-2.12, 0.6, 2.05)
 shape = SubResource("RailShortShape")
 
 [node name="SignalSouthRailRight" type="CollisionShape3D" parent="RailCollision"]
-position = Vector3(2.02, 0.6, 2.05)
+position = Vector3(2.12, 0.6, 2.05)
 shape = SubResource("RailShortShape")
 
 [node name="RoostSouthRailLeft" type="CollisionShape3D" parent="RailCollision"]
-position = Vector3(7.98, 0.6, 2.05)
+position = Vector3(7.88, 0.6, 2.05)
 shape = SubResource("RailShortShape")
 
 [node name="RoostSouthRailRight" type="CollisionShape3D" parent="RailCollision"]
-position = Vector3(12.02, 0.6, 2.05)
+position = Vector3(12.12, 0.6, 2.05)
 shape = SubResource("RailShortShape")
 
 [node name="SignalDeck" type="Node3D" parent="."]
@@ -333,19 +333,19 @@ position = Vector3(12.8, 1, 0)
 mesh = SubResource("RailSide")
 
 [node name="SignalSouthRailLeft" type="MeshInstance3D" parent="Frame"]
-position = Vector3(-2.02, 1, 2.05)
+position = Vector3(-2.12, 1, 2.05)
 mesh = SubResource("RailShort")
 
 [node name="SignalSouthRailRight" type="MeshInstance3D" parent="Frame"]
-position = Vector3(2.02, 1, 2.05)
+position = Vector3(2.12, 1, 2.05)
 mesh = SubResource("RailShort")
 
 [node name="RoostSouthRailLeft" type="MeshInstance3D" parent="Frame"]
-position = Vector3(7.98, 1, 2.05)
+position = Vector3(7.88, 1, 2.05)
 mesh = SubResource("RailShort")
 
 [node name="RoostSouthRailRight" type="MeshInstance3D" parent="Frame"]
-position = Vector3(12.02, 1, 2.05)
+position = Vector3(12.12, 1, 2.05)
 mesh = SubResource("RailShort")
 
 [node name="Post0" type="MeshInstance3D" parent="Frame"]
@@ -373,19 +373,19 @@ position = Vector3(7.25, 0.6, 1.2)
 mesh = SubResource("RailPost")
 
 [node name="Post6" type="MeshInstance3D" parent="Frame"]
-position = Vector3(-1.25, 0.6, 2.05)
+position = Vector3(-1.45, 0.6, 2.05)
 mesh = SubResource("RailPost")
 
 [node name="Post7" type="MeshInstance3D" parent="Frame"]
-position = Vector3(1.25, 0.6, 2.05)
+position = Vector3(1.45, 0.6, 2.05)
 mesh = SubResource("RailPost")
 
 [node name="Post8" type="MeshInstance3D" parent="Frame"]
-position = Vector3(8.75, 0.6, 2.05)
+position = Vector3(8.55, 0.6, 2.05)
 mesh = SubResource("RailPost")
 
 [node name="Post9" type="MeshInstance3D" parent="Frame"]
-position = Vector3(11.25, 0.6, 2.05)
+position = Vector3(11.45, 0.6, 2.05)
 mesh = SubResource("RailPost")
 
 [node name="Support0" type="MeshInstance3D" parent="Frame"]
@@ -448,11 +448,11 @@ position = Vector3(10.85, 0.5, 0.65)
 
 [node name="WallOpening0" type="Marker3D" parent="Markers"]
 position = Vector3(0, 0, 2.3)
-metadata/width = 2.6
+metadata/width = 3.0
 
 [node name="WallOpening1" type="Marker3D" parent="Markers"]
 position = Vector3(10, 0, 2.3)
-metadata/width = 2.6
+metadata/width = 3.0
 
 [node name="WalkableSignalDeck" type="Marker3D" parent="Markers"]
 metadata/half_extents = Vector2(2.55, 1.8)

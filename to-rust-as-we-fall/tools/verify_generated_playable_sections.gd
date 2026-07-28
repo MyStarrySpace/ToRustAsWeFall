@@ -1,7 +1,22 @@
 extends SceneTree
 
 const Generator := preload("res://scripts/generation/stretch_generator.gd")
+const RuntimeRegistry := preload("res://scripts/generation/generated_node_runtime_registry.gd")
 const ChunkScene := preload("res://scenes/fragments/chunks/generated_stretch_chunk.tscn")
+
+
+class AuthorityHost:
+	extends ChunkHostStub
+
+	func get_preview_character_stat(char_id: String, stat_name: String) -> float:
+		return game_state.get_stat(char_id, stat_name)
+
+	func set_preview_character_stat(char_id: String, stat_name: String, value: float) -> void:
+		game_state.set_stat(char_id, stat_name, value)
+
+	func adjust_preview_character_stat(char_id: String, stat_name: String, delta: float) -> void:
+		game_state.adjust_stat(char_id, stat_name, delta)
+
 
 var checks := 0
 var failures := 0
@@ -28,6 +43,7 @@ func _run() -> void:
 		return
 
 	var playable_node_ids: Array[String] = []
+	var layout_only_node_ids: Array[String] = []
 	var completed_previews := {}
 	for raw_node in spec.get("nodes", []):
 		if not (raw_node is Dictionary):
@@ -36,7 +52,20 @@ func _run() -> void:
 		if str(node.get("role", "")) in ["boundary", "shelter_arrival"]:
 			continue
 		var node_id := str(node.get("id", ""))
+		var handler_id := str(node.get("runtime_handler", ""))
 		var section: Dictionary = node.get("playable_section", {})
+		if handler_id == "":
+			_check(str(node.get("runtime_support", "")) == "layout_only",
+				"%s is explicitly layout-only without an implemented mechanic" % node_id)
+			_check(section.is_empty(),
+				"%s does not invent a playable section from archetype prose" % node_id)
+			_check(str(node.get("action_verb", "")) == ""
+				and not bool(node.get("runtime_progression_required", false)),
+				"%s has no fake verb or progression gate" % node_id)
+			layout_only_node_ids.append(node_id)
+			continue
+		_check(RuntimeRegistry.is_implemented(handler_id),
+			"%s names an implemented runtime handler" % node_id)
 		_check(str(section.get("schema", "")) == "trawf_playable_section_v1",
 			"%s emits a playable micro-section contract" % node_id)
 		_check((section.get("interacting_systems", []) as Array).size() >= 2,
@@ -58,13 +87,27 @@ func _run() -> void:
 	_check(local_links == playable_node_ids.size(),
 		"every playable section emits one local cause-to-effect edge")
 
+	var host := AuthorityHost.new()
+	host.setup()
+	root.add_child(host)
 	var chunk = ChunkScene.instantiate()
 	chunk.configure_chunk({"spec": spec, "spiral": false, "branches": false})
-	root.add_child(chunk)
-	chunk.call("_build_chunk")
+	host.register_party(chunk.get_spawn_positions())
+	chunk.attach_chunk_host(host, "generated_stretch")
+	host.add_child(chunk)
+	for _frame in range(4):
+		await process_frame
+	host.grid = GridWorld.from_data(chunk.call("get_grid_data"))
+	host.game_state.grid = host.grid
+	chunk.call("reset_preview_state")
 	await process_frame
 
 	var interaction_map: Dictionary = chunk.get("_node_interactables")
+	for node_id in layout_only_node_ids:
+		_check(not interaction_map.has(node_id),
+			"%s stays spatial dressing instead of becoming a click target" % node_id)
+		_check(not bool(chunk.call("_headless_activate_generated_node", node_id)),
+			"%s cannot be completed through a generic metadata transition" % node_id)
 	for node_id in playable_node_ids:
 		var state: Dictionary = chunk.call("get_generated_section_state", node_id)
 		_check(not state.is_empty() and str(state.get("target_name", "")) != "",
@@ -91,7 +134,7 @@ func _run() -> void:
 	var feedback: Dictionary = chunk.call("get_causal_feedback_state")
 	_check(int(feedback.get("count", 0)) >= playable_node_ids.size(),
 		"runtime instantiates the emitted local causal links")
-	chunk.queue_free()
+	host.queue_free()
 	await process_frame
 	_finish()
 

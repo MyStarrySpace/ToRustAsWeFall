@@ -1,21 +1,21 @@
 class_name StretchSeedCatalog
 extends RefCounted
 
+const GameSettingsScript := preload("res://scripts/system/settings.gd")
+
 const DEFAULT_PATH := "res://data/generation/stretch_seed_corpus.json"
 const CONTRACT_ID := "stretch_seed_corpus_v1"
 const VALID_STATUSES := ["candidate", "tuning", "blocked", "approved"]
 const VALID_TIERS := ["teaching", "standard", "hard", "setpiece"]
 const VALID_FOOD_TESTS := ["neutral", "return_loop", "scarcity"]
-const GAME_MODE_BY_FOOD_TEST := {
-	"neutral": "neutral",
-	"return_loop": "expedition",
-	"scarcity": "scarcity",
-}
-const FOOD_TEST_BY_GAME_MODE := {
-	"neutral": "neutral",
-	"expedition": "return_loop",
-	"scarcity": "scarcity",
-}
+const ATP_DRAIN_STEP := 0.5
+const REQUIRED_EVALUATION_PRINCIPLES := [
+	"mode_independent_generation",
+	"scarcity_mastery_oracle",
+	"monotone_pressure_projection",
+]
+const GAME_MODE_BY_FOOD_TEST := GameSettingsScript.GAME_MODE_BY_FOOD_TEST
+const FOOD_TEST_BY_GAME_MODE := GameSettingsScript.FOOD_TEST_BY_GAME_MODE
 const DEFAULT_STAGE_BY_TIER := {
 	"teaching": 2,
 	"standard": 3,
@@ -71,7 +71,17 @@ static func validate_catalog(catalog: Dictionary) -> Dictionary:
 				errors.append("Duplicate evaluation principle id: %s." % principle_id)
 			else:
 				seen_principles[principle_id] = true
-	_validate_play_config(catalog.get("default_play_config", {}), "default_play_config", errors)
+		for required_principle in REQUIRED_EVALUATION_PRINCIPLES:
+			if not seen_principles.has(required_principle):
+				errors.append("Seed corpus is missing required evaluation principle: %s." % required_principle)
+	var default_play_config: Variant = catalog.get("default_play_config", {})
+	_validate_play_config(default_play_config, "default_play_config", errors)
+	if default_play_config is Dictionary:
+		var normalized_default := GameSettingsScript.normalize_generated_play_config(
+			default_play_config as Dictionary
+		)
+		if str(normalized_default.get("game_mode", "")) != GameSettingsScript.GAME_MODE_SCARCITY:
+			errors.append("default_play_config must use Scarcity as the preferred mastery projection.")
 	var raw_cases: Variant = catalog.get("cases", [])
 	if not (raw_cases is Array) or (raw_cases as Array).is_empty():
 		errors.append("Seed corpus must contain at least one case.")
@@ -133,10 +143,21 @@ static func _validate_play_config(raw: Variant, label: String, errors: Array[Str
 	if not (food_settings is Dictionary):
 		errors.append("%s food_test_settings must be an object." % label)
 		return
-	if float((food_settings as Dictionary).get("drain_interval_seconds", 60.0)) < 5.0:
+	var drain_settings := food_settings as Dictionary
+	var drain_interval := float(drain_settings.get("drain_interval_seconds", 60.0))
+	var drain_atp := float(drain_settings.get("drain_atp", 1.0))
+	var zero_atp_hp_drain := float(drain_settings.get("zero_atp_hp_drain", 5.0))
+	if drain_interval < 5.0:
 		errors.append("%s drain interval must be at least 5 seconds." % label)
-	if float((food_settings as Dictionary).get("drain_atp", 1.0)) < 0.0:
+	if drain_atp < 0.0:
 		errors.append("%s drain ATP cannot be negative." % label)
+	elif not is_equal_approx(drain_atp / ATP_DRAIN_STEP, roundf(drain_atp / ATP_DRAIN_STEP)):
+		errors.append("%s drain ATP must use 0.5-pip increments." % label)
+	if zero_atp_hp_drain < 0.0:
+		errors.append("%s zero-ATP HP drain cannot be negative." % label)
+	if food_test != "scarcity" and play_config.has("food_test_settings") \
+			and (drain_atp > 0.0 or zero_atp_hp_drain > 0.0):
+		errors.append("%s can configure passive ATP/HP drain only in scarcity mode." % label)
 
 
 static func cases(catalog := {}) -> Array[Dictionary]:
@@ -183,15 +204,9 @@ static func play_config_for_case(case_id: String, catalog := {}) -> Dictionary:
 	var case_override: Variant = case_def.get("play_config", {})
 	if case_override is Dictionary:
 		play_config.merge(case_override as Dictionary, true)
-	# Mode labels and food mechanics are one configuration contract. Normalize the
-	# pair so persisted settings cannot describe a different economy than a QA case.
-	if play_config.has("food_test"):
-		var food_test := str(play_config.get("food_test", "neutral"))
-		play_config["game_mode"] = str(GAME_MODE_BY_FOOD_TEST.get(food_test, "neutral"))
-	elif play_config.has("game_mode"):
-		var game_mode := str(play_config.get("game_mode", "neutral"))
-		play_config["food_test"] = str(FOOD_TEST_BY_GAME_MODE.get(game_mode, "neutral"))
-	return play_config
+	# Mode labels and mechanics share the Settings registry, so corpus, browser,
+	# and live chunk loading cannot silently normalize the same profile differently.
+	return GameSettingsScript.normalize_generated_play_config(play_config)
 
 
 static func custom_settings(seed: int, tier := "teaching", progression_stage := -1) -> Dictionary:

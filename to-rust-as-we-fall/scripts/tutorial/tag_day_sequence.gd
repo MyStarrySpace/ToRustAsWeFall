@@ -11,33 +11,79 @@ var _citizen  # Node3D + npc.gd at device to Aster's right.
 var _naturalizer_1  # Node3D + npc.gd
 var _naturalizer_2  # Node3D + npc.gd
 var _citizen_light: OmniLight3D  # Light above citizen's device
-var _witness_interactables: Dictionary = {}
-var _return_scanner_interactable: Area3D
-var _witness_receipt_label: Label3D
-var _witness_record_choice := ""
-var _witness_record_resolved := false
-var _return_scan_resolved := false
-var _witness_auto_resolved := false
-var _return_scan_auto_resolved := false
-var _escort_field_interactables: Dictionary = {}
-var _escort_field_order: Array[String] = []
-var _escort_field_index := 0
-var _escort_field_resolved := false
-var _escort_field_auto_resolved := false
-var _escort_presentation_finished := false
-var _escort_started_tick := -1.0
-var _escort_presentation_finished_tick := -1.0
-var _escort_field_finished_tick := -1.0
-var _escort_pending_site_id := ""
-# Focused headless verification may replace the eleven shader-heavy evidence
-# consoles with simple visible proxies. Normal game/runtime construction never
-# sets this; witness/return visuals and all production field consoles stay full.
-var focused_verifier_lightweight_station_visuals := false
-# The focused pacing verifier needs one real scene-tree boot to prove that the
-# authored interaction hooks wire up.  It can omit the shader-heavy production
-# shell for that boot; normal game, desktop, Web, and editor construction leave
-# this false and still build the complete checkpoint/corridor environment.
-var focused_verifier_minimal_scene_boot := false
+
+# Tag Day is choreography, but it is still gameplay-observable world state: saves,
+# targeting, replay, and the camera can all inspect the three bodies while the poem
+# is running.  The scene therefore records which movement operations were accepted
+# and joins the next beat only after BOTH the physical escort and its presentation
+# have completed.  Dialogue and render tweens are presenters of this record, never
+# the owner of progression.
+const ESCORT_AUTHORITY_KEY := "tag_day:escort_authority"
+const ESCORT_AUTHORITY_VERSION := 1
+const ESCORT_AUTHORITY_CONTRACT := "tag_day_escort_v1"
+const ESCORT_PHASE_IDLE := "idle"
+const ESCORT_PHASE_FORMING := "forming"
+const ESCORT_PHASE_CORRIDOR := "corridor"
+const ESCORT_PHASE_JOINED := "joined"
+const ESCORT_PHASE_BLOCKED := "blocked"
+const ESCORT_PRESENTATION_SECONDS := 103.4
+const ESCORT_PRESENTATION_TAG := "tag_day_escort_presentation"
+const ESCORT_REPORT_TAG := "tag_day_escort_report"
+const ESCORT_PAN_TAG := "tag_day_escort_pan_prompt"
+const ESCORT_FAST_FORWARD_TAG := "tag_day_escort_fast_forward_prompt"
+const ESCORT_ACTORS := ["citizen", "nk1", "nk2"]
+const FORMATION_ACTORS := ["nk1", "nk2"]
+
+# The callbacks after the escort used to exist only in DialogueBox signal
+# connections and the scheduler heap. TutorialSequence intentionally discards both
+# on load, so a save during a whimper, lockdown, pass scan, or blue clearance could
+# never continue. This compact record gives each phase an absolute deadline and an
+# explicit presentation latch; reload reconstructs the signal and only consumes the
+# saved remainder.
+const CALLBACK_AUTHORITY_KEY := "tag_day:callback_authority"
+const CALLBACK_AUTHORITY_VERSION := 1
+const CALLBACK_AUTHORITY_CONTRACT := "tag_day_callbacks_v1"
+const CALLBACK_PHASE_IDLE := "idle"
+const CALLBACK_PHASE_FRAGMENTS := "fragments"
+const CALLBACK_PHASE_NEUTRALIZATION := "neutralization"
+const CALLBACK_PHASE_WHIMPER := "whimper"
+const CALLBACK_PHASE_LOCKDOWN := "lockdown"
+const CALLBACK_PHASE_RETURN_FOCUS := "return_focus"
+const CALLBACK_PHASE_ASTER_SCAN := "aster_scan"
+const CALLBACK_PHASE_CLEARANCE := "clearance"
+const CALLBACK_PHASE_COMPLETE := "complete"
+const CALLBACK_PHASE_TAG := "tag_day_callback_phase"
+const FRAGMENTS_RECOVERY_SECONDS := 48.0
+const NEUTRALIZATION_SECONDS := 2.5
+const WHIMPER_RECOVERY_SECONDS := 18.0
+const WHIMPER_POST_SECONDS := 1.0
+const LOCKDOWN_RECOVERY_SECONDS := 42.0
+const LOCKDOWN_POST_SECONDS := 1.5
+const RETURN_FOCUS_SECONDS := 2.0
+const ASTER_SCAN_RECOVERY_SECONDS := 18.0
+const ASTER_SCAN_POST_SECONDS := 0.5
+const CLEARANCE_SECONDS := 2.0
+
+const ESCORT_DIALOGUE_KEYS := [
+	"tag_day.poem.01",
+	"tag_day.nk_chat.01",
+	"tag_day.poem.02",
+	"tag_day.nk_chat.02",
+	"tag_day.poem.03",
+	"tag_day.nk_chat.03",
+	"tag_day.nk_chat.04",
+	"tag_day.poem.04",
+	"tag_day.nk_chat.05",
+	"tag_day.nk_chat.06",
+	"tag_day.poem.05",
+	"tag_day.nk_chat.07",
+	"tag_day.nk_chat.08",
+	"tag_day.poem.06",
+	"tag_day.nk_chat.09",
+	"tag_day.nk_chat.10",
+]
+
+var _report_label_shown := false
 
 # Psy-Knapse device positions.
 const DEVICE_SPACING := 2.2
@@ -47,6 +93,12 @@ const CITIZEN_DEVICE_POS := Vector3(6 + DEVICE_SPACING, 0, 0)  # To Aster's righ
 # Naturalizer standing positions (near the back wall, out of the way)
 const NK_STAND_POS_1 := Vector3(13.2, 0, -5.5)
 const NK_STAND_POS_2 := Vector3(14.8, 0, -5.5)
+# Distinct grid-cell centres on either side of the citizen. The old sub-cell offsets
+# quantized NK-02 onto the citizen's occupied cell, so the apparent "escort" could
+# only proceed when a timer ignored the impossible physical formation.
+const NK_GRIP_POS_1 := Vector3(8.5, 0, -1.5)
+const NK_GRIP_POS_2 := Vector3(8.5, 0, 1.5)
+const GRIP_ARRIVAL_RADIUS := 0.2
 
 # Corridor waypoints
 const CORRIDOR_ENTRANCE := Vector3(14, 0, -8)
@@ -57,134 +109,6 @@ const CORRIDOR_D_END := Vector3(19, 0, -27)
 const DEAD_END := Vector3(17, 0, -28)
 
 const BASE_NPC_SPEED := 2.0
-
-# Tag Day's two player-owned beats. The observation seals live at the end of the
-# escort corridor, so choosing a record and later returning to PSY-1 is a real
-# there-and-back route rather than two buttons beside Aster's spawn.
-const ASTER_CHECKPOINT_SPEED := 2.35
-const WITNESS_PUBLIC_POS := Vector3(20, 0, -27)
-const WITNESS_PRIVATE_POS := Vector3(17, 0, -28)
-const WITNESS_WORK_SECONDS := 5.0
-const RETURN_SCAN_WORK_SECONDS := 4.0
-const ACTIVITY_GATE_FALLBACK_SECONDS := 45.0
-const ESCORT_FIELD_FALLBACK_SECONDS := 300.0
-const WITNESS_FALLBACK_TAG := "tag_day_witness_fallback"
-const RETURN_SCAN_FALLBACK_TAG := "tag_day_return_scan_fallback"
-const ESCORT_FIELD_FALLBACK_TAG := "tag_day_escort_field_fallback"
-const LEGACY_PRESENTATION_SECONDS := 198.7
-
-# The 16 authored poem/Naturalizer lines take 103.4 seconds at the dialogue
-# box's default 30 cps (poem register 0.7x) and four-second corridor hold. The
-# field circuit runs at the same time: it does not add a second copy of the
-# presentation to the first-clear model.
-const ESCORT_PRESENTATION_SECONDS := 103.4
-
-# Aster reconstructs the incident while it is happening: the circuit begins at
-# the failed PSY booth, crosses both halves of the live queue, audits the report
-# and medical override, then follows the escort through each corridor turn. The
-# verbs and positions are intentionally different work, not ten copies of one
-# nearby button. Dwell is analysis/recording time and remains scheduler-backed.
-const ESCORT_FIELD_SITE_DEFS := [
-	{
-		"id": "scan_failure",
-		"name": "TagDayScanFailureRecord",
-		"position": Vector3(8.2, 0, -3.0),
-		"dwell": 8.0,
-		"verb": "RECONSTRUCT FAILED SCAN",
-		"label": "SCAN FAILURE",
-		"color": Color(0.22, 0.62, 0.94),
-	},
-	{
-		"id": "east_queue_witness",
-		"name": "TagDayEastQueueWitness",
-		"position": Vector3(24.0, 0, 4.0),
-		"dwell": 9.0,
-		"verb": "RECORD EAST QUEUE TESTIMONY",
-		"label": "QUEUE WITNESS E",
-		"color": Color(0.30, 0.74, 0.86),
-	},
-	{
-		"id": "west_queue_witness",
-		"name": "TagDayWestQueueWitness",
-		"position": Vector3(0.0, 0, 4.0),
-		"dwell": 9.0,
-		"verb": "RECORD WEST QUEUE TESTIMONY",
-		"label": "QUEUE WITNESS W",
-		"color": Color(0.34, 0.70, 0.72),
-	},
-	{
-		"id": "report_provenance",
-		"name": "TagDayReportProvenance",
-		"position": Vector3(26.0, 0, -5.0),
-		"dwell": 10.0,
-		"verb": "AUTHENTICATE REPORT ORIGIN",
-		"label": "REPORT PROVENANCE",
-		"color": Color(0.92, 0.48, 0.20),
-	},
-	{
-		"id": "medical_override",
-		"name": "TagDayMedicalOverride",
-		"position": Vector3(1.0, 0, -5.0),
-		"dwell": 10.0,
-		"verb": "AUDIT MEDICAL OVERRIDE",
-		"label": "MEDICAL OVERRIDE",
-		"color": Color(0.84, 0.32, 0.24),
-	},
-	{
-		"id": "custody_threshold",
-		"name": "TagDayCustodyThreshold",
-		"position": Vector3(14.0, 0, -10.0),
-		"dwell": 9.0,
-		"verb": "MARK CUSTODY THRESHOLD",
-		"label": "CUSTODY THRESHOLD",
-		"color": Color(0.86, 0.60, 0.22),
-	},
-	{
-		"id": "gait_variance",
-		"name": "TagDayGaitVariance",
-		"position": Vector3(20.0, 0, -17.0),
-		"dwell": 10.0,
-		"verb": "CORRELATE ESCORT GAIT",
-		"label": "GAIT VARIANCE",
-		"color": Color(0.78, 0.54, 0.25),
-	},
-	{
-		"id": "grip_telemetry",
-		"name": "TagDayGripTelemetry",
-		"position": Vector3(24.0, 0, -22.0),
-		"dwell": 10.0,
-		"verb": "CAPTURE GRIP TELEMETRY",
-		"label": "GRIP TELEMETRY",
-		"color": Color(0.84, 0.38, 0.22),
-	},
-	{
-		"id": "iron_shadow",
-		"name": "TagDayIronShadowSample",
-		"position": Vector3(21.0, 0, -27.0),
-		"dwell": 11.0,
-		"verb": "SAMPLE IRON SHADOW",
-		"label": "IRON SHADOW",
-		"color": Color(0.72, 0.28, 0.18),
-	},
-	{
-		"id": "report_echo",
-		"name": "TagDayReportEchoTriangulation",
-		"position": Vector3(24.0, 0, -19.0),
-		"dwell": 12.0,
-		"verb": "TRIANGULATE REPORT ECHO",
-		"label": "REPORT ECHO",
-		"color": Color(0.76, 0.30, 0.24),
-	},
-	{
-		"id": "erasure_receipt",
-		"name": "TagDayErasureReceipt",
-		"position": Vector3(17.0, 0, -29.0),
-		"dwell": 12.0,
-		"verb": "SEAL ERASURE RECEIPT",
-		"label": "ERASURE RECEIPT",
-		"color": Color(0.62, 0.24, 0.20),
-	},
-]
 
 # An OPEN walkable plane spanning the checkpoint room AND the twisted corridor down to the dead end
 # (world X[-4,28], Z[-28,6]). No internal walls: the citizen's scripted command_walk_path waypoints carry
@@ -197,25 +121,9 @@ var _grid: GridWorld
 
 func _build_scene() -> void:
 	_build_grid()
-	if focused_verifier_minimal_scene_boot:
-		_build_focused_verifier_environment()
-		return
 	_build_environment()
 	_build_corridor()
 	_build_checkpoint_decorations()
-
-func _build_focused_verifier_environment() -> void:
-	var environment := Node3D.new()
-	environment.name = "Environment"
-	add_child(environment)
-	# Later story beats recolor this light. Keeping it present makes the minimal
-	# boot structurally complete even though the verifier never advances there.
-	_citizen_light = OmniLight3D.new()
-	_citizen_light.name = "FocusedVerifierCitizenLight"
-	_citizen_light.position = CITIZEN_DEVICE_POS + Vector3(0, 2, 0)
-	_citizen_light.light_color = Color(0.3, 0.3, 0.35)
-	_citizen_light.light_energy = 1.5
-	environment.add_child(_citizen_light)
 
 func _build_grid() -> void:
 	_grid = GridWorld.new()
@@ -265,9 +173,7 @@ func _build_characters() -> void:
 
 func _register_characters() -> void:
 	_game_state.grid = _grid
-	# The checkpoint enforces an orderly walking pace. At 2.35 m/s the authored
-	# witness-and-return route contributes about 38 seconds of active traversal.
-	_register_gs_character("aster", _player, ASTER_CHECKPOINT_SPEED)
+	_register_gs_character("aster", _player, 3.0)
 	_register_gs_character("citizen", _citizen, BASE_NPC_SPEED)
 
 	for i in range(_bystanders.size()):
@@ -276,6 +182,197 @@ func _register_characters() -> void:
 
 	_register_gs_character("nk1", _naturalizer_1, BASE_NPC_SPEED)
 	_register_gs_character("nk2", _naturalizer_2, BASE_NPC_SPEED)
+	_publish_escort_authority(_baseline_escort_authority())
+	_publish_callback_authority(_baseline_callback_authority())
+
+
+func _baseline_escort_authority() -> Dictionary:
+	return {
+		"version": ESCORT_AUTHORITY_VERSION,
+		"contract": ESCORT_AUTHORITY_CONTRACT,
+		"phase": ESCORT_PHASE_IDLE,
+		"actors": ESCORT_ACTORS.duplicate(),
+		"required_arrival_ids": [],
+		"accepted_movement_ops": {},
+		"endpoints": {},
+		"arrivals": {},
+		"started_at": -1.0,
+		"presentation_started_at": -1.0,
+		"presentation_deadline": -1.0,
+		"presentation_complete": false,
+		"presentation_completed_at": -1.0,
+		"physical_completed_at": -1.0,
+		"joined_at": -1.0,
+	}
+
+
+func _baseline_callback_authority() -> Dictionary:
+	return {
+		"version": CALLBACK_AUTHORITY_VERSION,
+		"contract": CALLBACK_AUTHORITY_CONTRACT,
+		"phase": CALLBACK_PHASE_IDLE,
+		"started_at": -1.0,
+		"deadline": -1.0,
+		"presentation_complete": false,
+		"presentation_completed_at": -1.0,
+	}
+
+
+func _escort_authority_state() -> Dictionary:
+	if _game_state == null:
+		return {}
+	var raw: Variant = _game_state.get_world_state(ESCORT_AUTHORITY_KEY, null)
+	return (raw as Dictionary).duplicate(true) if raw is Dictionary else {}
+
+
+func _callback_authority_state() -> Dictionary:
+	if _game_state == null:
+		return {}
+	var raw: Variant = _game_state.get_world_state(CALLBACK_AUTHORITY_KEY, null)
+	return (raw as Dictionary).duplicate(true) if raw is Dictionary else {}
+
+
+func _publish_escort_authority(authority: Dictionary) -> void:
+	if _game_state != null:
+		_game_state.set_world_state(ESCORT_AUTHORITY_KEY, authority.duplicate(true))
+
+
+func _publish_callback_authority(authority: Dictionary) -> void:
+	if _game_state != null:
+		_game_state.set_world_state(CALLBACK_AUTHORITY_KEY, authority.duplicate(true))
+
+
+func _v3_data(value: Vector3) -> Array:
+	return [value.x, value.y, value.z]
+
+
+func _v3_from_data(value: Variant) -> Vector3:
+	if not (value is Array) or (value as Array).size() != 3:
+		return Vector3.INF
+	var encoded := value as Array
+	return Vector3(float(encoded[0]), float(encoded[1]), float(encoded[2]))
+
+
+func _v3_path(value: Variant) -> Array[Vector3]:
+	var result: Array[Vector3] = []
+	if not (value is Array):
+		return result
+	for point_v in value as Array:
+		if point_v is Vector3:
+			result.append(point_v as Vector3)
+	return result
+
+
+func _same_string_members(raw: Variant, expected: Array) -> bool:
+	if not (raw is Array) or (raw as Array).size() != expected.size():
+		return false
+	for member_v in expected:
+		if not (raw as Array).has(str(member_v)):
+			return false
+	return true
+
+
+func _valid_movement_contract(authority: Dictionary, required: Array) -> bool:
+	if not _same_string_members(authority.get("required_arrival_ids", []), required):
+		return false
+	var operations_v: Variant = authority.get("accepted_movement_ops", null)
+	var endpoints_v: Variant = authority.get("endpoints", null)
+	var arrivals_v: Variant = authority.get("arrivals", null)
+	if not (operations_v is Dictionary) or not (endpoints_v is Dictionary) \
+			or not (arrivals_v is Dictionary):
+		return false
+	var operations := operations_v as Dictionary
+	var endpoints := endpoints_v as Dictionary
+	var arrivals := arrivals_v as Dictionary
+	for actor_v in required:
+		var actor_id := str(actor_v)
+		if not operations.has(actor_id) or not endpoints.has(actor_id) \
+				or not arrivals.has(actor_id):
+			return false
+		var operation_v: Variant = operations[actor_id]
+		if not (operation_v is Dictionary):
+			return false
+		var operation := operation_v as Dictionary
+		if str(operation.get("actor_id", "")) != actor_id \
+				or str(operation.get("kind", "")) not in ["move_to_pos", "walk_path"] \
+				or not bool(operation.get("accepted", false)):
+			return false
+		var endpoint := _v3_from_data(endpoints[actor_id])
+		var operation_endpoint := _v3_from_data(operation.get("endpoint", null))
+		if not endpoint.is_finite() or not operation_endpoint.is_finite() \
+				or not endpoint.is_equal_approx(operation_endpoint):
+			return false
+	return true
+
+
+func _valid_escort_authority(raw: Variant) -> bool:
+	if not (raw is Dictionary):
+		return false
+	var authority := raw as Dictionary
+	if int(authority.get("version", 0)) != ESCORT_AUTHORITY_VERSION \
+			or str(authority.get("contract", "")) != ESCORT_AUTHORITY_CONTRACT \
+			or not _same_string_members(authority.get("actors", []), ESCORT_ACTORS):
+		return false
+	var phase := str(authority.get("phase", ""))
+	var started_at := float(authority.get("started_at", -1.0))
+	match phase:
+		ESCORT_PHASE_IDLE:
+			return started_at < 0.0
+		ESCORT_PHASE_FORMING:
+			return is_finite(started_at) and started_at >= 0.0 \
+				and _valid_movement_contract(authority, FORMATION_ACTORS)
+		ESCORT_PHASE_CORRIDOR, ESCORT_PHASE_JOINED:
+			var presentation_started := float(authority.get(
+				"presentation_started_at", -1.0))
+			var presentation_deadline := float(authority.get(
+				"presentation_deadline", -1.0))
+			if not is_finite(started_at) or not is_finite(presentation_started) \
+					or not is_finite(presentation_deadline) or started_at < 0.0 \
+					or presentation_started < started_at \
+					or presentation_deadline <= presentation_started \
+					or not _valid_movement_contract(authority, ESCORT_ACTORS):
+				return false
+			if phase == ESCORT_PHASE_JOINED:
+				var arrivals := authority.get("arrivals", {}) as Dictionary
+				for actor_v in ESCORT_ACTORS:
+					if not bool(arrivals.get(str(actor_v), false)):
+						return false
+				return bool(authority.get("presentation_complete", false)) \
+					and float(authority.get("physical_completed_at", -1.0)) >= started_at \
+					and float(authority.get("joined_at", -1.0)) >= started_at
+			return true
+		ESCORT_PHASE_BLOCKED:
+			# BLOCKED is fail-closed evidence of a rejected or replaced authored move.
+			# It can be inspected, but may never satisfy the progression join.
+			return is_finite(started_at) and started_at >= 0.0
+		_:
+			return false
+
+
+func _valid_callback_authority(raw: Variant) -> bool:
+	if not (raw is Dictionary):
+		return false
+	var authority := raw as Dictionary
+	if int(authority.get("version", 0)) != CALLBACK_AUTHORITY_VERSION \
+			or str(authority.get("contract", "")) != CALLBACK_AUTHORITY_CONTRACT:
+		return false
+	var phase := str(authority.get("phase", ""))
+	var started_at := float(authority.get("started_at", -1.0))
+	var deadline := float(authority.get("deadline", -1.0))
+	if phase in [CALLBACK_PHASE_IDLE, CALLBACK_PHASE_COMPLETE]:
+		return deadline < 0.0 and (phase == CALLBACK_PHASE_IDLE or started_at >= 0.0)
+	if phase not in [
+		CALLBACK_PHASE_FRAGMENTS,
+		CALLBACK_PHASE_NEUTRALIZATION,
+		CALLBACK_PHASE_WHIMPER,
+		CALLBACK_PHASE_LOCKDOWN,
+		CALLBACK_PHASE_RETURN_FOCUS,
+		CALLBACK_PHASE_ASTER_SCAN,
+		CALLBACK_PHASE_CLEARANCE,
+	]:
+		return false
+	return is_finite(started_at) and is_finite(deadline) \
+		and started_at >= 0.0 and deadline >= started_at
 
 func _setup_ui() -> void:
 	# Aster's data-view perception (managed by base class)
@@ -289,13 +386,15 @@ func _setup_ui() -> void:
 	add_child(_data_overlay)
 
 func _begin() -> void:
-	# Tag Day alternates player-owned checkpoint work with a scripted escort. During
-	# that escort, dialogue rides the shared beat (hold F to speed) so the poem stays
-	# synchronized with the citizen's walk instead of waiting on clicks.
+	# Tag Day is a scripted escort witnessed through optional camera control.
+	# Dialogue rides the shared beat so fast-forward stays synchronized with motion.
 	if _dialogue != null and _dialogue.has_method("set_cutscene_mode"):
 		_dialogue.set_cutscene_mode(true)
-	_build_active_play_stations()
 	_start_arrive()
+
+
+func _on_process(_delta: float, _spd: float) -> void:
+	_sync_callback_visuals()
 
 # --- Event-driven steps ---
 
@@ -306,25 +405,33 @@ func _start_arrive() -> void:
 		_game_state.character_arrived.connect(_on_character_arrived)
 	DialogueData.say_to(_dialogue, "tag_day.checkpoint_id")
 	# Citizen tries small talk, Aster shuts them down, then scan fails
-	_scheduler.schedule_after(2.0, func():
-		_dialogue_chain(
-			["tag_day.citizen.talk", "tag_day.aster.shush", "tag_day.citizen.scan",
-			 "tag_day.murmur.01", "tag_day.murmur.02"],
-			func(): _scheduler.schedule_after(1.5, _start_citizen_scan, "citizen_scan")
-		)
-	, "citizen_talk")
+	_schedule_portable_method(2.0, _start_checkpoint_conversation, "citizen_talk")
+
+
+func _start_checkpoint_conversation() -> void:
+	_dialogue_chain(
+		["tag_day.citizen.talk", "tag_day.aster.shush", "tag_day.citizen.scan",
+		 "tag_day.murmur.01", "tag_day.murmur.02"],
+		_finish_checkpoint_conversation
+	)
+
+
+func _finish_checkpoint_conversation() -> void:
+	_schedule_portable_method(1.5, _start_citizen_scan, "citizen_scan")
 
 func _on_character_arrived(id: String) -> void:
-	if id != "aster" or _escort_pending_site_id == "":
+	var escort := _escort_authority_state()
+	if not _valid_escort_authority(escort):
 		return
-	var site_id := _escort_pending_site_id
-	_escort_pending_site_id = ""
-	if not _escort_field_interactables.has(site_id):
-		return
-	var interactable: Node = _escort_field_interactables[site_id]
-	if interactable != null and is_instance_valid(interactable) \
-		and interactable.has_method("on_interaction_arrived"):
-		interactable.call("on_interaction_arrived")
+	match str(escort.get("phase", "")):
+		ESCORT_PHASE_FORMING:
+			if id in FORMATION_ACTORS:
+				_record_escort_arrival(id)
+				_maybe_begin_corridor_walk()
+		ESCORT_PHASE_CORRIDOR:
+			if id in ESCORT_ACTORS:
+				_record_escort_arrival(id)
+				_try_finish_corridor_escort()
 
 func _start_citizen_scan() -> void:
 	_enter_step("citizen_scan")
@@ -332,80 +439,128 @@ func _start_citizen_scan() -> void:
 	_citizen_light.light_color = Color(0.8, 0.1, 0.05)
 	_citizen_light.light_energy = 6.0
 	DialogueData.say_to(_dialogue, "tag_day.scan_failed")
-	# Do not open the player-controlled route beneath an unfinished cutscene line.
-	# Switching cutscene mode off while this line is still active would freeze its
-	# auto-advance and leave the dialogue panel covering the witness stations.
-	if _dialogue != null and _dialogue.is_active():
-		_dialogue.dialogue_finished.connect(_start_witness_record_choice, CONNECT_ONE_SHOT)
-	else:
-		_scheduler.schedule_after(0.1, _start_witness_record_choice, "witness_choice")
-
-func _start_witness_record_choice() -> void:
-	if not _enter_step("witness_choice"):
-		return
-	_witness_record_choice = ""
-	_witness_record_resolved = false
-	_witness_auto_resolved = false
-	if _dialogue != null and _dialogue.has_method("set_cutscene_mode"):
-		_dialogue.set_cutscene_mode(false)
-	_player.set_move_enabled(true)
-	_camera.enable_free_look(40.0)
-	# Keep Aster in frame when control returns. Looking directly through the narrow
-	# doorway can put the isometric camera behind the checkpoint wall in WebGL.
-	_camera.recenter()
-	_set_witness_interactables_enabled(true)
-	_tutorial_prompt.show_prompt("[Interact] — follow the Wellness corridor and choose a witness record")
-	# Compatibility is deliberately headless/test-only. A normal desktop or Web
-	# session cannot pass this mandatory choice by standing still.
-	if _legacy_compatibility_fallback_allowed():
-		_scheduler.schedule_after(
-			ACTIVITY_GATE_FALLBACK_SECONDS,
-			func(): trigger_witness_record("public_log", true),
-			WITNESS_FALLBACK_TAG
-		)
-
-func trigger_witness_record(choice_id: String, auto_resolved := false) -> void:
-	if _current_step != "witness_choice" or _witness_record_resolved:
-		return
-	if not _witness_interactables.has(choice_id):
-		return
-	_witness_record_resolved = true
-	_witness_record_choice = choice_id
-	_witness_auto_resolved = auto_resolved
-	# Do not cancel the tag from inside its own fallback callback: the native
-	# scheduler's pop-next test seam is intentionally non-reentrant there.
-	if not auto_resolved:
-		_scheduler.cancel_tag(WITNESS_FALLBACK_TAG)
-	if _player != null and _player.has_method("cancel_interaction_target"):
-		_player.cancel_interaction_target()
-	_game_state.command_stop("aster")
-	_player.set_move_enabled(false)
-	_camera.recenter()
-	_set_witness_interactables_enabled(false)
-	_tutorial_prompt.hide_prompt()
-	_update_witness_receipt()
-	if not auto_resolved:
-		if choice_id == "private_trace":
-			_show_thought("PRIVATE TRACE RETAINED  //  OMITTED FROM INCIDENT LEDGER")
-		else:
-			_show_thought("DUTY LOG FILED  //  INCIDENT INDEXED FOR COMPLIANCE")
-	if _dialogue != null and _dialogue.has_method("set_cutscene_mode"):
-		_dialogue.set_cutscene_mode(true)
-	_scheduler.schedule_after(0.5, _start_naturalizers_grip, "nk_grip")
+	_schedule_portable_method(3.0, _start_naturalizers_grip, "nk_grip")
 
 func _start_naturalizers_grip() -> void:
 	_enter_step("naturalizers_grip")
+	if not _game_state.character_arrived.is_connected(_on_character_arrived):
+		_game_state.character_arrived.connect(_on_character_arrived)
 	# Naturalizers approach slowly.
 	_game_state.change_move_speed("nk1", 1.5)
 	_game_state.change_move_speed("nk2", 1.5)
-	_game_state.command_move_to_pos("nk1", CITIZEN_DEVICE_POS + Vector3(0, 0, -0.6))
-	_game_state.command_move_to_pos("nk2", CITIZEN_DEVICE_POS + Vector3(0, 0, 0.6))
-	# Let enforcers reach the citizen before walking.
-	_scheduler.schedule_after(5.0, _begin_corridor_walk, "corridor_walk")
-	# Report label appears above the escort during the walk
-	_scheduler.schedule_after(10.0, _show_report_label, "report_label")
+	var now := float(_scheduler.get_current_tick())
+	var authority := _baseline_escort_authority()
+	authority["phase"] = ESCORT_PHASE_FORMING
+	authority["started_at"] = now
+	authority["required_arrival_ids"] = FORMATION_ACTORS.duplicate()
+	authority["endpoints"] = {
+		"nk1": _v3_data(NK_GRIP_POS_1),
+		"nk2": _v3_data(NK_GRIP_POS_2),
+	}
+	authority["arrivals"] = {"nk1": false, "nk2": false}
+	_publish_escort_authority(authority)
+	var operations := {}
+	operations["nk1"] = _commit_escort_move_to("nk1", NK_GRIP_POS_1, "formation:nk1")
+	operations["nk2"] = _commit_escort_move_to("nk2", NK_GRIP_POS_2, "formation:nk2")
+	authority["accepted_movement_ops"] = operations
+	if not bool((operations["nk1"] as Dictionary).get("accepted", false)) \
+			or not bool((operations["nk2"] as Dictionary).get("accepted", false)):
+		authority["phase"] = ESCORT_PHASE_BLOCKED
+	_publish_escort_authority(authority)
+	# The corridor handoff is arrival-owned. A fixed five-second timer used to fire
+	# while NK-02 was still en route and hide that mismatch with a render-node snap.
+	_maybe_begin_corridor_walk()
+
+
+func _maybe_begin_corridor_walk() -> void:
+	if _game_state == null:
+		return
+	var authority := _escort_authority_state()
+	if not _valid_escort_authority(authority) \
+			or str(authority.get("phase", "")) != ESCORT_PHASE_FORMING:
+		return
+	for arrival in [
+		{"id": "nk1", "target": NK_GRIP_POS_1},
+		{"id": "nk2", "target": NK_GRIP_POS_2},
+	]:
+		var char_id := str(arrival["id"])
+		var target := arrival["target"] as Vector3
+		if not _game_state.characters.has(char_id) or _game_state.is_moving(char_id):
+			return
+		if _game_state.get_position(char_id).distance_to(target) > GRIP_ARRIVAL_RADIUS:
+			return
+	_begin_corridor_walk()
+
+
+func _commit_escort_move_to(actor_id: String, endpoint: Vector3, op_id: String) -> Dictionary:
+	var accepted := false
+	if _game_state != null and _game_state.can_accept_move_command(actor_id):
+		accepted = _game_state.command_move_to_pos(actor_id, endpoint)
+		accepted = accepted and (
+			(_game_state.is_moving(actor_id)
+				and _game_state.get_destination(actor_id).distance_to(endpoint) <= GRIP_ARRIVAL_RADIUS)
+			or (not _game_state.is_moving(actor_id)
+				and _game_state.get_position(actor_id).distance_to(endpoint) <= GRIP_ARRIVAL_RADIUS)
+		)
+	return {
+		"op_id": op_id,
+		"actor_id": actor_id,
+		"kind": "move_to_pos",
+		"accepted": accepted,
+		"committed_at": float(_scheduler.get_current_tick()) if _scheduler != null else -1.0,
+		"endpoint": _v3_data(endpoint),
+	}
+
+
+func _commit_escort_walk_path(
+	actor_id: String,
+	path: Array[Vector3],
+	op_id: String
+) -> Dictionary:
+	var accepted := false
+	var endpoint := path[-1] if not path.is_empty() else Vector3.INF
+	if _game_state != null and not path.is_empty() \
+			and _game_state.can_accept_move_command(actor_id):
+		_game_state.command_walk_path(actor_id, path)
+		accepted = _game_state.is_moving(actor_id) \
+			and _game_state.get_destination(actor_id).distance_to(endpoint) <= GRIP_ARRIVAL_RADIUS
+	return {
+		"op_id": op_id,
+		"actor_id": actor_id,
+		"kind": "walk_path",
+		"accepted": accepted,
+		"committed_at": float(_scheduler.get_current_tick()) if _scheduler != null else -1.0,
+		"endpoint": _v3_data(endpoint),
+		"waypoint_count": path.size(),
+	}
+
+
+func _record_escort_arrival(actor_id: String) -> void:
+	var authority := _escort_authority_state()
+	if not _valid_escort_authority(authority):
+		return
+	var required := authority.get("required_arrival_ids", []) as Array
+	if not required.has(actor_id):
+		return
+	var endpoints := authority.get("endpoints", {}) as Dictionary
+	if not endpoints.has(actor_id) or not _game_state.characters.has(actor_id) \
+			or _game_state.is_moving(actor_id):
+		return
+	var endpoint := _v3_from_data(endpoints[actor_id])
+	if not endpoint.is_finite() \
+			or _game_state.get_position(actor_id).distance_to(endpoint) > GRIP_ARRIVAL_RADIUS:
+		return
+	var arrivals := (authority.get("arrivals", {}) as Dictionary).duplicate(true)
+	if bool(arrivals.get(actor_id, false)):
+		return
+	arrivals[actor_id] = true
+	authority["arrivals"] = arrivals
+	_publish_escort_authority(authority)
 
 func _show_report_label() -> void:
+	if _report_label_shown or not is_instance_valid(_naturalizer_1):
+		return
+	_report_label_shown = true
 	var lbl := Label3D.new()
 	lbl.name = "ReportLabel"
 	lbl.text = "REPORT FILED  |  CAUSE: MENTAL INSTABILITY"
@@ -422,29 +577,67 @@ func _show_report_label() -> void:
 	tween.tween_interval(8.0)
 	tween.tween_property(lbl, "modulate:a", 0.0, 2.0)
 
+
+func _clear_report_label() -> void:
+	_report_label_shown = false
+	if not is_instance_valid(_naturalizer_1):
+		return
+	var existing: Node = _naturalizer_1.get_node_or_null("ReportLabel")
+	if existing != null:
+		existing.free()
+
 func _begin_corridor_walk() -> void:
+	var existing := _escort_authority_state()
+	if _valid_escort_authority(existing) and str(existing.get("phase", "")) \
+			in [ESCORT_PHASE_CORRIDOR, ESCORT_PHASE_JOINED]:
+		return
 	_enter_step("corridor_walk")
-	_escort_started_tick = _scheduler.get_current_tick()
-	_escort_presentation_finished_tick = -1.0
-	_escort_field_finished_tick = -1.0
-	_escort_presentation_finished = false
-	_escort_field_resolved = false
-	_escort_field_auto_resolved = false
-	_escort_field_index = 0
-	_escort_pending_site_id = ""
-
-	# Snap formation before the corridor walk.
-	_game_state.command_stop("citizen")
-	_game_state.command_stop("nk1")
-	_game_state.command_stop("nk2")
-	_citizen.global_position = Vector3(CITIZEN_DEVICE_POS.x, 0, CITIZEN_DEVICE_POS.z)
-	_naturalizer_1.global_position = CITIZEN_DEVICE_POS + Vector3(0, 0, -0.6)
-	_naturalizer_2.global_position = CITIZEN_DEVICE_POS + Vector3(0, 0, 0.6)
-
 	# Slow walk leaves room for poem and fragments.
 	_game_state.change_move_speed("citizen", 0.4)
 	_game_state.change_move_speed("nk1", 0.4)
 	_game_state.change_move_speed("nk2", 0.4)
+	var paths := _corridor_escort_paths()
+	var now := float(_scheduler.get_current_tick())
+	var authority := _baseline_escort_authority()
+	authority["phase"] = ESCORT_PHASE_CORRIDOR
+	authority["started_at"] = now
+	authority["required_arrival_ids"] = ESCORT_ACTORS.duplicate()
+	authority["presentation_started_at"] = now
+	authority["presentation_deadline"] = now + ESCORT_PRESENTATION_SECONDS
+	authority["arrivals"] = {"citizen": false, "nk1": false, "nk2": false}
+	var endpoints := {}
+	for actor_v in ESCORT_ACTORS:
+		var actor_id := str(actor_v)
+		var actor_path := _v3_path(paths.get(actor_id, []))
+		endpoints[actor_id] = _v3_data(actor_path[-1])
+	authority["endpoints"] = endpoints
+	_publish_escort_authority(authority)
+
+	# Continue from the formation's actual arrival positions. Each accepted GameState
+	# operation is recorded with the endpoint the physical-arrival latch will test.
+	var operations := {}
+	for actor_v in ESCORT_ACTORS:
+		var actor_id := str(actor_v)
+		operations[actor_id] = _commit_escort_walk_path(
+			actor_id,
+			_v3_path(paths[actor_id]),
+			"corridor:%s" % actor_id
+		)
+	authority["accepted_movement_ops"] = operations
+	for operation_v in operations.values():
+		if not bool((operation_v as Dictionary).get("accepted", false)):
+			authority["phase"] = ESCORT_PHASE_BLOCKED
+			break
+	_publish_escort_authority(authority)
+	if str(authority.get("phase", "")) == ESCORT_PHASE_BLOCKED:
+		push_error("Tag Day escort rejected an authored movement operation; progression is fail-closed.")
+		return
+
+	_arm_corridor_presentation_from_authority(true)
+	_try_finish_corridor_escort()
+
+
+func _corridor_escort_paths() -> Dictionary:
 
 	# Explicit corners prevent wall-cutting.
 	var corner_AB := Vector3(14, 0, -17)   # Turn from A (along Z) to B (along X)
@@ -458,7 +651,6 @@ func _begin_corridor_walk() -> void:
 		CORRIDOR_C_END, corner_CD,
 		CORRIDOR_D_END, DEAD_END,
 	]
-	_game_state.command_walk_path("citizen", citizen_path)
 
 	# NKs flank the citizen.
 	var nk1_path: Array[Vector3] = [
@@ -472,7 +664,6 @@ func _begin_corridor_walk() -> void:
 		CORRIDOR_D_END + Vector3(0, 0, -0.6),            # D: moving along -X, offset in -Z
 		DEAD_END + Vector3(-0.6, 0, 0),
 	]
-	_game_state.command_walk_path("nk1", nk1_path)
 
 	var nk2_path: Array[Vector3] = [
 		CORRIDOR_ENTRANCE + Vector3(0.6, 0, 0),          # A: offset in +X
@@ -485,41 +676,448 @@ func _begin_corridor_walk() -> void:
 		CORRIDOR_D_END + Vector3(0, 0, 0.6),             # D: offset in +Z
 		DEAD_END + Vector3(0.6, 0, 0),
 	]
-	_game_state.command_walk_path("nk2", nk2_path)
+	return {"citizen": citizen_path, "nk1": nk1_path, "nk2": nk2_path}
 
-	# Poem and NK lines alternate in one scheduler chain.
+
+func _arm_corridor_presentation_from_authority(start_dialogue: bool) -> void:
+	if _scheduler == null:
+		return
+	_scheduler.cancel_tag(ESCORT_PRESENTATION_TAG)
+	_scheduler.cancel_tag(ESCORT_REPORT_TAG)
+	_scheduler.cancel_tag(ESCORT_PAN_TAG)
+	_scheduler.cancel_tag(ESCORT_FAST_FORWARD_TAG)
+	var authority := _escort_authority_state()
+	if not _valid_escort_authority(authority) \
+			or str(authority.get("phase", "")) != ESCORT_PHASE_CORRIDOR:
+		return
+	var now := float(_scheduler.get_current_tick())
+	var started_at := float(authority.get("started_at", now))
+	var deadline := float(authority.get("presentation_deadline", now))
+	if not bool(authority.get("presentation_complete", false)):
+		if start_dialogue:
+			_start_corridor_presentation()
+		if deadline <= now:
+			_on_escort_presentation_deadline(deadline)
+		else:
+			_scheduler.schedule_at(
+				deadline,
+				_on_escort_presentation_deadline.bind(deadline),
+				ESCORT_PRESENTATION_TAG
+			)
+	_arm_corridor_presenter_callbacks(started_at, now)
+
+
+func _start_corridor_presentation() -> void:
+	if _dialogue == null:
+		return
 	_dialogue.default_hold_time = 4.0
-	_scheduler.schedule_after(2.0, _start_pan_prompt, "pan_prompt")
-	# Capture the corridor_walk step before handing control back; contract drivers
-	# still see the authored story beat, then the player-owned evidence substeps.
-	_scheduler.schedule_after(0.1, _start_escort_field_record, "escort_field_record")
+	# Constants are read-only in Godot 4.6. The shared dialogue presenter mutates its
+	# working list during teardown, so give it an owned copy rather than aliasing the
+	# authored constant into transient presenter state.
+	_dialogue_chain(ESCORT_DIALOGUE_KEYS.duplicate(), _on_poem_finished)
 
-	# Merged stanzas fit inside the corridor walk.
-	_dialogue_chain([
-		"tag_day.poem.01",    # Stanza 1: idea/reality, motion/act
-		"tag_day.nk_chat.01",
-		"tag_day.poem.02",    # Falls the Shadow / For Thine is the Kingdom
-		"tag_day.nk_chat.02",
-		"tag_day.poem.03",    # Stanza 2: conception/creation, emotion/response
-		"tag_day.nk_chat.03",
-		"tag_day.nk_chat.04",
-		"tag_day.poem.04",    # Falls the Shadow / Life is very long
-		"tag_day.nk_chat.05",
-		"tag_day.nk_chat.06",
-		"tag_day.poem.05",    # Stanza 3: desire/spasm, potency/existence, essence/descent
-		"tag_day.nk_chat.07",
-		"tag_day.nk_chat.08",
-		"tag_day.poem.06",    # Falls the Shadow / For Thine is the Kingdom
-		"tag_day.nk_chat.09",
-		"tag_day.nk_chat.10",
-	], _on_poem_finished)
+
+func _arm_corridor_presenter_callbacks(started_at: float, now: float) -> void:
+	var report_tick := started_at + 5.0
+	if now >= report_tick:
+		_show_report_label()
+	else:
+		_scheduler.schedule_at(report_tick, _show_report_label, ESCORT_REPORT_TAG)
+	var pan_tick := started_at + 2.0
+	var ff_tick := started_at + 22.0
+	if now >= ff_tick:
+		_start_pan_prompt()
+		_show_fastforward_prompt()
+	elif now >= pan_tick:
+		_start_pan_prompt()
+		_scheduler.schedule_at(ff_tick, _show_fastforward_prompt,
+			ESCORT_FAST_FORWARD_TAG)
+	else:
+		_scheduler.schedule_at(pan_tick, _start_pan_prompt, ESCORT_PAN_TAG)
+		_scheduler.schedule_at(ff_tick, _show_fastforward_prompt,
+			ESCORT_FAST_FORWARD_TAG)
+
+
+func _on_escort_presentation_deadline(expected_deadline: float) -> void:
+	var authority := _escort_authority_state()
+	if not _valid_escort_authority(authority) \
+			or str(authority.get("phase", "")) != ESCORT_PHASE_CORRIDOR \
+			or not is_equal_approx(float(authority.get(
+				"presentation_deadline", -1.0)), expected_deadline):
+		return
+	_mark_escort_presentation_finished()
+
+
+func _mark_escort_presentation_finished() -> void:
+	var authority := _escort_authority_state()
+	if not _valid_escort_authority(authority) \
+			or str(authority.get("phase", "")) != ESCORT_PHASE_CORRIDOR \
+			or bool(authority.get("presentation_complete", false)):
+		return
+	authority["presentation_complete"] = true
+	authority["presentation_completed_at"] = float(_scheduler.get_current_tick())
+	_publish_escort_authority(authority)
+	_scheduler.cancel_tag(ESCORT_PRESENTATION_TAG)
+	_try_finish_corridor_escort()
+
+
+func _try_finish_corridor_escort() -> void:
+	var authority := _escort_authority_state()
+	if not _valid_escort_authority(authority) \
+			or str(authority.get("phase", "")) != ESCORT_PHASE_CORRIDOR:
+		return
+	var endpoints := authority.get("endpoints", {}) as Dictionary
+	var arrivals := (authority.get("arrivals", {}) as Dictionary).duplicate(true)
+	var physical_complete := true
+	var malformed_move := false
+	for actor_v in ESCORT_ACTORS:
+		var actor_id := str(actor_v)
+		var endpoint := _v3_from_data(endpoints.get(actor_id, null))
+		var at_endpoint := endpoint.is_finite() \
+			and _game_state.characters.has(actor_id) \
+			and not _game_state.is_moving(actor_id) \
+			and _game_state.get_position(actor_id).distance_to(endpoint) <= GRIP_ARRIVAL_RADIUS
+		if _game_state.is_moving(actor_id) \
+				and _game_state.get_destination(actor_id).distance_to(endpoint) \
+					> GRIP_ARRIVAL_RADIUS:
+			malformed_move = true
+		arrivals[actor_id] = at_endpoint
+		physical_complete = physical_complete and at_endpoint
+	authority["arrivals"] = arrivals
+	if malformed_move:
+		authority["phase"] = ESCORT_PHASE_BLOCKED
+		_publish_escort_authority(authority)
+		return
+	if physical_complete and float(authority.get("physical_completed_at", -1.0)) < 0.0:
+		authority["physical_completed_at"] = float(_scheduler.get_current_tick())
+	_publish_escort_authority(authority)
+	if not physical_complete or not bool(authority.get("presentation_complete", false)):
+		return
+	authority["phase"] = ESCORT_PHASE_JOINED
+	authority["joined_at"] = float(_scheduler.get_current_tick())
+	_publish_escort_authority(authority)
+	_cancel_corridor_presenter_callbacks()
+	_start_fragments()
+
+
+func _escort_bodies_at_saved_endpoints(authority: Dictionary) -> bool:
+	if _game_state == null:
+		return false
+	var endpoints := authority.get("endpoints", {}) as Dictionary
+	for actor_v in ESCORT_ACTORS:
+		var actor_id := str(actor_v)
+		var endpoint := _v3_from_data(endpoints.get(actor_id, null))
+		if not endpoint.is_finite() or not _game_state.characters.has(actor_id) \
+				or _game_state.is_moving(actor_id) \
+				or _game_state.get_position(actor_id).distance_to(endpoint) \
+					> GRIP_ARRIVAL_RADIUS:
+			return false
+	return true
+
+
+func _cancel_corridor_presenter_callbacks() -> void:
+	if _scheduler == null:
+		return
+	for tag in [ESCORT_PRESENTATION_TAG, ESCORT_REPORT_TAG, ESCORT_PAN_TAG,
+			ESCORT_FAST_FORWARD_TAG]:
+		_scheduler.cancel_tag(tag)
+
+func on_game_state_snapshot_restored() -> void:
+	if _game_state == null or _scheduler == null:
+		return
+	if not _game_state.character_arrived.is_connected(_on_character_arrived):
+		_game_state.character_arrived.connect(_on_character_arrived)
+	_cancel_corridor_presenter_callbacks()
+	_scheduler.cancel_tag(CALLBACK_PHASE_TAG)
+	_clear_report_label()
+	_clear_dialogue_presenter()
+
+	var escort := _escort_authority_state()
+	if not _valid_escort_authority(escort):
+		escort = _migrate_legacy_escort_authority()
+		_publish_escort_authority(escort)
+	var callback := _callback_authority_state()
+	if not _valid_callback_authority(callback):
+		callback = _migrate_legacy_callback_authority()
+		_publish_callback_authority(callback)
+
+	if str(callback.get("phase", CALLBACK_PHASE_IDLE)) != CALLBACK_PHASE_IDLE:
+		if str(escort.get("phase", "")) == ESCORT_PHASE_JOINED \
+				and _escort_bodies_at_saved_endpoints(escort):
+			_restore_callback_presenter(callback)
+		else:
+			escort["phase"] = ESCORT_PHASE_BLOCKED
+			escort["started_at"] = maxf(0.0, float(_scheduler.get_current_tick()))
+			_publish_escort_authority(escort)
+			_publish_callback_authority(_baseline_callback_authority())
+			_current_step = "corridor_walk"
+			push_error("Loaded Tag Day callback future lacks its physical escort join.")
+	else:
+		_restore_escort_presenter(escort)
+	_sync_callback_visuals()
+
+
+func _clear_dialogue_presenter() -> void:
+	if _dialogue == null:
+		return
+	for connection_v in _dialogue.dialogue_finished.get_connections():
+		var connection := connection_v as Dictionary
+		_dialogue.dialogue_finished.disconnect(connection.callable)
+	_dialogue.clear()
+	# Rebind instead of mutating: a legacy presenter may still hold a read-only
+	# constant array from before the escort-authority migration.
+	_dlg_chain_keys = []
+	_dlg_chain_index = 0
+	_dlg_chain_next = Callable()
+	_dlg_chain_delay = 0.0
+
+
+func _movement_matches_endpoint(actor_id: String, endpoint: Vector3) -> bool:
+	if _game_state == null or not _game_state.characters.has(actor_id):
+		return false
+	if _game_state.is_moving(actor_id):
+		return _game_state.get_destination(actor_id).distance_to(endpoint) \
+			<= GRIP_ARRIVAL_RADIUS
+	return _game_state.get_position(actor_id).distance_to(endpoint) <= GRIP_ARRIVAL_RADIUS
+
+
+func _migration_operation(
+	actor_id: String,
+	kind: String,
+	endpoint: Vector3,
+	op_id: String
+) -> Dictionary:
+	return {
+		"op_id": op_id,
+		"actor_id": actor_id,
+		"kind": kind,
+		"accepted": _movement_matches_endpoint(actor_id, endpoint),
+		"committed_at": float(_scheduler.get_current_tick()),
+		"endpoint": _v3_data(endpoint),
+	}
+
+
+func _migrate_legacy_escort_authority() -> Dictionary:
+	var now := float(_scheduler.get_current_tick())
+	var authority := _baseline_escort_authority()
+	if _current_step == "naturalizers_grip":
+		authority["phase"] = ESCORT_PHASE_FORMING
+		authority["started_at"] = now
+		authority["required_arrival_ids"] = FORMATION_ACTORS.duplicate()
+		authority["endpoints"] = {
+			"nk1": _v3_data(NK_GRIP_POS_1),
+			"nk2": _v3_data(NK_GRIP_POS_2),
+		}
+		authority["accepted_movement_ops"] = {
+			"nk1": _migration_operation("nk1", "move_to_pos", NK_GRIP_POS_1,
+				"legacy:formation:nk1"),
+			"nk2": _migration_operation("nk2", "move_to_pos", NK_GRIP_POS_2,
+				"legacy:formation:nk2"),
+		}
+		authority["arrivals"] = {
+			"nk1": not _game_state.is_moving("nk1") \
+				and _game_state.get_position("nk1").distance_to(NK_GRIP_POS_1) \
+					<= GRIP_ARRIVAL_RADIUS,
+			"nk2": not _game_state.is_moving("nk2") \
+				and _game_state.get_position("nk2").distance_to(NK_GRIP_POS_2) \
+					<= GRIP_ARRIVAL_RADIUS,
+		}
+		return authority
+
+	var callback_steps := [
+		"fragments", "neutralization", "lockdown", "return_focus",
+		"aster_scans", "clearance", "complete",
+	]
+	if _current_step != "corridor_walk" and not callback_steps.has(_current_step):
+		return authority
+	var paths := _corridor_escort_paths()
+	var endpoints := {}
+	var operations := {}
+	var arrivals := {}
+	for actor_v in ESCORT_ACTORS:
+		var actor_id := str(actor_v)
+		var actor_path := _v3_path(paths[actor_id])
+		var endpoint := actor_path[-1]
+		endpoints[actor_id] = _v3_data(endpoint)
+		operations[actor_id] = _migration_operation(
+			actor_id, "walk_path", endpoint, "legacy:corridor:%s" % actor_id)
+		arrivals[actor_id] = not _game_state.is_moving(actor_id) \
+			and _game_state.get_position(actor_id).distance_to(endpoint) \
+				<= GRIP_ARRIVAL_RADIUS
+	authority["phase"] = (
+		ESCORT_PHASE_CORRIDOR if _current_step == "corridor_walk" else ESCORT_PHASE_JOINED)
+	authority["started_at"] = now
+	authority["required_arrival_ids"] = ESCORT_ACTORS.duplicate()
+	authority["accepted_movement_ops"] = operations
+	authority["endpoints"] = endpoints
+	authority["arrivals"] = arrivals
+	authority["presentation_started_at"] = now
+	authority["presentation_deadline"] = now + ESCORT_PRESENTATION_SECONDS
+	if authority["phase"] == ESCORT_PHASE_JOINED:
+		authority["presentation_complete"] = true
+		authority["presentation_completed_at"] = now
+		authority["physical_completed_at"] = now
+		authority["joined_at"] = now
+	return authority
+
+
+func _migrate_legacy_callback_authority() -> Dictionary:
+	var phase := CALLBACK_PHASE_IDLE
+	var duration := 0.0
+	var presentation_complete := false
+	match _current_step:
+		"fragments":
+			phase = CALLBACK_PHASE_FRAGMENTS
+			duration = FRAGMENTS_RECOVERY_SECONDS
+		"neutralization":
+			phase = CALLBACK_PHASE_NEUTRALIZATION
+			duration = NEUTRALIZATION_SECONDS
+			presentation_complete = true
+		"lockdown":
+			phase = CALLBACK_PHASE_LOCKDOWN
+			duration = LOCKDOWN_RECOVERY_SECONDS
+		"return_focus":
+			phase = CALLBACK_PHASE_RETURN_FOCUS
+			duration = RETURN_FOCUS_SECONDS
+			presentation_complete = true
+		"aster_scans":
+			phase = CALLBACK_PHASE_ASTER_SCAN
+			duration = ASTER_SCAN_RECOVERY_SECONDS
+		"clearance":
+			phase = CALLBACK_PHASE_CLEARANCE
+			duration = CLEARANCE_SECONDS
+			presentation_complete = true
+		"complete":
+			phase = CALLBACK_PHASE_COMPLETE
+			presentation_complete = true
+		_:
+			return _baseline_callback_authority()
+	var now := float(_scheduler.get_current_tick())
+	var authority := _baseline_callback_authority()
+	authority["phase"] = phase
+	authority["started_at"] = now
+	authority["deadline"] = -1.0 if phase == CALLBACK_PHASE_COMPLETE else now + duration
+	authority["presentation_complete"] = presentation_complete
+	authority["presentation_completed_at"] = now if presentation_complete else -1.0
+	return authority
+
+
+func _restore_escort_presenter(authority: Dictionary) -> void:
+	var phase := str(authority.get("phase", ESCORT_PHASE_IDLE))
+	match phase:
+		ESCORT_PHASE_IDLE:
+			_citizen_light.position = CITIZEN_DEVICE_POS + Vector3(0, 2, 0)
+			if _current_step == "citizen_scan":
+				_citizen_light.light_color = Color(0.8, 0.1, 0.05)
+				_citizen_light.light_energy = 6.0
+			else:
+				_citizen_light.light_color = Color(0.3, 0.3, 0.35)
+				_citizen_light.light_energy = 1.5
+			return
+		ESCORT_PHASE_FORMING:
+			_current_step = "naturalizers_grip"
+			_player.set_move_enabled(false)
+			_citizen_light.position = CITIZEN_DEVICE_POS + Vector3(0, 2, 0)
+			_citizen_light.light_color = Color(0.8, 0.1, 0.05)
+			_citizen_light.light_energy = 6.0
+			call_deferred("_maybe_begin_corridor_walk")
+		ESCORT_PHASE_CORRIDOR:
+			_current_step = "corridor_walk"
+			_player.set_move_enabled(false)
+			_citizen_light.position = CITIZEN_DEVICE_POS + Vector3(0, 2, 0)
+			_citizen_light.light_color = Color(0.8, 0.1, 0.05)
+			_citizen_light.light_energy = 6.0
+			_arm_corridor_presentation_from_authority(
+				not bool(authority.get("presentation_complete", false)))
+			_try_finish_corridor_escort()
+		ESCORT_PHASE_JOINED:
+			# The join and callback record are normally published synchronously. This
+			# handles an old/manual snapshot at that exact boundary without skipping it.
+			if _escort_bodies_at_saved_endpoints(authority):
+				_start_fragments()
+			else:
+				authority["phase"] = ESCORT_PHASE_BLOCKED
+				_publish_escort_authority(authority)
+				_current_step = "corridor_walk"
+				push_error("Loaded Tag Day join disagrees with the three physical endpoints.")
+		ESCORT_PHASE_BLOCKED:
+			_current_step = "corridor_walk"
+			push_error("Loaded Tag Day escort is blocked by a rejected movement contract.")
+
+
+func _restore_callback_presenter(authority: Dictionary) -> void:
+	_cancel_corridor_presenter_callbacks()
+	var phase := str(authority.get("phase", CALLBACK_PHASE_IDLE))
+	_player.set_move_enabled(false)
+	_tutorial_prompt.hide_prompt()
+	if phase not in [CALLBACK_PHASE_ASTER_SCAN, CALLBACK_PHASE_CLEARANCE,
+			CALLBACK_PHASE_COMPLETE]:
+		_citizen_light.position = CITIZEN_DEVICE_POS + Vector3(0, 2, 0)
+	else:
+		_citizen_light.position = ASTER_DEVICE_POS + Vector3(0, 2, 0)
+	match phase:
+		CALLBACK_PHASE_FRAGMENTS:
+			_current_step = "fragments"
+			_camera.enable_free_look(40.0)
+			_citizen_light.light_color = Color(0.8, 0.1, 0.05)
+			_citizen_light.light_energy = 6.0
+			_dialogue.default_hold_time = 2.5
+			if not bool(authority.get("presentation_complete", false)):
+				_dialogue_chain([
+					"tag_day.fragment.01", "tag_day.fragment.02", "tag_day.fragment.03",
+					"tag_day.fragment.04", "tag_day.fragment.07",
+				], _on_bang, 1.5)
+		CALLBACK_PHASE_NEUTRALIZATION:
+			_current_step = "neutralization"
+			_camera.enable_free_look(40.0)
+			_citizen_light.light_color = Color(0.8, 0.1, 0.05)
+			_citizen_light.light_energy = 6.0
+		CALLBACK_PHASE_WHIMPER:
+			_current_step = "neutralization"
+			_camera.enable_free_look(40.0)
+			_citizen_light.light_color = Color(0.8, 0.1, 0.05)
+			_citizen_light.light_energy = 6.0
+			if not bool(authority.get("presentation_complete", false)):
+				DialogueData.say_to(_dialogue, "tag_day.fragment.08")
+				_dialogue.dialogue_finished.connect(
+					_on_whimper_presentation_finished, CONNECT_ONE_SHOT)
+		CALLBACK_PHASE_LOCKDOWN:
+			_current_step = "lockdown"
+			_camera.enable_free_look(40.0)
+			_citizen_light.light_color = Color(0.8, 0.1, 0.05)
+			_citizen_light.light_energy = 4.0
+			if not bool(authority.get("presentation_complete", false)):
+				_dialogue_chain(
+					["tag_day.lockdown", "tag_day.groan", "tag_day.report_blocked"],
+					_on_lockdown_presentation_finished)
+		CALLBACK_PHASE_RETURN_FOCUS:
+			_current_step = "return_focus"
+			_camera.disable_free_look()
+			_citizen_light.light_color = Color(0.3, 0.3, 0.35)
+			_citizen_light.light_energy = 1.5
+		CALLBACK_PHASE_ASTER_SCAN:
+			_current_step = "aster_scans"
+			_citizen_light.light_color = Color(0.2, 0.5, 0.9)
+			_citizen_light.light_energy = 4.0
+			_citizen_light.position = ASTER_DEVICE_POS + Vector3(0, 2, 0)
+			if not bool(authority.get("presentation_complete", false)):
+				DialogueData.say_to(_dialogue, "tag_day.scan_passed")
+				_dialogue.dialogue_finished.connect(
+					_on_aster_scan_presentation_finished, CONNECT_ONE_SHOT)
+		CALLBACK_PHASE_CLEARANCE:
+			_current_step = "clearance"
+			_citizen_light.light_color = Color(0.15, 0.4, 0.85)
+			_citizen_light.light_energy = 6.0
+		CALLBACK_PHASE_COMPLETE:
+			_current_step = "complete"
+			_citizen_light.light_color = Color(0.15, 0.4, 0.85)
+			_citizen_light.light_energy = 6.0
+	_arm_callback_phase_from_authority()
 
 
 func _start_pan_prompt() -> void:
 	_camera.enable_free_look(40.0)
 	_tutorial_prompt.show_prompt(_camera_control_prompt_text())
-	# F prompt appears after early banter.
-	_scheduler.schedule_after(20.0, _show_fastforward_prompt, "ff_prompt")
 
 
 func _camera_control_prompt_text() -> String:
@@ -534,20 +1132,22 @@ func _camera_control_prompt_text() -> String:
 	return "%s — pan camera   •   %s / %s — rotate view" % [" / ".join(pan_labels), rotate_left, rotate_right]
 
 func _show_fastforward_prompt() -> void:
-	_tutorial_prompt.show_prompt("F — fast-forward time")
+	var fast_forward := InputHints.label_for_action("fast_forward", "X")
+	_tutorial_prompt.show_prompt("%s — hold to fast-forward time" % fast_forward)
 
 func _on_poem_finished() -> void:
-	_escort_presentation_finished = true
-	_escort_presentation_finished_tick = _scheduler.get_current_tick()
-	_try_finish_escort_field_record()
+	_mark_escort_presentation_finished()
 
 func _start_fragments() -> void:
+	var escort := _escort_authority_state()
+	if not _valid_escort_authority(escort) \
+			or str(escort.get("phase", "")) != ESCORT_PHASE_JOINED:
+		return
 	_enter_step("fragments")
 	_player.set_move_enabled(false)
-	_set_all_escort_field_interactables_enabled(false)
-	_scheduler.cancel_tag(ESCORT_FIELD_FALLBACK_TAG)
 	_tutorial_prompt.hide_prompt()
 	_dialogue.default_hold_time = 2.5
+	_begin_callback_phase(CALLBACK_PHASE_FRAGMENTS, FRAGMENTS_RECOVERY_SECONDS, false)
 	# Stuttering prayer fragments with gaps, then "world ends" x3, then bang
 	_dialogue_chain([
 		"tag_day.fragment.01", "tag_day.fragment.02", "tag_day.fragment.03",
@@ -556,674 +1156,239 @@ func _start_fragments() -> void:
 	], _on_bang, 1.5)
 
 func _on_bang() -> void:
+	var authority := _callback_authority_state()
+	if not _valid_callback_authority(authority) \
+			or str(authority.get("phase", "")) != CALLBACK_PHASE_FRAGMENTS:
+		return
+	_start_neutralization()
+
+
+func _start_neutralization() -> void:
 	_enter_step("neutralization")
+	_begin_callback_phase(CALLBACK_PHASE_NEUTRALIZATION, NEUTRALIZATION_SECONDS, true)
 	_camera.shake(0.5, 3.0)
 	_dialogue.clear()
-	_game_state.command_stop("citizen")
-	_game_state.command_stop("nk1")
-	_game_state.command_stop("nk2")
 	_citizen.fade_out(2.0)
-	_scheduler.schedule_after(2.5, _fragment_whimper, "whimper")
+	_sync_callback_visuals()
 
 func _fragment_whimper() -> void:
+	# Keep the public sequence step at neutralization (the authored beat), while the
+	# portable callback authority records the narrower whimper subphase.
+	_begin_callback_phase(CALLBACK_PHASE_WHIMPER, WHIMPER_RECOVERY_SECONDS, false)
 	DialogueData.say_to(_dialogue, "tag_day.fragment.08")
-	_dialogue.dialogue_finished.connect(func():
-		_scheduler.schedule_after(1.0, _start_lockdown, "lockdown")
-	, CONNECT_ONE_SHOT)
+	_dialogue.dialogue_finished.connect(_on_whimper_presentation_finished, CONNECT_ONE_SHOT)
+
+
+func _on_whimper_presentation_finished() -> void:
+	_complete_callback_presentation(CALLBACK_PHASE_WHIMPER, WHIMPER_POST_SECONDS)
 
 func _start_lockdown() -> void:
 	_enter_step("lockdown")
+	_begin_callback_phase(CALLBACK_PHASE_LOCKDOWN, LOCKDOWN_RECOVERY_SECONDS, false)
 	_citizen_light.light_energy = 4.0
 	_camera.shake(0.15, 8.0)
 	_dialogue_chain(
 		["tag_day.lockdown", "tag_day.groan", "tag_day.report_blocked"],
-		func(): _scheduler.schedule_after(1.5, _start_return_focus, "return_focus")
+		_on_lockdown_presentation_finished
 	)
+
+
+func _on_lockdown_presentation_finished() -> void:
+	_complete_callback_presentation(CALLBACK_PHASE_LOCKDOWN, LOCKDOWN_POST_SECONDS)
 
 func _start_return_focus() -> void:
 	_enter_step("return_focus")
+	_begin_callback_phase(CALLBACK_PHASE_RETURN_FOCUS, RETURN_FOCUS_SECONDS, true)
 	_camera.disable_free_look()
 	# Citizen's light dims back down
 	_citizen_light.light_color = Color(0.3, 0.3, 0.35)
 	_citizen_light.light_energy = 1.5
-	_scheduler.schedule_after(0.2, _start_return_to_scanner, "return_to_scanner")
-
-func _start_return_to_scanner() -> void:
-	if not _enter_step("return_to_scanner"):
-		return
-	_return_scan_resolved = false
-	_return_scan_auto_resolved = false
-	if _dialogue != null and _dialogue.has_method("set_cutscene_mode"):
-		_dialogue.set_cutscene_mode(false)
-	_player.set_move_enabled(true)
-	_camera.enable_free_look(40.0)
-	_camera.recenter()
-	if _return_scanner_interactable != null:
-		_return_scanner_interactable.set_interaction_enabled(true)
-		_return_scanner_interactable.call_deferred("show_tutorial_label")
-	_tutorial_prompt.show_prompt("[Interact] — return to PSY-1 and complete Aster's scan")
-	if _legacy_compatibility_fallback_allowed():
-		_scheduler.schedule_after(
-			ACTIVITY_GATE_FALLBACK_SECONDS,
-			func(): trigger_return_scanner(true),
-			RETURN_SCAN_FALLBACK_TAG
-		)
-
-func trigger_return_scanner(auto_resolved := false) -> void:
-	if _current_step != "return_to_scanner" or _return_scan_resolved:
-		return
-	_return_scan_resolved = true
-	_return_scan_auto_resolved = auto_resolved
-	if not auto_resolved:
-		_scheduler.cancel_tag(RETURN_SCAN_FALLBACK_TAG)
-	if _player != null and _player.has_method("cancel_interaction_target"):
-		_player.cancel_interaction_target()
-	_game_state.command_stop("aster")
-	_player.set_move_enabled(false)
-	_camera.disable_free_look()
-	if _return_scanner_interactable != null:
-		_return_scanner_interactable.set_interaction_enabled(false)
-	_tutorial_prompt.hide_prompt()
-	if _dialogue != null and _dialogue.has_method("set_cutscene_mode"):
-		_dialogue.set_cutscene_mode(true)
-	_scheduler.schedule_after(0.3, _start_aster_scans, "aster_scans")
 
 func _start_aster_scans() -> void:
-	_current_step = "aster_scans"
+	_enter_step("aster_scans")
+	_begin_callback_phase(CALLBACK_PHASE_ASTER_SCAN, ASTER_SCAN_RECOVERY_SECONDS, false)
 	# Aster's scan light.
-	_citizen_light.light_color = (
-		Color(0.48, 0.3, 0.86)
-		if _witness_record_choice == "private_trace"
-		else Color(0.2, 0.5, 0.9)
-	)
+	_citizen_light.light_color = Color(0.2, 0.5, 0.9)
 	_citizen_light.light_energy = 4.0
 	_citizen_light.position = ASTER_DEVICE_POS + Vector3(0, 2, 0)
 	DialogueData.say_to(_dialogue, "tag_day.scan_passed")
-	_dialogue.dialogue_finished.connect(func():
-		_scheduler.schedule_after(0.5, _start_blue_transition, "blue_transition")
-	, CONNECT_ONE_SHOT)
+	_dialogue.dialogue_finished.connect(_on_aster_scan_presentation_finished, CONNECT_ONE_SHOT)
+
+
+func _on_aster_scan_presentation_finished() -> void:
+	_complete_callback_presentation(CALLBACK_PHASE_ASTER_SCAN, ASTER_SCAN_POST_SECONDS)
 
 func _start_blue_transition() -> void:
 	_enter_step("clearance")
+	_begin_callback_phase(CALLBACK_PHASE_CLEARANCE, CLEARANCE_SECONDS, true)
 	_citizen_light.light_color = Color(0.15, 0.4, 0.85)
 	_citizen_light.light_energy = 6.0
 	_dialogue.default_hold_time = 2.0
-	# Blue fade into the elevator. The fade is a cosmetic tween, but the step
-	# transition rides the scheduler so fast-forward reaches it at the same tick.
+	# Blue fade into the elevator is sampled from the same saved phase/deadline as
+	# the transition, so fresh loads and fast-forward show the same progress.
 	_fade_rect.color = Color(0.1, 0.2, 0.5, 0.0)
-	var tween := create_tween()
-	tween.tween_property(_fade_rect, "color:a", 1.0, 2.0)
-	_scheduler.schedule_after(2.0, _on_sequence_complete, "blue_complete")
 
 func _on_sequence_complete() -> void:
 	_enter_step("complete")
+	var now := float(_scheduler.get_current_tick()) if _scheduler != null else 0.0
+	var authority := _baseline_callback_authority()
+	authority["phase"] = CALLBACK_PHASE_COMPLETE
+	authority["started_at"] = now
+	authority["presentation_complete"] = true
+	authority["presentation_completed_at"] = now
+	_publish_callback_authority(authority)
 	_change_scene_or_record("res://scenes/tutorial/elevator.tscn")
 
 
-# --- Active checkpoint route ---
-
-func _build_active_play_stations() -> void:
-	if not _witness_interactables.is_empty():
-		return
-	var environment := find_child("Environment", false, false) as Node3D
-	if environment == null:
-		return
-
-	var public_log := _create_interactable(
-		environment, WITNESS_PUBLIC_POS, "TagDayPublicWitnessSeal",
-		1.35, WITNESS_WORK_SECONDS, "FILE DUTY LOG", true,
-		Interactable.InteractableType.TIMED_ACTION
-	)
-	public_log.set("interactable_type", Interactable.InteractableType.TIMED_ACTION)
-	public_log.set("required_character", "aster")
-	public_log.interacted.connect(trigger_witness_record.bind("public_log"))
-	public_log.interaction_requested.connect(_on_witness_route_requested.bind("public_log"))
-	_add_activity_station_visual(public_log, Color(0.2, 0.58, 0.86), "DUTY LOG")
-	_witness_interactables["public_log"] = public_log
-
-	var private_trace := _create_interactable(
-		environment, WITNESS_PRIVATE_POS, "TagDayPrivateWitnessSeal",
-		1.35, WITNESS_WORK_SECONDS, "KEEP PRIVATE TRACE", true,
-		Interactable.InteractableType.TIMED_ACTION
-	)
-	private_trace.set("interactable_type", Interactable.InteractableType.TIMED_ACTION)
-	private_trace.set("required_character", "aster")
-	private_trace.interacted.connect(trigger_witness_record.bind("private_trace"))
-	private_trace.interaction_requested.connect(_on_witness_route_requested.bind("private_trace"))
-	_add_activity_station_visual(private_trace, Color(0.62, 0.34, 0.82), "PRIVATE TRACE")
-	_witness_interactables["private_trace"] = private_trace
-
-	_return_scanner_interactable = _create_interactable(
-		environment, ASTER_DEVICE_POS, "TagDayReturnScanner",
-		1.4, RETURN_SCAN_WORK_SECONDS, "COMPLETE PSY-1 SCAN", true,
-		Interactable.InteractableType.TIMED_ACTION
-	)
-	_return_scanner_interactable.set("interactable_type", Interactable.InteractableType.TIMED_ACTION)
-	_return_scanner_interactable.set("required_character", "aster")
-	_return_scanner_interactable.interacted.connect(trigger_return_scanner)
-	_return_scanner_interactable.interaction_requested.connect(_on_return_scanner_route_requested)
-	_add_activity_station_visual(
-		_return_scanner_interactable, Color(0.22, 0.5, 0.88), "PSY-1 RETURN")
-
-	for raw_site in ESCORT_FIELD_SITE_DEFS:
-		var site: Dictionary = raw_site
-		var site_id := str(site["id"])
-		var field_station := _create_interactable(
-			environment,
-			site["position"] as Vector3,
-			str(site["name"]),
-			1.3,
-			float(site["dwell"]),
-			str(site["verb"]),
-			true,
-			Interactable.InteractableType.TIMED_ACTION
-		)
-		field_station.set("interactable_type", Interactable.InteractableType.TIMED_ACTION)
-		field_station.set("required_character", "aster")
-		field_station.interacted.connect(_on_escort_field_site_interacted.bind(site_id))
-		field_station.interaction_requested.connect(
-			_on_escort_field_route_requested.bind(site_id)
-		)
-		_unbind_default_interaction_controller(field_station)
-		call_deferred("_unbind_default_interaction_controller", field_station)
-		_add_activity_station_visual(
-			field_station, site["color"] as Color, str(site["label"]), true
-		)
-		_escort_field_interactables[site_id] = field_station
-		_escort_field_order.append(site_id)
-
-	_witness_receipt_label = Label3D.new()
-	_witness_receipt_label.name = "WitnessReceipt"
-	_witness_receipt_label.text = "WITNESS RECORD  //  AWAITING ROUTE"
-	_witness_receipt_label.font_size = 26
-	_witness_receipt_label.pixel_size = 0.007
-	_witness_receipt_label.modulate = Color(0.35, 0.42, 0.55, 0.72)
-	_witness_receipt_label.outline_modulate = Color(0, 0, 0, 0.8)
-	_witness_receipt_label.outline_size = 6
-	_witness_receipt_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	_witness_receipt_label.position = Vector3(18.5, 2.25, -27.5)
-	environment.add_child(_witness_receipt_label)
-
-	_set_witness_interactables_enabled(false)
-	_return_scanner_interactable.set_interaction_enabled(false)
-	_set_all_escort_field_interactables_enabled(false)
-
-func _add_activity_station_visual(
-	interactable: Area3D,
-	color: Color,
-	station_label: String,
-	allow_focused_proxy := false
+func _begin_callback_phase(
+	phase: String,
+	duration: float,
+	presentation_complete: bool
 ) -> void:
-	var assembly := Node3D.new()
-	assembly.name = "%sAssembly" % interactable.name
-	interactable.add_child(assembly)
-	if focused_verifier_lightweight_station_visuals and allow_focused_proxy:
-		var proxy := MeshInstance3D.new()
-		proxy.name = "FocusedVerifierVisualProxy"
-		var proxy_mesh := BoxMesh.new()
-		proxy_mesh.size = Vector3(0.72, 0.9, 0.56)
-		proxy.mesh = proxy_mesh
-		var proxy_material := StandardMaterial3D.new()
-		proxy_material.albedo_color = color.darkened(0.45)
-		proxy.material_override = proxy_material
-		proxy.position.y = 0.45
-		assembly.add_child(proxy)
-		interactable.set_meta("focused_visual_proxy", true)
+	if _scheduler == null:
 		return
+	var now := float(_scheduler.get_current_tick())
+	var authority := _baseline_callback_authority()
+	authority["phase"] = phase
+	authority["started_at"] = now
+	authority["deadline"] = now + maxf(0.0, duration)
+	authority["presentation_complete"] = presentation_complete
+	authority["presentation_completed_at"] = now if presentation_complete else -1.0
+	_publish_callback_authority(authority)
+	_arm_callback_phase_from_authority()
 
-	var pedestal := MeshInstance3D.new()
-	var pedestal_mesh := CylinderMesh.new()
-	pedestal_mesh.top_radius = 0.38
-	pedestal_mesh.bottom_radius = 0.52
-	pedestal_mesh.height = 0.9
-	pedestal.mesh = pedestal_mesh
-	var material := StandardMaterial3D.new()
-	material.albedo_color = color.darkened(0.58)
-	material.metallic = 0.42
-	material.roughness = 0.48
-	material.emission_enabled = true
-	material.emission = color
-	material.emission_energy_multiplier = 0.35
-	pedestal.material_override = material
-	pedestal.position.y = 0.45
-	assembly.add_child(pedestal)
 
-	var reader := MeshInstance3D.new()
-	var reader_mesh := BoxMesh.new()
-	reader_mesh.size = Vector3(0.72, 0.18, 0.56)
-	reader.mesh = reader_mesh
-	reader.material_override = material
-	reader.position = Vector3(0, 1.02, 0)
-	assembly.add_child(reader)
-
-	var label := Label3D.new()
-	label.text = station_label
-	label.font_size = 24
-	label.pixel_size = 0.006
-	label.modulate = color.lightened(0.25)
-	label.outline_modulate = Color(0, 0, 0, 0.8)
-	label.outline_size = 5
-	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	label.position = Vector3(0, 1.42, 0)
-	assembly.add_child(label)
-
-	var target := _outline_object_meshes(
-		interactable,
-		"%sOutline" % interactable.name,
-		_collect_mesh_instances(assembly),
-		"tag_day.%s" % interactable.name.to_snake_case(),
-		0.75
-	)
-	_set_room_target_interaction_delegate(target, interactable)
-	# The Area3D owns picking and routes the authored corridor path. The outline
-	# body remains visual-only so it cannot issue a second generic straight route.
-	if target != null:
-		target.set("hover_enabled", false)
-		target.set("collision_layer", 0)
-		target.set("input_ray_pickable", false)
-
-func _set_witness_interactables_enabled(enabled: bool) -> void:
-	for interactable in _witness_interactables.values():
-		if interactable == null or not is_instance_valid(interactable):
-			continue
-		interactable.set_interaction_enabled(enabled)
-		if enabled:
-			interactable.call_deferred("show_tutorial_label")
-
-func _unbind_default_interaction_controller(interactable: Node) -> void:
-	# These stations own authored multi-turn routes. Letting the generic controller
-	# also plan a straight target first does redundant cooperative A* work and can
-	# briefly show a wall-cutting route before this scene replaces it.
-	if _player == null:
+func _arm_callback_phase_from_authority() -> void:
+	if _scheduler == null:
 		return
-	var controller: Node = _player.get_node_or_null("CharacterInteractionController")
-	if controller == null:
+	_scheduler.cancel_tag(CALLBACK_PHASE_TAG)
+	var authority := _callback_authority_state()
+	if not _valid_callback_authority(authority):
 		return
-	var callback := Callable(controller, "_on_interaction_requested")
-	if interactable.is_connected("interaction_requested", callback):
-		interactable.disconnect("interaction_requested", callback)
-
-func _legacy_compatibility_fallback_allowed(runtime_display_name := "") -> bool:
-	var display_name := runtime_display_name
-	if display_name == "":
-		display_name = DisplayServer.get_name()
-	return display_name == "headless" or _running_under_test_flags()
-
-func _start_escort_field_record() -> void:
-	if _escort_field_resolved or _escort_field_order.is_empty():
+	var phase := str(authority.get("phase", ""))
+	if phase in [CALLBACK_PHASE_IDLE, CALLBACK_PHASE_COMPLETE]:
 		return
-	_player.set_move_enabled(true)
-	_camera.enable_free_look(40.0)
-	_camera.recenter()
-	_enable_current_escort_field_site()
-	# Old scheduler-only contract drivers cannot issue world clicks. Their seam is
-	# isolated to headless/test runtimes and is intentionally longer than the real
-	# shortest field circuit, so focused real-input validation wins the race.
-	if _legacy_compatibility_fallback_allowed():
-		_scheduler.schedule_after(
-			ESCORT_FIELD_FALLBACK_SECONDS,
-			_complete_escort_field_record.bind(true),
-			ESCORT_FIELD_FALLBACK_TAG
+	var deadline := float(authority.get("deadline", -1.0))
+	var now := float(_scheduler.get_current_tick())
+	if deadline <= now:
+		_on_callback_phase_deadline(phase, deadline)
+	else:
+		_scheduler.schedule_at(
+			deadline,
+			_on_callback_phase_deadline.bind(phase, deadline),
+			CALLBACK_PHASE_TAG
 		)
 
-func _enable_current_escort_field_site() -> void:
-	_set_all_escort_field_interactables_enabled(false)
-	var site_id := current_escort_field_site_id()
-	if site_id == "":
+
+func _on_callback_phase_deadline(expected_phase: String, expected_deadline: float) -> void:
+	var authority := _callback_authority_state()
+	if not _valid_callback_authority(authority) \
+			or str(authority.get("phase", "")) != expected_phase \
+			or not is_equal_approx(float(authority.get("deadline", -1.0)), expected_deadline):
 		return
-	var interactable: Area3D = _escort_field_interactables[site_id]
-	interactable.set_interaction_enabled(true)
-	interactable.call_deferred("show_tutorial_label")
-	# This is a substep assignment, not _enter_step(): entering a step clears the
-	# dialogue-finished callback that owns the still-running poem presentation.
-	_current_step = "escort_record_%s" % site_id
-	var site_number := _escort_field_index + 1
-	_tutorial_prompt.show_prompt(
-		"[Interact] — incident field record %d/%d: %s" % [
-			site_number,
-			_escort_field_order.size(),
-			str(interactable.get("tutorial_label")),
-		]
-	)
-
-func _set_all_escort_field_interactables_enabled(enabled: bool) -> void:
-	for interactable in _escort_field_interactables.values():
-		if interactable == null or not is_instance_valid(interactable):
-			continue
-		interactable.set_interaction_enabled(enabled)
-
-func current_escort_field_site_id() -> String:
-	if _escort_field_index < 0 or _escort_field_index >= _escort_field_order.size():
-		return ""
-	return _escort_field_order[_escort_field_index]
-
-func _on_escort_field_site_interacted(site_id: String) -> void:
-	if _escort_field_resolved or site_id != current_escort_field_site_id():
+	if not bool(authority.get("presentation_complete", false)):
+		_complete_callback_presentation(
+			expected_phase,
+			_callback_post_presentation_seconds(expected_phase)
+		)
 		return
-	_escort_field_index += 1
-	if _escort_field_index >= _escort_field_order.size():
-		_complete_escort_field_record(false)
+	_advance_callback_phase(expected_phase)
+
+
+func _complete_callback_presentation(expected_phase: String, post_seconds: float) -> void:
+	var authority := _callback_authority_state()
+	if not _valid_callback_authority(authority) \
+			or str(authority.get("phase", "")) != expected_phase \
+			or bool(authority.get("presentation_complete", false)):
+		return
+	var now := float(_scheduler.get_current_tick())
+	authority["presentation_complete"] = true
+	authority["presentation_completed_at"] = now
+	authority["deadline"] = now + maxf(0.0, post_seconds)
+	_publish_callback_authority(authority)
+	if post_seconds <= 0.000001:
+		_advance_callback_phase(expected_phase)
 	else:
-		_enable_current_escort_field_site()
+		_arm_callback_phase_from_authority()
 
-func _complete_escort_field_record(auto_resolved := false) -> void:
-	if _escort_field_resolved:
+
+func _callback_post_presentation_seconds(phase: String) -> float:
+	match phase:
+		CALLBACK_PHASE_WHIMPER:
+			return WHIMPER_POST_SECONDS
+		CALLBACK_PHASE_LOCKDOWN:
+			return LOCKDOWN_POST_SECONDS
+		CALLBACK_PHASE_ASTER_SCAN:
+			return ASTER_SCAN_POST_SECONDS
+		_:
+			return 0.0
+
+
+func _advance_callback_phase(phase: String) -> void:
+	match phase:
+		CALLBACK_PHASE_FRAGMENTS:
+			_start_neutralization()
+		CALLBACK_PHASE_NEUTRALIZATION:
+			_fragment_whimper()
+		CALLBACK_PHASE_WHIMPER:
+			_start_lockdown()
+		CALLBACK_PHASE_LOCKDOWN:
+			_start_return_focus()
+		CALLBACK_PHASE_RETURN_FOCUS:
+			_start_aster_scans()
+		CALLBACK_PHASE_ASTER_SCAN:
+			_start_blue_transition()
+		CALLBACK_PHASE_CLEARANCE:
+			_on_sequence_complete()
+
+
+func _sync_callback_visuals() -> void:
+	if _scheduler == null or not is_instance_valid(_citizen) or _fade_rect == null:
 		return
-	_escort_field_resolved = true
-	_escort_field_auto_resolved = auto_resolved
-	_escort_field_index = _escort_field_order.size()
-	_escort_pending_site_id = ""
-	_escort_field_finished_tick = _scheduler.get_current_tick()
-	if not auto_resolved:
-		_scheduler.cancel_tag(ESCORT_FIELD_FALLBACK_TAG)
-	if _player != null and _player.has_method("cancel_interaction_target"):
-		_player.cancel_interaction_target()
-	_game_state.command_stop("aster")
-	_set_all_escort_field_interactables_enabled(false)
-	_current_step = "escort_record_complete"
-	_tutorial_prompt.show_prompt("INCIDENT FIELD RECORD COMPLETE  //  remain with the escort")
-	_try_finish_escort_field_record()
-
-func _try_finish_escort_field_record() -> void:
-	if not _escort_field_resolved or not _escort_presentation_finished:
+	var authority := _callback_authority_state()
+	if not _valid_callback_authority(authority):
 		return
-	_start_fragments()
+	var phase := str(authority.get("phase", CALLBACK_PHASE_IDLE))
+	var now := float(_scheduler.get_current_tick())
+	var citizen_alpha := 1.0
+	# Same-presenter rollback must retire an already-running NPC-local fade. From
+	# here onward the saved phase clock is the sole presentation source.
+	_citizen.set("_fade_active", false)
+	if phase == CALLBACK_PHASE_NEUTRALIZATION:
+		var elapsed := maxf(0.0, now - float(authority.get("started_at", now)))
+		citizen_alpha = 1.0 - clampf(elapsed / 2.0, 0.0, 1.0)
+	elif phase in [
+		CALLBACK_PHASE_WHIMPER,
+		CALLBACK_PHASE_LOCKDOWN,
+		CALLBACK_PHASE_RETURN_FOCUS,
+		CALLBACK_PHASE_ASTER_SCAN,
+		CALLBACK_PHASE_CLEARANCE,
+		CALLBACK_PHASE_COMPLETE,
+	]:
+		citizen_alpha = 0.0
+	if _citizen.has_method("_apply_fade_alpha"):
+		_citizen.call("_apply_fade_alpha", citizen_alpha)
 
-func _on_escort_field_route_requested(
-	_target: Node,
-	_world_position: Vector3,
-	site_id: String
-) -> void:
-	if _escort_field_resolved or site_id != current_escort_field_site_id():
-		return
-	if _escort_pending_site_id == site_id and _game_state.is_moving("aster"):
-		return
-	_escort_pending_site_id = site_id
-	var interactable: Node = _escort_field_interactables[site_id]
-	interactable.set("active_character", "aster")
-	_game_state.command_walk_path("aster", _escort_field_route(site_id, _witness_record_choice))
-
-func _escort_field_route(site_id: String, witness_choice: String) -> Array[Vector3]:
-	var route: Array[Vector3] = []
-	match site_id:
-		"scan_failure":
-			if witness_choice == "private_trace":
-				route.append(CORRIDOR_D_END)
-			route.append(Vector3(24, 0, -27))
-			route.append(Vector3(24, 0, -17))
-			route.append(Vector3(14, 0, -17))
-			route.append(CORRIDOR_A_END)
-			route.append(CORRIDOR_ENTRANCE)
-			route.append(Vector3(8.2, 0, -3.0))
-		"east_queue_witness":
-			route.append(Vector3(8.2, 0, 4.0))
-			route.append(Vector3(24.0, 0, 4.0))
-		"west_queue_witness":
-			route.append(Vector3(0.0, 0, 4.0))
-		"report_provenance":
-			route.append(Vector3(26.0, 0, 4.0))
-			route.append(Vector3(26.0, 0, -5.0))
-		"medical_override":
-			route.append(Vector3(1.0, 0, -5.0))
-		"custody_threshold":
-			route.append(Vector3(12.0, 0, -5.0))
-			route.append(CORRIDOR_ENTRANCE)
-			route.append(Vector3(14.0, 0, -10.0))
-		"gait_variance":
-			route.append(CORRIDOR_A_END)
-			route.append(Vector3(14.0, 0, -17.0))
-			route.append(Vector3(20.0, 0, -17.0))
-		"grip_telemetry":
-			route.append(Vector3(24.0, 0, -17.0))
-			route.append(Vector3(24.0, 0, -22.0))
-		"iron_shadow":
-			route.append(Vector3(24.0, 0, -27.0))
-			route.append(Vector3(21.0, 0, -27.0))
-		"report_echo":
-			# Compare the official broadcast upstream after sampling the dead-end
-			# iron shadow; this purposeful backtrack distinguishes cause from report.
-			route.append(Vector3(24.0, 0, -27.0))
-			route.append(Vector3(24.0, 0, -19.0))
-		"erasure_receipt":
-			route.append(Vector3(24.0, 0, -27.0))
-			route.append(CORRIDOR_D_END)
-			route.append(Vector3(17.0, 0, -29.0))
-	return route
-
-func _on_witness_route_requested(
-	_target: Node,
-	_world_position: Vector3,
-	choice_id: String
-) -> void:
-	if _current_step != "witness_choice" or _witness_record_resolved:
-		return
-	_game_state.command_walk_path("aster", _witness_route(choice_id))
-
-func _on_return_scanner_route_requested(_target: Node, _world_position: Vector3) -> void:
-	if _current_step != "return_to_scanner" or _return_scan_resolved:
-		return
-	_game_state.command_walk_path("aster", _return_scanner_route())
-
-func _witness_route(choice_id: String) -> Array[Vector3]:
-	var route: Array[Vector3] = [
-		CORRIDOR_ENTRANCE,
-		CORRIDOR_A_END,
-		Vector3(14, 0, -17),
-		Vector3(24, 0, -17),
-		Vector3(24, 0, -27),
-	]
-	if choice_id == "private_trace":
-		route.append(CORRIDOR_D_END)
-		route.append(WITNESS_PRIVATE_POS)
+	if phase in [CALLBACK_PHASE_CLEARANCE, CALLBACK_PHASE_COMPLETE]:
+		var fade_alpha := 1.0
+		if phase == CALLBACK_PHASE_CLEARANCE:
+			var started_at := float(authority.get("started_at", now))
+			var deadline := float(authority.get("deadline", started_at + CLEARANCE_SECONDS))
+			fade_alpha = clampf((now - started_at) \
+				/ maxf(0.000001, deadline - started_at), 0.0, 1.0)
+		_fade_rect.color = Color(0.1, 0.2, 0.5, fade_alpha)
 	else:
-		route.append(WITNESS_PUBLIC_POS)
-	return route
+		_fade_rect.color.a = 0.0
 
-func _return_scanner_route() -> Array[Vector3]:
-	# Both evidence branches now finish at the erasure receipt in the dead-end
-	# alcove, so the safe return always exits through D before retracing the turns.
-	var route: Array[Vector3] = [CORRIDOR_D_END]
-	route.append(Vector3(24, 0, -27))
-	route.append(Vector3(24, 0, -17))
-	route.append(Vector3(14, 0, -17))
-	route.append(CORRIDOR_A_END)
-	route.append(CORRIDOR_ENTRANCE)
-	route.append(ASTER_DEVICE_POS)
-	return route
-
-func _update_witness_receipt() -> void:
-	if _witness_receipt_label == null:
-		return
-	if _witness_record_choice == "private_trace":
-		_witness_receipt_label.text = "PRIVATE TRACE  //  LOCAL RETENTION ONLY"
-		_witness_receipt_label.modulate = Color(0.68, 0.42, 0.9, 0.9)
-	else:
-		_witness_receipt_label.text = "DUTY LOG  //  INCIDENT INDEXED"
-		_witness_receipt_label.modulate = Color(0.3, 0.62, 0.92, 0.9)
-
-func _polyline_distance(start: Vector3, route: Array[Vector3]) -> float:
-	var total := 0.0
-	var previous := start
-	for point in route:
-		total += previous.distance_to(point)
-		previous = point
-	return total
-
-func _escort_field_site_position(site_id: String) -> Vector3:
-	for raw_site in ESCORT_FIELD_SITE_DEFS:
-		var site: Dictionary = raw_site
-		if str(site["id"]) == site_id:
-			var position: Vector3 = site["position"]
-			return position
-	return Vector3.ZERO
-
-func _authored_escort_field_order() -> Array[String]:
-	# Runtime construction fills `_escort_field_order` from these same definitions.
-	# Falling back to the definitions keeps the analytic contract pure: tooling can
-	# measure it without booting a renderer or mutating the scene tree.
-	if not _escort_field_order.is_empty():
-		return _escort_field_order.duplicate()
-	var authored_order: Array[String] = []
-	for raw_site in ESCORT_FIELD_SITE_DEFS:
-		authored_order.append(str((raw_site as Dictionary)["id"]))
-	return authored_order
-
-func _escort_field_route_distance(witness_choice: String) -> float:
-	var previous := (
-		WITNESS_PRIVATE_POS if witness_choice == "private_trace" else WITNESS_PUBLIC_POS
-	)
-	var total := 0.0
-	for site_id in _authored_escort_field_order():
-		var route := _escort_field_route(site_id, witness_choice)
-		total += _polyline_distance(previous, route)
-		previous = _escort_field_site_position(site_id)
-	return total
-
-func _escort_field_work_seconds() -> float:
-	var total := 0.0
-	for raw_site in ESCORT_FIELD_SITE_DEFS:
-		total += float((raw_site as Dictionary)["dwell"])
-	return total
-
-func _maximum_single_active_mode_seconds(witness_choice: String) -> float:
-	var maximum := _polyline_distance(ASTER_DEVICE_POS, _witness_route(witness_choice)) \
-		/ ASTER_CHECKPOINT_SPEED
-	var previous := (
-		WITNESS_PRIVATE_POS if witness_choice == "private_trace" else WITNESS_PUBLIC_POS
-	)
-	for site_id in _authored_escort_field_order():
-		var route_seconds := _polyline_distance(
-			previous, _escort_field_route(site_id, witness_choice)
-		) / ASTER_CHECKPOINT_SPEED
-		maximum = maxf(maximum, route_seconds)
-		previous = _escort_field_site_position(site_id)
-	maximum = maxf(maximum, _polyline_distance(previous, _return_scanner_route()) \
-		/ ASTER_CHECKPOINT_SPEED)
-	maximum = maxf(maximum, WITNESS_WORK_SECONDS)
-	maximum = maxf(maximum, RETURN_SCAN_WORK_SECONDS)
-	for raw_site in ESCORT_FIELD_SITE_DEFS:
-		maximum = maxf(maximum, float((raw_site as Dictionary)["dwell"]))
-	return maximum
-
-func _branch_playtime_metrics(witness_choice: String) -> Dictionary:
-	var authored_order := _authored_escort_field_order()
-	var witness_out := _polyline_distance(ASTER_DEVICE_POS, _witness_route(witness_choice))
-	var field_route := _escort_field_route_distance(witness_choice)
-	var final_site := _escort_field_site_position(authored_order[-1])
-	var scanner_return := _polyline_distance(final_site, _return_scanner_route())
-	var field_work := _escort_field_work_seconds()
-	var field_active := field_route / ASTER_CHECKPOINT_SPEED + field_work
-	var total_route := witness_out + field_route + scanner_return
-	var total_work := WITNESS_WORK_SECONDS + field_work + RETURN_SCAN_WORK_SECONDS
-	var meaningful_active := total_route / ASTER_CHECKPOINT_SPEED + total_work
-	var checkpoint_transit := (witness_out + scanner_return) / ASTER_CHECKPOINT_SPEED
-	var field_traversal := field_route / ASTER_CHECKPOINT_SPEED
-	# The old cinematic already contains the poem/Naturalizer presentation. Only
-	# field work beyond that overlapping 103.4-second window extends elapsed time.
-	var modeled_elapsed := LEGACY_PRESENTATION_SECONDS \
-		+ (witness_out + scanner_return) / ASTER_CHECKPOINT_SPEED \
-		+ WITNESS_WORK_SECONDS + RETURN_SCAN_WORK_SECONDS - 1.0 \
-		+ maxf(0.0, field_active - ESCORT_PRESENTATION_SECONDS)
-	return {
-		"choice": witness_choice,
-		"route_meters": total_route,
-		"field_route_meters": field_route,
-		"station_work_seconds": total_work,
-		"field_active_seconds": field_active,
-		"meaningful_active_seconds": meaningful_active,
-		"checkpoint_transit_seconds": checkpoint_transit,
-		"field_traversal_seconds": field_traversal,
-		"max_single_mode_seconds": _maximum_single_active_mode_seconds(witness_choice),
-		"presentation_overlap_seconds": minf(field_active, ESCORT_PRESENTATION_SECONDS),
-		"modeled_elapsed_seconds": modeled_elapsed,
-	}
-
-func get_playtime_contract() -> Dictionary:
-	var public_metrics := _branch_playtime_metrics("public_log")
-	var private_metrics := _branch_playtime_metrics("private_trace")
-	var shortest: Dictionary = (
-		public_metrics
-		if float(public_metrics["modeled_elapsed_seconds"])
-			<= float(private_metrics["modeled_elapsed_seconds"])
-		else private_metrics
-	)
-	var modeled_first_clear := float(shortest["modeled_elapsed_seconds"])
-	var modeled_active := float(shortest["meaningful_active_seconds"])
-	return {
-		"target_min_seconds": 240.0,
-		"target_max_seconds": 360.0,
-		"minimum_active_route_meters": float(shortest["route_meters"]),
-		"escort_field_route_meters": float(shortest["field_route_meters"]),
-		"minimum_station_work_seconds": float(shortest["station_work_seconds"]),
-		"modeled_meaningful_active_seconds": modeled_active,
-		"meaningful_active_seconds": modeled_active,
-		"modeled_meaningful_active_ratio": modeled_active / modeled_first_clear,
-		"meaningful_active_ratio": modeled_active / modeled_first_clear,
-		"active_ratio": modeled_active / modeled_first_clear,
-		"modeled_first_clear_seconds": modeled_first_clear,
-		"total_play_seconds": modeled_first_clear,
-		"modeled_passive_or_presentation_only_seconds": modeled_first_clear - modeled_active,
-		"escort_presentation_seconds": ESCORT_PRESENTATION_SECONDS,
-		"escort_presentation_overlap_seconds": float(shortest["presentation_overlap_seconds"]),
-		"escort_field_active_seconds": float(shortest["field_active_seconds"]),
-		"escort_field_site_count": ESCORT_FIELD_SITE_DEFS.size(),
-		"mandatory_click_gate_count": ESCORT_FIELD_SITE_DEFS.size() + 2,
-		"max_single_control_removed_gap_seconds": 5.0,
-		"max_dead_gap_seconds": 5.0,
-		"max_single_mode_seconds": float(shortest["max_single_mode_seconds"]),
-		"category_seconds": {
-			"checkpoint_transit": float(shortest["checkpoint_transit_seconds"]),
-			"escort_field_traversal": float(shortest["field_traversal_seconds"]),
-			"incident_station_work": float(shortest["station_work_seconds"]),
-		},
-		"decision_count": 1,
-		"branch_count": 2,
-		"shortest_first_clear_branch": str(shortest["choice"]),
-		"normal_input_auto_fallback_enabled": false,
-		"compatibility_fallback_scope": "headless_or_test_driver_only",
-		"target_metric": "meaningful_active_seconds",
-		"timing_basis": "authored polyline distance at 2.35 m/s plus scheduler-backed TIMED_ACTION work; corridor poem/Naturalizer presentation overlaps the mandatory field circuit once; no idle or fallback waiting counted",
-	}
-
-func headless_get_anchor_positions() -> Dictionary:
-	var anchors := {
-		"aster_scanner": ASTER_DEVICE_POS,
-		"public_witness": WITNESS_PUBLIC_POS,
-		"private_witness": WITNESS_PRIVATE_POS,
-	}
-	for site_id in _escort_field_order:
-		anchors["escort_%s" % site_id] = _escort_field_site_position(site_id)
-	return anchors
 
 func headless_get_state() -> Dictionary:
 	var state := super.headless_get_state()
-	state["witness_record_choice"] = _witness_record_choice
-	state["witness_record_resolved"] = _witness_record_resolved
-	state["return_scan_resolved"] = _return_scan_resolved
-	state["witness_auto_resolved"] = _witness_auto_resolved
-	state["return_scan_auto_resolved"] = _return_scan_auto_resolved
-	state["escort_field_site_count"] = _escort_field_order.size()
-	state["escort_field_completed_count"] = _escort_field_index
-	state["escort_field_current_site_id"] = current_escort_field_site_id()
-	state["escort_field_resolved"] = _escort_field_resolved
-	state["escort_field_auto_resolved"] = _escort_field_auto_resolved
-	state["escort_presentation_finished"] = _escort_presentation_finished
-	state["escort_started_tick"] = _escort_started_tick
-	state["escort_presentation_finished_tick"] = _escort_presentation_finished_tick
-	state["escort_field_finished_tick"] = _escort_field_finished_tick
-	state["escort_presentation_measured_seconds"] = (
-		_escort_presentation_finished_tick - _escort_started_tick
-		if _escort_started_tick >= 0.0 and _escort_presentation_finished_tick >= 0.0
-		else -1.0
-	)
-	state["escort_field_measured_seconds"] = (
-		_escort_field_finished_tick - _escort_started_tick
-		if _escort_started_tick >= 0.0 and _escort_field_finished_tick >= 0.0
-		else -1.0
-	)
+	state["escort_authority"] = _escort_authority_state()
+	state["callback_authority"] = _callback_authority_state()
 	return state
 
 
+# --- Checkpoint presentation ---
 func _build_checkpoint_decorations() -> void:
 	var environment := find_child("Environment", false, false) as Node3D
 	if environment == null:

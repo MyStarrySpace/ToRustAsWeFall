@@ -2,7 +2,16 @@
 
 Derived from GDD v0.1, series bible, and React prototype. Organized by dependency order — later phases depend on earlier ones.
 
-**Enemy naming:** canonical in-world names used throughout (Techo, Meeb, Neutro, Naturalizer, Hidra, etc.). Biology references live in `data/enemy_ecosystem.md` — consult that doc for the roster, per-enemy role, and inter-enemy dynamics. When adding a new phase for an existing enemy, use the in-world name.
+> **Historical prototype backlog:** this file predates the v0.2 GDD and is not gameplay
+> authority. `reference-docs/to_rust_gdd_v02.md` and `docs/DESIGN_PRINCIPLES.md` override it.
+> In particular, the ATP-100 model, ATP-driven exploration/ability costs, generic terminal
+> recovery, and automatic hub restoration below are obsolete and must not be reimplemented.
+> The explicit exception is the opt-in ATP-scarcity pressure projection used for generated-stretch
+> QA. It is applied only after generation to the same mode-independent stretch spec; its interval
+> and half-pip drain level are configurable, it starts on first movement, and it never funds
+> abilities. Scarcity is the preferred approval run, while easier profiles only relax pressure.
+
+**Enemy naming:** canonical in-world names used throughout (Sapscrap, Meeb, Flare, Naturalizer, Hidra, etc.). Biology references live in `data/enemy_ecosystem.md` — consult that doc for the roster, per-enemy role, and inter-enemy dynamics. When adding a new phase for an existing enemy, use the in-world name.
 
 ---
 
@@ -38,7 +47,7 @@ Derived from GDD v0.1, series bible, and React prototype. Organized by dependenc
   - Tyreg: HP 80, ATP 60, vision 5, color #aa44dd (unlocked day 10)
 - [ ] **2.4** Implement running toggle: walk speed 0.018, run speed 0.055. Running drains stamina (30/s, 45/s while dragging). Auto-stop when stamina hits 0
 - [ ] **2.5** Implement cautious mode toggle: paths avoid iron_bloom tiles (hazard cost +20 in pathfinding). Linked mode ties cautious=!running
-- [ ] **2.6** Implement passive resource drain: ATP drains 0.5/s while active. Stamina regen when idle (15/s base, reduced on iron, boosted near tended flora)
+- [x] **2.6** Historical ATP drain replaced by the opt-in post-generation scarcity pressure projection (configurable interval and 0.5-pip drain increments; current named preset is 1 ATP / 60s after first movement, ATP can reach zero, and later zero-ATP ticks cost 5 HP). Generation never branches on it. Stamina regeneration remains a separate movement-system concern
 
 ---
 
@@ -104,9 +113,9 @@ Derived from GDD v0.1, series bible, and React prototype. Organized by dependenc
 
 ---
 
-## Phase 7: Techo Enemy AI
+## Phase 7: Sapscrap Enemy AI
 
-- [ ] **7.1** Spawn 8 Techos at game start, minimum 8 tiles from all characters. Stats: 30 HP, speed 0.025
+- [ ] **7.1** Spawn 8 Sapscraps at game start, minimum 8 tiles from all characters. Stats: 30 HP, speed 0.025
 - [ ] **7.2** State machine:
   - **Idle**: wander within 6 tiles of home position, new target every 3-7s, move at 0.5x speed
   - **Pursue**: move toward visible character (<6 tile detection), track last-seen position
@@ -119,30 +128,30 @@ Derived from GDD v0.1, series bible, and React prototype. Organized by dependenc
   - **Impact**: deal `8 + day*2` damage to characters within 1.2 tiles
   - **Recover** (0.8s): vulnerable, can't move
 - [ ] **7.4** Detection rules: can't detect characters in hide rooms (tile 9) or shelters (tile 4). Can't detect cloaked Endo
-- [ ] **7.5** Territorial repulsion: idle Techos push apart when within 3 tiles (`push = 0.003/distance`)
+- [ ] **7.5** Territorial repulsion: idle Sapscraps push apart when within 3 tiles (`push = 0.003/distance`)
 - [ ] **7.6** Daily scaling: target count = `min(20, 8 + floor((day-1) * 1.5))`. Stats scale: `maxHP = 30 + (day-1)*5`, `speed = 0.025 + (day-1)*0.002`
 - [ ] **7.7** Death/respawn: on 0 HP, teleport to home position, reset to idle, become invisible for 12s
-- [ ] **7.8** Flure override: active flures (within 8 tiles) attract Techos, overriding character targeting
+- [ ] **7.8** Flure override: active flures (within 8 tiles) attract Sapscraps, overriding character targeting
 
 ---
 
 ## Phase 8: Meeb (Amoeba) AI
 
 - [ ] **8.1** Spawn 3 Meebs at game start, minimum 12 tiles from characters. Speed 0.022
-- [ ] **8.2** Target acquisition: detect nearest entity (Techo or character) within 6 tiles. Ignore cloaked Endo, characters in shelter/hide
+- [ ] **8.2** Target acquisition: detect nearest entity (Sapscrap or character) within 6 tiles. Ignore cloaked Endo, characters in shelter/hide
 - [ ] **8.3** Pursuit: move toward target. Speed 1.3x when within 3 tiles
-- [ ] **8.4** Engulfing (Techos): on contact, lock both in place, drain Techo 10 HP/s. When Techo dies, 2s digest pause, Techo respawns at home
+- [ ] **8.4** Engulfing (Sapscraps): on contact, lock both in place, drain Sapscrap 10 HP/s. When Sapscrap dies, 2s digest pause, Sapscrap respawns at home
 - [ ] **8.5** Character damage: on contact with character, deal 10 damage/s (continuous)
 - [ ] **8.6** Roaming: when no target, wander with bias toward iron_bloom tiles (50% chance to target nearest iron_bloom within 8 tiles)
 - [ ] **8.7** Endo NO Pulse interaction: slowed to 40% speed when within 5 tiles of Endo with active NO Pulse
 
 ---
 
-## Phase 9: Neutros (Night Hunters / Neutrophils)
+## Phase 9: Flares (Night Hunters / Neutrophils)
 
-- [ ] **9.1** Spawn 3 Neutros at nightfall, maximizing distance from all characters. Speed 0.065
-- [ ] **9.2** Priority: nearby Techo (<3 tiles) > visible character (<8 tiles) > roaming drift
-- [ ] **9.3** Techo kill: on contact, instant kill (teleport to home, 8s respawn timer)
+- [ ] **9.1** Spawn 3 Flares at nightfall, maximizing distance from all characters. Speed 0.065
+- [ ] **9.2** Priority: nearby Sapscrap (<3 tiles) > visible character (<8 tiles) > roaming drift
+- [ ] **9.3** Sapscrap kill: on contact, instant kill (teleport to home, 8s respawn timer)
 - [ ] **9.4** Character pursuit: move toward character, deal 40 damage/s on contact
 - [ ] **9.5** Shelter circling: if target is in shelter/hide room, orbit at 2.5 tile radius at 0.6x speed
 - [ ] **9.6** Roaming: drift toward nearest character at 0.4x speed with random wander
@@ -162,7 +171,7 @@ Derived from GDD v0.1, series bible, and React prototype. Organized by dependenc
 - [ ] **10.4** Data terminal (tile 5): Aster only, 2.0s channel. Reveals 8-tile radius on Aster's explored map. Terminal marked as used
 - [ ] **10.5** Key (tile 7): 0.5s channel. Sets `keyCollected = true`
 - [ ] **10.6** Locked door (tile 8): if key collected, instantly unlock. Otherwise "Locked. You need a key" and stop movement
-- [ ] **10.7** Flure: Peris only, 1.0s channel. Activates for 18s (lures Techos within 8 tiles). Fixed positions on map
+- [ ] **10.7** Flure: Peris only, 1.0s channel. Activates for 18s (lures Sapscraps within 8 tiles). Fixed positions on map
 - [ ] **10.8** Lock terminal: Oli or Aster, 1.5s channel. Unlocks the associated shelter (removes from blocked set, removes terminal)
 - [ ] **10.9** Ammo pickup: any character, 0.5s channel. Removes ammo spot, adds 3 rounds to Tyreg. Auto-triggers on arrival
 - [ ] **10.10** Channel progress bar: yellow bar below character, pulsing glow during channel
@@ -171,7 +180,7 @@ Derived from GDD v0.1, series bible, and React prototype. Organized by dependenc
 
 ## Phase 11: Character Abilities
 
-- [ ] **11.1** **Peris — Protect**: 5s duration, 12s cooldown, 15 stamina cost. While active, absorbs 8 flat damage per hit from allies within 4 tiles. Absorbed damage transfers to Peris
+- [ ] **11.1** **Peris — Wrap**: 5s duration, 12s cooldown, 15 stamina cost. While active, absorbs 8 flat damage per hit from allies within 4 tiles. Absorbed damage transfers to Peris
 - [ ] **11.2** **Peris — Harvest**: Must be on tended flora. 30s buff. Slow HP regen (0.5/s), vision boost (+harvestTimer*0.3), floating particle VFX
 - [ ] **11.3** **Endo — NO Pulse**: 6s duration, 15s cooldown, 20 stamina cost. Enemies within 5 tiles slowed to 40% speed. Breaks cloak
 - [ ] **11.4** **Endo — Cloak**: 10s duration, 25 stamina cost. Invisible to all enemies. Breaks on ability use
@@ -189,7 +198,7 @@ Derived from GDD v0.1, series bible, and React prototype. Organized by dependenc
 
 ## Phase 12: Damage System
 
-- [ ] **12.1** Damage application order: Peris Protect absorption (flat 8 per hit) → Oli Shield absorption → HP damage
+- [ ] **12.1** Damage application order: Peris Wrap absorption (flat 8 per hit) → Oli Shield absorption → HP damage
 - [ ] **12.2** Attack timer: 1.5s on HP damage (red flash, "!" indicator). Channel interrupted on any HP damage
 - [ ] **12.3** Iron bloom environmental damage: 4 HP/s + 5 stamina/s drain while standing on tile 3
 - [ ] **12.4** Peris flora vision boost: +1.5 vision radius when near tended flora
@@ -201,7 +210,7 @@ Derived from GDD v0.1, series bible, and React prototype. Organized by dependenc
 
 - [ ] **13.1** Character switching: click portrait or press key to switch active character. Clears alert on switched-to character
 - [ ] **13.2** Multi-select: long-press portrait to enter multi-select. Toggle characters. Click map to move all selected. X to exit
-- [ ] **13.3** Alert system: non-active characters who can see Techos/Naturalizers/Meebs get yellow "!" indicator and pulsing ring
+- [ ] **13.3** Alert system: non-active characters who can see Sapscraps/Naturalizers/Meebs get yellow "!" indicator and pulsing ring
 - [ ] **13.4** Downed state: HP reaches 0 → downed. Can't move, act, or rest. Path cleared. Message: "[Name] is DOWN! Drag them to a shelter"
 - [ ] **13.5** Dragging: auto-pickup when walking over downed character. Dragged character follows dragger. 0.5x speed, 2x stamina drain
 - [ ] **13.6** Revive at shelter: downed character at shelter tile with a conscious ally nearby → 10s revive timer → revive at 1 HP, auto-rest
@@ -218,7 +227,7 @@ Derived from GDD v0.1, series bible, and React prototype. Organized by dependenc
   - Restful bonus: 1.5x healing if nobody is downed anywhere
   - Downed at shelter: revive at 1 HP + 30% of base healing
   - Downed outside shelter: left behind, no healing
-- [ ] **14.4** Dawn reset: clear Neutros, reset all enemy positions/HP/states, scale enemy count/stats for new day, respawn consumed food (after 3 days), decay tended flora (after 5 days), regenerate lock terminals
+- [ ] **14.4** Dawn reset: clear Flares, reset all enemy positions/HP/states, scale enemy count/stats for new day, respawn consumed food (after 3 days), decay tended flora (after 5 days), regenerate lock terminals
 
 ---
 
@@ -283,13 +292,13 @@ Derived from GDD v0.1, series bible, and React prototype. Organized by dependenc
 
 - [ ] **20.1** Tile glow effects: flora (green, stronger when tended), iron_bloom (red), terminal (blue, flickers near Naturalizer), shelter (blue), lock terminal (teal)
 - [ ] **20.2** Fire zone rendering: pulsing orange/red with inner yellow core
-- [ ] **20.3** Techo rendering: color by state (idle=brown, pursue=red, investigate=orange, search=tan, scatter=yellow). Attack state visuals: windup ring, charge trail, impact flash, recover dim
+- [ ] **20.3** Sapscrap rendering: color by state (idle=brown, pursue=red, investigate=orange, search=tan, scatter=yellow). Attack state visuals: windup ring, charge trail, impact flash, recover dim
 - [ ] **20.4** Meeb rendering: translucent shifting blobs (two overlapping circles with sine-wave oscillation), engulfing animation (larger pulsing, prey fading inside)
-- [ ] **20.5** Neutro rendering: dark red with glowing red eyes, always slightly visible in darkness
+- [ ] **20.5** Flare rendering: dark red with glowing red eyes, always slightly visible in darkness
 - [ ] **20.6** Naturalizer rendering: clean white circle, rotating scanner line, chase timer ring, detection radius when pursuing, scanner disruption spark near lock terminals
 - [ ] **20.7** Character rendering: colored circle with letter label, white selection ring for active, vision radius tint, path line. Status overlays: red flash when attacked, yellow alert ring, downed X, resting Z, channel progress bar, shield glow, dragging line
 - [ ] **20.8** Grid overlay: per-character colored grid (not Peris)
-- [ ] **20.9** Ability VFX: Protect aura (dashed yellow ring), Sheath connection line, Shield glow, NO Pulse green area, Cloak transparency, Harvest floating particles, Phagocytosis blue membrane, Conduct dashed line, burning enemies (orange ring + area glow), suppressed enemies (purple dashed ring + X)
+- [ ] **20.9** Ability VFX: Wrap aura (dashed yellow ring), Sheath connection line, Shield glow, NO Pulse green area, Cloak transparency, Harvest floating particles, Phagocytosis blue membrane, Conduct dashed line, burning enemies (orange ring + area glow), suppressed enemies (purple dashed ring + X)
 
 ---
 
@@ -297,8 +306,8 @@ Derived from GDD v0.1, series bible, and React prototype. Organized by dependenc
 
 - [ ] **21.1** Ambient soundscape: biological hum, machinery, fluid. Different per zone/time
 - [ ] **21.2** Day/night transition audio cues
-- [ ] **21.3** Enemy detection stinger (Techo pursuit)
-- [ ] **21.4** Neutro warning sound
+- [ ] **21.3** Enemy detection stinger (Sapscrap pursuit)
+- [ ] **21.4** Flare warning sound
 - [ ] **21.5** Ability activation SFX per ability
 - [ ] **21.6** Channel completion chime
 - [ ] **21.7** Character downed alert
@@ -313,7 +322,7 @@ These are in the GDD but not yet implemented in the prototype. Defer until core 
 
 - [ ] **22.1** Multiple zones (Zone 1: sheltered, Zone 2: corridor/Naturalizer patrols, Zone 3: pathogen territory). Metroidvania ability gating between zones
 - [ ] **22.2** Peris perception degradation shader: cartographic memory-map distortion that worsens over days (desaturation, spatial warping, detail loss, fog thickening). See GDD section 16.2
-- [ ] **22.3** Techo iron gradient system: static iron map with event-based updates, proximity detection, party iron as mobile attractor. See GDD section 16.1
+- [ ] **22.3** Sapscrap iron gradient system: static iron map with event-based updates, proximity detection, party iron as mobile attractor. See GDD section 16.1
 - [ ] **22.4** Additional threat types: Infiltrators (zone transformers), Recruiters (capture enemies), Cytokine storms (timed hazards), Biofilm patches (slow terrain), Spore fields, Resonance zones
 - [ ] **22.5** Flora species taxonomy: different species with distinct gameplay effects (wayfinding, bioluminescence, medicine, communication network, fast-travel via mycelial network)
 - [ ] **22.6** LaFerr's device: narrative MacGuffin + mid-game tool (40Hz gamma entrainment for Myke, diagnostics, therapeutic modes)
@@ -335,13 +344,13 @@ For a playable vertical slice, build in this order:
 2. **Phase 2 + 3**: Character + pathfinding → click to move
 3. **Phase 4**: Fog of war → the core perception mechanic works
 4. **Phase 5 + 6**: Day/night + pause → survival pressure exists
-5. **Phase 7**: Techos → something to survive against
+5. **Phase 7**: Sapscraps → something to survive against
 6. **Phase 10 (food + shelter only)**: Eat, rest → survival loop closes
 7. **Phase 14**: Rest/night skip → complete day cycle
 8. **Phase 18 (minimal)**: Basic UI → playable
 9. **Phase 12**: Damage system → combat feels right
 10. **Phase 13**: Party management → multi-character play
-11. **Phases 8-9**: Meebs + Neutros → threat ecology
+11. **Phases 8-9**: Meebs + Flares → threat ecology
 12. **Phase 11**: Abilities → tactical depth
 13. **Phase 15-17**: Recruitment + locks + NKs → mid/late-game systems
 14. **Phase 19**: Save/load → persistence

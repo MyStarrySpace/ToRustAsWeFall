@@ -12,6 +12,11 @@ const PoiDistributionScript := preload("res://scripts/generation/stretch_poi_dis
 const SystemsCurriculumScript := preload("res://scripts/generation/stretch_systems_curriculum.gd")
 const BaseShapeScript := preload("res://scripts/generation/base_shape_builder.gd")
 const BuildingFillerScript := preload("res://scripts/generation/building_filler.gd")
+const FloraSpeciesScript := preload("res://scripts/game/objects/flora_species.gd")
+const BranchWeaverScript := preload("res://scripts/generation/stretch_branch_weaver.gd")
+const RuntimeRegistryScript := preload(
+	"res://scripts/generation/generated_node_runtime_registry.gd"
+)
 
 const SPEC_SCHEMA := "trawf_generated_stretch_spec_v1"
 const DEFAULT_SPEC_DIR := "res://data/generated_stretches"
@@ -26,7 +31,6 @@ const TIER_BUDGETS := {
 		"flora_slots": 2,
 		"enemy_slots": 1,
 		"structures_slots": 3,
-		"shortcut_count": 1,
 		"resource_beats": 1,
 	},
 	"standard": {
@@ -38,7 +42,6 @@ const TIER_BUDGETS := {
 		"flora_slots": 3,
 		"enemy_slots": 2,
 		"structures_slots": 4,
-		"shortcut_count": 1,
 		"resource_beats": 1,
 	},
 	"hard": {
@@ -50,7 +53,6 @@ const TIER_BUDGETS := {
 		"flora_slots": 4,
 		"enemy_slots": 3,
 		"structures_slots": 5,
-		"shortcut_count": 2,
 		"resource_beats": 2,
 	},
 	"setpiece": {
@@ -62,7 +64,6 @@ const TIER_BUDGETS := {
 		"flora_slots": 5,
 		"enemy_slots": 4,
 		"structures_slots": 6,
-		"shortcut_count": 2,
 		"resource_beats": 2,
 	},
 }
@@ -88,7 +89,7 @@ const TIER_PROGRESSION_STAGE := {
 }
 
 ## Complexity tier owns traversal scale. Standard and later stretches need enough
-## physical decision space for one complete scarcity cycle to become relevant;
+## physical decision space for their route, exposure, and resource decisions to interact;
 ## teaching stays compact, and an explicit spatial_profile always wins.
 const TIER_SLOT_PITCH := {
 	"teaching": 8,
@@ -96,6 +97,20 @@ const TIER_SLOT_PITCH := {
 	"hard": 15,
 	"setpiece": 16,
 }
+const RUNTIME_ONLY_PLAY_CONFIG_KEYS := [
+	"game_mode",
+	"play_config",
+	"preview_config",
+	"food_test",
+	"food_test_settings",
+	"drain_interval_seconds",
+	"drain_atp",
+	"zero_atp_hp_drain",
+	"scarcity",
+	"difficulty",
+	"difficulty_mode",
+	"pressure_profile",
+]
 
 static func generate(settings: Dictionary) -> Dictionary:
 	var validation := validate_settings(settings)
@@ -172,6 +187,12 @@ static func generate(settings: Dictionary) -> Dictionary:
 		_assign_spatial_features(nodes, layout, piece_catalog)
 		graybox = _apply_wfc_graybox(nodes, routes, layout, catalog, resolved, budget)
 		spatial_features = _collect_spatial_features(nodes, navigation_grid)
+	# Persist the exact branch geometry before solving. The bare spine remains a
+	# separate input for macro-shape coordinate maps; navigation_grid is the fixed,
+	# authoritative playable topology used by the solver and deterministic replay.
+	var spine_navigation_grid := navigation_grid.duplicate(true)
+	navigation_grid = _weave_navigation_grid(spine_navigation_grid, resolved)
+	var navigation_branches: Array = navigation_grid.get("branches", [])
 	graybox["navigation_contract_id"] = str(navigation_grid.get("contract_id", ""))
 	graybox["navigation_node_count"] = nodes.size()
 	graybox["navigation_edge_count"] = routes.size()
@@ -190,8 +211,24 @@ static func generate(settings: Dictionary) -> Dictionary:
 	composition_summary["teaching_chain"] = teaching_chain
 	composition_summary["element_coverage"] = element_coverage
 	composition_summary["poi_density"] = poi_density
-	var warnings := _collect_warnings(catalog, nodes)
-	var solution := SolverScript.analyze(nodes, str(resolved.get("complexity_tier", "teaching")), int(resolved.get("progression_stage", 99)), resolved.get("roster", []))
+	var warnings := _collect_warnings(catalog, nodes, resolved.get("composition", {}))
+	var solution := SolverScript.analyze(
+		nodes,
+		str(resolved.get("complexity_tier", "teaching")),
+		int(resolved.get("progression_stage", 99)),
+		resolved.get("roster", []),
+		navigation_branches,
+		navigation_grid
+	)
+	var headless_solution := _solution_script(solution, _golden_path(nodes))
+	var authored_world_actions := SystemsCurriculumScript.world_actions_for_spec(
+		str(resolved.get("id", ""))
+	)
+	if not authored_world_actions.is_empty():
+		headless_solution["world_actions"] = authored_world_actions
+	var topology_contract := _build_topology_contract(
+		nodes, routes, navigation_branches, navigation_grid
+	)
 
 	var spec := {
 		"success": true,
@@ -214,6 +251,7 @@ static func generate(settings: Dictionary) -> Dictionary:
 		"world_slot": world_slot,
 		"anchors": anchors,
 		"graybox": graybox,
+		"spine_navigation_grid": spine_navigation_grid,
 		"navigation_grid": navigation_grid,
 		"roompieces": _roompieces_block(layout),
 		"spatial_features": spatial_features,
@@ -226,16 +264,19 @@ static func generate(settings: Dictionary) -> Dictionary:
 		"teaching_chain": teaching_chain,
 		"composition": composition_summary,
 		"systems_contract": systems_contract,
+		"topology_contract": topology_contract,
 		"palette_usage": palette_usage,
 		"headless": {
 			"golden_path": _golden_path(nodes),
 			"risky_recovery": _risky_recovery(routes, nodes),
-			"solution": _solution_script(solution, _golden_path(nodes)),
+			"solution": headless_solution,
 			"solution_paths": solution.get("solution_paths", []),
 			"solution_summary": {
 				"multi_solution": solution.get("multi_solution", false),
 				"choice_node_count": solution.get("choice_node_count", 0),
 				"choice_nodes": solution.get("choice_nodes", []),
+				"branch_contract_valid": solution.get("branch_contract_valid", false),
+				"mandatory_branch_action_count": solution.get("mandatory_branch_action_count", 0),
 				"solvable_loadout_count": solution.get("solvable_loadout_count", 0),
 				"shadow_solvable": solution.get("shadow_solvable", false),
 				"bare_pair_solvable": solution.get("bare_pair_solvable", false),
@@ -251,18 +292,15 @@ static func generate(settings: Dictionary) -> Dictionary:
 				"shadow_pressure": solution.get("shadow_pressure", 0.0),
 				"shadow_combination_premium": solution.get("shadow_combination_premium", 0.0),
 				"combination_pressure_gap": solution.get("combination_pressure_gap", 0.0),
-				"diagnosis_node_count": solution.get("diagnosis_node_count", 0),
-				"diagnosis_nodes": solution.get("diagnosis_nodes", []),
-				"diagnosis_penalty": solution.get("diagnosis_penalty", 0.0),
 			},
 			"state_paths": [
 				"chunk.generation.spec_id",
 				"chunk.generation.route_choice",
 				"chunk.generation.shelter_rested",
-				"chunk.generation.shortcut_unlocked",
 				"chunk.generation.composition",
 				"chunk.generation.composition.random_walk",
 				"chunk.generation.unsupported_placeholder_count",
+				"chunk.generation.omitted_content_count",
 				"chunk.generation.navigation",
 				"chunk.generation.spatial_features",
 				"chunk.generation.area_theme",
@@ -284,6 +322,26 @@ static func generate(settings: Dictionary) -> Dictionary:
 			"spotlight_within_stage": solution.get("spotlight_within_stage", true),
 		},
 	}
+	var mode_validation := validate_mode_independent_spec(spec)
+	(spec["validation"] as Dictionary)["mode_independence"] = mode_validation
+	if not bool(mode_validation.get("valid", false)):
+		return {
+			"success": false,
+			"ok": false,
+			"error": "mode_independence_contract_failed",
+			"validation": spec["validation"],
+			"draft_spec": spec,
+		}
+	var topology_validation := validate_topology_contract(spec)
+	(spec["validation"] as Dictionary)["topology"] = topology_validation
+	if not bool(topology_validation.get("valid", false)):
+		return {
+			"success": false,
+			"ok": false,
+			"error": "topology_contract_failed",
+			"validation": spec["validation"],
+			"draft_spec": spec,
+		}
 	var systems_validation: Dictionary = SystemsCurriculumScript.validate_contract(spec)
 	(spec["validation"] as Dictionary)["systems"] = systems_validation
 	if not bool(systems_validation.get("valid", false)):
@@ -351,6 +409,15 @@ static func validate_settings(settings: Dictionary) -> Dictionary:
 	var errors: Array[String] = []
 	if not bool(catalog_validation.get("valid", false)):
 		errors.append_array(catalog_validation.get("errors", []))
+	# Generation owns fixed content. Economy presets are runtime pressure projections
+	# over that content and must be supplied to the preview/playtest host only after
+	# a spec has been generated. Rejecting these keys prevents a caller from quietly
+	# making a different map, reward set, or solution for Scarcity.
+	for runtime_path in _runtime_play_config_paths(settings):
+		errors.append(
+			"Runtime play configuration '%s' is not a generator setting; apply it to one fixed spec after generation."
+			% runtime_path
+		)
 
 	var resolved := _resolve_settings(settings)
 	resolved["progression_stage"] = _resolve_progression_stage(catalog, resolved)
@@ -405,6 +472,297 @@ static func validate_settings(settings: Dictionary) -> Dictionary:
 	}
 
 
+static func _runtime_play_config_paths(value: Variant, path := "settings") -> Array[String]:
+	var result: Array[String] = []
+	if value is Dictionary:
+		for key_v in (value as Dictionary).keys():
+			var key := str(key_v)
+			var child_path := "%s.%s" % [path, key]
+			if RUNTIME_ONLY_PLAY_CONFIG_KEYS.has(key):
+				result.append(child_path)
+			result.append_array(_runtime_play_config_paths((value as Dictionary)[key_v], child_path))
+	elif value is Array:
+		for index in range((value as Array).size()):
+			result.append_array(_runtime_play_config_paths(
+				(value as Array)[index], "%s[%d]" % [path, index]
+			))
+	return result
+
+
+## A generated spec is fixed content, whether it was produced in memory, supplied
+## by a caller, or read back from disk. Keep the same mode-blind rule at all three
+## boundaries so serialization cannot become an escape hatch around validate_settings().
+static func validate_mode_independent_spec(spec: Dictionary) -> Dictionary:
+	var runtime_paths := _runtime_play_config_paths(spec, "spec")
+	var errors: Array[String] = []
+	for runtime_path in runtime_paths:
+		errors.append(
+			"Generated content contains runtime play configuration '%s'."
+			% runtime_path
+		)
+	return {
+		"valid": errors.is_empty(),
+		"errors": errors,
+		"runtime_paths": runtime_paths,
+	}
+
+
+static func _weave_navigation_grid(spine_navigation_grid: Dictionary, settings: Dictionary) -> Dictionary:
+	if spine_navigation_grid.is_empty():
+		return {}
+	var options := {
+		"seed": int(settings.get("seed", 0)),
+		"tier": str(settings.get("complexity_tier", "standard")),
+		"stage": int(settings.get("progression_stage", 99)),
+	}
+	var spatial_profile: Dictionary = settings.get("spatial_profile", {})
+	if spatial_profile.has("branch_room_count"):
+		options["count"] = maxi(0, int(spatial_profile.get("branch_room_count", 0)))
+	return BranchWeaverScript.weave(spine_navigation_grid, options)
+
+
+static func _navigation_branch_contracts(branches: Array) -> Array:
+	var result: Array = []
+	for branch_v in branches:
+		if not (branch_v is Dictionary):
+			continue
+		var branch := branch_v as Dictionary
+		result.append({
+			"id": str(branch.get("id", "")),
+			"role": str(branch.get("role", "")),
+			"required_for_progress": bool(branch.get("required_for_progress", false)),
+			"neck": (branch.get("neck", []) as Array).duplicate(),
+			"cells": (branch.get("cells", []) as Array).duplicate(true),
+			"causal_contract": (branch.get("causal_contract", {}) as Dictionary).duplicate(true),
+		})
+	return result
+
+
+static func _build_topology_contract(
+		nodes: Array,
+		routes: Array,
+		navigation_branches: Array,
+		navigation_grid: Dictionary
+) -> Dictionary:
+	var semantic_branches := []
+	for node_v in nodes:
+		if not (node_v is Dictionary) or not bool((node_v as Dictionary).get("optional", false)):
+			continue
+		semantic_branches.append({
+			"node": str((node_v as Dictionary).get("id", "")),
+			"role": str((node_v as Dictionary).get("branch_role", "")),
+			"required_for_progress": false,
+		})
+	var topology_routes := []
+	for route_v in routes:
+		if not (route_v is Dictionary):
+			continue
+		var route := route_v as Dictionary
+		if str(route.get("topology_role", "")) == "" and str(route.get("kind", "")) != "shortcut":
+			continue
+		topology_routes.append({
+			"route": str(route.get("id", "")),
+			"role": str(route.get("topology_role", "")),
+			"effect": str(route.get("topology_effect", "")),
+			"starts_active": bool(route.get("starts_active", true)),
+			"unlock_requires_node": str(route.get("unlock_requires_node", "")),
+		})
+	return {
+		"contract_id": "generated_topology_contract_v1",
+		"navigation_grid_field": "navigation_grid",
+		"spine_navigation_grid_field": "spine_navigation_grid",
+		"branch_weave_contract_id": BranchWeaverScript.BRANCH_WEAVE_CONTRACT_ID,
+		"branch_roles": ["mandatory_producer", "optional_risk_reward"],
+		"semantic_branches": semantic_branches,
+		"navigation_branches": _navigation_branch_contracts(navigation_branches),
+		"mandatory_branch_action_count": SolverScript.mandatory_branch_actions(
+			navigation_branches, nodes, navigation_grid
+		).size(),
+		"topology_routes": topology_routes,
+		"return_policy": {
+			"authority": "runtime_meta_template_climbvine_state",
+			"semantic_route_may_unlock": false,
+			"kind": "gated_climbvine",
+			"role": "recovery_return",
+			"starts_active": false,
+			"activation_policy": "tend_upper_anchor",
+			"activation_character": "peris",
+			"traversal_direction": "lower_to_upper",
+			"topology_effect": "backtrack_only",
+			"allow_forward_drop": false,
+		},
+		"invariants": {
+			"branches_have_semantic_roles": true,
+			"forward_routes_cannot_skip_unresolved_nodes": true,
+			"recovery_returns_unlock_from_their_later_endpoint": true,
+			"always_on_forward_drops_forbidden": true,
+		},
+	}
+
+
+## Validate semantic graph shortcuts independently from the spatial template. A forward edge may skip optional
+## reward nodes, but it may not jump a required causal beat unless every skipped beat is an explicit prerequisite
+## of that edge. Generated recovery routes are later -> earlier, dormant, and unlock only at their later endpoint.
+static func validate_topology_contract(spec: Dictionary) -> Dictionary:
+	var errors: Array[String] = []
+	var nodes: Array = spec.get("nodes", [])
+	var routes: Array = spec.get("routes", [])
+	var node_index := {}
+	var optional_by_id := {}
+	for index in range(nodes.size()):
+		if not (nodes[index] is Dictionary):
+			continue
+		var node := nodes[index] as Dictionary
+		var node_id := str(node.get("id", ""))
+		if node_id == "":
+			continue
+		node_index[node_id] = index
+		optional_by_id[node_id] = bool(node.get("optional", false))
+		if bool(node.get("optional", false)) \
+				and str(node.get("branch_role", "")) != "optional_risk_reward":
+			errors.append("Optional node '%s' lacks the optional_risk_reward branch role." % node_id)
+
+	var topology_route_count := 0
+	for route_v in routes:
+		if not (route_v is Dictionary):
+			continue
+		var route := route_v as Dictionary
+		var route_id := str(route.get("id", "unnamed_route"))
+		var from_id := str(route.get("from", ""))
+		var to_id := str(route.get("to", ""))
+		if not node_index.has(from_id) or not node_index.has(to_id):
+			errors.append("Route '%s' references an unknown endpoint." % route_id)
+			continue
+		var from_index := int(node_index[from_id])
+		var to_index := int(node_index[to_id])
+		var kind := str(route.get("kind", "safe"))
+		var topology_role := str(route.get("topology_role", ""))
+		var changes_topology := kind in ["shortcut", "drop"] or topology_role != "" \
+				or str(route.get("topology_effect", "")) != ""
+		if changes_topology:
+			topology_route_count += 1
+			if not bool(route.get("cannot_bypass_unresolved", false)):
+				errors.append("Topology route '%s' omits the unresolved-blocker invariant." % route_id)
+		if kind == "drop":
+			errors.append("Route '%s' is a forward drop; generated returns must be gated climbs." % route_id)
+
+		if to_index > from_index + 1:
+			var declared_prerequisites := _string_array(route.get("unlock_requires_resolved", []))
+			for skipped_index in range(from_index + 1, to_index):
+				var skipped := nodes[skipped_index] as Dictionary
+				var skipped_id := str(skipped.get("id", ""))
+				if not bool(skipped.get("optional", false)) and not declared_prerequisites.has(skipped_id):
+					errors.append(
+					"Forward route '%s' bypasses unresolved mandatory node '%s'."
+					% [route_id, skipped_id]
+				)
+
+		if topology_role == "optional_branch_bypass":
+			var bypassed_id := str(route.get("bypasses_optional", ""))
+			if bypassed_id == "" or not bool(optional_by_id.get(bypassed_id, false)):
+				errors.append("Optional bypass '%s' does not bypass an optional node." % route_id)
+
+		if kind == "shortcut" or topology_role == "recovery_return":
+			if to_index >= from_index:
+				errors.append("Recovery route '%s' is not later-to-earlier backtracking." % route_id)
+			if topology_role != "recovery_return" \
+					or str(route.get("topology_effect", "")) != "backtrack_only":
+				errors.append("Recovery route '%s' lacks a backtrack-only recovery role." % route_id)
+			if bool(route.get("starts_active", true)):
+				errors.append("Recovery route '%s' starts active." % route_id)
+			if str(route.get("unlock_requires_node", "")) != from_id:
+				errors.append("Recovery route '%s' does not unlock at its later endpoint." % route_id)
+			# A semantic edge is not a mechanism. If a future generated topology really
+			# needs to serialize one, it must bind to the exact ClimbvineReturn instance
+			# and its physical endpoints; selecting the route itself may never unlock it.
+			if str(route.get("runtime_handler", "")) != "climbvine_return_v1" \
+					or str(route.get("runtime_mechanism_id", "")) == "" \
+					or str(route.get("runtime_source_endpoint", "")) == "" \
+					or str(route.get("runtime_target_endpoint", "")) == "" \
+					or bool(route.get("unlocks_shortcut", false)):
+				errors.append(
+					"Recovery route '%s' is prose/metadata rather than an exact climbvine binding."
+					% route_id
+				)
+
+	var contract: Dictionary = spec.get("topology_contract", {})
+	var return_policy: Dictionary = contract.get("return_policy", {})
+	if not contract.is_empty():
+		if bool(return_policy.get("allow_forward_drop", true)) \
+				or bool(return_policy.get("starts_active", true)) \
+				or str(return_policy.get("activation_policy", "")) != "tend_upper_anchor" \
+				or str(return_policy.get("topology_effect", "")) != "backtrack_only" \
+				or str(return_policy.get("authority", "")) \
+					!= "runtime_meta_template_climbvine_state" \
+				or bool(return_policy.get("semantic_route_may_unlock", true)):
+			errors.append("The generated return policy permits an ungated or forward traversal.")
+
+	# Generated navigation is solved as emitted. The runtime may render or warp the
+	# grid, but it may not add mandatory rooms after this validation boundary.
+	var navigation_grid: Dictionary = spec.get("navigation_grid", {})
+	var has_emitted_weave := (
+		str(navigation_grid.get("branch_weave_contract_id", ""))
+		== BranchWeaverScript.BRANCH_WEAVE_CONTRACT_ID
+		or spec.has("spine_navigation_grid")
+	)
+	var navigation_branches: Array = navigation_grid.get("branches", [])
+	if has_emitted_weave:
+		if str(navigation_grid.get("branch_weave_contract_id", "")) \
+				!= BranchWeaverScript.BRANCH_WEAVE_CONTRACT_ID:
+			errors.append("The authoritative navigation grid lacks the fixed branch-weave contract id.")
+		var branch_validation := BranchWeaverScript.validate_branch_contracts(
+			navigation_branches, navigation_grid
+		)
+		for branch_error_v in branch_validation.get("errors", []):
+			errors.append("Navigation branch: %s" % str(branch_error_v))
+
+		var spine_navigation_grid: Dictionary = spec.get("spine_navigation_grid", {})
+		if not spine_navigation_grid.is_empty() \
+				and not (spine_navigation_grid.get("branches", []) as Array).is_empty():
+			errors.append("spine_navigation_grid contains woven branches instead of the bare macro-shape spine.")
+
+		var expected_navigation_contracts := _navigation_branch_contracts(
+			navigation_branches
+		)
+		if JSON.stringify(contract.get("navigation_branches", [])) \
+				!= JSON.stringify(expected_navigation_contracts):
+			errors.append("topology_contract navigation branches differ from the authoritative navigation grid.")
+
+		var expected_branch_actions := SolverScript.mandatory_branch_actions(
+			navigation_branches, nodes, navigation_grid
+		)
+		for branch_action_v in expected_branch_actions:
+			if str((branch_action_v as Dictionary).get("before_node", "")) == "":
+				errors.append("A mandatory branch action lacks an executable before_node interleave anchor.")
+		var emitted_branch_actions: Array = spec.get("headless", {}).get(
+			"solution", {}
+		).get("branch_actions", [])
+		# Persisted JSON promotes integral numbers to floats (for example, solution_order
+		# 0 becomes 0.0). Compare their JSON-normalized Variant trees so serialization-only
+		# numeric representation cannot invalidate an otherwise exact action projection.
+		if not _serialized_variants_equal(emitted_branch_actions, expected_branch_actions):
+			errors.append("The headless solution omits or changes a mandatory navigation-branch action.")
+		if int(contract.get("mandatory_branch_action_count", -1)) \
+				!= expected_branch_actions.size():
+			errors.append("topology_contract reports the wrong mandatory branch-action count.")
+	return {
+		"valid": errors.is_empty(),
+		"errors": errors,
+		"topology_route_count": topology_route_count,
+		"navigation_branch_count": navigation_branches.size(),
+		"mandatory_branch_action_count": SolverScript.mandatory_branch_actions(
+			navigation_branches, nodes, navigation_grid
+		).size(),
+	}
+
+
+static func _serialized_variants_equal(left: Variant, right: Variant) -> bool:
+	return (
+		JSON.parse_string(JSON.stringify(left))
+		== JSON.parse_string(JSON.stringify(right))
+	)
+
+
 ## Public verifier used by batch tools and QA without duplicating the contract law.
 static func validate_systems_contract(spec: Dictionary) -> Dictionary:
 	return SystemsCurriculumScript.validate_contract(spec)
@@ -457,6 +815,28 @@ static func validate_spatial_features(spec: Dictionary) -> Dictionary:
 		var assignments: Array = feature.get("socket_assignments", [])
 		if assignments.size() < 2:
 			errors.append("%s does not spatially separate at least two system elements" % feature_id)
+		var assignment_ids := []
+		for assignment_v in assignments:
+			if assignment_v is Dictionary:
+				assignment_ids.append(str((assignment_v as Dictionary).get("socket", "")))
+		var runtime_binding: Dictionary = feature.get("runtime_binding", {})
+		for key in [
+			"binding_id",
+			"runtime_handler",
+			"mechanism_id",
+			"source_socket_id",
+			"effect_socket_id",
+			"completion_predicate",
+		]:
+			if str(runtime_binding.get(key, "")).strip_edges() == "":
+				errors.append("%s runtime binding is missing %s" % [feature_id, key])
+		if str(runtime_binding.get("runtime_handler", "")) \
+				!= str(node.get("runtime_handler", "")):
+			errors.append("%s runtime binding is not owned by its node handler" % feature_id)
+		for socket_key in ["source_socket_id", "effect_socket_id"]:
+			var socket_id := str(runtime_binding.get(socket_key, ""))
+			if socket_id != "" and not assignment_ids.has(socket_id):
+				errors.append("%s binds missing socket %s" % [feature_id, socket_id])
 		var causal_model: Dictionary = feature.get("causal_model", {})
 		for key in ["primary_insight", "leverage", "failure_prediction"]:
 			if str(causal_model.get(key, "")).strip_edges() == "":
@@ -805,9 +1185,26 @@ static func load_spec(path: String) -> Dictionary:
 	if file == null:
 		return {}
 	var parsed: Variant = JSON.parse_string(file.get_as_text())
-	return parsed if parsed is Dictionary else {}
+	if not (parsed is Dictionary):
+		return {}
+	var canonical := canonicalize_spec(parsed as Dictionary)
+	var mode_validation := validate_mode_independent_spec(canonical)
+	if not bool(mode_validation.get("valid", false)):
+		push_error(
+			"Refusing mode-dependent generated stretch spec '%s': %s"
+			% [path, "; ".join(mode_validation.get("errors", []))]
+		)
+		return {}
+	return canonical
 
 static func save_spec(spec: Dictionary, path: String) -> bool:
+	var mode_validation := validate_mode_independent_spec(spec)
+	if not bool(mode_validation.get("valid", false)):
+		push_error(
+			"Refusing to save a mode-dependent generated stretch spec: %s"
+			% "; ".join(mode_validation.get("errors", []))
+		)
+		return false
 	if path == "":
 		path = "%s/%s.json" % [DEFAULT_SPEC_DIR, _sanitize_id(str(spec.get("id", "generated_stretch")))]
 	var absolute_dir := ProjectSettings.globalize_path(path.get_base_dir())
@@ -815,8 +1212,68 @@ static func save_spec(spec: Dictionary, path: String) -> bool:
 	var file := FileAccess.open(path, FileAccess.WRITE)
 	if file == null:
 		return false
-	file.store_string(JSON.stringify(spec, "\t"))
+	file.store_string(JSON.stringify(canonicalize_spec(spec), "\t"))
 	return true
+
+## Persisted specs may predate the flora identity migration. Retired flora names are
+## accepted at this serialization boundary, but every returned/written runtime spec
+## uses the canonical key. This intentionally does not add aliases to the live palette.
+static func canonicalize_spec(spec: Dictionary) -> Dictionary:
+	var normalized := _canonicalize_persisted_flora(spec) as Dictionary
+	return _canonicalize_persisted_branch_action_triggers(normalized) as Dictionary
+
+
+## `before_nodes` extends the original singular interleave anchor so an optional
+## route that encounters the same physical cut can trigger the producer before
+## crossing. Older fixtures remain valid: their canonical golden anchor is the
+## only known trigger, and freshly generated specs carry the complete spatial set.
+static func _canonicalize_persisted_branch_action_triggers(
+	value: Variant
+) -> Variant:
+	if value is Dictionary:
+		var normalized := {}
+		for raw_key in (value as Dictionary).keys():
+			normalized[raw_key] = _canonicalize_persisted_branch_action_triggers(
+				(value as Dictionary)[raw_key]
+			)
+		if (
+			str(normalized.get("kind", "")) == "mandatory_branch_interaction"
+			and not normalized.has("before_nodes")
+			and str(normalized.get("before_node", "")) != ""
+		):
+			normalized["before_nodes"] = [
+				str(normalized.get("before_node", ""))
+			]
+		return normalized
+	if value is Array:
+		var normalized := []
+		for item in value as Array:
+			normalized.append(
+				_canonicalize_persisted_branch_action_triggers(item)
+			)
+		return normalized
+	return value
+
+static func _canonicalize_persisted_flora(value: Variant) -> Variant:
+	if value is Dictionary:
+		var normalized := {}
+		for raw_key in (value as Dictionary).keys():
+			var next_key: Variant = raw_key
+			if raw_key is String and FloraSpeciesScript.is_legacy_key(str(raw_key)):
+				var mapped_key := FloraSpeciesScript.canonical_key(str(raw_key))
+				if mapped_key != "":
+					next_key = mapped_key
+			normalized[next_key] = _canonicalize_persisted_flora((value as Dictionary)[raw_key])
+		return normalized
+	if value is Array:
+		var normalized := []
+		for item in value as Array:
+			normalized.append(_canonicalize_persisted_flora(item))
+		return normalized
+	if value is String and FloraSpeciesScript.is_legacy_key(str(value)):
+		var mapped_value := FloraSpeciesScript.canonical_key(str(value))
+		return mapped_value if mapped_value != "" else value
+	return value
 
 static func _resolve_settings(settings: Dictionary) -> Dictionary:
 	var seed := int(settings.get("seed", 1701))
@@ -829,6 +1286,11 @@ static func _resolve_settings(settings: Dictionary) -> Dictionary:
 	var override_budget: Dictionary = settings.get("budget", {})
 	var overridden_keys := []
 	for key in override_budget.keys():
+		# Legacy specs budgeted a prose-only `return_shortcut` in the semantic
+		# graph. Recovery is now owned exclusively by the meta-template's real,
+		# saved ClimbvineReturn mechanism, so this obsolete knob cannot affect content.
+		if str(key) == "shortcut_count":
+			continue
 		base_budget[key] = _resolve_budget_value(override_budget[key], int(base_budget.get(key, 0)), rng)
 		overridden_keys.append(str(key))
 	base_budget["node_count"] = maxi(4, int(base_budget.get("node_count", 6)))
@@ -902,7 +1364,15 @@ static func _normalize_limitations(raw: Variant) -> Dictionary:
 			var category := _canonical_category(str(raw_category))
 			if category == "":
 				continue
-			result[mode][category] = _string_array(group.get(raw_category, []))
+			var values := _string_array(group.get(raw_category, []))
+			if category == "flora":
+				var canonical_values: Array[String] = []
+				for raw_value in values:
+					var canonical_value := FloraSpeciesScript.canonical_key(str(raw_value))
+					if canonical_value != "" and not canonical_values.has(canonical_value):
+						canonical_values.append(canonical_value)
+				values = canonical_values
+			result[mode][category] = values
 	return result
 
 static func _normalize_composition(raw: Variant) -> Dictionary:
@@ -1315,9 +1785,6 @@ static func _archetype_chain_entry(catalog, id: String, rng, variant_override :=
 		"atp_reward": int(entry.get("atp_reward", 0)),
 		"pressure_cost": int(entry.get("pressure_cost", 0)),
 		"exploit_target": str(entry.get("exploit_target", "")),
-		"solve": str(entry.get("solve", "")),
-		"reads": entry.get("reads", []),
-		"correct_read": str(entry.get("correct_read", "")),
 		"systems_dimensions": (systems_model.get("dimensions", []) as Array).duplicate(),
 	}
 	if extras is Dictionary:
@@ -1639,7 +2106,19 @@ static func _build_nodes(catalog, settings: Dictionary, budget: Dictionary, pale
 		if optional and available_structures.has("forage_cache") and not structures.has("forage_cache"):
 			structures.append("forage_cache")
 		var is_chain_carry := chain_mode and archetype_id == "3" and not optional
-		var is_resource := optional or is_chain_carry or (resource_beats > 0 and role in ["foraging", "regroup"])
+		var survival_kind := str(archetype.get("survival_kind", ""))
+		var is_resource := (
+			optional
+			or is_chain_carry
+			or survival_kind == "forage"
+			or (resource_beats > 0 and role in ["foraging", "regroup"])
+		)
+		# Every ATP-bearing generated resource is an authored lysate pickup. The carry
+		# chain's tool payload remains distinct, but there is no abstract food beat that
+		# can credit the party without occupying a hand and being endocytosed.
+		var is_food_resource := is_resource and not is_chain_carry
+		var authored_atp_reward := int(archetype.get("atp_reward", 0))
+		var food_reward_atp := authored_atp_reward if authored_atp_reward > 0 else 2
 		var nested_archetypes := _nested_for_archetype(archetype_id, composition) if not optional else []
 		var label := "Lysate reserve" if optional else _node_label(archetype, role, i)
 		var chain_cycle := int(chain_position / maxi(1, playable_chain.size())) if is_interior and not optional and not playable_chain.is_empty() else -1
@@ -1658,6 +2137,7 @@ static func _build_nodes(catalog, settings: Dictionary, budget: Dictionary, pale
 			"title": label,
 			"position": position,
 			"optional": optional,
+			"branch_role": "optional_risk_reward" if optional else "",
 			"archetype_id": archetype_id,
 			"archetype_name": str(archetype.get("name", "Narrative beat" if role in ["boundary", "shelter_arrival"] else "")),
 			"variant": str(archetype.get("variant", "")),
@@ -1684,23 +2164,19 @@ static func _build_nodes(catalog, settings: Dictionary, budget: Dictionary, pale
 			"structures": structures,
 			"resource_beat": is_resource,
 			"resource": is_resource,
-			"resource_kind": "food" if optional else ("carry" if is_chain_carry else ""),
-			"resource_item_type": "lysate" if optional else "generated_tool",
-			"reward_kind": "food" if optional else "",
-			"reward_atp": 2 if optional else 0,
+			"resource_kind": "food" if is_food_resource else ("carry" if is_chain_carry else ""),
+			"resource_item_type": "lysate" if is_food_resource else "generated_tool",
+			"reward_kind": "food" if is_food_resource else "",
+			"reward_atp": food_reward_atp if is_food_resource else 0,
 			"carry_payload": is_chain_carry,
-			"shortcut": role == "shortcut" or structures.has("shortcut_gate"),
 			"pressure": 1 if not enemies.is_empty() else 0,
 			"shadow_solution": archetype.get("shadow_solution", composition.get("shadow_solution", {})),
 			"approaches": archetype.get("approaches", []),
 			"stage": int(archetype.get("stage", 1)),
-			"survival_kind": str(archetype.get("survival_kind", "")),
-			"atp_reward": int(archetype.get("atp_reward", 0)),
+			"survival_kind": survival_kind,
+			"atp_reward": food_reward_atp if is_food_resource else 0,
 			"pressure_cost": int(archetype.get("pressure_cost", 0)),
 			"exploit_target": str(archetype.get("exploit_target", "")),
-			"solve": str(archetype.get("solve", "")),
-			"reads": (archetype.get("reads", []) as Array).duplicate(true),
-			"correct_read": str(archetype.get("correct_read", "")),
 		}
 		nodes.append(node)
 		if resource_beats > 0 and role in ["foraging", "regroup"] and not optional:
@@ -1720,32 +2196,8 @@ static func _build_nodes(catalog, settings: Dictionary, budget: Dictionary, pale
 			exit_node["chain_input"] = final_output
 			exit_node["chain_input_ref"] = final_output_ref
 			nodes[nodes.size() - 1] = exit_node
-	# Archetype-driven roles no longer force a 'shortcut' node, so guarantee the return
-	# ratchet the budget asks for lands on a non-optional beat — the golden run still
-	# exposes shortcut state, and the return_shortcut route has a node to anchor to.
-	if int(budget.get("shortcut_count", 0)) > 0 and not _any_shortcut(nodes):
-		var pick := _designate_shortcut_node(nodes)
-		if pick >= 0:
-			(nodes[pick] as Dictionary)["shortcut"] = true
-			if available_structures.has("shortcut_gate") and not (nodes[pick]["structures"] as Array).has("shortcut_gate"):
-				nodes[pick]["structures"] = ["shortcut_gate"]
 	return nodes
 
-## A shortcut on an OPTIONAL beat never gets walked by the golden path, so only a
-## non-optional shortcut counts as "the run exposes shortcut state".
-static func _any_shortcut(nodes: Array) -> bool:
-	for n in nodes:
-		if n is Dictionary and bool((n as Dictionary).get("shortcut", false)) and not bool((n as Dictionary).get("optional", false)):
-			return true
-	return false
-
-## The last non-optional interior beat — a sensible place for a return-to-safety ratchet.
-static func _designate_shortcut_node(nodes: Array) -> int:
-	for i in range(nodes.size() - 2, 0, -1):
-		var n: Dictionary = nodes[i]
-		if not bool(n.get("optional", false)) and str(n.get("role", "")) not in ["boundary", "shelter_arrival"]:
-			return i
-	return -1
 
 static func _nested_for_archetype(archetype_id: String, composition: Dictionary) -> Array:
 	var nested := []
@@ -1757,8 +2209,23 @@ static func _nested_for_archetype(archetype_id: String, composition: Dictionary)
 		var nested_entry := entry as Dictionary
 		if str(nested_entry.get("host_id", "")) != archetype_id:
 			continue
+		# Nested composition is playable only when the child owns a typed mechanism,
+		# an exact stable instance, and the physical output source that it unlocks.
+		# Older composition metadata had none of those and produced a purple box plus
+		# a two-click flag. Keep that prose out of the runtime until a real kit binds it.
+		if not _nested_entry_has_runtime_binding(nested_entry):
+			continue
 		nested.append(nested_entry.duplicate(true))
 	return nested
+
+
+static func _nested_entry_has_runtime_binding(entry: Dictionary) -> bool:
+	return (
+		str(entry.get("runtime_handler", "")).strip_edges() != ""
+		and str(entry.get("mechanism_id", "")).strip_edges() != ""
+		and str(entry.get("output_source_id", "")).strip_edges() != ""
+		and str(entry.get("completion_predicate", "")).strip_edges() != ""
+	)
 
 static func _max_nested_depth(nested_archetypes: Array) -> int:
 	var result := 0
@@ -1789,16 +2256,18 @@ static func _build_routes(nodes: Array, budget: Dictionary, rng) -> Array:
 		while next_index < nodes.size() - 1 and nodes[next_index] is Dictionary and bool((nodes[next_index] as Dictionary).get("optional", false)):
 			next_index += 1
 		if previous_index >= 0 and next_index < nodes.size():
-			routes.append({
-				"id": "optional_bypass_%02d_%02d" % [previous_index, next_index],
+				routes.append({
+					"id": "optional_bypass_%02d_%02d" % [previous_index, next_index],
 				"from": (nodes[previous_index] as Dictionary).get("id", ""),
 				"to": (nodes[next_index] as Dictionary).get("id", ""),
 				"kind": "safe",
 				"risk": "safe",
 				"cost": 1,
-				"recoverable": true,
-				"bypasses_optional": str((nodes[i] as Dictionary).get("id", "")),
-			})
+					"recoverable": true,
+					"bypasses_optional": str((nodes[i] as Dictionary).get("id", "")),
+					"topology_role": "optional_branch_bypass",
+					"cannot_bypass_unresolved": true,
+				})
 	if int(budget.get("branch_count", 0)) > 0 and nodes.size() >= 4:
 		# Risk buys access to an optional detour; it never skips mandatory causal
 		# beats. The safe bypass stays on the golden spine, so pressure and reward
@@ -1821,6 +2290,8 @@ static func _build_routes(nodes: Array, budget: Dictionary, rng) -> Array:
 				candidate["cost"] = 0
 				candidate["damage"] = 18.0 + float(rng.call("randi_range", 0, 8))
 				candidate["optional_reward_node"] = risky_to
+				candidate["branch_role"] = "optional_risk_reward"
+				candidate["cannot_bypass_unresolved"] = true
 				var reward_atp := clampi(int(ceil(float(candidate["damage"]) / 10.0)), 2, 4)
 				var reward_node: Dictionary = nodes[risky_optional_index]
 				reward_node["reward_kind"] = "food"
@@ -1835,17 +2306,6 @@ static func _build_routes(nodes: Array, budget: Dictionary, rng) -> Array:
 				nodes[risky_optional_index] = reward_node
 				routes[route_index] = candidate
 				break
-	if int(budget.get("shortcut_count", 0)) > 0 and nodes.size() >= 5:
-		routes.append({
-			"id": "return_shortcut",
-			"from": (nodes[nodes.size() - 2] as Dictionary).get("id", ""),
-			"to": "entry",
-			"kind": "shortcut",
-			"risk": "shortcut",
-			"cost": 0,
-			"recoverable": true,
-			"unlocks_shortcut": true,
-		})
 	return routes
 
 static func _apply_graybox_layout(nodes: Array, routes: Array, catalog, settings: Dictionary, budget: Dictionary) -> Dictionary:
@@ -1970,15 +2430,26 @@ static func _assign_spatial_features(nodes: Array, layout: Dictionary, piece_cat
 			continue
 		var node_index := int(node_indices[node_id])
 		var node := nodes[node_index] as Dictionary
-		# Biome filtering can legitimately remove part of an archetype's usual ecology. Preserve the
-		# WFC footprint (and therefore the run economy), but do not advertise or instance a systemic
-		# platform unless at least two kinds of content remain to form a readable relationship.
-		var represented_systems := (
-			(1 if (node.get("flora", []) as Array).size() > 0 else 0)
-			+ (1 if (node.get("enemies", []) as Array).size() > 0 else 0)
-			+ (1 if (node.get("structures", []) as Array).size() > 0 else 0)
+		# Layout-only archetypes cannot advertise a systemic platform. Likewise, two
+		# palette nouns do not become a relationship unless both have generated
+		# runtime bindings. Preserve the WFC footprint, but omit the causal prefab.
+		if str(node.get("runtime_handler", "")) == "":
+			continue
+		var realized_socket_count := 0
+		for category in ["flora", "enemies", "structures"]:
+			for content_id_v in node.get(category, []):
+				if RuntimeRegistryScript.generated_content_is_realized(
+					category, str(content_id_v)
+				):
+					realized_socket_count += 1
+		if realized_socket_count < 2:
+			continue
+		var runtime_binding: Dictionary = affordance.get(
+			"runtime_binding", feature_def.get("runtime_binding", {})
 		)
-		if represented_systems < 2:
+		if not _spatial_feature_runtime_binding_is_exact(
+			runtime_binding, str(node.get("runtime_handler", ""))
+		):
 			continue
 		var feature := feature_def.duplicate(true)
 		feature.merge({
@@ -1992,6 +2463,7 @@ static func _assign_spatial_features(nodes: Array, layout: Dictionary, piece_cat
 			"archetype_id": str(node.get("archetype_id", "")),
 			"archetype_name": str(node.get("archetype_name", "")),
 			"archetype_variant": str(node.get("variant", "")),
+			"runtime_binding": runtime_binding.duplicate(true),
 			"causal_model": {
 				"system_boundary": "the grated platform, its system sockets, and connected route mouths",
 				"primary_insight": str(affordance.get("primary_insight", "")),
@@ -2004,6 +2476,24 @@ static func _assign_spatial_features(nodes: Array, layout: Dictionary, piece_cat
 		}, true)
 		node["spatial_feature"] = feature
 		nodes[node_index] = node
+
+
+static func _spatial_feature_runtime_binding_is_exact(
+		binding: Dictionary, owner_handler: String
+) -> bool:
+	if owner_handler == "" \
+			or str(binding.get("runtime_handler", "")) != owner_handler:
+		return false
+	for key in [
+		"binding_id",
+		"mechanism_id",
+		"source_socket_id",
+		"effect_socket_id",
+		"completion_predicate",
+	]:
+		if str(binding.get(key, "")).strip_edges() == "":
+			return false
+	return true
 
 
 static func _collect_spatial_features(nodes: Array, navigation_grid: Dictionary) -> Array:
@@ -2613,6 +3103,11 @@ static func _build_graybox_content_placements(node: Dictionary, node_position: V
 		var values: Array = node.get(category, [])
 		for value in values:
 			var content_id := str(value)
+			# Never turn a design noun into a box, cylinder, or billboard. A generated
+			# placement exists only when this presenter can instantiate the noun's real
+			# gameplay contract; the warning report records everything omitted.
+			if not RuntimeRegistryScript.generated_content_is_realized(category, content_id):
+				continue
 			var size := _graybox_content_size(category, content_id)
 			var category_index := int(category_indices.get(category, 0))
 			var socket := _spatial_feature_content_socket(node, category, category_index)
@@ -2719,7 +3214,7 @@ static func _graybox_content_role(category: String, content_id: String) -> Strin
 		return "pressure"
 	if category == "flora":
 		match content_id:
-			"scarpet":
+			"scarpet", "capbage":
 				return "cover"
 			"seefern":
 				return "readable_screen"
@@ -2727,6 +3222,8 @@ static func _graybox_content_role(category: String, content_id: String) -> Strin
 				return "traversal"
 			"flure", "mother_flure":
 				return "puzzle_flora"
+			"gasafoetida":
+				return "design_placeholder"
 			_:
 				return "resource"
 	match content_id:
@@ -2754,14 +3251,10 @@ static func _graybox_content_size(category: String, content_id: String) -> Vecto
 				return Vector3(5.2, 3.2, 5.2)
 			"hushbloom":
 				return Vector3(1.0, 1.1, 1.0)
-			"doma":
-				return Vector3(1.2, 1.4, 1.2)
-			"snapbloom":
-				return Vector3(1.1, 1.2, 1.1)
 			"capbage":
-				return Vector3(1.35, 0.9, 1.35)
+				return Vector3(1.2, 1.4, 1.2)
 			"gasafoetida":
-				return Vector3(1.0, 1.35, 1.0)
+				return Vector3(1.1, 1.2, 1.1)
 			"climbvine":
 				return Vector3(0.8, 2.7, 0.8)
 			"resolution_roots":
@@ -2907,23 +3400,56 @@ static func _build_world_slot(settings: Dictionary, anchors: Dictionary) -> Dict
 
 static func _build_composition_summary(composition: Dictionary, archetype_chain: Array, nodes: Array, random_walk: Dictionary = {}) -> Dictionary:
 	var chain: Array = composition.get("chain", []).duplicate(true)
-	var nested: Array = composition.get("nested", []).duplicate(true)
+	# Report only child mechanisms that survived the runtime-binding boundary. The
+	# composition planner may propose nested prose, but it is not playable content
+	# until a node carries the exact typed child binding.
+	var nested: Array = []
+	for node_v in nodes:
+		if not (node_v is Dictionary):
+			continue
+		for nested_v in (node_v as Dictionary).get("nested_archetypes", []):
+			if nested_v is Dictionary:
+				nested.append((nested_v as Dictionary).duplicate(true))
 	var max_depth := 0
 	for entry in nested:
 		if entry is Dictionary:
 			max_depth = maxi(max_depth, int((entry as Dictionary).get("depth", 1)))
+	var runtime_input_refs := {}
+	var runtime_output_refs := {}
+	for node_v in nodes:
+		if not (node_v is Dictionary):
+			continue
+		var runtime_input := str((node_v as Dictionary).get("runtime_chain_input_ref", ""))
+		var runtime_output := str((node_v as Dictionary).get("runtime_chain_output_ref", ""))
+		if runtime_input != "":
+			runtime_input_refs[runtime_input] = true
+		if runtime_output != "":
+			runtime_output_refs[runtime_output] = true
 	var links := []
+	var runtime_bound_link_count := 0
 	for i in range(chain.size() - 1):
 		var current: Dictionary = chain[i]
 		var next: Dictionary = chain[i + 1]
+		var output_ref := str(current.get("output", ""))
+		var input_ref := str(next.get("input", ""))
+		var runtime_bound := (
+			output_ref != ""
+			and output_ref == input_ref
+			and runtime_output_refs.has(output_ref)
+			and runtime_input_refs.has(input_ref)
+		)
+		if runtime_bound:
+			runtime_bound_link_count += 1
 		links.append({
 			"from_chain_index": i,
 			"to_chain_index": i + 1,
 			"from_archetype": str(current.get("id", "")),
 			"to_archetype": str(next.get("id", "")),
-			"output": str(current.get("output", "")),
-			"input": str(next.get("input", "")),
-			"feeds_next": str(current.get("output", "")) != "" and str(current.get("output", "")) == str(next.get("input", "")),
+			"output": output_ref,
+			"input": input_ref,
+			"feeds_next": output_ref != "" and output_ref == input_ref,
+			"runtime_bound": runtime_bound,
+			"authority": "exact_mechanism_predicate" if runtime_bound else "layout_concept_only",
 		})
 	var host_nodes := []
 	for node in nodes:
@@ -2934,6 +3460,7 @@ static func _build_composition_summary(composition: Dictionary, archetype_chain:
 		"chain": chain,
 		"nested": nested,
 		"links": links,
+		"runtime_bound_link_count": runtime_bound_link_count,
 		"chain_count": chain.size() if not chain.is_empty() else archetype_chain.size(),
 		"nested_count": nested.size(),
 		"nested_depth": max_depth,
@@ -2945,9 +3472,9 @@ static func _build_composition_summary(composition: Dictionary, archetype_chain:
 		"walk_archetype_count": (random_walk.get("visited_archetypes", []) as Array).size() if random_walk.get("visited_archetypes", []) is Array else 0,
 	}
 
-## Flag content the generator actually PLACED (not just the featured palette) that is a
-## graybox placeholder, so the warnings match what a player would see on the spine.
-static func _collect_warnings(catalog, nodes: Array) -> Array:
+## Report requested palette nouns that cannot enter the playable runtime. They are
+## deliberately omitted rather than rendered as suggestive graybox stand-ins.
+static func _collect_warnings(catalog, nodes: Array, composition := {}) -> Array:
 	var warnings := []
 	var seen := {}
 	for node in nodes:
@@ -2959,12 +3486,29 @@ static func _collect_warnings(catalog, nodes: Array) -> Array:
 				if seen.has(dedupe):
 					continue
 				seen[dedupe] = true
-				if catalog.support_level(category, str(key)) != "implemented":
-					warnings.append({
-						"category": category,
-						"id": str(key),
-						"message": "%s is represented by a generated graybox placeholder." % str(key),
-					})
+				if not RuntimeRegistryScript.generated_content_is_realized(category, str(key)):
+					var omitted := RuntimeRegistryScript.generated_content_omission(
+						category, str(key)
+					)
+					omitted["palette_support"] = catalog.support_level(category, str(key))
+					warnings.append(omitted)
+	if composition is Dictionary:
+		for nested_v in (composition as Dictionary).get("nested", []):
+			if not (nested_v is Dictionary) \
+					or _nested_entry_has_runtime_binding(nested_v as Dictionary):
+				continue
+			warnings.append({
+				"kind": "omitted_generated_mechanic",
+				"reason": "missing_nested_runtime_binding",
+				"host_archetype": str((nested_v as Dictionary).get("host_id", "")),
+				"nested_archetype": str((nested_v as Dictionary).get("nested_id", "")),
+				"required_fields": [
+					"runtime_handler",
+					"mechanism_id",
+					"output_source_id",
+					"completion_predicate",
+				],
+			})
 	return warnings
 
 static func _golden_path(nodes: Array) -> Array:
@@ -2995,9 +3539,13 @@ static func _solution_script(solution: Dictionary, golden_path: Array) -> Dictio
 	var actions: Array = []
 	for node_id in golden_path:
 		var ap: Dictionary = per_node.get(str(node_id), {})
+		var runtime_handler := str(ap.get("runtime_handler", ""))
+		if runtime_handler == "":
+			continue
 		var requires: Array = ap.get("requires", [])
 		actions.append({
 			"node": str(node_id),
+			"runtime_handler": runtime_handler,
 			"approach_id": str(ap.get("approach_id", ap.get("id", "traverse"))),
 			"kind": str(ap.get("kind", "traverse")),
 			"risk": str(ap.get("risk", "safe")),
@@ -3009,6 +3557,7 @@ static func _solution_script(solution: Dictionary, golden_path: Array) -> Dictio
 		"reaches": "exit_shelter",
 		"solvable": bool(chosen.get("solvable", true)),
 		"actions": actions,
+		"branch_actions": (solution.get("branch_actions", []) as Array).duplicate(true),
 	}
 
 static func _risky_recovery(routes: Array, nodes: Array) -> Array:
@@ -3086,10 +3635,6 @@ static func _slice_usage(values: Array, index: int, count: int) -> Array:
 ## The role a node wears, driven by its archetype (survival kind first, else a compatible
 ## role) rather than a blind cycle — so role never contradicts what the node is.
 static func _role_for_archetype(archetype: Dictionary, index: int) -> String:
-	# A diagnosis node is a read-and-deduce beat — it wears the guidance role so it reads as
-	# a station the party studies, never a danger pad.
-	if str(archetype.get("kind", "")) == "diagnosis" or str(archetype.get("solve", "")) == "deduce":
-		return "guidance"
 	match str(archetype.get("survival_kind", "")):
 		"forage":
 			return "foraging"
@@ -3113,7 +3658,7 @@ static func _enemy_needs(archetype: Dictionary) -> Array:
 			match variant:
 				"siderophore_into_meeb":
 					return [["siderophore", "swarm"], ["engulfer", "predator", "siderophore_counter"]]
-				"trigger_neutro_burst":
+				"trigger_flare_burst":
 					return [["burst", "aoe", "neutral_until_triggered"], ["siderophore"]]
 				"gnawer_onto_loud_signal":
 					return [["siderophore", "swarm"], ["hunter", "metabolic"]]
@@ -3162,7 +3707,11 @@ static func _flora_needs(archetype: Dictionary) -> Array:
 	if variant_flora.has(variant):
 		needs.append({"id": str(variant_flora[variant])})
 	match sk:
-		"forage", "rest":
+		"forage":
+			# The lysate cache is the forage affordance; flora only provides nearby cover.
+			needs.append({"tag": "cover"})
+		"rest":
+			# Capbage supports the authored field hide-rest (survival, never HP recovery).
 			needs.append({"id": "capbage"})
 			needs.append({"tag": "cover"})
 		"exploit":

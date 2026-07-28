@@ -2,7 +2,8 @@ extends "res://scripts/scene_chunks/scene_chunk.gd"
 
 const LevelDecoratorScript := preload("res://scripts/generation/level_decorator.gd")
 const HazardFieldScript := preload("res://scripts/game/objects/hazard_field.gd")
-const PulseCircuitSet := preload("res://scenes/fragments/sets/endo_junction_pulse_circuit.tscn")
+const PartyGateScript := preload("res://scripts/game/objects/party_gate_3d.gd")
+const ReturnGrateMesh := preload("res://resources/models/channels/endo_return_grate/endo_return_grate.obj")
 
 const WORLD_SLOT := {
 	"slot_id": "act1_endo_junction_to_shelter_1",
@@ -17,62 +18,50 @@ const WORLD_SLOT := {
 	"next_slot": "act1_channels_first_spiral",
 }
 
-const FLOOR_CENTER := Vector3(55.0, -0.05, 0.0)
-const FLOOR_SIZE := Vector3(114.0, 0.1, 34.0)
+const FLOOR_CENTER := Vector3(47.0, -0.05, 0.0)
+const FLOOR_SIZE := Vector3(98.0, 0.1, 36.0)
 const JUNCTION_POS := Vector3(7.0, 0.45, 0.0)
-const WALL_MARKS_POS := Vector3(13.0, 0.45, -4.8)
-const GUIDE_MARK_POS := Vector3(19.0, 0.45, -4.2)
-const FORAGE_CACHE_POS := Vector3(27.0, 0.45, 5.5)
-const SAFE_LEDGE_POS := Vector3(39.0, 0.45, -5.2)
-const RISKY_BLOOM_POS := Vector3(39.5, 0.45, 5.6)
-const SHORTCUT_LOCK_POS := Vector3(92.0, 0.45, -1.4)
-const SHELTER_APPROACH_POS := Vector3(97.0, 0.45, 0.0)
-const SHELTER_POS := Vector3(104.0, 0.45, 0.0)
+const WALL_MARKS_POS := Vector3(15.0, 0.45, -4.8)
+const GUIDE_MARK_POS := Vector3(23.0, 0.45, -4.2)
+const FORAGE_CACHE_POS := Vector3(31.0, 0.45, 5.5)
+const SAFE_LEDGE_POS := Vector3(35.0, 0.45, -5.2)
+const SAFE_LEDGE_END := Vector3(53.0, 0.5, -5.2)
+const SAFE_LEDGE_CENTER := Vector3(44.0, 0.45, -5.2)
+const RISKY_BLOOM_POS := Vector3(35.0, 0.45, 5.6)
+const RISKY_BLOOM_END := Vector3(53.0, 0.5, 5.6)
+const RISKY_BLOOM_CENTER := Vector3(44.0, 0.45, 5.6)
+const HIDE_SLOT_POS := Vector3(56.5, 0.45, -5.0)
+const SHORTCUT_LOCK_POS := Vector3(64.0, 0.45, -7.0)
+const SHORTCUT_GATE_POS := Vector3(64.0, 0.0, -9.25)
+const SHELTER_APPROACH_POS := Vector3(74.0, 0.45, 0.0)
+const SHELTER_POS := Vector3(86.0, 0.45, 0.0)
 
-const PARTY_ROUTE_SPEED_METERS_PER_SECOND := 2.5
-const THEORETICAL_SPRINT_SPEED_METERS_PER_SECOND := 6.0
-const ORIENTATION_SECONDS := 4.0
-const BASE_DECISION_SECONDS := 3.5
-const FIELD_DECISION_SECONDS := 3.5
-
-# One compact circuit is the stretch's whole reasoning beat. The three specialists expose a single
-# causal chain: the pressure strip tells WHEN the next pulse arrives, the living roots reveal WHERE
-# it can be absorbed, and Endo's guide latch identifies WHAT is too weak to take it. The player then
-# predicts which intervention will work. The tempting hard-brace prediction fails visibly and
-# recoverably; the root-buffer plan transfers the combined read into a physical change in the lane.
-const FIELD_OPERATIONS := {
-	"pulse": {
-		"label": "PULSE JUNCTION",
-		"start": Vector3(46.0, 0.45, 0.0),
-		"end": Vector3(86.0, 0.45, 0.0),
-		"tint": Color(0.34, 0.78, 0.68),
-		"evidence": ["pulse_pressure", "pulse_root", "pulse_latch"],
-		"choices": ["pulse_brace", "pulse_buffer"],
-		"presented_choice": "pulse_buffer",
-		"resolution_sites": {
-			"pulse_brace": "pulse_brace_execution",
-			"pulse_buffer": "pulse_buffer_execution",
-		},
-		"next": "",
-	},
-}
-
-const FIELD_SITES := {
-	"pulse_pressure": {"operation": "pulse", "kind": "evidence", "role": "aster", "pos": Vector3(52.0, 0.45, -8.0), "dwell": 3.2, "verb": "TRACE PULSE", "display": "PRESSURE STRIP", "finding": "Aster: The warning strip brightens one beat before the pressure arrives."},
-	"pulse_root": {"operation": "pulse", "kind": "evidence", "role": "peris", "pos": Vector3(61.0, 0.45, 8.0), "dwell": 3.4, "verb": "READ ROOT RHYTHM", "display": "ROOT BUFFER", "finding": "Peris: The living bed is ready to drink the next pulse, then it needs time."},
-	"pulse_latch": {"operation": "pulse", "kind": "evidence", "role": "endo", "pos": Vector3(70.0, 0.45, -8.0), "dwell": 3.6, "verb": "TEST GUIDE LATCH", "display": "GUIDE LATCH", "finding": "Endo marks the dry race's cracked brace: it will not hold the next pulse."},
-	"pulse_brace": {"operation": "pulse", "kind": "choice", "role": "endo", "pos": Vector3(76.0, 0.45, -5.0), "dwell": 2.4, "verb": "TRY HARD BRACE", "display": "HARD BRACE", "finding": "Prediction: force the cracked dry race to carry the next pulse."},
-	"pulse_buffer": {"operation": "pulse", "kind": "choice", "role": "peris", "pos": Vector3(76.0, 0.45, 5.0), "dwell": 2.4, "verb": "ROUTE TO ROOTS", "display": "ROOT ROUTE", "finding": "Prediction: route this pulse through the ready living buffer."},
-	"pulse_brace_execution": {"operation": "pulse", "kind": "resolution", "role": "endo", "pos": Vector3(82.0, 0.45, -8.0), "dwell": 4.0, "verb": "SEAT BRACE", "display": "SEAT BRACE", "finding": "The cracked brace takes the load."},
-	"pulse_buffer_execution": {"operation": "pulse", "kind": "resolution", "role": "peris", "pos": Vector3(82.0, 0.45, 8.0), "dwell": 4.0, "verb": "FEED BUFFER", "display": "FEED ROOTS", "finding": "The roots pull the surge out of the walking lane."},
-}
-
+const PARTY_IDS := ["aster", "peris", "endo"]
 const INTERACT_RADIUS := 2.6
+const INTERACTION_POSITION_TOLERANCE := 0.15
 const SHELTER_RADIUS := 3.2
 const SHELTER_ATP_COST := 1.0
-const DIRECT_DAMAGE_ASTER := 10.0
-const DIRECT_DAMAGE_PERIS := 8.0
-const DIRECT_DAMAGE_ENDO := 14.0
+const SAFE_TRAVERSAL_SPEED := 2.6
+const DIRECT_TRAVERSAL_SPEED := 3.25
+const DIRECT_BLOOM_DAMAGE_PER_TICK := 4.0
+const DIRECT_BLOOM_TICK_INTERVAL := 1.0
+const DIRECT_BLOOM_TAG := "endo_junction_direct_bloom"
+const SAFE_TRAVERSAL_ID := &"endo_junction_safe_ledge"
+const DIRECT_TRAVERSAL_ID := &"endo_junction_direct_bloom"
+const SHORTCUT_GATE_AUTHORITY_ID := "endo_junction_return_grate"
+const SHORTCUT_OPENING_DURATION := 1.4
+const ENDO_AUTHORITY_VERSION := 3
+const SHELTER_REST_PHASES := ["ready", "committing", "rested"]
+const CACHE_PHASE_AVAILABLE := "available"
+const CACHE_PHASE_CLAIMING := "claiming"
+const CACHE_PHASE_CLAIMED := "claimed"
+const CACHE_PHASES := [CACHE_PHASE_AVAILABLE, CACHE_PHASE_CLAIMING, CACHE_PHASE_CLAIMED]
+const CACHE_ITEM_TYPE := "lysate"
+const VALID_ROUTE_PHASES := [
+	"junction", "junction_read", "safe_marked", "foraged",
+	"safe_crossing", "direct_crossing", "safe_route", "direct_route",
+	"shelter_approach", "complete",
+]
 
 const SPAWNS := {
 	"aster": Vector3(4.8, 0.5, 1.6),
@@ -87,11 +76,10 @@ var _safe_interactable
 var _direct_interactable
 var _shortcut_interactable
 var _shelter_interactable
-var _field_sites: Dictionary = {}
-var _field_route_visuals: Dictionary = {}
 var _entry_guide: Node3D
-var _pulse_circuit_set: Node3D
-var _brace_failure_field: HazardField
+var _direct_bloom_field
+var _shortcut_gate: PartyGate3D
+var _shortcut_grate_mesh: MeshInstance3D
 
 var _junction_material: StandardMaterial3D
 var _safe_material: StandardMaterial3D
@@ -115,14 +103,19 @@ var _last_outcome := ""
 var _direct_damage_total := 0.0
 var _segments_completed: Array[String] = []
 var _cache_item_id := ""
-var _field_phase := ""
-var _field_evidence: Dictionary = {}
-var _field_choices: Dictionary = {}
-var _field_operations_completed: Dictionary = {}
-var _field_effects: Dictionary = {}
-var _field_findings: Array[String] = []
-var _field_failure_count := 0
-var _playtime_contract_cache: Dictionary = {}
+var _cache_phase := CACHE_PHASE_AVAILABLE
+var _cache_claimed_by := ""
+var _cache_claim_serial := 0
+var _crossing_actor := ""
+var _crossing_deadline := -1.0
+var _shelter_rest_phase := "ready"
+var _shelter_rest_commit_tick := -1.0
+var _shelter_rest_commit_day := 0
+var _shelter_rest_before_atp: Dictionary = {}
+var _endo_authority_initialized := false
+var _restoring_endo_authority := false
+var _endo_authority_baseline: Dictionary = {}
+var _traversal_signal_game_state = null
 
 func _build_chunk() -> void:
 	_build_shell()
@@ -130,8 +123,7 @@ func _build_chunk() -> void:
 	_build_route_marks()
 	_build_forage_cache()
 	_build_crossing()
-	_build_fieldwork()
-	_build_shortcut()
+	_build_hide_and_shortcut()
 	_build_shelter()
 	LevelDecoratorScript.decorate_profile(self, "endo_stretch", {
 		"x1": FLOOR_CENTER.x + FLOOR_SIZE.x * 0.5,
@@ -139,9 +131,14 @@ func _build_chunk() -> void:
 		"spacing": 13.0,
 		"floor_tint": Color(0.22, 0.29, 0.31),
 		"floor_emission_energy": 0.34,
-		"signs": ["ENDO'S JUNCTION", "READ THE PULSE", "ROOT BUFFER", "SHELTER 1  >"],
+		"signs": ["ENDO'S JUNCTION", "SAFE LEDGE", "SHORT BLOOM", "SHELTER 1  >"],
 	})
-	reset_preview_state()
+	_initialize_endo_authority()
+	_normalize_endo_source_receipt_registry()
+	_bind_traversal_signals()
+	_apply_interactable_truth()
+	_update_visual_state()
+	_set_preview_step(_step_for_route_phase())
 
 func _process(delta: float) -> void:
 	_update_stretch(delta)
@@ -153,13 +150,49 @@ func get_scene_title() -> String:
 	return "Endo's Junction to Shelter 1"
 
 func get_scene_help() -> String:
-	return "Read Endo's junction, collect the cache, and choose a crossing. At the pulse junction, combine Aster's timing trace, Peris's living-buffer read, and Endo's guide-latch mark to predict where the next surge should go. Then open the return grate and bring the conscious party to Shelter 1."
+	return "Read Endo's junction to reveal the maintenance ledge, or physically cross the shorter rust bloom and let its visible cadence decide who is hurt. The starch cache and return grate are optional; bring the conscious party to Shelter 1 to rest."
 
 func get_default_character() -> String:
 	return "endo"
 
 func get_spawn_positions() -> Dictionary:
 	return SPAWNS.duplicate(true)
+
+
+## The authored walk graph agrees with the visible fork: the central rust mass is not traversable,
+## so the party must use either the northern ledge or the southern bloom lane. The return channel is
+## a side loop; its one-cell throat is owned by PartyGate3D and never gates forward shelter progress.
+func get_grid_data() -> Dictionary:
+	return {
+		"contract_id": GridWorld.GRID_DATA_CONTRACT_ID,
+		"origin": [-3.0, 0.0, -18.0],
+		"cell_size": 1.0,
+		"width": 102,
+		"height": 36,
+		"walkable_regions": [
+			{"min": [-1.0, -8.0], "max": [35.9, 7.9]},
+			{"min": [34.0, -6.9], "max": [53.9, -3.4]},
+			{"min": [34.0, 3.4], "max": [53.9, 7.9]},
+			{"min": [52.0, -8.0], "max": [96.0, 7.9]},
+			{"min": [28.0, -13.2], "max": [65.9, -10.2]},
+			{"min": [28.0, -13.2], "max": [32.9, -7.1]},
+			{"min": [61.8, -10.8], "max": [66.1, -7.1]},
+		],
+		"risk_regions": [
+			{
+				"min": [36.0, RISKY_BLOOM_CENTER.z - 1.75],
+				"max": [52.0, RISKY_BLOOM_CENTER.z + 1.75],
+				"penalty": 28.0,
+				"recoverable": true,
+			},
+		],
+	}
+
+
+## The preview host installs GridWorld after the chunk enters the tree. Re-running setup is safe:
+## PartyGate3D first retracts its old derived blockers, then rebuilds them from saved phase truth.
+func on_game_state_grid_ready() -> void:
+	_setup_shortcut_gate()
 
 func get_preview_anchors() -> Dictionary:
 	var anchors := get_spawn_positions()
@@ -170,12 +203,11 @@ func get_preview_anchors() -> Dictionary:
 		"forage_cache": FORAGE_CACHE_POS,
 		"safe_ledge": SAFE_LEDGE_POS,
 		"risky_bloom": RISKY_BLOOM_POS,
+		"hide_slot": HIDE_SLOT_POS,
 		"shortcut_lock": SHORTCUT_LOCK_POS,
 		"shelter_approach": SHELTER_APPROACH_POS,
 		"shelter": SHELTER_POS,
 	}, true)
-	for site_id in FIELD_SITES.keys():
-		anchors["field_%s" % site_id] = FIELD_SITES[site_id].get("pos", Vector3.ZERO)
 	return anchors
 
 func get_world_slot() -> Dictionary:
@@ -207,10 +239,10 @@ func get_preview_ui_defaults() -> Dictionary:
 		"overlay_collapsed": true,
 	}
 
-func get_preview_abilities() -> Array:
-	# Display names + descriptions + tuning live in data/abilities/en/abilities.xlsx (per-context rows).
-	return AbilityData.for_context("endo_junction_stretch")
 func get_preview_state() -> Dictionary:
+	var crossing := _current_crossing_state()
+	var gate_state: Dictionary = _shortcut_gate.get_authority_state() \
+		if _shortcut_gate != null else {}
 	return {
 		"world_slot": get_world_slot(),
 		"route_phase": _route_phase,
@@ -220,26 +252,28 @@ func get_preview_state() -> Dictionary:
 		"safe_route_marked": _safe_route_marked,
 		"forage_collected": _forage_collected,
 		"cache_item": _cache_item_id,
+		"cache_phase": _cache_phase,
+		"cache_claimed_by": _cache_claimed_by,
+		"cache_claim_serial": _cache_claim_serial,
+		"cache_item_at_source": _endo_cache_item_at_source(),
+		"cache_item_holder": _endo_cache_item_holder(),
 		"danger_resolved": _danger_resolved,
 		"shortcut_unlocked": _shortcut_unlocked,
 		"shelter_reached": _shelter_reached,
 		"shelter_rested": _shelter_rested,
+		"shelter_rest_phase": _shelter_rest_phase,
 		"first_night_beat_fired": _first_night_beat_fired,
 		"first_night_beat_count": _first_night_beat_count,
 		"direct_damage_total": _direct_damage_total,
+		"crossing_actor": _crossing_actor,
+		"crossing_active": not crossing.is_empty(),
+		"crossing_progress": float(crossing.get("progress", 1.0 if _danger_resolved else 0.0)),
+		"crossing_deadline": _crossing_deadline,
+		"bloom_field": _direct_bloom_field.get_state() \
+			if _direct_bloom_field != null else {},
+		"shortcut_phase": str(gate_state.get("phase", PartyGate3D.PHASE_CLOSED)),
 		"party_min_hp": _party_min_hp(),
 		"segments_completed": _segments_completed.duplicate(),
-		"fieldwork": {
-			"phase": _field_phase,
-			"completed_evidence": _field_evidence.duplicate(true),
-			"choices": _field_choices.duplicate(true),
-			"operations_completed": _field_operations_completed.duplicate(true),
-			"operation_count": _field_operations_completed.size(),
-			"effects": _field_effects.duplicate(true),
-			"findings": _field_findings.duplicate(),
-			"failed_predictions": _field_failure_count,
-		},
-		"playtime_contract": get_playtime_contract(),
 		"stretch": {
 			"boundary": "Endo's exterior junction work area to Shelter 1",
 			"difficulty_target": "first main-level shelter stretch",
@@ -247,123 +281,27 @@ func get_preview_state() -> Dictionary:
 			"foraging": "one Endo-readable starch cache",
 			"food_cost": 1,
 			"shelter_quality": "warm first-night refuge",
-			"shortcut": "return grate after the three-specialist pulse circuit",
+			"shortcut": "optional physically blocked return channel after the crossing",
 		},
 	}
-
-func get_playtime_contract() -> Dictionary:
-	# This is a geometric lower-bound model, not a content-author guess. Every route term comes from
-	# authored station coordinates; every work term is the Interactable's actual dwell. The direct
-	# bloom is a few seconds shorter but is not the clean route because it deliberately spends HP.
-	if not _playtime_contract_cache.is_empty():
-		return _playtime_contract_cache.duplicate(true)
-	var operation_routes := {}
-	var field_route_meters := 0.0
-	var field_work_seconds := 0.0
-	var field_evidence_count := 0
-	var field_action_count := 0
-	for operation_id_variant in FIELD_OPERATIONS.keys():
-		var operation_id := str(operation_id_variant)
-		var operation_route := _shortest_field_operation_route(operation_id)
-		operation_routes[operation_id] = operation_route
-		field_route_meters += operation_route
-		var operation: Dictionary = FIELD_OPERATIONS[operation_id]
-		for site_id in operation.get("evidence", []):
-			field_work_seconds += float(FIELD_SITES[str(site_id)].get("dwell", 0.0))
-			field_evidence_count += 1
-			field_action_count += 1
-		var shortest_branch_work := INF
-		for choice_id_variant in operation.get("choices", []):
-			var choice_id := str(choice_id_variant)
-			var resolution_id := str((operation.get("resolution_sites", {}) as Dictionary).get(choice_id, ""))
-			var branch_work := float(FIELD_SITES[choice_id].get("dwell", 0.0))
-			if resolution_id != "":
-				branch_work += float(FIELD_SITES[resolution_id].get("dwell", 0.0))
-			shortest_branch_work = minf(shortest_branch_work, branch_work)
-		field_work_seconds += 0.0 if is_inf(shortest_branch_work) else shortest_branch_work
-		field_action_count += 2
-
-	var start := SPAWNS["endo"]
-	var station_safe_base_route := start.distance_to(JUNCTION_POS) \
-		+ JUNCTION_POS.distance_to(GUIDE_MARK_POS) \
-		+ GUIDE_MARK_POS.distance_to(FORAGE_CACHE_POS) \
-		+ FORAGE_CACHE_POS.distance_to(SAFE_LEDGE_POS) \
-		+ SAFE_LEDGE_POS.distance_to(FIELD_OPERATIONS["pulse"].get("start", Vector3.ZERO))
-	var focus_safe_base_route := start.distance_to(JUNCTION_POS) \
-		+ JUNCTION_POS.distance_to(FORAGE_CACHE_POS) \
-		+ FORAGE_CACHE_POS.distance_to(SAFE_LEDGE_POS) \
-		+ SAFE_LEDGE_POS.distance_to(FIELD_OPERATIONS["pulse"].get("start", Vector3.ZERO))
-	var direct_base_route := start.distance_to(JUNCTION_POS) \
-		+ JUNCTION_POS.distance_to(FORAGE_CACHE_POS) \
-		+ FORAGE_CACHE_POS.distance_to(RISKY_BLOOM_POS) \
-		+ RISKY_BLOOM_POS.distance_to(FIELD_OPERATIONS["pulse"].get("start", Vector3.ZERO))
-	var tail_route := (FIELD_OPERATIONS["pulse"].get("end", Vector3.ZERO) as Vector3).distance_to(SHORTCUT_LOCK_POS) \
-		+ SHORTCUT_LOCK_POS.distance_to(SHELTER_POS)
-	var station_safe_route_meters := station_safe_base_route + field_route_meters + tail_route
-	var focus_safe_route_meters := focus_safe_base_route + field_route_meters + tail_route
-	var direct_route_meters := direct_base_route + field_route_meters + tail_route
-	var base_station_safe_work := 3.4 + 4.0 + 4.2 + 4.0 + 3.0
-	var base_focus_safe_work := 4.0 + 4.2 + 4.0 + 3.0
-	var base_direct_work := 4.0 + 4.2 + 4.0 + 3.0
-	var field_decision_total := FIELD_DECISION_SECONDS * float(FIELD_OPERATIONS.size())
-	var station_safe_nonmovement := base_station_safe_work + field_work_seconds + BASE_DECISION_SECONDS + field_decision_total
-	var focus_safe_nonmovement := base_focus_safe_work + field_work_seconds + BASE_DECISION_SECONDS + field_decision_total
-	var direct_nonmovement := base_direct_work + field_work_seconds + BASE_DECISION_SECONDS + field_decision_total
-	var station_safe_active := station_safe_route_meters / PARTY_ROUTE_SPEED_METERS_PER_SECOND + station_safe_nonmovement
-	var focus_safe_active := focus_safe_route_meters / PARTY_ROUTE_SPEED_METERS_PER_SECOND + focus_safe_nonmovement
-	var direct_active := direct_route_meters / PARTY_ROUTE_SPEED_METERS_PER_SECOND \
-		+ direct_nonmovement
-	var clean_total := minf(station_safe_active, focus_safe_active) + ORIENTATION_SECONDS
-	var station_clean_total := station_safe_active + ORIENTATION_SECONDS
-	var shortest_active := minf(focus_safe_active, direct_active)
-	var shortest_total := shortest_active + ORIENTATION_SECONDS
-	var theoretical_sprint_total := minf(
-		focus_safe_route_meters / THEORETICAL_SPRINT_SPEED_METERS_PER_SECOND + focus_safe_nonmovement,
-		direct_route_meters / THEORETICAL_SPRINT_SPEED_METERS_PER_SECOND + direct_nonmovement
-	) + ORIENTATION_SECONDS
-	_playtime_contract_cache = {
-		"target_seconds_min": 75.0,
-		"target_seconds_max": 150.0,
-		"modeled_shortest_first_clear_seconds": shortest_total,
-		"modeled_clean_first_clear_seconds": clean_total,
-		"modeled_station_marked_clean_seconds": station_clean_total,
-		"modeled_theoretical_full_sprint_seconds": theoretical_sprint_total,
-		"modeled_meaningful_active_seconds": shortest_active,
-		"modeled_active_ratio": shortest_active / shortest_total,
-		"safe_route_meters": minf(station_safe_route_meters, focus_safe_route_meters),
-		"station_marked_safe_route_meters": station_safe_route_meters,
-		"focus_safe_route_meters": focus_safe_route_meters,
-		"direct_route_meters": direct_route_meters,
-		"shortest_field_route_meters": field_route_meters,
-		"route_meters_by_operation": operation_routes,
-		"mandatory_action_count_clean": 4 + field_action_count + 2,
-		"mandatory_timed_action_count_clean": 2 + field_action_count + 2,
-		"station_marked_timed_action_count_clean": 3 + field_action_count + 2,
-		"mandatory_field_evidence_count": field_evidence_count,
-		"decision_count": 1 + FIELD_OPERATIONS.size(),
-		"branch_variant_count": 2 * int(pow(2, FIELD_OPERATIONS.size())),
-		"timing_basis": "exact geometric shortest path through the authored three-specialist circuit, Aster Focus safe-route shortcut, correct root-buffer execution, 2.5 m/s party pace, authored TIMED_ACTION dwell, explicit prediction allowance; no dialogue, idle, failure, or reset time counted",
-	}
-	return _playtime_contract_cache.duplicate(true)
 
 func get_preview_overlay_status(overlay_id: String, _current_tick: float) -> Array:
 	match overlay_id:
 		"aster":
 			return [
-				"DATA: the blue warning strip leads the pressure pulse by one beat.",
+				"DATA: Endo's wall marks align with one usable maintenance ledge.",
 				"Route: %s" % ("marked" if _safe_route_marked else "unresolved"),
-				"Pulse circuit: %s" % (_field_phase if _field_phase != "" else "locked"),
+				"Choice: %s" % (_route_choice if _route_choice != "" else _get_routing_mode()),
 			]
 		"peris":
 			return [
-				"FOG: the green root bed is alive and rests between pulses.",
-				"Plant memory: %s" % ("settled into the safe lane" if bool(_field_effects.get("pulse_resolved", false)) else "ready for the next surge"),
+				"FOG: the refuge feels lived-in, not abandoned.",
+				"Plant memory: %s" % ("settling inside Shelter 1" if _shelter_reached else "pulling toward the warm room"),
 				"Food cache: %s" % ("collected" if _forage_collected else "still tucked in the wall"),
 			]
 		"endo":
 			return [
-				"SURVIVAL: junction -> crossing -> read pulse -> route pulse -> shelter.",
-				"Guide latch: %s" % ("cracked; do not hard-brace" if bool((_field_evidence.get("pulse", {}) as Dictionary).get("pulse_latch", false)) else "unread"),
+				"SURVIVAL: read for the ledge, or pay health through the bloom.",
 				"Shortcut: %s" % ("open" if _shortcut_unlocked else "locked"),
 				"Next: %s" % _current_instruction(),
 			]
@@ -371,9 +309,9 @@ func get_preview_overlay_status(overlay_id: String, _current_tick: float) -> Arr
 			return []
 
 func reset_preview_state() -> void:
-	if _cache_item_id != "":
-		_remove_item(_cache_item_id)
-	_cache_item_id = ""
+	_cancel_owned_crossing(&"endo_junction_reset")
+	_cancel_endo_shelter_rest_callback()
+	_reset_endo_cache_to_source()
 	_junction_read = false
 	_safe_route_marked = false
 	_forage_collected = false
@@ -381,6 +319,8 @@ func reset_preview_state() -> void:
 	_shortcut_unlocked = false
 	_shelter_reached = false
 	_shelter_rested = false
+	_shelter_rest_phase = "ready"
+	_clear_endo_shelter_rest_context()
 	_first_night_beat_fired = false
 	_first_night_beat_count = 0
 	_route_choice = ""
@@ -388,38 +328,19 @@ func reset_preview_state() -> void:
 	_last_outcome = ""
 	_direct_damage_total = 0.0
 	_segments_completed.clear()
-	_field_phase = ""
-	_field_evidence.clear()
-	_field_choices.clear()
-	_field_operations_completed.clear()
-	_field_effects.clear()
-	_field_findings.clear()
-	_field_failure_count = 0
-	if _brace_failure_field != null and is_instance_valid(_brace_failure_field):
-		_brace_failure_field.set_active(false)
+	_crossing_actor = ""
+	_crossing_deadline = -1.0
+	_reset_shortcut_gate_authority()
+	if _direct_bloom_field != null:
+		# A reset is a new authored attempt. Force a fresh cadence even when the previous attempt
+		# happened to leave the field active, so no opaque callback from that attempt survives.
+		_direct_bloom_field.set_active(false)
+		_direct_bloom_field.set_active(true)
 	_set_preview_step("endo_junction_stretch_start")
 	_reset_story_interactables()
-	_reset_field_interactables()
+	_apply_interactable_truth()
 	_update_visual_state()
-
-func handle_preview_ability(ability_id: String, _ability: Dictionary = {}) -> Dictionary:
-	match ability_id:
-		"aster_focus":
-			if _junction_read and not _safe_route_marked:
-				_safe_route_marked = true
-				_route_phase = "safe_marked"
-				_mark_segment("route_marked")
-				_update_visual_state()
-				return {"note": "Aster translates Endo's scratch marks into a safe ledge path."}
-			return {"note": "Aster needs Endo's junction-console read before TRACE has enough context."}
-		"peris_tune":
-			return {"characters": {"aster": {"sta_delta": 8.0}, "peris": {"sta_delta": 12.0}, "endo": {"sta_delta": 8.0}}}
-		"endo_patch":
-			if not _junction_read:
-				return {"characters": {"endo": {"sta_delta": 8.0}}, "note": "Endo wakes the junction console and waits for the others to read his route."}
-			return {"characters": {"endo": {"sta_delta": 10.0}}, "note": "Endo's survival pass highlights the cache, the ledge, and the shelter lock."}
-		_:
-			return {}
+	_publish_endo_authority()
 
 func on_preview_routing_changed(mode: String) -> void:
 	if mode == "direct":
@@ -427,170 +348,183 @@ func on_preview_routing_changed(mode: String) -> void:
 	else:
 		_show_note("Safe routing follows Endo's maintenance marks and preserves health for the first-night shelter beat.", 2.8)
 
-func read_junction() -> bool:
-	if _junction_read:
-		return true
-	if not _require_station("endo", JUNCTION_POS, "Endo's junction console"):
+func read_junction(source: Node = null) -> bool:
+	if not _endo_control_receipt_pending(source, "junction"):
 		return false
 	_junction_read = true
-	_route_phase = "junction_read"
+	if _route_phase == "junction":
+		_route_phase = "junction_read"
 	_mark_segment("junction_read")
 	_set_preview_step("endo_junction_read")
 	_clear_dialogue()
-	_show_message("Endo's route marks wake: warning strip, living buffer, cracked guide latch.", 2.4)
+	_show_message("Endo's wall marks reveal a maintained ledge around the bloom.", 2.4)
 	_complete_interactable(_junction_interactable)
+	_apply_interactable_truth()
 	_update_visual_state()
+	_publish_endo_authority()
 	return true
 
-func mark_safe_route() -> bool:
-	if _safe_route_marked:
-		return true
-	if not _junction_read:
-		_show_message("Endo needs to read the junction console first.", 1.3)
-		return false
-	if not _require_station("aster", GUIDE_MARK_POS, "the translated route mark"):
+func mark_safe_route(source: Node = null) -> bool:
+	if not _endo_control_receipt_pending(source, "route"):
 		return false
 	_safe_route_marked = true
-	_route_phase = "safe_marked"
+	if _route_phase not in ["safe_crossing", "direct_crossing", "safe_route", "direct_route",
+			"shelter_approach", "complete"]:
+		_route_phase = "safe_marked"
 	_mark_segment("route_marked")
 	_set_preview_step("endo_junction_route_marked")
 	_show_message("Aster maps the ledge route to Shelter 1.", 1.5)
 	_complete_interactable(_route_interactable)
 	_update_visual_state()
+	_publish_endo_authority()
 	return true
 
-func collect_forage() -> bool:
-	if _forage_collected:
-		return true
-	if not _require_station("endo", FORAGE_CACHE_POS, "the wall cache"):
+func collect_forage(source: Node = null) -> bool:
+	if not _endo_control_receipt_pending(source, "cache"):
 		return false
-	if not _has_free_hand_slots("endo", 1):
-		_show_message("Endo needs a free hand for the starch cache.", 1.2)
+	var actor := str(source.get("active_character"))
+	var gs = _get_game_state()
+	if gs == null:
 		return false
-	_cache_item_id = _spawn_item("lysate", FORAGE_CACHE_POS, {
-		"display_name": "Junction Starch",
-		"display_names_by_character": {"aster": "Lysate", "peris": "Lysate", "endo": "Starch"},
-		"visual_color": Color(0.78, 0.66, 0.38),
-		"atp_restore": 2.0,
-	})
-	if _cache_item_id == "" or not _pick_up_item("endo", _cache_item_id):
-		if _cache_item_id != "":
-			_remove_item(_cache_item_id)
-		_cache_item_id = ""
+
+	# Reserve this exact, already-visible source item and actor before GameState emits its synchronous
+	# pickup signal. A signal-time save therefore sees CLAIMING rather than an unowned checklist bit.
+	_cache_phase = CACHE_PHASE_CLAIMING
+	_cache_claimed_by = actor
+	_cache_claim_serial += 1
+	_apply_interactable_truth()
+	_publish_endo_authority()
+	if not _pick_up_item(actor, _cache_item_id):
+		_cache_phase = CACHE_PHASE_AVAILABLE
+		_cache_claimed_by = ""
+		_rearm_endo_control(source)
+		_apply_interactable_truth()
+		_publish_endo_authority()
 		return false
+	_complete_endo_cache_claim(true)
+	return true
+
+
+func _complete_endo_cache_claim(show_story := false) -> void:
+	_cache_phase = CACHE_PHASE_CLAIMED
 	_forage_collected = true
-	_route_phase = "foraged"
+	if _route_phase not in ["safe_crossing", "direct_crossing", "safe_route", "direct_route",
+			"shelter_approach", "complete"]:
+		_route_phase = "foraged"
 	_mark_segment("forage")
 	_set_preview_step("endo_junction_forage")
-	_say_key("endo_stretch.forage.peris")
+	if show_story:
+		_say_key("endo_stretch.forage.peris")
 	_complete_interactable(_cache_interactable)
 	_update_visual_state()
-	return true
+	_apply_interactable_truth()
+	_publish_endo_authority()
 
-func commit_safe_route() -> bool:
-	if _danger_resolved:
-		return _route_choice == "safe"
-	if not _safe_route_marked:
-		_show_message("Mark the safe ledge before committing the quiet route.", 1.4)
+func commit_safe_route(source: Node = null) -> bool:
+	if not _endo_control_receipt_pending(source, "safe"):
 		return false
-	if not _forage_collected:
-		_show_message("Collect the junction cache before leaving the maintained sector.", 1.4)
+	var actor := str(source.get("active_character"))
+	if not _begin_route_traversal(
+		"safe", actor, SAFE_TRAVERSAL_ID, SAFE_LEDGE_END, SAFE_TRAVERSAL_SPEED
+	):
+		_show_message("Endo cannot enter the ledge traversal yet.", 1.2)
+		_rearm_endo_control(source)
 		return false
-	if not _require_station("endo", SAFE_LEDGE_POS, "the safe ledge"):
-		return false
-	_route_choice = "safe"
-	_danger_resolved = true
-	_route_phase = "fieldwork"
-	_last_outcome = "clean_crossing"
-	_mark_segment("safe_route")
-	_set_preview_step("endo_junction_safe_route")
-	_adjust_character_stat("endo", "sta", -6.0)
-	_show_message("Endo threads the maintenance ledge without drawing the bloom.", 1.7)
+	_show_message("Endo commits to the maintenance ledge; the crossing completes only at its far lip.", 1.9)
 	_complete_interactable(_safe_interactable)
 	_complete_interactable(_direct_interactable)
-	_start_field_operation("pulse")
 	_update_visual_state()
 	return true
 
-func commit_direct_route() -> bool:
-	if _danger_resolved:
-		return _route_choice == "direct" and _party_min_hp() > 0.0
-	if not _junction_read:
-		_show_message("Endo needs to read the junction before anyone cuts the bloom.", 1.4)
+func commit_direct_route(source: Node = null) -> bool:
+	if not _endo_control_receipt_pending(source, "direct"):
 		return false
-	if not _forage_collected:
-		_show_message("Collect the junction cache before spending health on the direct route.", 1.4)
+	var actor := str(source.get("active_character"))
+	if not _begin_route_traversal(
+		"direct", actor, DIRECT_TRAVERSAL_ID, RISKY_BLOOM_END, DIRECT_TRAVERSAL_SPEED
+	):
+		_show_message("That character cannot enter the bloom traversal yet.", 1.2)
+		_rearm_endo_control(source)
 		return false
-	if not _require_station("", RISKY_BLOOM_POS, "the short bloom"):
-		return false
-	_route_choice = "direct"
-	_danger_resolved = true
-	_route_phase = "fieldwork"
-	_last_outcome = "recoverable_damage"
-	_direct_damage_total = DIRECT_DAMAGE_ASTER + DIRECT_DAMAGE_PERIS + DIRECT_DAMAGE_ENDO
-	_mark_segment("direct_route")
-	_set_preview_step("endo_junction_direct_route")
-	_adjust_character_stat("aster", "hp", -DIRECT_DAMAGE_ASTER)
-	_adjust_character_stat("peris", "hp", -DIRECT_DAMAGE_PERIS)
-	_adjust_character_stat("endo", "hp", -DIRECT_DAMAGE_ENDO)
 	_clear_dialogue()
 	_say_key("endo_stretch.direct.aster")
-	_show_message("The direct bloom burns, but the party stays on its feet.", 1.7)
+	_show_message("%s enters the shorter bloom. Its pulse hurts only bodies actually inside it." \
+		% _display_name(actor), 2.0)
 	_complete_interactable(_safe_interactable)
 	_complete_interactable(_direct_interactable)
-	_start_field_operation("pulse")
-	_update_visual_state()
-	return _party_min_hp() > 0.0
-
-func unlock_shortcut() -> bool:
-	if not _danger_resolved:
-		_show_message("Resolve the crossing before opening the return grate.", 1.2)
-		return false
-	if _field_operations_completed.size() < FIELD_OPERATIONS.size():
-		_show_message("Resolve the pulse junction before opening the return grate.", 1.4)
-		return false
-	if _shortcut_unlocked:
-		return true
-	if not _require_station("endo", SHORTCUT_LOCK_POS, "the return grate latch"):
-		return false
-	_shortcut_unlocked = true
-	_route_phase = "shelter_approach"
-	_mark_segment("shortcut")
-	_set_preview_step("endo_junction_shortcut_open")
-	_show_message("Endo opens a return grate back toward the junction.", 1.7)
-	_complete_interactable(_shortcut_interactable)
 	_update_visual_state()
 	return true
 
-func reach_shelter() -> bool:
-	if _shelter_rested:
-		return true
-	if not _danger_resolved:
-		_show_message("The shelter path is still exposed.", 1.2)
+func unlock_shortcut(source: Node = null) -> bool:
+	if not _endo_control_receipt_pending(source, "shortcut"):
 		return false
-	if not _shortcut_unlocked:
-		_show_message("Open the return grate before bedding the party down.", 1.2)
+	if _shortcut_gate == null or not _shortcut_gate.begin_open():
+		_show_message("The return grate needs Endo at its latch before it can move.", 1.4)
+		_rearm_endo_control(source)
 		return false
-	if not _full_conscious_party_near(SHELTER_POS, SHELTER_RADIUS):
-		_show_message("Bring Aster, Peris, and Endo into Shelter 1 conscious before resting.", 1.8)
+	_last_outcome = "shortcut_opening"
+	_show_message("Endo releases the grate. Its blocked throat stays solid until the lift finishes.", 1.8)
+	_complete_interactable(_shortcut_interactable)
+	_update_visual_state()
+	_publish_endo_authority()
+	return true
+
+func reach_shelter(source: Node = null) -> bool:
+	if not _endo_control_receipt_pending(source, "shelter"):
 		return false
-	if not _party_can_pay_shelter_rest():
-		_show_message("Everyone needs at least one ATP to survive the night.", 1.6)
+	_sync_host_clock_to_game_state()
+	var preflight := _preflight_endo_shelter_rest()
+	var blocked := preflight.get("blocked", []) as Array
+	if not blocked.is_empty():
+		_show_message(str(blocked[0]), 1.7)
 		return false
-	_apply_paid_shelter_rest()
+	var gs = _get_game_state()
+	if gs == null:
+		return false
+
+	# Publish the enclosing transaction before GameState emits any batch-rest feedback. A snapshot
+	# taken by the first ATP signal can therefore prove either the complete atomic effect or the
+	# exact pre-command intent, without replaying one member's payment.
+	_shelter_rest_phase = "committing"
+	_shelter_rest_commit_tick = _get_scheduler_tick()
+	_shelter_rest_commit_day = gs.get_game_day()
+	_shelter_rest_before_atp = (
+		preflight.get("before_atp", {}) as Dictionary).duplicate(true)
+	_apply_interactable_truth()
+	_publish_endo_authority()
+	if not bool(gs.command_party_rest(PARTY_IDS)):
+		_shelter_rest_phase = "ready"
+		_clear_endo_shelter_rest_context()
+		_rearm_endo_control(source)
+		_apply_interactable_truth()
+		_publish_endo_authority()
+		_show_message("The party cannot settle into the shelter yet.", 1.5)
+		return false
+	_complete_endo_shelter_rest(true)
+	return true
+
+
+func _complete_endo_shelter_rest(show_story := false) -> void:
+	if _shelter_rest_phase == "rested":
+		return
+	_cancel_endo_shelter_rest_callback()
+	_shelter_rest_phase = "rested"
 	_shelter_reached = true
 	_shelter_rested = true
 	_route_phase = "complete"
 	_last_outcome = "shelter_rested"
 	_mark_segment("shelter")
 	_set_preview_step("endo_junction_shelter_1")
-	_fire_first_night_beat()
+	if show_story:
+		_fire_first_night_beat()
 	_complete_interactable(_shelter_interactable)
+	_clear_endo_shelter_rest_context()
 	_update_visual_state()
-	return true
+	_apply_interactable_truth()
+	_publish_endo_authority()
 
-func rest_shelter() -> bool:
-	return reach_shelter()
+func rest_shelter(source: Node = null) -> bool:
+	return reach_shelter(source)
 
 func _build_shell() -> void:
 	# The first-night palette still needs a readable physical surface when the compatibility
@@ -609,7 +543,8 @@ func _build_shell() -> void:
 	_add_box(self, Vector3(FLOOR_CENTER.x + half_x + 0.1, 2.2, 0.0), Vector3(0.3, 4.4, FLOOR_SIZE.z), Color(0.09, 0.11, 0.12))
 	for i in range(8):
 		var blend := float(i) / 7.0
-		_add_light(self, Vector3(7.0 + float(i) * 13.6, 3.8, -1.0 + sin(float(i) * 1.7) * 1.4), Color(0.38 + blend * 0.2, 0.48 + blend * 0.1, 0.56 - blend * 0.08), 1.1 + blend * 0.65, 14.0)
+		var light_x := lerpf(JUNCTION_POS.x, SHELTER_POS.x, blend)
+		_add_light(self, Vector3(light_x, 3.8, -1.0 + sin(float(i) * 1.7) * 1.4), Color(0.38 + blend * 0.2, 0.48 + blend * 0.1, 0.56 - blend * 0.08), 1.1 + blend * 0.65, 14.0)
 	_add_label(self, "ENDO'S JUNCTION", JUNCTION_POS + Vector3(2.6, 2.7, -4.0), Color(0.68, 0.9, 0.74))
 	_add_label(self, "SHELTER 1", SHELTER_POS + Vector3(0.0, 2.85, 0.0), Color(0.98, 0.82, 0.52))
 
@@ -628,8 +563,8 @@ func _build_junction() -> void:
 	station.position = JUNCTION_POS + Vector3(0.0, 0.9, 0.0)
 	add_child(station)
 	_build_entry_guide()
-	_junction_interactable = _add_object_interactable(self, "EndoJunctionReadInteractable", "Endo's Junction Console", JUNCTION_POS, "ENDO: READ CONSOLE", [station], "endo", 0.0, false, INTERACT_RADIUS, Interactable.InteractableType.INSPECTION)
-	_junction_interactable.interacted.connect(read_junction)
+	_junction_interactable = _add_object_interactable(self, "EndoJunctionReadInteractable", "Endo's Junction Console", JUNCTION_POS, "ENDO: READ CONSOLE", [station], "endo", 0.0, true, INTERACT_RADIUS, Interactable.InteractableType.INSPECTION)
+	_configure_endo_control(_junction_interactable, "junction", read_junction)
 
 func _build_entry_guide() -> void:
 	_entry_guide = Node3D.new()
@@ -656,12 +591,12 @@ func _build_entry_guide() -> void:
 func _build_route_marks() -> void:
 	_add_box(self, WALL_MARKS_POS + Vector3(0.0, 0.5, -0.4), Vector3(8.5, 1.0, 0.18), Color(0.14, 0.16, 0.16), Color(0.44, 0.68, 0.58), 0.12)
 	_add_label(self, "WALL MARKS", WALL_MARKS_POS + Vector3(0.0, 1.65, -0.4), Color(0.66, 0.9, 0.75))
-	_route_interactable = _add_interactable(self, "EndoJunctionRouteMarkInteractable", "Translated Route Mark", GUIDE_MARK_POS, "MARK ROUTE", "aster", 3.4, false, INTERACT_RADIUS, Interactable.InteractableType.TIMED_ACTION, false)
+	_route_interactable = _add_interactable(self, "EndoJunctionRouteMarkInteractable", "Translated Route Mark", GUIDE_MARK_POS, "MARK ROUTE", "aster", 3.4, true, INTERACT_RADIUS, Interactable.InteractableType.TIMED_ACTION, false)
 	# The wall marks are ~8 units away, beyond auto-outline's reach — give the mark its OWN co-located post so
 	# the interactable has a visible object to outline+glow.
 	var rmark := _add_box(_route_interactable, Vector3(0.0, 0.5, 0.0), Vector3(0.4, 1.0, 0.4), Color(0.18, 0.3, 0.26), Color(0.44, 0.68, 0.58), 0.5)
 	_outline_interactable_child(_route_interactable, rmark, "EndoJunctionRouteMarkInteractable", INTERACT_RADIUS)
-	_route_interactable.interacted.connect(mark_safe_route)
+	_configure_endo_control(_route_interactable, "route", mark_safe_route)
 
 func _build_forage_cache() -> void:
 	_cache_material = _make_material(Color(0.28, 0.22, 0.12), Color(0.9, 0.64, 0.24), 0.32)
@@ -675,307 +610,142 @@ func _build_forage_cache() -> void:
 	cache.position = FORAGE_CACHE_POS + Vector3(0.0, 0.8, 0.0)
 	add_child(cache)
 	_add_label(self, "STARCH CACHE", FORAGE_CACHE_POS + Vector3(0.0, 1.85, 0.0), Color(0.96, 0.78, 0.42))
-	_cache_interactable = _add_object_interactable(self, "EndoJunctionCacheInteractable", "Wall Cache", FORAGE_CACHE_POS, "RECOVER CACHE", [cache], "endo", 4.0, false, INTERACT_RADIUS, Interactable.InteractableType.TIMED_ACTION)
-	_cache_interactable.interacted.connect(collect_forage)
+	_cache_interactable = _add_object_interactable(self, "EndoJunctionCacheInteractable", "Wall Cache", FORAGE_CACHE_POS, "RECOVER CACHE", [cache], "", 4.0, true, INTERACT_RADIUS, Interactable.InteractableType.TIMED_ACTION)
+	_configure_endo_control(_cache_interactable, "cache", collect_forage)
+	_ensure_endo_cache_source_item()
 
 func _build_crossing() -> void:
 	_safe_material = _make_material(Color(0.1, 0.16, 0.18), Color(0.52, 0.78, 0.86), 0.18)
 	_direct_material = _make_material(Color(0.22, 0.1, 0.07), Color(0.86, 0.28, 0.12), 0.28)
-	_add_box(self, SAFE_LEDGE_POS + Vector3(0.0, -0.02, 0.0), Vector3(17.0, 0.16, 3.0), Color(0.09, 0.14, 0.16), Color(0.38, 0.64, 0.72), 0.16)
-	_add_label(self, "SAFE LEDGE", SAFE_LEDGE_POS + Vector3(0.0, 1.65, 0.0), Color(0.64, 0.88, 0.96))
+	_add_box(self, SAFE_LEDGE_CENTER + Vector3(0.0, -0.02, 0.0), Vector3(18.0, 0.16, 3.0), Color(0.09, 0.14, 0.16), Color(0.38, 0.64, 0.72), 0.16)
+	_add_label(self, "SAFE LEDGE", SAFE_LEDGE_CENTER + Vector3(0.0, 1.65, 0.0), Color(0.64, 0.88, 0.96))
 	var safe_beacon := _add_box(self, SAFE_LEDGE_POS + Vector3(0.0, 0.55, 0.0), Vector3(0.55, 1.1, 0.55), Color(0.12, 0.25, 0.27), Color(0.52, 0.78, 0.86), 0.35)
-	_safe_interactable = _add_object_interactable(self, "EndoJunctionSafeRouteInteractable", "Safe Ledge", SAFE_LEDGE_POS, "THREAD LEDGE", [safe_beacon], "endo", 4.2, false, INTERACT_RADIUS, Interactable.InteractableType.TIMED_ACTION)
-	_safe_interactable.interacted.connect(commit_safe_route)
-	_add_box(self, RISKY_BLOOM_POS + Vector3(0.0, -0.02, 0.0), Vector3(16.0, 0.16, 3.5), Color(0.18, 0.08, 0.055), Color(0.82, 0.22, 0.08), 0.24)
-	_add_label(self, "SHORT BLOOM", RISKY_BLOOM_POS + Vector3(0.0, 1.65, 0.0), Color(0.98, 0.56, 0.32))
+	_safe_interactable = _add_object_interactable(self, "EndoJunctionSafeRouteInteractable", "Safe Ledge", SAFE_LEDGE_POS, "THREAD LEDGE", [safe_beacon], "endo", 4.2, true, INTERACT_RADIUS, Interactable.InteractableType.TIMED_ACTION)
+	_configure_endo_control(_safe_interactable, "safe", commit_safe_route)
+	_add_box(self, RISKY_BLOOM_CENTER + Vector3(0.0, -0.02, 0.0), Vector3(18.0, 0.16, 3.5), Color(0.18, 0.08, 0.055), Color(0.82, 0.22, 0.08), 0.24)
+	_add_label(self, "SHORT BLOOM", RISKY_BLOOM_CENTER + Vector3(0.0, 1.65, 0.0), Color(0.98, 0.56, 0.32))
 	var bloom_beacon := _add_box(self, RISKY_BLOOM_POS + Vector3(0.0, 0.55, 0.0), Vector3(0.55, 1.1, 0.55), Color(0.3, 0.1, 0.06), Color(0.92, 0.28, 0.1), 0.5)
-	_direct_interactable = _add_object_interactable(self, "EndoJunctionDirectRouteInteractable", "Short Bloom", RISKY_BLOOM_POS, "CUT BLOOM", [bloom_beacon], "", 4.2, false, INTERACT_RADIUS, Interactable.InteractableType.TIMED_ACTION)
-	_direct_interactable.interacted.connect(commit_direct_route)
+	_direct_interactable = _add_object_interactable(self, "EndoJunctionDirectRouteInteractable", "Short Bloom", RISKY_BLOOM_POS, "CUT BLOOM", [bloom_beacon], "", 4.2, true, INTERACT_RADIUS, Interactable.InteractableType.TIMED_ACTION)
+	_configure_endo_control(_direct_interactable, "direct", commit_direct_route)
+	# The center is visibly and topologically occupied. A route choice is a route, not a label placed
+	# on an otherwise open rectangle that can be walked around without engaging its consequence.
+	_add_box(self, Vector3(44.0, 0.72, 0.15), Vector3(17.2, 1.44, 5.7),
+		Color(0.1, 0.075, 0.065), Color(0.32, 0.12, 0.07), 0.08,
+		"EndoJunctionCrossingRustMass")
+	for x in [38.0, 41.0, 44.0, 47.0, 50.0]:
+		var pulse := _add_box(self, Vector3(float(x), 0.18, RISKY_BLOOM_CENTER.z),
+			Vector3(0.7, 0.32, 2.5), Color(0.32, 0.09, 0.045),
+			Color(1.0, 0.25, 0.06), 0.65, "EndoJunctionBloomPulse%d" % int(x))
+		pulse.material_override = _direct_material
+	_build_direct_bloom_field()
 
-func _build_fieldwork() -> void:
-	var root := Node3D.new()
-	root.name = "EndoJunctionFieldwork"
-	add_child(root)
-	_pulse_circuit_set = PulseCircuitSet.instantiate()
-	_pulse_circuit_set.name = "EndoJunctionAuthoredPulseCircuit"
-	root.add_child(_pulse_circuit_set)
-	var operation_index := 0
-	for operation_id_variant in FIELD_OPERATIONS.keys():
-		var operation_id := str(operation_id_variant)
-		_build_field_operation_frame(root, operation_id, operation_index)
-		var operation: Dictionary = FIELD_OPERATIONS[operation_id]
-		var route_root := Node3D.new()
-		route_root.name = "EndoJunctionRoute_%s" % operation_id
-		root.add_child(route_root)
-		_field_route_visuals[operation_id] = route_root
-		var ordered_points: Array = [operation.get("start", Vector3.ZERO)]
-		for evidence_id in operation.get("evidence", []):
-			ordered_points.append(FIELD_SITES[str(evidence_id)].get("pos", Vector3.ZERO))
-		for point_i in range(ordered_points.size() - 1):
-			_add_field_datum(route_root, ordered_points[point_i], ordered_points[point_i + 1], operation.get("tint", Color.WHITE), "%s_evidence_%02d" % [operation_id, point_i])
-		var last_evidence: Vector3 = ordered_points[-1]
-		for choice_id_variant in operation.get("choices", []):
-			var choice_id := str(choice_id_variant)
-			var choice_pos: Vector3 = FIELD_SITES[choice_id].get("pos", Vector3.ZERO)
-			var resolution_id := str((operation.get("resolution_sites", {}) as Dictionary).get(choice_id, ""))
-			var resolution_pos: Vector3 = FIELD_SITES[resolution_id].get("pos", Vector3.ZERO)
-			_add_field_datum(route_root, last_evidence, choice_pos, operation.get("tint", Color.WHITE), "%s_%s_choice" % [operation_id, choice_id])
-			_add_field_datum(route_root, choice_pos, resolution_pos, operation.get("tint", Color.WHITE), "%s_%s_execute" % [operation_id, choice_id])
-			_add_field_datum(route_root, resolution_pos, operation.get("end", Vector3.ZERO), operation.get("tint", Color.WHITE), "%s_%s_exit" % [operation_id, choice_id])
-		operation_index += 1
+func _build_hide_and_shortcut() -> void:
+	_add_box(self, HIDE_SLOT_POS + Vector3(0.0, -0.03, 0.0), Vector3(7.0, 0.18, 3.2), Color(0.07, 0.11, 0.1))
+	_add_box(self, HIDE_SLOT_POS + Vector3(-3.3, 1.2, 0.0), Vector3(0.25, 2.4, 3.2), Color(0.1, 0.14, 0.12))
+	_add_label(self, "HIDE SLOT", HIDE_SLOT_POS + Vector3(0.0, 1.8, 0.0), Color(0.62, 0.88, 0.68))
+	# This branch is a literal return channel. Its walls leave one east throat, and that throat is
+	# the PartyGate3D blocker below; opening it changes both collision and the host GridWorld.
+	_add_box(self, Vector3(46.5, -0.015, -11.7), Vector3(37.0, 0.14, 3.0),
+		Color(0.075, 0.1, 0.105), Color(0.15, 0.34, 0.38), 0.16,
+		"EndoJunctionReturnChannelFloor")
+	_add_box(self, Vector3(46.5, 1.15, -13.35), Vector3(37.0, 2.3, 0.28),
+		Color(0.085, 0.11, 0.115), Color.BLACK, 0.0,
+		"EndoJunctionReturnChannelOuterWall")
+	_add_box(self, Vector3(46.5, 1.15, -10.05), Vector3(31.0, 2.3, 0.28),
+		Color(0.085, 0.11, 0.115), Color.BLACK, 0.0,
+		"EndoJunctionReturnChannelInnerWall")
+	_build_shortcut_gate()
+	_add_label(self, "RETURN GRATE", SHORTCUT_LOCK_POS + Vector3(0.0, 1.7, 0.0), Color(0.94, 0.78, 0.46))
+	_shortcut_interactable = _add_object_interactable(self, "EndoJunctionShortcutInteractable", "Return Grate", SHORTCUT_LOCK_POS, "OPEN GRATE", [_shortcut_grate_mesh], "endo", 4.0, true, INTERACT_RADIUS, Interactable.InteractableType.TIMED_ACTION)
+	_configure_endo_control(_shortcut_interactable, "shortcut", unlock_shortcut)
 
-	for site_id_variant in FIELD_SITES.keys():
-		var site_id := str(site_id_variant)
-		_build_field_site(root, site_id)
 
-func _build_field_operation_frame(parent: Node3D, operation_id: String, operation_index: int) -> void:
-	var operation: Dictionary = FIELD_OPERATIONS[operation_id]
-	var start: Vector3 = operation.get("start", Vector3.ZERO)
-	var end: Vector3 = operation.get("end", Vector3.ZERO)
-	var center_x := (start.x + end.x) * 0.5
-	var length := end.x - start.x
-	var tint: Color = operation.get("tint", Color(0.4, 0.7, 0.6))
-	var frame := Node3D.new()
-	frame.name = "EndoJunctionFieldFrame_%s" % operation_id
-	parent.add_child(frame)
-	# Each operation reads as a constructed maintenance hall: recessed floor field, continuous
-	# side races, repeated portal frames, a high service spine, and a numbered datum sign.
-	_add_box(frame, Vector3(center_x, 0.012, 0.0), Vector3(length - 1.2, 0.024, 33.0), Color(0.045, 0.06, 0.062))
-	_add_box(frame, Vector3(center_x, 0.032, -15.3), Vector3(length - 0.8, 0.035, 0.72), Color(0.055, 0.10, 0.105), tint, 0.12)
-	_add_box(frame, Vector3(center_x, 0.032, 15.3), Vector3(length - 0.8, 0.035, 0.72), Color(0.055, 0.10, 0.105), tint, 0.12)
-	_add_box(frame, Vector3(center_x, 3.95, 0.0), Vector3(length - 2.0, 0.18, 0.34), Color(0.18, 0.22, 0.21), tint, 0.08)
-	var portal_x := start.x + 3.0
-	var portal_index := 0
-	while portal_x < end.x - 1.0:
-		_add_box(frame, Vector3(portal_x, 2.0, -16.0), Vector3(0.28, 4.0, 0.38), Color(0.25, 0.29, 0.27))
-		_add_box(frame, Vector3(portal_x, 2.0, 16.0), Vector3(0.28, 4.0, 0.38), Color(0.25, 0.29, 0.27))
-		_add_box(frame, Vector3(portal_x, 3.92, 0.0), Vector3(0.28, 0.22, 32.3), Color(0.25, 0.29, 0.27))
-		if portal_index % 2 == 0:
-			_add_box(frame, Vector3(portal_x, 0.035, 0.0), Vector3(0.07, 0.03, 28.0), Color(0.12, 0.16, 0.16), tint, 0.16)
-		portal_x += 12.0
-		portal_index += 1
-	_add_box(frame, Vector3(start.x + 4.5, 2.0, -16.75), Vector3(8.0, 2.4, 0.16), Color(0.055, 0.075, 0.075), tint, 0.18)
-	_add_label(frame, "%02d // %s" % [operation_index + 1, str(operation.get("label", operation_id))], Vector3(start.x + 4.5, 2.0, -16.5), tint.lightened(0.22))
-	var landmark := _add_light(frame, Vector3(center_x, 3.3, 0.0), tint, 1.15, 15.0)
-	landmark.name = "EndoJunctionFieldLight_%s" % operation_id
-
-func _build_field_site(parent: Node3D, site_id: String) -> void:
-	var spec: Dictionary = FIELD_SITES[site_id]
-	var position: Vector3 = spec.get("pos", Vector3.ZERO)
-	var role := str(spec.get("role", ""))
-	var kind := str(spec.get("kind", "evidence"))
-	var role_color := _field_role_color(role)
-	var operation: Dictionary = FIELD_OPERATIONS[str(spec.get("operation", ""))]
-	var tint: Color = operation.get("tint", role_color)
-	var visuals: Array = []
-	var authored_object := parent.find_child("EndoJunctionObject_%s" % site_id, true, false) as Node3D
-	if authored_object != null:
-		visuals.assign(authored_object.find_children("*", "MeshInstance3D", true, false))
-	else:
-		# Keep a small fallback so an isolated script preview remains usable if the authored set is
-		# ever temporarily unavailable during asset iteration.
-		var base_color := role_color.darkened(0.52)
-		var base := _add_box(parent, position + Vector3(0.0, 0.18, 0.0), Vector3(1.75, 0.36, 1.75), base_color, tint, 0.1)
-		var post_height := 1.15 if kind == "evidence" else 1.45
-		var post := _add_box(parent, position + Vector3(0.0, 0.36 + post_height * 0.5, 0.0), Vector3(0.42, post_height, 0.42), role_color.darkened(0.38), role_color, 0.24)
-		var lens := MeshInstance3D.new()
-		var lens_mesh := SphereMesh.new()
-		lens_mesh.radius = 0.26 if kind == "evidence" else 0.34
-		lens_mesh.height = lens_mesh.radius * 2.0
-		lens.mesh = lens_mesh
-		lens.material_override = _make_material(tint.darkened(0.3), tint, 0.48 if kind == "resolution" else 0.28)
-		lens.position = position + Vector3(0.0, 0.5 + post_height, 0.0)
-		parent.add_child(lens)
-		visuals = [base, post, lens]
-	var node_name := "EndoJunctionField_%s" % site_id
-	var interactable := _add_object_interactable(parent, node_name, str(spec.get("display", site_id)), position, str(spec.get("verb", "WORK")), visuals, role, float(spec.get("dwell", 3.5)), false, INTERACT_RADIUS, Interactable.InteractableType.TIMED_ACTION)
-	interactable.interacted.connect(_on_field_site_interacted.bind(site_id))
-	_field_sites[site_id] = interactable
-	_add_label(parent, "%s // %s" % [_display_name(role).to_upper(), str(spec.get("display", site_id))], position + Vector3(0.0, 2.25, 0.0), role_color.lightened(0.22))
-
-func _add_field_datum(parent: Node3D, from: Vector3, to: Vector3, tint: Color, suffix: String) -> MeshInstance3D:
-	var flat_from := Vector3(from.x, 0.045, from.z)
-	var flat_to := Vector3(to.x, 0.045, to.z)
-	var delta := flat_to - flat_from
-	var datum := _add_box(parent, (flat_from + flat_to) * 0.5, Vector3(delta.length(), 0.025, 0.075), tint.darkened(0.48), tint, 0.24, "EndoJunctionDatum_%s" % suffix)
-	datum.rotation.y = -atan2(delta.z, delta.x)
-	return datum
-
-func _field_role_color(role: String) -> Color:
-	match role:
-		"aster": return Color(0.42, 0.72, 0.95)
-		"peris": return Color(0.42, 0.88, 0.58)
-		"endo": return Color(0.96, 0.67, 0.30)
-		_: return Color(0.82, 0.86, 0.9)
-
-func complete_field_site(site_id: String) -> bool:
-	# Headless/shared drivers use the same public gate after selecting and positioning the required
-	# specialist. Real input reaches this state through the click-gated TIMED_ACTION signal above.
-	if not FIELD_SITES.has(site_id) or not _field_sites.has(site_id):
-		return false
-	var spec: Dictionary = FIELD_SITES[site_id]
-	var site: Node = _field_sites[site_id]
-	if not site.is_interaction_enabled():
-		return false
-	if not _require_station(str(spec.get("role", "")), spec.get("pos", Vector3.ZERO), str(spec.get("display", site_id))):
-		return false
-	return _resolve_field_site_state(site_id)
-
-func _on_field_site_interacted(site_id: String) -> void:
-	_resolve_field_site_state(site_id)
-
-func _resolve_field_site_state(site_id: String) -> bool:
-	if not FIELD_SITES.has(site_id):
-		return false
-	var spec: Dictionary = FIELD_SITES[site_id]
-	var operation_id := str(spec.get("operation", ""))
-	if operation_id != _field_phase or not FIELD_OPERATIONS.has(operation_id):
-		return false
-	var site: Node = _field_sites.get(site_id)
-	if site == null or not site.is_interaction_enabled():
-		return false
-	var kind := str(spec.get("kind", "evidence"))
-	var finding := str(spec.get("finding", ""))
-	if finding != "":
-		_field_findings.append(finding)
-		_show_message(finding, 2.0)
-	match kind:
-		"evidence":
-			var completed: Dictionary = _field_evidence.get(operation_id, {})
-			if bool(completed.get(site_id, false)):
-				return true
-			completed[site_id] = true
-			_field_evidence[operation_id] = completed
-			_mark_segment(site_id)
-			_set_field_site_enabled(site_id, false)
-			if _field_operation_evidence_complete(operation_id):
-				for choice_id in FIELD_OPERATIONS[operation_id].get("choices", []):
-					_set_field_site_enabled(str(choice_id), true)
-			return true
-		"choice":
-			if not _field_operation_evidence_complete(operation_id):
-				return false
-			_field_choices[operation_id] = site_id
-			for choice_id in FIELD_OPERATIONS[operation_id].get("choices", []):
-				_set_field_site_enabled(str(choice_id), false)
-			var resolution_sites: Dictionary = FIELD_OPERATIONS[operation_id].get("resolution_sites", {})
-			var resolution_id := str(resolution_sites.get(site_id, ""))
-			if resolution_id == "":
-				return false
-			_set_field_site_enabled(resolution_id, true)
-			_route_phase = "%s_execution" % operation_id
-			return true
-		"resolution":
-			var committed_choice := str(_field_choices.get(operation_id, ""))
-			var expected_resolution := str((FIELD_OPERATIONS[operation_id].get("resolution_sites", {}) as Dictionary).get(committed_choice, ""))
-			if site_id != expected_resolution:
-				return false
-			_set_field_site_enabled(site_id, false)
-			if committed_choice == "pulse_brace":
-				# The warning strip, root rhythm, and cracked latch all falsify this prediction. The
-				# physical race bucks, the kit-owned hazard bites whoever stayed at the brace, and
-				# the plan stations reopen immediately so failure becomes information, not a reset.
-				_field_failure_count += 1
-				_field_effects["brace_failed"] = true
-				_field_choices.erase(operation_id)
-				_route_phase = "pulse_replan"
-				_arm_brace_failure()
-				for choice_id in FIELD_OPERATIONS[operation_id].get("choices", []):
-					if str(choice_id) == "pulse_brace":
-						_set_field_site_enabled(str(choice_id), false)
-						continue
-					var choice_site: Node = _field_sites.get(str(choice_id))
-					if choice_site != null and choice_site.has_method("reset"):
-						choice_site.call("reset")
-					_set_field_site_enabled(str(choice_id), true)
-				_show_note("The cracked race bows on the warning beat. The root bed is still ready: reroute the next pulse.", 3.2)
-				_update_visual_state()
-				return true
-			_field_operations_completed[operation_id] = true
-			_mark_segment("%s_complete" % operation_id)
-			_apply_field_choice(operation_id, committed_choice)
-			var next_id := str(FIELD_OPERATIONS[operation_id].get("next", ""))
-			if next_id == "":
-				_field_phase = "complete"
-				_route_phase = "fieldwork_complete"
-				_set_preview_step("endo_junction_fieldwork_complete")
-				_show_note("The root bed takes the pulse and the walking lane falls quiet. Open Endo's return grate.", 3.0)
-			else:
-				_start_field_operation(next_id)
-			return true
-	return false
-
-func _start_field_operation(operation_id: String) -> void:
-	if not FIELD_OPERATIONS.has(operation_id):
-		return
-	_field_phase = operation_id
-	_route_phase = "%s_survey" % operation_id
-	if not _field_evidence.has(operation_id):
-		_field_evidence[operation_id] = {}
-	for site_id_variant in FIELD_SITES.keys():
-		var site_id := str(site_id_variant)
-		var spec: Dictionary = FIELD_SITES[site_id]
-		_set_field_site_enabled(site_id, str(spec.get("operation", "")) == operation_id and str(spec.get("kind", "")) == "evidence" and not bool((_field_evidence.get(operation_id, {}) as Dictionary).get(site_id, false)))
-	_set_preview_step("endo_junction_%s_survey" % operation_id)
-	_show_note("%s: combine the three specialist reads, predict where the pulse should go, then test it in the corridor." % str(FIELD_OPERATIONS[operation_id].get("label", operation_id)), 3.0)
-	_update_visual_state()
-
-func _field_operation_evidence_complete(operation_id: String) -> bool:
-	if not FIELD_OPERATIONS.has(operation_id):
-		return false
-	var completed: Dictionary = _field_evidence.get(operation_id, {})
-	for site_id in FIELD_OPERATIONS[operation_id].get("evidence", []):
-		if not bool(completed.get(str(site_id), false)):
-			return false
-	return true
-
-func _apply_field_choice(operation_id: String, choice_id: String) -> void:
-	match choice_id:
-		"pulse_buffer":
-			_field_effects["conduit_mode"] = "living_root_buffer"
-			_field_effects["pulse_resolved"] = true
-			for char_id in ["aster", "peris", "endo"]:
-				_adjust_character_stat(char_id, "sta", 4.0)
-	_field_effects["last_operation"] = operation_id
-
-func _arm_brace_failure() -> void:
+func _build_direct_bloom_field() -> void:
 	var gs = _get_game_state()
 	var scheduler = _get_scheduler()
 	if gs == null or scheduler == null:
 		return
-	if _brace_failure_field == null or not is_instance_valid(_brace_failure_field):
-		_brace_failure_field = HazardFieldScript.new()
-		_brace_failure_field.name = "EndoJunctionBraceSurge"
-		add_child(_brace_failure_field)
-	_brace_failure_field.setup(gs, scheduler, Vector2(78.5, -11.5), Vector2(85.5, -4.5),
-		["aster", "peris", "endo"], {"dps_tick": 6.0, "interval": 0.55, "tag": "endo_junction_brace_surge", "on_bite": _on_brace_hazard_bite})
-	_brace_failure_field.set_active(true)
-	scheduler.schedule_after(2.2, func() -> void:
-		if _brace_failure_field != null and is_instance_valid(_brace_failure_field):
-			_brace_failure_field.set_active(false), "endo_junction_brace_surge_stop")
+	var had_saved_authority := gs.get_world_state(
+		"kit:hazard_field:%s" % DIRECT_BLOOM_TAG, null) is Dictionary
+	_direct_bloom_field = HazardFieldScript.new()
+	_direct_bloom_field.name = "EndoJunctionDirectBloomField"
+	add_child(_direct_bloom_field)
+	_direct_bloom_field.setup(
+		gs,
+		scheduler,
+		Vector2(36.0, RISKY_BLOOM_CENTER.z - 1.75),
+		Vector2(52.0, RISKY_BLOOM_CENTER.z + 1.75),
+		PARTY_IDS,
+		{
+			"dps_tick": DIRECT_BLOOM_DAMAGE_PER_TICK,
+			"interval": DIRECT_BLOOM_TICK_INTERVAL,
+			"tag": DIRECT_BLOOM_TAG,
+			"on_bite": Callable(self, "_on_direct_bloom_bite"),
+			"restore_existing_authority": true,
+		}
+	)
+	if not had_saved_authority:
+		_direct_bloom_field.set_active(true)
 
-func _on_brace_hazard_bite(_char_id: String) -> void:
-	_show_message("Pressure surge — leave the cracked race.", 0.9)
 
-func _set_field_site_enabled(site_id: String, enabled: bool) -> void:
-	var site: Node = _field_sites.get(site_id)
-	if site != null and site.has_method("set_interaction_enabled"):
-		site.call("set_interaction_enabled", enabled)
+func _build_shortcut_gate() -> void:
+	_shortcut_gate = PartyGateScript.new() as PartyGate3D
+	_shortcut_gate.name = "EndoJunctionReturnPartyGate"
+	_shortcut_gate.authority_id = SHORTCUT_GATE_AUTHORITY_ID
+	_shortcut_gate.required_members = PackedStringArray(["endo"])
+	_shortcut_gate.readiness_radius = INTERACT_RADIUS + 0.2
+	_shortcut_gate.opening_duration = SHORTCUT_OPENING_DURATION
+	_shortcut_gate.navigation_padding = Vector2(0.2, 0.15)
+	_shortcut_gate.position = SHORTCUT_GATE_POS
 
-func _reset_field_interactables() -> void:
-	for site_id in _field_sites.keys():
-		var site: Node = _field_sites[site_id]
-		if site.has_method("reset"):
-			site.call("reset")
-		_set_field_site_enabled(str(site_id), false)
+	var markers := Node3D.new()
+	markers.name = "Markers"
+	_shortcut_gate.add_child(markers)
+	var anchor := Marker3D.new()
+	anchor.name = "InteractionAnchor"
+	anchor.position = SHORTCUT_LOCK_POS - SHORTCUT_GATE_POS
+	markers.add_child(anchor)
 
-func _build_shortcut() -> void:
-	_shortcut_material = _make_material(Color(0.15, 0.15, 0.14), Color(0.9, 0.76, 0.42), 0.14)
-	var grate := _add_box(self, SHORTCUT_LOCK_POS + Vector3(0.0, 0.45, 0.0), Vector3(2.2, 0.9, 2.2), Color(0.16, 0.14, 0.12), Color(0.82, 0.62, 0.28), 0.16)
-	grate.material_override = _shortcut_material
-	_add_label(self, "RETURN GRATE", SHORTCUT_LOCK_POS + Vector3(0.0, 1.7, 0.0), Color(0.94, 0.78, 0.46))
-	_shortcut_interactable = _add_object_interactable(self, "EndoJunctionShortcutInteractable", "Return Grate", SHORTCUT_LOCK_POS, "OPEN GRATE", [grate], "endo", 4.0, false, INTERACT_RADIUS, Interactable.InteractableType.TIMED_ACTION)
-	_shortcut_interactable.interacted.connect(unlock_shortcut)
+	var blocker_body := StaticBody3D.new()
+	blocker_body.name = "RubbleBlocker"
+	_shortcut_gate.add_child(blocker_body)
+	var blocker_shape := CollisionShape3D.new()
+	blocker_shape.name = "BlockerShape"
+	var blocker_box := BoxShape3D.new()
+	blocker_box.size = Vector3(4.5, 2.35, 0.72)
+	blocker_shape.shape = blocker_box
+	blocker_shape.position = Vector3(0.0, 1.175, 0.0)
+	blocker_body.add_child(blocker_shape)
+
+	_shortcut_grate_mesh = MeshInstance3D.new()
+	_shortcut_grate_mesh.name = "EndoJunctionReturnGrateMesh"
+	_shortcut_grate_mesh.mesh = ReturnGrateMesh
+	var source_material := ReturnGrateMesh.surface_get_material(0) as StandardMaterial3D
+	if source_material != null:
+		# Keep the external texture/material authoritative while giving this presenter its own
+		# emission state. Mutating the imported resource directly would leak gate feedback between
+		# concurrent chunk instances.
+		_shortcut_material = source_material.duplicate() as StandardMaterial3D
+		_shortcut_material.emission_enabled = true
+		_shortcut_material.emission = Color(0.9, 0.76, 0.42)
+		_shortcut_material.emission_energy_multiplier = 0.14
+		_shortcut_grate_mesh.set_surface_override_material(0, _shortcut_material)
+	_shortcut_grate_mesh.position = Vector3.ZERO
+	_shortcut_gate.add_child(_shortcut_grate_mesh)
+	add_child(_shortcut_gate)
+	_shortcut_gate.opened.connect(_on_shortcut_gate_opened)
+	_shortcut_gate.blocked.connect(_on_shortcut_gate_blocked)
+	_setup_shortcut_gate()
+
+
+func _setup_shortcut_gate() -> void:
+	if _shortcut_gate == null:
+		return
+	var gs = _get_game_state()
+	if gs == null:
+		return
+	_shortcut_gate.setup(gs, gs.grid, 0, PARTY_IDS)
+	_update_visual_state()
 
 func _build_shelter() -> void:
 	_shelter_material = _make_material(Color(0.2, 0.17, 0.11), Color(0.98, 0.74, 0.36), 0.3)
@@ -1002,8 +772,8 @@ func _build_shelter() -> void:
 		_add_box(self, SHELTER_POS + Vector3(0.0, 2.15, float(rib_z)), Vector3(9.2, 0.18, 0.22), Color(0.42, 0.34, 0.22))
 	_add_label(self, "HEARTH // REST", SHELTER_POS + Vector3(0.0, 2.15, 0.0), Color(1.0, 0.82, 0.5))
 	_add_light(self, SHELTER_POS + Vector3(0.0, 2.1, 0.0), Color(1.0, 0.74, 0.38), 2.0, 11.5)
-	_shelter_interactable = _add_object_interactable(self, "EndoJunctionShelterInteractable", "Shelter 1 Hearth", SHELTER_POS, "REST PARTY", [hearth], "", 3.0, false, SHELTER_RADIUS, Interactable.InteractableType.TIMED_ACTION)
-	_shelter_interactable.interacted.connect(reach_shelter)
+	_shelter_interactable = _add_object_interactable(self, "EndoJunctionShelterInteractable", "Shelter 1 Hearth", SHELTER_POS, "REST PARTY", [hearth], "", 3.0, true, SHELTER_RADIUS, Interactable.InteractableType.TIMED_ACTION)
+	_configure_endo_control(_shelter_interactable, "shelter", reach_shelter)
 	# The hearth room is a SHELTER: register the sanctuary region the detection/strike gates and
 	# the revive watch read (a shelter that is only a room lets enemies attack you inside it —
 	# the 2026-07-12 report). Sized to the built room slab (10 x 8 around SHELTER_POS).
@@ -1013,13 +783,352 @@ func _build_shelter() -> void:
 			Vector2(SHELTER_POS.x + 5.0, SHELTER_POS.z + 4.0))
 
 func _update_stretch(_delta: float) -> void:
-	# Shelter completion is intentionally interaction-gated. Merely crossing the
-	# hearth radius must never skip the food check or rest the party for free.
-	pass
+	# Traversal and gate signals own semantic completion. Render/headless calls are presentation
+	# projections only and can never convert a teleported body or presenter pose into route truth.
+	_update_visual_state()
+
+
+func _begin_route_traversal(
+		choice: String,
+		actor: String,
+		traversal_id: StringName,
+		destination: Vector3,
+		speed: float
+	) -> bool:
+	var gs = _get_game_state()
+	if gs == null or not gs.characters.has(actor) or gs.is_downed(actor) \
+			or gs.is_external_traversal_active(actor):
+		return false
+	var origin: Vector3 = gs.get_position(actor)
+	var duration := maxf(0.25, origin.distance_to(destination) / maxf(speed, 0.1))
+	if not gs.command_external_traversal(
+		actor,
+		traversal_id,
+		destination,
+		gs.get_render_position(actor),
+		destination,
+		duration,
+		&"locked"
+	):
+		return false
+	var traversal: Dictionary = gs.get_external_traversal_state(actor)
+	_route_choice = choice
+	_route_phase = "%s_crossing" % choice
+	_crossing_actor = actor
+	_crossing_deadline = float(traversal.get("end_tick", _get_scheduler_tick() + duration))
+	_last_outcome = "%s_crossing_committed" % choice
+	_set_preview_step("endo_junction_%s_crossing" % choice)
+	_bind_traversal_signals()
+	_publish_endo_authority()
+	return true
+
+
+func _current_crossing_state() -> Dictionary:
+	var gs = _get_game_state()
+	if gs == null or _crossing_actor == "" or not gs.characters.has(_crossing_actor) \
+			or not gs.is_external_traversal_active(_crossing_actor):
+		return {}
+	var traversal: Dictionary = gs.get_external_traversal_state(_crossing_actor)
+	var expected := SAFE_TRAVERSAL_ID if _route_phase == "safe_crossing" else DIRECT_TRAVERSAL_ID
+	return traversal if StringName(str(traversal.get("traversal_id", ""))) == expected else {}
+
+
+func _resolve_route_from_positions() -> void:
+	if _route_phase not in ["safe_crossing", "direct_crossing"] or _crossing_actor == "":
+		return
+	var gs = _get_game_state()
+	if gs == null or not gs.characters.has(_crossing_actor) \
+			or gs.is_external_traversal_active(_crossing_actor):
+		return
+	var expected_destination := SAFE_LEDGE_END \
+		if _route_phase == "safe_crossing" else RISKY_BLOOM_END
+	var arrived: bool = gs.get_position(_crossing_actor).distance_to(expected_destination) <= 0.2
+	if not arrived:
+		# Cancellation, incapacitation, or a malformed save can never grant the far-side outcome.
+		_retract_cancelled_crossing(&"missing_destination")
+		return
+	var completed_choice := _route_choice
+	_danger_resolved = true
+	_route_phase = "%s_route" % completed_choice
+	_last_outcome = "clean_crossing" if completed_choice == "safe" else "recoverable_spatial_damage"
+	_crossing_actor = ""
+	_crossing_deadline = -1.0
+	_mark_segment("%s_route" % completed_choice)
+	_set_preview_step("endo_junction_%s_route" % completed_choice)
+	if completed_choice == "safe":
+		_show_message("Endo reaches the far lip of the maintenance ledge.", 1.5)
+	else:
+		_show_message("The bloom crossing clears; only bodies caught in its pulses paid health.", 1.7)
+	_apply_interactable_truth()
+	_update_visual_state()
+	_publish_endo_authority()
+
+
+func _bind_traversal_signals() -> void:
+	var gs = _get_game_state()
+	if gs == null or gs == _traversal_signal_game_state:
+		return
+	if _traversal_signal_game_state != null:
+		if _traversal_signal_game_state.external_traversal_finished.is_connected(
+				_on_external_traversal_finished):
+			_traversal_signal_game_state.external_traversal_finished.disconnect(
+				_on_external_traversal_finished)
+		if _traversal_signal_game_state.external_traversal_cancelled.is_connected(
+				_on_external_traversal_cancelled):
+			_traversal_signal_game_state.external_traversal_cancelled.disconnect(
+				_on_external_traversal_cancelled)
+	_traversal_signal_game_state = gs
+	if not gs.external_traversal_finished.is_connected(_on_external_traversal_finished):
+		gs.external_traversal_finished.connect(_on_external_traversal_finished)
+	if not gs.external_traversal_cancelled.is_connected(_on_external_traversal_cancelled):
+		gs.external_traversal_cancelled.connect(_on_external_traversal_cancelled)
+
+
+func _on_external_traversal_finished(char_id: String, traversal_id: StringName) -> void:
+	if char_id != _crossing_actor:
+		return
+	var expected := SAFE_TRAVERSAL_ID if _route_phase == "safe_crossing" else DIRECT_TRAVERSAL_ID
+	if traversal_id == expected:
+		_resolve_route_from_positions()
+
+
+func _on_external_traversal_cancelled(
+		char_id: String, traversal_id: StringName, reason: StringName
+	) -> void:
+	if char_id != _crossing_actor:
+		return
+	var expected := SAFE_TRAVERSAL_ID if _route_phase == "safe_crossing" else DIRECT_TRAVERSAL_ID
+	if traversal_id == expected:
+		_retract_cancelled_crossing(reason)
+
+
+func _retract_cancelled_crossing(reason: StringName) -> void:
+	if _route_phase not in ["safe_crossing", "direct_crossing"]:
+		return
+	_route_choice = ""
+	_route_phase = "foraged" if _forage_collected else (
+		"safe_marked" if _safe_route_marked else (
+			"junction_read" if _junction_read else "junction"
+		)
+	)
+	_crossing_actor = ""
+	_crossing_deadline = -1.0
+	_last_outcome = "crossing_cancelled:%s" % String(reason)
+	_apply_interactable_truth()
+	_update_visual_state()
+	_publish_endo_authority()
+
+
+func _cancel_owned_crossing(reason: StringName) -> void:
+	var gs = _get_game_state()
+	if gs == null:
+		return
+	for char_id in PARTY_IDS:
+		if not gs.characters.has(char_id) or not gs.is_external_traversal_active(char_id):
+			continue
+		var traversal: Dictionary = gs.get_external_traversal_state(char_id)
+		var traversal_id := StringName(str(traversal.get("traversal_id", "")))
+		if traversal_id in [SAFE_TRAVERSAL_ID, DIRECT_TRAVERSAL_ID]:
+			gs.cancel_external_traversal(char_id, reason)
+
+
+func _on_direct_bloom_bite(char_id: String) -> void:
+	_direct_damage_total += DIRECT_BLOOM_DAMAGE_PER_TICK
+	_last_outcome = "bloom_bit:%s" % char_id
+	_show_message("%s is inside the rust bloom pulse." % _display_name(char_id), 1.1)
+	_publish_endo_authority()
+
+
+func _on_shortcut_gate_opened() -> void:
+	_sync_shortcut_from_gate()
+
+
+func _on_shortcut_gate_blocked(_reason: StringName) -> void:
+	if _shortcut_gate == null or _shortcut_gate.state == PartyGate3D.State.OPEN:
+		return
+	_last_outcome = "shortcut_failed_party_check"
+	if _shortcut_interactable != null and _danger_resolved:
+		_shortcut_interactable.set_interaction_enabled(true)
+	_show_message("Endo left the latch before the return grate cleared; it settles closed.", 1.6)
+	_update_visual_state()
+	_publish_endo_authority()
+
+
+func _sync_shortcut_from_gate() -> void:
+	if _shortcut_gate == null:
+		return
+	var gate_open := _shortcut_gate.state == PartyGate3D.State.OPEN
+	if gate_open == _shortcut_unlocked:
+		return
+	_shortcut_unlocked = gate_open
+	if gate_open:
+		_route_phase = "shelter_approach" if _route_phase != "complete" else _route_phase
+		_last_outcome = "shortcut_open"
+		_mark_segment("shortcut")
+		_set_preview_step("endo_junction_shortcut_open")
+		_show_message("The lifted grate exposes the physical return channel toward the junction.", 1.6)
+	_apply_interactable_truth()
+	_update_visual_state()
+	_publish_endo_authority()
 
 func _complete_interactable(interactable: Node) -> void:
 	if interactable != null and interactable.has_method("set_interaction_enabled"):
 		interactable.call("set_interaction_enabled", false)
+
+
+## Every Endo Junction consequence begins at its one physical control. Interactable performs this
+## pure validation before it records the exact actor's trigger; the callback below then requires
+## that consumed one-shot receipt so direct helpers and manually emitted signals remain inert.
+func _configure_endo_control(control: Node, action_id: String, callback: Callable) -> void:
+	if not is_instance_valid(control):
+		return
+	control.set("one_shot", true)
+	control.set_pre_trigger_validator(
+		_validate_endo_control_trigger.bind(action_id, control))
+	control.interacted.connect(callback.bind(control))
+
+
+func _validate_endo_control_trigger(
+	source: Node,
+	actor: String,
+	action_id: String,
+	expected_source: Node
+) -> bool:
+	if not is_instance_valid(source) or source != expected_source \
+			or source != _endo_control_for_action(action_id):
+		return false
+	return _endo_interaction_actor_ready_at(
+		source, actor, _endo_required_actor(action_id)
+	) and _endo_control_action_ready(action_id, actor)
+
+
+func _endo_control_receipt_pending(source: Node, action_id: String) -> bool:
+	if not is_instance_valid(source) or source != _endo_control_for_action(action_id):
+		return false
+	var actor := str(source.get("active_character"))
+	return _validate_endo_control_trigger(source, actor, action_id, source) \
+		and _endo_consumed_source_receipt(source, actor)
+
+
+func _endo_consumed_source_receipt(source: Node, actor: String) -> bool:
+	if not is_instance_valid(source) or str(source.get("active_character")) != actor \
+			or not bool(source.get("one_shot")) \
+			or not bool(source.get("_used")) \
+			or bool(source.get("interaction_enabled")):
+		return false
+	var gs = _get_game_state()
+	var data_id := str(source.get("data_id"))
+	if gs == null or data_id == "" or not gs.has_interactable(data_id):
+		return false
+	var spec: Dictionary = gs.get_interactable(data_id)
+	return bool(spec.get("one_shot", false)) \
+		and bool(spec.get("triggered", false)) \
+		and not gs.is_interactable_enabled(data_id)
+
+
+func _endo_interaction_actor_ready_at(
+	source: Node, actor: String, expected_actor := ""
+) -> bool:
+	var gs = _get_game_state()
+	if gs == null or not is_instance_valid(source) or not (source is Node3D) \
+			or actor not in PARTY_IDS or not gs.characters.has(actor) \
+			or (expected_actor != "" and actor != expected_actor) \
+			or not gs.is_narratively_available(actor) \
+			or gs.is_downed(actor) or gs.is_knocked_down(actor) \
+			or gs.is_moving(actor) or gs.is_resting(actor) or gs.is_dodging(actor) \
+			or gs.is_endocytosing(actor) or gs.is_external_traversal_active(actor) \
+			or gs.is_dragging(actor) or gs.is_field_restoring(actor) \
+			or gs.is_pushing(actor):
+		return false
+	var required_actor := str(source.get("required_character"))
+	if required_actor != "" and actor != required_actor:
+		return false
+	var source_position := _endo_control_data_position(source)
+	var actor_position: Vector3 = gs.get_position(actor)
+	var radius: float = float(source.get("interaction_radius")) \
+		+ INTERACTION_POSITION_TOLERANCE
+	return Vector2(actor_position.x, actor_position.z).distance_to(
+		Vector2(source_position.x, source_position.z)) <= radius
+
+
+func _endo_control_data_position(source: Node) -> Vector3:
+	var gs = _get_game_state()
+	var data_id := str(source.get("data_id")) if is_instance_valid(source) else ""
+	if gs != null and data_id != "" and gs.has_interactable(data_id):
+		var position: Variant = gs.get_interactable(data_id).get("position", Vector3.ZERO)
+		if position is Vector3:
+			return position
+	var world_position := (source as Node3D).global_position \
+		if source is Node3D else Vector3.ZERO
+	if gs != null and gs.coord_map != null and gs.coord_map.has_method("to_data"):
+		return gs.coord_map.to_data(world_position)
+	return world_position
+
+
+func _endo_control_action_ready(action_id: String, actor: String) -> bool:
+	match action_id:
+		"junction":
+			return not _junction_read
+		"route":
+			return _junction_read and not _safe_route_marked \
+				and _route_phase not in [
+					"safe_crossing", "direct_crossing", "safe_route", "direct_route",
+					"shelter_approach", "complete",
+				]
+		"cache":
+			return _cache_phase == CACHE_PHASE_AVAILABLE \
+				and _endo_cache_item_at_source() \
+				and _has_free_hand_slots(actor, 1)
+		"safe":
+			return _safe_route_marked and not _danger_resolved \
+				and _route_phase not in ["safe_crossing", "direct_crossing"]
+		"direct":
+			return not _danger_resolved \
+				and _route_phase not in ["safe_crossing", "direct_crossing"]
+		"shortcut":
+			return _danger_resolved and not _shortcut_unlocked \
+				and _shortcut_gate != null \
+				and _shortcut_gate.state == PartyGate3D.State.CLOSED
+		"shelter":
+			return _danger_resolved and not _shelter_rested \
+				and _shelter_rest_phase == "ready" \
+				and (_preflight_endo_shelter_rest().get("blocked", []) as Array).is_empty()
+	return false
+
+
+func _endo_control_for_action(action_id: String) -> Node:
+	match action_id:
+		"junction":
+			return _junction_interactable
+		"route":
+			return _route_interactable
+		"cache":
+			return _cache_interactable
+		"safe":
+			return _safe_interactable
+		"direct":
+			return _direct_interactable
+		"shortcut":
+			return _shortcut_interactable
+		"shelter":
+			return _shelter_interactable
+	return null
+
+
+func _endo_required_actor(action_id: String) -> String:
+	match action_id:
+		"junction", "safe", "shortcut":
+			return "endo"
+		"route":
+			return "aster"
+	return ""
+
+
+func _rearm_endo_control(source: Node) -> void:
+	if is_instance_valid(source) and source.has_method("reset"):
+		source.reset()
+	_apply_interactable_truth()
+
 
 func _reset_story_interactables() -> void:
 	for interactable in [
@@ -1038,19 +1147,6 @@ func _reset_story_interactables() -> void:
 		if interactable.has_method("show_tutorial_label"):
 			interactable.call("show_tutorial_label")
 
-func _require_station(char_id: String, station_pos: Vector3, label: String) -> bool:
-	if char_id != "" and _get_active_character() != char_id:
-		_show_message("%s needs to handle %s." % [_display_name(char_id), label], 1.2)
-		return false
-	var actor := char_id if char_id != "" else _get_active_character()
-	if actor == "":
-		actor = "aster"
-	var dist := _get_character_position(actor).distance_to(station_pos)
-	if dist > INTERACT_RADIUS:
-		_show_message("Move %s to %s first." % [_display_name(actor), label], 1.2)
-		return false
-	return true
-
 func _has_free_hand_slots(char_id: String, required_slots: int) -> bool:
 	var free_count := 0
 	for slot in _get_hand_slots(char_id):
@@ -1059,6 +1155,147 @@ func _has_free_hand_slots(char_id: String, required_slots: int) -> bool:
 			if free_count >= required_slots:
 				return true
 	return false
+
+func _endo_cache_source_id() -> String:
+	return "%s:forage_cache" % endo_authority_key()
+
+
+func _spawn_endo_cache_source_item(properties := {}) -> String:
+	var item_properties := {
+		"display_name": "Junction Starch",
+		"display_names_by_character": {
+			"aster": "Lysate",
+			"peris": "Lysate",
+			"endo": "Starch",
+		},
+		"visual_color": Color(0.78, 0.66, 0.38),
+		"atp_restore": 2.0,
+		"hand_slots": 1,
+		"endocytosis_allowed": true,
+		"source_endo_forage_cache": _endo_cache_source_id(),
+	}
+	item_properties.merge(properties as Dictionary, true)
+	return _spawn_item(CACHE_ITEM_TYPE, FORAGE_CACHE_POS, item_properties)
+
+
+func _is_endo_cache_item(item_id: String) -> bool:
+	var item := _get_item_state(item_id)
+	if item.is_empty() or str(item.get("type", "")) != CACHE_ITEM_TYPE:
+		return false
+	var properties: Dictionary = item.get("properties", {})
+	return str(properties.get("source_endo_forage_cache", "")) == _endo_cache_source_id()
+
+
+func _find_endo_cache_item_id() -> String:
+	var gs = _get_game_state()
+	if gs == null or not "items" in gs:
+		return ""
+	var candidates: Array[String] = []
+	for item_id_v in gs.items.keys():
+		var item_id := str(item_id_v)
+		if _is_endo_cache_item(item_id):
+			candidates.append(item_id)
+	candidates.sort()
+	return candidates[0] if not candidates.is_empty() else ""
+
+
+func _remove_endo_cache_items(keep_id := "") -> void:
+	var gs = _get_game_state()
+	if gs == null or not "items" in gs:
+		return
+	var remove_ids: Array[String] = []
+	for item_id_v in gs.items.keys():
+		var item_id := str(item_id_v)
+		if item_id != keep_id and _is_endo_cache_item(item_id):
+			remove_ids.append(item_id)
+	for item_id in remove_ids:
+		_remove_item(item_id)
+
+
+func _reset_endo_cache_to_source(properties := {}) -> void:
+	_remove_endo_cache_items()
+	_cache_item_id = _spawn_endo_cache_source_item(properties)
+	_cache_phase = CACHE_PHASE_AVAILABLE
+	_cache_claimed_by = ""
+	_cache_claim_serial = 0
+	_forage_collected = false
+
+
+func _ensure_endo_cache_source_item() -> String:
+	if _is_endo_cache_item(_cache_item_id):
+		_remove_endo_cache_items(_cache_item_id)
+		return _cache_item_id
+	_cache_item_id = _find_endo_cache_item_id()
+	if _cache_item_id == "":
+		_cache_item_id = _spawn_endo_cache_source_item()
+	_remove_endo_cache_items(_cache_item_id)
+	return _cache_item_id
+
+
+func _endo_cache_item_at_source() -> bool:
+	if not _is_endo_cache_item(_cache_item_id):
+		return false
+	var item := _get_item_state(_cache_item_id)
+	return str(item.get("location", "")) == "ground" \
+		and (item.get("position", FORAGE_CACHE_POS) as Vector3).distance_to(
+			FORAGE_CACHE_POS) <= 0.05
+
+
+func _endo_cache_item_holder() -> String:
+	var item := _get_item_state(_cache_item_id)
+	return str(item.get("holder", "")) if not item.is_empty() else ""
+
+
+## Reconcile the synchronous pickup seam from item truth. A mismatched holder remains CLAIMING:
+## restore never retargets the reservation, moves that item, or mints a replacement reward.
+func _reconcile_endo_cache_transaction() -> bool:
+	var changed := false
+	if _is_endo_cache_item(_cache_item_id):
+		_remove_endo_cache_items(_cache_item_id)
+	match _cache_phase:
+		CACHE_PHASE_AVAILABLE:
+			# A displaced or missing exact item is inconsistent physical truth. Leave the cache
+			# closed instead of choosing another tagged item or minting a replacement reward.
+			_cache_claimed_by = ""
+			_forage_collected = false
+		CACHE_PHASE_CLAIMING:
+			if _endo_cache_item_at_source():
+				_cache_phase = CACHE_PHASE_AVAILABLE
+				_cache_claimed_by = ""
+				_forage_collected = false
+				changed = true
+			elif _is_endo_cache_item(_cache_item_id) \
+					and _endo_cache_item_holder() == _cache_claimed_by:
+				_cache_phase = CACHE_PHASE_CLAIMED
+				_forage_collected = true
+				changed = true
+			# Wrong holder, moved ground item, or missing exact item: remain CLAIMING and disabled.
+		CACHE_PHASE_CLAIMED:
+			if _endo_cache_item_at_source():
+				_cache_phase = CACHE_PHASE_AVAILABLE
+				_cache_claimed_by = ""
+				_forage_collected = false
+				changed = true
+			else:
+				_forage_collected = true
+	return changed
+
+
+func _apply_endo_cache_semantic_projection() -> void:
+	_forage_collected = _cache_phase == CACHE_PHASE_CLAIMED
+	if _forage_collected:
+		_mark_segment("forage")
+		if _route_phase not in [
+			"safe_crossing", "direct_crossing", "safe_route", "direct_route",
+			"shelter_approach", "complete",
+		]:
+			_route_phase = "foraged"
+		return
+	_segments_completed.erase("forage")
+	if _route_phase == "foraged":
+		_route_phase = "safe_marked" if _safe_route_marked \
+			else ("junction_read" if _junction_read else "junction")
+
 
 func _full_conscious_party_near(position: Vector3, radius: float) -> bool:
 	var gs = _get_game_state()
@@ -1071,14 +1308,13 @@ func _full_conscious_party_near(position: Vector3, radius: float) -> bool:
 			return false
 	return true
 
-func _party_can_pay_shelter_rest() -> bool:
-	var gs = _get_game_state()
-	if gs == null:
-		return false
-	for char_id in ["aster", "peris", "endo"]:
-		if not gs.characters.has(char_id) or gs.get_stat(char_id, "atp") < SHELTER_ATP_COST:
-			return false
-	return true
+func _preflight_endo_shelter_rest() -> Dictionary:
+	var outcome := _preflight_authored_party_rest(
+		SHELTER_POS, Vector2(SHELTER_RADIUS * 2.0, SHELTER_RADIUS * 2.0), PARTY_IDS)
+	var blocked := outcome.get("blocked", []) as Array
+	if blocked.is_empty() and not _full_conscious_party_near(SHELTER_POS, SHELTER_RADIUS):
+		blocked.append("Bring Aster, Peris, and Endo fully inside Shelter 1.")
+	return outcome
 
 func _party_min_hp() -> float:
 	var min_hp := 999.0
@@ -1086,15 +1322,71 @@ func _party_min_hp() -> float:
 		min_hp = minf(min_hp, _get_character_stat(char_id, "hp"))
 	return min_hp
 
-func _apply_paid_shelter_rest() -> void:
-	var gs = _get_game_state()
-	if gs == null:
+func _clear_endo_shelter_rest_context() -> void:
+	_shelter_rest_commit_tick = -1.0
+	_shelter_rest_commit_day = 0
+	_shelter_rest_before_atp.clear()
+
+
+func _endo_shelter_rest_tag() -> String:
+	return "endo_party_rest:%s" % endo_authority_key().sha256_text().substr(0, 12)
+
+
+func _cancel_endo_shelter_rest_callback() -> void:
+	var scheduler = _get_scheduler()
+	if scheduler != null:
+		scheduler.cancel_tag(_endo_shelter_rest_tag())
+
+
+func _arm_endo_shelter_rest_callback() -> void:
+	var scheduler = _get_scheduler()
+	if scheduler == null or _shelter_rest_phase != "committing":
 		return
-	for char_id in ["aster", "peris", "endo"]:
-		gs.adjust_stat(char_id, "atp", -SHELTER_ATP_COST)
-		gs.set_stat(char_id, "hp", gs.get_stat_cap(char_id, "hp"))
-		gs.set_stat(char_id, "stamina", gs.get_stat_cap(char_id, "stamina"))
-		_set_character_status(char_id, "rested")
+	scheduler.cancel_tag(_endo_shelter_rest_tag())
+	scheduler.schedule_at(
+		maxf(_get_scheduler_tick(), _shelter_rest_commit_tick),
+		_resume_committed_endo_shelter_rest.bind(_shelter_rest_commit_tick),
+		_endo_shelter_rest_tag())
+
+
+func _resume_committed_endo_shelter_rest(expected_tick: float) -> void:
+	if _shelter_rest_phase != "committing" \
+			or not is_equal_approx(_shelter_rest_commit_tick, expected_tick):
+		return
+	if _authored_party_rest_effect_matches(
+			PARTY_IDS, _shelter_rest_before_atp, _shelter_rest_commit_day):
+		_complete_endo_shelter_rest(true)
+		return
+	var preflight := _preflight_endo_shelter_rest()
+	if not _endo_shelter_preflight_matches_commit(preflight):
+		_shelter_rest_phase = "ready"
+		_clear_endo_shelter_rest_context()
+		_apply_interactable_truth()
+		_publish_endo_authority()
+		return
+	var gs = _get_game_state()
+	if gs != null and bool(gs.command_party_rest(PARTY_IDS)):
+		_complete_endo_shelter_rest(true)
+	else:
+		_shelter_rest_phase = "ready"
+		_clear_endo_shelter_rest_context()
+		_apply_interactable_truth()
+		_publish_endo_authority()
+
+
+func _endo_shelter_preflight_matches_commit(preflight: Dictionary) -> bool:
+	var gs = _get_game_state()
+	if gs == null or gs.get_game_day() != _shelter_rest_commit_day \
+			or not (preflight.get("blocked", []) as Array).is_empty() \
+			or preflight.get("members", []) != PARTY_IDS:
+		return false
+	for char_id in PARTY_IDS:
+		if not _shelter_rest_before_atp.has(char_id) \
+				or not is_equal_approx(
+					gs.get_stat(char_id, "atp"),
+					float(_shelter_rest_before_atp[char_id])):
+			return false
+	return true
 
 func _fire_first_night_beat() -> void:
 	if _first_night_beat_fired:
@@ -1111,45 +1403,401 @@ func _mark_segment(segment: String) -> void:
 	if not _segments_completed.has(segment):
 		_segments_completed.append(segment)
 
-func _shortest_field_operation_route(operation_id: String) -> float:
-	if not FIELD_OPERATIONS.has(operation_id):
-		return 0.0
-	var operation: Dictionary = FIELD_OPERATIONS[operation_id]
-	var evidence_positions: Array[Vector3] = []
-	for site_id in operation.get("evidence", []):
-		evidence_positions.append(FIELD_SITES[str(site_id)].get("pos", Vector3.ZERO))
-	var best := INF
-	for choice_id_variant in operation.get("choices", []):
-		var choice_id := str(choice_id_variant)
-		var choice_pos: Vector3 = FIELD_SITES[choice_id].get("pos", Vector3.ZERO)
-		var resolution_id := str((operation.get("resolution_sites", {}) as Dictionary).get(choice_id, ""))
-		var resolution_pos: Vector3 = FIELD_SITES[resolution_id].get("pos", Vector3.ZERO)
-		var branch_tail := choice_pos.distance_to(resolution_pos) + resolution_pos.distance_to(operation.get("end", Vector3.ZERO))
-		var evidence_route := _shortest_path_through_points(operation.get("start", Vector3.ZERO), evidence_positions, (1 << evidence_positions.size()) - 1, choice_pos)
-		best = minf(best, evidence_route + branch_tail)
-	return 0.0 if is_inf(best) else best
 
-func _shortest_path_through_points(current: Vector3, points: Array[Vector3], remaining_mask: int, tail: Vector3) -> float:
-	if remaining_mask == 0:
-		return current.distance_to(tail)
-	var best := INF
-	for point_i in range(points.size()):
-		var bit := 1 << point_i
-		if (remaining_mask & bit) == 0:
+func _apply_interactable_truth() -> void:
+	for action_id in [
+		"junction", "route", "cache", "safe", "direct", "shortcut", "shelter",
+	]:
+		_set_interactable_enabled(
+			_endo_control_for_action(action_id),
+			_endo_control_owner_enabled(action_id))
+
+
+func _endo_control_owner_enabled(action_id: String) -> bool:
+	match action_id:
+		"junction":
+			return not _junction_read
+		"route":
+			return _junction_read and not _safe_route_marked \
+				and _route_phase not in [
+					"safe_crossing", "direct_crossing", "safe_route", "direct_route",
+					"shelter_approach", "complete",
+				]
+		"cache":
+			return _cache_phase == CACHE_PHASE_AVAILABLE \
+				and _endo_cache_item_at_source()
+		"safe", "direct":
+			return not _danger_resolved \
+				and _route_phase not in ["safe_crossing", "direct_crossing"]
+		"shortcut":
+			var gate_closed := _shortcut_gate == null \
+				or _shortcut_gate.state == PartyGate3D.State.CLOSED
+			return _danger_resolved and not _shortcut_unlocked and gate_closed
+		"shelter":
+			return not _shelter_rested and _shelter_rest_phase != "committing"
+	return false
+
+
+func _set_interactable_enabled(interactable: Node, enabled: bool) -> void:
+	if interactable != null and interactable.has_method("set_interaction_enabled"):
+		interactable.call("set_interaction_enabled", enabled)
+
+
+func endo_authority_key() -> String:
+	var owner := chunk_name if chunk_name != "" else "endo_junction_stretch"
+	return "runtime:endo_junction:%s" % owner
+
+
+func _endo_authority_state() -> Dictionary:
+	return {
+		"version": ENDO_AUTHORITY_VERSION,
+		"authority_id": endo_authority_key(),
+		"route_phase": _route_phase,
+		"route_choice": _route_choice,
+		"last_outcome": _last_outcome,
+		"junction_read": _junction_read,
+		"safe_route_marked": _safe_route_marked,
+		"forage_collected": _forage_collected,
+		"cache_item_id": _cache_item_id,
+		"cache_phase": _cache_phase,
+		"cache_claimed_by": _cache_claimed_by,
+		"cache_claim_serial": _cache_claim_serial,
+		"cache_source_id": _endo_cache_source_id(),
+		"danger_resolved": _danger_resolved,
+		"crossing_actor": _crossing_actor,
+		"crossing_deadline": _crossing_deadline,
+		"direct_damage_total": _direct_damage_total,
+		"shortcut_unlocked": _shortcut_unlocked,
+		"shelter_reached": _shelter_reached,
+		"shelter_rested": _shelter_rested,
+		"shelter_rest_phase": _shelter_rest_phase,
+		"shelter_rest_commit_tick": _shelter_rest_commit_tick,
+		"shelter_rest_commit_day": _shelter_rest_commit_day,
+		"shelter_rest_before_atp": _shelter_rest_before_atp.duplicate(true),
+		"first_night_beat_fired": _first_night_beat_fired,
+		"first_night_beat_count": _first_night_beat_count,
+		"segments_completed": _segments_completed.duplicate(),
+	}
+
+
+func _baseline_endo_authority_state() -> Dictionary:
+	return {
+		"version": ENDO_AUTHORITY_VERSION,
+		"authority_id": endo_authority_key(),
+		"route_phase": "junction",
+		"route_choice": "",
+		"last_outcome": "",
+		"junction_read": false,
+		"safe_route_marked": false,
+		"forage_collected": false,
+		"cache_item_id": _cache_item_id,
+		"cache_phase": CACHE_PHASE_AVAILABLE,
+		"cache_claimed_by": "",
+		"cache_claim_serial": 0,
+		"cache_source_id": _endo_cache_source_id(),
+		"danger_resolved": false,
+		"crossing_actor": "",
+		"crossing_deadline": -1.0,
+		"direct_damage_total": 0.0,
+		"shortcut_unlocked": false,
+		"shelter_reached": false,
+		"shelter_rested": false,
+		"shelter_rest_phase": "ready",
+		"shelter_rest_commit_tick": -1.0,
+		"shelter_rest_commit_day": 0,
+		"shelter_rest_before_atp": {},
+		"first_night_beat_fired": false,
+		"first_night_beat_count": 0,
+		"segments_completed": [],
+	}
+
+
+func _valid_endo_authority(raw: Variant) -> bool:
+	if not raw is Dictionary:
+		return false
+	var saved := raw as Dictionary
+	var phase := str(saved.get("route_phase", ""))
+	var choice := str(saved.get("route_choice", ""))
+	var actor := str(saved.get("crossing_actor", ""))
+	var crossing := phase in ["safe_crossing", "direct_crossing"]
+	var rest_phase := str(saved.get("shelter_rest_phase", ""))
+	var before_atp: Variant = saved.get("shelter_rest_before_atp", null)
+	var cache_phase := str(saved.get("cache_phase", ""))
+	var cache_actor := str(saved.get("cache_claimed_by", ""))
+	if int(saved.get("version", 0)) != ENDO_AUTHORITY_VERSION \
+			or str(saved.get("authority_id", "")) != endo_authority_key() \
+			or phase not in VALID_ROUTE_PHASES \
+			or choice not in ["", "safe", "direct"] \
+			or rest_phase not in SHELTER_REST_PHASES \
+			or not before_atp is Dictionary \
+			or cache_phase not in CACHE_PHASES \
+			or str(saved.get("cache_item_id", "")) == "" \
+			or str(saved.get("cache_source_id", "")) != _endo_cache_source_id() \
+			or int(saved.get("cache_claim_serial", -1)) < 0 \
+			or float(saved.get("direct_damage_total", -1.0)) < 0.0:
+		return false
+	var forage_collected := bool(saved.get("forage_collected", false))
+	if cache_phase == CACHE_PHASE_AVAILABLE:
+		if cache_actor != "" or forage_collected:
+			return false
+	elif cache_phase == CACHE_PHASE_CLAIMING:
+		if cache_actor not in PARTY_IDS or forage_collected \
+				or int(saved.get("cache_claim_serial", 0)) < 1:
+			return false
+	elif cache_actor not in PARTY_IDS or not forage_collected \
+			or int(saved.get("cache_claim_serial", 0)) < 1:
+		return false
+	var rested := bool(saved.get("shelter_rested", false))
+	if (rest_phase == "rested") != rested:
+		return false
+	if rest_phase == "rested" and phase != "complete":
+		return false
+	if rest_phase == "committing":
+		if rested or float(saved.get("shelter_rest_commit_tick", -1.0)) < 0.0:
+			return false
+		for char_id in PARTY_IDS:
+			if not (before_atp as Dictionary).has(char_id):
+				return false
+	elif float(saved.get("shelter_rest_commit_tick", -1.0)) >= 0.0 \
+			or not (before_atp as Dictionary).is_empty():
+		return false
+	if crossing:
+		return actor in PARTY_IDS \
+			and choice == phase.trim_suffix("_crossing") \
+			and float(saved.get("crossing_deadline", -1.0)) >= 0.0
+	return actor == "" and float(saved.get("crossing_deadline", -1.0)) < 0.0
+
+
+func _tag_legacy_endo_cache_item(item_id: String) -> bool:
+	var gs = _get_game_state()
+	if gs == null or not "items" in gs or not gs.items.has(item_id):
+		return false
+	var item: Dictionary = (gs.items[item_id] as Dictionary).duplicate(true)
+	if str(item.get("type", "")) != CACHE_ITEM_TYPE:
+		return false
+	var properties: Dictionary = (item.get("properties", {}) as Dictionary).duplicate(true)
+	properties["source_endo_forage_cache"] = _endo_cache_source_id()
+	properties["legacy_endo_cache_migration"] = true
+	item["properties"] = properties
+	gs.items[item_id] = item
+	return true
+
+
+func _normalized_endo_authority(raw: Variant) -> Dictionary:
+	if not raw is Dictionary:
+		return {}
+	var saved := (raw as Dictionary).duplicate(true)
+	var saved_version := int(saved.get("version", 0))
+	if saved_version in [1, 2]:
+		saved["version"] = ENDO_AUTHORITY_VERSION
+		if saved_version == 1:
+			var legacy_rested := bool(saved.get("shelter_rested", false))
+			saved["shelter_rest_phase"] = "rested" if legacy_rested else "ready"
+			saved["shelter_rest_commit_tick"] = -1.0
+			saved["shelter_rest_commit_day"] = 0
+			saved["shelter_rest_before_atp"] = {}
+		var legacy_collected := bool(saved.get("forage_collected", false))
+		var legacy_item_id := str(saved.get("cache_item_id", ""))
+		if legacy_collected:
+			var migrated_item := _tag_legacy_endo_cache_item(legacy_item_id)
+			var legacy_item := _get_item_state(legacy_item_id) if migrated_item else {}
+			var legacy_holder := str(legacy_item.get("holder", ""))
+			if legacy_holder not in PARTY_IDS:
+				legacy_holder = "endo"
+			saved["cache_item_id"] = (
+				legacy_item_id
+				if legacy_item_id != ""
+				else "legacy_consumed:%s" % _endo_cache_source_id().sha256_text().substr(0, 12))
+			saved["cache_phase"] = CACHE_PHASE_CLAIMED
+			saved["cache_claimed_by"] = legacy_holder
+			saved["cache_claim_serial"] = 1
+		else:
+			_reset_endo_cache_to_source({"legacy_source_recovery": true})
+			saved["cache_item_id"] = _cache_item_id
+			saved["cache_phase"] = CACHE_PHASE_AVAILABLE
+			saved["cache_claimed_by"] = ""
+			saved["cache_claim_serial"] = 0
+		saved["cache_source_id"] = _endo_cache_source_id()
+	return saved if _valid_endo_authority(saved) else {}
+
+
+func _initialize_endo_authority() -> void:
+	if _endo_authority_initialized:
+		return
+	var gs = _get_game_state()
+	if gs == null or not gs.has_method("get_world_state"):
+		return
+	_endo_authority_initialized = true
+	_endo_authority_baseline = _baseline_endo_authority_state()
+	var raw: Variant = gs.get_world_state(endo_authority_key(), null)
+	var normalized := _normalized_endo_authority(raw)
+	if not normalized.is_empty():
+		_restore_endo_authority(normalized)
+		if int((raw as Dictionary).get("version", 0)) != ENDO_AUTHORITY_VERSION:
+			_publish_endo_authority()
+	else:
+		_publish_endo_authority()
+
+
+func _publish_endo_authority() -> void:
+	if _restoring_endo_authority or not _endo_authority_initialized:
+		return
+	var gs = _get_game_state()
+	if gs != null and gs.has_method("set_world_state"):
+		gs.set_world_state(endo_authority_key(), _endo_authority_state())
+
+
+## Interactable owns only the brief accepted-source edge; this chunk owns the lasting outcome.
+## A save can be captured synchronously after GameState spends a one-shot but before the callback
+## publishes Endo authority. Re-arm every source from owner truth on attachment so that seam grants
+## nothing and remains retryable. Completed owner phases are disabled again by
+## `_apply_interactable_truth`, so no completed consequence can be repeated.
+func _normalize_endo_source_receipt_registry() -> void:
+	var gs = _get_game_state()
+	for action_id in [
+		"junction", "route", "cache", "safe", "direct", "shortcut", "shelter",
+	]:
+		var source: Node = _endo_control_for_action(action_id)
+		if not is_instance_valid(source):
 			continue
-		best = minf(best, current.distance_to(points[point_i]) + _shortest_path_through_points(points[point_i], points, remaining_mask & ~bit, tail))
-	return best
+		source.set("one_shot", true)
+		var enabled := _endo_control_owner_enabled(action_id)
+		var data_id := str(source.get("data_id"))
+		if gs != null and data_id != "" and gs.has_interactable(data_id):
+			var spec: Dictionary = gs.get_interactable(data_id)
+			# This is restore normalization, not a new player command. Mutate the freshly loaded
+			# registry record in place so attachment emits no reset/enable event or trigger signal.
+			spec["one_shot"] = true
+			spec["triggered"] = false
+			spec["enabled"] = enabled
+			gs.interactables[data_id] = spec
+		if source.has_method("restore_one_shot_presenter"):
+			source.restore_one_shot_presenter(false, enabled)
+
+
+## Restore semantic facts only. GameState itself restores movement, stats, inventory, and the
+## mechanism records; replaying any of those effects here would duplicate consequences on load.
+func on_game_state_snapshot_restored() -> void:
+	super.on_game_state_snapshot_restored()
+	_cancel_endo_shelter_rest_callback()
+	_endo_authority_initialized = true
+	_bind_traversal_signals()
+	if _endo_authority_baseline.is_empty():
+		_endo_authority_baseline = _baseline_endo_authority_state()
+	var gs = _get_game_state()
+	var raw: Variant = gs.get_world_state(endo_authority_key(), null) \
+		if gs != null and gs.has_method("get_world_state") else null
+	var normalized := _normalized_endo_authority(raw)
+	if not normalized.is_empty():
+		_restore_endo_authority(normalized)
+	else:
+		# Absence means the snapshot predates this chunk's first semantic interaction. Keep the key
+		# absent while retracting the presenter's future; this is important for rollback diagnostics.
+		# An older GameState also has no authored cache item, so baseline migration may create that
+		# one source here. Present v3 transaction restores never replace a missing exact item.
+		var baseline_item_id := str(_endo_authority_baseline.get("cache_item_id", ""))
+		if not _is_endo_cache_item(baseline_item_id):
+			_reset_endo_cache_to_source({"legacy_absent_authority_recovery": true})
+			_endo_authority_baseline = _baseline_endo_authority_state()
+		_restore_endo_authority(_endo_authority_baseline)
+	_restore_authored_mechanisms_after_snapshot()
+	_resolve_route_from_positions()
+	_sync_shortcut_from_gate()
+	_normalize_endo_source_receipt_registry()
+	_apply_interactable_truth()
+	if _shelter_rest_phase == "committing":
+		_arm_endo_shelter_rest_callback()
+
+
+func _restore_endo_authority(saved: Dictionary) -> void:
+	_restoring_endo_authority = true
+	_cancel_endo_shelter_rest_callback()
+	_junction_read = bool(saved.get("junction_read", false))
+	_safe_route_marked = bool(saved.get("safe_route_marked", false))
+	_forage_collected = bool(saved.get("forage_collected", false))
+	_cache_item_id = str(saved.get("cache_item_id", ""))
+	_cache_phase = str(saved.get("cache_phase", CACHE_PHASE_AVAILABLE))
+	_cache_claimed_by = str(saved.get("cache_claimed_by", ""))
+	_cache_claim_serial = maxi(0, int(saved.get("cache_claim_serial", 0)))
+	_danger_resolved = bool(saved.get("danger_resolved", false))
+	_shortcut_unlocked = bool(saved.get("shortcut_unlocked", false))
+	_shelter_reached = bool(saved.get("shelter_reached", false))
+	_shelter_rested = bool(saved.get("shelter_rested", false))
+	_shelter_rest_phase = str(saved.get("shelter_rest_phase", "ready"))
+	_shelter_rest_commit_tick = float(saved.get("shelter_rest_commit_tick", -1.0))
+	_shelter_rest_commit_day = int(saved.get("shelter_rest_commit_day", 0))
+	_shelter_rest_before_atp = (
+		saved.get("shelter_rest_before_atp", {}) as Dictionary).duplicate(true)
+	_first_night_beat_fired = bool(saved.get("first_night_beat_fired", false))
+	_first_night_beat_count = maxi(int(saved.get("first_night_beat_count", 0)), 0)
+	_route_choice = str(saved.get("route_choice", ""))
+	_route_phase = str(saved.get("route_phase", "junction"))
+	_last_outcome = str(saved.get("last_outcome", ""))
+	_direct_damage_total = maxf(float(saved.get("direct_damage_total", 0.0)), 0.0)
+	_crossing_actor = str(saved.get("crossing_actor", ""))
+	_crossing_deadline = float(saved.get("crossing_deadline", -1.0))
+	_segments_completed.clear()
+	for segment_v in saved.get("segments_completed", []):
+		var segment := str(segment_v)
+		if segment != "" and not _segments_completed.has(segment):
+			_segments_completed.append(segment)
+	var cache_normalized := _reconcile_endo_cache_transaction()
+	_apply_endo_cache_semantic_projection()
+	_restoring_endo_authority = false
+	_update_visual_state()
+	_set_preview_step(_step_for_route_phase())
+	if cache_normalized:
+		_publish_endo_authority()
+
+
+func _restore_authored_mechanisms_after_snapshot() -> void:
+	if _shortcut_gate != null:
+		_shortcut_gate.on_game_state_snapshot_restored()
+	if _direct_bloom_field == null:
+		return
+	var gs = _get_game_state()
+	var had_saved_hazard := gs != null \
+		and gs.get_world_state(_direct_bloom_field.authority_state_key(), null) is Dictionary
+	_direct_bloom_field.on_game_state_snapshot_restored()
+	if not had_saved_hazard:
+		# Unlike a dynamically spawned fire, this bloom is part of the authored baseline. An old save
+		# without a kit record therefore reconstructs it active, with a fresh scheduler cadence.
+		_direct_bloom_field.set_active(true)
+
+
+func _reset_shortcut_gate_authority() -> void:
+	if _shortcut_gate == null:
+		return
+	var gs = _get_game_state()
+	if gs == null or not gs.has_method("set_world_state"):
+		return
+	gs.set_world_state(_shortcut_gate.authority_state_key(), {
+		"contract": PartyGate3D.STATE_CONTRACT,
+		"authority_id": SHORTCUT_GATE_AUTHORITY_ID,
+		"phase": PartyGate3D.PHASE_CLOSED,
+		"start_tick": -1.0,
+		"end_tick": -1.0,
+		"required_members": ["endo"],
+	})
+	_shortcut_gate.on_game_state_snapshot_restored()
+
+
+func _step_for_route_phase() -> String:
+	match _route_phase:
+		"junction": return "endo_junction_stretch_start"
+		"junction_read": return "endo_junction_read"
+		"safe_marked": return "endo_junction_route_marked"
+		"foraged": return "endo_junction_forage"
+		"safe_crossing": return "endo_junction_safe_crossing"
+		"direct_crossing": return "endo_junction_direct_crossing"
+		"safe_route": return "endo_junction_safe_route"
+		"direct_route": return "endo_junction_direct_route"
+		"shelter_approach": return "endo_junction_shortcut_open"
+		"complete": return "endo_junction_shelter_1"
+	return "endo_junction_stretch_start"
+
 
 func _current_instruction() -> String:
-	if FIELD_OPERATIONS.has(_field_phase):
-		var operation: Dictionary = FIELD_OPERATIONS[_field_phase]
-		if not _field_operation_evidence_complete(_field_phase):
-			var completed: Dictionary = _field_evidence.get(_field_phase, {})
-			return "%s specialist reads %d/%d" % [str(operation.get("label", _field_phase)).to_lower(), completed.size(), operation.get("evidence", []).size()]
-		var choice := str(_field_choices.get(_field_phase, ""))
-		if choice == "":
-			return "choose the %s plan" % str(operation.get("label", _field_phase)).to_lower()
-		return "execute %s" % str(FIELD_SITES[choice].get("display", choice)).to_lower()
 	match _route_phase:
 		"junction":
 			return "bring Endo to the glowing junction console and read it"
@@ -1159,8 +1807,10 @@ func _current_instruction() -> String:
 			return "collect the cache or commit the ledge"
 		"foraged":
 			return "choose ledge or short bloom"
-		"fieldwork_complete":
-			return "open the return grate"
+		"safe_crossing", "direct_crossing":
+			return "let the committed crossing reach its far lip"
+		"safe_route", "direct_route":
+			return "continue to Shelter 1; the return grate is optional"
 		"shelter_approach":
 			return "enter Shelter 1"
 		"complete":
@@ -1186,16 +1836,22 @@ func _update_visual_state() -> void:
 		_direct_material.emission_energy_multiplier = 0.55 if _route_choice == "direct" else 0.24
 	if _cache_material != null:
 		_cache_material.emission_energy_multiplier = 0.08 if _forage_collected else 0.32
+	var shortcut_phase := PartyGate3D.PHASE_CLOSED
+	var shortcut_progress := 0.0
+	if _shortcut_gate != null:
+		var saved: Dictionary = _shortcut_gate.get_authority_state()
+		shortcut_phase = str(saved.get("phase", PartyGate3D.PHASE_CLOSED))
+		if shortcut_phase == PartyGate3D.PHASE_OPENING:
+			var start := float(saved.get("start_tick", _get_scheduler_tick()))
+			var finish := float(saved.get("end_tick", start + SHORTCUT_OPENING_DURATION))
+			shortcut_progress = clampf(
+				(_get_scheduler_tick() - start) / maxf(finish - start, 0.000001), 0.0, 1.0)
+		elif shortcut_phase == PartyGate3D.PHASE_OPEN:
+			shortcut_progress = 1.0
 	if _shortcut_material != null:
-		_shortcut_material.emission_energy_multiplier = 0.85 if _shortcut_unlocked else 0.14
+		_shortcut_material.emission_energy_multiplier = \
+			lerpf(0.14, 0.85, shortcut_progress)
+	if _shortcut_grate_mesh != null:
+		_shortcut_grate_mesh.position.y = lerpf(0.0, 2.65, shortcut_progress)
 	if _shelter_material != null:
 		_shelter_material.emission_energy_multiplier = 1.05 if _shelter_reached else 0.3
-	if _pulse_circuit_set != null:
-		var dry_race := _pulse_circuit_set.find_child("DryRace", true, false) as MeshInstance3D
-		var living_race := _pulse_circuit_set.find_child("LivingRace", true, false) as MeshInstance3D
-		if dry_race != null and dry_race.material_override is StandardMaterial3D:
-			var dry_material := dry_race.material_override as StandardMaterial3D
-			dry_material.emission_energy_multiplier = 2.15 if bool(_field_effects.get("brace_failed", false)) else (0.18 if bool(_field_effects.get("pulse_resolved", false)) else 0.82)
-		if living_race != null and living_race.material_override is StandardMaterial3D:
-			var living_material := living_race.material_override as StandardMaterial3D
-			living_material.emission_energy_multiplier = 1.65 if bool(_field_effects.get("pulse_resolved", false)) else 0.72

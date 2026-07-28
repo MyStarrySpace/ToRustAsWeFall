@@ -1,0 +1,484 @@
+[gd_scene load_steps=18 format=3]
+
+[sub_resource type="StandardMaterial3D" id="Material_aster"]
+albedo_color = Color(0.12, 0.34, 0.64, 1)
+metallic = 0.08
+roughness = 0.72
+
+[sub_resource type="StandardMaterial3D" id="Material_peris"]
+albedo_color = Color(0.82, 0.43, 0.12, 1)
+metallic = 0.05
+roughness = 0.78
+
+[sub_resource type="StandardMaterial3D" id="Material_endo"]
+albedo_color = Color(0.2, 0.5, 0.36, 1)
+metallic = 0.06
+roughness = 0.74
+
+[sub_resource type="StandardMaterial3D" id="Material_skin"]
+albedo_color = Color(0.68, 0.57, 0.5, 1)
+metallic = 0.0
+roughness = 0.86
+
+[sub_resource type="StandardMaterial3D" id="Material_boundary"]
+albedo_color = Color(0.07, 0.085, 0.08, 1)
+metallic = 0.48
+roughness = 0.61
+
+[sub_resource type="CapsuleMesh" id="Mesh_torso"]
+radius = 0.3
+height = 0.95
+radial_segments = 16
+rings = 4
+
+[sub_resource type="CapsuleMesh" id="Mesh_limb"]
+radius = 0.085
+height = 0.38
+radial_segments = 12
+rings = 3
+
+[sub_resource type="CapsuleMesh" id="Mesh_leg"]
+radius = 0.11
+height = 0.7
+radial_segments = 12
+rings = 3
+
+[sub_resource type="SphereMesh" id="Mesh_head"]
+radius = 0.22
+height = 0.44
+radial_segments = 16
+rings = 8
+
+[sub_resource type="SphereMesh" id="Mesh_hand"]
+radius = 0.09
+height = 0.18
+radial_segments = 12
+rings = 6
+
+[sub_resource type="BoxMesh" id="Mesh_unit_box"]
+size = Vector3(1, 1, 1)
+
+[sub_resource type="Animation" id="Animation_staging_reset"]
+resource_name = "RESET"
+length = 0.0
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("CinematicCamera:position")
+tracks/0/interp = 1
+tracks/0/loop_wrap = false
+tracks/0/keys = {"times": PackedFloat32Array(0), "transitions": PackedFloat32Array(1), "update": 0, "values": [Vector3(0.3, 2.35, 6.4)]}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("CinematicCamera:rotation")
+tracks/1/interp = 1
+tracks/1/loop_wrap = false
+tracks/1/keys = {"times": PackedFloat32Array(0), "transitions": PackedFloat32Array(1), "update": 0, "values": [Vector3(-0.175, 0.02, 0)]}
+tracks/2/type = "value"
+tracks/2/imported = false
+tracks/2/enabled = true
+tracks/2/path = NodePath("CinematicCamera:fov")
+tracks/2/interp = 1
+tracks/2/loop_wrap = false
+tracks/2/keys = {"times": PackedFloat32Array(0), "transitions": PackedFloat32Array(1), "update": 0, "values": [54.0]}
+
+[sub_resource type="Animation" id="Animation_shelter_2_staging"]
+resource_name = "shelter_2_staging"
+length = 16.0
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("CinematicCamera:position")
+tracks/0/interp = 2
+tracks/0/loop_wrap = false
+tracks/0/keys = {"times": PackedFloat32Array(0, 1.5, 3.5, 6.5, 8.5, 10, 13.5, 16), "transitions": PackedFloat32Array(1, 0.8, 0.85, 0.75, 0.8, 1, 0.7, 1), "update": 0, "values": [Vector3(0.3, 2.35, 6.4), Vector3(0.3, 2.35, 6.4), Vector3(0.2, 1.95, 4.55), Vector3(0.1, 1.85, 4.2), Vector3(0.05, 1.82, 3.78), Vector3(0.02, 1.8, 3.65), Vector3(0.02, 1.8, 3.65), Vector3(0.2, 2.15, 5.3)]}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("CinematicCamera:rotation")
+tracks/1/interp = 2
+tracks/1/loop_wrap = false
+tracks/1/keys = {"times": PackedFloat32Array(0, 1.5, 3.5, 6.5, 8.5, 10, 13.5, 16), "transitions": PackedFloat32Array(1, 0.8, 0.85, 0.75, 0.8, 1, 0.7, 1), "update": 0, "values": [Vector3(-0.175, 0.02, 0), Vector3(-0.175, 0.02, 0), Vector3(-0.165, 0.015, 0), Vector3(-0.155, 0.01, 0), Vector3(-0.148, 0.006, 0), Vector3(-0.145, 0.004, 0), Vector3(-0.145, 0.004, 0), Vector3(-0.165, 0.014, 0)]}
+tracks/2/type = "value"
+tracks/2/imported = false
+tracks/2/enabled = true
+tracks/2/path = NodePath("CinematicCamera:fov")
+tracks/2/interp = 2
+tracks/2/loop_wrap = false
+tracks/2/keys = {"times": PackedFloat32Array(0, 1.5, 3.5, 8.5, 13.5, 16), "transitions": PackedFloat32Array(1, 0.8, 0.85, 0.8, 0.75, 1), "update": 0, "values": [54.0, 54.0, 47.0, 44.5, 44.5, 51.0]}
+
+[sub_resource type="AnimationLibrary" id="AnimationLibrary_staging"]
+_data = {&"RESET": SubResource("Animation_staging_reset"), &"shelter_2_staging": SubResource("Animation_shelter_2_staging")}
+
+[sub_resource type="Animation" id="Animation_stim_reset"]
+resource_name = "RESET"
+length = 0.0
+tracks/0/type = "value"
+tracks/0/path = NodePath("Presenters/AsterPresenter/BodyRoot:position")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {"times": PackedFloat32Array(0), "transitions": PackedFloat32Array(1), "update": 0, "values": [Vector3(0, 1.05, 0)]}
+tracks/1/type = "value"
+tracks/1/path = NodePath("Presenters/AsterPresenter/BodyRoot:rotation")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = {"times": PackedFloat32Array(0), "transitions": PackedFloat32Array(1), "update": 0, "values": [Vector3(0, 0, 0)]}
+tracks/2/type = "value"
+tracks/2/path = NodePath("Presenters/AsterPresenter/BodyRoot/Head:rotation")
+tracks/2/interp = 1
+tracks/2/loop_wrap = true
+tracks/2/keys = {"times": PackedFloat32Array(0), "transitions": PackedFloat32Array(1), "update": 0, "values": [Vector3(0.025, 0, 0)]}
+tracks/3/type = "value"
+tracks/3/path = NodePath("Presenters/AsterPresenter/BodyRoot/LeftUpperArmPivot:rotation")
+tracks/3/interp = 1
+tracks/3/loop_wrap = true
+tracks/3/keys = {"times": PackedFloat32Array(0), "transitions": PackedFloat32Array(1), "update": 0, "values": [Vector3(0.04, 0.02, 0.2)]}
+tracks/4/type = "value"
+tracks/4/path = NodePath("Presenters/AsterPresenter/BodyRoot/LeftUpperArmPivot/LeftForearmPivot:rotation")
+tracks/4/interp = 1
+tracks/4/loop_wrap = true
+tracks/4/keys = {"times": PackedFloat32Array(0), "transitions": PackedFloat32Array(1), "update": 0, "values": [Vector3(-0.08, 0.02, 2.24)]}
+tracks/5/type = "value"
+tracks/5/path = NodePath("Presenters/AsterPresenter/BodyRoot/LeftUpperArmPivot/LeftForearmPivot/LeftHand:rotation")
+tracks/5/interp = 1
+tracks/5/loop_wrap = true
+tracks/5/keys = {"times": PackedFloat32Array(0), "transitions": PackedFloat32Array(1), "update": 0, "values": [Vector3(0.08, -0.18, 0.05)]}
+tracks/6/type = "value"
+tracks/6/path = NodePath("Presenters/AsterPresenter/BodyRoot/RightUpperArmPivot:rotation")
+tracks/6/interp = 1
+tracks/6/loop_wrap = true
+tracks/6/keys = {"times": PackedFloat32Array(0), "transitions": PackedFloat32Array(1), "update": 0, "values": [Vector3(-0.03, -0.02, -0.2)]}
+tracks/7/type = "value"
+tracks/7/path = NodePath("Presenters/AsterPresenter/BodyRoot/RightUpperArmPivot/RightForearmPivot:rotation")
+tracks/7/interp = 1
+tracks/7/loop_wrap = true
+tracks/7/keys = {"times": PackedFloat32Array(0), "transitions": PackedFloat32Array(1), "update": 0, "values": [Vector3(0.08, -0.02, -2.42)]}
+tracks/8/type = "value"
+tracks/8/path = NodePath("Presenters/AsterPresenter/BodyRoot/RightUpperArmPivot/RightForearmPivot/RightHand:rotation")
+tracks/8/interp = 1
+tracks/8/loop_wrap = true
+tracks/8/keys = {"times": PackedFloat32Array(0), "transitions": PackedFloat32Array(1), "update": 0, "values": [Vector3(-0.05, 0.16, -0.04)]}
+
+[sub_resource type="Animation" id="Animation_aster_stim_loop"]
+resource_name = "aster_stim_loop"
+length = 2.8
+loop_mode = 1
+tracks/0/type = "value"
+tracks/0/path = NodePath("Presenters/AsterPresenter/BodyRoot:position")
+tracks/0/interp = 2
+tracks/0/loop_wrap = true
+tracks/0/keys = {"times": PackedFloat32Array(0, 0.7, 1.4, 2.1, 2.8), "transitions": PackedFloat32Array(1, 1, 1, 1, 1), "update": 0, "values": [Vector3(0, 1.05, 0), Vector3(0.006, 1.062, 0.004), Vector3(-0.004, 1.046, -0.002), Vector3(0.003, 1.06, 0.003), Vector3(0, 1.05, 0)]}
+tracks/1/type = "value"
+tracks/1/path = NodePath("Presenters/AsterPresenter/BodyRoot:rotation")
+tracks/1/interp = 2
+tracks/1/loop_wrap = true
+tracks/1/keys = {"times": PackedFloat32Array(0, 0.7, 1.4, 2.1, 2.8), "transitions": PackedFloat32Array(1, 1, 1, 1, 1), "update": 0, "values": [Vector3(0, 0, 0), Vector3(0.008, -0.006, 0.014), Vector3(-0.006, 0.004, -0.01), Vector3(0.01, -0.004, 0.012), Vector3(0, 0, 0)]}
+tracks/2/type = "value"
+tracks/2/path = NodePath("Presenters/AsterPresenter/BodyRoot/Head:rotation")
+tracks/2/interp = 2
+tracks/2/loop_wrap = true
+tracks/2/keys = {"times": PackedFloat32Array(0, 0.7, 1.4, 2.1, 2.8), "transitions": PackedFloat32Array(1, 1, 1, 1, 1), "update": 0, "values": [Vector3(0.025, 0, 0), Vector3(0.045, -0.012, -0.008), Vector3(0.018, 0.01, 0.006), Vector3(0.042, -0.01, -0.006), Vector3(0.025, 0, 0)]}
+tracks/3/type = "value"
+tracks/3/path = NodePath("Presenters/AsterPresenter/BodyRoot/LeftUpperArmPivot:rotation")
+tracks/3/interp = 2
+tracks/3/loop_wrap = true
+tracks/3/keys = {"times": PackedFloat32Array(0, 0.7, 1.4, 2.1, 2.8), "transitions": PackedFloat32Array(1, 1, 1, 1, 1), "update": 0, "values": [Vector3(0.04, 0.02, 0.2), Vector3(0.07, -0.03, 0.25), Vector3(0.02, 0.04, 0.17), Vector3(0.065, -0.025, 0.23), Vector3(0.04, 0.02, 0.2)]}
+tracks/4/type = "value"
+tracks/4/path = NodePath("Presenters/AsterPresenter/BodyRoot/LeftUpperArmPivot/LeftForearmPivot:rotation")
+tracks/4/interp = 2
+tracks/4/loop_wrap = true
+tracks/4/keys = {"times": PackedFloat32Array(0, 0.7, 1.4, 2.1, 2.8), "transitions": PackedFloat32Array(1, 1, 1, 1, 1), "update": 0, "values": [Vector3(-0.08, 0.02, 2.24), Vector3(-0.02, -0.06, 2.46), Vector3(-0.12, 0.05, 2.18), Vector3(-0.04, -0.04, 2.4), Vector3(-0.08, 0.02, 2.24)]}
+tracks/5/type = "value"
+tracks/5/path = NodePath("Presenters/AsterPresenter/BodyRoot/LeftUpperArmPivot/LeftForearmPivot/LeftHand:rotation")
+tracks/5/interp = 2
+tracks/5/loop_wrap = true
+tracks/5/keys = {"times": PackedFloat32Array(0, 0.7, 1.4, 2.1, 2.8), "transitions": PackedFloat32Array(1, 1, 1, 1, 1), "update": 0, "values": [Vector3(0.08, -0.18, 0.05), Vector3(-0.06, 0.22, -0.08), Vector3(0.1, -0.24, 0.07), Vector3(-0.04, 0.2, -0.05), Vector3(0.08, -0.18, 0.05)]}
+tracks/6/type = "value"
+tracks/6/path = NodePath("Presenters/AsterPresenter/BodyRoot/RightUpperArmPivot:rotation")
+tracks/6/interp = 2
+tracks/6/loop_wrap = true
+tracks/6/keys = {"times": PackedFloat32Array(0, 0.7, 1.4, 2.1, 2.8), "transitions": PackedFloat32Array(1, 1, 1, 1, 1), "update": 0, "values": [Vector3(-0.03, -0.02, -0.2), Vector3(-0.065, 0.03, -0.23), Vector3(-0.02, -0.04, -0.17), Vector3(-0.07, 0.025, -0.25), Vector3(-0.03, -0.02, -0.2)]}
+tracks/7/type = "value"
+tracks/7/path = NodePath("Presenters/AsterPresenter/BodyRoot/RightUpperArmPivot/RightForearmPivot:rotation")
+tracks/7/interp = 2
+tracks/7/loop_wrap = true
+tracks/7/keys = {"times": PackedFloat32Array(0, 0.7, 1.4, 2.1, 2.8), "transitions": PackedFloat32Array(1, 1, 1, 1, 1), "update": 0, "values": [Vector3(0.08, -0.02, -2.42), Vector3(0.13, -0.05, -2.18), Vector3(0.03, 0.06, -2.48), Vector3(0.11, -0.04, -2.24), Vector3(0.08, -0.02, -2.42)]}
+tracks/8/type = "value"
+tracks/8/path = NodePath("Presenters/AsterPresenter/BodyRoot/RightUpperArmPivot/RightForearmPivot/RightHand:rotation")
+tracks/8/interp = 2
+tracks/8/loop_wrap = true
+tracks/8/keys = {"times": PackedFloat32Array(0, 0.7, 1.4, 2.1, 2.8), "transitions": PackedFloat32Array(1, 1, 1, 1, 1), "update": 0, "values": [Vector3(-0.05, 0.16, -0.04), Vector3(0.08, -0.22, 0.07), Vector3(-0.1, 0.24, -0.08), Vector3(0.06, -0.19, 0.05), Vector3(-0.05, 0.16, -0.04)]}
+
+[sub_resource type="AnimationLibrary" id="AnimationLibrary_stim"]
+_data = {&"RESET": SubResource("Animation_stim_reset"), &"aster_stim_loop": SubResource("Animation_aster_stim_loop")}
+
+[node name="Shelter2AsterStimCutscene" type="Node3D"]
+metadata/presentation_only = true
+metadata/asset_status = "TEMPORARY_BLOCKOUT_PRESENTERS"
+metadata/asset_replacement_note = "Replace primitive presenters with portable, rigged cast assets; never bind these nodes as gameplay character roots."
+metadata/placement_contract = "Root origin is Aster's feet; local -Z points into the shelter and local +Z points toward the approach."
+metadata/sequence_duration_seconds = 16.0
+metadata/staging_animation_name = "shelter_2_staging"
+metadata/staging_animation_length_seconds = 16.0
+metadata/stim_animation_name = "aster_stim_loop"
+metadata/stim_animation_loop_seconds = 2.8
+metadata/stim_motion_begins_seconds = 0.0
+metadata/dialogue_safe_start_seconds = 2.0
+metadata/threshold_cross_seconds = 7.4
+metadata/legibility_hold_seconds = 10.0
+metadata/staging_final_hold_begins_seconds = 13.5
+metadata/stim_stop_contract = "Host stops the loop only after both staging and dialogue are complete."
+
+[node name="MaintainedBoundary" type="Node3D" parent="."]
+position = Vector3(0, 0, 4.1)
+metadata/presentation_only = true
+metadata/meaning = "Temporary frame that keeps the maintained shelter boundary visible during the camera crossing."
+
+[node name="LeftPost" type="MeshInstance3D" parent="MaintainedBoundary"]
+position = Vector3(-2.15, 1.25, 0)
+scale = Vector3(0.18, 2.5, 0.18)
+mesh = SubResource("Mesh_unit_box")
+material_override = SubResource("Material_boundary")
+
+[node name="RightPost" type="MeshInstance3D" parent="MaintainedBoundary"]
+position = Vector3(2.15, 1.25, 0)
+scale = Vector3(0.18, 2.5, 0.18)
+mesh = SubResource("Mesh_unit_box")
+material_override = SubResource("Material_boundary")
+
+[node name="Lintel" type="MeshInstance3D" parent="MaintainedBoundary"]
+position = Vector3(0, 2.5, 0)
+scale = Vector3(4.48, 0.18, 0.18)
+mesh = SubResource("Mesh_unit_box")
+material_override = SubResource("Material_boundary")
+
+[node name="Presenters" type="Node3D" parent="."]
+metadata/presentation_only = true
+
+[node name="AsterPresenter" type="Node3D" parent="Presenters"]
+metadata/identity = "aster"
+metadata/temporary_blockout = true
+metadata/performance_note = "Quiet, close-to-body repetitive regulation; ordinary behavior, not distress, medication, or a status effect."
+
+[node name="BodyRoot" type="Node3D" parent="Presenters/AsterPresenter"]
+position = Vector3(0, 1.05, 0)
+
+[node name="Torso" type="MeshInstance3D" parent="Presenters/AsterPresenter/BodyRoot"]
+mesh = SubResource("Mesh_torso")
+material_override = SubResource("Material_aster")
+
+[node name="Head" type="MeshInstance3D" parent="Presenters/AsterPresenter/BodyRoot"]
+position = Vector3(0, 0.65, 0)
+rotation = Vector3(0.025, 0, 0)
+mesh = SubResource("Mesh_head")
+material_override = SubResource("Material_skin")
+
+[node name="FaceDirection" type="MeshInstance3D" parent="Presenters/AsterPresenter/BodyRoot/Head"]
+position = Vector3(0, -0.015, 0.205)
+scale = Vector3(0.055, 0.035, 0.065)
+mesh = SubResource("Mesh_unit_box")
+material_override = SubResource("Material_skin")
+
+[node name="LeftLeg" type="MeshInstance3D" parent="Presenters/AsterPresenter/BodyRoot"]
+position = Vector3(-0.14, -0.68, 0)
+mesh = SubResource("Mesh_leg")
+material_override = SubResource("Material_aster")
+
+[node name="RightLeg" type="MeshInstance3D" parent="Presenters/AsterPresenter/BodyRoot"]
+position = Vector3(0.14, -0.68, 0)
+mesh = SubResource("Mesh_leg")
+material_override = SubResource("Material_aster")
+
+[node name="LeftUpperArmPivot" type="Node3D" parent="Presenters/AsterPresenter/BodyRoot"]
+position = Vector3(-0.32, 0.32, 0.26)
+rotation = Vector3(0.04, 0.02, 0.2)
+
+[node name="UpperArm" type="MeshInstance3D" parent="Presenters/AsterPresenter/BodyRoot/LeftUpperArmPivot"]
+position = Vector3(0, -0.17, 0)
+mesh = SubResource("Mesh_limb")
+material_override = SubResource("Material_aster")
+
+[node name="LeftForearmPivot" type="Node3D" parent="Presenters/AsterPresenter/BodyRoot/LeftUpperArmPivot"]
+position = Vector3(0, -0.34, 0)
+rotation = Vector3(-0.08, 0.02, 2.24)
+
+[node name="Forearm" type="MeshInstance3D" parent="Presenters/AsterPresenter/BodyRoot/LeftUpperArmPivot/LeftForearmPivot"]
+position = Vector3(0, -0.15, 0)
+mesh = SubResource("Mesh_limb")
+material_override = SubResource("Material_aster")
+
+[node name="LeftHand" type="MeshInstance3D" parent="Presenters/AsterPresenter/BodyRoot/LeftUpperArmPivot/LeftForearmPivot"]
+position = Vector3(0, -0.32, 0)
+rotation = Vector3(0.08, -0.18, 0.05)
+mesh = SubResource("Mesh_hand")
+material_override = SubResource("Material_skin")
+
+[node name="RightUpperArmPivot" type="Node3D" parent="Presenters/AsterPresenter/BodyRoot"]
+position = Vector3(0.32, 0.32, 0.26)
+rotation = Vector3(-0.03, -0.02, -0.2)
+
+[node name="UpperArm" type="MeshInstance3D" parent="Presenters/AsterPresenter/BodyRoot/RightUpperArmPivot"]
+position = Vector3(0, -0.17, 0)
+mesh = SubResource("Mesh_limb")
+material_override = SubResource("Material_aster")
+
+[node name="RightForearmPivot" type="Node3D" parent="Presenters/AsterPresenter/BodyRoot/RightUpperArmPivot"]
+position = Vector3(0, -0.34, 0)
+rotation = Vector3(0.08, -0.02, -2.42)
+
+[node name="Forearm" type="MeshInstance3D" parent="Presenters/AsterPresenter/BodyRoot/RightUpperArmPivot/RightForearmPivot"]
+position = Vector3(0, -0.15, 0)
+mesh = SubResource("Mesh_limb")
+material_override = SubResource("Material_aster")
+
+[node name="RightHand" type="MeshInstance3D" parent="Presenters/AsterPresenter/BodyRoot/RightUpperArmPivot/RightForearmPivot"]
+position = Vector3(0, -0.32, 0)
+rotation = Vector3(-0.05, 0.16, -0.04)
+mesh = SubResource("Mesh_hand")
+material_override = SubResource("Material_skin")
+
+[node name="PerisPresenter" type="Node3D" parent="Presenters"]
+position = Vector3(1.45, 0, -0.55)
+rotation = Vector3(0, -0.28, 0)
+scale = Vector3(0.96, 0.96, 0.96)
+metadata/identity = "peris"
+metadata/temporary_blockout = true
+metadata/performance_note = "Static attentive presence; no invented caretaker or translator action."
+
+[node name="BodyRoot" type="Node3D" parent="Presenters/PerisPresenter"]
+position = Vector3(0, 1.02, 0)
+
+[node name="Torso" type="MeshInstance3D" parent="Presenters/PerisPresenter/BodyRoot"]
+mesh = SubResource("Mesh_torso")
+material_override = SubResource("Material_peris")
+
+[node name="Head" type="MeshInstance3D" parent="Presenters/PerisPresenter/BodyRoot"]
+position = Vector3(0, 0.65, 0)
+mesh = SubResource("Mesh_head")
+material_override = SubResource("Material_skin")
+
+[node name="FaceDirection" type="MeshInstance3D" parent="Presenters/PerisPresenter/BodyRoot/Head"]
+position = Vector3(0, -0.015, 0.205)
+scale = Vector3(0.055, 0.035, 0.065)
+mesh = SubResource("Mesh_unit_box")
+material_override = SubResource("Material_skin")
+
+[node name="LeftLeg" type="MeshInstance3D" parent="Presenters/PerisPresenter/BodyRoot"]
+position = Vector3(-0.14, -0.68, 0)
+mesh = SubResource("Mesh_leg")
+material_override = SubResource("Material_peris")
+
+[node name="RightLeg" type="MeshInstance3D" parent="Presenters/PerisPresenter/BodyRoot"]
+position = Vector3(0.14, -0.68, 0)
+mesh = SubResource("Mesh_leg")
+material_override = SubResource("Material_peris")
+
+[node name="LeftArm" type="MeshInstance3D" parent="Presenters/PerisPresenter/BodyRoot"]
+position = Vector3(-0.34, -0.02, 0)
+scale = Vector3(1, 1.4, 1)
+mesh = SubResource("Mesh_limb")
+material_override = SubResource("Material_peris")
+
+[node name="RightArm" type="MeshInstance3D" parent="Presenters/PerisPresenter/BodyRoot"]
+position = Vector3(0.34, -0.02, 0)
+scale = Vector3(1, 1.4, 1)
+mesh = SubResource("Mesh_limb")
+material_override = SubResource("Material_peris")
+
+[node name="EndoPresenter" type="Node3D" parent="Presenters"]
+position = Vector3(-1.55, 0, -0.65)
+rotation = Vector3(0, 0.34, 0)
+scale = Vector3(1.04, 1.04, 1.04)
+metadata/identity = "endo"
+metadata/temporary_blockout = true
+metadata/performance_note = "Static witness inside the maintained shelter boundary."
+
+[node name="BodyRoot" type="Node3D" parent="Presenters/EndoPresenter"]
+position = Vector3(0, 1.06, 0)
+
+[node name="Torso" type="MeshInstance3D" parent="Presenters/EndoPresenter/BodyRoot"]
+mesh = SubResource("Mesh_torso")
+material_override = SubResource("Material_endo")
+
+[node name="Head" type="MeshInstance3D" parent="Presenters/EndoPresenter/BodyRoot"]
+position = Vector3(0, 0.65, 0)
+mesh = SubResource("Mesh_head")
+material_override = SubResource("Material_skin")
+
+[node name="FaceDirection" type="MeshInstance3D" parent="Presenters/EndoPresenter/BodyRoot/Head"]
+position = Vector3(0, -0.015, 0.205)
+scale = Vector3(0.055, 0.035, 0.065)
+mesh = SubResource("Mesh_unit_box")
+material_override = SubResource("Material_skin")
+
+[node name="LeftLeg" type="MeshInstance3D" parent="Presenters/EndoPresenter/BodyRoot"]
+position = Vector3(-0.14, -0.68, 0)
+mesh = SubResource("Mesh_leg")
+material_override = SubResource("Material_endo")
+
+[node name="RightLeg" type="MeshInstance3D" parent="Presenters/EndoPresenter/BodyRoot"]
+position = Vector3(0.14, -0.68, 0)
+mesh = SubResource("Mesh_leg")
+material_override = SubResource("Material_endo")
+
+[node name="LeftArm" type="MeshInstance3D" parent="Presenters/EndoPresenter/BodyRoot"]
+position = Vector3(-0.34, -0.02, 0)
+scale = Vector3(1, 1.4, 1)
+mesh = SubResource("Mesh_limb")
+material_override = SubResource("Material_endo")
+
+[node name="RightArm" type="MeshInstance3D" parent="Presenters/EndoPresenter/BodyRoot"]
+position = Vector3(0.34, -0.02, 0)
+scale = Vector3(1, 1.4, 1)
+mesh = SubResource("Mesh_limb")
+material_override = SubResource("Material_endo")
+
+[node name="ShelterLight" type="OmniLight3D" parent="."]
+position = Vector3(0, 2.65, 0.9)
+light_color = Color(1, 0.69, 0.4, 1)
+light_energy = 2.25
+shadow_enabled = true
+omni_range = 7.5
+omni_attenuation = 1.25
+metadata/presentation_note = "Stable warm practical; intentionally not animated or pulsed by dialogue."
+
+[node name="CinematicCamera" type="Camera3D" parent="."]
+position = Vector3(0.3, 2.35, 6.4)
+rotation = Vector3(-0.175, 0.02, 0)
+current = false
+fov = 54.0
+near = 0.08
+far = 48.0
+metadata/presentation_only = true
+metadata/ownership_note = "Host makes this current only while the authoritative cutscene phase is playing."
+
+[node name="StagingAnimationPlayer" type="AnimationPlayer" parent="."]
+root_node = NodePath("..")
+libraries = {
+&"": SubResource("AnimationLibrary_staging")
+}
+metadata/clock_note = "Host samples this finite property-only camera clip from authoritative scheduler time."
+
+[node name="StimAnimationPlayer" type="AnimationPlayer" parent="."]
+root_node = NodePath("..")
+libraries = {
+&"": SubResource("AnimationLibrary_stim")
+}
+metadata/clock_note = "Host samples this property-only loop modulo 2.8 seconds until both dialogue and staging lanes complete."
+
+[node name="Anchors" type="Node3D" parent="."]
+
+[node name="PlacementOrigin" type="Marker3D" parent="Anchors"]
+
+[node name="ShelterInteriorDirection" type="Marker3D" parent="Anchors"]
+position = Vector3(0, 0, -1)
+
+[node name="ApproachDirection" type="Marker3D" parent="Anchors"]
+position = Vector3(0, 0, 1)
+
+[node name="AsterFocus" type="Marker3D" parent="Anchors"]
+position = Vector3(0, 1.2, 0)
+
+[node name="BoundaryPlane" type="Marker3D" parent="Anchors"]
+position = Vector3(0, 1.2, 4.1)

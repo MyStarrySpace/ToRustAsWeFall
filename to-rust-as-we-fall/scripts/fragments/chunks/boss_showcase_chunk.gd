@@ -12,6 +12,7 @@ extends "res://scripts/fragments/chunks/data_fragment_chunk.gd"
 
 const Paranucleus := preload("res://scripts/generation/paranucleus_builder.gd")
 const BaseShape := preload("res://scripts/generation/base_shape_builder.gd")
+const HazardFieldScript := preload("res://scripts/game/objects/hazard_field.gd")
 
 const TOWER_X := -17.0
 const PARA_X := 13.0
@@ -28,10 +29,45 @@ const SPIKER_ARC := 0.30          # rad — the Spiker lane's half-width around 
 const SPIKER_DMG := 4.0           # hp/s while its lane bears on an exposed corridor-stander
 const CLIMB_SPEED := 0.95         # the switchback climb pace (the crawl-tunnel pattern)
 const SCRAMBLE_SECS := 18.0       # how long the winch leaves the trail head a scree scramble
+const SCREE_SWEEP_DURATION := 0.85 # visible forced travel off the apron; never an endpoint snap
+const PRIZE_POS := Vector3(PARA_X, 0.0, -8.8)
+const PRIZE_ITEM_TYPE := "sealed_reservoir_dose"
+const PRIZE_PHASE_AVAILABLE := "available"
+const PRIZE_PHASE_CLAIMING := "claiming"
+const PRIZE_PHASE_CLAIMED := "claimed"
+const PRIZE_INTERACTION_POSITION_TOLERANCE := 0.15
+const BOSS_INTERACTION_POSITION_TOLERANCE := 0.15
+const WINCH_IMPACT_DAMAGE := 2.0
+const WINCH_BATCH_IDLE := "idle"
+const WINCH_BATCH_RESERVED := "reserved"
+const WINCH_BATCH_SWEEPING := "sweeping"
+const WINCH_BATCH_COMPLETE := "complete"
+const BRAKE_TRANSACTION_IDLE := "idle"
+const BRAKE_TRANSACTION_RESERVED := "reserved"
+const BRAKE_TRANSACTION_COMMITTED := "committed"
+const POSITION_RECEIPT_TOLERANCE := 0.05
+
+# The loader/base fragment owns its own cadence record. This second, seed-keyed record owns only
+# the boss mechanisms added by this subclass: brake, scree span, objectives, and Spiker poll epoch.
+const BOSS_AUTHORITY_VERSION := 3
+const BOSS_AUTHORITY_PREFIX := "runtime:boss_showcase:"
 
 var _seed := 0
 var _finale := false             # roguelite FINALE: the prize waits beyond the crossing
-var _prize_retrieved := false
+var _prize_phase := PRIZE_PHASE_AVAILABLE
+var _prize_item_id := ""
+var _prize_claimed_by := ""
+var _prize_claim_serial := 0
+var _prize_interactable: Interactable
+var _survey_interactable: Interactable
+var _winch_interactable: Interactable
+var _survey_trigger_consumed := 0
+var _survey_actor := ""
+var _winch_trigger_consumed := 0
+var _winch_batch_serial := 0
+var _winch_batch: Dictionary = {}
+var _brake_trigger_consumed := 0
+var _brake_transaction: Dictionary = {}
 var _wheels: Array = []   # [{node, spin, base(Basis), gaps, bottom}] — the ophanim pivots
 var _para_center := Vector3.ZERO   # the shared wheel center (world) — the orbit pivot
 var _orbit_on := false
@@ -39,15 +75,23 @@ var _ring0_parked := INF          # the braked ring's held phase (INF = turning)
 var _ring_offsets: Array = []     # per-ring phase offsets (phase stays continuous across release)
 var _render_phases: Array = []    # cosmetic eased copies of the tick-pure phases
 var _align_mouths: Array = []     # the two crossing mouths (CrawlTunnels)
-var _brake_ia: Area3D
+var _brake_ia: Interactable
 var _causeway: MeshInstance3D
 var _causeway_mat: StandardMaterial3D
 var _align_poll_started := false
+var _align_poll_epoch := -1.0
+var _align_next_tick := -1.0
 var _spiker_angle := 0.0          # the Spiker's rooted angle on ring 0 (pre-spin frame)
 var _spiker_branch_mat: StandardMaterial3D
+var _spiker_field
 var _climb_tunnels: Array = []    # the switchback climb legs (CrawlTunnels, up + down)
 var _flight_scramble := false     # the winch's after-state: the trail head is loose scree
+var _scramble_deadline := -1.0
 var _watch_vantage_reached := false
+var _boss_authority_initialized := false
+var _restoring_boss_authority := false
+var _boss_signal_game_state = null
+var _winch_batch_resume_armed := false
 
 func configure_chunk(config: Dictionary) -> void:
 	if config.has("seed"):
@@ -67,31 +111,218 @@ func _build_chunk() -> void:
 	fragment = _boss_fragment()
 	super._build_chunk()
 	_wheels.clear()
+	_ring_offsets.clear()
+	_render_phases.clear()
+	_align_mouths.clear()
 	_climb_tunnels.clear()
-	_prize_retrieved = false
+	_prize_phase = PRIZE_PHASE_AVAILABLE
+	_prize_item_id = ""
+	_prize_claimed_by = ""
+	_prize_claim_serial = 0
+	_prize_interactable = null
+	_survey_interactable = null
+	_winch_interactable = null
+	_survey_trigger_consumed = 0
+	_survey_actor = ""
+	_winch_trigger_consumed = 0
+	_winch_batch_serial = 0
+	_winch_batch.clear()
+	_brake_trigger_consumed = 0
+	_brake_transaction.clear()
 	_watch_vantage_reached = false
 	_flight_scramble = false
+	_scramble_deadline = -1.0
+	_ring0_parked = INF
+	_align_poll_started = false
+	_align_poll_epoch = -1.0
+	_align_next_tick = -1.0
+	_boss_authority_initialized = false
 	_build_watchtower_staging()
 	_build_paranucleus()
 	_build_finale_prize()
+	_bind_boss_external_traversal_signals()
 
 ## The reservoir cache beyond the far mouth — the piece's OBJECTIVE, so the mechanism is playable
 ## in every mode: hold the front vantage, park the wheel, wait the window, thread the crossing,
 ## take what's cached. In the roguelite finale taking it completes the run (the last sealed dose);
 ## in the showcase it's the same beat with a sample verb.
 func _build_finale_prize() -> void:
-	var prize_pos := Vector3(PARA_X, 0, -8.8)
-	var prize := _add_interactable(self, "FinalePrize", "The last sealed dose from the reservoirs",
-		prize_pos, "TAKE THE DOSE" if _finale else "TAKE THE SAMPLE", "", 0.8, true, 1.6,
+	_prize_interactable = _add_interactable(self, "FinalePrize", "The last sealed dose from the reservoirs",
+		PRIZE_POS, "TAKE THE DOSE" if _finale else "TAKE THE SAMPLE", "", 0.8, true, 1.6,
 		Interactable.InteractableType.INSPECTION, false)
-	prize.interacted.connect(func() -> void: _prize_retrieved = true)
-	var vial := _add_box(prize, Vector3(0, 0.55, 0), Vector3(0.16, 0.3, 0.16),
+	_prize_interactable.set_pre_trigger_validator(_validate_prize_trigger)
+	_prize_interactable.interacted.connect(
+		_on_prize_retrieved.bind(_prize_interactable))
+	var vial := _add_box(_prize_interactable, Vector3(0, 0.55, 0), Vector3(0.16, 0.3, 0.16),
 		Color(0.55, 0.42, 0.72), Color(0.80, 0.55, 1.0), 1.8)
-	_add_box(prize, Vector3(0, 0.18, 0), Vector3(0.32, 0.18, 0.32), Color(0.48, 0.50, 0.52))
-	_outline_interactable_child(prize, vial, "FinalePrize", 1.6)
-	_add_boss_label(self, "THE RESERVOIR CACHE", prize_pos + Vector3(0, 1.6, 0), Color(0.82, 0.70, 0.95), 34)
+	_add_box(_prize_interactable, Vector3(0, 0.18, 0), Vector3(0.32, 0.18, 0.32), Color(0.48, 0.50, 0.52))
+	_outline_interactable_child(_prize_interactable, vial, "FinalePrize", 1.6)
+	_add_boss_label(self, "THE RESERVOIR CACHE", PRIZE_POS + Vector3(0, 1.6, 0), Color(0.82, 0.70, 0.95), 34)
+	_apply_prize_presenter()
+
+## The cache owns a real GameState item from construction onward. Claiming first reserves the exact
+## item and actor in portable authority; only GameState's distance/hand-slot-checked pickup can turn
+## that reservation into the solved objective.
+func _validate_prize_trigger(source: Node, actor: String) -> bool:
+	_initialize_or_restore_boss_authority()
+	return source != null and source == _prize_interactable \
+		and _prize_phase == PRIZE_PHASE_AVAILABLE and _prize_item_at_source() \
+		and _prize_actor_ready_at_source(source, actor) \
+		and _prize_actor_has_free_hand(actor)
+
+
+func _prize_actor_has_free_hand(actor: String) -> bool:
+	var gs = _get_game_state()
+	return gs != null and gs.has_method("has_free_hand") \
+		and bool(gs.call("has_free_hand", actor))
+
+
+func _prize_actor_ready_at_source(source: Node, actor: String) -> bool:
+	var gs = _get_game_state()
+	if gs == null or source == null or not (source is Node3D) or actor == "" \
+			or not gs.characters.has(actor) or gs.is_downed(actor) \
+			or gs.is_knocked_down(actor) or gs.is_moving(actor) \
+			or gs.is_resting(actor) or gs.is_dodging(actor) \
+			or gs.is_endocytosing(actor) or gs.is_external_traversal_active(actor) \
+			or gs.is_dragging(actor) or gs.is_field_restoring(actor):
+		return false
+	if gs.has_method("is_narratively_available") \
+			and not bool(gs.call("is_narratively_available", actor)):
+		return false
+	var source_pos := (source as Node3D).global_position
+	if gs.coord_map != null and gs.coord_map.has_method("to_data"):
+		source_pos = gs.coord_map.to_data(source_pos)
+	var actor_pos: Vector3 = gs.get_position(actor)
+	return Vector2(actor_pos.x, actor_pos.z).distance_to(
+		Vector2(source_pos.x, source_pos.z)
+	) <= float(source.get("interaction_radius")) + PRIZE_INTERACTION_POSITION_TOLERANCE
+
+
+func _prize_source_receipt_pending(source: Node) -> bool:
+	if source == null or source != _prize_interactable \
+			or not bool(source.get("one_shot")) or not bool(source.get("_used")) \
+			or bool(source.get("interaction_enabled")):
+		return false
+	var actor := str(source.get("active_character"))
+	var gs = _get_game_state()
+	var data_id := str(source.get("data_id"))
+	if gs == null or data_id == "" or not gs.has_interactable(data_id):
+		return false
+	var receipt: Dictionary = gs.get_interactable(data_id)
+	return bool(receipt.get("one_shot", false)) \
+		and bool(receipt.get("triggered", false)) \
+		and not bool(receipt.get("enabled", true)) \
+		and _validate_prize_trigger(source, actor)
+
+
+## Consequence-grade prize collection accepts only the exact one-shot that the servicing body
+## physically reached. The selected portrait is presentation and cannot substitute for that body.
+## Direct compatibility calls have no consumed receipt and are therefore inert.
+func _on_prize_retrieved(source: Node = null) -> bool:
+	_initialize_or_restore_boss_authority()
+	if not _prize_source_receipt_pending(source):
+		return false
+	var actor := str(source.get("active_character"))
+	var gs = _get_game_state()
+	_prize_phase = PRIZE_PHASE_CLAIMING
+	_prize_claimed_by = actor
+	_prize_claim_serial += 1
+	_publish_boss_authority()
+	_apply_prize_presenter()
+	if not _pick_up_item(actor, _prize_item_id):
+		_prize_phase = PRIZE_PHASE_AVAILABLE
+		_prize_claimed_by = ""
+		if source.has_method("reset"):
+			source.reset()
+		_publish_boss_authority()
+		_apply_prize_presenter()
+		return false
+	_prize_phase = PRIZE_PHASE_CLAIMED
+	_publish_boss_authority()
+	_apply_prize_presenter()
+	return true
+
+
+func _spawn_prize_item(properties: Dictionary = {}) -> String:
+	var item_properties := {
+		"display_name": "Last Sealed Dose" if _finale else "Reservoir Sample",
+		"description": "A sealed reservoir vial recovered beyond the Paranucleus crossing.",
+		"hand_slots": 1,
+		"endocytosis_allowed": false,
+		"source_boss_prize": boss_authority_key(),
+		"boss_seed": _seed,
+		"boss_finale": _finale,
+	}
+	item_properties.merge(properties, true)
+	return _spawn_item(PRIZE_ITEM_TYPE, PRIZE_POS, item_properties)
+
+
+func _is_boss_prize_item(item_id: String) -> bool:
+	var item := _get_item_state(item_id)
+	if item.is_empty() or str(item.get("type", "")) != PRIZE_ITEM_TYPE:
+		return false
+	var properties: Dictionary = item.get("properties", {})
+	return str(properties.get("source_boss_prize", "")) == boss_authority_key()
+
+
+func _find_boss_prize_item_id() -> String:
+	var gs = _get_game_state()
+	if gs == null or not "items" in gs:
+		return ""
+	var candidates: Array[String] = []
+	for item_id_v in gs.items.keys():
+		var item_id := str(item_id_v)
+		if _is_boss_prize_item(item_id):
+			candidates.append(item_id)
+	candidates.sort()
+	return candidates[0] if not candidates.is_empty() else ""
+
+
+func _remove_boss_prize_items() -> void:
+	var gs = _get_game_state()
+	if gs == null or not "items" in gs:
+		return
+	var remove_ids: Array[String] = []
+	for item_id_v in gs.items.keys():
+		var item_id := str(item_id_v)
+		if _is_boss_prize_item(item_id):
+			remove_ids.append(item_id)
+	for item_id in remove_ids:
+		_remove_item(item_id)
+
+
+func _reset_prize_to_available() -> void:
+	_remove_boss_prize_items()
+	_prize_phase = PRIZE_PHASE_AVAILABLE
+	_prize_claimed_by = ""
+	_prize_claim_serial = 0
+	_prize_item_id = _spawn_prize_item()
+	_apply_prize_presenter()
+
+
+func _prize_item_at_source() -> bool:
+	if not _is_boss_prize_item(_prize_item_id):
+		return false
+	var item := _get_item_state(_prize_item_id)
+	return str(item.get("location", "")) == "ground" \
+		and (item.get("position", PRIZE_POS) as Vector3).distance_to(PRIZE_POS) <= 0.05
+
+
+func _prize_item_holder() -> String:
+	var item := _get_item_state(_prize_item_id)
+	return str(item.get("holder", "")) if not item.is_empty() else ""
+
+
+func _apply_prize_presenter() -> void:
+	if not is_instance_valid(_prize_interactable):
+		return
+	var available := _prize_phase == PRIZE_PHASE_AVAILABLE and _prize_item_at_source()
+	_prize_interactable.visible = available
+	_prize_interactable.set_interaction_enabled(available)
 
 func _process(delta: float) -> void:
+	super._process(delta)
+	_initialize_or_restore_boss_authority()
 	# The wheels render from the TICK-PURE phase (never per-frame accumulation): the data layer
 	# owns ring_phase(i, tick) — fast-forward invariant, replay-identical — and the render merely
 	# EASES toward it (imperceptible while turning; smooths the brake's detent snap).
@@ -106,6 +337,11 @@ func _process(delta: float) -> void:
 	_ensure_align_poll()
 	_update_causeway_visual(t)
 	_update_paranucleus_register()
+
+func headless_process(delta: float) -> void:
+	super.headless_process(delta)
+	_initialize_or_restore_boss_authority()
+	_ensure_align_poll()
 
 ## The Paranucleus camera REGISTER (director, 2026-07-11 — the Monument Valley aspect): inside the
 ## approach radius the level reads as a FLAT IMAGE — the camera flips to an orthographic ORBIT
@@ -259,60 +495,537 @@ func _build_watchtower_ascent(f1_a: Vector3, f1_b: Vector3, f2_a: Vector3, f2_b:
 	# INSIDE the climb's deposit radius (the summit can't be click-walked; proximity is the beat).
 	# It fires at 1.2 s of standing; the descend dwell under the same feet needs 3.0 s — survey
 	# first, then the way back, sequenced by dwell time alone.
-	var survey := _add_interactable(self, "SummitSurvey", "Survey the Act II country ahead",
+	_survey_interactable = _add_interactable(self, "SummitSurvey", "Survey the Act II country ahead",
 		summit + Vector3(0.0, 0.0, -0.6), "SURVEY", "", 1.2, true, 1.7,
 		Interactable.InteractableType.HOLD_ACTION, false)
-	survey.interacted.connect(func() -> void:
-		_watch_vantage_reached = true
-		_set_preview_step("watchtower_vantage")
-		_show_note("Act II, laid out below. The tower watches it all.", 3.0))
-	var scope := _add_box(survey, Vector3(0, 0.5, 0), Vector3(0.1, 0.5, 0.1), Color(0.30, 0.34, 0.40),
+	_survey_interactable.set_pre_trigger_validator(
+		_validate_survey_trigger.bind(_survey_interactable))
+	_survey_interactable.interacted.connect(
+		_on_watch_vantage_reached.bind(_survey_interactable))
+	var scope := _add_box(_survey_interactable, Vector3(0, 0.5, 0),
+		Vector3(0.1, 0.5, 0.1), Color(0.30, 0.34, 0.40),
 		Color(0.45, 0.80, 1.0), 1.2)
-	_outline_interactable_child(survey, scope, "SummitSurvey", 1.7)
+	_outline_interactable_child(_survey_interactable, scope, "SummitSurvey", 1.7)
 	# the trail-head winch: the scree chute gate (CONTROL at the base, EFFECT on the apron)
-	var winch := _add_interactable(self, "ScreeWinch", "The scree chute winch above the trail head",
+	_winch_interactable = _add_interactable(self, "ScreeWinch", "The scree chute winch above the trail head",
 		Vector3(TOWER_X - 7.0, 0, CRAG_R + 2.2), "WINCH", "", 0.8, false, 1.6,
 		Interactable.InteractableType.INSPECTION, false)
-	winch.interacted.connect(_on_winch_used)
-	var drum := _add_box(winch, Vector3(0, 0.5, 0), Vector3(0.45, 0.5, 0.4), Color(0.36, 0.34, 0.30))
-	_add_box(winch, Vector3(0, 1.06, 0), Vector3(0.3, 0.1, 0.1), Color(0.62, 0.5, 0.3))
-	_outline_interactable_child(winch, drum, "ScreeWinch", 1.6)
+	_winch_interactable.set_pre_trigger_validator(
+		_validate_winch_trigger.bind(_winch_interactable))
+	_winch_interactable.interacted.connect(_on_winch_used.bind(_winch_interactable))
+	var drum := _add_box(_winch_interactable, Vector3(0, 0.5, 0),
+		Vector3(0.45, 0.5, 0.4), Color(0.36, 0.34, 0.30))
+	_add_box(_winch_interactable, Vector3(0, 1.06, 0),
+		Vector3(0.3, 0.1, 0.1), Color(0.62, 0.5, 0.3))
+	_outline_interactable_child(_winch_interactable, drum, "ScreeWinch", 1.6)
+
+func _validate_survey_trigger(source: Node, actor: String, expected_source: Node) -> bool:
+	_initialize_or_restore_boss_authority()
+	return source == expected_source and source == _survey_interactable \
+		and not _watch_vantage_reached \
+		and _boss_interaction_actor_ready_at(source, actor)
+
+
+func _validate_winch_trigger(source: Node, actor: String, expected_source: Node) -> bool:
+	_initialize_or_restore_boss_authority()
+	return source == expected_source and source == _winch_interactable \
+		and not _winch_batch_active() \
+		and _boss_interaction_actor_ready_at(source, actor)
+
+
+func _validate_brake_trigger(source: Node, actor: String, expected_source: Node) -> bool:
+	_initialize_or_restore_boss_authority()
+	return source == expected_source and source == _brake_ia \
+		and not _crossing_occupied() \
+		and str(_brake_transaction.get("phase", BRAKE_TRANSACTION_IDLE)) \
+			!= BRAKE_TRANSACTION_RESERVED \
+		and _boss_interaction_actor_ready_at(source, actor)
+
+
+func _boss_interaction_actor_ready_at(source: Node, actor: String) -> bool:
+	var gs = _get_game_state()
+	if gs == null or not is_instance_valid(source) or not (source is Node3D) \
+			or actor == "" or not gs.characters.has(actor) \
+			or not gs.is_narratively_available(actor) \
+			or gs.is_downed(actor) or gs.is_knocked_down(actor) \
+			or gs.is_moving(actor) or gs.is_resting(actor) or gs.is_dodging(actor) \
+			or gs.is_endocytosing(actor) or gs.is_external_traversal_active(actor) \
+			or gs.is_dragging(actor) or gs.is_field_restoring(actor):
+		return false
+	var required_actor := str(source.get("required_character"))
+	if required_actor != "" and actor != required_actor:
+		return false
+	var source_pos := _boss_control_data_position(source)
+	var actor_pos: Vector3 = gs.get_position(actor)
+	return Vector2(actor_pos.x, actor_pos.z).distance_to(
+		Vector2(source_pos.x, source_pos.z)
+	) <= float(source.get("interaction_radius")) + BOSS_INTERACTION_POSITION_TOLERANCE
+
+
+func _boss_control_data_position(source: Node) -> Vector3:
+	var gs = _get_game_state()
+	var data_id := str(source.get("data_id")) if source != null else ""
+	if gs != null and data_id != "" and gs.has_interactable(data_id):
+		var saved_position: Variant = gs.get_interactable(data_id).get("position", Vector3.ZERO)
+		if saved_position is Vector3:
+			return saved_position
+	var source_pos := (source as Node3D).global_position \
+		if source is Node3D else Vector3.ZERO
+	if gs != null and gs.coord_map != null and gs.coord_map.has_method("to_data"):
+		return gs.coord_map.to_data(source_pos)
+	return source_pos
+
+
+func _boss_source_trigger_count(source: Node) -> int:
+	var gs = _get_game_state()
+	var data_id := str(source.get("data_id")) if source != null else ""
+	if gs == null or data_id == "" or not gs.has_interactable(data_id):
+		return -1
+	return int(gs.get_interactable(data_id).get("trigger_count", -1))
+
+
+func _boss_consumed_source_receipt(
+	source: Node,
+	expected_source: Node,
+	consumed_count: int,
+	require_one_shot: bool
+) -> bool:
+	if not is_instance_valid(source) or source != expected_source:
+		return false
+	var actor := str(source.get("active_character"))
+	if not _boss_interaction_actor_ready_at(source, actor):
+		return false
+	var gs = _get_game_state()
+	var data_id := str(source.get("data_id"))
+	if gs == null or data_id == "" or not gs.has_interactable(data_id):
+		return false
+	var receipt: Dictionary = gs.get_interactable(data_id)
+	var trigger_count := int(receipt.get("trigger_count", -1))
+	if trigger_count != consumed_count + 1 \
+			or str(receipt.get("last_trigger_character", "")) != actor \
+			or not bool(receipt.get("triggered", false)):
+		return false
+	if require_one_shot:
+		return bool(source.get("one_shot")) and bool(source.get("_used")) \
+			and not bool(source.get("interaction_enabled")) \
+			and bool(receipt.get("one_shot", false)) \
+			and not bool(receipt.get("enabled", true))
+	return not bool(source.get("one_shot")) and not bool(receipt.get("one_shot", false))
+
+
+func _on_watch_vantage_reached(source: Node = null) -> bool:
+	_initialize_or_restore_boss_authority()
+	if source != _survey_interactable \
+			or not _boss_consumed_source_receipt(
+				source, _survey_interactable, _survey_trigger_consumed, true
+			) \
+			or _watch_vantage_reached:
+		return false
+	_survey_trigger_consumed = _boss_source_trigger_count(source)
+	_survey_actor = str(source.get("active_character"))
+	_watch_vantage_reached = true
+	_publish_boss_authority()
+	_set_preview_step("watchtower_vantage")
+	_show_note("Act II, laid out below. The tower watches it all.", 3.0)
+	return true
 
 ## The winch fires the chute: everything on the base apron is SWEPT off the trail head (pushed
 ## outward — fail-forward, never a kill), and the head becomes loose scree for a span: the climb
 ## runs at half pace for everyone, including you. Logged moves + scheduler restore — replay-safe.
-func _on_winch_used() -> void:
+func _on_winch_used(source: Node = null) -> bool:
+	_initialize_or_restore_boss_authority()
+	if source != _winch_interactable or _winch_batch_active() \
+			or not _boss_consumed_source_receipt(
+				source, _winch_interactable, _winch_trigger_consumed, false
+			):
+		return false
 	var gs = _get_game_state()
 	if gs == null or fragment == null:
-		return
+		return false
 	var apron := Vector3(TOWER_X - 5.4, 0, CRAG_R + 1.0)
-	var swept := 0
-	for id_v in gs.characters.keys():
-		var id := str(id_v)
-		var pos: Vector3 = gs.get_position(id)
-		if Vector2(pos.x - apron.x, pos.z - apron.z).length() > 3.2 or pos.y > 1.2:
-			continue
-		var away := Vector3(pos.x - TOWER_X, 0, pos.z).normalized()
-		gs.snap_character_to(id, pos + away * 4.2)
-		swept += 1
-		for enemy in _enemies:
-			if is_instance_valid(enemy) and str(enemy.char_id) == id and enemy.has_method("take_damage"):
-				enemy.take_damage(2.0)
+	_winch_trigger_consumed = _boss_source_trigger_count(source)
+	_winch_batch_serial += 1
+	var targets := _build_winch_batch_targets(apron, _winch_batch_serial)
 	_flight_scramble = true
-	for ct in _climb_tunnels:
-		if is_instance_valid(ct):
-			ct.crawl_speed = CLIMB_SPEED * 0.5
 	var sched = _get_scheduler()
 	if sched != null:
-		sched.cancel_tag("watch_scramble")
-		sched.schedule_after(SCRAMBLE_SECS, _end_scramble, "watch_scramble")
-	_show_note("The chute lets go. The trail head is scree — %d swept off it." % swept, 2.8)
+		_scramble_deadline = float(sched.get_current_tick()) + SCRAMBLE_SECS
+	_winch_batch = {
+		"version": 1,
+		"phase": WINCH_BATCH_RESERVED,
+		"serial": _winch_batch_serial,
+		"receipt_count": _winch_trigger_consumed,
+		"actor": str(source.get("active_character")),
+		"source_id": str(source.get("data_id")),
+		"started_tick": _tick(),
+		"scramble_deadline": _scramble_deadline,
+		"targets": targets,
+	}
+	# Commit the complete cohort and every endpoint before the first movement signal can expose a
+	# partial batch to save/replay.
+	_publish_boss_authority()
+	_apply_scramble_presenter()
+	if _scramble_deadline >= 0.0:
+		_schedule_scramble_end(_scramble_deadline)
+	_drain_winch_batch()
+	_show_note(
+		"The chute lets go. The trail head is scree — %d swept off it." % targets.size(),
+		2.8)
+	return true
 
-func _end_scramble() -> void:
+
+func _scree_traversal_id(char_id: String, serial: int = _winch_batch_serial) -> StringName:
+	return StringName("boss_scree:%s:%d:%s" % [boss_authority_key(), serial, char_id])
+
+
+func _build_winch_batch_targets(apron: Vector3, serial: int) -> Array:
+	var gs = _get_game_state()
+	var targets: Array = []
+	if gs == null:
+		return targets
+	var ids: Array[String] = []
+	for id_v in gs.characters.keys():
+		ids.append(str(id_v))
+	ids.sort()
+	for id in ids:
+		var origin: Vector3 = gs.get_position(id)
+		if Vector2(origin.x - apron.x, origin.z - apron.z).length() > 3.2 \
+				or origin.y > 1.2 or not _winch_sweep_target_available(id):
+			continue
+		var away := Vector3(origin.x - TOWER_X, 0.0, origin.z).normalized()
+		if away.length_squared() <= 0.000001:
+			away = Vector3(-1.0, 0.0, 0.0)
+		var destination := origin + away * 4.2
+		var render_origin: Vector3 = gs.get_render_position(id)
+		var render_destination := destination
+		if gs.coord_map != null and gs.coord_map.has_method("to_world"):
+			render_destination = gs.coord_map.to_world(destination)
+		var enemy = _boss_enemy_for_id(id)
+		var damage := WINCH_IMPACT_DAMAGE if enemy != null else 0.0
+		var hp_before := float(enemy.get_hp()) \
+			if enemy != null and enemy.has_method("get_hp") else 0.0
+		targets.append({
+			"id": id,
+			"origin": _boss_vec3_to_data(origin),
+			"destination": _boss_vec3_to_data(destination),
+			"render_origin": _boss_vec3_to_data(render_origin),
+			"render_destination": _boss_vec3_to_data(render_destination),
+			"traversal_id": str(_scree_traversal_id(id, serial)),
+			"planned_start_tick": _tick(),
+			"planned_end_tick": _tick() + SCREE_SWEEP_DURATION,
+			"enemy": enemy != null,
+			"damage": damage,
+			"hp_before": hp_before,
+			"hp_after": maxf(0.0, hp_before - damage),
+			"start_committed": false,
+			"traversal_started": false,
+			"arrived": false,
+			"impact_committed": false,
+			"impact_applied": false,
+			"cancelled": false,
+		})
+	return targets
+
+
+func _winch_sweep_target_available(char_id: String) -> bool:
+	var gs = _get_game_state()
+	return gs != null and gs.characters.has(char_id) \
+		and not gs.is_downed(char_id) and not gs.is_knocked_down(char_id) \
+		and not gs.is_dodging(char_id) and not gs.is_endocytosing(char_id) \
+		and not gs.is_external_traversal_active(char_id) and not gs.is_dragging(char_id)
+
+
+func _boss_enemy_for_id(char_id: String):
+	for enemy in _enemies:
+		if is_instance_valid(enemy) and str(enemy.char_id) == char_id:
+			return enemy
+	return null
+
+
+func _winch_batch_active() -> bool:
+	return str(_winch_batch.get("phase", WINCH_BATCH_IDLE)) \
+		in [WINCH_BATCH_RESERVED, WINCH_BATCH_SWEEPING]
+
+
+func _winch_target_at_position(target: Dictionary, key: String) -> bool:
+	var gs = _get_game_state()
+	var char_id := str(target.get("id", ""))
+	if gs == null or char_id == "" or not gs.characters.has(char_id):
+		return false
+	return gs.get_position(char_id).distance_to(
+		_boss_vec3_from_data(target.get(key, null), Vector3.INF)
+	) <= POSITION_RECEIPT_TOLERANCE
+
+
+func _boss_vec3_to_data(value: Vector3) -> Array:
+	return [value.x, value.y, value.z]
+
+
+func _boss_vec3_from_data(value: Variant, fallback := Vector3.ZERO) -> Vector3:
+	if value is Vector3:
+		return value
+	if value is Array and (value as Array).size() >= 3:
+		return Vector3(
+			float((value as Array)[0]),
+			float((value as Array)[1]),
+			float((value as Array)[2])
+		)
+	return fallback
+
+
+func _set_winch_batch_target(index: int, target: Dictionary) -> void:
+	var targets: Array = _winch_batch.get("targets", [])
+	if index < 0 or index >= targets.size():
+		return
+	targets[index] = target
+	_winch_batch["targets"] = targets
+
+
+func _drain_winch_batch() -> void:
+	if not _winch_batch_active():
+		return
+	var gs = _get_game_state()
+	if gs == null:
+		return
+	if str(_winch_batch.get("phase", "")) == WINCH_BATCH_RESERVED:
+		_winch_batch["phase"] = WINCH_BATCH_SWEEPING
+		_publish_boss_authority()
+	var targets: Array = _winch_batch.get("targets", [])
+	for index in range(targets.size()):
+		var target := (targets[index] as Dictionary).duplicate(true)
+		if bool(target.get("impact_applied", false)):
+			continue
+		var char_id := str(target.get("id", ""))
+		var traversal_id := StringName(str(target.get("traversal_id", "")))
+		var active: Dictionary = gs.get_external_traversal_state(char_id)
+		if not active.is_empty() \
+				and StringName(str(active.get("traversal_id", ""))) == traversal_id:
+			if not bool(target.get("start_committed", false)) \
+					or not bool(target.get("traversal_started", false)):
+				target["start_committed"] = true
+				target["traversal_started"] = true
+				_set_winch_batch_target(index, target)
+				_publish_boss_authority()
+			continue
+		if bool(target.get("start_committed", false)) \
+				and _winch_target_at_position(target, "destination"):
+			_commit_winch_target_arrival(index)
+			continue
+		if not bool(target.get("start_committed", false)):
+			target["start_committed"] = true
+			_set_winch_batch_target(index, target)
+			# This edge is the per-body movement reservation. A signal-time save before
+			# GameState accepts the command can resume it from the exact stored origin.
+			_publish_boss_authority()
+		if not _winch_target_at_position(target, "origin"):
+			continue
+		var now := _tick()
+		var duration := maxf(
+			0.000001, float(target.get("planned_end_tick", now)) - now)
+		if gs.command_external_traversal(
+				char_id,
+				traversal_id,
+				_boss_vec3_from_data(target.get("destination", null)),
+				_boss_vec3_from_data(target.get("render_origin", null)),
+				_boss_vec3_from_data(target.get("render_destination", null)),
+				duration,
+				&"locked"):
+			target["traversal_started"] = true
+			_set_winch_batch_target(index, target)
+			_publish_boss_authority()
+	_finish_winch_batch_if_complete()
+
+
+func _commit_winch_target_arrival(index: int) -> void:
+	var targets: Array = _winch_batch.get("targets", [])
+	if index < 0 or index >= targets.size():
+		return
+	var target := (targets[index] as Dictionary).duplicate(true)
+	if bool(target.get("impact_applied", false)) \
+			or not _winch_target_at_position(target, "destination"):
+		return
+	if not bool(target.get("impact_committed", false)):
+		target["arrived"] = true
+		target["impact_committed"] = true
+		target["impact_tick"] = _tick()
+		_set_winch_batch_target(index, target)
+		# Arrival is already physical GameState truth. Commit the exact damage receipt before
+		# Enemy's synchronous damaged/state signals can expose the middle of the impact.
+		_publish_boss_authority()
+	if not _reconcile_winch_target_damage(target):
+		return
+	target["impact_applied"] = true
+	_set_winch_batch_target(index, target)
+	_publish_boss_authority()
+	_finish_winch_batch_if_complete()
+
+
+func _reconcile_winch_target_damage(target: Dictionary) -> bool:
+	if not bool(target.get("enemy", false)) \
+			or float(target.get("damage", 0.0)) <= 0.0:
+		return true
+	var enemy = _boss_enemy_for_id(str(target.get("id", "")))
+	if enemy == null or not enemy.has_method("get_hp"):
+		return true
+	var hp_before := float(target.get("hp_before", enemy.get_hp()))
+	var hp_after := float(target.get("hp_after", hp_before))
+	var current_hp := float(enemy.get_hp())
+	if current_hp <= hp_after + 0.0001:
+		return true
+	if is_equal_approx(current_hp, hp_before):
+		enemy.take_damage(float(target.get("damage", 0.0)))
+		return true
+	return false
+
+
+func _finish_winch_batch_if_complete() -> void:
+	if not _winch_batch_active():
+		return
+	for target_v in (_winch_batch.get("targets", []) as Array):
+		if not bool((target_v as Dictionary).get("impact_applied", false)):
+			return
+	_winch_batch["phase"] = WINCH_BATCH_COMPLETE
+	_winch_batch["completed_tick"] = _tick()
+	_publish_boss_authority()
+
+
+func _on_boss_external_traversal_finished(
+	char_id: String, traversal_id: StringName
+) -> void:
+	if not _winch_batch_active():
+		return
+	var targets: Array = _winch_batch.get("targets", [])
+	for index in range(targets.size()):
+		var target := targets[index] as Dictionary
+		if str(target.get("id", "")) == char_id \
+				and StringName(str(target.get("traversal_id", ""))) == traversal_id:
+			_commit_winch_target_arrival(index)
+			return
+
+
+func _on_boss_external_traversal_cancelled(
+	char_id: String, traversal_id: StringName, reason: StringName
+) -> void:
+	if not _winch_batch_active():
+		return
+	var targets: Array = _winch_batch.get("targets", [])
+	for index in range(targets.size()):
+		var target := (targets[index] as Dictionary).duplicate(true)
+		if str(target.get("id", "")) != char_id \
+				or StringName(str(target.get("traversal_id", ""))) != traversal_id:
+			continue
+		target["cancelled"] = true
+		target["cancel_reason"] = str(reason)
+		target["impact_committed"] = true
+		target["impact_applied"] = true
+		_set_winch_batch_target(index, target)
+		_publish_boss_authority()
+		_finish_winch_batch_if_complete()
+		return
+
+
+func _bind_boss_external_traversal_signals() -> void:
+	var gs = _get_game_state()
+	if gs == _boss_signal_game_state:
+		return
+	_unbind_boss_external_traversal_signals()
+	_boss_signal_game_state = gs
+	if gs == null:
+		return
+	var finished := Callable(self, "_on_boss_external_traversal_finished")
+	var cancelled := Callable(self, "_on_boss_external_traversal_cancelled")
+	if not gs.external_traversal_finished.is_connected(finished):
+		gs.external_traversal_finished.connect(finished)
+	if not gs.external_traversal_cancelled.is_connected(cancelled):
+		gs.external_traversal_cancelled.connect(cancelled)
+
+
+func _unbind_boss_external_traversal_signals() -> void:
+	if _boss_signal_game_state == null or not is_instance_valid(_boss_signal_game_state):
+		_boss_signal_game_state = null
+		return
+	var finished := Callable(self, "_on_boss_external_traversal_finished")
+	var cancelled := Callable(self, "_on_boss_external_traversal_cancelled")
+	if _boss_signal_game_state.external_traversal_finished.is_connected(finished):
+		_boss_signal_game_state.external_traversal_finished.disconnect(finished)
+	if _boss_signal_game_state.external_traversal_cancelled.is_connected(cancelled):
+		_boss_signal_game_state.external_traversal_cancelled.disconnect(cancelled)
+	_boss_signal_game_state = null
+
+
+func _apply_scramble_presenter() -> void:
+	for ct in _climb_tunnels:
+		if is_instance_valid(ct):
+			ct.crawl_speed = CLIMB_SPEED * 0.5 if _flight_scramble else CLIMB_SPEED
+
+
+func _arm_winch_batch_resume() -> void:
+	var sched = _get_scheduler()
+	if sched == null or not _winch_batch_active():
+		return
+	sched.cancel_tag(_boss_tag("winch_batch_resume"))
+	sched.schedule_after(0.0, _resume_winch_batch, _boss_tag("winch_batch_resume"))
+	_winch_batch_resume_armed = true
+
+
+func _resume_winch_batch() -> void:
+	_winch_batch_resume_armed = false
+	_drain_winch_batch()
+
+
+func _reconcile_winch_batch_on_restore() -> bool:
+	if not _winch_batch_active():
+		return false
+	var gs = _get_game_state()
+	if gs == null:
+		return false
+	var changed := false
+	var targets: Array = _winch_batch.get("targets", [])
+	for index in range(targets.size()):
+		var target := (targets[index] as Dictionary).duplicate(true)
+		var target_changed := false
+		var char_id := str(target.get("id", ""))
+		var traversal_id := StringName(str(target.get("traversal_id", "")))
+		var active: Dictionary = gs.get_external_traversal_state(char_id)
+		if not active.is_empty() \
+				and StringName(str(active.get("traversal_id", ""))) == traversal_id:
+			if not bool(target.get("start_committed", false)) \
+					or not bool(target.get("traversal_started", false)):
+				target["start_committed"] = true
+				target["traversal_started"] = true
+				target_changed = true
+		elif bool(target.get("start_committed", false)) \
+				and _winch_target_at_position(target, "destination") \
+				and not bool(target.get("impact_committed", false)):
+			target["arrived"] = true
+			target["impact_committed"] = true
+			target["impact_tick"] = _tick()
+			target_changed = true
+		if target_changed:
+			targets[index] = target
+			changed = true
+	_winch_batch["targets"] = targets
+	return changed
+
+func _schedule_scramble_end(deadline: float) -> void:
+	var sched = _get_scheduler()
+	if sched == null or deadline < 0.0:
+		return
+	sched.cancel_tag(_boss_tag("watch_scramble"))
+	var now := float(sched.get_current_tick())
+	sched.schedule_at(
+		maxf(now, deadline), _end_scramble.bind(deadline), _boss_tag("watch_scramble")
+	)
+
+func _end_scramble(expected_deadline := -1.0) -> void:
+	if expected_deadline >= 0.0 and not is_equal_approx(_scramble_deadline, expected_deadline):
+		return
 	_flight_scramble = false
+	_scramble_deadline = -1.0
 	for ct in _climb_tunnels:
 		if is_instance_valid(ct):
 			ct.crawl_speed = CLIMB_SPEED
+	_publish_boss_authority()
 
 ## The ophanim aggregate: per-wheel pivots (basis from the ring table) so each wheel turns in its
 ## own plane; the pink-red core; the engulfed NUTECH fragments with their legible boards.
@@ -465,7 +1178,8 @@ func _build_alignment_crossing() -> void:
 	_brake_ia = _add_interactable(self, "RingBrake", "The surviving NUTECH maintenance brake",
 		Vector3(PARA_X - 5.2, 0, 6.4), "BRAKE RING", "", 0.8, false, 1.6,
 		Interactable.InteractableType.INSPECTION, false)
-	_brake_ia.interacted.connect(_on_brake_used)
+	_brake_ia.set_pre_trigger_validator(_validate_brake_trigger.bind(_brake_ia))
+	_brake_ia.interacted.connect(_on_brake_used.bind(_brake_ia))
 	# the brake's visible body: a grey NUTECH console pedestal with a caliper lever
 	var pedestal := _add_box(_brake_ia, Vector3(0, 0.45, 0), Vector3(0.5, 0.9, 0.42),
 		Color(0.48, 0.50, 0.52))
@@ -493,6 +1207,36 @@ func _build_alignment_crossing() -> void:
 	_causeway.material_override = _causeway_mat
 	_causeway.position = Vector3(PARA_X, 0.05, 0)
 	add_child(_causeway)
+	_build_spiker_hazard_field()
+
+
+func _build_spiker_hazard_field() -> void:
+	var gs = _get_game_state()
+	var scheduler = _get_scheduler()
+	if gs == null or scheduler == null or fragment == null:
+		return
+	_spiker_field = HazardFieldScript.new()
+	_spiker_field.name = "RingSpikerHazardField"
+	add_child(_spiker_field)
+	_spiker_field.setup(
+		gs,
+		scheduler,
+		Vector2(PARA_X - 1.3, -6.3),
+		Vector2(PARA_X + 1.3, 6.3),
+		Array(fragment.party_ids),
+		{
+			"dps_tick": SPIKER_DMG * ALIGN_POLL,
+			"interval": ALIGN_POLL,
+			"tag": "boss_ring_spiker_%d" % _seed,
+			"target_filter": Callable(self, "_spiker_target_exposed"),
+		}
+	)
+	_spiker_field.set_active(false)
+
+
+func _spiker_target_exposed(char_id: String, _position: Vector3) -> bool:
+	var gs = _get_game_state()
+	return gs != null and gs.characters.has(char_id) and not gs.is_character_hidden(char_id)
 
 func _add_align_mouth(mouth_name: String, mouth: Vector3, waypoints: Array) -> CrawlTunnel:
 	var ct := AlignmentCrossing.new()
@@ -516,14 +1260,33 @@ func _add_align_mouth(mouth_name: String, mouth: Vector3, waypoints: Array) -> C
 
 ## Park ring 0 at the detent nearest its current phase (a gap CENTER on the corridor line);
 ## a second use releases it, phase continuous from the parked value.
-func _on_brake_used() -> void:
-	if _crossing_occupied():
-		return   # the caliper refuses while something is inside the wheel
+func _on_brake_used(source: Node = null) -> bool:
+	_initialize_or_restore_boss_authority()
+	if source != _brake_ia or _crossing_occupied() \
+			or not _boss_consumed_source_receipt(
+				source, _brake_ia, _brake_trigger_consumed, false
+			):
+		return false
+	_brake_trigger_consumed = _boss_source_trigger_count(source)
+	_brake_transaction = _make_brake_transaction(
+		_brake_trigger_consumed, str(source.get("active_character")))
+	# The chosen detent/release offset is portable before the wheel moves. A save observer on this
+	# world-state edge therefore restores the same target rather than recomputing from a later tick.
+	_publish_boss_authority()
+	_apply_brake_transaction(_brake_transaction)
+	_brake_transaction["phase"] = BRAKE_TRANSACTION_COMMITTED
+	_publish_boss_authority()
+	return true
+
+
+func _make_brake_transaction(receipt_count: int, actor: String) -> Dictionary:
 	var t := _tick()
 	var w := _wheels[0] as Dictionary
+	var target_is_parked := _ring0_parked == INF
+	var target_phase := 0.0
+	var target_offset := float(_ring_offsets[0])
 	if _ring0_parked != INF:
-		_ring_offsets[0] = wrapf(_ring0_parked - float(w["spin"]) * t, 0.0, TAU)
-		_ring0_parked = INF
+		target_offset = wrapf(_ring0_parked - float(w["spin"]) * t, 0.0, TAU)
 	else:
 		var cur := ring_phase(0, t)
 		var best := cur
@@ -545,7 +1308,30 @@ func _on_brake_used() -> void:
 					best = p
 			if best_d < INF:
 				break
-		_ring0_parked = best
+		target_phase = best
+	return {
+		"version": 1,
+		"phase": BRAKE_TRANSACTION_RESERVED,
+		"receipt_count": receipt_count,
+		"actor": actor,
+		"committed_tick": t,
+		"from_is_parked": _ring0_parked != INF,
+		"from_parked_phase": _ring0_parked if _ring0_parked != INF else 0.0,
+		"from_offset": float(_ring_offsets[0]),
+		"target_is_parked": target_is_parked,
+		"target_parked_phase": target_phase,
+		"target_offset": target_offset,
+	}
+
+
+func _apply_brake_transaction(transaction: Dictionary) -> void:
+	if _ring_offsets.is_empty():
+		return
+	_ring_offsets[0] = wrapf(
+		float(transaction.get("target_offset", _ring_offsets[0])), 0.0, TAU)
+	_ring0_parked = wrapf(
+		float(transaction.get("target_parked_phase", 0.0)), 0.0, TAU
+	) if bool(transaction.get("target_is_parked", false)) else INF
 	_refresh_crossing_gate()
 
 ## The gate refresh rides the SCHEDULER (never the frame clock): same cadence at 1x and 10x, so
@@ -557,29 +1343,43 @@ func _ensure_align_poll() -> void:
 	if sched == null:
 		return
 	_align_poll_started = true
-	_align_poll()
+	_align_poll_epoch = float(sched.get_current_tick())
+	# Initialization may be discovered by a render frame, but that frame must not deal damage.
+	# Project the gate immediately, then let the first authoritative Spiker consequence arrive on
+	# the same fixed cadence as every later one.
+	_refresh_crossing_gate()
+	_schedule_align_poll_at(_align_poll_epoch + ALIGN_POLL)
+	_publish_boss_authority()
 
-func _align_poll() -> void:
+func _run_align_poll(expected_tick: float) -> void:
+	if not _align_poll_started:
+		return
+	if _align_next_tick >= 0.0 and not is_equal_approx(_align_next_tick, expected_tick):
+		return
+	_align_next_tick = -1.0
 	_refresh_crossing_gate()
 	_apply_spiker_fire()
-	var sched = _get_scheduler()
-	if sched != null:
-		sched.schedule_after(ALIGN_POLL, _align_poll, "align_poll")
+	_schedule_align_poll_at(expected_tick + ALIGN_POLL)
 
-## The Spiker's rake, applied on the same scheduler cadence as the gate (never frame-sampled):
-## while its lane bears on the corridor, an EXPOSED party member standing in the strip drains hp.
-## Concealment is the canon cover verb (Capbage/Scarpet break its LOS).
-func _apply_spiker_fire() -> void:
-	var gs = _get_game_state()
-	if gs == null or fragment == null or not spiker_at_bottom(_tick()):
+func _schedule_align_poll_at(deadline: float) -> void:
+	var sched = _get_scheduler()
+	if sched == null or not _align_poll_started:
 		return
-	for cid_v in fragment.party_ids:
-		var cid := str(cid_v)
-		if not gs.characters.has(cid) or gs.is_character_hidden(cid):
-			continue
-		var pos: Vector3 = gs.get_position(cid)
-		if absf(pos.x - PARA_X) <= 1.3 and absf(pos.z) <= 6.3:
-			gs.adjust_stat(cid, "hp", -SPIKER_DMG * ALIGN_POLL)
+	sched.cancel_tag(_boss_tag("align_poll"))
+	_align_next_tick = deadline
+	sched.schedule_at(deadline, _run_align_poll.bind(deadline), _boss_tag("align_poll"))
+
+func _next_align_poll_after(tick: float) -> float:
+	if _align_poll_epoch < 0.0:
+		return -1.0
+	return FixedCadenceScript.next_strict_tick(_align_poll_epoch, ALIGN_POLL, tick)
+
+## Alignment cadence toggles the reusable HazardField bound to the rotating branch.
+## The visible branch is the telegraph; the field owns each later impact and its
+## save/load deadline. Concealment is injected as the field's target filter.
+func _apply_spiker_fire() -> void:
+	if _spiker_field != null:
+		_spiker_field.set_active(spiker_at_bottom(_tick()))
 
 func _refresh_crossing_gate() -> void:
 	# The mouth is COMMITTABLE whenever the front vantage is held (the view rule); the physical
@@ -603,7 +1403,7 @@ func _next_window_tick(from_tick: float) -> float:
 
 ## The rooted Spiker itself (piece 18): a bright branch bolted to ring 0's rim — parented to the
 ## wheel pivot, so the render sweeps with the same eased phase the mesh turns by. The lane read is
-## the emissive branch; the mechanics live in spiker_at_bottom()/_apply_spiker_fire().
+## the emissive branch; spiker_at_bottom() drives the reusable saved HazardField.
 func _build_ring_spiker() -> void:
 	if _wheels.is_empty():
 		return
@@ -659,6 +1459,400 @@ func _update_causeway_visual(t: float) -> void:
 		_spiker_branch_mat.emission_energy_multiplier = lerpf(
 			_spiker_branch_mat.emission_energy_multiplier, hot, 0.2)
 
+# --- portable boss-mechanism authority ----------------------------------------------------------
+
+func boss_authority_key() -> String:
+	return "%s%d:%s" % [BOSS_AUTHORITY_PREFIX, _seed, "finale" if _finale else "showcase"]
+
+func _boss_authority_state() -> Dictionary:
+	var offsets: Array = []
+	for offset in _ring_offsets:
+		offsets.append(float(offset))
+	return {
+		"version": BOSS_AUTHORITY_VERSION,
+		"seed": _seed,
+		"finale": _finale,
+		"prize_retrieved": _prize_phase == PRIZE_PHASE_CLAIMED,
+		"prize_phase": _prize_phase,
+		"prize_item_id": _prize_item_id,
+		"prize_claimed_by": _prize_claimed_by,
+		"prize_claim_serial": _prize_claim_serial,
+		"watch_vantage_reached": _watch_vantage_reached,
+		"survey_trigger_consumed": _survey_trigger_consumed,
+		"survey_actor": _survey_actor,
+		"winch_trigger_consumed": _winch_trigger_consumed,
+		"winch_batch_serial": _winch_batch_serial,
+		"winch_batch": _winch_batch.duplicate(true),
+		"brake_trigger_consumed": _brake_trigger_consumed,
+		"brake_transaction": _brake_transaction.duplicate(true),
+		"flight_scramble": _flight_scramble,
+		"scramble_deadline": _scramble_deadline,
+		"ring0_is_parked": _ring0_parked != INF,
+		"ring0_parked_phase": _ring0_parked if _ring0_parked != INF else 0.0,
+		"ring_offsets": offsets,
+		"align_poll_started": _align_poll_started,
+		# One absolute cadence epoch reconstructs every later poll without writing world-state four
+		# times a second. It is the deadline provenance, not a scene-local "armed" boolean.
+		"align_poll_epoch": _align_poll_epoch,
+	}
+
+func _publish_boss_authority() -> void:
+	if _restoring_boss_authority:
+		return
+	var gs = _get_game_state()
+	if gs != null and gs.has_method("set_world_state"):
+		gs.set_world_state(boss_authority_key(), _boss_authority_state())
+
+
+func _valid_boss_authority(raw: Variant) -> bool:
+	if not raw is Dictionary:
+		return false
+	var saved := raw as Dictionary
+	var version := int(saved.get("version", 0))
+	if version not in [1, 2, BOSS_AUTHORITY_VERSION]:
+		return false
+	if version < 2:
+		return true
+	var phase := str(saved.get("prize_phase", ""))
+	if phase not in [PRIZE_PHASE_AVAILABLE, PRIZE_PHASE_CLAIMING, PRIZE_PHASE_CLAIMED] \
+			or str(saved.get("prize_item_id", "")) == "" \
+			or int(saved.get("prize_claim_serial", -1)) < 0:
+		return false
+	var actor := str(saved.get("prize_claimed_by", ""))
+	if phase == PRIZE_PHASE_AVAILABLE:
+		if actor != "":
+			return false
+	elif actor == "":
+		return false
+	if version < 3:
+		return true
+	if int(saved.get("survey_trigger_consumed", -1)) < 0 \
+			or int(saved.get("winch_trigger_consumed", -1)) < 0 \
+			or int(saved.get("winch_batch_serial", -1)) < 0 \
+			or int(saved.get("brake_trigger_consumed", -1)) < 0:
+		return false
+	var batch: Variant = saved.get("winch_batch", {})
+	var brake: Variant = saved.get("brake_transaction", {})
+	if not batch is Dictionary or not brake is Dictionary:
+		return false
+	if not (batch as Dictionary).is_empty() \
+			and str((batch as Dictionary).get("phase", "")) not in [
+				WINCH_BATCH_RESERVED, WINCH_BATCH_SWEEPING, WINCH_BATCH_COMPLETE
+			]:
+		return false
+	if not (brake as Dictionary).is_empty() \
+			and str((brake as Dictionary).get("phase", "")) not in [
+				BRAKE_TRANSACTION_RESERVED, BRAKE_TRANSACTION_COMMITTED
+			]:
+		return false
+	return true
+
+
+## A save observer can capture either side of GameState's synchronous item_picked_up signal. The
+## physical item resolves that ambiguity: source-ground means the command never committed; any
+## non-source location means it did. Neither branch spawns or moves another item.
+func _reconcile_restored_prize_transaction() -> bool:
+	var changed := false
+	if not _is_boss_prize_item(_prize_item_id):
+		var found := _find_boss_prize_item_id()
+		if found != "" and _prize_phase != PRIZE_PHASE_CLAIMED:
+			_prize_item_id = found
+			changed = true
+	var item := _get_item_state(_prize_item_id)
+	if item.is_empty():
+		if _prize_phase == PRIZE_PHASE_CLAIMING:
+			_prize_phase = PRIZE_PHASE_AVAILABLE
+			_prize_claimed_by = ""
+			changed = true
+		return changed
+	var at_source := _prize_item_at_source()
+	match _prize_phase:
+		PRIZE_PHASE_AVAILABLE:
+			if not at_source:
+				_prize_phase = PRIZE_PHASE_CLAIMED
+				_prize_claimed_by = str(item.get("holder", ""))
+				if _prize_claimed_by == "":
+					_prize_claimed_by = "unknown_physical_claim"
+				_prize_claim_serial = maxi(_prize_claim_serial, 1)
+				changed = true
+		PRIZE_PHASE_CLAIMING:
+			if at_source:
+				_prize_phase = PRIZE_PHASE_AVAILABLE
+				_prize_claimed_by = ""
+				changed = true
+			else:
+				_prize_phase = PRIZE_PHASE_CLAIMED
+				if str(item.get("holder", "")) != "":
+					_prize_claimed_by = str(item.get("holder", ""))
+				changed = true
+	return changed
+
+
+## Boss authority owns the durable prize phase; the Interactable registry owns only the tiny
+## accepted-source edge. A signal-time save can contain a consumed one-shot while the item and boss
+## record are still AVAILABLE. Re-arm that uncommitted edge instead of granting a remote pickup or
+## leaving the visible vial permanently unusable. This also upgrades older repeatable prize specs.
+func _normalize_prize_source_receipt_registry() -> void:
+	if not is_instance_valid(_prize_interactable):
+		return
+	_prize_interactable.one_shot = true
+	var gs = _get_game_state()
+	var data_id := str(_prize_interactable.data_id)
+	if gs != null and data_id != "" and gs.has_interactable(data_id):
+		var spec: Dictionary = gs.get_interactable(data_id)
+		if not bool(spec.get("one_shot", false)):
+			spec["id"] = data_id
+			spec["one_shot"] = true
+			spec["triggered"] = false
+			spec["enabled"] = true
+			gs.register_interactable(spec)
+	if _prize_phase == PRIZE_PHASE_AVAILABLE and _prize_item_at_source() \
+			and _prize_interactable.has_method("reset"):
+		_prize_interactable.reset()
+
+
+## A save can observe GameState's accepted trigger before this owner receives the source signal.
+## Such a receipt has no owner reservation and therefore grants nothing after load. Consume its
+## monotonic identity (so a stale callback is inert), and re-arm the one-shot survey for a retry.
+func _normalize_boss_control_source_receipts() -> bool:
+	var changed := false
+	if is_instance_valid(_survey_interactable):
+		var survey_count := _boss_source_trigger_count(_survey_interactable)
+		if survey_count > _survey_trigger_consumed:
+			_survey_trigger_consumed = survey_count
+			changed = true
+		if not _watch_vantage_reached:
+			var gs = _get_game_state()
+			var data_id := str(_survey_interactable.get("data_id"))
+			var receipt: Dictionary = gs.get_interactable(data_id) \
+				if gs != null and data_id != "" and gs.has_interactable(data_id) else {}
+			if bool(receipt.get("triggered", false)) \
+					and _survey_interactable.has_method("reset"):
+				_survey_interactable.reset()
+				_survey_actor = ""
+				changed = true
+	if is_instance_valid(_winch_interactable):
+		var winch_count := _boss_source_trigger_count(_winch_interactable)
+		var owned_winch_receipt := int(_winch_batch.get("receipt_count", -1))
+		if winch_count > _winch_trigger_consumed \
+				and owned_winch_receipt != winch_count:
+			_winch_trigger_consumed = winch_count
+			changed = true
+	if is_instance_valid(_brake_ia):
+		var brake_count := _boss_source_trigger_count(_brake_ia)
+		var owned_brake_receipt := int(_brake_transaction.get("receipt_count", -1))
+		if brake_count > _brake_trigger_consumed \
+				and owned_brake_receipt != brake_count:
+			_brake_trigger_consumed = brake_count
+			changed = true
+	return changed
+
+
+func _initialize_or_restore_boss_authority() -> void:
+	if _boss_authority_initialized or _wheels.is_empty():
+		return
+	_bind_boss_external_traversal_signals()
+	_boss_authority_initialized = true
+	var gs = _get_game_state()
+	var raw: Variant = gs.get_world_state(boss_authority_key(), null) \
+		if gs != null and gs.has_method("get_world_state") else null
+	if _valid_boss_authority(raw) \
+			and int(raw.get("seed", _seed)) == _seed \
+			and bool(raw.get("finale", _finale)) == _finale:
+		_restore_boss_authority(raw)
+	else:
+		_reset_prize_to_available()
+		_survey_trigger_consumed = maxi(
+			0, _boss_source_trigger_count(_survey_interactable))
+		_survey_actor = ""
+		_winch_trigger_consumed = maxi(
+			0, _boss_source_trigger_count(_winch_interactable))
+		_winch_batch_serial = 0
+		_winch_batch.clear()
+		_brake_trigger_consumed = maxi(0, _boss_source_trigger_count(_brake_ia))
+		_brake_transaction.clear()
+		_publish_boss_authority()
+
+func on_game_state_snapshot_restored() -> void:
+	super.on_game_state_snapshot_restored()
+	_cancel_boss_callbacks()
+	_bind_boss_external_traversal_signals()
+	_boss_authority_initialized = true
+	var gs = _get_game_state()
+	var raw: Variant = gs.get_world_state(boss_authority_key(), null) \
+		if gs != null and gs.has_method("get_world_state") else null
+	if not _valid_boss_authority(raw) \
+			or int(raw.get("seed", _seed)) != _seed \
+			or bool(raw.get("finale", _finale)) != _finale:
+		_retract_boss_to_defaults()
+		_publish_boss_authority()
+		return
+	_restore_boss_authority(raw)
+
+func _restore_boss_authority(saved: Dictionary) -> void:
+	_restoring_boss_authority = true
+	_cancel_boss_callbacks()
+	var saved_version := int(saved.get("version", 1))
+	var normalized := saved_version < BOSS_AUTHORITY_VERSION
+	if saved_version >= 2:
+		_prize_phase = str(saved.get("prize_phase", PRIZE_PHASE_AVAILABLE))
+		_prize_item_id = str(saved.get("prize_item_id", ""))
+		_prize_claimed_by = str(saved.get("prize_claimed_by", ""))
+		_prize_claim_serial = maxi(0, int(saved.get("prize_claim_serial", 0)))
+	else:
+		# Version 1 had only a solved boolean and no physical reward. Create exactly one tagged
+		# migration item, preserving whether the old objective had already fired without guessing a
+		# historical holder.
+		_prize_phase = PRIZE_PHASE_CLAIMED \
+			if bool(saved.get("prize_retrieved", false)) else PRIZE_PHASE_AVAILABLE
+		_prize_claimed_by = "unknown_legacy" \
+			if _prize_phase == PRIZE_PHASE_CLAIMED else ""
+		_prize_claim_serial = 1 if _prize_phase == PRIZE_PHASE_CLAIMED else 0
+		_prize_item_id = _find_boss_prize_item_id()
+		if _prize_item_id == "":
+			_prize_item_id = _spawn_prize_item({"legacy_v1_migration": true})
+	if _reconcile_restored_prize_transaction():
+		normalized = true
+	_normalize_prize_source_receipt_registry()
+	_watch_vantage_reached = bool(saved.get("watch_vantage_reached", false))
+	if saved_version >= 3:
+		_survey_trigger_consumed = maxi(
+			0, int(saved.get("survey_trigger_consumed", 0)))
+		_survey_actor = str(saved.get("survey_actor", ""))
+		_winch_trigger_consumed = maxi(
+			0, int(saved.get("winch_trigger_consumed", 0)))
+		_winch_batch_serial = maxi(0, int(saved.get("winch_batch_serial", 0)))
+		_winch_batch = (saved.get("winch_batch", {}) as Dictionary).duplicate(true)
+		_brake_trigger_consumed = maxi(
+			0, int(saved.get("brake_trigger_consumed", 0)))
+		_brake_transaction = (
+			saved.get("brake_transaction", {}) as Dictionary
+		).duplicate(true)
+	else:
+		_survey_trigger_consumed = maxi(
+			0, _boss_source_trigger_count(_survey_interactable))
+		_survey_actor = ""
+		_winch_trigger_consumed = maxi(
+			0, _boss_source_trigger_count(_winch_interactable))
+		_winch_batch_serial = 0
+		_winch_batch.clear()
+		_brake_trigger_consumed = maxi(0, _boss_source_trigger_count(_brake_ia))
+		_brake_transaction.clear()
+	_flight_scramble = bool(saved.get("flight_scramble", false))
+	_scramble_deadline = float(saved.get("scramble_deadline", -1.0)) \
+		if _flight_scramble else -1.0
+	var saved_offsets: Array = saved.get("ring_offsets", []) as Array
+	for i in range(_ring_offsets.size()):
+		_ring_offsets[i] = float(saved_offsets[i]) if i < saved_offsets.size() else 0.0
+	_ring0_parked = wrapf(float(saved.get("ring0_parked_phase", 0.0)), 0.0, TAU) \
+		if bool(saved.get("ring0_is_parked", false)) else INF
+	if not _brake_transaction.is_empty():
+		_apply_brake_transaction(_brake_transaction)
+		if str(_brake_transaction.get("phase", "")) == BRAKE_TRANSACTION_RESERVED:
+			_brake_transaction["phase"] = BRAKE_TRANSACTION_COMMITTED
+			normalized = true
+	_align_poll_started = bool(saved.get("align_poll_started", false))
+	_align_poll_epoch = float(saved.get("align_poll_epoch", -1.0)) \
+		if _align_poll_started else -1.0
+	_align_next_tick = -1.0
+	if _reconcile_winch_batch_on_restore():
+		normalized = true
+	if _normalize_boss_control_source_receipts():
+		normalized = true
+	_apply_boss_presenters()
+	_restoring_boss_authority = false
+	if normalized:
+		_publish_boss_authority()
+
+	if _flight_scramble and _scramble_deadline >= 0.0:
+		_schedule_scramble_end(_scramble_deadline)
+	if _winch_batch_active():
+		_arm_winch_batch_resume()
+	if _align_poll_started and _align_poll_epoch >= 0.0:
+		var next_tick := _next_align_poll_after(_tick())
+		if next_tick >= 0.0:
+			_schedule_align_poll_at(next_tick)
+
+func _retract_boss_to_defaults() -> void:
+	_restoring_boss_authority = true
+	_reset_prize_to_available()
+	_watch_vantage_reached = false
+	_survey_actor = ""
+	if is_instance_valid(_survey_interactable) \
+			and _survey_interactable.has_method("reset"):
+		_survey_interactable.reset()
+	_survey_trigger_consumed = maxi(
+		0, _boss_source_trigger_count(_survey_interactable))
+	_winch_trigger_consumed = maxi(
+		0, _boss_source_trigger_count(_winch_interactable))
+	_winch_batch_serial = 0
+	_winch_batch.clear()
+	_brake_trigger_consumed = maxi(0, _boss_source_trigger_count(_brake_ia))
+	_brake_transaction.clear()
+	_flight_scramble = false
+	_scramble_deadline = -1.0
+	_ring0_parked = INF
+	for i in range(_ring_offsets.size()):
+		_ring_offsets[i] = 0.0
+	_align_poll_started = false
+	_align_poll_epoch = -1.0
+	_align_next_tick = -1.0
+	_apply_boss_presenters()
+	_restoring_boss_authority = false
+
+func _apply_boss_presenters() -> void:
+	_apply_prize_presenter()
+	if is_instance_valid(_survey_interactable) \
+			and _survey_interactable.has_method("restore_one_shot_presenter"):
+		_survey_interactable.restore_one_shot_presenter(
+			_watch_vantage_reached, not _watch_vantage_reached)
+	_apply_scramble_presenter()
+	var t := _tick()
+	for i in range(_wheels.size()):
+		var phase := ring_phase(i, t)
+		if i < _render_phases.size():
+			_render_phases[i] = phase
+		var wheel := _wheels[i] as Dictionary
+		var node := wheel.get("node") as Node3D
+		if node != null and is_instance_valid(node):
+			node.basis = (wheel["base"] as Basis) * Basis(Vector3(0, 0, 1), phase)
+	_refresh_crossing_gate()
+	_update_causeway_visual(t)
+
+func reset_preview_state() -> void:
+	_cancel_boss_callbacks()
+	super.reset_preview_state()
+	_retract_boss_to_defaults()
+	if _spiker_field != null:
+		_spiker_field.set_active(false)
+	var gs = _get_game_state()
+	if gs != null:
+		gs.set_world_state(VANTAGE_KEY, 0)
+	_boss_authority_initialized = true
+	_publish_boss_authority()
+
+func _cancel_boss_callbacks() -> void:
+	var sched = _get_scheduler()
+	if sched == null:
+		return
+	# Cancel legacy fixed tags too, so an in-place reload cannot leave an old callback beside the
+	# seed-keyed one.
+	sched.cancel_tag("watch_scramble")
+	sched.cancel_tag("align_poll")
+	sched.cancel_tag(_boss_tag("watch_scramble"))
+	sched.cancel_tag(_boss_tag("align_poll"))
+	sched.cancel_tag(_boss_tag("winch_batch_resume"))
+	_align_next_tick = -1.0
+	_winch_batch_resume_armed = false
+
+func _boss_tag(suffix: String) -> String:
+	return "boss_%s_%s" % [absi(boss_authority_key().hash()), suffix]
+
+func _exit_tree() -> void:
+	_cancel_boss_callbacks()
+	_unbind_boss_external_traversal_signals()
+	super._exit_tree()
+
 ## A sized label riding the shared _add_label (the base already owns the Label3D idiom).
 func _add_boss_label(parent: Node3D, text: String, pos: Vector3, col: Color, size: int) -> void:
 	var lbl := _add_label(parent, text, pos, col)
@@ -669,14 +1863,43 @@ func _add_boss_label(parent: Node3D, text: String, pos: Vector3, col: Color, siz
 
 func get_preview_state() -> Dictionary:
 	var st: Dictionary = super.get_preview_state()
+	var scree_traversals: Dictionary = {}
+	var gs = _get_game_state()
+	if gs != null:
+		for char_id_v in gs.characters.keys():
+			var char_id := str(char_id_v)
+			var traversal: Dictionary = gs.get_external_traversal_state(char_id)
+			if not traversal.is_empty() \
+					and StringName(str(traversal.get("traversal_id", ""))) == _scree_traversal_id(char_id):
+				scree_traversals[char_id] = traversal
 	st["seed"] = _seed
 	st["wheels"] = _wheels.size()
 	st["crossing_open"] = crossing_open(_tick()) if not _wheels.is_empty() else false
 	st["ring0_parked"] = _ring0_parked != INF
-	st["prize_retrieved"] = _prize_retrieved
+	var prize_item := _get_item_state(_prize_item_id)
+	st["prize_retrieved"] = _prize_phase == PRIZE_PHASE_CLAIMED
+	st["prize_phase"] = _prize_phase
+	st["prize_item_id"] = _prize_item_id
+	st["prize_item_exists"] = not prize_item.is_empty()
+	st["prize_item_location"] = str(prize_item.get("location", "missing"))
+	st["prize_item_holder"] = str(prize_item.get("holder", ""))
+	st["prize_claimed_by"] = _prize_claimed_by
+	st["prize_claim_serial"] = _prize_claim_serial
 	st["spiker_clear"] = not spiker_at_bottom(_tick())
+	st["spiker_hazard"] = _spiker_field.get_state() if _spiker_field != null else {}
 	st["watch_vantage"] = _watch_vantage_reached
+	st["survey_actor"] = _survey_actor
+	st["survey_trigger_consumed"] = _survey_trigger_consumed
+	st["winch_trigger_consumed"] = _winch_trigger_consumed
+	st["winch_batch_serial"] = _winch_batch_serial
+	st["winch_batch"] = _winch_batch.duplicate(true)
+	st["brake_trigger_consumed"] = _brake_trigger_consumed
+	st["brake_transaction"] = _brake_transaction.duplicate(true)
 	st["scramble"] = _flight_scramble
+	st["scramble_deadline"] = _scramble_deadline
+	st["scree_traversals"] = scree_traversals
+	st["align_poll_epoch"] = _align_poll_epoch
+	st["align_next_tick"] = _align_next_tick
 	return st
 
 func _boss_fragment() -> Fragment:

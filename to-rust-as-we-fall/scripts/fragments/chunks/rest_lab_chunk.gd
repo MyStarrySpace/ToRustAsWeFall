@@ -2,8 +2,8 @@ extends "res://scripts/scene_chunks/scene_chunk.gd"
 
 ## Shelter Rest Lab — the GDD 3.3 survival sink in one room, for eyeballing and headless drives:
 ## a battered party at dusk, a shelter pad, and a downed member lying beside it. Stand on the pad
-## and hold REST to bed the active character down (1 HP/sec, one ATP pip per 25s). Stand near the
-## downed member at the shelter and presence alone revives them in 10s. Once every conscious
+## and hold REST PARTY once Aster and Peris are both inside (1 HP/sec, one ATP pip per 25s each).
+## Stand near the downed member at the shelter and presence alone revives them in 10s. Once every conscious
 ## character is resting after nightfall, the night skips to dawn — restful bonus if nobody downed.
 
 const SHELTER_MIN := Vector2(10.0, 3.0)
@@ -24,7 +24,10 @@ func _build_chunk() -> void:
 	_add_label(self, "SHELTER", Vector3(13.0, 2.0, 4.0), Color(0.95, 0.8, 0.5))
 	_clock_label = _add_label(self, "", Vector3(9.0, 3.2, 6.0), Color(0.7, 0.8, 0.95))
 	# The shared rest point also registers the shelter region — reset_preview_state re-clamps it.
-	_rest_interactable = _add_rest_point(self, Vector3(13.0, 0.0, 6.0), Vector2(6.0, 6.0))
+	# Endo starts downed and is recovered by the shelter's separate presence-revive rule; the exact
+	# conscious roster that can commit this initial rest is therefore Aster + Peris.
+	_rest_interactable = _add_rest_point(
+		self, Vector3(13.0, 0.0, 6.0), Vector2(6.0, 6.0), ["aster", "peris"])
 
 func configure_chunk(_config: Dictionary) -> void:
 	pass

@@ -1,10 +1,10 @@
 @tool
 extends "res://scripts/tutorial/tutorial_sequence.gd"
 
-## Peris simulation tutorial: run, stamina, Protect, and Monos.
+## Peris simulation tutorial: run, stamina, Wrap, and Monos.
 
-@export_range(1, 2) var start_phase := 0
-static var _visit_phase := 1
+@export_range(0, 2) var start_phase := 0
+var _visit_phase := 1
 
 const PLACEMENT_ROOT := "ScenePlacement"
 const ROOM_OCCUPANTS := [
@@ -45,6 +45,8 @@ const WALL_MOUNTED_GRID_AXES := {
 }
 
 var _has_sprinted := false
+# These private names and the `protect_prompt` step token predate the canonical
+# Wrap label. Keep them as replay/test schema; live ability data always uses `wrap`.
 var _has_protected := false
 var _protect_queued := false
 var _protect_end_tick := 0.0
@@ -62,25 +64,51 @@ var _portal_view_vp: SubViewport
 var _portal_view_surface: MeshInstance3D
 var _portal_view_cam: Camera3D
 const PORTAL_LENS_SHADER := preload("res://resources/portal_lens.gdshader")
+const CanonicalCharacterAbilityScript := preload("res://scripts/game/mechanics/canonical_character_ability.gd")
 # Where the portal opening stands in the Monos room's own world: centre height matches the
 # Peris-side portal centre, so the two rooms line up like a doorway.
 const MONOS_ROOM_PORTAL_ANCHOR := Vector3(0.0, 2.5, 0.0)
 var _hud  # GameHUD
 
-# Watering beat (phase 1): the hand-inventory tutorial. Peris waters the Boston fern (Plant7) out of
+# Optional watering beat (phase 1). Peris waters the Boston fern (Plant7) out of
 # HABIT — her plants are engineered to stay green, so it's a ritual, not survival (no drying). A
-# watering can sits on the bookshelf as a real GameState ITEM: pick it up (hand slot fills, HUD shows it),
-# carry it over, water the fern. The exploration gate only unlocks once the fern is watered AND the
-# wander timer has elapsed — the beat is the wait for Monos. The fern's watering-tradition reflection
+# watering can sits by the kiosk as a real GameState ITEM: pick it up (hand slot fills, HUD shows it),
+# carry it over, water the fern. It is character texture, not a progression prerequisite.
+# The fern's watering-tradition reflection
 # (plant_7.line / .line_repeat) lives in its inspection zone.
 var _watering_can_item_id := ""
 var _watering_can_mesh: Node3D
+var _watering_can_home_parent: Node
+var _watering_can_home_rotation := Vector3.ZERO
+var _watering_can_home_scale := Vector3.ONE
+var _watering_can_outline_target
+var _watering_can_outline_offset := Vector3.ZERO
 var _water_plant_interactable
 var _can_pickup_interactable
 var _fern_exploration_interactable
 var _fern_outline_target
 var _plant_watered := false
+var _exploration_armed := false
+var _watering_signal_game_state: GameState
+var _watering_source_committed_counts: Dictionary = {}
+var _active_watering_source_receipt: Dictionary = {}
 var _explore_time_elapsed := false
+const WATERING_CAN_CONTRACT := "peris_sim.watering_can"
+const WATERING_AUTHORITY_KEY := "tutorial.peris_sim.watering"
+const WATERING_AUTHORITY_VERSION := 2
+const WATERING_PHASE_ID := &"tutorial.peris_sim.water_fern"
+const WATERING_PHASE_ACTIVE := &"watering"
+const WATERING_PHASE_COMPLETE := &"watered"
+const WATERING_PHASE_AVAILABLE := &"available"
+const WATERING_PICKUP_SOURCE_ID := "WateringCanPickup"
+const WATERING_USE_SOURCE_ID := "WaterPlantSpot"
+const WATERING_PICKUP_ACTION := "watering_can_pickup"
+const WATERING_USE_ACTION := "water_fern"
+const WATERING_USE_DURATION := 1.2
+const WATERING_USE_RADIUS := 2.0
+const WATERING_INTERACTION_POSITION_TOLERANCE := 0.35
+const WATERING_INTERACTION_HEIGHT_TOLERANCE := 1.35
+const WATERING_HAND_OFFSET := Vector3(0.42, 1.0, 0.18)
 const WATERING_CAN_POS := Vector3(2.5, 0.0, 2.0)  # floor by the kiosk, snapped in X/Z to the room plan
 const FERN_POS := Vector3(7.0, 0.0, 5.0)  # fallback when the authored fern table is absent
 # The watering beat drives the player to the dry fern; the input playthrough drives this point.
@@ -92,15 +120,12 @@ var DRY_PLANT_POS: Vector3:
 
 # Exploration beat (phase 1, pre-Monos-arrival)
 var _explore_logbook_gate  # Interactable at the logbook
-const EXPLORE_MIN_TIME := 6.0  # scheduler seconds before the logbook gate unlocks
 var _explore_gate_unlocked := false
 var _explore_gate_fired := false
 
-# Peris says she will take a lap while the client connection resolves. Make that
-# lap active and spatial instead of allowing the six-second timer plus watering
-# alone to skip the room. The plant category deliberately accepts any existing
-# plant-group zone, preserving a first-clear exploration branch without moving
-# or duplicating any room object.
+# Optional-read coverage telemetry for Peris's self-directed lap. The plant
+# category accepts any existing plant-group zone without moving or duplicating
+# room objects; none of these reads gates the logbook.
 const CARE_CONTEXT_REQUIRED := ["plant", "painting", "wellness", "strike_warning"]
 const CARE_CONTEXT_PLANT_BRANCHES := [
 	"shelf",
@@ -110,105 +135,10 @@ const CARE_CONTEXT_PLANT_BRANCHES := [
 	"peace",
 ]
 
-# The first read covers the room's characterization. The required audit then asks
-# one concise causal question: does care evidence or compliance pressure deserve
-# priority? It samples four distinct sources once; the later operation cashes that
-# decision out physically instead of demanding two more laps through the room.
-const CARE_AUDIT_WORK_SECONDS := 4.9
-const CARE_AUDIT_DIALOGUE_CPS := 30.0
-const CARE_AUDIT_RESPONSE_SECONDS_PER_LINE := 0.75
-const CARE_AUDIT_FIXED_PRESENTATION_COMPONENTS := {
-	"first_visit_fade": 3.0,
-	"first_visit_post_dialogue": 3.0,
-	"first_visit_transition": 2.5,
-	"second_visit_fade": 3.0,
-	"session_attack_lead": 2.0,
-	"efficiency_log_close": 1.6,
-	"second_visit_transition": 2.5,
-}
-const CARE_AUDIT_COMMON_CASE := {
-	"id": "priority",
-	"label": "PRIORITY",
-	"evidence": ["wellness", "strike", "fern", "painting"],
-	"candidates": ["wellness", "strike"],
-}
-const CARE_AUDIT_EVIDENCE_SOURCES := {
-	"bookshelf": {"zone": "Plant1Zone", "targets": ["Plant1Outline", "Plant2Outline", "Plant5Outline"], "label": "BOOKSHELF PLANTS"},
-	"stand": {"zone": "Plant4Zone", "targets": ["Plant4Outline", "Plant6Outline"], "label": "SURVIVOR PLANTS"},
-	"coffee": {"zone": "Plant3Zone", "targets": ["Plant3Outline", "Plant8Outline"], "label": "CLIENT PLANTS"},
-	"fern": {"zone": "Plant7Zone", "targets": ["Plant7Outline"], "label": "WATERING LOG"},
-	"peace": {"zone": "Plant9Zone", "targets": ["Plant9Outline"], "label": "LEGACY PLANT"},
-	"painting": {"zone": "PaintingZone", "targets": ["PaintingOutline"], "label": "WALL ART"},
-	"wellness": {"zone": "WellnessZone", "targets": ["WellnessOutline"], "label": "WELLNESS FEED"},
-	"strike": {"zone": "StrikeWarningZone", "targets": ["StrikeWarningOutline"], "label": "STRIKE WARNING"},
-}
-
-# One transfer operation follows the audit. It checks the living system and both
-# competing pressures, then resolves the branch on a physical room object.
-const CARE_OPERATION_PHASES := [
-	{
-		"id": "priority_response",
-		"label": "PRIORITY RESPONSE",
-		"tasks": [
-			{"id": "probe_fern_moisture", "source": "fern", "label": "PROBE FERN MOISTURE"},
-			{"id": "read_wellness_load", "source": "wellness", "label": "READ CARE LOAD"},
-			{"id": "read_strike_window", "source": "strike", "label": "READ STRIKE WINDOW"},
-		],
-		"candidates": ["read_wellness_load", "read_strike_window"],
-		"resolutions": {
-			"read_wellness_load": {"id": "set_care_baseline", "source": "peace", "label": "SET CARE BASELINE"},
-			"read_strike_window": {"id": "freeze_compliance_clock", "source": "bookshelf", "label": "FREEZE COMPLIANCE CLOCK"},
-		},
-	},
-]
-const CARE_OPERATION_WORK_SECONDS := 4.9
-const CARE_AUDIT_STORY_DIALOGUE_KEYS := [
-	"peris_sim.monos.late", "peris_sim.peris.purpose", "peris_sim.monos.turn",
-	"peris_sim.monos.opening", "peris_sim.monos.real", "peris_sim.monos.heart",
-	"peris_sim.monos.mind", "peris_sim.peris.fight", "peris_sim.monos.hit",
-	"peris_sim.peris.alarm", "peris_sim.monos.help", "peris_sim.system.overtime",
-	"peris_sim.peris.protect_him", "peris_sim.monos.thanks", "peris_sim.system.complete",
-	"peris_sim.system.sanction_notice", "peris_sim.system.wellness_feed",
-	"peris_sim.peris.sanction_reaction", "peris_sim.system.spiral_flash",
-	"peris_sim.peris.retro", "peris_sim.worker.okay", "peris_sim.worker.medical",
-]
-const CARE_AUDIT_CONTEXT_DIALOGUE_KEYS := [
-	"peris.sim_expand.plant_1.line", "peris.sim_expand.plant_4.line",
-	"peris.sim_expand.plant_3.line", "peris.sim_expand.plant_7.line",
-	"peris.sim_expand.plant_9.line", "peris.sim_expand.painting.line",
-	"peris.sim_expand.wellness.line", "peris.sim_expand.strike_warning.notification",
-	"peris.sim_expand.strike_warning.line",
-]
 var _care_context_completed: Dictionary = {}
 var _care_context_zone_visits: Dictionary = {}
 var _care_context_plant_group := ""
 var _care_context_ready := false
-var _care_audit_started := false
-var _care_audit_complete := false
-var _care_audit_case_index := -1
-var _care_audit_branch := ""
-var _care_audit_secondary_route := ""
-var _care_audit_outcome := ""
-var _care_audit_case_evidence: Dictionary = {}
-var _care_audit_selected_candidate := ""
-var _care_audit_evidence_interactables: Dictionary = {}
-var _care_audit_review_counts: Dictionary = {}
-var _care_audit_commit_history: Array[Dictionary] = []
-var _care_operation_interactables: Dictionary = {}
-var _care_operation_resolution_interactable
-var _care_operation_phase_index := -1
-var _care_operation_stage := ""
-var _care_operation_completed_tasks: Dictionary = {}
-var _care_operation_selected_candidate := ""
-var _care_operation_resolution_id := ""
-var _care_operation_decisions: Array[Dictionary] = []
-var _care_operations_complete := false
-var _care_kit_item_id := ""
-var _care_kit_mesh: Node3D
-var _care_kit_pickup_interactable
-var _care_kit_held := false
-var _care_kit_returned := false
-
 # Stamina and run speed are authoritative in GameState.
 var _is_paused := false
 var _efficiency_score := 100.0
@@ -216,9 +146,57 @@ var _efficiency_score := 100.0
 # Fallback positions are used only when a stripped test scene omits the editor-authored nodes.
 const PORTAL_PANEL := Vector3(0.5, 2.5, 3.0)   # portal panel centre on the west wall
 const PORTAL_POS := Vector3(2.5, 0, 3.0)  # floor in front of the portal — clear space for Peris
-const MONOS_POS := Vector3(2.5, 0, 4.0)  # open circulation cell, separate from the protect stand
-const PROTECT_INPUT_ACTION := &"party_slot_2_ability_1"
+const MONOS_POS := Vector3(2.5, 0, 4.0)  # open circulation cell, separate from the Wrap cast stand
+const WRAP_ABILITY_ID := "wrap"
+const WRAP_DEFINITION_ID := "peris_sim.wrap"
+const WRAP_INPUT_ACTION := &"party_slot_2_ability_1"
 const PERIS_START := Vector3(6.0, 0.5, 4.5)  # circulation lane, outside the can/fern auto-dwell radii
+
+# Peris's two visits and the ordered Wrap tutorial used to live in one process-static
+# integer plus scene-local booleans/Callables. A save made while Peris was walking into
+# cast range restored GameState's canonical queued ability but lost the only callback
+# that advanced the story. This record is the portable causal owner; UI, dialogue, and
+# callbacks are rebuilt from it after GameState replaces a snapshot.
+const PERIS_AUTHORITY_KEY := "runtime:peris_sim:sequence_authority"
+const PERIS_AUTHORITY_VERSION := 1
+const PERIS_AUTHORITY_CONTRACT := "peris_sim_sequence_v1"
+const PERIS_CAMPAIGN_PROGRESS_KEY := "tutorial.peris_sim.progress"
+const PERIS_CAMPAIGN_PROGRESS_VERSION := 1
+
+const PERIS_PHASE_FADE_FIRST := "fade_first_visit"
+const PERIS_PHASE_EXPLORATION := "exploration"
+const PERIS_PHASE_FIRST_DIALOGUE := "first_visit_dialogue"
+const PERIS_PHASE_FIRST_HANDOFF_WAIT := "first_visit_handoff_wait"
+const PERIS_PHASE_FADE_SECOND := "fade_second_visit"
+const PERIS_PHASE_SESSION_LEAD := "session_lead"
+const PERIS_PHASE_ATTACK_DIALOGUE := "attack_dialogue"
+const PERIS_PHASE_WRAP_PROMPT := "wrap_prompt"
+const PERIS_PHASE_WRAP_QUEUED := "wrap_queued"
+const PERIS_PHASE_WRAP_TARGETING := "wrap_targeting"
+const PERIS_PHASE_WRAP_TARGETED := "wrap_targeted"
+const PERIS_PHASE_WRAP_QUEUE_PENDING := "wrap_queue_pending"
+const PERIS_PHASE_WRAP_APPROACH := "wrap_approach"
+const PERIS_PHASE_WRAP_CAST := "wrap_cast"
+const PERIS_PHASE_AFTERMATH := "aftermath"
+const PERIS_PHASE_EFFICIENCY_LOG := "efficiency_log"
+const PERIS_PHASE_SANCTION_NOTICE := "sanction_notice"
+const PERIS_PHASE_SANCTION_FEED := "sanction_feed"
+const PERIS_PHASE_SPIRAL_FLASH := "spiral_flash"
+const PERIS_PHASE_RETRO := "retro"
+const PERIS_PHASE_SIM_BAY_EXIT := "sim_bay_exit"
+const PERIS_PHASE_TRANSITION := "transition"
+const PERIS_PHASE_COMPLETE := "complete"
+
+const PERIS_FADE_DURATION := 3.0
+const PERIS_SESSION_LEAD_DURATION := 2.0
+const PERIS_FIRST_HANDOFF_DELAY := 3.0
+const PERIS_EFFICIENCY_CLOSE_DELAY := 1.6
+const PERIS_TRANSITION_DURATION := 2.5
+const PERIS_AUTHORITY_DEADLINE_TAG := "peris_sequence_authority_deadline"
+const PERIS_WRAP_RESOLVE_TAG := "peris_wrap_authority_resolve"
+
+var _peris_authority_signal_game_state: GameState
+var _restoring_peris_authority := false
 
 # The workspace is the modeled Crocotile room (peris-sim.gltf): floor X in [0, 14], Z in [0, 6], up
 # Y in [0, 5]. The grid is that footprint at 1 cell / unit, so movement is cell-based + cooperative
@@ -237,6 +215,493 @@ var _room_binder := RoomModelBinder.new()
 # visible, selectable, and movable in the editor. Only the separate live portal-view world is
 # instantiated at runtime.
 const MONOS_PORTAL_ROOM_VISUAL_SCENE := preload("res://scenes/props/peris/monos_portal_room_visual.tscn")
+
+
+# --- Portable Peris sequence authority --------------------------------------------------------
+
+func _baseline_peris_authority(visit_phase: int) -> Dictionary:
+	var normalized_visit := clampi(visit_phase, 1, 2)
+	return {
+		"version": PERIS_AUTHORITY_VERSION,
+		"contract": PERIS_AUTHORITY_CONTRACT,
+		"visit_phase": normalized_visit,
+		"phase": PERIS_PHASE_FADE_FIRST if normalized_visit == 1 else PERIS_PHASE_FADE_SECOND,
+		"step": "fade_in",
+		"started_at": _scheduler.get_current_tick() if _scheduler != null else 0.0,
+		"deadline": -1.0,
+		"exploration": {
+			"gate_unlocked": false,
+			"gate_fired": false,
+			"time_elapsed": false,
+			"room_reads": {},
+			"zone_visits": {},
+			"plant_group": "",
+		},
+		"wrap": {
+			"owner_id": "peris",
+			"target_id": "monos",
+			"destination": _peris_authority_v3_data(
+				_layout_position("PortalStand", PORTAL_POS)),
+			"duration": float(AbilityData.get_ability("default.wrap").get(
+				"duration", CanonicalCharacterAbilityScript.WRAP_DURATION_SECONDS)),
+			"effect_deadline": -1.0,
+			"queue_accepted": false,
+		},
+		"has_sprinted": false,
+		"has_protected": false,
+		"is_paused": false,
+		"efficiency_score": 100.0,
+	}
+
+
+func _peris_authority_state() -> Dictionary:
+	if _game_state == null:
+		return {}
+	var raw: Variant = _game_state.get_world_state(PERIS_AUTHORITY_KEY, null)
+	if not (raw is Dictionary):
+		return {}
+	var authority := raw as Dictionary
+	if int(authority.get("version", 0)) != PERIS_AUTHORITY_VERSION \
+			or str(authority.get("contract", "")) != PERIS_AUTHORITY_CONTRACT:
+		return {}
+	return authority.duplicate(true)
+
+
+func _publish_peris_authority(authority: Dictionary) -> void:
+	if _game_state == null or _restoring_peris_authority:
+		return
+	authority["version"] = PERIS_AUTHORITY_VERSION
+	authority["contract"] = PERIS_AUTHORITY_CONTRACT
+	_game_state.set_world_state(PERIS_AUTHORITY_KEY, authority.duplicate(true))
+
+
+func _publish_peris_phase(
+		phase: String,
+		deadline := -1.0,
+		extra: Dictionary = {}
+	) -> Dictionary:
+	var authority := _peris_authority_state()
+	if authority.is_empty():
+		authority = _baseline_peris_authority(_visit_phase)
+	authority["visit_phase"] = _visit_phase
+	authority["phase"] = phase
+	authority["step"] = _current_step
+	authority["started_at"] = _scheduler.get_current_tick() if _scheduler != null else 0.0
+	authority["deadline"] = deadline
+	authority["has_sprinted"] = _has_sprinted
+	authority["has_protected"] = _has_protected
+	authority["is_paused"] = _is_paused
+	authority["efficiency_score"] = _efficiency_score
+	authority["exploration"] = _peris_exploration_authority_state()
+	for key_v in extra.keys():
+		authority[key_v] = (extra[key_v] as Dictionary).duplicate(true) \
+			if extra[key_v] is Dictionary else extra[key_v]
+	_publish_peris_authority(authority)
+	return authority
+
+
+func _publish_peris_observation_state() -> void:
+	var authority := _peris_authority_state()
+	if authority.is_empty():
+		return
+	authority["exploration"] = _peris_exploration_authority_state()
+	authority["has_sprinted"] = _has_sprinted
+	authority["has_protected"] = _has_protected
+	authority["is_paused"] = _is_paused
+	authority["efficiency_score"] = _efficiency_score
+	_publish_peris_authority(authority)
+
+
+func _peris_exploration_authority_state() -> Dictionary:
+	return {
+		"gate_unlocked": _explore_gate_unlocked,
+		"gate_fired": _explore_gate_fired,
+		"time_elapsed": _explore_time_elapsed,
+		"room_reads": _care_context_completed.duplicate(true),
+		"zone_visits": _care_context_zone_visits.duplicate(true),
+		"plant_group": _care_context_plant_group,
+	}
+
+
+func _restore_peris_exploration_state(authority: Dictionary) -> void:
+	var exploration_v: Variant = authority.get("exploration", {})
+	var exploration: Dictionary = exploration_v as Dictionary \
+		if exploration_v is Dictionary else {}
+	_explore_gate_unlocked = bool(exploration.get("gate_unlocked", false))
+	_explore_gate_fired = bool(exploration.get("gate_fired", false))
+	_explore_time_elapsed = bool(exploration.get("time_elapsed", false))
+	var reads_v: Variant = exploration.get("room_reads", {})
+	_care_context_completed = (reads_v as Dictionary).duplicate(true) \
+		if reads_v is Dictionary else {}
+	var visits_v: Variant = exploration.get("zone_visits", {})
+	_care_context_zone_visits = (visits_v as Dictionary).duplicate(true) \
+		if visits_v is Dictionary else {}
+	_care_context_plant_group = str(exploration.get("plant_group", ""))
+	_care_context_ready = _explore_gate_unlocked
+
+
+func _peris_authority_v3_data(value: Vector3) -> Array:
+	if not value.is_finite():
+		return []
+	return [value.x, value.y, value.z]
+
+
+func _peris_authority_v3(value: Variant) -> Vector3:
+	if not (value is Array) or (value as Array).size() != 3:
+		return Vector3.INF
+	var encoded := value as Array
+	for component in encoded:
+		if typeof(component) not in [TYPE_INT, TYPE_FLOAT] \
+				or not is_finite(float(component)):
+			return Vector3.INF
+	return Vector3(float(encoded[0]), float(encoded[1]), float(encoded[2]))
+
+
+func _peris_wrap_authority(authority := {}) -> Dictionary:
+	var source: Dictionary = authority if authority is Dictionary and not authority.is_empty() \
+		else _peris_authority_state()
+	var wrap_v: Variant = source.get("wrap", {})
+	return (wrap_v as Dictionary).duplicate(true) if wrap_v is Dictionary else {}
+
+
+func _connect_peris_authority_signals() -> void:
+	if _game_state == null:
+		return
+	if _peris_authority_signal_game_state != null \
+			and _peris_authority_signal_game_state != _game_state \
+			and _peris_authority_signal_game_state.ability_fired.is_connected(
+				_on_peris_authority_ability_fired):
+		_peris_authority_signal_game_state.ability_fired.disconnect(
+			_on_peris_authority_ability_fired)
+	_peris_authority_signal_game_state = _game_state
+	if not _game_state.ability_fired.is_connected(_on_peris_authority_ability_fired):
+		_game_state.ability_fired.connect(_on_peris_authority_ability_fired)
+
+
+func _on_peris_authority_ability_fired(
+		character_id: String,
+		ability_id: String,
+		_target_position: Vector3
+	) -> void:
+	if _restoring_peris_authority or character_id != "peris" \
+			or ability_id != WRAP_ABILITY_ID:
+		return
+	var phase := str(_peris_authority_state().get("phase", ""))
+	if phase not in [PERIS_PHASE_WRAP_QUEUE_PENDING, PERIS_PHASE_WRAP_APPROACH]:
+		return
+	_commit_wrap_cast_authority()
+
+
+func _commit_wrap_cast_authority() -> void:
+	var authority := _peris_authority_state()
+	if authority.is_empty():
+		return
+	var phase := str(authority.get("phase", ""))
+	if phase in [
+		PERIS_PHASE_WRAP_CAST, PERIS_PHASE_AFTERMATH, PERIS_PHASE_EFFICIENCY_LOG,
+		PERIS_PHASE_SANCTION_NOTICE, PERIS_PHASE_SANCTION_FEED, PERIS_PHASE_SPIRAL_FLASH,
+		PERIS_PHASE_RETRO, PERIS_PHASE_SIM_BAY_EXIT, PERIS_PHASE_TRANSITION,
+		PERIS_PHASE_COMPLETE,
+	]:
+		return
+	if _game_state == null or _game_state.get_damage_shield("monos") <= 0.0:
+		return
+	_has_protected = true
+	_protect_queued = false
+	var wrap := _peris_wrap_authority(authority)
+	var duration := maxf(0.001, float(wrap.get(
+		"duration", CanonicalCharacterAbilityScript.WRAP_DURATION_SECONDS)))
+	_protect_end_tick = _scheduler.get_current_tick() + duration
+	wrap["queue_accepted"] = true
+	wrap["effect_deadline"] = _protect_end_tick
+	_publish_peris_phase(PERIS_PHASE_WRAP_CAST, _scheduler.get_current_tick(), {"wrap": wrap})
+	_apply_wrap_cast_presenter(duration)
+	_scheduler.cancel_tag(PERIS_WRAP_RESOLVE_TAG)
+	_scheduler.schedule_after(0.0, _start_aftermath, PERIS_WRAP_RESOLVE_TAG)
+
+
+func _apply_wrap_cast_presenter(duration: float) -> void:
+	_face_peris_to_portal()
+	if _hud:
+		_hud.set_ability_state(WRAP_ABILITY_ID, "active", duration)
+		_hud.show_message("Peris: WRAP! Shielding Monos from incoming damage.", 2.0)
+	if _attack_particles:
+		_attack_particles.light_energy = 0.5
+	if _portal_light:
+		_portal_light.light_color = Color(0.9, 0.7, 0.3)
+		_portal_light.light_energy = 4.0
+
+
+func _issue_wrap_queue_from_authority() -> void:
+	if _game_state == null or _scheduler == null:
+		return
+	var authority := _peris_authority_state()
+	var phase := str(authority.get("phase", ""))
+	if phase not in [PERIS_PHASE_WRAP_QUEUE_PENDING, PERIS_PHASE_WRAP_APPROACH]:
+		return
+	if _game_state.get_damage_shield("monos") > 0.0:
+		_commit_wrap_cast_authority()
+		return
+	if _game_state.has_queued_ability("peris"):
+		if phase != PERIS_PHASE_WRAP_APPROACH:
+			var queued_wrap := _peris_wrap_authority(authority)
+			queued_wrap["queue_accepted"] = true
+			_publish_peris_phase(PERIS_PHASE_WRAP_APPROACH, -1.0, {"wrap": queued_wrap})
+		return
+	var wrap := _peris_wrap_authority(authority)
+	var destination := _peris_authority_v3(wrap.get("destination", null))
+	if not destination.is_finite():
+		destination = _layout_position("PortalStand", PORTAL_POS)
+		wrap["destination"] = _peris_authority_v3_data(destination)
+	var duration := maxf(0.001, float(wrap.get(
+		"duration", CanonicalCharacterAbilityScript.WRAP_DURATION_SECONDS)))
+	var result := _game_state.queue_canonical_ability(
+		"peris",
+		WRAP_ABILITY_ID,
+		destination,
+		{
+			"target_id": "monos",
+			"allowed_target_ids": ["monos"],
+			"duration": duration,
+			"approach_range": 2.5,
+		}
+	)
+	if not bool(result.get("accepted", false)):
+		# The committed command could not be reconstructed (for example, an edited
+		# snapshot removed Monos). Return to the explicit target-confirm step instead
+		# of silently completing or leaving an inert executing beat.
+		_protect_queued = true
+		_current_step = "confirm_protect"
+		_is_paused = true
+		_publish_peris_phase(PERIS_PHASE_WRAP_TARGETED)
+		_restore_wrap_targeted_presenter()
+		return
+	# An in-range cast emits ability_fired before queue_canonical_ability returns.
+	# Never overwrite the resulting cast/aftermath phase with the older approach.
+	if str(_peris_authority_state().get("phase", "")) \
+			in [PERIS_PHASE_WRAP_QUEUE_PENDING, PERIS_PHASE_WRAP_APPROACH]:
+		wrap["queue_accepted"] = true
+		_publish_peris_phase(PERIS_PHASE_WRAP_APPROACH, -1.0, {"wrap": wrap})
+
+
+func _arm_peris_authority_deadline(authority: Dictionary) -> void:
+	if _scheduler == null:
+		return
+	var phase := str(authority.get("phase", ""))
+	var tag := _peris_authority_deadline_tag(phase)
+	_scheduler.cancel_tag(tag)
+	var deadline := float(authority.get("deadline", -1.0))
+	if deadline < float(authority.get("started_at", -1.0)) or deadline < 0.0:
+		return
+	if deadline <= _scheduler.get_current_tick():
+		_on_peris_authority_deadline(phase, deadline)
+	else:
+		_scheduler.schedule_at(
+			deadline,
+			_on_peris_authority_deadline.bind(phase, deadline),
+			tag)
+
+
+func _peris_authority_deadline_tag(phase: String) -> String:
+	return "%s:%s" % [PERIS_AUTHORITY_DEADLINE_TAG, phase]
+
+
+func _peris_authority_deadline_phases() -> Array[String]:
+	return [
+		PERIS_PHASE_FADE_FIRST, PERIS_PHASE_FIRST_HANDOFF_WAIT,
+		PERIS_PHASE_FADE_SECOND, PERIS_PHASE_SESSION_LEAD,
+		PERIS_PHASE_EFFICIENCY_LOG, PERIS_PHASE_TRANSITION,
+	]
+
+
+func _on_peris_authority_deadline(expected_phase: String, expected_deadline: float) -> void:
+	var authority := _peris_authority_state()
+	if str(authority.get("phase", "")) != expected_phase \
+			or not is_equal_approx(float(authority.get("deadline", -1.0)), expected_deadline):
+		return
+	match expected_phase:
+		PERIS_PHASE_FADE_FIRST:
+			_start_workspace()
+		PERIS_PHASE_FIRST_HANDOFF_WAIT:
+			_start_transition_out()
+		PERIS_PHASE_FADE_SECOND:
+			_start_session_begins()
+		PERIS_PHASE_SESSION_LEAD:
+			_start_attack()
+		PERIS_PHASE_EFFICIENCY_LOG:
+			_start_sanction_notice()
+		PERIS_PHASE_TRANSITION:
+			_complete()
+
+
+func _clear_peris_authority_callbacks() -> void:
+	if _scheduler != null:
+		for phase in _peris_authority_deadline_phases():
+			_scheduler.cancel_tag(_peris_authority_deadline_tag(phase))
+		for tag in [
+			PERIS_AUTHORITY_DEADLINE_TAG, PERIS_WRAP_RESOLVE_TAG,
+			"workspace", "session_begins", "attack", "alert_monos", "aftermath",
+			"efficiency_log", "sanction_notice", "sanction_feed", "spiral_flash",
+			"retro", "sim_bay_exit", "transition_out", "complete",
+		]:
+			_scheduler.cancel_tag(tag)
+	if _dialogue != null:
+		for connection_v in _dialogue.dialogue_finished.get_connections():
+			var connection := connection_v as Dictionary
+			_dialogue.dialogue_finished.disconnect(connection.callable)
+		_dialogue.clear()
+	_dlg_chain_keys.clear()
+	_dlg_chain_index = 0
+	_dlg_chain_next = Callable()
+
+
+func _restore_peris_move_input(enabled: bool) -> void:
+	if _player == null:
+		return
+	if _player.has_method("restore_move_input_enabled"):
+		_player.restore_move_input_enabled(enabled)
+	else:
+		_player.set("_move_enabled", enabled)
+
+
+func _restore_peris_authority_after_snapshot() -> void:
+	if _scheduler == null or _game_state == null:
+		return
+	_clear_peris_authority_callbacks()
+	var authority := _peris_authority_state()
+	if authority.is_empty():
+		authority = _baseline_peris_authority(_visit_phase)
+		_publish_peris_authority(authority)
+	_visit_phase = clampi(int(authority.get("visit_phase", 1)), 1, 2)
+	_has_sprinted = bool(authority.get("has_sprinted", false))
+	_has_protected = bool(authority.get("has_protected", false))
+	_is_paused = bool(authority.get("is_paused", false))
+	_efficiency_score = float(authority.get("efficiency_score", 100.0))
+	_restore_peris_exploration_state(authority)
+	var phase := str(authority.get("phase", ""))
+	var saved_step := str(authority.get("step", ""))
+	if saved_step != "":
+		_current_step = saved_step
+	var wrap := _peris_wrap_authority(authority)
+	_protect_end_tick = maxf(0.0, float(wrap.get("effect_deadline", -1.0)))
+	_protect_queued = phase in [
+		PERIS_PHASE_WRAP_TARGETED, PERIS_PHASE_WRAP_QUEUE_PENDING,
+		PERIS_PHASE_WRAP_APPROACH,
+	]
+	_restoring_peris_authority = true
+	match phase:
+		PERIS_PHASE_FADE_FIRST, PERIS_PHASE_FADE_SECOND:
+			_current_step = "fade_in"
+			_restore_peris_move_input(false)
+			_fade_start_tick = float(authority.get("started_at", _scheduler.get_current_tick()))
+			_update_fades()
+		PERIS_PHASE_EXPLORATION:
+			_current_step = "workspace"
+			_restore_peris_move_input(true)
+			_set_exploration_armed(true, true)
+			_set_interactable_projection(_explore_logbook_gate, _explore_gate_unlocked, true)
+		PERIS_PHASE_FIRST_DIALOGUE:
+			_current_step = "monos_breakthrough"
+			_restore_peris_move_input(true)
+			_present_first_visit_dialogue()
+		PERIS_PHASE_FIRST_HANDOFF_WAIT:
+			_current_step = "monos_breakthrough"
+			_restore_peris_move_input(true)
+		PERIS_PHASE_SESSION_LEAD:
+			_current_step = "session_begins"
+			_restore_session_lead_presenter()
+		PERIS_PHASE_ATTACK_DIALOGUE:
+			_current_step = "attack"
+			_present_attack_dialogue()
+		PERIS_PHASE_WRAP_PROMPT:
+			_current_step = "protect_prompt"
+			_restore_wrap_prompt_presenter()
+		PERIS_PHASE_WRAP_QUEUED:
+			_current_step = "run_prompt"
+			_restore_wrap_queued_presenter()
+		PERIS_PHASE_WRAP_TARGETING:
+			_current_step = "click_monos"
+			_restore_wrap_targeting_presenter()
+		PERIS_PHASE_WRAP_TARGETED:
+			_current_step = "confirm_protect"
+			_restore_wrap_targeted_presenter()
+		PERIS_PHASE_WRAP_QUEUE_PENDING, PERIS_PHASE_WRAP_APPROACH:
+			_current_step = "executing"
+			_restore_wrap_executing_presenter()
+		PERIS_PHASE_WRAP_CAST:
+			_current_step = "executing"
+			_apply_wrap_cast_presenter(maxf(
+				0.0, _protect_end_tick - _scheduler.get_current_tick()))
+		PERIS_PHASE_AFTERMATH:
+			_current_step = "aftermath"
+			_present_aftermath_dialogue()
+		PERIS_PHASE_EFFICIENCY_LOG:
+			_current_step = "efficiency_log"
+			if float(authority.get("deadline", -1.0)) < 0.0:
+				_present_efficiency_log()
+			else:
+				_restore_efficiency_log_presenter()
+		PERIS_PHASE_SANCTION_NOTICE:
+			_current_step = "sanction_notice"
+			_present_sanction_notice()
+		PERIS_PHASE_SANCTION_FEED:
+			_current_step = "sanction_feed"
+			_present_sanction_feed()
+		PERIS_PHASE_SPIRAL_FLASH:
+			_current_step = "spiral_flash"
+			_present_spiral_flash()
+		PERIS_PHASE_RETRO:
+			_current_step = "retro"
+			_present_retro()
+		PERIS_PHASE_SIM_BAY_EXIT:
+			_current_step = "sim_bay_exit"
+			_present_sim_bay_exit()
+		PERIS_PHASE_TRANSITION:
+			_current_step = "transition_out"
+			_restore_peris_move_input(false)
+			_fade_start_tick = float(authority.get("started_at", _scheduler.get_current_tick()))
+			_update_fades()
+		PERIS_PHASE_COMPLETE:
+			_current_step = "complete"
+			_restore_peris_move_input(false)
+			requested_scene_change = str(authority.get("destination", ""))
+	_restoring_peris_authority = false
+	if phase in [
+		PERIS_PHASE_FADE_FIRST, PERIS_PHASE_FIRST_HANDOFF_WAIT,
+		PERIS_PHASE_FADE_SECOND, PERIS_PHASE_SESSION_LEAD,
+		PERIS_PHASE_EFFICIENCY_LOG, PERIS_PHASE_TRANSITION,
+	]:
+		_arm_peris_authority_deadline(authority)
+	elif phase in [PERIS_PHASE_WRAP_QUEUE_PENDING, PERIS_PHASE_WRAP_APPROACH]:
+		_issue_wrap_queue_from_authority()
+	elif phase == PERIS_PHASE_WRAP_CAST:
+		_scheduler.schedule_after(0.0, _start_aftermath, PERIS_WRAP_RESOLVE_TAG)
+
+
+func _resolve_initial_visit_phase() -> int:
+	if start_phase > 0:
+		return start_phase
+	var save_manager := get_node_or_null("/root/SaveManager")
+	if save_manager != null and save_manager.has_method("get_campaign_state"):
+		var progress_v: Variant = save_manager.get_campaign_state(
+			PERIS_CAMPAIGN_PROGRESS_KEY, null)
+		if progress_v is Dictionary:
+			var progress := progress_v as Dictionary
+			if int(progress.get("version", 0)) == PERIS_CAMPAIGN_PROGRESS_VERSION:
+				return clampi(int(progress.get("next_visit_phase", _visit_phase)), 1, 2)
+	return clampi(_visit_phase, 1, 2)
+
+
+func _publish_peris_campaign_progress(second_visit_complete := false) -> void:
+	var save_manager := get_node_or_null("/root/SaveManager")
+	if save_manager == null or not save_manager.has_method("set_campaign_state"):
+		return
+	save_manager.set_campaign_state(PERIS_CAMPAIGN_PROGRESS_KEY, {
+		"version": PERIS_CAMPAIGN_PROGRESS_VERSION,
+		"next_visit_phase": 2,
+		"first_visit_complete": true,
+		"second_visit_complete": second_visit_complete,
+	})
 
 
 ## The scene's Marker3Ds are the editable floor plan. Constants above are only
@@ -363,25 +828,31 @@ func _setup_ui() -> void:
 	_hud.add_stat_bar("sta", Color(0.3, 0.5, 0.7), GameState.STAMINA_MAX, GameState.STAMINA_MAX)
 	_hud.show_pause_toggle(false)
 	_hud.show_run_toggle(false)
-	var protect_binding := AbilityData.binding("protect")
-	_hud.add_ability("protect", AbilityData.get_ability("peris_sim.protect").get("display_name", "PROTECT"),
-		InputHints.label_for_action(PROTECT_INPUT_ACTION, str(protect_binding.get("keybind", ""))),
-		protect_binding.get("color", Color(0.8, 0.55, 0.2)),
-		PROTECT_INPUT_ACTION, "peris", "Peris", 1, 0)
+	var wrap_binding := AbilityData.binding(WRAP_ABILITY_ID)
+	_hud.add_ability(WRAP_ABILITY_ID, AbilityData.get_ability(WRAP_DEFINITION_ID).get("display_name", "WRAP"),
+		InputHints.label_for_action(WRAP_INPUT_ACTION, str(wrap_binding.get("keybind", ""))),
+		wrap_binding.get("color", Color(0.8, 0.55, 0.2)),
+		WRAP_INPUT_ACTION, "peris", "Peris", 1, 0)
 	_hud.pause_toggled.connect(_on_pause_toggled)
 	# Step guards decide when run toggles are allowed.
-	_hud.run_toggled.connect(func(running: bool): _toggle_run())
-	_hud.ability_pressed.connect(func(id: String):
-		if id == "protect":
-			_on_protect_pressed()
-	)
+	_hud.run_toggled.connect(_on_hud_run_toggled)
+	_hud.ability_pressed.connect(_on_hud_ability_pressed)
 	# Keep run input gated by step.
 	_hud.bind_game_state(_game_state, "peris", false)
 
+
+func _on_hud_run_toggled(_running: bool) -> void:
+	_toggle_run()
+
+
+func _on_hud_ability_pressed(ability_id: String) -> void:
+	if ability_id == WRAP_ABILITY_ID:
+		_on_protect_pressed()
+
 func _begin() -> void:
+	_connect_peris_authority_signals()
 	_add_screen_effect("ChromaticAberration", preload("res://resources/chromatic_aberration.gdshader"))
-	if start_phase > 0:
-		_visit_phase = start_phase
+	_visit_phase = _resolve_initial_visit_phase()
 	_enter_step("fade_in")
 	_player.set_move_enabled(false)
 	# The room is DRESSED from the first frame, in BOTH phases — plants on their furniture, the
@@ -389,14 +860,22 @@ func _begin() -> void:
 	# seconds after the fade; phase 2 had a plantless room). Interactions stay dark until the
 	# phase-1 workspace step arms them.
 	_build_exploration_objects()
+	if _game_state.get_world_state(PERIS_AUTHORITY_KEY, null) == null:
+		_publish_peris_authority(_baseline_peris_authority(_visit_phase))
+	_fade_rect.color = Color(0.15, 0.1, 0.03, 1)
+	_fade_start_tick = _scheduler.get_current_tick()
 	if _visit_phase == 1:
-		_fade_from(Color(0.15, 0.1, 0.03, 1), 3.0, _start_workspace, "workspace")
+		var first_fade := _publish_peris_phase(
+			PERIS_PHASE_FADE_FIRST, _scheduler.get_current_tick() + PERIS_FADE_DURATION)
+		_arm_peris_authority_deadline(first_fade)
 	else:
 		# Phase 2 resumes mid-session.
 		_monos.visible = true
 		_portal_light.light_color = Color(0.9, 0.6, 0.3)
 		_portal_light.light_energy = 3.0
-		_fade_from(Color(0.15, 0.1, 0.03, 1), 3.0, _start_session_begins, "session_begins")
+		var second_fade := _publish_peris_phase(
+			PERIS_PHASE_FADE_SECOND, _scheduler.get_current_tick() + PERIS_FADE_DURATION)
+		_arm_peris_authority_deadline(second_fade)
 
 func _compute_speed() -> float:
 	var spd := 10.0 if Input.is_action_pressed("fast_forward") else 1.0
@@ -406,8 +885,9 @@ func _compute_speed() -> float:
 
 func _on_process(delta: float, spd: float) -> void:
 	_update_fades()
+	_sync_watering_can_presenter()
 
-	# GameState and GameHUD handle stats, running, and queued Protect.
+	# GameState and GameHUD handle stats, running, and queued Wrap.
 
 	if _portal_light and not _portal_tween_active:
 		_portal_light.light_energy = 1.5 + sin(Time.get_ticks_msec() * 0.002) * 0.3  # @rendering_only: portal glow
@@ -418,316 +898,80 @@ func _on_process(delta: float, spd: float) -> void:
 
 	_update_portal_view()  # @rendering_only: portal lens camera mirror
 
-	# Protect ability display from scheduler ticks
+	# Wrap ability display from scheduler ticks. The legacy `_protect_*` state names
+	# remain private so existing deterministic tutorial replays keep their step contract.
 	if _protect_end_tick > 0 and _hud:
 		var remaining := maxf(0, _protect_end_tick - _scheduler.get_current_tick())
-		_hud.set_ability_state("protect", "active", remaining)
+		_hud.set_ability_state(WRAP_ABILITY_ID, "active", remaining)
 		if remaining <= 0:
 			_protect_end_tick = 0.0
 
 func headless_get_state() -> Dictionary:
+	_plant_watered = _is_plant_watered_authoritatively()
 	var state := super.headless_get_state()
 	state.merge({
 		"visit_phase": _visit_phase,
+		"peris_authority": _peris_authority_state(),
 		"plant_watered": _plant_watered,
-		"explore_time_elapsed": _explore_time_elapsed,
+		"watering_phase": str(_watering_phase()),
+		"watering_can_item_id": _resolve_watering_can_item_id(),
 		"explore_gate_unlocked": _explore_gate_unlocked,
-		"care_context_completed": _care_context_completed.duplicate(true),
-		"care_context_count": _care_context_completed_count(),
-		"care_context_required": CARE_CONTEXT_REQUIRED.duplicate(),
-		"care_context_complete": _care_context_complete(),
-		"care_context_plant_group": _care_context_plant_group,
-		"care_context_zone_visits": _care_context_zone_visits.duplicate(true),
-		"care_context_plant_groups_complete": _care_context_plant_groups_completed_count(),
-		"care_context_ready": _care_context_ready,
-		"care_audit_started": _care_audit_started,
-		"care_audit_complete": _care_audit_complete,
-		"care_audit_case_index": _care_audit_case_index,
-		"care_audit_case_total": _care_audit_cases().size() if _care_audit_started else 1,
-		"care_audit_branch": _care_audit_branch,
-		"care_audit_secondary_route": _care_audit_secondary_route,
-		"care_audit_outcome": _care_audit_outcome,
-		"care_audit_case_evidence": _care_audit_case_evidence.keys(),
-		"care_audit_selected_candidate": _care_audit_selected_candidate,
-		"care_audit_review_counts": _care_audit_review_counts.duplicate(true),
-		"care_audit_commit_history": _care_audit_commit_history.duplicate(true),
-		"care_operation_phase_index": _care_operation_phase_index,
-		"care_operation_phase_total": CARE_OPERATION_PHASES.size(),
-		"care_operation_stage": _care_operation_stage,
-		"care_operation_completed_tasks": _care_operation_completed_tasks.keys(),
-		"care_operation_selected_candidate": _care_operation_selected_candidate,
-		"care_operation_resolution_id": _care_operation_resolution_id,
-		"care_operation_decisions": _care_operation_decisions.duplicate(true),
-		"care_operations_complete": _care_operations_complete,
-		"care_kit_held": _care_kit_held,
-		"care_kit_returned": _care_kit_returned,
+		"room_read_counts": _care_context_completed.duplicate(true),
+		"room_read_zone_visits": _care_context_zone_visits.duplicate(true),
+		"room_read_count": _care_context_completed_count(),
+		"room_reads_optional": true,
+		"logbook_ready": _care_context_ready,
+		"wrap_queued": _protect_queued,
+		"wrap_used": _has_protected,
 	}, true)
 	return state
-
 func get_playtime_contract() -> Dictionary:
-	var context_route_meters := _care_context_minimum_route_meters()
-	var care_route_meters := _care_audit_branch_route_meters("care")
-	var compliance_route_meters := _care_audit_branch_route_meters("compliance")
-	var audit_route_meters := minf(care_route_meters, compliance_route_meters)
-	var operation_route_meters := _care_operation_minimum_route_meters()
 	var move_speed := maxf(float(_player.move_speed) if _player != null else GameState.WALK_SPEED, 0.1)
-	var audit_evidence_reviews := (CARE_AUDIT_COMMON_CASE.get("evidence", []) as Array).size()
-	var operation_task_reviews := 0
-	for raw_phase in CARE_OPERATION_PHASES:
-		operation_task_reviews += ((raw_phase as Dictionary).get("tasks", []) as Array).size()
-	var operation_resolution_actions := CARE_OPERATION_PHASES.size()
-	# Open audit + three audit commits + operations handoff, four operation
-	# commits, and the final connection release.  Returning the kit also happens
-	# at the logbook but is categorized as inventory handling, not double-counted.
-	var audit_logbook_actions := 5
-	var operation_logbook_commits := CARE_OPERATION_PHASES.size()
-	var final_release_actions := 1
-	var logbook_work_actions := audit_logbook_actions + operation_logbook_commits + final_release_actions
-	var station_work_seconds := (
-		audit_evidence_reviews
-		+ operation_task_reviews
-		+ operation_resolution_actions
-		+ logbook_work_actions
-	) * CARE_OPERATION_WORK_SECONDS
-	var watering_inventory_seconds := _care_inventory_work_seconds()
-	var care_kit_actions := 2
-	var inventory_work_seconds := watering_inventory_seconds \
-		+ care_kit_actions * CARE_OPERATION_WORK_SECONDS
-	var story_dialogue_seconds := _care_audit_dialogue_model_seconds(CARE_AUDIT_STORY_DIALOGUE_KEYS)
-	var context_dialogue_seconds := _care_audit_dialogue_model_seconds(CARE_AUDIT_CONTEXT_DIALOGUE_KEYS)
-	var route_seconds := (context_route_meters + audit_route_meters + operation_route_meters) / move_speed
-	var fixed_presentation_seconds := _care_audit_fixed_presentation_seconds()
-	var meaningful_active_seconds := station_work_seconds + inventory_work_seconds + route_seconds
-	var modeled_first_clear := meaningful_active_seconds + fixed_presentation_seconds \
-		+ story_dialogue_seconds + context_dialogue_seconds
-	var category_seconds := {
-		"audit_casework": (audit_evidence_reviews + audit_logbook_actions) * CARE_AUDIT_WORK_SECONDS,
-		"connection_release": final_release_actions * CARE_OPERATION_WORK_SECONDS,
-		"inventory_handling": inventory_work_seconds,
-		"spatial_navigation": route_seconds,
-	}
-	for raw_phase in CARE_OPERATION_PHASES:
-		var phase: Dictionary = raw_phase
-		category_seconds["%s_work" % str(phase.get("id", "operation"))] = (
-			(phase.get("tasks", []) as Array).size() + 2
-		) * CARE_OPERATION_WORK_SECONDS
-	return {
-		"required_first_clear_seconds": 300.0,
-		"target_min_seconds": 300.0,
-		"target_max_seconds": 480.0,
-		"target_metric": "meaningful_active_seconds",
-		"modeled_first_clear_seconds": modeled_first_clear,
-		"modeled_total_first_clear_seconds": modeled_first_clear,
-		"modeled_meaningful_active_seconds": meaningful_active_seconds,
-		"meaningful_active_seconds": meaningful_active_seconds,
-		"total_play_seconds": modeled_first_clear,
-		"active_ratio": meaningful_active_seconds / modeled_first_clear,
-		"max_dead_gap_seconds": 3.0,
-		"max_single_mode_seconds": CARE_OPERATION_WORK_SECONDS * 2.0,
-		"category_seconds": category_seconds,
-		"modeled_story_dialogue_seconds": story_dialogue_seconds,
-		"modeled_context_dialogue_seconds": context_dialogue_seconds,
-		"authored_fixed_presentation_seconds": fixed_presentation_seconds,
-		"fixed_presentation_components": CARE_AUDIT_FIXED_PRESENTATION_COMPONENTS.duplicate(true),
-		"minimum_context_route_meters": context_route_meters,
-		"minimum_audit_route_meters": audit_route_meters,
-		"minimum_operation_route_meters": operation_route_meters,
-		"care_branch_route_meters": care_route_meters,
-		"compliance_branch_route_meters": compliance_route_meters,
-		"movement_speed_meters_per_second": move_speed,
-		"mandatory_audit_evidence_reviews": audit_evidence_reviews,
-		"mandatory_operation_task_reviews": operation_task_reviews,
-		"mandatory_operation_resolution_actions": operation_resolution_actions,
-		"mandatory_operation_commits": operation_logbook_commits,
-		"mandatory_logbook_actions": logbook_work_actions,
-		"audit_work_seconds_each": CARE_AUDIT_WORK_SECONDS,
-		"operation_work_seconds_each": CARE_OPERATION_WORK_SECONDS,
-		"mandatory_inventory_work_seconds": inventory_work_seconds,
-		"mandatory_watering_inventory_seconds": watering_inventory_seconds,
-		"mandatory_care_kit_actions": care_kit_actions,
-		"maximum_authored_dead_gap_seconds": 3.0,
-		"dialogue_chars_per_second": CARE_AUDIT_DIALOGUE_CPS,
-		"dialogue_response_seconds_per_line": CARE_AUDIT_RESPONSE_SECONDS_PER_LINE,
-		"required_care_categories": CARE_CONTEXT_REQUIRED.duplicate(),
-		"mandatory_context_categories": CARE_CONTEXT_REQUIRED.size(),
-		"mandatory_plant_groups": CARE_CONTEXT_PLANT_BRANCHES.size(),
-		"mandatory_inventory_actions": 4,
-		"mandatory_logbook_commits": 3 + operation_logbook_commits,
-		"plant_group_branches": CARE_CONTEXT_PLANT_BRANCHES.duplicate(),
-		"decision_count": 1 + CARE_OPERATION_PHASES.size(),
-		"branch_count": 2 + CARE_OPERATION_PHASES.size() * 2,
-		"hard_idle_lock_seconds": 0.0,
-		"basis": "live marker constrained-route minima + scheduler-backed unique care jobs + real carried inventory + authored normal-speed first reads + fixed scene transitions",
-	}
-
-func _care_audit_fixed_presentation_seconds() -> float:
-	var total := 0.0
-	for raw_seconds in CARE_AUDIT_FIXED_PRESENTATION_COMPONENTS.values():
-		total += float(raw_seconds)
-	return total
-
-func _care_inventory_work_seconds() -> float:
-	var total := 0.0
-	for interactable in [_can_pickup_interactable, _water_plant_interactable]:
-		if interactable != null and is_instance_valid(interactable):
-			total += float(interactable.get("dwell_time"))
-	return total if total > 0.0 else 1.6
-
-func _care_audit_dialogue_model_seconds(keys: Array) -> float:
-	var characters := 0
-	var line_count := 0
-	for raw_key in keys:
-		var line := DialogueData.get_line(str(raw_key))
-		if line.text == "" or line.text.begins_with("[MISSING:"):
-			continue
-		characters += line.text.length()
-		line_count += 1
-	return characters / CARE_AUDIT_DIALOGUE_CPS + line_count * CARE_AUDIT_RESPONSE_SECONDS_PER_LINE
-
-func _care_context_minimum_route_meters() -> float:
 	var start := _layout_position("PerisStart", PERIS_START)
-	var can := _authored_position("WateringCan", "WateringCanAnchor", WATERING_CAN_POS)
-	var fern := _care_audit_evidence_contract_position("fern")
-	var logbook := _care_logbook_contract_position()
-	var remaining := ["bookshelf", "stand", "coffee", "peace", "painting", "wellness", "strike"]
-	return _horizontal_distance(start, can) + _horizontal_distance(can, fern) \
-		+ _care_minimum_route(fern, logbook, remaining)
+	var logbook := _logbook_contract_position()
+	var mandatory_route_meters := _horizontal_distance(start, logbook)
+	var mandatory_active_seconds := mandatory_route_meters / move_speed + 0.8
+	var optional_worldbuilding_seconds := 60.0
+	var meaningful_active_seconds := mandatory_active_seconds + optional_worldbuilding_seconds
+	return {
+		"target_id": "peris_sim",
+		"meaningful_active_seconds": meaningful_active_seconds,
+		"total_play_seconds": meaningful_active_seconds + 24.0,
+		"max_dead_gap_seconds": 3.0,
+		"max_single_mode_seconds": 30.0,
+		"decision_count": 1,
+		"branch_count": CARE_CONTEXT_REQUIRED.size(),
+		"category_seconds": {
+			"required_traversal_and_interaction": mandatory_active_seconds,
+			"optional_worldbuilding": optional_worldbuilding_seconds,
+		},
+		"required_first_clear_seconds": mandatory_active_seconds,
+		"target_min_seconds": 30.0,
+		"target_max_seconds": 90.0,
+		"modeled_first_clear_seconds": meaningful_active_seconds,
+		"mandatory_route_meters": mandatory_route_meters,
+		"mandatory_optional_reads": 0,
+		"mandatory_watering_actions": 0,
+		"optional_interactable_count": 12,
+		"progression_gate": "logbook",
+		"free_exploration": true,
+		"timing_basis": "direct logbook progression plus an optional 30-90 second character and worldbuilding lap",
+	}
 
-func _care_audit_branch_route_meters(branch: String) -> float:
-	var primary_selection := "wellness" if branch == "care" else "strike"
-	return _care_audit_case_minimum_route_meters(CARE_AUDIT_COMMON_CASE, primary_selection)
-
-
-func _care_operation_minimum_route_meters() -> float:
-	var total := 0.0
-	for raw_phase in CARE_OPERATION_PHASES:
-		total += _care_operation_phase_minimum_route_meters(raw_phase as Dictionary)
-	return total
-
-
-func _care_operation_phase_minimum_route_meters(phase: Dictionary) -> float:
-	var logbook := _care_logbook_contract_position()
-	var source_ids: Array = []
-	var task_sources: Dictionary = {}
-	for raw_task in (phase.get("tasks", []) as Array):
-		var task: Dictionary = raw_task
-		var task_id := str(task.get("id", ""))
-		var source_id := str(task.get("source", ""))
-		task_sources[task_id] = source_id
-		source_ids.append(source_id)
-	var candidates: Array = phase.get("candidates", [])
-	var resolutions: Dictionary = phase.get("resolutions", {})
-	var best := INF
-	for raw_selected in candidates:
-		var selected := str(raw_selected)
-		var other := ""
-		for raw_candidate in candidates:
-			if str(raw_candidate) != selected:
-				other = str(raw_candidate)
-				break
-		var resolution: Dictionary = resolutions.get(selected, {})
-		var resolution_source := str(resolution.get("source", ""))
-		if resolution_source == "":
-			continue
-		var resolution_position := _care_audit_evidence_contract_position(resolution_source)
-		var distance := _care_minimum_route(
-			logbook,
-			resolution_position,
-			source_ids,
-			str(task_sources.get(selected, "")),
-			str(task_sources.get(other, ""))
-		) + _horizontal_distance(resolution_position, logbook)
-		best = minf(best, distance)
-	return 0.0 if best == INF else best
-
-func _care_audit_case_minimum_route_meters(case_data: Dictionary, selected_candidate := "") -> float:
-	var ids: Array = case_data.get("evidence", [])
-	var candidates: Array = case_data.get("candidates", [])
-	var other_candidate := ""
-	if selected_candidate != "":
-		for raw_candidate in candidates:
-			if str(raw_candidate) != selected_candidate:
-				other_candidate = str(raw_candidate)
-				break
-	var logbook := _care_logbook_contract_position()
-	return _care_minimum_route(logbook, logbook, ids, selected_candidate, other_candidate)
-
-func _care_minimum_route(
-	start: Vector3,
-	finish: Vector3,
-	ids: Array,
-	selected_candidate := "",
-	other_candidate := ""
-) -> float:
-	if ids.is_empty():
-		return _horizontal_distance(start, finish)
-	var points: Array[Vector3] = []
-	for raw_id in ids:
-		points.append(_care_audit_evidence_contract_position(str(raw_id)))
-	var selected_index := ids.find(selected_candidate) if selected_candidate != "" else -1
-	var other_index := ids.find(other_candidate) if other_candidate != "" else -1
-	var full_mask := (1 << ids.size()) - 1
-	var costs: Dictionary = {}
-	for index in range(ids.size()):
-		if index == selected_index and other_index >= 0:
-			continue
-		costs[((1 << index) << 5) | index] = _horizontal_distance(start, points[index])
-	for mask in range(1, full_mask + 1):
-		for last in range(ids.size()):
-			var key := (mask << 5) | last
-			if not costs.has(key):
-				continue
-			var current := float(costs[key])
-			for next in range(ids.size()):
-				var next_bit := 1 << next
-				if (mask & next_bit) != 0:
-					continue
-				if next == selected_index and other_index >= 0 and (mask & (1 << other_index)) == 0:
-					continue
-				var next_mask := mask | next_bit
-				var next_key := (next_mask << 5) | next
-				var candidate := current + _horizontal_distance(points[last], points[next])
-				if not costs.has(next_key) or candidate < float(costs[next_key]):
-					costs[next_key] = candidate
-	var best := INF
-	for last in range(ids.size()):
-		var final_key := (full_mask << 5) | last
-		if costs.has(final_key):
-			best = minf(best, float(costs[final_key]) + _horizontal_distance(points[last], finish))
-	return 0.0 if best == INF else best
-
-func _care_logbook_contract_position() -> Vector3:
+func _logbook_contract_position() -> Vector3:
 	if _explore_logbook_gate != null and is_instance_valid(_explore_logbook_gate):
 		return _explore_logbook_gate.global_position
 	return _layout_position("LogbookGateMarker", Vector3(12.5, 0.0, 3.5))
 
-func _care_audit_evidence_contract_position(evidence_id: String) -> Vector3:
-	var live = _care_audit_evidence_interactables.get(evidence_id)
-	if live is Node3D and is_instance_valid(live):
-		return _care_interaction_contract_position(live as Node3D)
-	var config: Dictionary = CARE_AUDIT_EVIDENCE_SOURCES.get(evidence_id, {})
-	var source := find_child(str(config.get("zone", "")), true, false) as Node3D
-	if source != null:
-		return _care_interaction_contract_position(source)
-	return Vector3.ZERO
-
-func _care_interaction_contract_position(interactable: Node3D) -> Vector3:
-	if interactable.has_meta("interaction_target_position"):
-		var target = interactable.get_meta("interaction_target_position")
-		if target is Vector3:
-			return target
-	return interactable.global_position
-
 func _horizontal_distance(a: Vector3, b: Vector3) -> float:
 	return Vector2(a.x, a.z).distance_to(Vector2(b.x, b.z))
 
-# --- Per-frame visual helpers ---
 
 func _update_fades() -> void:
 	if _current_step == "fade_in":
-		_update_fade_in(2.5)
+		_update_fade_in(PERIS_FADE_DURATION)
 	elif _current_step == "transition_out":
-		_update_fade_out(Color(0.03, 0.03, 0.04), 2.0)
+		_update_fade_out(Color(0.03, 0.03, 0.04), PERIS_TRANSITION_DURATION)
 
 # --- Target selection (click Monos) ---
 
@@ -809,25 +1053,27 @@ func _start_workspace() -> void:
 	_build_exploration_objects()   # idempotent — the room was dressed at _begin
 	_reset_care_context_progress()
 	_set_exploration_armed(true)   # the wander step is where the room becomes touchable
-	if _can_pickup_interactable != null:
-		_can_pickup_interactable.call_deferred("show_tutorial_label")
 	_explore_gate_unlocked = false
 	_explore_gate_fired = false
 	_explore_time_elapsed = false
+	_publish_peris_phase(PERIS_PHASE_EXPLORATION)
 	# Teach the reveal-all overlay while the player is hunting the room for what to interact with.
 	# UI lane so the hint shows even if gameplay is paused, and speeds with hold-F like the rest.
-	_ui_scheduler.schedule_after(2.5, func():
-		if _tutorial_prompt != null:
-			_tutorial_prompt.show_action_prompt(
-				"highlight", "Reveal interactions", 4.0, "Shift"
-			), "highlight_hint")
-	_ui_scheduler.schedule_after(6.5, _show_care_context_progress_hint, "care_context_hint")
-	_scheduler.schedule_after(EXPLORE_MIN_TIME, _unlock_exploration_gate, "explore_gate_unlock")
+	_ui_scheduler.schedule_after(2.5, _show_exploration_highlight_hint, "highlight_hint")
+	_unlock_exploration_gate()
+
+
+func _show_exploration_highlight_hint() -> void:
+	if _tutorial_prompt != null and _current_step == "workspace":
+		_tutorial_prompt.show_action_prompt(
+			"highlight", "Reveal interactions", 4.0, "Shift")
 
 func _unlock_exploration_gate() -> void:
-	# Time is only a reminder threshold. Watering and the active context lap own the unlock.
+	# The logbook is the progression gate. Plants and room documents remain optional
+	# characterization reads and never become a prerequisite checklist.
 	_explore_time_elapsed = true
 	_maybe_unlock_exploration_gate()
+	_publish_peris_observation_state()
 
 func _reset_care_context_progress() -> void:
 	_care_context_completed.clear()
@@ -836,25 +1082,6 @@ func _reset_care_context_progress() -> void:
 	_care_context_zone_visits.clear()
 	_care_context_plant_group = ""
 	_care_context_ready = false
-	_care_audit_started = false
-	_care_audit_complete = false
-	_care_audit_case_index = -1
-	_care_audit_branch = ""
-	_care_audit_secondary_route = ""
-	_care_audit_outcome = ""
-	_care_audit_case_evidence.clear()
-	_care_audit_selected_candidate = ""
-	_care_audit_review_counts.clear()
-	_care_audit_commit_history.clear()
-	_care_operation_phase_index = -1
-	_care_operation_stage = ""
-	_care_operation_completed_tasks.clear()
-	_care_operation_selected_candidate = ""
-	_care_operation_resolution_id = ""
-	_care_operation_decisions.clear()
-	_care_operations_complete = false
-	_care_kit_held = false
-	_care_kit_returned = false
 
 func _care_context_completed_count() -> int:
 	var completed := _care_context_plant_groups_completed_count()
@@ -888,692 +1115,21 @@ func _on_care_context_zone_interacted(category: String, branch_id: String) -> vo
 		return
 	var visit_key := branch_id if branch_id != "" else category
 	_care_context_zone_visits[visit_key] = int(_care_context_zone_visits.get(visit_key, 0)) + 1
-	var first_category := not bool(_care_context_completed.get(category, false))
 	_care_context_completed[category] = true
 	if category == "plant" and _care_context_plant_group == "":
 		_care_context_plant_group = branch_id
-	if not first_category and category != "plant":
-		_show_care_context_progress_hint()
-		return
-	_ui_scheduler.cancel_tag("care_context_hint")
-	_show_care_context_progress_hint()
-	_maybe_unlock_exploration_gate()
-
-func _show_care_context_progress_hint() -> void:
-	if _tutorial_prompt == null or _visit_phase != 1 or _current_step != "workspace":
-		return
-	var complete_count := _care_context_completed_count()
-	if not _care_context_complete():
-		var remaining: Array[String] = []
-		for branch_id in CARE_CONTEXT_PLANT_BRANCHES:
-			if int(_care_context_zone_visits.get(branch_id, 0)) <= 0:
-				remaining.append(_care_context_plant_label(str(branch_id)))
-		for category in ["painting", "wellness", "strike_warning"]:
-			if not bool(_care_context_completed.get(category, false)):
-				remaining.append(_care_context_category_label(category))
-		_tutorial_prompt.show_prompt(
-			"ROOM CONTEXT  %d/%d  ·  STILL TO READ: %s" % [
-				complete_count,
-				_care_context_total_required_count(),
-				", ".join(remaining),
-			], 7.0
-		)
-	elif not _plant_watered:
-		_tutorial_prompt.show_prompt("ROOM CONTEXT  8/8  ·  WATER THE FERN", 5.0)
-	elif not _explore_time_elapsed:
-		_tutorial_prompt.show_prompt("ROOM CONTEXT  8/8  ·  CONNECTION RESOLVING", 5.0)
-	else:
-		_tutorial_prompt.show_prompt("ROOM CONTEXT COMPLETE  ·  OPEN THE LOGBOOK AUDIT", 6.0)
-
-func _care_context_plant_label(branch_id: String) -> String:
-	match branch_id:
-		"shelf":
-			return "bookshelf plants"
-		"survivor":
-			return "survivor plants"
-		"client":
-			return "client plants"
-		"fern":
-			return "watering fern"
-		"peace":
-			return "legacy lily"
-		_:
-			return branch_id
-
-func _care_context_category_label(category: String) -> String:
-	match category:
-		"painting":
-			return "wall art"
-		"wellness":
-			return "wellness feed"
-		"strike_warning":
-			return "strike warning"
-		_:
-			return category
+	# These counters are observation telemetry only. Re-reading or skipping any
+	# room object cannot delay opening Monos's file.
+	_publish_peris_observation_state()
 
 func _on_exploration_gate_interacted() -> void:
-	if _visit_phase == 1 and _current_step == "workspace" and _care_context_ready and not _care_audit_started:
-		_start_care_audit_circuit()
-		return
-	if _visit_phase == 1 and _current_step == "care_audit":
-		_on_care_audit_logbook_interacted()
-		return
-	if _visit_phase == 1 and _current_step == "care_operations":
-		_on_care_operation_logbook_interacted()
-		return
 	if not _explore_gate_unlocked or _explore_gate_fired:
 		return
 	_explore_gate_fired = true
+	_publish_peris_observation_state()
 	_hide_thought()
 	_start_monos_breakthrough()
 
-func _start_care_audit_circuit() -> void:
-	if _care_audit_started:
-		return
-	_care_audit_started = true
-	_care_audit_complete = false
-	_care_audit_case_index = 0
-	_care_audit_branch = ""
-	_care_audit_secondary_route = ""
-	_care_audit_outcome = ""
-	_enter_step("care_audit")
-	_ui_scheduler.cancel_tag("care_context_hint")
-	_build_care_audit_interactables()
-	for interactable in _exploration_interactables:
-		if interactable != null and is_instance_valid(interactable) \
-				and interactable != _explore_logbook_gate \
-				and interactable.has_method("set_interaction_enabled"):
-			interactable.set_interaction_enabled(false)
-	_start_care_audit_case()
-
-func _build_care_audit_interactables() -> void:
-	if not _care_audit_evidence_interactables.is_empty():
-		return
-	for raw_id in CARE_AUDIT_EVIDENCE_SOURCES:
-		var evidence_id := str(raw_id)
-		var config: Dictionary = CARE_AUDIT_EVIDENCE_SOURCES[evidence_id]
-		var source := find_child(str(config.get("zone", "")), true, false) as Node3D
-		if source == null:
-			continue
-		if source.has_method("set_interaction_enabled"):
-			source.set_interaction_enabled(false)
-		var parent := source.get_parent() as Node3D
-		if parent == null:
-			continue
-		var evidence := _create_interactable(
-			parent,
-			source.position,
-			"CareAudit%s" % evidence_id.capitalize().replace(" ", ""),
-			float(source.get("interaction_radius")),
-			CARE_AUDIT_WORK_SECONDS,
-			"AUDIT %s" % str(config.get("label", evidence_id)).to_upper(),
-			false,
-			Interactable.InteractableType.TIMED_ACTION
-		)
-		# The data layer records click-gated actions as non-hold interactions;
-		# restore TIMED_ACTION on the view so arrival starts the visible work ring.
-		evidence.set("interactable_type", Interactable.InteractableType.TIMED_ACTION)
-		evidence.set("dwell_time", CARE_AUDIT_WORK_SECONDS)
-		evidence.set("one_shot", false)
-		evidence.set("required_character", "peris")
-		evidence.set("description", "Care Audit: %s" % str(config.get("label", evidence_id)))
-		evidence.set("consequence_preview", "Add this record to the care-versus-compliance comparison.")
-		evidence.set_meta("care_audit_evidence_id", evidence_id)
-		if source.has_meta("interaction_target_position"):
-			evidence.set_meta(
-				"interaction_target_position",
-				source.get_meta("interaction_target_position")
-			)
-		evidence.interacted.connect(_on_care_audit_evidence_reviewed.bind(evidence_id))
-		evidence.set_interaction_enabled(false)
-		_care_audit_evidence_interactables[evidence_id] = evidence
-		var primary_target: Node = null
-		for raw_target_name in (config.get("targets", []) as Array):
-			var target := find_child(str(raw_target_name), true, false)
-			if target == null:
-				continue
-			if primary_target == null:
-				primary_target = target
-			_set_room_target_interaction_delegate(target, evidence)
-		if primary_target != null and evidence.has_method("set_outline_target"):
-			evidence.set_outline_target(primary_target)
-
-func _care_audit_cases() -> Array:
-	return _care_audit_cases_for_branch(
-		_care_audit_branch if _care_audit_branch != "" else "care",
-		_care_audit_secondary_route
-	)
-
-func _care_audit_cases_for_branch(branch: String, secondary_route := "") -> Array:
-	return [CARE_AUDIT_COMMON_CASE]
-
-func _current_care_audit_case() -> Dictionary:
-	var cases := _care_audit_cases()
-	if _care_audit_case_index < 0 or _care_audit_case_index >= cases.size():
-		return {}
-	return cases[_care_audit_case_index]
-
-func _start_care_audit_case() -> void:
-	var case_data := _current_care_audit_case()
-	if case_data.is_empty():
-		_complete_care_audit()
-		return
-	_care_audit_case_evidence.clear()
-	_care_audit_selected_candidate = ""
-	_set_care_audit_evidence_enabled(case_data.get("evidence", []) as Array)
-	if _explore_logbook_gate != null:
-		_explore_logbook_gate.set_interaction_enabled(false)
-	_show_care_audit_prompt(
-		"CARE AUDIT %d/%d · %s\nReview %s. PRIORITY CHOICE: %s. The last choice record reviewed is staged for the logbook." % [
-			_care_audit_case_index + 1,
-			_care_audit_cases().size(),
-			str(case_data.get("label", "CASE")),
-			_care_audit_evidence_labels(case_data.get("evidence", []) as Array),
-			_care_audit_evidence_labels(case_data.get("candidates", []) as Array),
-		],
-		9.0
-	)
-
-func _set_care_audit_evidence_enabled(required: Array) -> void:
-	for raw_id in _care_audit_evidence_interactables:
-		var evidence_id := str(raw_id)
-		var evidence = _care_audit_evidence_interactables[evidence_id]
-		if evidence == null or not is_instance_valid(evidence):
-			continue
-		if required.has(evidence_id):
-			_rearm_care_interactable(evidence)
-			# The hover verb already names the action. Persistent labels for every active
-			# record overlap in this small room and make the wrong object win the click.
-			if evidence.has_method("hide_tutorial_label_immediate"):
-				evidence.hide_tutorial_label_immediate()
-		else:
-			evidence.set_interaction_enabled(false)
-
-func _on_care_audit_evidence_reviewed(evidence_id: String) -> void:
-	if _current_step != "care_audit" or _care_audit_complete:
-		return
-	var case_data := _current_care_audit_case()
-	var required: Array = case_data.get("evidence", [])
-	if not required.has(evidence_id):
-		return
-	_care_audit_case_evidence[evidence_id] = true
-	_care_audit_review_counts[evidence_id] = int(_care_audit_review_counts.get(evidence_id, 0)) + 1
-	var candidates: Array = case_data.get("candidates", [])
-	if candidates.has(evidence_id):
-		_care_audit_selected_candidate = evidence_id
-	var message := "CARE AUDIT %d/%d · %s\nRECORDS %d/%d" % [
-		_care_audit_case_index + 1,
-		_care_audit_cases().size(),
-		str(case_data.get("label", "CASE")),
-		_care_audit_case_evidence.size(),
-		required.size(),
-	]
-	if _care_audit_case_evidence_complete():
-		message += " · PRIORITY: %s\nReturn to the logbook to commit, or review the other priority record to change it." % \
-			_care_audit_evidence_label(_care_audit_selected_candidate)
-		_rearm_care_interactable(_explore_logbook_gate)
-		if _explore_logbook_gate != null and _explore_logbook_gate.has_method("show_tutorial_label"):
-			_explore_logbook_gate.show_tutorial_label()
-	else:
-		message += "\nSTILL TO REVIEW: %s" % _care_audit_evidence_labels(_care_audit_missing_evidence())
-	_show_care_audit_prompt(message, 8.0)
-
-func _care_audit_case_evidence_complete() -> bool:
-	var required: Array = _current_care_audit_case().get("evidence", [])
-	for raw_id in required:
-		if not bool(_care_audit_case_evidence.get(str(raw_id), false)):
-			return false
-	return not required.is_empty()
-
-func _care_audit_missing_evidence() -> Array:
-	var missing: Array = []
-	for raw_id in (_current_care_audit_case().get("evidence", []) as Array):
-		if not bool(_care_audit_case_evidence.get(str(raw_id), false)):
-			missing.append(str(raw_id))
-	return missing
-
-func _on_care_audit_logbook_interacted() -> void:
-	if _care_audit_complete:
-		_start_care_operations()
-		return
-	if not _care_audit_case_evidence_complete():
-		_show_care_audit_prompt(
-			"CARE AUDIT · REVIEW MISSING RECORDS: %s" % _care_audit_evidence_labels(_care_audit_missing_evidence()),
-			7.0
-		)
-		return
-	if _care_audit_selected_candidate == "":
-		_show_care_audit_prompt("CARE AUDIT · REVIEW A PRIORITY RECORD AGAIN, THEN COMMIT.", 7.0)
-		return
-	if _care_audit_case_index == 0:
-		_care_audit_branch = "care" if _care_audit_selected_candidate == "wellness" else "compliance"
-		_care_audit_outcome = _care_audit_selected_candidate
-	elif _care_audit_case_index == 1:
-		# The continuity decision selects a genuinely different final evidence
-		# route; it is not a cosmetic entry in the commit history.
-		_care_audit_secondary_route = _care_audit_selected_candidate
-	else:
-		# The final priority becomes the visible audit disposition.
-		_care_audit_outcome = _care_audit_selected_candidate
-	_care_audit_commit_history.append({
-		"case_id": str(_current_care_audit_case().get("id", "")),
-		"candidate": _care_audit_selected_candidate,
-		"branch": _care_audit_branch,
-		"secondary_route": _care_audit_secondary_route,
-		"outcome": _care_audit_outcome,
-	})
-	_care_audit_case_index += 1
-	if _care_audit_case_index >= _care_audit_cases().size():
-		_complete_care_audit()
-	else:
-		_start_care_audit_case()
-
-func _complete_care_audit() -> void:
-	_care_audit_complete = true
-	_explore_gate_unlocked = true
-	for evidence in _care_audit_evidence_interactables.values():
-		if evidence != null and is_instance_valid(evidence) and evidence.has_method("set_interaction_enabled"):
-			evidence.set_interaction_enabled(false)
-	_rearm_care_interactable(_explore_logbook_gate)
-	if _explore_logbook_gate != null and _explore_logbook_gate.has_method("show_tutorial_label"):
-		_explore_logbook_gate.show_tutorial_label()
-	_show_care_audit_prompt(
-		"CARE AUDIT CLOSED · %s-FIRST / %s DISPOSITION\nRight-click the logbook to collect the field plan and make it executable." % [
-			_care_audit_branch.to_upper(),
-			_care_audit_evidence_label(_care_audit_outcome),
-		],
-		9.0
-	)
-
-func _rearm_care_interactable(interactable: Node) -> void:
-	if interactable == null or not is_instance_valid(interactable):
-		return
-	if interactable.has_method("reset"):
-		interactable.reset()
-	elif interactable.has_method("set_interaction_enabled"):
-		interactable.set_interaction_enabled(true)
-	interactable.set("one_shot", false)
-
-func _show_care_audit_prompt(message: String, duration: float) -> void:
-	if _tutorial_prompt != null and _tutorial_prompt.has_method("show_prompt"):
-		_tutorial_prompt.show_prompt(message, duration)
-
-func _care_audit_evidence_label(evidence_id: String) -> String:
-	var config: Dictionary = CARE_AUDIT_EVIDENCE_SOURCES.get(evidence_id, {})
-	return str(config.get("label", evidence_id)).to_upper()
-
-func _care_audit_evidence_labels(ids: Array) -> String:
-	var labels: Array[String] = []
-	for raw_id in ids:
-		labels.append(_care_audit_evidence_label(str(raw_id)))
-	return ", ".join(labels)
-
-
-# --- Active care-operation circuit ---
-
-func _start_care_operations() -> void:
-	if _current_step == "care_operations":
-		return
-	_enter_step("care_operations")
-	_care_operation_phase_index = 0
-	_care_operation_stage = "collect_kit"
-	_care_operation_completed_tasks.clear()
-	_care_operation_selected_candidate = ""
-	_care_operation_resolution_id = ""
-	_care_operation_decisions.clear()
-	_care_operations_complete = false
-	_care_kit_held = false
-	_care_kit_returned = false
-	_build_care_operation_interactables()
-	_build_care_operation_kit()
-	if _explore_logbook_gate != null:
-		_explore_logbook_gate.set_interaction_enabled(false)
-	_show_care_audit_prompt(
-		"CARE PLAN 0/%d · TAKE THE FIELD KIT\nCarry the diagnostic tools through one priority-response operation before releasing the connection." % CARE_OPERATION_PHASES.size(),
-		9.0
-	)
-	if _care_kit_pickup_interactable != null:
-		_rearm_care_interactable(_care_kit_pickup_interactable)
-		if _care_kit_pickup_interactable.has_method("show_tutorial_label"):
-			_care_kit_pickup_interactable.show_tutorial_label()
-
-
-func _build_care_operation_kit() -> void:
-	if _care_kit_pickup_interactable != null and is_instance_valid(_care_kit_pickup_interactable):
-		return
-	_care_kit_mesh = _authored_room_node("CareFieldKit")
-	if _care_kit_mesh == null:
-		push_warning("Peris room is missing its editor-authored CareFieldKit")
-		return
-	var kit_pos := _care_kit_mesh.global_position
-	_care_kit_mesh.visible = true
-	_care_kit_item_id = _game_state.spawn_item("peris_care_field_kit", kit_pos)
-	_care_kit_pickup_interactable = _create_interactable(
-		self, kit_pos, "CareKitPickup", 1.25, CARE_OPERATION_WORK_SECONDS,
-		"TAKE CARE KIT", false, Interactable.InteractableType.TIMED_ACTION
-	)
-	_care_kit_pickup_interactable.set("interactable_type", Interactable.InteractableType.TIMED_ACTION)
-	_care_kit_pickup_interactable.set("dwell_time", CARE_OPERATION_WORK_SECONDS)
-	_care_kit_pickup_interactable.set("required_character", "peris")
-	_care_kit_pickup_interactable.set("description", "Carry Peris's field-care kit")
-	_care_kit_pickup_interactable.interacted.connect(_on_care_kit_picked)
-	var kit_target := _outline_object_meshes(
-		self, "CareKitOutline", _collect_mesh_instances(_care_kit_mesh), "peris_care_kit", 0.65
-	)
-	_set_room_target_interaction_delegate(kit_target, _care_kit_pickup_interactable)
-	if _care_kit_pickup_interactable.has_method("set_outline_target"):
-		_care_kit_pickup_interactable.set_outline_target(kit_target)
-
-
-func _on_care_kit_picked() -> void:
-	if _current_step != "care_operations" or _care_operation_stage != "collect_kit":
-		return
-	if _care_kit_item_id == "" or not _game_state.pick_up_item("peris", _care_kit_item_id):
-		_show_care_audit_prompt("CARE PLAN · FREE PERIS'S HAND, THEN TAKE THE FIELD KIT.", 6.0)
-		_rearm_care_interactable(_care_kit_pickup_interactable)
-		return
-	_care_kit_held = true
-	if _care_kit_mesh != null:
-		_care_kit_mesh.visible = false
-	if _care_kit_pickup_interactable != null:
-		_care_kit_pickup_interactable.set_interaction_enabled(false)
-	_start_care_operation_phase()
-
-
-func _build_care_operation_interactables() -> void:
-	if not _care_operation_interactables.is_empty():
-		return
-	for raw_phase in CARE_OPERATION_PHASES:
-		var phase: Dictionary = raw_phase
-		for raw_task in (phase.get("tasks", []) as Array):
-			var task: Dictionary = raw_task
-			var task_id := str(task.get("id", ""))
-			var source_id := str(task.get("source", ""))
-			var source_config: Dictionary = CARE_AUDIT_EVIDENCE_SOURCES.get(source_id, {})
-			var source := find_child(str(source_config.get("zone", "")), true, false) as Node3D
-			if task_id == "" or source == null:
-				continue
-			var parent := source.get_parent() as Node3D
-			if parent == null:
-				continue
-			var task_interactable := _create_interactable(
-				parent,
-				source.position,
-				"CareOperation%s" % task_id.capitalize().replace(" ", ""),
-				float(source.get("interaction_radius")),
-				CARE_OPERATION_WORK_SECONDS,
-				str(task.get("label", task_id)),
-				false,
-				Interactable.InteractableType.TIMED_ACTION
-			)
-			task_interactable.set("interactable_type", Interactable.InteractableType.TIMED_ACTION)
-			task_interactable.set("dwell_time", CARE_OPERATION_WORK_SECONDS)
-			task_interactable.set("one_shot", false)
-			task_interactable.set("required_character", "peris")
-			task_interactable.set("description", "Care Operation: %s" % str(task.get("label", task_id)))
-			task_interactable.set("consequence_preview", "Update the current priority response with this result.")
-			task_interactable.set_meta("care_operation_task_id", task_id)
-			task_interactable.set_meta("care_operation_source_id", source_id)
-			task_interactable.set_meta("care_operation_phase_id", str(phase.get("id", "")))
-			if source.has_meta("interaction_target_position"):
-				task_interactable.set_meta("interaction_target_position", source.get_meta("interaction_target_position"))
-			task_interactable.interacted.connect(_on_care_operation_task_completed.bind(task_id))
-			task_interactable.set_interaction_enabled(false)
-			_care_operation_interactables[task_id] = task_interactable
-
-
-func _current_care_operation_phase() -> Dictionary:
-	if _care_operation_phase_index < 0 or _care_operation_phase_index >= CARE_OPERATION_PHASES.size():
-		return {}
-	return CARE_OPERATION_PHASES[_care_operation_phase_index]
-
-
-func _start_care_operation_phase() -> void:
-	var phase := _current_care_operation_phase()
-	if phase.is_empty():
-		_complete_care_operations()
-		return
-	_care_operation_stage = "work"
-	_care_operation_completed_tasks.clear()
-	_care_operation_selected_candidate = ""
-	_care_operation_resolution_id = ""
-	if _care_operation_resolution_interactable != null \
-			and is_instance_valid(_care_operation_resolution_interactable):
-		_care_operation_resolution_interactable.set_interaction_enabled(false)
-		_care_operation_resolution_interactable.queue_free()
-	_care_operation_resolution_interactable = null
-	if _explore_logbook_gate != null:
-		_explore_logbook_gate.set_interaction_enabled(false)
-	_set_care_operation_tasks_enabled(phase.get("tasks", []) as Array)
-	_show_care_audit_prompt(
-		"CARE PLAN %d/%d · %s\nCheck the living system and both pressures. The last policy record reviewed chooses the physical resolution." % [
-			_care_operation_phase_index + 1,
-			CARE_OPERATION_PHASES.size(),
-			str(phase.get("label", "OPERATION")),
-		],
-		9.0
-	)
-
-
-func _set_care_operation_tasks_enabled(tasks: Array) -> void:
-	var required_ids: Array[String] = []
-	for raw_task in tasks:
-		required_ids.append(str((raw_task as Dictionary).get("id", "")))
-	for raw_id in _care_operation_interactables:
-		var task_id := str(raw_id)
-		var interactable = _care_operation_interactables[task_id]
-		if interactable == null or not is_instance_valid(interactable):
-			continue
-		if not required_ids.has(task_id):
-			interactable.set_interaction_enabled(false)
-			continue
-		_rearm_care_interactable(interactable)
-		var source_id := str(interactable.get_meta("care_operation_source_id", ""))
-		_bind_care_operation_target(source_id, interactable)
-		if interactable.has_method("hide_tutorial_label_immediate"):
-			interactable.hide_tutorial_label_immediate()
-
-
-func _bind_care_operation_target(source_id: String, interactable: Node) -> void:
-	var config: Dictionary = CARE_AUDIT_EVIDENCE_SOURCES.get(source_id, {})
-	var primary_target: Node = null
-	for raw_target_name in (config.get("targets", []) as Array):
-		var target := find_child(str(raw_target_name), true, false)
-		if target == null:
-			continue
-		if primary_target == null:
-			primary_target = target
-		_set_room_target_interaction_delegate(target, interactable)
-	if primary_target != null and interactable.has_method("set_outline_target"):
-		interactable.set_outline_target(primary_target)
-
-
-func _on_care_operation_task_completed(task_id: String) -> void:
-	if _current_step != "care_operations" or _care_operation_stage != "work" or not _care_kit_is_held():
-		return
-	var phase := _current_care_operation_phase()
-	var task_ids: Array[String] = []
-	for raw_task in (phase.get("tasks", []) as Array):
-		task_ids.append(str((raw_task as Dictionary).get("id", "")))
-	if not task_ids.has(task_id) or bool(_care_operation_completed_tasks.get(task_id, false)):
-		return
-	_care_operation_completed_tasks[task_id] = true
-	var interactable = _care_operation_interactables.get(task_id)
-	if interactable != null and is_instance_valid(interactable):
-		interactable.set_interaction_enabled(false)
-	var candidates: Array = phase.get("candidates", [])
-	if candidates.has(task_id):
-		_care_operation_selected_candidate = task_id
-	if _care_operation_completed_tasks.size() >= task_ids.size():
-		_start_care_operation_resolution()
-	else:
-		_show_care_audit_prompt(
-			"CARE PLAN %d/%d · %s · JOBS %d/%d" % [
-				_care_operation_phase_index + 1,
-				CARE_OPERATION_PHASES.size(),
-				str(phase.get("label", "OPERATION")),
-				_care_operation_completed_tasks.size(),
-				task_ids.size(),
-			],
-			6.0
-		)
-
-
-func _start_care_operation_resolution() -> void:
-	var phase := _current_care_operation_phase()
-	var resolutions: Dictionary = phase.get("resolutions", {})
-	var resolution: Dictionary = resolutions.get(_care_operation_selected_candidate, {})
-	if resolution.is_empty():
-		_show_care_audit_prompt("CARE PLAN · REVIEW BOTH POLICY RECORDS BEFORE RESOLUTION.", 7.0)
-		return
-	_care_operation_stage = "resolution"
-	for interactable in _care_operation_interactables.values():
-		if interactable != null and is_instance_valid(interactable):
-			interactable.set_interaction_enabled(false)
-	var source_id := str(resolution.get("source", ""))
-	var source_config: Dictionary = CARE_AUDIT_EVIDENCE_SOURCES.get(source_id, {})
-	var source := find_child(str(source_config.get("zone", "")), true, false) as Node3D
-	if source == null:
-		return
-	var parent := source.get_parent() as Node3D
-	if parent == null:
-		return
-	_care_operation_resolution_interactable = _create_interactable(
-		parent,
-		source.position,
-		"CareResolution%s" % str(resolution.get("id", "resolution")).capitalize().replace(" ", ""),
-		float(source.get("interaction_radius")),
-		CARE_OPERATION_WORK_SECONDS,
-		str(resolution.get("label", "RESOLVE PLAN")),
-		false,
-		Interactable.InteractableType.TIMED_ACTION
-	)
-	_care_operation_resolution_interactable.set("interactable_type", Interactable.InteractableType.TIMED_ACTION)
-	_care_operation_resolution_interactable.set("dwell_time", CARE_OPERATION_WORK_SECONDS)
-	_care_operation_resolution_interactable.set("one_shot", false)
-	_care_operation_resolution_interactable.set("required_character", "peris")
-	_care_operation_resolution_interactable.set("description", "Care Resolution: %s" % str(resolution.get("label", "")))
-	_care_operation_resolution_interactable.set("consequence_preview", "Apply the chosen response to this room object.")
-	_care_operation_resolution_interactable.set_meta("care_operation_resolution_id", str(resolution.get("id", "")))
-	_care_operation_resolution_interactable.set_meta("care_operation_source_id", source_id)
-	if source.has_meta("interaction_target_position"):
-		_care_operation_resolution_interactable.set_meta(
-			"interaction_target_position", source.get_meta("interaction_target_position")
-		)
-	_care_operation_resolution_interactable.interacted.connect(
-		_on_care_operation_resolution_completed.bind(str(resolution.get("id", "")))
-	)
-	_bind_care_operation_target(source_id, _care_operation_resolution_interactable)
-	if _care_operation_resolution_interactable.has_method("hide_tutorial_label_immediate"):
-		_care_operation_resolution_interactable.hide_tutorial_label_immediate()
-	_show_care_audit_prompt(
-		"%s · ROUTE SELECTED\nComplete %s, then return to the logbook." % [
-			str(phase.get("label", "OPERATION")),
-			str(resolution.get("label", "THE RESOLUTION")),
-		],
-		8.0
-	)
-
-
-func _on_care_operation_resolution_completed(resolution_id: String) -> void:
-	if _current_step != "care_operations" or _care_operation_stage != "resolution" \
-			or not _care_kit_is_held():
-		return
-	_care_operation_resolution_id = resolution_id
-	_care_operation_stage = "commit"
-	if _care_operation_resolution_interactable != null:
-		_apply_care_resolution_world_state(str(
-			_care_operation_resolution_interactable.get_meta("care_operation_source_id", "")))
-		_care_operation_resolution_interactable.set_interaction_enabled(false)
-	_rearm_care_interactable(_explore_logbook_gate)
-	if _explore_logbook_gate != null and _explore_logbook_gate.has_method("show_tutorial_label"):
-		_explore_logbook_gate.show_tutorial_label()
-	_show_care_audit_prompt("CARE PLAN · RESOLUTION COMPLETE · RETURN TO THE LOGBOOK TO COMMIT.", 7.0)
-
-
-func _apply_care_resolution_world_state(source_id: String) -> void:
-	var config: Dictionary = CARE_AUDIT_EVIDENCE_SOURCES.get(source_id, {})
-	for raw_target_name in (config.get("targets", []) as Array):
-		var target := find_child(str(raw_target_name), true, false)
-		if target == null:
-			continue
-		target.set_meta("care_resolution_active", true)
-		if target.has_method("play_interaction_result"):
-			target.play_interaction_result(true)
-		if target.has_method("set_external_highlight"):
-			target.set_external_highlight("care_resolution", true)
-
-
-func _on_care_operation_logbook_interacted() -> void:
-	match _care_operation_stage:
-		"commit":
-			var phase := _current_care_operation_phase()
-			_care_operation_decisions.append({
-				"phase_id": str(phase.get("id", "")),
-				"candidate": _care_operation_selected_candidate,
-				"resolution_id": _care_operation_resolution_id,
-			})
-			_care_operation_phase_index += 1
-			if _care_operation_phase_index >= CARE_OPERATION_PHASES.size():
-				_complete_care_operations()
-			else:
-				_start_care_operation_phase()
-		"return_kit":
-			_return_care_operation_kit()
-		"release":
-			_explore_gate_fired = true
-			_hide_thought()
-			_start_monos_breakthrough()
-		_:
-			_show_care_audit_prompt("CARE PLAN · COMPLETE THE HIGHLIGHTED FIELD WORK FIRST.", 6.0)
-
-
-func _complete_care_operations() -> void:
-	_care_operations_complete = true
-	_care_operation_stage = "return_kit"
-	for interactable in _care_operation_interactables.values():
-		if interactable != null and is_instance_valid(interactable):
-			interactable.set_interaction_enabled(false)
-	if _care_operation_resolution_interactable != null \
-			and is_instance_valid(_care_operation_resolution_interactable):
-		_care_operation_resolution_interactable.set_interaction_enabled(false)
-	_rearm_care_interactable(_explore_logbook_gate)
-	if _explore_logbook_gate != null and _explore_logbook_gate.has_method("show_tutorial_label"):
-		_explore_logbook_gate.show_tutorial_label()
-	_show_care_audit_prompt(
-		"CARE PLAN COMPLETE · %d/%d OPERATION COMMITTED\nReturn the field kit at the logbook before releasing the connection." % [CARE_OPERATION_PHASES.size(), CARE_OPERATION_PHASES.size()],
-		9.0
-	)
-
-
-func _return_care_operation_kit() -> void:
-	if not _care_kit_is_held():
-		return
-	_game_state.drop_item("peris", _care_kit_item_id)
-	_care_kit_held = false
-	_care_kit_returned = true
-	if _care_kit_mesh != null:
-		_care_kit_mesh.global_position = _care_logbook_contract_position() + Vector3(-0.35, 0.55, 0.0)
-		_care_kit_mesh.visible = true
-	_care_operation_stage = "release"
-	_rearm_care_interactable(_explore_logbook_gate)
-	if _explore_logbook_gate != null and _explore_logbook_gate.has_method("show_tutorial_label"):
-		_explore_logbook_gate.show_tutorial_label()
-	_show_care_audit_prompt(
-		"FIELD KIT RETURNED · PLAN SEALED\nRight-click the logbook once more to release the waiting connection.",
-		8.0
-	)
-
-
-func _care_kit_is_held() -> bool:
-	if not _care_kit_held or _care_kit_item_id == "":
-		return false
-	var item: Dictionary = _game_state.items.get(_care_kit_item_id, {})
-	return str(item.get("holder", "")) == "peris"
-
-## Monos breaks through on a spoofed signal — not the scheduled client. He is
-## panicked, apologetic for the channel, and discloses why he risked it.
-## Turn Peris to face the portal — she works facing it (the session, the attack, casting Protect).
 func _face_peris_to_portal() -> void:
 	if _player == null:
 		return
@@ -1588,6 +1144,15 @@ func _start_monos_breakthrough() -> void:
 	_monos.visible = true
 	_portal_light.light_color = Color(0.9, 0.6, 0.3)
 	_portal_light.light_energy = 3.0
+	_publish_peris_phase(PERIS_PHASE_FIRST_DIALOGUE)
+	_present_first_visit_dialogue()
+
+
+func _present_first_visit_dialogue() -> void:
+	_monos.visible = true
+	_face_peris_to_portal()
+	_portal_light.light_color = Color(0.9, 0.6, 0.3)
+	_portal_light.light_energy = 3.0
 	_dialogue_chain([
 		"peris_sim.monos.late",
 		"peris_sim.peris.purpose",
@@ -1597,22 +1162,45 @@ func _start_monos_breakthrough() -> void:
 		"peris_sim.monos.heart",
 		"peris_sim.monos.mind",
 		"peris_sim.peris.fight",
-	], func():
-		_scheduler.schedule_after(3.0, _start_transition_out, "transition_out")
-	)
+	], _on_first_visit_dialogue_finished)
+
+
+func _on_first_visit_dialogue_finished() -> void:
+	var authority := _publish_peris_phase(
+		PERIS_PHASE_FIRST_HANDOFF_WAIT,
+		_scheduler.get_current_tick() + PERIS_FIRST_HANDOFF_DELAY)
+	_arm_peris_authority_deadline(authority)
 
 func _start_session_begins() -> void:
 	_enter_step("session_begins")
+	_restore_session_lead_presenter()
+	var authority := _publish_peris_phase(
+		PERIS_PHASE_SESSION_LEAD,
+		_scheduler.get_current_tick() + PERIS_SESSION_LEAD_DURATION)
+	_arm_peris_authority_deadline(authority)
+
+
+func _restore_session_lead_presenter() -> void:
+	_monos.visible = true
 	_face_peris_to_portal()
 	_portal_tween_active = true
 	var t := create_tween()
 	t.tween_property(_portal_light, "light_energy", 4.0, 0.4)
 	t.tween_property(_portal_light, "light_energy", 3.0, 0.6)
-	t.tween_callback(func(): _portal_tween_active = false)
-	_scheduler.schedule_after(2.0, _start_attack, "attack")
+	t.tween_callback(_finish_portal_tween)
+
+
+func _finish_portal_tween() -> void:
+	_portal_tween_active = false
 
 func _start_attack() -> void:
 	_enter_step("attack")
+	_publish_peris_phase(PERIS_PHASE_ATTACK_DIALOGUE)
+	_present_attack_dialogue()
+
+
+func _present_attack_dialogue() -> void:
+	_monos.visible = true
 	_attack_particles.visible = true
 	_attack_particles.light_color = Color(0.9, 0.15, 0.05)
 	_attack_particles.light_energy = 5.0
@@ -1622,88 +1210,134 @@ func _start_attack() -> void:
 	DialogueData.say_to(_dialogue, "peris_sim.peris.alarm")
 	DialogueData.say_to(_dialogue, "peris_sim.monos.help")
 	DialogueData.say_to(_dialogue, "peris_sim.system.overtime")
-	_dialogue.dialogue_finished.connect(
-		func(): _scheduler.schedule_after(0, _start_alert_monos, "alert_monos"),
-		CONNECT_ONE_SHOT
-	)
+	_dialogue.dialogue_finished.connect(_on_attack_dialogue_finished, CONNECT_ONE_SHOT)
+
+
+func _on_attack_dialogue_finished() -> void:
+	_start_alert_monos()
 
 # --- Strict ordered tutorial sequence ---
 
 func _start_alert_monos() -> void:
 	_enter_step("alert_monos")
-	# White "!" over Monos
-	var alert := Label3D.new()
-	alert.name = "AlertMark"
-	alert.text = "!"
-	alert.font_size = 72
-	alert.pixel_size = 0.012
-	alert.modulate = Color(1, 1, 1, 0.95)
-	alert.outline_modulate = Color(0, 0, 0, 0.6)
-	alert.outline_size = 5
-	alert.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	alert.position = Vector3(0, 1.8, 0)
-	_monos.add_child(alert)
-	_is_paused = true
-	_player.set_move_enabled(false)
-	if _hud:
-		_hud.set_paused(true)
 	_start_protect_prompt()
 
 func _start_protect_prompt() -> void:
 	_enter_step("protect_prompt")
+	_is_paused = true
+	_player.set_move_enabled(false)
+	_publish_peris_phase(PERIS_PHASE_WRAP_PROMPT)
+	_restore_wrap_prompt_presenter()
+
+
+func _restore_wrap_prompt_presenter() -> void:
+	var alert := _monos.get_node_or_null("AlertMark") as Label3D
+	if alert == null:
+		alert = Label3D.new()
+		alert.name = "AlertMark"
+		alert.text = "!"
+		alert.font_size = 72
+		alert.pixel_size = 0.012
+		alert.modulate = Color(1, 1, 1, 0.95)
+		alert.outline_modulate = Color(0, 0, 0, 0.6)
+		alert.outline_size = 5
+		alert.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		alert.position = Vector3(0, 1.8, 0)
+		_monos.add_child(alert)
+	_is_paused = true
+	_restore_peris_move_input(false)
+	if _hud:
+		_hud.set_paused(true)
 	DialogueData.say_to(_dialogue, "peris_sim.peris.protect_him")
-	_dialogue.dialogue_finished.connect(func():
-		_tutorial_prompt.show_action_prompt(
-			PROTECT_INPUT_ACTION,
-			"Queue Protect",
-			0.0,
-			str(AbilityData.binding("protect").get("keybind", ""))
-		)
-	, CONNECT_ONE_SHOT)
+	_dialogue.dialogue_finished.connect(_show_wrap_queue_prompt, CONNECT_ONE_SHOT)
+
+
+func _show_wrap_queue_prompt() -> void:
+	_tutorial_prompt.show_action_prompt(
+		WRAP_INPUT_ACTION,
+		"Queue Wrap",
+		0.0,
+		str(AbilityData.binding(WRAP_ABILITY_ID).get("keybind", ""))
+	)
 
 func _start_run_prompt() -> void:
 	_enter_step("run_prompt")
+	_publish_peris_phase(PERIS_PHASE_WRAP_QUEUED)
+	_restore_wrap_queued_presenter()
+
+
+func _restore_wrap_queued_presenter() -> void:
+	_is_paused = true
+	_restore_peris_move_input(false)
 	_tutorial_prompt.show_action_prompt("run", "Toggle Run", 0.0, "R")
 	if _hud:
+		_hud.set_paused(true)
+		_hud.set_ability_state(WRAP_ABILITY_ID, "queued")
 		_hud.show_run_toggle(true)
 
 func _start_click_monos() -> void:
 	_enter_step("click_monos")
-	_player.set_move_enabled(true)
+	_publish_peris_phase(PERIS_PHASE_WRAP_TARGETING)
+	_restore_wrap_targeting_presenter()
+
+
+func _restore_wrap_targeting_presenter() -> void:
+	_is_paused = true
+	_restore_peris_move_input(true)
 	# Clicks select a target rather than move; the shared controller reports the
 	# clicked ground position to _on_target_selected.
 	_player.set_click_mode("select")
 	if not _player.ground_clicked.is_connected(_on_target_selected):
 		_player.ground_clicked.connect(_on_target_selected)
-	_tutorial_prompt.show_action_prompt("select", "Select Monos as Protect target", 0.0, "LMB")
+	_tutorial_prompt.show_action_prompt("select", "Select Monos as Wrap target", 0.0, "LMB")
 
 func _start_confirm_protect() -> void:
 	_enter_step("confirm_protect")
 	_protect_queued = true
-	var shield := Label3D.new()
-	shield.name = "ShieldMark"
-	shield.text = "SHIELD"
-	shield.font_size = 36
-	shield.pixel_size = 0.01
-	shield.modulate = Color(0.8, 0.6, 0.2, 0.9)
-	shield.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	shield.position = Vector3(0, 2.2, 0)
-	_monos.add_child(shield)
+	_publish_peris_phase(PERIS_PHASE_WRAP_TARGETED)
+	_restore_wrap_targeted_presenter()
+
+
+func _restore_wrap_targeted_presenter() -> void:
+	_is_paused = true
+	_restore_peris_move_input(false)
+	_player.set_click_mode("move")
+	var shield := _monos.get_node_or_null("ShieldMark") as Label3D
+	if shield == null:
+		shield = Label3D.new()
+		shield.name = "ShieldMark"
+		shield.text = "SHIELD"
+		shield.font_size = 36
+		shield.pixel_size = 0.01
+		shield.modulate = Color(0.8, 0.6, 0.2, 0.9)
+		shield.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		shield.position = Vector3(0, 2.2, 0)
+		_monos.add_child(shield)
 	if _hud:
-		_hud.set_ability_state("protect", "queued")
+		_hud.set_paused(true)
+		_hud.set_ability_state(WRAP_ABILITY_ID, "queued")
 	_tutorial_prompt.show_action_prompt("pause", "Unpause", 0.0, "Space")
 
 func _start_executing() -> void:
 	_enter_step("executing")
 	_is_paused = false
+	_restore_wrap_executing_presenter()
+	var wrap := _peris_wrap_authority()
+	if wrap.is_empty():
+		wrap = (_baseline_peris_authority(2).get("wrap", {}) as Dictionary).duplicate(true)
+	_publish_peris_phase(PERIS_PHASE_WRAP_QUEUE_PENDING, -1.0, {"wrap": wrap})
+	_issue_wrap_queue_from_authority()
+
+
+func _restore_wrap_executing_presenter() -> void:
+	_is_paused = false
 	if _hud:
 		_hud.set_paused(false)
 	_tutorial_prompt.hide_prompt()
 	_hide_thought()
-	# Queue Protect; GameState moves Peris into range.
-	if _protect_queued:
-		_protect_queued = false
-		_game_state.queue_ability("peris", "protect", _layout_position("PortalStand", PORTAL_POS), 2.5, _fire_queued_protect)
+	_restore_peris_move_input(true)
+	_player.set_click_mode("move")
+	_protect_queued = false
 
 func _on_protect_pressed() -> void:
 	if _has_protected:
@@ -1712,67 +1346,89 @@ func _on_protect_pressed() -> void:
 	if _current_step == "protect_prompt":
 		_tutorial_prompt.hide_prompt()
 		if _hud:
-			_hud.set_ability_state("protect", "queued")
+			_hud.set_ability_state(WRAP_ABILITY_ID, "queued")
 		_start_run_prompt()
 		return
 	if _current_step in ["alert_monos", "run_prompt", "click_monos", "confirm_protect"]:
 		return
 
 func _fire_queued_protect() -> void:
-	_has_protected = true
-	_face_peris_to_portal()
-	_protect_end_tick = _scheduler.get_current_tick() + 5.0
-	if _hud:
-		_hud.set_ability_state("protect", "active", 5.0)
-		_hud.show_message("Peris: PROTECT! Absorbing damage from nearby allies.", 2.0)
-	_attack_particles.light_energy = 0.5
-	_portal_light.light_color = Color(0.9, 0.7, 0.3)
-	_portal_light.light_energy = 4.0
-	_game_state.adjust_stat("peris", "stamina", -15.0)
-	_scheduler.schedule_after(0, _start_aftermath, "aftermath")
+	# Compatibility seam for old tests/replays. Production progression follows
+	# GameState.ability_fired, which survives queued-ability reconstruction.
+	_commit_wrap_cast_authority()
 
 func _start_aftermath() -> void:
 	_enter_step("aftermath")
+	_publish_peris_phase(PERIS_PHASE_AFTERMATH)
+	_present_aftermath_dialogue()
+
+
+func _present_aftermath_dialogue() -> void:
 	_attack_particles.visible = false
 	_portal_light.light_color = Color(0.8, 0.6, 0.3)
 	_portal_light.light_energy = 2.0
 	DialogueData.say_to(_dialogue, "peris_sim.monos.thanks")
-	_dialogue.dialogue_finished.connect(
-		func(): _scheduler.schedule_after(0, _start_efficiency_log, "efficiency_log"),
-		CONNECT_ONE_SHOT
-	)
+	_dialogue.dialogue_finished.connect(_on_aftermath_dialogue_finished, CONNECT_ONE_SHOT)
+
+
+func _on_aftermath_dialogue_finished() -> void:
+	_start_efficiency_log()
 
 func _start_efficiency_log() -> void:
 	_enter_step("efficiency_log")
 	_efficiency_score = 62.0
+	_publish_peris_phase(PERIS_PHASE_EFFICIENCY_LOG)
+	_present_efficiency_log()
+
+
+func _present_efficiency_log() -> void:
+	_restore_efficiency_log_presenter()
 	DialogueData.say_to(_dialogue, "peris_sim.system.complete")
+	_dialogue.dialogue_finished.connect(_on_efficiency_log_dialogue_finished, CONNECT_ONE_SHOT)
+
+
+func _restore_efficiency_log_presenter() -> void:
 	_monos.fade_out(1.5)
 	# Sync portal closure with Monos fade.
 	_portal_tween_active = true
 	var t := create_tween()
 	t.tween_property(_portal_light, "light_energy", 0.0, 1.5)
 	t.parallel().tween_property(_portal_visual, "scale", Vector3(1.0, 0.0, 1.0), 1.5)
-	t.tween_callback(func(): _portal_tween_active = false)
-	_dialogue.dialogue_finished.connect(
-		func(): _scheduler.schedule_after(1.6, _start_sanction_notice, "sanction_notice"),
-		CONNECT_ONE_SHOT
-	)
+	t.tween_callback(_finish_portal_tween)
+
+
+func _on_efficiency_log_dialogue_finished() -> void:
+	var authority := _publish_peris_phase(
+		PERIS_PHASE_EFFICIENCY_LOG,
+		_scheduler.get_current_tick() + PERIS_EFFICIENCY_CLOSE_DELAY)
+	_arm_peris_authority_deadline(authority)
 
 func _start_sanction_notice() -> void:
 	_enter_step("sanction_notice")
+	_publish_peris_phase(PERIS_PHASE_SANCTION_NOTICE)
+	_present_sanction_notice()
+
+
+func _present_sanction_notice() -> void:
 	_show_sanction_feed_visual(
 		"SANCTION MODE",
 		"CLIENT FEED DISCONNECTED\nCASELOAD REASSIGNED",
 		Color(0.75, 0.82, 0.7)
 	)
 	DialogueData.say_to(_dialogue, "peris_sim.system.sanction_notice")
-	_dialogue.dialogue_finished.connect(
-		func(): _scheduler.schedule_after(0, _start_sanction_feed, "sanction_feed"),
-		CONNECT_ONE_SHOT
-	)
+	_dialogue.dialogue_finished.connect(_on_sanction_notice_finished, CONNECT_ONE_SHOT)
+
+
+func _on_sanction_notice_finished() -> void:
+	_start_sanction_feed()
 
 func _start_sanction_feed() -> void:
 	_enter_step("sanction_feed")
+	_publish_peris_phase(PERIS_PHASE_SANCTION_FEED)
+	_present_sanction_feed()
+
+
+func _present_sanction_feed() -> void:
 	_show_sanction_feed_visual(
 		"RESTORATIVE MODE",
 		"GEL LOOP\nSOAP LOOP\nPLANT TIMELAPSE",
@@ -1780,66 +1436,106 @@ func _start_sanction_feed() -> void:
 	)
 	DialogueData.say_to(_dialogue, "peris_sim.system.wellness_feed")
 	DialogueData.say_to(_dialogue, "peris_sim.peris.sanction_reaction")
-	_dialogue.dialogue_finished.connect(
-		func(): _scheduler.schedule_after(0, _start_spiral_flash, "spiral_flash"),
-		CONNECT_ONE_SHOT
-	)
+	_dialogue.dialogue_finished.connect(_on_sanction_feed_finished, CONNECT_ONE_SHOT)
+
+
+func _on_sanction_feed_finished() -> void:
+	_start_spiral_flash()
 
 func _start_spiral_flash() -> void:
 	_enter_step("spiral_flash")
+	_publish_peris_phase(PERIS_PHASE_SPIRAL_FLASH)
+	_present_spiral_flash()
+
+
+func _present_spiral_flash() -> void:
 	_show_sanction_feed_visual(
 		"FRAME DROP",
 		"SPIRAL SIGNAL DETECTED",
 		Color(0.55, 0.65, 1.0)
 	)
 	DialogueData.say_to(_dialogue, "peris_sim.system.spiral_flash")
-	_dialogue.dialogue_finished.connect(
-		func(): _scheduler.schedule_after(0, _start_retro, "retro"),
-		CONNECT_ONE_SHOT
-	)
+	_dialogue.dialogue_finished.connect(_on_spiral_flash_finished, CONNECT_ONE_SHOT)
+
+
+func _on_spiral_flash_finished() -> void:
+	_start_retro()
 
 func _start_retro() -> void:
 	_enter_step("retro")
+	_publish_peris_phase(PERIS_PHASE_RETRO)
+	_present_retro()
+
+
+func _present_retro() -> void:
 	_show_sanction_feed_visual(
 		"RESTORATIVE MODE",
 		"ARCHIVE FOOTAGE",
 		Color(0.68, 0.78, 0.72)
 	)
 	DialogueData.say_to(_dialogue, "peris_sim.peris.retro")
-	_dialogue.dialogue_finished.connect(
-		func(): _scheduler.schedule_after(0, _start_sim_bay_exit, "sim_bay_exit"),
-		CONNECT_ONE_SHOT
-	)
+	_dialogue.dialogue_finished.connect(_on_retro_finished, CONNECT_ONE_SHOT)
+
+
+func _on_retro_finished() -> void:
+	_start_sim_bay_exit()
 
 func _start_sim_bay_exit() -> void:
 	_enter_step("sim_bay_exit")
 	_player.set_move_enabled(false)
+	_publish_peris_phase(PERIS_PHASE_SIM_BAY_EXIT)
+	_present_sim_bay_exit()
+
+
+func _present_sim_bay_exit() -> void:
+	_restore_peris_move_input(false)
 	if _sanction_feed_label:
 		_sanction_feed_label.visible = false
 	DialogueData.say_to(_dialogue, "peris_sim.worker.okay")
 	DialogueData.say_to(_dialogue, "peris_sim.worker.medical")
-	_dialogue.dialogue_finished.connect(
-		func(): _scheduler.schedule_after(0, _start_transition_out, "transition_out"),
-		CONNECT_ONE_SHOT
-	)
+	_dialogue.dialogue_finished.connect(_on_sim_bay_exit_finished, CONNECT_ONE_SHOT)
+
+
+func _on_sim_bay_exit_finished() -> void:
+	_start_transition_out()
 
 func _start_transition_out() -> void:
 	_enter_step("transition_out")
 	_player.set_move_enabled(false)
 	_fade_start_tick = _scheduler.get_current_tick()
-	_scheduler.schedule_after(2.5, _complete, "complete")
+	var destination := "res://scenes/tutorial/aster_sim.tscn" \
+		if _visit_phase == 1 else "res://scenes/tutorial/tag_day.tscn"
+	var authority := _publish_peris_phase(
+		PERIS_PHASE_TRANSITION,
+		_scheduler.get_current_tick() + PERIS_TRANSITION_DURATION,
+		{"destination": destination})
+	_arm_peris_authority_deadline(authority)
 
 func _complete() -> void:
+	var authority := _peris_authority_state()
+	if str(authority.get("phase", "")) != PERIS_PHASE_TRANSITION:
+		return
+	var finishing_visit := _visit_phase
+	var destination := str(authority.get(
+		"destination",
+		"res://scenes/tutorial/aster_sim.tscn" if finishing_visit == 1 \
+			else "res://scenes/tutorial/tag_day.tscn"))
+	# Wrap's finite shield belongs to the simulation session. Retire its derived expiry
+	# callback before the session handoff so no disposable sim effect or stale wake-up
+	# survives into the next scene/save boundary.
+	if _game_state != null and _game_state.get_damage_shield("monos") > 0.0:
+		_game_state.clear_damage_shield("monos")
 	_enter_step("complete")
-	if _visit_phase == 1:
+	if finishing_visit == 1:
 		# First half opens the game, then hands off to Aster's sim.
 		_visit_phase = 2
-		_change_scene_or_record("res://scenes/tutorial/aster_sim.tscn")
+		_publish_peris_campaign_progress(false)
 	else:
-		# Second half (Monos session) leads into Tag Day.
-		_change_scene_or_record("res://scenes/tutorial/tag_day.tscn")
+		_publish_peris_campaign_progress(true)
+	_publish_peris_phase(PERIS_PHASE_COMPLETE, -1.0, {"destination": destination})
+	_change_scene_or_record(destination)
 
-# Run/pause/protect keys arrive as HUD signals (run_toggled / pause_toggled /
+# Run/pause/Wrap keys arrive as HUD signals (run_toggled / pause_toggled /
 # ability_pressed), mapped from the input map by GameHUD — see _setup_ui.
 
 # --- Environment ---
@@ -2125,24 +1821,20 @@ func _build_exploration_objects() -> void:
 	# built before the workspace step: everything stays dark until the step arms it
 	_set_exploration_armed(false)
 
-func _set_exploration_armed(armed: bool) -> void:
-	var can_held := false
-	if _game_state != null and _watering_can_item_id != "":
-		var item: Dictionary = _game_state.items.get(_watering_can_item_id, {})
-		can_held = str(item.get("holder", "")) == "peris"
+func _set_exploration_armed(armed: bool, restoring := false) -> void:
+	_exploration_armed = armed
 	for ia in _exploration_interactables:
 		if ia != null and is_instance_valid(ia) and ia.has_method("set_interaction_enabled"):
+			if ia in [_water_plant_interactable, _can_pickup_interactable,
+					_fern_exploration_interactable]:
+				continue
 			var enable := armed
-			if ia == _water_plant_interactable:
-				enable = armed and can_held and not _plant_watered
-			elif ia == _can_pickup_interactable:
-				enable = armed and not can_held and not _plant_watered
-			elif ia == _explore_logbook_gate:
-				# The logbook is a visible objective only once the full first-read
-				# context and watering prerequisites are complete. Walking past it
-				# earlier must not auto-dwell into a silent locked interaction.
-				enable = armed and _care_context_ready
-			ia.set_interaction_enabled(enable)
+			if ia == _explore_logbook_gate:
+				# Opening Monos's file is the canonical progression gate; every
+				# other room interaction is optional worldbuilding.
+				enable = armed
+			_set_interactable_projection(ia, enable, restoring)
+	_refresh_watering_interactions(restoring)
 
 func _build_peris_plants(parent: Node3D) -> void:
 	# Visual plants and tables are scene-authored. Runtime creates only their verbs and derives
@@ -2198,79 +1890,742 @@ func _build_watering_beat(parent: Node3D) -> void:
 	if _watering_can_mesh == null:
 		push_warning("Peris room is missing its editor-authored WateringCan")
 		return
+	_watering_can_home_parent = _watering_can_mesh.get_parent()
+	_watering_can_home_rotation = _watering_can_mesh.rotation
+	_watering_can_home_scale = _watering_can_mesh.scale
 	_watering_can_mesh.visible = true
 
-	_watering_can_item_id = _game_state.spawn_item("watering_can", can_pos)
+	_watering_can_item_id = _ensure_watering_can_item(can_pos)
 
 	_can_pickup_interactable = _create_interactable(parent, can_pos, "WateringCanPickup",
-		1.25, 0.7, "PICK UP", false)
-	_can_pickup_interactable.interacted.connect(_on_watering_can_picked)
+		1.25, 0.7, "PICK UP", true)
+	_configure_watering_source(
+		_can_pickup_interactable, WATERING_PICKUP_ACTION)
+	_can_pickup_interactable.interacted.connect(
+		_on_watering_can_picked.bind(_can_pickup_interactable))
 	_exploration_interactables.append(_can_pickup_interactable)
-	var can_target := _outline_object_meshes(parent, "WateringCanOutline",
+	_watering_can_outline_target = _outline_object_meshes(parent, "WateringCanOutline",
 		_collect_mesh_instances(_watering_can_mesh), "watering_can", 0.5)
-	_set_room_target_interaction_delegate(can_target, _can_pickup_interactable)
+	if _watering_can_outline_target != null:
+		_watering_can_outline_offset = _watering_can_outline_target.global_position \
+			- _watering_can_mesh.global_position
+	_set_room_target_interaction_delegate(
+		_watering_can_outline_target, _can_pickup_interactable)
 	# The PICK UP prompt shows when the workspace step arms the room (the can exists from the
 	# first frame, but the intro fade is not the time to advertise it).
 
 	# The water spot sits ON the fern (Plant7).
 	_water_plant_interactable = _create_interactable(parent, fern_pos, "WaterPlantSpot",
-		1.8, 0.9, "WATER", false)
-	_water_plant_interactable.interacted.connect(_on_plant_watered)
+		1.8, 0.9, "WATER", true)
+	_configure_watering_source(
+		_water_plant_interactable, WATERING_USE_ACTION)
+	_water_plant_interactable.interacted.connect(
+		_on_plant_watered.bind(_water_plant_interactable))
 	_exploration_interactables.append(_water_plant_interactable)
+	_initialize_watering_authority()
+	_wire_watering_authority_signals()
+	_sync_watering_can_presenter()
+	_refresh_watering_interactions()
 
-func _on_watering_can_picked() -> void:
-	if _watering_can_item_id == "" or _plant_watered:
+
+func _configure_watering_source(source: Node, action_id: String) -> void:
+	if not is_instance_valid(source):
+		return
+	source.set_meta("watering_action_id", action_id)
+	source.set("one_shot", true)
+	source.set("required_character", "peris")
+	source.set_pre_trigger_validator(
+		_validate_watering_source_trigger.bind(action_id, source))
+
+
+func _watering_source_for_action(action_id: String) -> Node:
+	if action_id == WATERING_PICKUP_ACTION:
+		return _can_pickup_interactable
+	if action_id == WATERING_USE_ACTION:
+		return _water_plant_interactable
+	return null
+
+
+func _watering_action_ids() -> Array[String]:
+	return [WATERING_PICKUP_ACTION, WATERING_USE_ACTION]
+
+
+func _validate_watering_source_trigger(
+		source: Node, actor: String, action_id: String, expected_source: Node) -> bool:
+	return is_instance_valid(source) and source == expected_source \
+		and _watering_source_for_action(action_id) == source \
+		and _watering_actor_ready_at_source(source, actor) \
+		and _watering_action_ready(action_id)
+
+
+func _watering_actor_ready_at_source(source: Node, actor: String) -> bool:
+	if _game_state == null or not is_instance_valid(source) or not (source is Node3D) \
+			or actor != "peris" or not _game_state.characters.has(actor) \
+			or not _game_state.is_narratively_available(actor) \
+			or _game_state.is_downed(actor) or _game_state.is_knocked_down(actor) \
+			or _game_state.is_moving(actor) or _game_state.is_resting(actor) \
+			or _game_state.is_dodging(actor) or _game_state.is_endocytosing(actor) \
+			or _game_state.is_external_traversal_active(actor) \
+			or _game_state.is_dragging(actor) or _game_state.is_field_restoring(actor) \
+			or _game_state.is_pushing(actor):
+		return false
+	var source_position := (source as Node3D).global_position
+	if _game_state.grid != null and _game_state.grid.level_count > 1 \
+			and int(_game_state.get_character_level(actor)) != int(
+				_game_state.grid.level_for_y(source_position.y)):
+		return false
+	var actor_position := _game_state.get_position(actor)
+	var radius := float(source.get("interaction_radius")) \
+		+ WATERING_INTERACTION_POSITION_TOLERANCE
+	return Vector2(actor_position.x, actor_position.z).distance_to(
+		Vector2(source_position.x, source_position.z)) <= radius \
+		and absf(actor_position.y - source_position.y) \
+			<= WATERING_INTERACTION_HEIGHT_TOLERANCE
+
+
+func _watering_action_ready(action_id: String) -> bool:
+	if _game_state == null or not _exploration_armed:
+		return false
+	var item_id := _resolve_watering_can_item_id()
+	if item_id == "" or not _game_state.items.has(item_id):
+		return false
+	var item := _game_state.items[item_id] as Dictionary
+	if action_id == WATERING_PICKUP_ACTION:
+		return str(item.get("location", "")) == "ground" \
+			and _watering_phase() != WATERING_PHASE_ACTIVE \
+			and _game_state.has_free_hands("peris", 1)
+	if action_id == WATERING_USE_ACTION:
+		return not _is_plant_watered_authoritatively() \
+			and _watering_phase() != WATERING_PHASE_ACTIVE \
+			and str(item.get("holder", "")) == "peris" \
+			and str(item.get("location", "")) == "hand" \
+			and _game_state.get_hand_items("peris").has(item_id)
+	return false
+
+
+func _watering_source_trigger_count(source: Node) -> int:
+	if _game_state == null or not is_instance_valid(source):
+		return -1
+	var data_id := str(source.get("data_id"))
+	if data_id == "" or not _game_state.has_interactable(data_id):
+		return -1
+	return int(_game_state.get_interactable(data_id).get("trigger_count", -1))
+
+
+func _watering_source_receipt(source: Node, action_id: String) -> Dictionary:
+	if not is_instance_valid(source):
+		return {}
+	var actor := str(source.get("active_character"))
+	if not _validate_watering_source_trigger(source, actor, action_id, source) \
+			or not bool(source.get("one_shot")) or not bool(source.get("_used")) \
+			or bool(source.get("interaction_enabled")):
+		return {}
+	var data_id := str(source.get("data_id"))
+	if data_id == "" or not _game_state.has_interactable(data_id):
+		return {}
+	var registry := _game_state.get_interactable(data_id)
+	var trigger_count := int(registry.get("trigger_count", -1))
+	if not bool(registry.get("one_shot", false)) \
+			or not bool(registry.get("triggered", false)) \
+			or bool(registry.get("enabled", true)) \
+			or str(registry.get("last_trigger_character", "")) != actor \
+			or trigger_count != int(
+				_watering_source_committed_counts.get(action_id, 0)) + 1:
+		return {}
+	return {
+		"action": action_id,
+		"actor": actor,
+		"source_data_id": data_id,
+		"trigger_count": trigger_count,
+	}
+
+
+func _consume_watering_source_receipt(
+		source: Node, action_id: String) -> Dictionary:
+	var receipt := _watering_source_receipt(source, action_id)
+	if receipt.is_empty():
+		return {}
+	_watering_source_committed_counts[action_id] = int(
+		receipt.get("trigger_count", 0))
+	_active_watering_source_receipt = receipt
+	var current := _watering_authority_state()
+	_publish_watering_receipt(
+		StringName(str(current.get("phase", WATERING_PHASE_AVAILABLE))),
+		_resolve_watering_can_item_id()
+	)
+	return receipt
+
+
+func _watering_source_receipt_is_active(
+		receipt: Dictionary, action_id: String, source: Node) -> bool:
+	return not receipt.is_empty() \
+		and receipt == _active_watering_source_receipt \
+		and str(receipt.get("action", "")) == action_id \
+		and str(receipt.get("actor", "")) == "peris" \
+		and str(receipt.get("source_data_id", "")) == str(source.get("data_id")) \
+		and int(receipt.get("trigger_count", -1)) \
+			== _watering_source_trigger_count(source)
+
+
+func _baseline_watering_authority() -> Dictionary:
+	var counts := {}
+	for action_id in _watering_action_ids():
+		counts[action_id] = maxi(
+			0, int(_watering_source_committed_counts.get(action_id, 0)))
+	return {
+		"version": WATERING_AUTHORITY_VERSION,
+		"authority_id": WATERING_AUTHORITY_KEY,
+		"phase": str(WATERING_PHASE_AVAILABLE),
+		"item_id": _resolve_watering_can_item_id(),
+		"mechanism_id": str(WATERING_PHASE_ID),
+		"source_committed_counts": counts,
+	}
+
+
+func _initialize_watering_authority() -> void:
+	if _game_state == null:
+		return
+	for action_id in _watering_action_ids():
+		if not _watering_source_committed_counts.has(action_id):
+			_watering_source_committed_counts[action_id] = maxi(
+				0, _watering_source_trigger_count(
+					_watering_source_for_action(action_id)))
+	if _game_state.get_world_state(WATERING_AUTHORITY_KEY, null) == null:
+		_game_state.set_world_state(
+			WATERING_AUTHORITY_KEY, _baseline_watering_authority())
+
+
+func _watering_authority_state() -> Dictionary:
+	if _game_state == null:
+		return {}
+	var raw: Variant = _game_state.get_world_state(WATERING_AUTHORITY_KEY, null)
+	if not (raw is Dictionary):
+		return _baseline_watering_authority()
+	var saved := (raw as Dictionary).duplicate(true)
+	var version := int(saved.get("version", 0))
+	if version == 1 \
+			and str(saved.get("authority_id", "")) == WATERING_AUTHORITY_KEY:
+		saved["version"] = WATERING_AUTHORITY_VERSION
+		saved["source_committed_counts"] = {
+			WATERING_PICKUP_ACTION: maxi(
+				0, _watering_source_trigger_count(_can_pickup_interactable)),
+			WATERING_USE_ACTION: maxi(
+				0, _watering_source_trigger_count(_water_plant_interactable)),
+		}
+	elif version != WATERING_AUTHORITY_VERSION \
+			or str(saved.get("authority_id", "")) != WATERING_AUTHORITY_KEY:
+		return _baseline_watering_authority()
+	var counts_v: Variant = saved.get("source_committed_counts", null)
+	if not (counts_v is Dictionary):
+		return _baseline_watering_authority()
+	var counts := counts_v as Dictionary
+	for action_id in _watering_action_ids():
+		if int(counts.get(action_id, -1)) < 0:
+			return _baseline_watering_authority()
+	var phase := StringName(str(saved.get("phase", "")))
+	if phase not in [
+		WATERING_PHASE_AVAILABLE, WATERING_PHASE_ACTIVE, WATERING_PHASE_COMPLETE,
+	]:
+		return _baseline_watering_authority()
+	saved["source_committed_counts"] = counts.duplicate(true)
+	return saved
+
+
+func _on_watering_can_picked(source: Node = null) -> void:
+	var receipt := _consume_watering_source_receipt(
+		source, WATERING_PICKUP_ACTION)
+	if not _watering_source_receipt_is_active(
+		receipt, WATERING_PICKUP_ACTION, _can_pickup_interactable):
+		_active_watering_source_receipt.clear()
+		return
+	_watering_can_item_id = _resolve_watering_can_item_id()
+	if _watering_can_item_id == "":
+		_active_watering_source_receipt.clear()
 		return
 	if not _game_state.pick_up_item("peris", _watering_can_item_id):
+		_active_watering_source_receipt.clear()
+		_refresh_watering_interactions()
 		return
-	if _watering_can_mesh != null:
-		_watering_can_mesh.visible = false
-	if _can_pickup_interactable != null:
-		_can_pickup_interactable.set_interaction_enabled(false)
-	# The fern has two stateful verbs. Only one pick volume/delegate is active at
-	# a time so INSPECT cannot steal the WATER command (or vice versa).
-	if _fern_exploration_interactable != null:
-		_fern_exploration_interactable.set_interaction_enabled(false)
-	if _water_plant_interactable != null:
-		_water_plant_interactable.set_interaction_enabled(true)
-		_set_room_target_interaction_delegate(_fern_outline_target, _water_plant_interactable)
-		if _water_plant_interactable.has_method("show_tutorial_label"):
-			_water_plant_interactable.show_tutorial_label()
+	_active_watering_source_receipt.clear()
+	_sync_watering_can_presenter()
+	_refresh_watering_interactions()
+	if not _plant_watered and _water_plant_interactable != null \
+			and _water_plant_interactable.has_method("show_tutorial_label"):
+		_water_plant_interactable.show_tutorial_label()
 
-func _on_plant_watered() -> void:
-	if _plant_watered:
+func _on_plant_watered(source: Node = null) -> void:
+	var source_receipt := _consume_watering_source_receipt(
+		source, WATERING_USE_ACTION)
+	if not _watering_source_receipt_is_active(
+		source_receipt, WATERING_USE_ACTION, _water_plant_interactable):
+		_active_watering_source_receipt.clear()
 		return
+	if _is_plant_watered_authoritatively() or _watering_phase() == WATERING_PHASE_ACTIVE:
+		_active_watering_source_receipt.clear()
+		return
+	_watering_can_item_id = _resolve_watering_can_item_id()
 	var item: Dictionary = _game_state.items.get(_watering_can_item_id, {})
-	if str(item.get("holder", "")) != "peris":
+	if str(item.get("holder", "")) != "peris" \
+			or str(item.get("location", "")) != "hand":
+		_active_watering_source_receipt.clear()
 		return  # need the can in hand first (the WATER prompt only appears after pickup, so this is rare)
+	if _game_state.is_moving("peris") or _game_state.is_downed("peris") \
+			or _horizontal_distance(_game_state.get_position("peris"), _watering_fern_position()) \
+				> WATERING_USE_RADIUS:
+		_active_watering_source_receipt.clear()
+		return
+	var started := _game_state.command_begin_mechanism_phase(
+		WATERING_PHASE_ID,
+		WATERING_PHASE_ACTIVE,
+		WATERING_USE_DURATION,
+		WATERING_PHASE_COMPLETE,
+		{
+			"actor": "peris",
+			"item_id": _watering_can_item_id,
+			"target": "boston_fern",
+			"source_contract": WATERING_CAN_CONTRACT,
+			"source_data_id": str(source_receipt.get("source_data_id", "")),
+			"source_trigger_count": int(source_receipt.get("trigger_count", 0)),
+		}
+	)
+	if not started:
+		_active_watering_source_receipt.clear()
+		_refresh_watering_interactions()
+		return
+	_publish_watering_receipt(WATERING_PHASE_ACTIVE, _watering_can_item_id)
+	_active_watering_source_receipt.clear()
+	_refresh_watering_interactions()
+
+
+func _commit_plant_watered() -> void:
+	if _watering_phase() != WATERING_PHASE_COMPLETE:
+		return
+	var item_id := _resolve_watering_can_item_id()
+	var item: Dictionary = _game_state.items.get(item_id, {})
+	if str(item.get("holder", "")) != "peris" \
+			or str(item.get("location", "")) != "hand" \
+			or _game_state.is_downed("peris") or _game_state.is_moving("peris") \
+			or _horizontal_distance(_game_state.get_position("peris"), _watering_fern_position()) \
+				> WATERING_USE_RADIUS:
+		_game_state.command_reset_mechanism_phase(
+			WATERING_PHASE_ID, &"watering_commit_invalid")
+		return
 	_plant_watered = true
-	_game_state.drop_item("peris", _watering_can_item_id)
-	if _watering_can_mesh != null:
-		_watering_can_mesh.global_position = _authored_position(
-			"Plant7Table", "Plant7TableAnchor", FERN_POS
-		) + Vector3(0.5, 0.6, 0.3)
-		_watering_can_mesh.visible = true
-	# The watering ACTION narration — Peris's habitual motion over the fern.
+	_publish_watering_receipt(WATERING_PHASE_COMPLETE, item_id)
+	# Watering is USE, not an implicit DROP. The reusable can remains visibly in
+	# Peris's canonical hand until the player explicitly puts it down.
 	_show_thought(DialogueData.text("peris.sim_expand.plant_7.look"))
-	if _water_plant_interactable != null:
-		_water_plant_interactable.set_interaction_enabled(false)
-	if _fern_exploration_interactable != null:
-		_fern_exploration_interactable.set_interaction_enabled(true)
-		_set_room_target_interaction_delegate(_fern_outline_target, _fern_exploration_interactable)
-	_maybe_unlock_exploration_gate()
+	_sync_watering_can_presenter()
+	_refresh_watering_interactions()
+
+
+func _ensure_watering_can_item(can_pos: Vector3) -> String:
+	var existing := _resolve_watering_can_item_id()
+	if existing != "" or _game_state == null:
+		return existing
+	return _game_state.spawn_item("watering_can", can_pos, {
+		"display_name": "Watering Can",
+		"hand_slots": 1,
+		"endocytosis_allowed": false,
+		"source_contract": WATERING_CAN_CONTRACT,
+	})
+
+
+func _resolve_watering_can_item_id() -> String:
+	if _game_state == null:
+		return ""
+	if _watering_can_item_id != "" and _game_state.items.has(_watering_can_item_id):
+		var cached := _game_state.items[_watering_can_item_id] as Dictionary
+		if str((cached.get("properties", {}) as Dictionary).get(
+				"source_contract", "")) == WATERING_CAN_CONTRACT:
+			return _watering_can_item_id
+	_watering_can_item_id = ""
+	var item_ids := _game_state.items.keys()
+	item_ids.sort()
+	for item_id_variant in item_ids:
+		var item_id := str(item_id_variant)
+		var item := _game_state.items[item_id_variant] as Dictionary
+		if str((item.get("properties", {}) as Dictionary).get(
+				"source_contract", "")) == WATERING_CAN_CONTRACT:
+			_watering_can_item_id = item_id
+			break
+	return _watering_can_item_id
+
+
+func _watering_phase_state() -> Dictionary:
+	if _game_state == null:
+		return {}
+	var state := _game_state.get_mechanism_phase_state(WATERING_PHASE_ID)
+	var phase := StringName(str(state.get("phase", "")))
+	if phase not in [WATERING_PHASE_ACTIVE, WATERING_PHASE_COMPLETE]:
+		return {}
+	var metadata := state.get("metadata", {}) as Dictionary
+	var item_id := _resolve_watering_can_item_id()
+	if item_id == "" or str(metadata.get("actor", "")) != "peris" \
+			or str(metadata.get("item_id", "")) != item_id \
+			or str(metadata.get("target", "")) != "boston_fern" \
+			or str(metadata.get("source_contract", "")) != WATERING_CAN_CONTRACT \
+			or str(metadata.get("source_data_id", "")) != WATERING_USE_SOURCE_ID \
+			or int(metadata.get("source_trigger_count", -1)) != int(
+				_watering_source_committed_counts.get(WATERING_USE_ACTION, 0)):
+		return {}
+	return state
+
+
+func _watering_phase() -> StringName:
+	return StringName(str(_watering_phase_state().get("phase", "")))
+
+
+func _is_plant_watered_authoritatively() -> bool:
+	return _watering_phase() == WATERING_PHASE_COMPLETE
+
+
+func _publish_watering_receipt(phase: StringName, item_id: String) -> void:
+	if _game_state == null:
+		return
+	var counts := {}
+	for action_id in _watering_action_ids():
+		counts[action_id] = maxi(
+			0, int(_watering_source_committed_counts.get(action_id, 0)))
+	_game_state.set_world_state(WATERING_AUTHORITY_KEY, {
+		"version": WATERING_AUTHORITY_VERSION,
+		"authority_id": WATERING_AUTHORITY_KEY,
+		"phase": str(phase),
+		"item_id": item_id,
+		"mechanism_id": str(WATERING_PHASE_ID),
+		"source_committed_counts": counts,
+	})
+
+
+func _watering_fern_position() -> Vector3:
+	return _authored_position("Plant7Table", "Plant7TableAnchor", FERN_POS)
+
+
+func _wire_watering_authority_signals() -> void:
+	if _game_state == null:
+		return
+	if _watering_signal_game_state != null and _watering_signal_game_state != _game_state:
+		_disconnect_watering_authority_signals(_watering_signal_game_state)
+	_watering_signal_game_state = _game_state
+	if not _game_state.mechanism_phase_completed.is_connected(_on_watering_phase_completed):
+		_game_state.mechanism_phase_completed.connect(_on_watering_phase_completed)
+	if not _game_state.mechanism_phase_reset.is_connected(_on_watering_phase_reset):
+		_game_state.mechanism_phase_reset.connect(_on_watering_phase_reset)
+	if not _game_state.movement_started.is_connected(_on_watering_movement_started):
+		_game_state.movement_started.connect(_on_watering_movement_started)
+	if not _game_state.item_picked_up.is_connected(_on_watering_item_changed):
+		_game_state.item_picked_up.connect(_on_watering_item_changed)
+	if not _game_state.item_dropped.is_connected(_on_watering_item_changed):
+		_game_state.item_dropped.connect(_on_watering_item_changed)
+	if not _game_state.item_transferred.is_connected(_on_watering_item_transferred):
+		_game_state.item_transferred.connect(_on_watering_item_transferred)
+	if not _game_state.stat_changed.is_connected(_on_watering_stat_changed):
+		_game_state.stat_changed.connect(_on_watering_stat_changed)
+
+
+func _disconnect_watering_authority_signals(state: GameState) -> void:
+	if state.mechanism_phase_completed.is_connected(_on_watering_phase_completed):
+		state.mechanism_phase_completed.disconnect(_on_watering_phase_completed)
+	if state.mechanism_phase_reset.is_connected(_on_watering_phase_reset):
+		state.mechanism_phase_reset.disconnect(_on_watering_phase_reset)
+	if state.movement_started.is_connected(_on_watering_movement_started):
+		state.movement_started.disconnect(_on_watering_movement_started)
+	if state.item_picked_up.is_connected(_on_watering_item_changed):
+		state.item_picked_up.disconnect(_on_watering_item_changed)
+	if state.item_dropped.is_connected(_on_watering_item_changed):
+		state.item_dropped.disconnect(_on_watering_item_changed)
+	if state.item_transferred.is_connected(_on_watering_item_transferred):
+		state.item_transferred.disconnect(_on_watering_item_transferred)
+	if state.stat_changed.is_connected(_on_watering_stat_changed):
+		state.stat_changed.disconnect(_on_watering_stat_changed)
+
+
+func _on_watering_phase_completed(mechanism_id: StringName, phase: StringName) -> void:
+	if mechanism_id == WATERING_PHASE_ID and phase == WATERING_PHASE_COMPLETE:
+		_commit_plant_watered()
+
+
+func _on_watering_phase_reset(mechanism_id: StringName, _reason: StringName) -> void:
+	if mechanism_id != WATERING_PHASE_ID:
+		return
+	_plant_watered = false
+	_publish_watering_receipt(&"available", _resolve_watering_can_item_id())
+	_refresh_watering_interactions()
+
+
+func _on_watering_movement_started(id: String) -> void:
+	if id == "peris" and _watering_phase() == WATERING_PHASE_ACTIVE:
+		_game_state.command_reset_mechanism_phase(WATERING_PHASE_ID, &"actor_moved")
+
+
+func _on_watering_item_changed(_char_id: String, item_id: String) -> void:
+	if item_id != _resolve_watering_can_item_id():
+		return
+	if _watering_phase() == WATERING_PHASE_ACTIVE and not _peris_holds_watering_can():
+		_game_state.command_reset_mechanism_phase(WATERING_PHASE_ID, &"item_released")
+	_sync_watering_can_presenter()
+	_refresh_watering_interactions()
+
+
+func _on_watering_item_transferred(_from_id: String, _to_id: String, item_id: String) -> void:
+	_on_watering_item_changed("", item_id)
+
+
+func _on_watering_stat_changed(id: String, stat: String, value: float) -> void:
+	if id == "peris" and stat == "hp" and value <= 0.0 \
+			and _watering_phase() == WATERING_PHASE_ACTIVE:
+		_game_state.command_reset_mechanism_phase(WATERING_PHASE_ID, &"actor_downed")
+
+
+func _peris_holds_watering_can() -> bool:
+	var item_id := _resolve_watering_can_item_id()
+	if _game_state == null or item_id == "" or not _game_state.characters.has("peris"):
+		return false
+	var item := _game_state.items[item_id] as Dictionary
+	return str(item.get("holder", "")) == "peris" \
+		and str(item.get("location", "")) == "hand" \
+		and _game_state.get_hand_items("peris").has(item_id)
+
+
+func _sync_watering_can_presenter() -> void:
+	if not is_instance_valid(_watering_can_mesh) or _game_state == null:
+		return
+	var item_id := _resolve_watering_can_item_id()
+	if item_id == "":
+		_watering_can_mesh.visible = false
+		return
+	var item := _game_state.items[item_id] as Dictionary
+	match str(item.get("location", "ground")):
+		"ground":
+			if is_instance_valid(_watering_can_home_parent) \
+					and _watering_can_mesh.get_parent() != _watering_can_home_parent:
+				_watering_can_mesh.reparent(_watering_can_home_parent, true)
+			_watering_can_mesh.visible = true
+			_watering_can_mesh.global_position = item.get(
+				"position", _watering_can_mesh.global_position) as Vector3
+			_watering_can_mesh.rotation = _watering_can_home_rotation
+			_watering_can_mesh.scale = _watering_can_home_scale
+			if is_instance_valid(_can_pickup_interactable):
+				_can_pickup_interactable.global_position = _watering_can_mesh.global_position
+		"hand":
+			var holder_id := str(item.get("holder", ""))
+			var holder := get_game_state_character_node(holder_id)
+			if holder == null:
+				_watering_can_mesh.visible = false
+				return
+			if _watering_can_mesh.get_parent() != holder:
+				_watering_can_mesh.reparent(holder, false)
+			_watering_can_mesh.visible = true
+			_watering_can_mesh.position = WATERING_HAND_OFFSET
+			_watering_can_mesh.rotation = Vector3(0.0, 0.0, deg_to_rad(-18.0))
+			_watering_can_mesh.scale = _watering_can_home_scale
+		_:
+			_watering_can_mesh.visible = false
+	if is_instance_valid(_watering_can_outline_target) and _watering_can_mesh.visible:
+		_watering_can_outline_target.global_position = _watering_can_mesh.global_position \
+			+ _watering_can_outline_offset
+
+
+func _refresh_watering_interactions(restoring := false) -> void:
+	_plant_watered = _is_plant_watered_authoritatively()
+	var item_id := _resolve_watering_can_item_id()
+	var item: Dictionary = _game_state.items.get(item_id, {}) if _game_state != null else {}
+	var ground := str(item.get("location", "")) == "ground"
+	var held := _peris_holds_watering_can()
+	var watering := _watering_phase() == WATERING_PHASE_ACTIVE
+	_set_interactable_projection(
+		_can_pickup_interactable, _exploration_armed and ground and not watering, restoring)
+	_set_interactable_projection(
+		_water_plant_interactable,
+		_exploration_armed and held and not watering and not _plant_watered,
+		restoring)
+	_set_interactable_projection(
+		_fern_exploration_interactable,
+		_exploration_armed and (not held or _plant_watered) and not watering,
+		restoring)
+	if _fern_outline_target != null:
+		var delegate = _water_plant_interactable \
+			if held and not _plant_watered else _fern_exploration_interactable
+		_set_room_target_interaction_delegate(_fern_outline_target, delegate)
+
+
+func _set_interactable_projection(interactable, enabled: bool, restoring := false) -> void:
+	if interactable == null or not is_instance_valid(interactable):
+		return
+	if interactable in [_can_pickup_interactable, _water_plant_interactable]:
+		_set_watering_source_projection(interactable, enabled, restoring)
+		return
+	if interactable.has_method("is_interaction_enabled") \
+			and bool(interactable.call("is_interaction_enabled")) == enabled:
+		return
+	if restoring and interactable.has_method("restore_one_shot_presenter"):
+		interactable.call("restore_one_shot_presenter", false, enabled)
+	elif interactable.has_method("set_interaction_enabled"):
+		interactable.call("set_interaction_enabled", enabled)
+
+
+func _set_watering_source_projection(
+		source: Node, enabled: bool, restoring := false) -> void:
+	if _game_state == null or not is_instance_valid(source):
+		return
+	var data_id := str(source.get("data_id"))
+	if data_id != "" and _game_state.has_interactable(data_id):
+		var registry := _game_state.get_interactable(data_id)
+		var action_id := str(source.get_meta("watering_action_id", ""))
+		var committed := int(
+			_watering_source_committed_counts.get(action_id, 0))
+		var source_count := int(registry.get("trigger_count", 0))
+		if enabled and bool(registry.get("triggered", false)) \
+				and source_count <= committed:
+			source.call("reset")
+		elif bool(registry.get("enabled", true)) != enabled:
+			_game_state.set_interactable_enabled(data_id, enabled)
+	if restoring and source.has_method("restore_one_shot_presenter"):
+		source.call("restore_one_shot_presenter", false, enabled)
+	elif source.has_method("set_interaction_enabled"):
+		source.call("set_interaction_enabled", enabled)
+
+
+func _ensure_watering_sources_registered_after_restore() -> void:
+	if _game_state == null:
+		return
+	var raw: Variant = _game_state.get_world_state(WATERING_AUTHORITY_KEY, null)
+	var saved_counts: Dictionary = {}
+	if raw is Dictionary and (raw as Dictionary).get(
+			"source_committed_counts", null) is Dictionary:
+		saved_counts = ((raw as Dictionary).get(
+			"source_committed_counts", {}) as Dictionary).duplicate(true)
+	for action_id in _watering_action_ids():
+		var source := _watering_source_for_action(action_id)
+		if not is_instance_valid(source):
+			continue
+		var data_id := WATERING_PICKUP_SOURCE_ID \
+			if action_id == WATERING_PICKUP_ACTION else WATERING_USE_SOURCE_ID
+		if not _game_state.has_interactable(data_id):
+			_game_state.register_interactable({
+				"id": data_id,
+				"position": (source as Node3D).global_position,
+				"requires_hold": int(source.get("interactable_type")) \
+					== Interactable.InteractableType.HOLD_ACTION,
+				"interactable_type": int(source.get("interactable_type")),
+				"hold_time": float(source.get("dwell_time")),
+				"one_shot": true,
+				"required_character": "peris",
+				"radius": float(source.get("interaction_radius")),
+				"tutorial_label": str(source.get("tutorial_label")),
+				"enabled": false,
+				"trigger_count": maxi(0, int(saved_counts.get(action_id, 0))),
+			})
+		if source.has_method("bind_data"):
+			source.call("bind_data", _game_state, data_id)
+		_configure_watering_source(source, action_id)
+
+
+func _restore_watering_source_authority() -> void:
+	if _game_state == null:
+		return
+	_ensure_watering_sources_registered_after_restore()
+	var raw: Variant = _game_state.get_world_state(WATERING_AUTHORITY_KEY, null)
+	var authority := _watering_authority_state()
+	var saved_counts := (
+		authority.get("source_committed_counts", {}) as Dictionary
+	).duplicate(true)
+	var changed := not (raw is Dictionary) \
+		or int((raw as Dictionary).get("version", 0)) \
+			!= WATERING_AUTHORITY_VERSION
+	for action_id in _watering_action_ids():
+		var source_count := maxi(0, _watering_source_trigger_count(
+			_watering_source_for_action(action_id)))
+		var committed := maxi(0, int(saved_counts.get(action_id, 0)))
+		if source_count != committed:
+			# A newer source count is the accepted-before-owner seam. A lower
+			# count means a legacy snapshot lacked the new source registry. In
+			# both cases the registry visible in this save is the next receipt
+			# baseline; neither difference grants an item or watering result.
+			saved_counts[action_id] = source_count
+			changed = true
+		_watering_source_committed_counts[action_id] = int(
+			saved_counts.get(action_id, source_count))
+	authority["source_committed_counts"] = saved_counts
+	var mechanism_phase := StringName(str(
+		_game_state.get_mechanism_phase_state(WATERING_PHASE_ID).get(
+			"phase", "")))
+	var authoritative_phase := WATERING_PHASE_AVAILABLE
+	if mechanism_phase == WATERING_PHASE_ACTIVE:
+		authoritative_phase = WATERING_PHASE_ACTIVE
+	elif mechanism_phase == WATERING_PHASE_COMPLETE:
+		authoritative_phase = WATERING_PHASE_COMPLETE
+	if StringName(str(authority.get("phase", ""))) != authoritative_phase:
+		authority["phase"] = str(authoritative_phase)
+		changed = true
+	authority["item_id"] = _resolve_watering_can_item_id()
+	authority["mechanism_id"] = str(WATERING_PHASE_ID)
+	if changed:
+		_game_state.set_world_state(
+			WATERING_AUTHORITY_KEY, authority.duplicate(true))
+
+
+func on_game_state_snapshot_restored() -> void:
+	_connect_peris_authority_signals()
+	_wire_watering_authority_signals()
+	_restore_watering_source_authority()
+	_watering_can_item_id = _resolve_watering_can_item_id()
+	_plant_watered = _is_plant_watered_authoritatively()
+	_exploration_armed = _current_step == "workspace"
+	_sync_watering_can_presenter()
+	_refresh_watering_interactions(true)
+	_restore_peris_authority_after_snapshot()
+
+
+func apply_save_snapshot(data: Dictionary) -> void:
+	# TutorialSequence restores GameState (and therefore invokes our presenter
+	# hook) before it restores the saved DialogueBox/portable continuation. Attach
+	# plain-dialogue completions only after that base work, so its exact dialogue
+	# restoration cannot disconnect the authoritative next-phase dispatcher.
+	super.apply_save_snapshot(data)
+	_reattach_peris_dialogue_continuation()
+
+
+func _reattach_peris_dialogue_continuation() -> void:
+	if _dialogue == null:
+		return
+	var phase := str(_peris_authority_state().get("phase", ""))
+	var callback := Callable()
+	match phase:
+		PERIS_PHASE_ATTACK_DIALOGUE:
+			callback = _on_attack_dialogue_finished
+		PERIS_PHASE_WRAP_PROMPT:
+			callback = _show_wrap_queue_prompt
+		PERIS_PHASE_AFTERMATH:
+			callback = _on_aftermath_dialogue_finished
+		PERIS_PHASE_EFFICIENCY_LOG:
+			if float(_peris_authority_state().get("deadline", -1.0)) < 0.0:
+				callback = _on_efficiency_log_dialogue_finished
+		PERIS_PHASE_SANCTION_NOTICE:
+			callback = _on_sanction_notice_finished
+		PERIS_PHASE_SANCTION_FEED:
+			callback = _on_sanction_feed_finished
+		PERIS_PHASE_SPIRAL_FLASH:
+			callback = _on_spiral_flash_finished
+		PERIS_PHASE_RETRO:
+			callback = _on_retro_finished
+		PERIS_PHASE_SIM_BAY_EXIT:
+			callback = _on_sim_bay_exit_finished
+	if callback.is_valid() and not _dialogue.dialogue_finished.is_connected(callback):
+		_dialogue.dialogue_finished.connect(callback, CONNECT_ONE_SHOT)
+
 
 func _maybe_unlock_exploration_gate() -> void:
-	if not _explore_time_elapsed or not _plant_watered or not _care_context_complete():
-		return
-	if _care_context_ready:
+	if _explore_gate_unlocked:
 		return
 	_care_context_ready = true
-	_ui_scheduler.cancel_tag("care_context_hint")
-	_show_care_context_progress_hint()
-	_rearm_care_interactable(_explore_logbook_gate)
+	_explore_gate_unlocked = true
 	if _explore_logbook_gate != null:
-		_explore_logbook_gate.set("interactable_type", Interactable.InteractableType.TIMED_ACTION)
-		_explore_logbook_gate.set("dwell_time", CARE_AUDIT_WORK_SECONDS)
+		if _explore_logbook_gate.has_method("reset"):
+			_explore_logbook_gate.reset()
+		elif _explore_logbook_gate.has_method("set_interaction_enabled"):
+			_explore_logbook_gate.set_interaction_enabled(true)
+		_explore_logbook_gate.set("one_shot", false)
 		if _explore_logbook_gate.has_method("show_tutorial_label"):
 			_explore_logbook_gate.show_tutorial_label()
 
@@ -2332,16 +2687,18 @@ func _build_peris_strike_warning(parent: Node3D) -> void:
 		1.0, 0.8)  # re-inspectable: re-opening the warning replays the document + Peris's line
 	area.set_meta("interaction_target_position", zone_pos + Vector3(-1.0, 0, 0))
 	_exploration_interactables.append(area)
-	area.connect("interacted", func():
-		_play_focused_dialogue_keys([
-			"peris.sim_expand.strike_warning.notification",
-			"peris.sim_expand.strike_warning.line",
-		], area)
-	)
+	area.connect("interacted", _on_strike_warning_interacted.bind(area))
 	_register_care_context_zone(area, "strike_warning", "StrikeWarningZone")
 	var target := _outline_object_meshes(parent, "StrikeWarningOutline",
 		_collect_mesh_instances(notice), "peris_strike_warning", 0.7)
 	_set_room_target_interaction_delegate(target, area)
+
+
+func _on_strike_warning_interacted(area: Node) -> void:
+	_play_focused_dialogue_keys([
+		"peris.sim_expand.strike_warning.notification",
+		"peris.sim_expand.strike_warning.line",
+	], area)
 
 func _build_peris_logbook_gate(parent: Node3D) -> void:
 	# Logbook is the gate to Monos — by the modeled bookshelf on the right side.

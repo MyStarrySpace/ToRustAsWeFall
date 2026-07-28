@@ -20,8 +20,13 @@ var _renderers := {}              # char_id -> PathRenderer
 var _dest_markers := {}           # char_id -> MeshInstance3D (the destination ring)
 var _dest_ghosts := {}            # char_id -> Node3D (a translucent ghost of the character at its move target)
 var _ghost_built_from := {}       # char_id -> Node3D the ghost was duplicated from (rebuild on node change)
+var _ghost_colors := {}           # char_id -> last tint applied to the shared ghost material
 var _nodes := {}                  # char_id -> Node3D (cached anchor; re-found if freed)
-var _scan_after := {}             # char_id -> frame number gating the next full-tree rescan
+var _known_node_misses := {}      # char_id -> true; distinguishes throttled nulls from freed references
+var _next_tree_scan_frame := 0    # one shared periodic/resolution scan gate for every actor
+var _tracked_character_ids := {}  # char_id -> true; reconciles GameState unregisters with owned visuals
+## Focused performance-test seam: number of actual shared search-root walks.
+var _node_cache_scan_count := 0
 var _path_feedback_source: Node   # optional chunk contract: get_paused_path_feedback(char_id)
 var _feedback_roots := {}         # char_id -> Node3D containing cached risk ribbons + timing labels
 var _feedback_hashes := {}        # char_id -> hash of the last returned feedback payload
@@ -32,10 +37,15 @@ const FEEDBACK_LIFT := 0.10
 const FEEDBACK_LABEL_LIFT := 0.82
 const FEEDBACK_RESAMPLE := 0.5
 const FEEDBACK_RESAMPLE_MAX_STEPS := 128
+const NODE_RESCAN_INTERVAL_FRAMES := 30
 
 func setup(state: GameState, root: Node = null) -> void:
+	var next_root := root if root != null else get_parent()
+	if game_state != state or search_root != next_root:
+		_clear_managed_state()
+		_path_feedback_source = null
 	game_state = state
-	search_root = root if root != null else get_parent()
+	search_root = next_root
 
 ## Bind the active chunk as an OPTIONAL, read-only path-feedback provider. A chunk that has no
 ## get_paused_path_feedback() method simply produces no overlays. Rebinding on a chunk reload clears
@@ -49,6 +59,14 @@ func set_path_feedback_source(source: Node) -> void:
 func _process(_delta: float) -> void:
 	if Engine.is_editor_hint() or game_state == null:
 		return
+	var perf_started := PerformanceTrace.begin()
+	_reconcile_character_registry()
+	# One periodic shared refresh prevents a still-valid superseded node from becoming immortal when a
+	# replacement with the same id enters before the old chunk is retired. It is ONE tree walk per interval,
+	# independent of actor count; never-seen/stale ids may additionally request one immediate lifecycle scan.
+	var cache_frame := Engine.get_process_frames()
+	if not game_state.characters.is_empty() and cache_frame >= _next_tree_scan_frame:
+		_refresh_node_cache(cache_frame)
 	var planning := game_state.scheduler != null and game_state.scheduler.is_paused()
 	var provider_ready := (
 		planning
@@ -61,36 +79,144 @@ func _process(_delta: float) -> void:
 			_clear_all_path_feedback()
 		if _path_feedback_source != null and not is_instance_valid(_path_feedback_source):
 			_path_feedback_source = null
-	for char_id in game_state.characters.keys():
+	# Iterating the Dictionary directly avoids allocating a fresh keys Array on
+	# every frame. More importantly, resolve an actor's opt-out before allocating
+	# its renderer/materials; ambient NPCs and enemies normally never need them.
+	for char_id in game_state.characters:
+		_tracked_character_ids[str(char_id)] = true
+		var actor_started := PerformanceTrace.begin()
 		var feedback: Array = []
 		if provider_ready:
+			var provider_started := PerformanceTrace.begin()
 			var provided = _path_feedback_source.call("get_paused_path_feedback", str(char_id))
 			if provided is Array:
 				feedback = provided
+			PerformanceTrace.end(&"update", &"path_manager.feedback_query", provider_started, str(char_id), feedback.size())
+		var resolve_started := PerformanceTrace.begin()
 		var pr: PathRenderer = _renderers.get(char_id)
-		if pr == null:
-			pr = PathRenderer.new()
-			add_child(pr)
-			_renderers[char_id] = pr
 		var node := _node_for(char_id)
+		PerformanceTrace.end(&"update", &"path_manager.resolve_actor", resolve_started, str(char_id), 1 if node != null else 0)
 		# A node can opt OUT of the ribbon (NPC ambience walks default off; an escort opts back in).
 		# Learned hazard feedback is the one planning-only exception: a normally hidden enemy route is
 		# relevant when it actually crosses the learned surge, so reveal that route while this overlay exists.
 		var opted_out: bool = node != null and "show_movement_path" in node and not node.show_movement_path
 		var suppressed: bool = opted_out and feedback.is_empty()
-		pr.visible = not suppressed
 		if suppressed:
+			if pr != null and is_instance_valid(pr):
+				pr.visible = false
+				_renderers.erase(char_id)
+				if pr.get_parent() == self:
+					remove_child(pr)
+				pr.queue_free()
 			_hide_destination_visuals(char_id)
 			_clear_char_path_feedback(char_id)
+			PerformanceTrace.end(&"draw", &"path_manager.actor", actor_started, str(char_id), 0)
 			continue
+		var bind_started := PerformanceTrace.begin()
+		if pr == null or not is_instance_valid(pr):
+			pr = PathRenderer.new()
+			add_child(pr)
+			_renderers[char_id] = pr
+		pr.visible = true
+		var actor_color := _color_for(node)
 		# Bind on creation and when the anchor node changes (late creation / chunk reloads), not
-		# every frame — the per-frame full re-setup was redundant field churn.
+		# every frame — the per-frame full re-setup was redundant field churn. Tint is a cheap
+		# field update of its own so a runtime faction/status colour change still propagates.
 		if pr.game_state != game_state or pr.char_id != char_id or pr.anchor != node:
-			pr.setup(game_state, char_id, _color_for(node), node)
+			pr.setup(game_state, char_id, actor_color, node)
+		elif pr.color != actor_color:
+			pr.color = actor_color
 		pr.set_running(game_state.is_running(char_id))
+		PerformanceTrace.end(&"draw", &"path_manager.bind_renderer", bind_started, str(char_id), 1)
+		var marker_started := PerformanceTrace.begin()
 		_update_dest_marker(char_id, node)
+		PerformanceTrace.end(&"draw", &"path_manager.destination_marker", marker_started, str(char_id), 1)
+		var ghost_started := PerformanceTrace.begin()
 		_update_dest_ghost(char_id, node)
+		PerformanceTrace.end(&"draw", &"path_manager.destination_ghost", ghost_started, str(char_id), 1)
+		var feedback_started := PerformanceTrace.begin()
 		_update_path_feedback(char_id, feedback)
+		PerformanceTrace.end(&"draw", &"path_manager.feedback_draw", feedback_started, str(char_id), feedback.size())
+		PerformanceTrace.end(&"draw", &"path_manager.actor", actor_started, str(char_id), 1)
+	PerformanceTrace.end(&"draw", &"path_manager.process", perf_started, "characters", game_state.characters.size())
+
+## GameState is a RefCounted data model, so scene nodes cannot rely on tree-exit alone to learn that an
+## id was unregistered. Reconcile the small set of ids this manager has actually seen, and synchronously
+## retire every owned visual before dropping its cache entries. This runs before rendering so a removed
+## character cannot leave a destination ring/ghost visible for one extra frame.
+func _reconcile_character_registry() -> void:
+	for raw_id in _tracked_character_ids.keys():
+		var char_id := str(raw_id)
+		if not game_state.characters.has(char_id):
+			_remove_character_state(char_id)
+	for raw_id in game_state.characters:
+		_tracked_character_ids[str(raw_id)] = true
+
+func _remove_character_state(char_id: String) -> void:
+	_retire_owned_visual(_renderers.get(char_id))
+	_retire_owned_visual(_dest_markers.get(char_id))
+	_retire_owned_visual(_dest_ghosts.get(char_id))
+	_clear_char_path_feedback(char_id)
+	_renderers.erase(char_id)
+	_dest_markers.erase(char_id)
+	_dest_ghosts.erase(char_id)
+	_ghost_built_from.erase(char_id)
+	_ghost_colors.erase(char_id)
+	_nodes.erase(char_id)
+	_known_node_misses.erase(char_id)
+	_feedback_roots.erase(char_id)
+	_feedback_hashes.erase(char_id)
+	_tracked_character_ids.erase(char_id)
+
+func _retire_owned_visual(candidate: Variant) -> void:
+	if candidate == null or not is_instance_valid(candidate) or not candidate is Node:
+		return
+	var visual := candidate as Node
+	if visual is Node3D:
+		(visual as Node3D).visible = false
+	if visual.get_parent() == self:
+		remove_child(visual)
+	visual.queue_free()
+
+## setup() is allowed to rebind this reusable manager to another GameState/root. A valid Node reference
+## from the previous scene is still valid to Godot, so merely clearing freed entries is insufficient:
+## retire all old visuals and reset the entire ownership/cache generation at the rebind boundary.
+func _clear_managed_state() -> void:
+	var ids := {}
+	for raw_id in _renderers:
+		ids[str(raw_id)] = true
+	for raw_id in _dest_markers:
+		ids[str(raw_id)] = true
+	for raw_id in _dest_ghosts:
+		ids[str(raw_id)] = true
+	for raw_id in _ghost_built_from:
+		ids[str(raw_id)] = true
+	for raw_id in _ghost_colors:
+		ids[str(raw_id)] = true
+	for raw_id in _nodes:
+		ids[str(raw_id)] = true
+	for raw_id in _known_node_misses:
+		ids[str(raw_id)] = true
+	for raw_id in _feedback_roots:
+		ids[str(raw_id)] = true
+	for raw_id in _feedback_hashes:
+		ids[str(raw_id)] = true
+	for raw_id in _tracked_character_ids:
+		ids[str(raw_id)] = true
+	for raw_id in ids:
+		_remove_character_state(str(raw_id))
+	_renderers.clear()
+	_dest_markers.clear()
+	_dest_ghosts.clear()
+	_ghost_built_from.clear()
+	_ghost_colors.clear()
+	_nodes.clear()
+	_known_node_misses.clear()
+	_feedback_roots.clear()
+	_feedback_hashes.clear()
+	_tracked_character_ids.clear()
+	_next_tree_scan_frame = 0
+	_node_cache_scan_count = 0
 
 ## Learned surge timing is presented as a wider colour-coded ribbon only while planning. The chunk
 ## supplies flat DATA-space points and copy; this manager owns all rendering/warping so the mechanic
@@ -349,6 +475,7 @@ func _make_dest_marker(col: Color) -> MeshInstance3D:
 ## ghost too. Cosmetic: duplicates meshes + reads the move target / coord_map, writes nothing.
 func _update_dest_ghost(char_id: String, node: Node3D) -> void:
 	var ghost: Node3D = _dest_ghosts.get(char_id)
+	var ghost_color := _color_for(node)
 	var dest_data := Vector3.INF
 	# The active preview is the prospective plan, so it outranks an existing committed destination.
 	# This keeps a moving party's ghosts attached to the rally formation currently being placed.
@@ -373,11 +500,16 @@ func _update_dest_ghost(char_id: String, node: Node3D) -> void:
 			ghost.visible = false
 			remove_child(ghost)
 			ghost.queue_free()
-		ghost = _build_dest_ghost(node, _color_for(node))
+		ghost = _build_dest_ghost(node, ghost_color)
 		_dest_ghosts[char_id] = ghost
 		_ghost_built_from[char_id] = node
 		if ghost == null:
+			_ghost_colors.erase(char_id)
 			return
+		_ghost_colors[char_id] = ghost_color
+	elif _ghost_colors.get(char_id) != ghost_color:
+		_retint_dest_ghost(ghost, ghost_color)
+		_ghost_colors[char_id] = ghost_color
 	var dest_world: Vector3 = dest_data if game_state.coord_map == null else game_state.coord_map.to_world(dest_data)
 	if not dest_world.is_finite():
 		ghost.visible = false
@@ -395,6 +527,15 @@ func _update_dest_ghost(char_id: String, node: Node3D) -> void:
 	var char_scale: Vector3 = node.global_transform.basis.get_scale()
 	ghost.global_transform = Transform3D(basis.scaled(char_scale), dest_world)
 	ghost.visible = true
+
+func _retint_dest_ghost(ghost: Node3D, col: Color) -> void:
+	if ghost == null or not is_instance_valid(ghost):
+		return
+	for child in ghost.get_children():
+		if child is MeshInstance3D:
+			var mat := (child as MeshInstance3D).material_override as StandardMaterial3D
+			if mat != null:
+				mat.albedo_color = Color(col.r, col.g, col.b, GHOST_ALPHA)
 
 ## Duplicate every MeshInstance3D under the character into a top-level ghost root, sharing one translucent
 ## tinted material. Returns null when the character has no meshes yet (rebuilt next frame). The mesh transforms
@@ -465,28 +606,75 @@ func _color_for(node: Node) -> Color:
 	return default_color
 
 func _node_for(char_id: String) -> Node3D:
+	var had_entry := _nodes.has(char_id)
 	var cached = _nodes.get(char_id)
-	if cached != null and is_instance_valid(cached):
-		return cached
-	# Throttle missing-node rescans: a character with no scene node (pure data char) would otherwise
-	# trigger a FULL tree scan every frame, forever.
-	var next_scan := int(_scan_after.get(char_id, 0))
+	if _is_cached_node_current(char_id, cached):
+		return cached as Node3D
+	# A non-null entry that stopped satisfying the cache contract (renamed, reparented,
+	# queued/freed, or replaced during a chunk swap) is a lifecycle event, not an ordinary
+	# miss: refresh immediately so its replacement can bind in this frame. Keep explicit
+	# miss state because Godot may collapse a freed Object Variant to null after deletion.
+	var known_miss := had_entry and _known_node_misses.has(char_id)
+	var stale_entry := had_entry and not known_miss
+	if had_entry:
+		_nodes[char_id] = null
+	# Resolve every never-seen actor with ONE shared tree walk. _refresh_node_cache marks
+	# every currently registered id as known (including null misses), so the first new id
+	# finds all of its siblings and the rest remain behind the shared throttle.
 	var frame := Engine.get_process_frames()
-	if cached == null and _nodes.has(char_id) and frame < next_scan:
+	if had_entry and not stale_entry and frame < _next_tree_scan_frame:
 		return null
-	_scan_after[char_id] = frame + 30
-	var found := _find_node(char_id)
-	_nodes[char_id] = found
-	return found
+	_refresh_node_cache(frame)
+	var refreshed = _nodes.get(char_id)
+	return refreshed as Node3D if _is_cached_node_current(char_id, refreshed) else null
 
-func _find_node(char_id: String) -> Node3D:
-	if search_root == null or not is_instance_valid(search_root):
-		return null
-	for n in search_root.find_children("*", "", true, false):
+func _is_cached_node_current(char_id: String, candidate: Variant) -> bool:
+	if candidate == null or not is_instance_valid(candidate) or not candidate is Node3D:
+		return false
+	var node := candidate as Node3D
+	if node.is_queued_for_deletion() or not node.is_inside_tree():
+		return false
+	if search_root == null or not is_instance_valid(search_root) or search_root.is_queued_for_deletion():
+		return false
+	if node != search_root and not search_root.is_ancestor_of(node):
+		return false
+	# Both manager-owned and character-owned PathRenderers expose char_id. They are
+	# visual consumers of the anchor, never actor anchors themselves.
+	if node is PathRenderer or node == self or is_ancestor_of(node):
+		return false
+	if not "char_id" in node or str(node.char_id) != char_id:
+		return false
+	return true
+
+func _refresh_node_cache(frame: int) -> void:
+	var perf_started := PerformanceTrace.begin()
+	_next_tree_scan_frame = frame + NODE_RESCAN_INTERVAL_FRAMES
+	if (game_state == null or search_root == null or not is_instance_valid(search_root)
+		or search_root.is_queued_for_deletion() or not search_root.is_inside_tree()):
+		PerformanceTrace.end(&"update", &"path_manager.node_cache_scan", perf_started, "no_root", 0)
+		return
+	for raw_id in _nodes.keys():
+		if not game_state.characters.has(str(raw_id)):
+			_nodes.erase(raw_id)
+	for raw_id in _known_node_misses.keys():
+		if not game_state.characters.has(str(raw_id)):
+			_known_node_misses.erase(raw_id)
+	for char_id in game_state.characters:
+		var normalized_id := str(char_id)
+		_nodes[normalized_id] = null
+		_known_node_misses[normalized_id] = true
+		_tracked_character_ids[normalized_id] = true
+	_node_cache_scan_count += 1
+	var descendants := search_root.find_children("*", "", true, false)
+	for n in descendants:
 		# Skip the manager's OWN subtree: PathRenderers (which also carry a char_id) and the dest markers/ghosts
 		# live under here, so a naive char_id match would return a ribbon renderer instead of the character node.
 		if n == self or is_ancestor_of(n):
 			continue
-		if n is Node3D and "char_id" in n and str(n.char_id) == char_id:
-			return n
-	return null
+		if n is Node3D and "char_id" in n:
+			var found_id := str(n.char_id)
+			if game_state.characters.has(found_id) and _is_cached_node_current(found_id, n):
+				_nodes[found_id] = n
+				_known_node_misses.erase(found_id)
+	PerformanceTrace.end(&"update", &"path_manager.node_cache_scan", perf_started,
+		"shared", descendants.size())

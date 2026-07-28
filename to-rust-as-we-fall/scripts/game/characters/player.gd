@@ -54,6 +54,9 @@ var _ability_marker_mat: StandardMaterial3D
 
 @onready var _mesh: MeshInstance3D = $Mesh
 @onready var _label: Label3D = $Label3D
+@onready var _damage_feedback_label: Label3D = get_node_or_null("DamageFeedbackLabel") as Label3D
+var _damage_feedback_material_tween: Tween
+var _damage_feedback_label_tween: Tween
 
 
 # Hover grid: hovering the floor in move mode reveals a grid patch with the pointed-at cell lit, so
@@ -172,6 +175,51 @@ func _ready() -> void:
 		if game_state.has_signal("knockdown_started"):
 			game_state.knockdown_started.connect(_on_knockdown_started)
 			game_state.knockdown_ended.connect(_on_knockdown_ended)
+
+
+## Explicit visual contract for DownedBodyManager. The character owns path-preview
+## and ability-marker meshes as descendants too; a recursive mesh sweep would make
+## those utilities part of the fallen body's hover outline and bounds.
+func get_downed_outline_meshes() -> Array[MeshInstance3D]:
+	var meshes: Array[MeshInstance3D] = []
+	if _mesh != null and is_instance_valid(_mesh):
+		meshes.append(_mesh)
+	return meshes
+
+
+## Present source-labelled damage on the character itself. The hidden Label3D is scene-authored so
+## the first combat impact does not allocate and tree-enter UI in the middle of a scheduler callback.
+## Encounter controllers remain responsible for authoritative HP and portrait state; this is view-only.
+func show_damage_feedback(amount: float, source: String, flash_color: Color, hp_left: float) -> void:
+	var feedback_started := PerformanceTrace.begin()
+	if _mesh != null and _mesh.material_override is StandardMaterial3D:
+		var mat := _mesh.material_override as StandardMaterial3D
+		if _damage_feedback_material_tween != null and _damage_feedback_material_tween.is_valid():
+			_damage_feedback_material_tween.kill()
+		mat.albedo_color = flash_color
+		_damage_feedback_material_tween = create_tween()
+		_damage_feedback_material_tween.tween_property(mat, "albedo_color", color, 0.24)
+	if _damage_feedback_label == null:
+		PerformanceTrace.end(&"draw", &"player.damage_feedback", feedback_started, char_id, 0)
+		return
+	if _damage_feedback_label_tween != null and _damage_feedback_label_tween.is_valid():
+		_damage_feedback_label_tween.kill()
+	var start := global_position + Vector3(0.0, 2.25, 0.0)
+	_damage_feedback_label.text = "%s  -%d HP  /  %d LEFT" % [
+		source, int(round(amount)), int(ceil(hp_left))]
+	_damage_feedback_label.global_position = start
+	_damage_feedback_label.modulate = Color(flash_color, 1.0)
+	_damage_feedback_label.visible = true
+	_damage_feedback_label_tween = create_tween().set_parallel(true)
+	_damage_feedback_label_tween.tween_property(
+		_damage_feedback_label, "global_position", start + Vector3(0.0, 0.55, 0.0), 0.65)
+	_damage_feedback_label_tween.tween_property(
+		_damage_feedback_label, "modulate", Color(flash_color, 0.0), 0.65).set_delay(0.18)
+	_damage_feedback_label_tween.chain().tween_callback(func():
+		if is_instance_valid(_damage_feedback_label):
+			_damage_feedback_label.visible = false
+	)
+	PerformanceTrace.end(&"draw", &"player.damage_feedback", feedback_started, char_id, 1)
 
 func _unhandled_input(event: InputEvent) -> void:
 	if Engine.is_editor_hint():
@@ -299,6 +347,7 @@ func _build_hover_grid() -> void:
 ## edge. The expensive pattern is computed ONCE (shared alpha), then tinted per colour.
 static var _grid_alpha: PackedFloat32Array
 static var _grid_dim := 0
+static var _grid_texture_cache: Dictionary = {}
 
 ## 8x8 ordered (Bayer) dither matrix, 0..63. The grid's radial fade is rendered as a STIPPLE against these
 ## thresholds — the signature pixel-dither dissolve: solid lines at the centre breaking into sparser dots
@@ -313,6 +362,8 @@ const BAYER8 := [
 	15, 47, 7, 39, 13, 45, 5, 37,
 	63, 31, 55, 23, 61, 29, 53, 21,
 ]
+
+static var _grid_rim_alpha: PackedFloat32Array
 
 static func _ensure_grid_alpha() -> void:
 	if _grid_dim != 0:
@@ -336,56 +387,75 @@ static func _ensure_grid_alpha() -> void:
 		for x in range(dim):
 			var fx := (x + 0.5 - half) / half
 			# Per-line-pixel radial FADE (1 at the centre -> 0 past the rim). _build_grid_texture
-			# dithers this into a stipple so the 5x5 visibly fades toward the edges (the scissor
-			# material can't blend, so the fade is carried by dropout density). Solid out to r~0.5,
-			# fading to a faint rim by r~1.18 so the outer cells dissolve instead of ending hard.
+			# dithers this into a stipple so the 5x5 visibly fades toward the edges.
 			var r := sqrt(fx * fx + fy * fy)
 			var fade := clampf((1.18 - r) / 0.68, 0.0, 1.0)
 			_grid_alpha[y * dim + x] = fade if (is_line[x] or is_line[y]) else 0.0
 
-func _build_grid_texture() -> ImageTexture:
-	# CONTRAST is the whole game here: thin faded lines vanish against the room model's own white tile seams
-	# (and inside character glow). Lines render in the CHARACTER's color — the same ownership language as the
-	# ribbon and queued glow — over a dark rim (a 2px dilation) so the grid reads on bright floors, dark
-	# floors, and bloom alike. The radial fade is rendered as a Bayer STIPPLE (the pixel-dither dissolve): the
-	# core lines stay solid and the edges break into sparser dots, so it reads as pixel art rather than a smooth
-	# alpha ramp. Mipmaps keep the thin lines from shimmering as the camera moves.
-	_ensure_grid_alpha()
-	var dim := _grid_dim
-	var tint := _character_color()
-	var line := Color(tint.r, tint.g, tint.b, 1.0).lightened(0.25)
-	var rim := Color(0.03, 0.04, 0.05, 1.0)
-	var img := Image.create(dim, dim, false, Image.FORMAT_RGBA8)
-	img.fill(Color(0, 0, 0, 0))
-	# Dark rim first — a 2px dilation of the SOLID core lines (high fade); the line draws over it. Rimming the
-	# faint outer fade would smear into a muddy halo, so only dilate where the line is solid.
+	# Cache the dark 2px dilation once. The old builder repeated this neighbourhood
+	# walk and Image.get_pixel/set_pixel work for every character colour.
+	_grid_rim_alpha = PackedFloat32Array()
+	_grid_rim_alpha.resize(dim * dim)
 	var rim_px := 2
 	for y in range(dim):
 		for x in range(dim):
-			var f := _grid_alpha[y * dim + x]
-			if f < 0.5:
+			var fade := _grid_alpha[y * dim + x]
+			if fade < 0.5:
 				continue
+			var rim_alpha := fade * 0.7
 			for oy in range(-rim_px, rim_px + 1):
 				for ox in range(-rim_px, rim_px + 1):
-					var px: int = clampi(x + ox, 0, dim - 1)
-					var py: int = clampi(y + oy, 0, dim - 1)
-					if img.get_pixel(px, py).a < f:
-						img.set_pixel(px, py, Color(rim.r, rim.g, rim.b, f * 0.7))
-	# Lines on top, dithered: a line pixel lights only where its fade clears the Bayer threshold for that
-	# pixel — so the centre (fade~1) is solid and the rim (low fade) dissolves into sparse dots. Full alpha
-	# where it passes; the dropout density IS the fade.
-	var line_solid := Color(line.r, line.g, line.b, 1.0)
+					var px := clampi(x + ox, 0, dim - 1)
+					var py := clampi(y + oy, 0, dim - 1)
+					var index := py * dim + px
+					_grid_rim_alpha[index] = maxf(_grid_rim_alpha[index], rim_alpha)
+
+
+func _build_grid_texture() -> ImageTexture:
+	# CONTRAST is the whole game here: thin faded lines vanish against the room model's own white tile seams
+	# (and inside character glow). Lines render in the CHARACTER's color over a dark cached rim. The radial
+	# fade is still the same Bayer stipple; only the construction path changed from per-pixel Image calls to
+	# one byte buffer, and completed color textures are shared between matching character instances/scenes.
+	_ensure_grid_alpha()
+	var dim := _grid_dim
+	var tint := _character_color()
+	var cache_key := tint.to_rgba32()
+	if _grid_texture_cache.has(cache_key):
+		return _grid_texture_cache[cache_key] as ImageTexture
+	var line := Color(tint.r, tint.g, tint.b, 1.0).lightened(0.25)
+	var rim := Color(0.03, 0.04, 0.05, 1.0)
+	var line_r := int(round(clampf(line.r, 0.0, 1.0) * 255.0))
+	var line_g := int(round(clampf(line.g, 0.0, 1.0) * 255.0))
+	var line_b := int(round(clampf(line.b, 0.0, 1.0) * 255.0))
+	var rim_r := int(round(rim.r * 255.0))
+	var rim_g := int(round(rim.g * 255.0))
+	var rim_b := int(round(rim.b * 255.0))
+	var pixels := PackedByteArray()
+	pixels.resize(dim * dim * 4)
 	for y in range(dim):
 		for x in range(dim):
-			var fa := _grid_alpha[y * dim + x]
-			if fa <= 0.0:
+			var index := y * dim + x
+			var byte_index := index * 4
+			var rim_alpha := _grid_rim_alpha[index]
+			if rim_alpha > 0.0:
+				pixels[byte_index] = rim_r
+				pixels[byte_index + 1] = rim_g
+				pixels[byte_index + 2] = rim_b
+				pixels[byte_index + 3] = int(round(clampf(rim_alpha, 0.0, 1.0) * 255.0))
+			var fade := _grid_alpha[index]
+			if fade <= 0.0:
 				continue
-			var thr: float = (float(BAYER8[(y & 7) * 8 + (x & 7)]) + 0.5) / 64.0
-			if fa > thr:
-				img.set_pixel(x, y, line_solid)
+			var threshold: float = (float(BAYER8[(y & 7) * 8 + (x & 7)]) + 0.5) / 64.0
+			if fade > threshold:
+				pixels[byte_index] = line_r
+				pixels[byte_index + 1] = line_g
+				pixels[byte_index + 2] = line_b
+				pixels[byte_index + 3] = 255
+	var img := Image.create_from_data(dim, dim, false, Image.FORMAT_RGBA8, pixels)
 	img.generate_mipmaps()
-	return ImageTexture.create_from_image(img)
-
+	var texture := ImageTexture.create_from_image(img)
+	_grid_texture_cache[cache_key] = texture
+	return texture
 ## Raycast the floor under the cursor and show the grid there. Only in move mode while move-enabled,
 ## so it doesn't appear during selection prompts or for non-active party members.
 func _update_hover_from_screen(screen_pos: Vector2) -> void:
@@ -398,7 +468,9 @@ func _update_hover_from_screen(screen_pos: Vector2) -> void:
 		_hover_grid.visible = false
 		_clear_path_preview()
 		return
+	var raycast_started := PerformanceTrace.begin()
 	var hit := _raycast_ground(screen_pos)
+	PerformanceTrace.end(&"update", &"player.hover_raycast", raycast_started, char_id, 1)
 	if hit == Vector3.INF:
 		_hover_grid.visible = false
 		_clear_path_preview()
@@ -412,7 +484,9 @@ func _update_hover_from_screen(screen_pos: Vector2) -> void:
 		_update_push_preview(hit)
 		return
 	# Drape the grid onto the surface under the cursor, then preview the path to it.
+	var grid_started := PerformanceTrace.begin()
 	_apply_hover_grid(hit, _last_ground_normal)
+	PerformanceTrace.end(&"draw", &"player.hover_grid", grid_started, char_id, 1)
 	_update_path_preview(hit)
 
 ## Project the hover grid straight DOWN from above the hovered point. The Decal stamps its texture onto the
@@ -484,13 +558,16 @@ func _hover_grid_center(hit: Vector3) -> Vector3:
 ## actually moving (the committed path shows then) and when not hovering the floor. With a party selected
 ## (group_move) it previews EVERY member's path to its own spread destination, not just the active one.
 func _update_path_preview(hit: Vector3) -> void:
+	var perf_started := PerformanceTrace.begin()
 	# SelectionController is displaying the exact per-member Rally formation. The ordinary hover
 	# preview targets one shared cursor cell, so it must not compete for preview_move_target here.
 	if _external_path_preview_active:
+		PerformanceTrace.end(&"nav", &"player.path_preview", perf_started, "external", 0)
 		return
 	if _path_preview == null or game_state == null or char_id == "":
 		if GridWorld._fx_debug:
 			GridWorld._pf_trace("[preview] SKIP (path_preview=%s game_state=%s char_id='%s')" % [_path_preview != null, game_state != null, char_id])
+		PerformanceTrace.end(&"nav", &"player.path_preview", perf_started, char_id, 0)
 		return
 	# Keep the preview ribbon on the LIVE game_state. _path_preview.setup() ran in _ready, BEFORE the host
 	# assigns this player's game_state — so it captured null and never saw the coord_map, leaving the ribbon
@@ -502,11 +579,13 @@ func _update_path_preview(hit: Vector3) -> void:
 		if GridWorld._fx_debug:
 			GridWorld._pf_trace("[preview] clear — %s is MOVING (committed ribbon shows instead)" % char_id)
 		_clear_path_preview()
+		PerformanceTrace.end(&"nav", &"player.path_preview", perf_started, "moving", 0)
 		return
 	# Recompute only when the hovered DATA-grid cell changes (the grid carries its origin offset, so
 	# this tracks the same cells the move will land on — not an integer lattice).
 	var cell := game_state.grid.world_to_grid(hit) if game_state.grid != null else Vector2i(int(floorf(hit.x)), int(floorf(hit.z)))
 	if cell == _preview_last_cell:
+		PerformanceTrace.end(&"nav", &"player.path_preview", perf_started, "cached", 0)
 		return
 	_preview_last_cell = cell
 	if group_move and game_state.get_party().size() > 1:
@@ -519,6 +598,7 @@ func _update_path_preview(hit: Vector3) -> void:
 			group_target = game_state.grid.grid_to_world(game_state.grid.world_to_grid(hit), group_level)
 		_preview_commit_target = game_state.coord_map.to_world(group_target) \
 			if game_state.coord_map != null else group_target
+		PerformanceTrace.end(&"nav", &"player.path_preview", perf_started, "party", game_state.get_party().size())
 		return
 	_clear_party_preview()
 	var path := game_state.compute_preview_path(char_id, hit)
@@ -538,10 +618,12 @@ func _update_path_preview(hit: Vector3) -> void:
 			GridWorld._pf_trace("[preview] CLEARED — compute_preview_path returned < 2 points (no route to this cell)")
 	# A raw, unroutable surface hit is not a truthful final position, so it does
 	# not receive a destination ghost or become the cached command target.
+	PerformanceTrace.end(&"nav", &"player.path_preview", perf_started, char_id, path.size())
 
 ## One dim ribbon per selected member, each in that member's colour, anchored to that member so it starts
 ## at them. Mirrors the party spread, so the preview matches the click.
 func _update_party_preview(hit: Vector3) -> void:
+	var perf_started := PerformanceTrace.begin()
 	var entries: Array = game_state.compute_preview_party_paths(hit)
 	var seen := {}
 	for entry in entries:
@@ -573,6 +655,7 @@ func _update_party_preview(hit: Vector3) -> void:
 			var mnode := _find_char_node(cid)
 			if mnode != null and "preview_move_target" in mnode:
 				mnode.preview_move_target = Vector3.INF
+	PerformanceTrace.end(&"nav", &"player.party_preview", perf_started, char_id, entries.size())
 
 func _clear_party_preview() -> void:
 	for cid in _party_previews.keys():
@@ -601,10 +684,13 @@ func cancel_push_queue() -> void:
 ## Hover while a push is queued: plan to the hovered cell; ghosts + the object's route when possible,
 ## the blocked (X) cursor when "there is not enough space".
 func _update_push_preview(hit: Vector3) -> void:
+	var perf_started := PerformanceTrace.begin()
 	if game_state == null or game_state.grid == null or char_id == "":
+		PerformanceTrace.end(&"nav", &"player.push_preview", perf_started, char_id, 0)
 		return
 	var cell: Vector2i = game_state.grid.world_to_grid(hit)
 	if cell == _push_plan_cell:
+		PerformanceTrace.end(&"nav", &"player.push_preview", perf_started, "cached", 0)
 		return
 	_push_plan_cell = cell
 	_push_plan = game_state.plan_push_for(char_id, _push_obj_id, cell)
@@ -612,6 +698,7 @@ func _update_push_preview(hit: Vector3) -> void:
 		_set_blocked_cursor(true)
 		_clear_push_ghosts()
 		_clear_path_preview()
+		PerformanceTrace.end(&"nav", &"player.push_preview", perf_started, "blocked", 0)
 		return
 	_set_blocked_cursor(false)
 	var steps: Array = _push_plan.get("steps", [])
@@ -630,6 +717,7 @@ func _update_push_preview(hit: Vector3) -> void:
 	_push_ghost_char.global_position = char_end + Vector3(0, 0.5, 0)
 	_push_ghost_obj.visible = true
 	_push_ghost_char.visible = true
+	PerformanceTrace.end(&"nav", &"player.push_preview", perf_started, char_id, steps.size())
 
 func _commit_push(hit: Vector3) -> void:
 	if game_state == null or game_state.grid == null:
@@ -861,7 +949,9 @@ func walk_to_grid(cell: Vector2i) -> void:
 func _process(_delta: float) -> void:
 	if Engine.is_editor_hint():
 		return
+	var perf_started := PerformanceTrace.begin()
 	_update_hover_grid()
+	PerformanceTrace.end(&"update", &"player.process", perf_started, char_id, 1)
 
 ## Follow the cursor with the target-cell grid every frame. We POLL the viewport mouse position
 ## rather than react to InputEventMouseMotion: motion events don't reliably reach _unhandled_input
@@ -890,6 +980,7 @@ func _update_hover_grid() -> void:
 func _physics_process(delta: float) -> void:
 	if Engine.is_editor_hint():
 		return
+	var perf_started := PerformanceTrace.begin()
 	if game_state and char_id != "":
 		if game_state.is_moving(char_id):
 			var pos := game_state.get_render_position(char_id)
@@ -917,6 +1008,7 @@ func _physics_process(delta: float) -> void:
 			# never moves (or has arrived) sits at its flat data position — below the curved deck.
 			global_position = game_state.get_render_position(char_id)
 		_update_path_line()
+		PerformanceTrace.end(&"update", &"player.physics_process", perf_started, char_id, 1)
 		return
 
 	if _auto_path.size() > 0:
@@ -931,11 +1023,13 @@ func _physics_process(delta: float) -> void:
 				_moving = false
 				auto_path_complete.emit()
 				_update_path_line()
+				PerformanceTrace.end(&"update", &"player.physics_process", perf_started, char_id, 1)
 				return
 		else:
 			velocity = dir.normalized() * move_speed
 			move_and_slide()
 		_update_path_line()
+		PerformanceTrace.end(&"update", &"player.physics_process", perf_started, char_id, 1)
 		return
 
 	if _moving:
@@ -951,6 +1045,7 @@ func _physics_process(delta: float) -> void:
 			move_and_slide()
 
 	_update_path_line()
+	PerformanceTrace.end(&"update", &"player.physics_process", perf_started, char_id, 1)
 
 func _on_gs_arrived(id: String) -> void:
 	if id == char_id:
@@ -997,6 +1092,14 @@ func set_move_enabled(enabled: bool) -> void:
 		_moving = false
 		velocity = Vector3.ZERO
 		_auto_path.clear()
+
+
+## Restore only the input gate around an already-authoritative GameState plan. Save attachment must
+## not call set_move_enabled(false), because that API deliberately commits a stop command and would
+## turn every in-flight movement snapshot into a parked body.
+func restore_move_input_enabled(enabled: bool) -> void:
+	_move_enabled = enabled
+
 
 func is_move_enabled() -> bool:
 	return _move_enabled

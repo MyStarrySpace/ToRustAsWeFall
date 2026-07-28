@@ -324,7 +324,9 @@ func _queue_moves(points: Array, char_id: String) -> void:
 	gs.command_walk_path(who, path)
 	print("[SIM] %s queued %d move(s)" % [who, path.size()])
 
-## Rest at a shelter: restore the whole party (or one character if named).
+## Commit the whole party (or one named character) to the real shelter-rest flow.
+## This deliberately does not call restore_character(): rest must require shelter
+## presence, spend ATP, and heal over game time like player input does.
 func _rest(char_id: String) -> void:
 	var gs := _find_game_state()
 	if gs == null:
@@ -335,9 +337,15 @@ func _rest(char_id: String) -> void:
 		var who := _find_player_char_id()
 		if who != "":
 			members = [who]
+	var accepted: Array[String] = []
+	var refused: Array[String] = []
 	for member in members:
-		gs.restore_character(String(member))
-	print("[SIM] rested — restored %s" % str(members))
+		var member_id := String(member)
+		if gs.command_rest(member_id):
+			accepted.append(member_id)
+		else:
+			refused.append(member_id)
+	print("[SIM] shelter rest started for %s; refused %s" % [str(accepted), str(refused)])
 
 ## Advance the dialogue one step via the same path a real click uses.
 func _advance_dialogue() -> void:

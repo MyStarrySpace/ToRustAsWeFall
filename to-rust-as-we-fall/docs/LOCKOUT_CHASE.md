@@ -146,7 +146,8 @@ plaza (the new `facility_checkpoint` kind) + scanner trigger -> scheduled Natura
 sealable door (holds cutters DOOR_HOLD_SECS, never re-opens); the Chelator hesitation zone (real
 logged slow on every pursuer); Flure + Scarpet levers; the UNMARKED offshoot pocket (portal pair,
 two capacity-one Capbage tight-hides, SEAL points that spend carried Hushblooms to stun the pads
-— pursuit follows through OPEN portals, so only the double-seal locks the pocket); Tyreg's
+— pursuit walks to the receiver and follows through OPEN portals over a saved PortalPad transit,
+so only the double-seal locks the pocket); Tyreg's
 junction choice (accept = v1 auto-Suppress escort, 3 charges; crossing S4 without her fires the
 side wave); Endo's wall = a real shelter region + the completing rest. Failure = party wipe ->
 the loader restart. Guarded by `--test-lockout-chase` (24 asserts, in `--test-all`).

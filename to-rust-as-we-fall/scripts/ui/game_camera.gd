@@ -3,7 +3,7 @@ extends Camera3D
 # wall-clock RNG (does not affect game state or replay determinism).
 
 ## Isometric-style follow camera with pan. Follows a target by default.
-## Player can pan with right-drag or edge scroll. Snaps back on movement input.
+## Player can pan with middle-drag or edge scroll. Snaps back on movement input.
 ## During scripted sequences, can be locked or guided.
 
 @export var target: Node3D
@@ -31,6 +31,10 @@ var _zoom_max := CAMERA_ZOOM_MAX
 var _pan_offset := Vector3.ZERO
 var _panning := false
 var _pan_enabled := true
+## Ambient desktop cursor state is not deterministic. Autonomous recordings/replays disable
+## mouse-owned camera navigation while retaining keyboard, touch, scripted focus, and recentering.
+var _mouse_camera_controls_enabled := true
+var _playthrough_input_policy_source: Node
 # Optional world-space clamp on the look-at point (X/Z), so pan/edge-scroll can't
 # push the view outside a confined room (e.g. the elevator). Inactive by default.
 var _look_bounds_active := false
@@ -81,9 +85,13 @@ var _cam_last_dist := 1.0
 signal pan_hint_triggered(direction: Vector2)
 
 func _ready() -> void:
+	sync_playthrough_input_policy()
 	_update_immediate()
 
 func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventMouse and not _mouse_camera_controls_enabled:
+		_panning = false
+		return
 	if event.is_action_pressed("camera_zoom_in"):
 		_view_zoom = clampf(_view_zoom * CAMERA_ZOOM_STEP, _zoom_min, _zoom_max)
 		return
@@ -308,7 +316,7 @@ func _process(delta: float) -> void:
 		return
 
 	# Edge scrolling (when not dragging)
-	if _pan_enabled and not _panning and edge_scroll_margin > 0.0:
+	if _mouse_camera_controls_enabled and _pan_enabled and not _panning and edge_scroll_margin > 0.0:
 		var vp := get_viewport()
 		if vp:
 			var mouse := vp.get_mouse_position()
@@ -549,13 +557,86 @@ func set_pan_enabled(enabled: bool) -> void:
 	if not enabled:
 		_pan_offset = Vector3.ZERO
 
+## Enable/disable camera controls owned by the desktop mouse: wheel zoom, middle-button drag,
+## and edge-scroll. This does not reset framing or disable WASD/touch/scripted camera control.
+func set_mouse_camera_controls_enabled(enabled: bool) -> void:
+	_mouse_camera_controls_enabled = enabled
+	if not enabled:
+		_panning = false
+
+func are_mouse_camera_controls_enabled() -> bool:
+	return _mouse_camera_controls_enabled
+
+## Apply the camera part of a recording's input-ownership contract. An optional session makes the
+## seam directly testable; production scenes resolve the PlaythroughRecorder autoload. The binding
+## also restores mouse controls automatically when a non-quitting record/replay session ends.
+func sync_playthrough_input_policy(playthrough: Node = null) -> void:
+	if playthrough == null:
+		playthrough = get_node_or_null("/root/PlaythroughRecorder")
+	_bind_playthrough_input_policy(playthrough)
+	var ambient_mouse_enabled := true
+	if playthrough != null and playthrough.has_method(
+		"ambient_mouse_camera_controls_enabled"
+	):
+		ambient_mouse_enabled = bool(
+			playthrough.call("ambient_mouse_camera_controls_enabled")
+		)
+	elif playthrough != null and playthrough.has_method("is_autonomous_input_session"):
+		# Compatibility with an older recorder autoload that predates the explicit
+		# persisted camera-policy field.
+		ambient_mouse_enabled = not bool(
+			playthrough.call("is_autonomous_input_session")
+		)
+	set_mouse_camera_controls_enabled(ambient_mouse_enabled)
+
+func _bind_playthrough_input_policy(playthrough: Node) -> void:
+	if playthrough == _playthrough_input_policy_source:
+		return
+	var camera_callback := Callable(self, "_on_camera_input_policy_changed")
+	var autonomous_callback := Callable(self, "_on_autonomous_input_session_changed")
+	if _playthrough_input_policy_source != null \
+			and is_instance_valid(_playthrough_input_policy_source):
+		if _playthrough_input_policy_source.has_signal("camera_input_policy_changed") \
+				and _playthrough_input_policy_source.is_connected(
+					"camera_input_policy_changed", camera_callback):
+			_playthrough_input_policy_source.disconnect(
+				"camera_input_policy_changed", camera_callback)
+		if _playthrough_input_policy_source.has_signal(
+			"autonomous_input_session_changed"
+		) and _playthrough_input_policy_source.is_connected(
+			"autonomous_input_session_changed", autonomous_callback
+		):
+			_playthrough_input_policy_source.disconnect(
+				"autonomous_input_session_changed", autonomous_callback)
+	_playthrough_input_policy_source = playthrough
+	if _playthrough_input_policy_source == null:
+		return
+	if _playthrough_input_policy_source.has_signal("camera_input_policy_changed"):
+		if not _playthrough_input_policy_source.is_connected(
+			"camera_input_policy_changed", camera_callback):
+			_playthrough_input_policy_source.connect(
+				"camera_input_policy_changed", camera_callback)
+	elif _playthrough_input_policy_source.has_signal(
+		"autonomous_input_session_changed"
+	) and not _playthrough_input_policy_source.is_connected(
+		"autonomous_input_session_changed", autonomous_callback
+	):
+		_playthrough_input_policy_source.connect(
+			"autonomous_input_session_changed", autonomous_callback)
+
+func _on_camera_input_policy_changed(ambient_mouse_enabled: bool) -> void:
+	set_mouse_camera_controls_enabled(ambient_mouse_enabled)
+
+func _on_autonomous_input_session_changed(active: bool) -> void:
+	set_mouse_camera_controls_enabled(not active)
+
 ## Enable/disable WASD keyboard pan
 func set_wasd_pan_enabled(enabled: bool) -> void:
 	_wasd_pan_enabled = enabled
 	if not enabled:
 		_pan_offset = Vector3.ZERO
 
-## Free-look mode: the full "move the camera around" control set in one call — WASD pan + right-drag pan +
+## Free-look mode: the full "move the camera around" control set in one call — WASD pan + middle-drag pan +
 ## edge-scroll, with a generous pan radius. A left click still recenters on the target, so it never blocks
 ## click-to-move. Modular replacement for the per-scene set_pan_enabled / set_wasd_pan_enabled / max_pan
 ## triple — use this anywhere the player should be able to look around (the chunk preview, free-cam testing).

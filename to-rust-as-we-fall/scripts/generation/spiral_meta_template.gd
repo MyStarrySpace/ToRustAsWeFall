@@ -3,9 +3,9 @@ extends MetaTemplate
 
 ## The DESCENDING-SPIRAL meta-template. The fall-to PLANE is the spiral's own lower turns (walkable, warped); the
 ## RETURN POINTS are placed where a cell and the cell one full turn ahead sit stacked (the ahead cell directly
-## BELOW): a DROP portal takes you down that shortcut, and a CLIMBVINE takes you back UP the same stack. The
-## STRETCHES are the spine segments between. So the spiral realizes the whole meta-grammar within one warped space
-## (no separate hub coordinate system needed — that's what the circle/rectangle-hub templates add).
+## BELOW). Peris tends an anchor on the already-reached upper turn; its vine visibly grows down to the lower turn,
+## where it becomes a lower -> upper recovery climb. There is deliberately NO paired forward drop portal: it made
+## the next turn reachable before its blockers were resolved and read as an unexplained second staircase.
 
 const SpiralCoordMapScript := preload("res://scripts/generation/spiral_coord_map.gd")
 
@@ -23,33 +23,27 @@ func return_point_specs(spine_nav: Dictionary, coord_map) -> Array:
 	if coord_map == null or spine_nav.is_empty():
 		return []
 	var grid = GridWorld.from_data(spine_nav)
-	var period_cells := int(round(coord_map.period_s()))
+	var period_cells := int(round(coord_map.period_s() / maxf(grid.cell_size, 0.001)))
 	if period_cells < 6 or period_cells > grid.width - 3:
 		return []
-	var deck_y := float((spine_nav.get("origin", [0.0, 0.45, 0.0]) as Array)[1])
 	var specs: Array = []
 	var cx := int(round(period_cells * 0.5))
 	while cx + period_cells < grid.width - 1 and specs.size() < _MAX_RETURN_POINTS:
-		var pair := _find_stacked_pair(grid, cx, period_cells)
+		var pair := _find_gated_return_pair(
+			grid, cx, period_cells, coord_map
+		)
 		if not pair.is_empty():
 			var upper: Vector2i = pair["upper"]
 			var lower: Vector2i = pair["lower"]
-			var upper_flat: Vector3 = grid.grid_to_world(upper); upper_flat.y = deck_y
-			var lower_flat: Vector3 = grid.grid_to_world(lower); lower_flat.y = deck_y
-			# Both directions at each stacked overlap: fall DOWN a loop, or climb the vine back UP.
-			specs.append({"kind": "drop", "upper": upper_flat, "lower": lower_flat})
-			specs.append({"kind": "climb", "upper": upper_flat, "lower": lower_flat})
+			var upper_level := int(pair.get("upper_level", 0))
+			var lower_level := int(pair.get("lower_level", 0))
+			var upper_flat: Vector3 = grid.grid_to_world(upper, upper_level)
+			var lower_flat: Vector3 = grid.grid_to_world(lower, lower_level)
+			var return_spec := gated_climbvine_spec(upper_flat, lower_flat, specs.size())
+			return_spec["upper_spine_order"] = upper.x
+			return_spec["lower_spine_order"] = lower.x
+			return_spec["upper_navigation_level"] = upper_level
+			return_spec["lower_navigation_level"] = lower_level
+			specs.append(return_spec)
 		cx += period_cells
 	return specs
-
-## At column `cx`, the walkable cell nearest the centre row whose cell one full turn ahead (directly below on the
-## descending helix) is also walkable — the stacked overlap a return point bridges. Empty if none.
-func _find_stacked_pair(grid, cx: int, period_cells: int) -> Dictionary:
-	var mid := int(grid.height / 2)
-	for dz in range(grid.height):
-		for cz in ([mid] if dz == 0 else [mid + dz, mid - dz]):
-			if cz < 0 or cz >= grid.height:
-				continue
-			if grid.is_walkable(cx, cz) and grid.is_walkable(cx + period_cells, cz):
-				return {"upper": Vector2i(cx, cz), "lower": Vector2i(cx + period_cells, cz)}
-	return {}

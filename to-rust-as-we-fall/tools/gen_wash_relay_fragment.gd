@@ -9,7 +9,7 @@ func _init() -> void:
 	var frag := Fragment.new()
 	frag.id = "wash_relay"
 	frag.title = "Wash Relay"
-	frag.help = "Read the shared surge, but expect the coil to break. At the first break, take the violet portal into the pressure room, vent the jet manifold, then leave through cyan. At the sluice, choose the fast exposed crossing or the slow concealed outer pipe; both rejoin at the collector. Held overrides and plates still need party coordination. Later, hide, lure guards into the wash, and explore only the salvage lobes that look worth the risk. Water or a guard hit sends a crew member to start; the terminal and sloperope recover them."
+	frag.help = "Read the shared surge, but expect the coil to break. At the first break, take the violet portal into the pressure room, vent the jet manifold, then leave through cyan. At the sluice, choose the fast exposed crossing or the slow concealed outer pipe; both rejoin at the collector. Held overrides and plates still need party coordination. Later, hide, lure guards into the wash, and weigh visible lysate sources against the danger protecting them. Water or a guard hit sends a crew member to start; Peris can tend the upper pothos into a return vine so they can physically climb back. Rejoining restores no stats."
 	frag.default_character = "endo"
 	frag.party_ids = PackedStringArray(["aster", "peris", "endo"])
 	frag.spawns = {
@@ -42,7 +42,6 @@ func _init() -> void:
 		],
 		"start_pos": Vector3(3.0, 0.5, 0.0),
 		"floor_z_half": 4.0, "floor_min_x": -1.0, "floor_max_x": 87.0, "chunk_end_x": 84.0,
-		"terminal_pos": Vector3(84.0, 0.5, 2.5), "sloperope_pos": Vector3(84.0, 0.5, -2.5),
 		"climb_pos": Vector3(5.0, 0.5, 2.5), "return_landing": Vector3(83.0, 0.5, 0.0),
 		"flow_period": 6.0, "flood_duration": 1.4, "first_flood": 2.5,
 		"hide_alcoves": [

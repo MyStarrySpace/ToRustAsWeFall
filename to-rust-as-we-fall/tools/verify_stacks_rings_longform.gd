@@ -1,21 +1,18 @@
 extends Node
 
-## Focused structural, pacing-analyzer, normal-input, and branch audit for Stacks and Rings.
-## Run:
-##   ../Godot_v4.7-stable_win64_console.exe --headless --path . \
-##     res://tools/verify_stacks_rings_longform.tscn
+## Focused regression for the restored Stacks and Rings causal cores.
+## The filename is retained so existing CI entry points keep working.
 
 const ACT1_SCENE := preload("res://scenes/tutorial/act1.tscn")
-const PacingContract := preload("res://scripts/generation/level_pacing_contract.gd")
-const MANIFEST_PATH := "res://data/pacing/level_targets.json"
+const ACT1_SOURCE_PATH := "res://scripts/tutorial/act1_sequence.gd"
+const StacksBankEvidence := preload("res://scripts/game/mechanics/stacks_bank_evidence.gd")
+const RINGS_AMBIENT_TRACES := ["client_bloom", "forget_me_not", "doorvine"]
 
 var _failures: Array[String] = []
-var _manifest: Dictionary = {}
 
 
 func _ready() -> void:
 	EventLog.print_events = false
-	_manifest = _load_manifest()
 	call_deferred("_run")
 
 
@@ -27,33 +24,23 @@ func _check(condition: bool, message: String) -> void:
 		push_error("  FAIL: %s" % message)
 
 
-func _load_manifest() -> Dictionary:
-	var file := FileAccess.open(MANIFEST_PATH, FileAccess.READ)
-	if file == null:
-		return {}
-	var parsed: Variant = JSON.parse_string(file.get_as_text())
-	return parsed as Dictionary if parsed is Dictionary else {}
-
-
 func _run() -> void:
-	if _manifest.is_empty():
-		_failures.append("pacing manifest loads")
-		_finish()
-		return
-	await _verify_district("stacks")
-	await _verify_district("rings")
+	_verify_retired_padding_absent()
+	var stacks := await _spawn_act1("stacks")
+	if stacks != null:
+		_verify_stacks_structure(stacks)
+		_verify_stacks_causal_route(stacks)
+		await _dispose(stacks)
+	else:
+		_failures.append("Stacks boots")
+	var rings := await _spawn_act1("rings")
+	if rings != null:
+		_verify_rings_structure(rings)
+		_verify_rings_causal_route(rings)
+		await _dispose(rings)
+	else:
+		_failures.append("Rings boots")
 	_finish()
-
-
-func _verify_district(district: String) -> void:
-	var act1 := await _spawn_act1(district)
-	_check(act1 != null, "%s boots in the Act 1 campaign host" % district.capitalize())
-	if act1 == null:
-		return
-	_verify_contract(act1, district)
-	_verify_structure(act1, district)
-	_verify_gates_and_branches(act1, district)
-	await _dispose(act1)
 
 
 func _spawn_act1(district: String) -> Node:
@@ -61,176 +48,287 @@ func _spawn_act1(district: String) -> Node:
 	act1.set("start_chunk", district)
 	act1.set("suppress_scene_change", true)
 	get_tree().root.add_child(act1)
-	for _frame in range(14):
+	for _frame in range(12):
 		await get_tree().process_frame
 	return act1
 
 
-func _verify_contract(act1: Node, district: String) -> void:
-	print("\n=== %s standardized pacing contract ===" % district.capitalize())
-	var contract: Dictionary = act1.call("get_%s_playtime_contract" % district)
-	var target: Dictionary = PacingContract.target_by_id(_manifest, district)
-	var report: Dictionary = PacingContract.analyze(target, contract, _manifest.get("rules", {}))
-	var active := float(contract.get("meaningful_active_seconds", 0.0))
-	var total := float(contract.get("total_play_seconds", 0.0))
-	var ratio := active / maxf(total, 0.001)
-	_check(bool(report.get("passed", false)),
-		"%s passes the shared analyzer (%s)" % [district.capitalize(), str(report.get("errors", []))])
-	_check(active >= 240.0 and active <= 360.0,
-		"meaningful active play is inside 240-360s (%.1fs)" % active)
-	_check(total >= 240.0 and total <= 360.0,
-		"elapsed first clear is inside 240-360s (%.1fs)" % total)
-	_check(ratio >= 0.70,
-		"active ratio clears 70%% (%.1f%%)" % (ratio * 100.0))
-	_check(float(contract.get("max_dead_gap_seconds", 99.0)) <= 5.0,
-		"maximum dead gap stays at or below five seconds")
-	_check(float(contract.get("max_single_mode_seconds", 99.0)) <= 45.0,
-		"maximum uninterrupted mode stays at or below 45 seconds")
-	var categories: Dictionary = contract.get("category_seconds", {})
-	var category_sum := 0.0
-	var maximum_category := 0.0
-	for value in categories.values():
-		category_sum += float(value)
-		maximum_category = maxf(maximum_category, float(value))
-	_check(absf(category_sum - active) <= 0.01,
-		"category totals exactly equal meaningful active play")
-	_check(maximum_category <= 120.0,
-		"no activity category exceeds 120s (max %.1fs)" % maximum_category)
-	_check(int(contract.get("decision_count", 0)) >= 2
-		and int(contract.get("branch_count", 0)) >= 2,
-		"at least two decisions and two persistent branches remain")
-	_check(int(contract.get("mandatory_field_evidence_count", 0)) == 12
-		and int(contract.get("mandatory_field_action_count", 0)) == 16,
-		"contract measures twelve reads and sixteen total field actions")
-	_check(str(contract.get("timing_basis", "")).contains("dialogue presentation is inactive"),
-		"passive presentation cannot satisfy the active-play floor")
-	print("  INFO: active %.1fs | elapsed %.1fs | ratio %.1f%% | legacy route %.1fm | field route %.1fm | field work %.1fs" % [
-		active, total, ratio * 100.0,
-		float(contract.get("legacy_route_meters", 0.0)),
-		float(contract.get("field_route_meters", 0.0)),
-		float(contract.get("field_work_seconds", 0.0)),
-	])
+func _verify_retired_padding_absent() -> void:
+	print("\n=== Retired Stacks/Rings padding ===")
+	var source := FileAccess.get_file_as_string(ACT1_SOURCE_PATH)
+	for token in [
+		"STACKS_FIELD_OPERATIONS", "STACKS_FIELD_SITES",
+		"RINGS_FIELD_OPERATIONS", "RINGS_FIELD_SITES",
+		"_start_district_field_operation", "_build_district_fieldwork",
+		"get_stacks_playtime_contract", "get_rings_playtime_contract",
+		"ring.marco.warn.c_suite",
+	]:
+		_check(not source.contains(token), "retired token is absent: %s" % token)
 
 
-func _verify_structure(act1: Node, district: String) -> void:
-	print("\n=== %s fieldwork construction ===" % district.capitalize())
-	var prefix := district.capitalize()
-	var chunk := act1.find_child("Chunk_%s" % district, true, false)
-	var field_root := act1.find_child("%sFieldwork" % prefix, true, false)
-	var sites := act1.find_children("%sField_*" % prefix, "Interactable", true, false)
-	var frames := act1.find_children("%sFieldFrame_*" % prefix, "Node3D", true, false)
-	var lights := act1.find_children("%sFieldLight_*" % prefix, "OmniLight3D", true, false)
-	var datums := act1.find_children("%sFieldDatum_*" % prefix, "MeshInstance3D", true, false)
-	_check(chunk != null and field_root != null,
-		"%s owns a dedicated fieldwork layer inside its campaign chunk" % prefix)
-	_check(sites.size() == 20,
-		"twelve evidence, four plans, and four executions are real Interactables")
-	_check(frames.size() == 2 and lights.size() == 2,
-		"two measured operation frames each carry a WebGL-safe landmark light")
-	_check(datums.size() == 24,
-		"twenty-four deterministic route datums expose every evidence and branch line")
-	_check(chunk != null and chunk.find_child("LevelDecoration", true, false) != null,
-		"fieldwork remains inside the shared building-quality decoration pass")
-
-	var timed := 0
-	var outlined := 0
-	var routed := 0
-	var registered := 0
-	var gs = act1.get("_game_state")
-	var role_counts := {"aster": 0, "peris": 0, "endo": 0}
-	for site in sites:
-		if int(site.get("interactable_type")) == Interactable.InteractableType.TIMED_ACTION:
-			timed += 1
-		if site.get("_outline_target") != null:
-			outlined += 1
-		if site.interaction_requested.get_connections().size() >= 2:
-			routed += 1
-		var role := str(site.get("required_character"))
-		if role_counts.has(role):
-			role_counts[role] += 1
-		var data_id := str(site.get("data_id"))
-		if gs != null and data_id != "" and gs.has_interactable(data_id):
-			var registered_spec: Dictionary = gs.get_interactable(data_id)
-			if str(registered_spec.get("required_character", "")) == role:
-				registered += 1
-	_check(timed == 20, "every district field station is a click-gated timed action")
-	_check(outlined == 20, "every station binds its visible constructed-object outline")
-	_check(routed == 20, "every click uses the normal movement request and party regroup path")
-	_check(registered == 20, "all specialist gates are authoritative in GameState")
-	if district == "stacks":
-		_check(int(role_counts["aster"]) >= 6 and int(role_counts["peris"]) >= 5 and int(role_counts["endo"]) >= 5,
-			"Stacks gives all three specialists substantive work")
-	else:
-		_check(int(role_counts["aster"]) >= 9 and int(role_counts["peris"]) >= 9 and int(role_counts["endo"]) == 0,
-			"Rings preserves Endo's departure while Aster and Peris share the residential work")
+func _verify_stacks_structure(act1: Node) -> void:
+	print("\n=== Stacks authored structure ===")
+	_check(act1.find_child("StacksFieldwork", true, false) == null,
+		"Stacks builds no appended fieldwork layer")
+	_check(act1.find_children("StacksField_*", "Interactable", true, false).is_empty(),
+		"Stacks builds no appended checklist interactables")
+	_check(act1.find_child("DataTerminal", true, false) != null,
+		"support terminal remains authored")
+	_check(act1.find_child("SignalWall", true, false) != null,
+		"custom signal wall remains authored")
+	_check(act1.find_children("StacksAudit_*", "Interactable", true, false).size() == 3,
+		"three comparable audit banks remain authored")
+	var target_text := act1.find_child("StacksAuditTargetText", true, false) as Label3D
+	_check(target_text != null and target_text.text == StacksBankEvidence.target_text(),
+		"a visible target panel states the trace that the bank probes must explain")
+	var neutral_bank_labels: Array[String] = []
+	var neutral_emission := -1.0
+	var banks_are_neutral := true
+	for bank_id_v in StacksBankEvidence.BANK_IDS:
+		var bank_id := str(bank_id_v)
+		var label := act1.find_child(
+			"StacksAuditLabel_%s" % bank_id, true, false) as Label3D
+		var display := act1.find_child(
+			"StacksAuditDisplay_%s" % bank_id, true, false) as MeshInstance3D
+		banks_are_neutral = banks_are_neutral and label != null and display != null
+		if label == null or display == null:
+			continue
+		neutral_bank_labels.append(label.text)
+		var display_material := display.material_override as StandardMaterial3D
+		banks_are_neutral = banks_are_neutral and display_material != null
+		if display_material == null:
+			continue
+		var emission := display_material.emission_energy_multiplier
+		if neutral_emission < 0.0:
+			neutral_emission = emission
+		banks_are_neutral = banks_are_neutral and is_equal_approx(emission, neutral_emission)
+	_check(banks_are_neutral
+		and neutral_bank_labels == ["BANK A", "BANK B", "BANK C"],
+		"bank names and display brightness are neutral rather than answer-coded")
+	_check(act1.find_child("SupportWorkspace", true, false) != null,
+		"Myke's workspace remains optional authored worldbuilding")
+	_check(act1.find_child("StacksShelterRest", true, false) != null,
+		"the named Stacks shelter-rest beat has a real shelter interaction")
+	_check(not act1.has_method("get_stacks_playtime_contract"),
+		"Stacks exposes no synthetic playtime contract")
 
 
-func _verify_gates_and_branches(act1: Node, district: String) -> void:
-	print("\n=== %s evidence and branch gates ===" % district.capitalize())
-	var operations: Dictionary = act1.STACKS_FIELD_OPERATIONS if district == "stacks" else act1.RINGS_FIELD_OPERATIONS
-	var specs: Dictionary = act1.STACKS_FIELD_SITES if district == "stacks" else act1.RINGS_FIELD_SITES
-	var site_nodes: Dictionary = act1.get("_stacks_field_sites") if district == "stacks" else act1.get("_rings_field_sites")
-	var operation_order := ["identity", "egress"] if district == "stacks" else ["residence", "boundary"]
-	act1.call("_start_district_field_operation", district, operation_order[0])
+func _verify_stacks_causal_route(act1: Node) -> void:
+	print("\n=== Stacks causal route ===")
+	act1.prepare_stacks_fragment("bank")
+	_check(str(act1._current_step) == "stacks_bank_audit",
+		"Stacks begins on the meaningful three-bank deduction")
+	# Optional records can be inspected, but none of them can advance or reorder the route.
+	_check(not bool(act1.trigger_stacks_terminal(false))
+		and not bool(act1.trigger_stacks_signal(false))
+		and not bool(act1.trigger_stacks_archive(false)),
+		"retired optional-read helpers cannot manufacture observations")
+	_check(_interact_act1_optional(
+			act1, act1._stacks_terminal_interactable, "aster"),
+		"Aster reads the maintenance terminal through its real world control")
+	act1._dialogue.clear()
+	act1._finish_stacks_terminal_dialogue()
+	_check(_interact_act1_optional(
+			act1, act1._stacks_signal_interactable, "aster"),
+		"Aster parses the signal wall through its real world control")
+	act1._dialogue.clear()
+	act1._finish_stacks_signal_dialogue()
+	_check(_interact_act1_optional(
+			act1, act1._stacks_workspace_interactable, "aster"),
+		"Aster traces the support workspace through its real world control")
+	act1._dialogue.clear()
+	act1._finish_stacks_archive_dialogue()
+	_check(bool(act1.trigger_stacks_support_log()),
+		"the journal viewer opens only after the physical terminal acquired its entry")
+	act1.close_stacks_engram_overlay()
+	_check(str(act1._current_step) == "stacks_bank_audit"
+		and act1._stacks_bank_samples.is_empty(),
+		"support-log/terminal/signal/archive reads are optional and never gate or reorder")
 
-	for operation_index in range(operation_order.size()):
-		var operation_id: String = operation_order[operation_index]
-		var operation: Dictionary = operations[operation_id]
-		var state: Dictionary = act1.call("headless_get_state")
-		var district_state: Dictionary = state.get(district, {})
-		var field_state: Dictionary = district_state.get("fieldwork", {})
-		_check(str(field_state.get("phase", "")) == operation_id,
-			"%s enters its own player-controlled operation" % operation_id)
-		for choice_id in operation.get("choices", []):
-			_check(not site_nodes[str(choice_id)].is_interaction_enabled(),
-				"%s plans stay locked before evidence" % operation_id)
+	_check(not bool(act1.trigger_stacks_bank("bank_a"))
+			and act1._stacks_bank_samples.is_empty(),
+		"the retired bank helper cannot manufacture Stacks evidence")
+	var bank_a = act1._stacks_bank_interactables.get("bank_a")
+	act1._on_act1_stacks_bank_interacted(bank_a, "bank_a")
+	_check(act1._stacks_bank_samples.is_empty(),
+		"a direct bank callback cannot impersonate an accepted world interaction")
+	_check(_interact_act1_stacks_bank(act1, "bank_a"),
+		"physical Aster samples Bank A through its real control")
+	var bank_a_readout := act1.find_child(
+		"StacksAuditReadout_bank_a", true, false) as Label3D
+	_check(not act1._stacks_bank_resolved
+		and act1._stacks_bank_samples.size() == 1
+		and bank_a_readout != null
+		and bank_a_readout.visible
+		and bank_a_readout.text == StacksBankEvidence.observation_text("bank_a"),
+		"first interaction samples a bank and leaves its complete probe result visible")
+	_check(_interact_act1_stacks_bank(act1, "bank_a"),
+		"physical Aster commits the sampled Bank A prediction")
+	_check(not act1._stacks_bank_resolved
+		and act1._stacks_last_commit == "bank_a"
+		and act1._stacks_failed_commits == ["bank_a"],
+		"a wrong sampled-bank commit records a falsified prediction and remains retryable")
+	var failed_snapshot: Dictionary = act1.build_save_snapshot()
+	act1._stacks_last_commit = ""
+	act1._stacks_failed_commits.clear()
+	bank_a_readout.visible = false
+	act1.apply_save_snapshot(failed_snapshot)
+	_check(act1._stacks_last_commit == "bank_a"
+		and act1._stacks_failed_commits == ["bank_a"]
+		and bank_a_readout.visible
+		and bank_a_readout.text == StacksBankEvidence.observation_text("bank_a"),
+		"save restore preserves the failed commit and its persistent observation")
 
-		var first_id := str(operation.get("evidence", [])[0])
-		var first_spec: Dictionary = specs[first_id]
-		var wrong := "peris" if str(first_spec.get("role", "")) != "peris" else "aster"
-		act1.call("headless_select_character", wrong)
-		site_nodes[first_id].call("_trigger", false)
-		state = act1.call("headless_get_state")
-		field_state = (state.get(district, {}) as Dictionary).get("fieldwork", {})
-		_check(not bool(((field_state.get("completed_evidence", {}) as Dictionary).get(operation_id, {}) as Dictionary).get(first_id, false)),
-			"%s rejects the wrong specialist without consuming evidence" % first_id)
+	_check(_interact_act1_stacks_bank(act1, "bank_b"),
+		"physical Aster samples Bank B through its real control")
+	_check(not act1._stacks_bank_resolved and act1._stacks_bank_samples.size() == 2,
+		"first Bank B interaction records evidence instead of treating the answer as a button")
+	_check(_interact_act1_stacks_bank(act1, "bank_b"),
+		"physical Aster commits the evidenced Bank B prediction")
+	_check(act1._stacks_bank_resolved
+		and act1._stacks_last_commit == StacksBankEvidence.solution_bank()
+		and act1._stacks_bank_samples.size() == 2,
+		"the evidence-derived prediction resolves without an all-banks checklist")
+	_check(str(act1._current_step) == "stacks_shelter",
+		"a correct commit synchronously opens the named shelter-rest beat")
+	for char_id in ["aster", "peris", "endo"]:
+		act1._game_state.command_stop(char_id)
+		act1.headless_set_character_position(char_id, act1.STACKS_SHELTER_POS)
+		act1._game_state.set_stat(char_id, "hp", 90.0)
+	_check(not bool(act1.trigger_stacks_shelter_rest(false)),
+		"the retired shelter helper cannot manufacture the anxiety beat")
+	var shelter = act1._stacks_shelter_interactable
+	act1._on_act1_stacks_shelter_interacted(shelter, false)
+	_check(not act1._stacks_anxiety_seen,
+		"a direct shelter callback cannot impersonate its accepted one-shot")
+	act1._select_character("aster")
+	shelter.active_character = "aster"
+	_check(bool(shelter._trigger(false)),
+		"the gathered party commits Stacks through the real shelter control")
+	_check(str(act1._current_step) == "stacks_shelter"
+		and act1._stacks_anxiety_seen and act1._dialogue.is_active(),
+		"shelter rest starts Peris's direct question before releasing exploration")
+	_check(act1._game_state.is_resting("aster") and act1._game_state.is_resting("peris"),
+		"the story beat uses GameState's real shelter-rest path")
+	# This causal-core verifier does not simulate reader clicks. Exercise the named completion seam
+	# after proving that the conversation, rather than the interaction callback, holds the transition.
+	act1._dialogue.clear()
+	act1._queue_stacks_explore()
+	act1.headless_advance(0.21, 0.05)
+	_check(str(act1._current_step) == "stacks_explore",
+		"finishing the shelter conversation releases Stacks exploration")
 
-		for evidence_id_variant in operation.get("evidence", []):
-			var evidence_id := str(evidence_id_variant)
-			var spec: Dictionary = specs[evidence_id]
-			act1.call("headless_select_character", str(spec.get("role", "")))
-			site_nodes[evidence_id].call("_trigger", false)
-		for choice_id in operation.get("choices", []):
-			_check(site_nodes[str(choice_id)].is_interaction_enabled(),
-				"%s unlocks both plans only after six reads" % operation_id)
+	var state: Dictionary = act1.headless_get_state().get("stacks", {})
+	_check(bool(state.get("bank_resolved", false))
+		and bool(state.get("anxiety_seen", false))
+		and (state.get("bank_samples", []) as Array).size() == 2
+		and (state.get("failed_commits", []) as Array) == ["bank_a"],
+		"Stacks state preserves observations, falsified predictions, and the result")
+	var act1_snapshot: Dictionary = act1.build_save_snapshot().get("act1", {})
+	var snapshot: Dictionary = act1_snapshot.get("stacks_state", {})
+	_check(str(snapshot.get("last_commit", "")) == StacksBankEvidence.solution_bank()
+		and (snapshot.get("failed_commits", []) as Array) == ["bank_a"]
+		and not snapshot.has("field_choices") and not snapshot.has("field_effects"),
+		"save data retains prediction history without retired field-operation outcomes")
 
-		var choice_index := operation_index % 2
-		var choice_id := str(operation.get("choices", [])[choice_index])
-		var choice_spec: Dictionary = specs[choice_id]
-		act1.call("headless_select_character", str(choice_spec.get("role", "")))
-		site_nodes[choice_id].call("_trigger", false)
-		var resolution_id := str((operation.get("resolution_sites", {}) as Dictionary).get(choice_id, ""))
-		_check(site_nodes[resolution_id].is_interaction_enabled(),
-			"%s requires the selected spatial execution branch" % operation_id)
-		var resolution_spec: Dictionary = specs[resolution_id]
-		act1.call("headless_select_character", str(resolution_spec.get("role", "")))
-		site_nodes[resolution_id].call("_trigger", false)
 
-	var state: Dictionary = act1.call("headless_get_state")
-	var field_state: Dictionary = (state.get(district, {}) as Dictionary).get("fieldwork", {})
-	_check(int(field_state.get("operation_count", 0)) == 2
-		and int(field_state.get("decision_count", 0)) == 2,
-		"both operations and both explicit decisions persist")
-	_check((field_state.get("choices", {}) as Dictionary).size() == 2
-		and (field_state.get("effects", {}) as Dictionary).size() >= 3,
-		"both branch selections persist through their physical executions")
-	_check(str(state.get("current_step", "")) == "%s_explore" % district,
-		"second execution rejoins the preserved district transition")
-	var snapshot: Dictionary = act1.call("build_save_snapshot")
-	var district_snapshot: Dictionary = (snapshot.get("act1", {}) as Dictionary).get("%s_state" % district, {})
-	_check((district_snapshot.get("field_choices", {}) as Dictionary).size() == 2
-		and (district_snapshot.get("field_effects", {}) as Dictionary).size() >= 3,
-		"branch choices and consequences survive the save snapshot")
+func _verify_rings_structure(act1: Node) -> void:
+	print("\n=== Rings authored structure ===")
+	_check(act1.find_child("RingsFieldwork", true, false) == null,
+		"Rings builds no appended fieldwork layer")
+	_check(act1.find_children("RingsField_*", "Interactable", true, false).is_empty(),
+		"Rings builds no appended checklist interactables")
+	_check(act1.find_child("ClientNPC", true, false) != null,
+		"Marco/former-client interaction remains authored")
+	_check(act1.find_child("RingsEndoJunctionLabel", true, false) != null
+		and act1.find_child("RingsEndoJunctionLight", true, false) != null,
+		"Endo's outbound junction is an authored, readable world endpoint")
+	for trace_id in RINGS_AMBIENT_TRACES:
+		_check(act1.find_child("RingsTrace_%s" % trace_id, true, false) != null,
+			"optional residential trace remains: %s" % trace_id)
+	_check(not act1.has_method("get_rings_playtime_contract"),
+		"Rings exposes no synthetic playtime contract")
+
+
+func _verify_rings_causal_route(act1: Node) -> void:
+	print("\n=== Rings causal route ===")
+	act1.prepare_rings_fragment("client")
+	_check(not bool(act1.trigger_rings_trace("doorvine")),
+		"the retired Rings trace helper cannot manufacture ambient knowledge")
+	for trace_id in ["doorvine", "client_bloom", "forget_me_not"]:
+		_check(_interact_act1_optional(
+				act1, act1._rings_trace_interactables.get(trace_id), "peris"),
+			"Peris reads %s through its authored world control" % trace_id)
+	var state: Dictionary = act1.headless_get_state().get("rings", {})
+	_check(int(state.get("trace_count", -1)) == RINGS_AMBIENT_TRACES.size()
+		and str(act1._current_step) == "rings_client",
+		"all three ambient reads work in any order without skipping the Marco question")
+	var anchors: Dictionary = act1.headless_get_anchor_positions()
+	var marco_position: Vector3 = anchors.get("rings_marco", act1.RINGS_START)
+	act1.headless_set_character_position(
+		"endo", marco_position + Vector3(-2.0, 0.0, 1.0))
+	act1.headless_set_character_position(
+		"peris", marco_position + Vector3(-1.0, 0.0, -0.6))
+	act1._game_state.set_party(["aster", "peris", "endo"])
+	act1._rings_client_interactable.active_character = "peris"
+	_check(act1._rings_client_interactable._trigger(false),
+		"the gathered party enters Rings progression through the real Marco interaction")
+	var traversal: Dictionary = act1._game_state.get_external_traversal_state("endo")
+	var authority: Dictionary = act1._game_state.get_world_state(
+		act1.rings_endo_departure_authority_key(), {})
+	_check(str(act1._current_step) == "endo_departs"
+		and str(act1._rings_endo_phase) == act1.RINGS_ENDO_PHASE_DEPARTING
+		and act1._game_state.characters.has("endo")
+		and act1._game_state.get_party().has("endo")
+		and act1._endo.visible
+		and not traversal.is_empty(),
+		"Marco commits a visible, locked Endo traversal while roster truth remains present")
+	_check(int(authority.get("version", 0)) == act1.RINGS_ENDO_AUTHORITY_VERSION
+		and is_equal_approx(
+			float(authority.get("deadline", -1.0)),
+			float(traversal.get("end_tick", -2.0))),
+		"the campaign record and external traversal share one saved deadline")
+	act1.headless_advance(float(traversal.get("remaining", 0.0)) + 0.01, 0.1)
+	_check(str(act1._current_step) == "rings_explore"
+		and str(act1._rings_endo_phase) == act1.RINGS_ENDO_PHASE_DEPARTED
+		and not act1._game_state.characters.has("endo")
+		and not act1._game_state.get_party().has("endo")
+		and not act1._endo.visible,
+		"only physical arrival retires Endo and releases Rings exploration")
+	_check(not _interact_act1_optional(
+			act1, act1._rings_trace_interactables.get("client_bloom"), "peris"),
+		"a consumed ambient source cannot be replayed after Endo departs")
+	state = act1.headless_get_state().get("rings", {})
+	_check(str(act1._current_step) == "rings_explore"
+		and int(state.get("trace_count", 0)) == RINGS_AMBIENT_TRACES.size(),
+		"ambient reads neither gate nor reorder exploration, even when revisited")
+	_check(not state.has("fieldwork"),
+		"runtime state contains no retired field-operation ladder")
+	var act1_snapshot: Dictionary = act1.build_save_snapshot().get("act1", {})
+	var snapshot: Dictionary = act1_snapshot.get("rings_state", {})
+	_check(not snapshot.has("field_choices") and not snapshot.has("field_effects"),
+		"save data contains no retired Rings branch outcomes")
+
+
+func _interact_act1_stacks_bank(act1: Node, bank_id: String) -> bool:
+	var bank = act1._stacks_bank_interactables.get(bank_id)
+	if not is_instance_valid(bank):
+		return false
+	act1._game_state.command_stop("aster")
+	act1.headless_set_character_position("aster", bank.global_position)
+	act1._select_character("aster")
+	bank.active_character = "aster"
+	return bool(bank._trigger(false))
+
+
+func _interact_act1_optional(act1: Node, interactable: Node, actor: String) -> bool:
+	if not is_instance_valid(interactable):
+		return false
+	act1._game_state.command_stop(actor)
+	act1.headless_set_character_position(actor, (interactable as Node3D).global_position)
+	act1._select_character(actor)
+	interactable.set("active_character", actor)
+	return bool(interactable.call("_trigger", false))
 
 
 func _dispose(act1: Node) -> void:
@@ -238,17 +336,17 @@ func _dispose(act1: Node) -> void:
 		act1.set_process(false)
 		act1.set_physics_process(false)
 		if act1.has_method("_teardown_sequence"):
-			act1.call("_teardown_sequence")
+			act1._teardown_sequence()
 		act1.queue_free()
 	await get_tree().process_frame
 
 
 func _finish() -> void:
 	if _failures.is_empty():
-		print("\nStacks/Rings long-form verification: ALL PASSED")
+		print("\nStacks/Rings causal-core verification: ALL PASSED")
 		get_tree().quit(0)
 	else:
-		print("\nStacks/Rings long-form verification: %d FAILED" % _failures.size())
+		print("\nStacks/Rings causal-core verification: %d FAILED" % _failures.size())
 		for failure in _failures:
 			print("  - %s" % failure)
 		get_tree().quit(1)

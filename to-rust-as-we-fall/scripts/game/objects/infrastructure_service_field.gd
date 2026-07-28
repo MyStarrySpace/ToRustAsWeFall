@@ -97,6 +97,14 @@ func reset_field() -> void:
 	_apply_visual_state()
 
 
+## Restore-only presenter seam owned by InfrastructureOperation. Unlike resolve_field(), this mirrors
+## portable truth without announcing a new consequence; loading a completed operation must not fire the
+## gameplay signal a second time.
+func restore_resolved_state(resolved: bool) -> void:
+	_resolved = resolved
+	_apply_visual_state()
+
+
 func get_state() -> Dictionary:
 	return {
 		"commodity": commodity,

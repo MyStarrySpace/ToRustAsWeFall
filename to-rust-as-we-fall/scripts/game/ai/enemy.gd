@@ -7,6 +7,8 @@ extends Node3D
 # --- Configuration ---
 @export var display_name := "Entity"
 @export var color := Color(0.4, 0.15, 0.1)
+## EMP is an electronics contract, not a universal enemy stun. Authored mechanical enemies opt in.
+@export var emp_compatible := false
 # Enemies never draw a movement-path ribbon (the PathRenderManager reads this opt-out). A yard full
 # of roaming fauna tracing ribbons reads as chaos and costs per-frame ribbon rebuilds for nothing.
 var show_movement_path := false
@@ -28,6 +30,11 @@ var show_movement_path := false
 @export var pursuit_direct := false    # capped-hop pursuit (near-free short plans) for chase packs
 @export var pursuit_hop := 5.0         # direct-pursuit hop length (wu) — short keeps the planner cheap
 var pursuit_hop_resolver: Callable = Callable()   # scene-provided shared-field hop (crowd memoization)
+## Optional scene-provided SAFE waypoint path for direct pursuit. Unlike
+## command_move_to_pos(), this path is already spatially resolved and is
+## committed verbatim through GameState's logged walk-path command, so a crowd
+## never turns its shared flow-field answer back into one A* query per body.
+var pursuit_path_resolver: Callable = Callable()
 @export var roam_step_distance := 1.6  # how far a single roam hop travels
 @export var roam_interval := 1.4       # scheduler ticks between roam hops
 @export var alert_duration := 0.6      # spotting beat before the chase begins
@@ -73,12 +80,32 @@ var _patrol_index := 0
 # --- Lure (a flure's song: walk to the settle point, park distracted, then walk home) ---
 var _lure_settle := Vector3.ZERO
 var _lure_duration := 20.0
+## Most Flures restore the full watch as soon as their song ends. A composition whose safe
+## start overlaps the flower may instead keep the reduced watch until the enemy physically
+## finishes its ordinary RETURN state. This is a reusable Enemy policy, not a chunk timer.
+var lure_return_keeps_distraction := false
+## Optional return gear for a visible race home. Negative means the authored ambient speed.
+var lure_return_speed := -1.0
+var _lure_returning_from_song := false
+## Exact Flure provenance for retiming a target-settled song.
+var _lure_source_key := ""
+var _lure_source_activation_serial := 0
 
 # --- Roam (undirected wander: cheap local hops, NEVER pathfinding) ---
 var _roam_anchor := Vector3.ZERO
 var _roam_radius := 0.0
 var _roam_heading := Vector3(0.0, 0.0, -1.0)  # current wander direction
 var _roam_seq := 0                            # deterministic hop counter (fast-forward invariant)
+## Ambient actors that enter roam together must not all invalidate movement/detection on the same
+## scheduler frame forever. Each scheduler owns deterministic cadence lanes. An enemy prefers a
+## stable char-id-derived lane and collision-probes to the next free one, so a cohort's first hop
+## and every repeated hop stay separated without wall-clock randomness.
+const _ROAM_CADENCE_LANE_COUNT := 64
+const _ROAM_CADENCE_MIN_INTERVAL := 0.01
+static var _roam_cadence_owners: Dictionary = {}  # scheduler instance id -> {lane: enemy instance id}
+var _roam_cadence_scheduler_id := 0
+var _roam_cadence_lane := -1
+var _roam_cadence_identity := ""
 
 # --- Attack cycle ---
 # The lunge is a REAL data-layer move at charge_speed (logged → replay-safe, visual follows via the
@@ -87,6 +114,22 @@ var _roam_seq := 0                            # deterministic hop counter (fast-
 var _charge_target_pos := Vector3.ZERO
 var _charging := false
 var _charge_hit := false
+
+# --- Save/load authority ---
+# EventScheduler snapshots intentionally do not serialize Callables. Every gameplay-relevant enemy
+# phase therefore publishes its stable context and absolute callback deadlines into GameState. The
+# node and StateMachine are presenters rebuilt from that record after a snapshot replaces GameState.
+const ENEMY_AUTHORITY_VERSION := 1
+const ENEMY_AUTHORITY_PREFIX := "runtime:enemy:"
+const _RESTORE_TIMER_EPSILON := 0.000001
+const _TIMER_KIND_ORDER := [
+	"roam_step", "patrol_step", "lure_end", "alert_end", "pursuit_update",
+	"pursuit_rescan", "windup_end", "charge_end", "impact_end", "recover_end",
+	"stagger_end", "stun_end", "search_end", "return_end",
+]
+var _state_deadlines: Dictionary = {}       # timer kind -> absolute scheduler tick
+var _restoring_enemy_authority := false
+var _enemy_authority_initialized := false
 
 # --- Visual ---
 var _mesh: MeshInstance3D
@@ -124,10 +167,18 @@ func activate() -> void:
 	if game_state != null:
 		if game_state.has_method("set_coop_exempt"):
 			game_state.set_coop_exempt(char_id, not cooperative_navigation)
-		_publish_detection_targets()
-		_sync_detection_subscription(get_state())
+	# A freshly-instanced scene may be attached after GameState was deserialized. Do not let the
+	# presenter's default idle detector emit a synthetic spot or overwrite the saved phase before the
+	# sequence's attachment pass. The restore path publishes the saved detection roster under a guard.
+	if _has_saved_enemy_authority():
+		on_game_state_snapshot_restored()
+		return
+	_publish_detection_targets()
+	_sync_detection_subscription(get_state())
 	_post_position = _self_pos()
 	_fsm.transition_to("idle")
+	_enemy_authority_initialized = true
+	_publish_enemy_authority()
 
 ## The FSM publishes a narrow detector->target subscription to GameState. Callers should use this
 ## instead of mutating _detection_targets after activation so prediction is invalidated immediately.
@@ -140,6 +191,26 @@ func set_detection_targets(target_ids: Array) -> void:
 		normalized.append(target_id)
 	_detection_targets = normalized
 	_publish_detection_targets()
+	_publish_enemy_authority()
+
+
+## Retire an authored watch after its protected causal boundary is crossed. The reusable FSM owns
+## disengagement and serializes the resulting RETURN phase; scenes do not mutate private state.
+func retire_watch_to_post() -> void:
+	set_detection_targets([])
+	if get_state() == "dead":
+		return
+	_current_target_id = ""
+	_lure_returning_from_song = false
+	_lure_source_key = ""
+	_lure_source_activation_serial = 0
+	if get_state() in [
+		"alert", "pursuit", "windup", "charge", "impact", "recover", "search",
+	]:
+		_fsm.transition_to("return")
+	else:
+		_publish_enemy_authority()
+
 
 func get_detection_targets() -> Array[String]:
 	return _detection_targets.duplicate()
@@ -151,11 +222,27 @@ func _publish_detection_targets() -> void:
 
 ## Set patrol waypoints (an AUTHORED route — pathfinds between waypoints to route around walls).
 func set_patrol(waypoints: Array[Vector3]) -> void:
-	_patrol_waypoints = waypoints
+	configure_patrol(waypoints)
+	begin_home_behavior()
+
+## Configure a patrol without immediately planning its first leg. Encounter loaders use this to
+## register a dormant pack cheaply, then start only the cohort whose causal boundary was crossed.
+func configure_patrol(waypoints: Array[Vector3]) -> void:
+	_patrol_waypoints = waypoints.duplicate()
 	_patrol_index = 0
 	_home_mode = "patrol"
+	_publish_enemy_authority()
+
+func begin_home_behavior() -> void:
 	if get_state() != "dead":
-		_fsm.transition_to("patrol")
+		match _home_mode:
+			"patrol":
+				_fsm.transition_to("patrol")
+			"roam":
+				_fsm.transition_to("roam")
+			_:
+				_fsm.transition_to("idle")
+	_publish_enemy_authority()
 
 ## Begin lightweight roaming around `anchor` within `radius`. Roaming NEVER pathfinds: it's a local
 ## deterministic wander — short straight hops (command_move_to_pos), an anchor-pull at the circle's
@@ -168,21 +255,76 @@ func set_roam(anchor: Vector3, radius: float) -> void:
 	_home_mode = "roam"
 	if get_state() != "dead":
 		_fsm.transition_to("roam")
+	_publish_enemy_authority()
+
+const LURE_ACCEPTING_STATES := ["idle", "roam", "patrol", "search", "return"]
+const LURE_COMMITTED_STATES := ["alert", "pursuit", "windup", "charge", "impact"]
+
+## Report why a Flure can or cannot redirect this enemy. Keeping this classification on the reusable
+## enemy FSM lets any puzzle distinguish a bad causal prediction from a signal fired too late.
+func get_lure_availability() -> String:
+	var state := get_state()
+	if state in LURE_ACCEPTING_STATES:
+		return "available"
+	if state in LURE_COMMITTED_STATES:
+		return "committed"
+	if state == "dead":
+		return "dead"
+	if state == "lured":
+		return "already_lured"
+	return "unavailable"
 
 ## A flure's song: pull this enemy off its watch to `settle_pos` for `duration` seconds. Only an
 ## un-alerted enemy takes the bait (one mid-attack ignores it; an already-lured one stays lured).
 ## While lured it is DISTRACTED — its own outer reach shrinks, but a runner who crowds it still gets
 ## caught — and when the song ends it walks home and resumes its ambient mode.
-func lure_to(settle_pos: Vector3, duration: float) -> void:
-	if get_state() not in ["idle", "roam", "patrol", "search", "return"]:
-		return
+## Scenario setup for how the physical return leg behaves after a Flure releases this enemy.
+## Changing the policy never moves, distracts, or transitions the body.
+func set_lure_return_policy(keep_distraction: bool, return_speed := -1.0) -> void:
+	lure_return_keeps_distraction = keep_distraction
+	lure_return_speed = return_speed
+	_publish_enemy_authority()
+
+
+func lure_to(settle_pos: Vector3, duration: float, source_context := {}) -> bool:
+	if get_lure_availability() != "available":
+		return false
 	_lure_settle = settle_pos
 	_lure_duration = maxf(0.5, duration)
+	_lure_returning_from_song = false
+	_lure_source_key = str(source_context.get("source_key", "")) \
+		if source_context is Dictionary else ""
+	_lure_source_activation_serial = int(source_context.get("activation_serial", 0)) \
+		if source_context is Dictionary else 0
 	_fsm.transition_to("lured")
+	return get_state() == "lured"
+
+
+## A target-settled Flure may replace its transit failsafe with the authored hold window. The
+## source key, activation serial, and physical settle point must match the active lure exactly.
+func retime_lure_from_source(
+	source_key: String,
+	activation_serial: int,
+	settle_pos: Vector3,
+	remaining: float
+) -> bool:
+	if get_state() != "lured" \
+			or source_key.is_empty() \
+			or source_key != _lure_source_key \
+			or activation_serial <= 0 \
+			or activation_serial != _lure_source_activation_serial \
+			or settle_pos.distance_to(_lure_settle) > 0.05:
+		return false
+	_lure_duration = maxf(0.5, remaining)
+	_schedule_enemy_timer(_lure_duration, "lure_end", _end_lure)
+	_publish_enemy_authority()
+	return true
+
 
 func _end_lure() -> void:
 	if get_state() != "lured":
 		return
+	_lure_returning_from_song = true
 	_fsm.transition_to("return")
 
 ## Snap back to a post and stand the watch again (level reset / wipe restart): clears the target and
@@ -191,6 +333,9 @@ func re_post(post: Vector3) -> void:
 	if get_state() == "dead":
 		return
 	_current_target_id = ""
+	_lure_returning_from_song = false
+	_lure_source_key = ""
+	_lure_source_activation_serial = 0
 	if game_state and game_state.characters.has(char_id):
 		game_state.command_stop(char_id)
 		game_state.change_move_speed(char_id, move_speed)
@@ -204,6 +349,7 @@ func re_post(post: Vector3) -> void:
 			_fsm.transition_to("patrol")
 		"roam":
 			_fsm.transition_to("roam")
+	_publish_enemy_authority()
 
 ## Apply damage. A hit taken mid-aggro staggers the enemy (a brief interrupt → counterplay), so the
 ## player can break a windup/charge by striking first.
@@ -212,8 +358,22 @@ func re_post(post: Vector3) -> void:
 func stun(duration: float) -> void:
 	if get_state() == "dead":
 		return
-	_stun_duration = duration
+	_stun_duration = maxf(0.0, duration)
+	# StateMachine self-transitions are intentionally no-ops. A second stun is nevertheless a real
+	# refresh: replace its one deadline instead of changing only a local duration that save/load could
+	# never observe.
+	if get_state() == "stunned":
+		_fsm.cancel_pending()
+		_state_deadlines.clear()
+		_schedule_enemy_timer(_stun_duration, "stun_end", _after_stun)
+		return
 	_fsm.transition_to("stunned")
+
+func apply_emp(duration: float) -> bool:
+	if not emp_compatible or get_state() == "dead" or duration <= 0.0:
+		return false
+	stun(duration)
+	return true
 
 func is_stunned() -> bool:
 	return get_state() == "stunned"
@@ -230,6 +390,8 @@ func take_damage(amount: float) -> void:
 		return
 	if get_state() in ["alert", "pursuit", "windup", "charge", "impact", "recover"]:
 		_fsm.transition_to("stagger")
+	else:
+		_publish_enemy_authority()
 
 ## Kill immediately.
 func die() -> void:
@@ -238,8 +400,300 @@ func die() -> void:
 func is_alive() -> bool:
 	return _hp > 0
 
+func get_hp() -> float:
+	return _hp
+
 func get_state() -> String:
 	return _fsm.current() if _fsm != null else ""
+
+# --- Authoritative enemy snapshot contract ---
+
+func _enemy_authority_key() -> String:
+	return ENEMY_AUTHORITY_PREFIX + char_id if char_id != "" else ""
+
+func _has_saved_enemy_authority() -> bool:
+	if game_state == null or not game_state.has_method("get_world_state"):
+		return false
+	var key := _enemy_authority_key()
+	if key == "":
+		return false
+	var saved: Variant = game_state.get_world_state(key, {})
+	return saved is Dictionary \
+			and int(saved.get("version", 0)) == ENEMY_AUTHORITY_VERSION \
+			and str(saved.get("char_id", char_id)) == char_id
+
+func _publish_enemy_authority() -> void:
+	if _restoring_enemy_authority or not _enemy_authority_initialized:
+		return
+	if game_state == null or not game_state.has_method("set_world_state"):
+		return
+	var key := _enemy_authority_key()
+	if key == "":
+		return
+	var waypoint_data: Array = []
+	for waypoint in _patrol_waypoints:
+		waypoint_data.append(_vec3_to_data(waypoint))
+	var deadline_data := {}
+	for kind in _TIMER_KIND_ORDER:
+		if _state_deadlines.has(kind):
+			deadline_data[kind] = float(_state_deadlines[kind])
+	game_state.set_world_state(key, {
+		"version": ENEMY_AUTHORITY_VERSION,
+		"char_id": char_id,
+		"hp": _hp,
+		"state": get_state(),
+		"deadlines": deadline_data,
+		"detection_targets": _detection_targets.duplicate(),
+		"current_target_id": _current_target_id,
+		"last_known_target_pos": _vec3_to_data(_last_known_target_pos),
+		"home_mode": _home_mode,
+		"post_position": _vec3_to_data(_post_position),
+		"patrol_waypoints": waypoint_data,
+		"patrol_index": _patrol_index,
+		"lure_settle": _vec3_to_data(_lure_settle),
+		"lure_duration": _lure_duration,
+		"lure_return_keeps_distraction": lure_return_keeps_distraction,
+		"lure_return_speed": lure_return_speed,
+		"lure_returning_from_song": _lure_returning_from_song,
+		"lure_source_key": _lure_source_key,
+		"lure_source_activation_serial": _lure_source_activation_serial,
+		"roam_anchor": _vec3_to_data(_roam_anchor),
+		"roam_radius": _roam_radius,
+		"roam_heading": _vec3_to_data(_roam_heading),
+		"roam_seq": _roam_seq,
+		"stun_duration": _stun_duration,
+		"charge_target_pos": _vec3_to_data(_charge_target_pos),
+		"charging": _charging,
+		"charge_hit": _charge_hit,
+	})
+
+## Reattach this presenter after GameState and its scheduler clock have been replaced by a save.
+## This path never calls a gameplay entry hook: in particular, loading `impact` cannot deal damage,
+## loading `charge` cannot issue a second movement command, and loading `dead` cannot re-emit death.
+func on_game_state_snapshot_restored() -> void:
+	if _fsm == null:
+		return
+	if not _has_saved_enemy_authority():
+		_restore_uncommitted_enemy_presenter()
+		return
+	var saved: Dictionary = game_state.get_world_state(_enemy_authority_key(), {})
+	var restored_state := str(saved.get("state", "idle"))
+	if restored_state not in ENEMY_STATES:
+		return
+
+	_restoring_enemy_authority = true
+	_fsm.set_scheduler(_get_scheduler())
+	_fsm.cancel_pending()
+	_state_deadlines.clear()
+	_remove_alert_label()
+	_kill_enemy_presentation_tweens()
+
+	_hp = clampf(float(saved.get("hp", max_hp)), 0.0, max_hp)
+	if restored_state == "dead":
+		_hp = 0.0
+	_current_target_id = str(saved.get("current_target_id", ""))
+	_last_known_target_pos = _vec3_from_data(
+		saved.get("last_known_target_pos", []), Vector3.ZERO)
+	_home_mode = str(saved.get("home_mode", "idle"))
+	if _home_mode not in ["idle", "roam", "patrol"]:
+		_home_mode = "idle"
+	_post_position = _vec3_from_data(saved.get("post_position", []), _self_pos())
+	_patrol_waypoints.clear()
+	for waypoint_data in (saved.get("patrol_waypoints", []) as Array):
+		_patrol_waypoints.append(_vec3_from_data(waypoint_data, Vector3.ZERO))
+	_patrol_index = clampi(
+		int(saved.get("patrol_index", 0)), 0, maxi(0, _patrol_waypoints.size() - 1))
+	_lure_settle = _vec3_from_data(saved.get("lure_settle", []), Vector3.ZERO)
+	_lure_duration = maxf(0.5, float(saved.get("lure_duration", 20.0)))
+	lure_return_keeps_distraction = bool(saved.get(
+		"lure_return_keeps_distraction", lure_return_keeps_distraction))
+	lure_return_speed = float(saved.get("lure_return_speed", lure_return_speed))
+	_lure_returning_from_song = bool(saved.get("lure_returning_from_song", false))
+	_lure_source_key = str(saved.get("lure_source_key", ""))
+	_lure_source_activation_serial = int(saved.get("lure_source_activation_serial", 0))
+	_roam_anchor = _vec3_from_data(saved.get("roam_anchor", []), Vector3.ZERO)
+	_roam_radius = maxf(0.0, float(saved.get("roam_radius", 0.0)))
+	_roam_heading = _vec3_from_data(
+		saved.get("roam_heading", []), Vector3(0.0, 0.0, -1.0))
+	_roam_seq = maxi(0, int(saved.get("roam_seq", 0)))
+	_stun_duration = maxf(0.0, float(saved.get("stun_duration", 3.0)))
+	_charge_target_pos = _vec3_from_data(saved.get("charge_target_pos", []), Vector3.ZERO)
+	_charging = bool(saved.get("charging", restored_state == "charge"))
+	_charge_hit = bool(saved.get("charge_hit", false))
+
+	_detection_targets.clear()
+	for target_v in (saved.get("detection_targets", []) as Array):
+		var target_id := str(target_v)
+		if target_id != char_id and not _detection_targets.has(target_id):
+			_detection_targets.append(target_id)
+
+	_fsm.force_current(restored_state)
+	_sync_enemy_presenter_position()
+	_restore_enemy_presentation(restored_state)
+	_publish_detection_targets()
+	_sync_detection_subscription(restored_state)
+
+	var saved_deadlines: Dictionary = saved.get("deadlines", {})
+	for kind in _TIMER_KIND_ORDER:
+		if not saved_deadlines.has(kind) or not _timer_belongs_to_state(kind, restored_state):
+			continue
+		_rearm_enemy_timer(kind, float(saved_deadlines[kind]))
+	_restoring_enemy_authority = false
+	_enemy_authority_initialized = true
+
+## Absence is authoritative too. This covers rolling back to a snapshot taken before a registered
+## enemy was activated: retaining its later windup/death state after the callback heap was cleared
+## would freeze a future phase in the past. Scene/chunk authority still owns whether a dormant node
+## is enabled; Enemy only retracts the runtime phase it can prove did not yet exist.
+func _restore_uncommitted_enemy_presenter() -> void:
+	_restoring_enemy_authority = true
+	_fsm.set_scheduler(_get_scheduler())
+	_fsm.cancel_pending()
+	_state_deadlines.clear()
+	_remove_alert_label()
+	_kill_enemy_presentation_tweens()
+	_hp = max_hp
+	_current_target_id = ""
+	_last_known_target_pos = Vector3.ZERO
+	_charge_target_pos = Vector3.ZERO
+	_charging = false
+	_charge_hit = false
+	_lure_returning_from_song = false
+	_lure_source_key = ""
+	_lure_source_activation_serial = 0
+	_fsm.force_current("idle")
+	_sync_enemy_presenter_position()
+	_restore_enemy_presentation("idle")
+	if game_state != null and game_state.characters.has(char_id):
+		game_state.set_character_distracted(char_id, false)
+		if game_state.has_method("set_detection_enabled"):
+			game_state.set_detection_enabled(char_id, false)
+	_restoring_enemy_authority = false
+	_enemy_authority_initialized = false
+
+func _schedule_enemy_timer(delay: float, kind: String, callback: Callable) -> void:
+	var scheduler := _get_scheduler()
+	if scheduler == null or _fsm == null or not callback.is_valid():
+		return
+	var deadline := scheduler.get_current_tick() + maxf(0.0, delay)
+	_state_deadlines[kind] = deadline
+	_fsm.schedule(maxf(0.0, delay), _run_enemy_timer.bind(kind, deadline, callback))
+	_publish_enemy_authority()
+
+func _rearm_enemy_timer(kind: String, deadline: float) -> void:
+	var scheduler := _get_scheduler()
+	var callback := _enemy_timer_callback(kind)
+	if scheduler == null or _fsm == null or not callback.is_valid():
+		return
+	_state_deadlines[kind] = deadline
+	var remaining := maxf(_RESTORE_TIMER_EPSILON, deadline - scheduler.get_current_tick())
+	_fsm.schedule(remaining, _run_enemy_timer.bind(kind, deadline, callback))
+
+func _run_enemy_timer(kind: String, deadline: float, callback: Callable) -> void:
+	# Re-arming a kind supersedes its prior callback even if a bespoke caller failed to cancel the tag.
+	if not _state_deadlines.has(kind) \
+			or not is_equal_approx(float(_state_deadlines[kind]), deadline):
+		return
+	_state_deadlines.erase(kind)
+	if callback.is_valid():
+		callback.call()
+	_publish_enemy_authority()
+
+func _enemy_timer_callback(kind: String) -> Callable:
+	match kind:
+		"roam_step": return Callable(self, "_roam_step")
+		"patrol_step": return Callable(self, "_patrol_next_waypoint")
+		"lure_end": return Callable(self, "_end_lure")
+		"alert_end": return Callable(self, "_begin_pursuit")
+		"pursuit_update": return Callable(self, "_pursue_target")
+		"pursuit_rescan": return Callable(self, "_begin_search")
+		"windup_end": return Callable(self, "_begin_charge")
+		"charge_end": return Callable(self, "_end_charge")
+		"impact_end": return Callable(self, "_begin_recover")
+		"recover_end": return Callable(self, "_after_recover")
+		"stagger_end": return Callable(self, "_after_stagger")
+		"stun_end": return Callable(self, "_after_stun")
+		"search_end": return Callable(self, "_begin_return")
+		"return_end": return Callable(self, "_resume_home")
+	return Callable()
+
+func _timer_belongs_to_state(kind: String, state: String) -> bool:
+	match state:
+		"roam": return kind == "roam_step"
+		"patrol": return kind == "patrol_step"
+		"lured": return kind == "lure_end"
+		"alert": return kind == "alert_end"
+		"pursuit": return kind in ["pursuit_update", "pursuit_rescan"]
+		"windup": return kind == "windup_end"
+		"charge": return kind == "charge_end"
+		"impact": return kind == "impact_end"
+		"recover": return kind == "recover_end"
+		"stagger": return kind == "stagger_end"
+		"stunned": return kind == "stun_end"
+		"search": return kind == "search_end"
+		"return": return kind == "return_end"
+	return false
+
+func _restore_enemy_presentation(state: String) -> void:
+	visible = state != "dead"
+	if _mesh != null:
+		_mesh.transparency = 0.0 if state != "dead" else 1.0
+	_set_mesh_color(_base_color)
+	match state:
+		"idle":
+			_set_eye_energy(0.4)
+		"roam", "patrol", "return":
+			_set_eye_energy(0.5)
+		"lured":
+			_set_eye_energy(0.9)
+		"alert":
+			_set_eye_energy(1.6)
+			_show_alert_on_target()
+		"pursuit":
+			_set_eye_energy(2.0)
+		"windup", "charge":
+			_set_mesh_color(WINDUP_COLOR)
+			_set_eye_energy(3.0)
+		"impact":
+			_set_mesh_color(IMPACT_COLOR)
+			_set_eye_energy(3.0)
+		"recover":
+			_set_mesh_color(RECOVER_COLOR)
+			_set_eye_energy(0.8)
+		"stagger":
+			_set_mesh_color(STAGGER_COLOR)
+			_set_eye_energy(0.5)
+		"stunned":
+			_set_mesh_color(Color(0.82, 0.78, 0.9))
+			_set_eye_energy(0.0)
+		"search":
+			_set_eye_energy(1.0)
+		"dead":
+			_set_eye_energy(0.0)
+
+func _sync_enemy_presenter_position() -> void:
+	if game_state == null or not game_state.characters.has(char_id):
+		return
+	var restored_pos := game_state.get_render_position(char_id)
+	if game_state.coord_map != null or game_state.is_external_traversal_active(char_id):
+		global_position = restored_pos
+	else:
+		global_position = Vector3(restored_pos.x, global_position.y, restored_pos.z)
+
+func _kill_enemy_presentation_tweens() -> void:
+	for tween in [_anim_tween, _flash_tween, _recover_tween, _fade_tween]:
+		if tween != null and tween.is_valid():
+			tween.kill()
+
+static func _vec3_to_data(value: Vector3) -> Array:
+	return [value.x, value.y, value.z]
+
+static func _vec3_from_data(value: Variant, fallback: Vector3) -> Vector3:
+	if value is Vector3:
+		return value
+	if value is Array and value.size() >= 3:
+		return Vector3(float(value[0]), float(value[1]), float(value[2]))
+	return fallback
 
 # --- State Machine Core (reusable StateMachine: tag-scoped scheduling + exit/enter hooks) ---
 
@@ -274,6 +728,9 @@ func _sync_detection_subscription(state: String) -> void:
 		game_state.set_detection_enabled(char_id, state in DETECTION_SCANNING_STATES)
 
 func _enter_state(state: String) -> void:
+	# StateMachine cancels the old tag before entering. Mirror that cancellation in the serializable
+	# deadline registry before the new phase arms its own work.
+	_state_deadlines.clear()
 	Enemy._count("enter_" + state)
 	_publish_detection_targets()
 	_sync_detection_subscription(state)
@@ -282,7 +739,7 @@ func _enter_state(state: String) -> void:
 			_set_eye_energy(0.4)
 		"roam":
 			_set_eye_energy(0.5)
-			_roam_step()
+			_schedule_first_roam_step()
 		"patrol":
 			_set_eye_energy(0.5)
 			_patrol_next_waypoint()
@@ -294,33 +751,39 @@ func _enter_state(state: String) -> void:
 			if game_state and game_state.characters.has(char_id):
 				game_state.set_character_distracted(char_id, true)
 				game_state.command_move_to_pos(char_id, _lure_settle)
-			_fsm.schedule(_lure_duration, _end_lure)
+			_schedule_enemy_timer(_lure_duration, "lure_end", _end_lure)
 		"alert":
 			_show_alert_on_target()
 			_set_eye_energy(1.6)
 			_anim_pop(1.18)
-			_fsm.schedule(alert_duration, _begin_pursuit)
+			_schedule_enemy_timer(alert_duration, "alert_end", _begin_pursuit)
 		"pursuit":
 			if game_state != null and game_state.characters.has(char_id):
 				game_state.change_move_speed(char_id, get_pursuit_speed())
 			_set_eye_energy(2.0)
 			_set_mesh_color(_base_color)
 			_pursue_target()
-			if pursuit_rescan_delay > 0:
-				_fsm.schedule(pursuit_rescan_delay, _begin_search)
+			if get_state() == "pursuit" and pursuit_rescan_delay > 0:
+				_schedule_enemy_timer(pursuit_rescan_delay, "pursuit_rescan", _begin_search)
 		"windup":
 			_stop_movement()
 			_set_mesh_color(WINDUP_COLOR)
 			_set_eye_energy(3.0)
 			_anim_squash()  # crouch/anticipation
-			_fsm.schedule(windup_duration, _begin_charge)
+			_schedule_enemy_timer(windup_duration, "windup_end", _begin_charge)
 		"charge":
 			_begin_lunge()
 		"impact":
+			var impact_started := PerformanceTrace.begin()
+			var strike_started := PerformanceTrace.begin()
 			_apply_strike()
+			PerformanceTrace.end(&"update", &"enemy.impact.strike", strike_started, char_id, 1)
+			var presentation_started := PerformanceTrace.begin()
 			_set_mesh_color(IMPACT_COLOR)
 			_anim_punch()
-			_fsm.schedule(impact_duration, _begin_recover)
+			_schedule_enemy_timer(impact_duration, "impact_end", _begin_recover)
+			PerformanceTrace.end(&"draw", &"enemy.impact.presentation", presentation_started, char_id, 1)
+			PerformanceTrace.end(&"update", &"enemy.impact.enter", impact_started, char_id, 1)
 		"recover":
 			_charging = false
 			_stop_movement()
@@ -333,14 +796,14 @@ func _enter_state(state: String) -> void:
 					_recover_tween.kill()
 				_recover_tween = create_tween()
 				_recover_tween.tween_method(_set_mesh_color, RECOVER_COLOR, _base_color, recover_duration)
-			_fsm.schedule(recover_duration, _after_recover)
+			_schedule_enemy_timer(recover_duration, "recover_end", _after_recover)
 		"stagger":
 			_charging = false
 			_stop_movement()
 			_set_mesh_color(STAGGER_COLOR)
 			_set_eye_energy(0.5)
 			_anim_recoil()
-			_fsm.schedule(stagger_duration, _after_stagger)
+			_schedule_enemy_timer(stagger_duration, "stagger_end", _after_stagger)
 		"stunned":
 			# The Hushbloom's verb (flora_taxonomy): a full neuroactive freeze — no movement, no
 			# scans (the detection gate never admits "stunned"), held for the burst's duration.
@@ -349,15 +812,18 @@ func _enter_state(state: String) -> void:
 			_set_mesh_color(Color(0.82, 0.78, 0.9))
 			_set_eye_energy(0.0)
 			_anim_recoil()
-			_fsm.schedule(_stun_duration, _after_stun)
+			_schedule_enemy_timer(_stun_duration, "stun_end", _after_stun)
 		"search":
 			_set_eye_energy(1.0)
 			_set_mesh_color(_base_color)
 			_begin_search_move()
-			_fsm.schedule(search_duration, _begin_return)
+			_schedule_enemy_timer(search_duration, "search_end", _begin_return)
 		"return":
 			_set_eye_energy(0.5)
 			_set_mesh_color(_base_color)
+			if _lure_returning_from_song and lure_return_speed > 0.0 \
+					and game_state != null and game_state.characters.has(char_id):
+				game_state.change_move_speed(char_id, lure_return_speed)
 			_begin_return_move()
 		"dead":
 			_charging = false
@@ -365,6 +831,7 @@ func _enter_state(state: String) -> void:
 			_set_eye_energy(0.0)
 			died.emit()
 			_fade_out(1.5)
+	_publish_enemy_authority()
 
 func _exit_state(state: String) -> void:
 	match state:
@@ -372,10 +839,20 @@ func _exit_state(state: String) -> void:
 			_stop_movement()
 		"lured":
 			# However the song ends (expiry -> return, or a point-blank spot -> alert), the
-			# distraction lifts and the walk-to-settle stops.
+			# walk-to-settle stops. A scenario may keep the reduced watch only for the
+			# physical RETURN leg; every other exit lifts it.
 			_stop_movement()
-			if game_state and game_state.characters.has(char_id):
+			if game_state and game_state.characters.has(char_id) \
+					and not (_lure_returning_from_song and lure_return_keeps_distraction):
 				game_state.set_character_distracted(char_id, false)
+		"return":
+			if _lure_returning_from_song:
+				if game_state and game_state.characters.has(char_id):
+					game_state.set_character_distracted(char_id, false)
+					game_state.change_move_speed(char_id, move_speed)
+				_lure_returning_from_song = false
+				_lure_source_key = ""
+				_lure_source_activation_serial = 0
 		"alert":
 			_remove_alert_label()
 		"pursuit":
@@ -414,6 +891,8 @@ func engage_target(target_id: String) -> bool:
 	return true
 
 func _on_detection_predicted(detector_id: String, target_id: String) -> void:
+	if _restoring_enemy_authority:
+		return
 	if detector_id != char_id:
 		return
 	if target_id not in _detection_targets:
@@ -479,6 +958,7 @@ func _pursue_target() -> void:
 		return
 	var target_pos := game_state.get_position(_current_target_id)
 	_last_known_target_pos = target_pos
+	_publish_enemy_authority()
 	Enemy._count("pursue")
 	var dist := _planar_dist(_self_pos(), target_pos)
 	# Close enough to wind up.
@@ -494,16 +974,34 @@ func _pursue_target() -> void:
 		if game_state.grid and not pursuit_direct:
 			game_state.command_move_to_cell(char_id, game_state.grid.world_to_grid(target_pos))
 		else:
-			# the roam trick at chase scale: a CAPPED hop toward the target. When the scene
-			# provides a shared PURSUIT FIELD (one BFS per refresh for the whole pack — crowd
-			# memoization), the hop reads the field instead: per-unit pathfinding disappears.
-			var hop: Vector3
-			if pursuit_hop_resolver.is_valid():
-				hop = pursuit_hop_resolver.call(_self_pos(), target_pos)
-			else:
-				hop = _self_pos() + (target_pos - _self_pos()).limit_length(pursuit_hop)
-			game_state.command_move_to_pos(char_id, hop)
-	_fsm.schedule(pursuit_update_interval, _pursue_target)
+			_command_direct_pursuit_toward(target_pos)
+	_schedule_enemy_timer(pursuit_update_interval, "pursuit_update", _pursue_target)
+
+## Commit one bounded direct-pursuit leg without asking GameState to solve the
+## same spatial route again. `command_move_to_pos()` deliberately routes through
+## grid A* in grid scenes; using it here made `pursuit_direct` an accidental
+## per-body planner despite the flag's contract. Scene resolvers must provide
+## wall-safe waypoints (Lockout's shared field does); the no-resolver fallback is
+## reserved for the open/convex corridors that opt into direct pursuit.
+func _command_direct_pursuit_toward(target_pos: Vector3) -> void:
+	if game_state == null or not game_state.characters.has(char_id):
+		return
+	var path: Array[Vector3] = []
+	if pursuit_path_resolver.is_valid():
+		var resolved: Variant = pursuit_path_resolver.call(_self_pos(), target_pos)
+		if resolved is Array:
+			for point_v in (resolved as Array):
+				if point_v is Vector3 and (point_v as Vector3).is_finite():
+					path.append(point_v as Vector3)
+	elif pursuit_hop_resolver.is_valid():
+		var resolved_hop: Variant = pursuit_hop_resolver.call(_self_pos(), target_pos)
+		if resolved_hop is Vector3 and (resolved_hop as Vector3).is_finite():
+			path.append(resolved_hop as Vector3)
+	else:
+		path.append(_self_pos() + (target_pos - _self_pos()).limit_length(pursuit_hop))
+	if not path.is_empty():
+		Enemy._count("direct_pursuit_leg")
+		game_state.command_walk_path(char_id, path)
 
 func _begin_charge() -> void:
 	if get_state() != "windup":
@@ -540,7 +1038,7 @@ func _begin_lunge() -> void:
 	if lunge_dist > 0.05:
 		game_state.command_move_to_pos(char_id, lunge_to)
 	var contact: float = minf(lunge_dist / maxf(charge_speed, 0.1), charge_max_duration)
-	_fsm.schedule(contact, _end_charge)
+	_schedule_enemy_timer(contact, "charge_end", _end_charge)
 
 ## Resolve the charge into the impact beat. Called by the scheduled contact (standard enemy) AND by
 ## ChainEnemy when one of its trailing segments touches the target early — both route through the same
@@ -577,9 +1075,16 @@ func _resolve_strike(tid: String) -> bool:
 		return false
 	_charge_hit = true
 	if game_state.has_method("adjust_stat"):
+		var damage_started := PerformanceTrace.begin()
 		game_state.adjust_stat(tid, "hp", -charge_damage)
+		PerformanceTrace.end(&"update", &"enemy.impact.damage", damage_started, tid, 1)
+	var flinch_started := PerformanceTrace.begin()
 	_flash_target(tid)
+	PerformanceTrace.end(&"draw", &"enemy.impact.flinch", flinch_started, tid, 1)
+	var feedback_started := PerformanceTrace.begin()
 	hit_target.emit(tid, charge_damage)
+	PerformanceTrace.end(&"draw", &"enemy.impact.feedback_signal", feedback_started, tid, 1)
+	_publish_enemy_authority()
 	return true
 
 ## The strike resolves at impact (standard enemy). ChainEnemy routes its segment contact through the same
@@ -632,8 +1137,9 @@ func _begin_search_move() -> void:
 	if game_state and game_state.characters.has(char_id):
 		var dest := _last_known_target_pos
 		if pursuit_direct:
-			dest = _self_pos() + (_last_known_target_pos - _self_pos()).limit_length(pursuit_hop)
-		game_state.command_move_to_pos(char_id, dest)
+			_command_direct_pursuit_toward(dest)
+		else:
+			game_state.command_move_to_pos(char_id, dest)
 
 func _begin_return() -> void:
 	if get_state() != "search":
@@ -651,7 +1157,7 @@ func _begin_return_move() -> void:
 	if dest != _self_pos() and game_state and game_state.characters.has(char_id):
 		game_state.command_move_to_pos(char_id, dest)
 	var travel := _planar_dist(_self_pos(), dest) / maxf(move_speed, 0.1) + 0.1
-	_fsm.schedule(travel, _resume_home)
+	_schedule_enemy_timer(travel, "return_end", _resume_home)
 
 func _resume_home() -> void:
 	if get_state() != "return":
@@ -715,6 +1221,79 @@ func _flash_target(target_id: String) -> void:
 
 # --- Roam (local wander, no pathfinding) ---
 
+## Stable across process runs and engine versions. Masking each round keeps the arithmetic inside
+## signed 64-bit range while preserving ample entropy for the cadence lanes.
+static func _stable_roam_cadence_seed(identity: String) -> int:
+	var seed := 5381
+	for byte_value in identity.to_utf8_buffer():
+		seed = ((seed * 33) ^ int(byte_value)) & 0x7fffffff
+	return seed
+
+## Claim one lane among enemies sharing this EventScheduler. Stable-id preference keeps ordinary
+## claims independent of allocation order; linear probing only resolves a real collision. This is
+## derived scheduling state, released with the node and never serialized into gameplay state.
+func _claim_roam_cadence_lane() -> int:
+	var scheduler := _get_scheduler()
+	if scheduler == null:
+		return 0
+	var scheduler_id := int(scheduler.get_instance_id())
+	if _roam_cadence_lane >= 0 and _roam_cadence_scheduler_id == scheduler_id \
+			and _roam_cadence_identity == char_id:
+		return _roam_cadence_lane
+	_release_roam_cadence_lane()
+	var lanes: Dictionary = Enemy._roam_cadence_owners.get(scheduler_id, {})
+	var owner_id := int(get_instance_id())
+	var preferred := _stable_roam_cadence_seed(char_id) % _ROAM_CADENCE_LANE_COUNT
+	for offset in range(_ROAM_CADENCE_LANE_COUNT):
+		var candidate := (preferred + offset) % _ROAM_CADENCE_LANE_COUNT
+		var existing_owner := int(lanes.get(candidate, 0))
+		if existing_owner == 0 or existing_owner == owner_id \
+				or not is_instance_id_valid(existing_owner):
+			_roam_cadence_lane = candidate
+			lanes[candidate] = owner_id
+			break
+	# More than 64 simultaneous roamers is outside the visible encounter budget. Keep overflow
+	# deterministic rather than suppressing ambient behavior; only overflow actors may share a lane.
+	if _roam_cadence_lane < 0:
+		_roam_cadence_lane = preferred
+	_roam_cadence_scheduler_id = scheduler_id
+	_roam_cadence_identity = char_id
+	Enemy._roam_cadence_owners[scheduler_id] = lanes
+	return _roam_cadence_lane
+
+func _release_roam_cadence_lane() -> void:
+	if _roam_cadence_scheduler_id != 0 and _roam_cadence_lane >= 0:
+		var lanes: Dictionary = Enemy._roam_cadence_owners.get(
+			_roam_cadence_scheduler_id, {})
+		if int(lanes.get(_roam_cadence_lane, 0)) == int(get_instance_id()):
+			lanes.erase(_roam_cadence_lane)
+		if lanes.is_empty():
+			Enemy._roam_cadence_owners.erase(_roam_cadence_scheduler_id)
+		else:
+			Enemy._roam_cadence_owners[_roam_cadence_scheduler_id] = lanes
+	_roam_cadence_scheduler_id = 0
+	_roam_cadence_lane = -1
+	_roam_cadence_identity = ""
+
+## Align first ambient work to an absolute scheduler phase. Re-entering roam at a different time
+## therefore cannot re-synchronize a cohort. Detection is already active before this is armed, so
+## alert/pursuit transitions remain immediate and cancel the pending state-owned callback.
+func _schedule_first_roam_step() -> void:
+	var scheduler := _get_scheduler()
+	if scheduler == null:
+		_roam_step()
+		return
+	var interval := maxf(roam_interval, _ROAM_CADENCE_MIN_INTERVAL)
+	var lane := _claim_roam_cadence_lane()
+	var phase := interval * (float(lane) + 0.5) / float(_ROAM_CADENCE_LANE_COUNT)
+	var cycle_position := fposmod(scheduler.get_current_tick(), interval)
+	var delay := fposmod(phase - cycle_position, interval)
+	# Avoid recursively dispatching a zero-delay callback at the current scheduler tick. Waiting for
+	# this lane's next phase is equivalent for ambient motion and keeps scheduler work bounded.
+	if delay < 0.0001:
+		delay = interval
+	_schedule_enemy_timer(delay, "roam_step", _roam_step)
+
 func _roam_step() -> void:
 	if get_state() != "roam" or not game_state or not game_state.characters.has(char_id):
 		return
@@ -722,9 +1301,9 @@ func _roam_step() -> void:
 	var target := _pick_roam_target(cur)
 	game_state.command_move_to_pos(char_id, target)  # straight line — never A*
 	_roam_seq += 1
-	var scheduler := _get_scheduler()
-	if scheduler:
-		scheduler.schedule_after(roam_interval, _roam_step, _state_tag)
+	if _fsm != null:
+		_schedule_enemy_timer(
+			maxf(roam_interval, _ROAM_CADENCE_MIN_INTERVAL), "roam_step", _roam_step)
 
 ## Choose the next hop: rotate the heading by a deterministic wander angle, pull back toward the
 ## anchor near the circle's edge, clamp inside the radius, and bounce off a blocked grid cell. Pure
@@ -778,7 +1357,7 @@ func _patrol_next_waypoint() -> void:
 	var travel_time := dist / maxf(move_speed, 0.1) + 0.5
 	var scheduler := _get_scheduler()
 	if scheduler:
-		scheduler.schedule_after(travel_time, _patrol_next_waypoint, _state_tag)
+		_schedule_enemy_timer(travel_time, "patrol_step", _patrol_next_waypoint)
 
 # --- Visual ---
 
@@ -957,8 +1536,10 @@ func _set_mesh_color(c: Color) -> void:
 
 func _fade_out(duration: float) -> void:
 	if _mesh and Enemy._cosmetics_on():
-		var tween := create_tween()
-		tween.tween_property(_mesh, "transparency", 1.0, duration)
+		if _fade_tween != null and _fade_tween.is_valid():
+			_fade_tween.kill()
+		_fade_tween = create_tween()
+		_fade_tween.tween_property(_mesh, "transparency", 1.0, duration)
 	_set_eye_energy(0.0)
 
 # --- Attack-beat animation (cosmetic scale pulses; never gate a transition on these) ---
@@ -968,6 +1549,7 @@ func _fade_out(duration: float) -> void:
 var _anim_tween: Tween
 var _flash_tween: Tween
 var _recover_tween: Tween
+var _fade_tween: Tween
 
 ## Cosmetic tweens are FRAME-driven: on a headless tree no frame ever steps them, so every beat
 ## would leak a live tween and SceneTree bookkeeping grows O(n) — measured as the chase's
@@ -1002,15 +1584,17 @@ func _anim_recoil() -> void:               # stagger: flinch inward
 # --- Movement / Charge collision ---
 
 func _process(_delta: float) -> void:
+	var perf_started := PerformanceTrace.begin()
 	_update_threat_marker()
 	# The body is a pure mirror of the data layer — including the charge, which is now a real
 	# data-layer move at charge_speed (so the lunge is smooth and never teleport-snaps at impact).
 	if game_state and char_id != "" and game_state.is_moving(char_id):
 		var pos := game_state.get_render_position(char_id)
-		if game_state.coord_map != null:
+		if game_state.coord_map != null or game_state.is_external_traversal_active(char_id):
 			global_position = pos          # warped onto the helix (y meaningful)
 		else:
 			global_position = Vector3(pos.x, global_position.y, pos.z)
+	PerformanceTrace.end(&"update", &"enemy.process", perf_started, char_id, 1)
 
 func _stop_movement() -> void:
 	if game_state and game_state.characters.has(char_id):
@@ -1083,3 +1667,4 @@ func _exit_tree() -> void:
 	var scheduler = _get_scheduler()
 	if scheduler != null and _state_tag != "":
 		scheduler.cancel_tag(_state_tag)
+	_release_roam_cadence_lane()

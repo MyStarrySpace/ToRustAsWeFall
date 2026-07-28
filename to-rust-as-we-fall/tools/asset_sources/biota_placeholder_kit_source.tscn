@@ -1,0 +1,295 @@
+[gd_scene load_steps=3 format=3]
+
+[sub_resource type="SphereMesh" id="UnitSphere"]
+radius = 0.5
+height = 1.0
+radial_segments = 16
+rings = 8
+
+[sub_resource type="CapsuleMesh" id="UnitCapsule"]
+radius = 0.5
+height = 2.0
+radial_segments = 12
+rings = 6
+
+[node name="BiotaPlaceholderKitBakeSource" type="Node3D"]
+metadata/tooling_only = true
+metadata/asset_contract = "editable_3d_v1"
+metadata/source_purpose = "Deterministic construction recipe; never instantiate at runtime"
+
+; Seefern: an upright fan whose pale tips make its vision-extension role legible at a distance.
+[node name="Seefern" type="Node3D" parent="."]
+
+[node name="SeefernStem" type="MeshInstance3D" parent="Seefern"]
+position = Vector3(0, 0.44, 0)
+scale = Vector3(0.12, 0.44, 0.12)
+mesh = SubResource("UnitCapsule")
+
+[node name="SeefernFrondLeftOuter" type="MeshInstance3D" parent="Seefern"]
+position = Vector3(-0.29, 0.62, 0.02)
+rotation = Vector3(0.14, 0.08, 0.68)
+scale = Vector3(0.13, 0.43, 0.09)
+mesh = SubResource("UnitCapsule")
+
+[node name="SeefernFrondLeftInner" type="MeshInstance3D" parent="Seefern"]
+position = Vector3(-0.17, 0.79, -0.08)
+rotation = Vector3(-0.18, -0.08, 0.36)
+scale = Vector3(0.14, 0.48, 0.09)
+mesh = SubResource("UnitCapsule")
+
+[node name="SeefernFrondCenter" type="MeshInstance3D" parent="Seefern"]
+position = Vector3(0, 0.86, 0.04)
+rotation = Vector3(0.08, 0, 0)
+scale = Vector3(0.15, 0.5, 0.1)
+mesh = SubResource("UnitCapsule")
+
+[node name="SeefernFrondRightInner" type="MeshInstance3D" parent="Seefern"]
+position = Vector3(0.17, 0.79, -0.08)
+rotation = Vector3(-0.18, 0.08, -0.36)
+scale = Vector3(0.14, 0.48, 0.09)
+mesh = SubResource("UnitCapsule")
+
+[node name="SeefernFrondRightOuter" type="MeshInstance3D" parent="Seefern"]
+position = Vector3(0.29, 0.62, 0.02)
+rotation = Vector3(0.14, -0.08, -0.68)
+scale = Vector3(0.13, 0.43, 0.09)
+mesh = SubResource("UnitCapsule")
+
+[node name="SeefernRearFrond" type="MeshInstance3D" parent="Seefern"]
+position = Vector3(0, 0.71, -0.25)
+rotation = Vector3(-0.55, 0, 0)
+scale = Vector3(0.13, 0.43, 0.08)
+mesh = SubResource("UnitCapsule")
+
+[node name="SeefernSignalLeft" type="MeshInstance3D" parent="Seefern"]
+position = Vector3(-0.57, 0.87, 0.02)
+scale = Vector3(0.13, 0.16, 0.11)
+mesh = SubResource("UnitSphere")
+
+[node name="SeefernSignalCenter" type="MeshInstance3D" parent="Seefern"]
+position = Vector3(0, 1.35, 0.08)
+scale = Vector3(0.14, 0.18, 0.12)
+mesh = SubResource("UnitSphere")
+
+[node name="SeefernSignalRight" type="MeshInstance3D" parent="Seefern"]
+position = Vector3(0.57, 0.87, 0.02)
+scale = Vector3(0.13, 0.16, 0.11)
+mesh = SubResource("UnitSphere")
+
+; Hushbloom: a low rosette and visibly charged nodding crown rather than a generic glowing ball.
+[node name="Hushbloom" type="Node3D" parent="."]
+
+[node name="HushbloomStem" type="MeshInstance3D" parent="Hushbloom"]
+position = Vector3(0.07, 0.37, 0)
+rotation = Vector3(0, 0, -0.15)
+scale = Vector3(0.07, 0.36, 0.07)
+mesh = SubResource("UnitCapsule")
+
+[node name="HushbloomLeafLeft" type="MeshInstance3D" parent="Hushbloom"]
+position = Vector3(-0.18, 0.16, 0.02)
+rotation = Vector3(0.08, 0.15, 1.12)
+scale = Vector3(0.1, 0.28, 0.06)
+mesh = SubResource("UnitCapsule")
+
+[node name="HushbloomLeafRight" type="MeshInstance3D" parent="Hushbloom"]
+position = Vector3(0.22, 0.2, -0.05)
+rotation = Vector3(-0.1, -0.18, -1.0)
+scale = Vector3(0.11, 0.3, 0.06)
+mesh = SubResource("UnitCapsule")
+
+[node name="HushbloomLeafRear" type="MeshInstance3D" parent="Hushbloom"]
+position = Vector3(0, 0.13, -0.22)
+rotation = Vector3(-1.03, 0, 0)
+scale = Vector3(0.09, 0.25, 0.055)
+mesh = SubResource("UnitCapsule")
+
+[node name="HushbloomPetalNorth" type="MeshInstance3D" parent="Hushbloom"]
+position = Vector3(0.12, 0.78, -0.22)
+rotation = Vector3(1.570796, 0, 0)
+scale = Vector3(0.13, 0.27, 0.075)
+mesh = SubResource("UnitCapsule")
+
+[node name="HushbloomPetalSouth" type="MeshInstance3D" parent="Hushbloom"]
+position = Vector3(0.12, 0.78, 0.22)
+rotation = Vector3(1.570796, 0, 0)
+scale = Vector3(0.13, 0.27, 0.075)
+mesh = SubResource("UnitCapsule")
+
+[node name="HushbloomPetalWest" type="MeshInstance3D" parent="Hushbloom"]
+position = Vector3(-0.1, 0.78, 0)
+rotation = Vector3(0, 0, 1.570796)
+scale = Vector3(0.13, 0.27, 0.075)
+mesh = SubResource("UnitCapsule")
+
+[node name="HushbloomPetalEast" type="MeshInstance3D" parent="Hushbloom"]
+position = Vector3(0.34, 0.78, 0)
+rotation = Vector3(0, 0, 1.570796)
+scale = Vector3(0.13, 0.27, 0.075)
+mesh = SubResource("UnitCapsule")
+
+[node name="HushbloomPetalDiagonalA" type="MeshInstance3D" parent="Hushbloom"]
+position = Vector3(-0.04, 0.79, -0.16)
+rotation = Vector3(1.570796, 0.785398, 0)
+scale = Vector3(0.12, 0.24, 0.07)
+mesh = SubResource("UnitCapsule")
+
+[node name="HushbloomPetalDiagonalB" type="MeshInstance3D" parent="Hushbloom"]
+position = Vector3(0.28, 0.79, 0.16)
+rotation = Vector3(1.570796, 0.785398, 0)
+scale = Vector3(0.12, 0.24, 0.07)
+mesh = SubResource("UnitCapsule")
+
+[node name="HushbloomChargedCore" type="MeshInstance3D" parent="Hushbloom"]
+position = Vector3(0.12, 0.8, 0)
+scale = Vector3(0.25, 0.18, 0.25)
+mesh = SubResource("UnitSphere")
+
+; Scarpet: a visibly woven, ankle-high runner network instead of a flat rectangular hiding mat.
+[node name="Scarpet" type="Node3D" parent="."]
+
+[node name="ScarpetRunnerNorthSouth" type="MeshInstance3D" parent="Scarpet"]
+position = Vector3(0, 0.13, 0)
+scale = Vector3(0.22, 0.13, 0.8)
+mesh = SubResource("UnitSphere")
+
+[node name="ScarpetRunnerEastWest" type="MeshInstance3D" parent="Scarpet"]
+position = Vector3(0, 0.14, 0)
+scale = Vector3(0.82, 0.13, 0.21)
+mesh = SubResource("UnitSphere")
+
+[node name="ScarpetRunnerDiagonalA" type="MeshInstance3D" parent="Scarpet"]
+position = Vector3(0, 0.17, 0)
+rotation = Vector3(0, 0.785398, 0)
+scale = Vector3(0.68, 0.11, 0.18)
+mesh = SubResource("UnitSphere")
+
+[node name="ScarpetRunnerDiagonalB" type="MeshInstance3D" parent="Scarpet"]
+position = Vector3(0, 0.17, 0)
+rotation = Vector3(0, -0.785398, 0)
+scale = Vector3(0.68, 0.11, 0.18)
+mesh = SubResource("UnitSphere")
+
+[node name="ScarpetNodeNorth" type="MeshInstance3D" parent="Scarpet"]
+position = Vector3(0.06, 0.23, -0.58)
+scale = Vector3(0.24, 0.15, 0.28)
+mesh = SubResource("UnitSphere")
+
+[node name="ScarpetNodeEast" type="MeshInstance3D" parent="Scarpet"]
+position = Vector3(0.58, 0.22, 0.04)
+scale = Vector3(0.29, 0.14, 0.23)
+mesh = SubResource("UnitSphere")
+
+[node name="ScarpetNodeSouth" type="MeshInstance3D" parent="Scarpet"]
+position = Vector3(-0.07, 0.23, 0.58)
+scale = Vector3(0.24, 0.15, 0.28)
+mesh = SubResource("UnitSphere")
+
+[node name="ScarpetNodeWest" type="MeshInstance3D" parent="Scarpet"]
+position = Vector3(-0.58, 0.22, -0.04)
+scale = Vector3(0.29, 0.14, 0.23)
+mesh = SubResource("UnitSphere")
+
+[node name="ScarpetLeafTuft" type="MeshInstance3D" parent="Scarpet"]
+position = Vector3(0.24, 0.34, -0.2)
+rotation = Vector3(0.1, 0.4, -0.4)
+scale = Vector3(0.1, 0.26, 0.075)
+mesh = SubResource("UnitCapsule")
+
+; Sapscrap: canon C3 body plan, clamp-ended palps, and exactly one lifted luminous palp tell.
+[node name="Sapscrap" type="Node3D" parent="."]
+position = Vector3(0, -0.15, 0)
+
+[node name="SapscrapCore" type="MeshInstance3D" parent="Sapscrap"]
+position = Vector3(0, 0.29, 0)
+scale = Vector3(0.32, 0.25, 0.32)
+mesh = SubResource("UnitSphere")
+
+[node name="SapscrapCarapace" type="MeshInstance3D" parent="Sapscrap"]
+position = Vector3(0, 0.47, -0.02)
+scale = Vector3(0.24, 0.11, 0.25)
+mesh = SubResource("UnitSphere")
+
+[node name="SapscrapPalpA" type="Node3D" parent="Sapscrap"]
+
+[node name="SapscrapPalpAInner" type="MeshInstance3D" parent="Sapscrap/SapscrapPalpA"]
+position = Vector3(0, 0.22, 0.36)
+rotation = Vector3(1.570796, 0, 0)
+scale = Vector3(0.09, 0.28, 0.09)
+mesh = SubResource("UnitCapsule")
+
+[node name="SapscrapPalpAOuter" type="MeshInstance3D" parent="Sapscrap/SapscrapPalpA"]
+position = Vector3(0, 0.18, 0.76)
+rotation = Vector3(1.42, 0, 0)
+scale = Vector3(0.07, 0.24, 0.07)
+mesh = SubResource("UnitCapsule")
+
+[node name="SapscrapPalpAClawLeft" type="MeshInstance3D" parent="Sapscrap/SapscrapPalpA"]
+position = Vector3(-0.07, 0.19, 1.01)
+rotation = Vector3(1.34, 0, -0.2)
+scale = Vector3(0.035, 0.13, 0.035)
+mesh = SubResource("UnitCapsule")
+
+[node name="SapscrapPalpAClawRight" type="MeshInstance3D" parent="Sapscrap/SapscrapPalpA"]
+position = Vector3(0.07, 0.19, 1.01)
+rotation = Vector3(1.34, 0, 0.2)
+scale = Vector3(0.035, 0.13, 0.035)
+mesh = SubResource("UnitCapsule")
+
+[node name="SapscrapPalpB" type="Node3D" parent="Sapscrap"]
+rotation = Vector3(0, 2.094395, 0)
+
+[node name="SapscrapPalpBInner" type="MeshInstance3D" parent="Sapscrap/SapscrapPalpB"]
+position = Vector3(0, 0.22, 0.36)
+rotation = Vector3(1.570796, 0, 0)
+scale = Vector3(0.09, 0.28, 0.09)
+mesh = SubResource("UnitCapsule")
+
+[node name="SapscrapPalpBOuter" type="MeshInstance3D" parent="Sapscrap/SapscrapPalpB"]
+position = Vector3(0, 0.18, 0.76)
+rotation = Vector3(1.42, 0, 0)
+scale = Vector3(0.07, 0.24, 0.07)
+mesh = SubResource("UnitCapsule")
+
+[node name="SapscrapPalpBClawLeft" type="MeshInstance3D" parent="Sapscrap/SapscrapPalpB"]
+position = Vector3(-0.07, 0.19, 1.01)
+rotation = Vector3(1.34, 0, -0.2)
+scale = Vector3(0.035, 0.13, 0.035)
+mesh = SubResource("UnitCapsule")
+
+[node name="SapscrapPalpBClawRight" type="MeshInstance3D" parent="Sapscrap/SapscrapPalpB"]
+position = Vector3(0.07, 0.19, 1.01)
+rotation = Vector3(1.34, 0, 0.2)
+scale = Vector3(0.035, 0.13, 0.035)
+mesh = SubResource("UnitCapsule")
+
+[node name="SapscrapPalpC" type="Node3D" parent="Sapscrap"]
+rotation = Vector3(0, -2.094395, 0)
+
+[node name="SapscrapPalpCInner" type="MeshInstance3D" parent="Sapscrap/SapscrapPalpC"]
+position = Vector3(0, 0.3, 0.36)
+rotation = Vector3(1.32, 0, 0)
+scale = Vector3(0.09, 0.29, 0.09)
+mesh = SubResource("UnitCapsule")
+
+[node name="SapscrapPalpCOuter" type="MeshInstance3D" parent="Sapscrap/SapscrapPalpC"]
+position = Vector3(0, 0.48, 0.77)
+rotation = Vector3(1.15, 0, 0)
+scale = Vector3(0.07, 0.25, 0.07)
+mesh = SubResource("UnitCapsule")
+
+[node name="SapscrapPalpCClawLeft" type="MeshInstance3D" parent="Sapscrap/SapscrapPalpC"]
+position = Vector3(-0.07, 0.65, 1)
+rotation = Vector3(1.08, 0, -0.2)
+scale = Vector3(0.035, 0.13, 0.035)
+mesh = SubResource("UnitCapsule")
+
+[node name="SapscrapPalpCClawRight" type="MeshInstance3D" parent="Sapscrap/SapscrapPalpC"]
+position = Vector3(0.07, 0.65, 1)
+rotation = Vector3(1.08, 0, 0.2)
+scale = Vector3(0.035, 0.13, 0.035)
+mesh = SubResource("UnitCapsule")
+
+[node name="SapscrapActivePalpSignal" type="MeshInstance3D" parent="Sapscrap/SapscrapPalpC"]
+position = Vector3(0, 0.68, 1.08)
+scale = Vector3(0.12, 0.12, 0.12)
+mesh = SubResource("UnitSphere")

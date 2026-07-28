@@ -39,6 +39,12 @@ const EXPORTS := [
 	{"source": "res://tools/asset_sources/peris_room_props_source.tscn", "folder": "peris-sim/props/plant_table", "file": "plant_table", "names": ["PlantTableTop", "PlantTableLegNW", "PlantTableLegNE", "PlantTableLegSW", "PlantTableLegSE"], "base": Color(0.34, 0.23, 0.18), "grime": Color(0.12, 0.07, 0.05), "wear": Color(0.58, 0.42, 0.30)},
 	{"source": "res://tools/asset_sources/peris_room_props_source.tscn", "folder": "peris-sim/portal_room", "file": "monos_portal_room_shell", "names": ["PortalRoomFloor", "PortalRoomBackWall", "PortalRoomSideWall"], "base": Color(0.15, 0.14, 0.18), "grime": Color(0.045, 0.04, 0.06), "wear": Color(0.30, 0.28, 0.35), "px_per_m": 16},
 	{"source": "res://tools/asset_sources/peris_room_props_source.tscn", "folder": "peris-sim/portal_room", "file": "monos_portal_figure", "names": ["MonosPortalBody", "MonosPortalHead"], "base": Color(0.63, 0.53, 0.38), "grime": Color(0.26, 0.20, 0.12), "wear": Color(0.82, 0.72, 0.54)},
+	# Mother Flure mechanisms. Their construction scene is tooling-only; the runtime chunk
+	# instantiates the portable wrappers so portal, carried gear, and lifting membrane keep
+	# unmistakable physical identities while their live state stays authoritative elsewhere.
+	{"source": "res://tools/asset_sources/mother_flure_mechanisms_source.tscn", "folder": "mother-flure/portal_frame", "file": "portal_frame", "names": ["PortalOuterRing", "PortalInnerRing", "PortalFoot", "PortalCoilLeft", "PortalCoilRight", "PortalCableLeft", "PortalCableRight"], "base": Color(0.19, 0.18, 0.16), "grime": Color(0.055, 0.045, 0.035), "wear": Color(0.66, 0.47, 0.24), "px_per_m": 40},
+	{"source": "res://tools/asset_sources/mother_flure_mechanisms_source.tscn", "folder": "mother-flure/mother_gear", "file": "mother_gear", "names": ["GearRing", "GearHub", "GearSpoke0", "GearSpoke1", "GearSpoke2", "GearSpoke3", "GearSpoke4", "GearSpoke5", "GearSpoke6", "GearSpoke7", "GearTooth0", "GearTooth1", "GearTooth2", "GearTooth3", "GearTooth4", "GearTooth5", "GearTooth6", "GearTooth7", "GearTooth8", "GearTooth9", "GearTooth10", "GearTooth11", "GearGripLeft", "GearGripRight"], "base": Color(0.49, 0.34, 0.16), "grime": Color(0.10, 0.065, 0.025), "wear": Color(0.90, 0.72, 0.38), "px_per_m": 48},
+	{"source": "res://tools/asset_sources/mother_flure_mechanisms_source.tscn", "folder": "mother-flure/rings_membrane", "file": "rings_membrane", "names": ["MembraneVane0", "MembraneVane1", "MembraneVane2", "MembraneVane3", "MembraneVane4", "MembraneVane5", "MembraneVane6", "MembraneVane7", "MembraneTendon", "MembraneAnchorLeft", "MembraneAnchorCenter", "MembraneAnchorRight"], "base": Color(0.15, 0.25, 0.17), "grime": Color(0.035, 0.075, 0.045), "wear": Color(0.48, 0.84, 0.56), "px_per_m": 40},
 ]
 
 
@@ -46,8 +52,11 @@ func _init() -> void:
 	var baker = load("res://scripts/generation/uv_atlas_baker.gd")
 	var instances := {}
 	var failed := false
+	var family_filter := OS.get_environment("ASSET_FAMILY").strip_edges()
 	for raw_spec in EXPORTS:
 		var spec := raw_spec as Dictionary
+		if family_filter != "" and not str(spec["folder"]).begins_with(family_filter):
+			continue
 		var source_path := str(spec["source"])
 		if not instances.has(source_path):
 			var packed := load(source_path) as PackedScene

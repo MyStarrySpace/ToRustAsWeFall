@@ -17,6 +17,9 @@ var _segment_mats: Array[StandardMaterial3D] = []
 # --- Anchor constraint ---
 var _anchor_pos := Vector3.ZERO  # Wall attachment point (tail stays here)
 var _anchored := true            # Whether the chain is tethered to its anchor
+const CHAIN_CONTACT_INTERVAL := 0.05
+const CHAIN_CONTACT_RANGE := 0.6
+var _chain_contact_next_tick := 0.0
 
 # --- Overrides ---
 
@@ -53,27 +56,8 @@ func _set_mesh_color(c: Color) -> void:
 		mat.albedo_color = c
 
 func _process(delta: float) -> void:
-	# The head charge is scheduler-tick-derived (base Enemy._process), so the contact
-	# tick is fast-forward-invariant. The trailing body segments still follow per frame
-	# (follow_speed * delta * spd below), so segment-hit timing is a per-frame
-	# approximation; collisions test the scheduler-authoritative target position.
-	if _charging and get_state() == "charge" and not _charge_hit:
-		for seg_pos in _segment_positions:
-			for target_id in _detection_targets:
-				var target_pos := _charge_target_world(target_id)
-				if target_pos == Vector3.INF:
-					continue
-				if seg_pos.distance_to(target_pos) < 0.6:
-					# Route segment contact through the SHARED strike resolution so it honours the dodge
-					# window, skips a downed target, and deals REAL data-layer damage (not just a signal).
-					# A contact that's dodged/dead doesn't end the charge — the scheduled impact retries.
-					_resolve_strike(target_id)
-					if _charge_hit:
-						_end_charge()
-						break
-			if _charge_hit:
-				break
-
+	# Segment meshes below are presentation-only smoothing. Gameplay contact is sampled on the
+	# scheduler from an analytic head/anchor shape, so render FPS cannot add or remove hits.
 	super._process(delta)
 
 	if _segments.is_empty():
@@ -156,6 +140,121 @@ func _apply_segment_visuals() -> void:
 		for i in range(_segments.size()):
 			_segments[i].position.y += sin(t + i * 0.5) * 0.01
 
+
+# --- Scheduler-authoritative chain contact / save authority ---
+
+func _begin_lunge() -> void:
+	super._begin_lunge()
+	if _charging and get_state() == "charge" and not _charge_hit:
+		_arm_chain_contact_tick()
+
+
+func _arm_chain_contact_tick(absolute_tick := -1.0) -> void:
+	var scheduler := _get_scheduler()
+	if scheduler == null or get_state() != "charge" or not _charging or _charge_hit:
+		_chain_contact_next_tick = 0.0
+		return
+	var now := float(scheduler.get_current_tick())
+	var deadline := float(absolute_tick)
+	if deadline < 0.0:
+		deadline = now + CHAIN_CONTACT_INTERVAL
+	deadline = maxf(now + 0.000001, deadline)
+	_chain_contact_next_tick = deadline
+	scheduler.schedule_at(
+		deadline,
+		_on_chain_contact_tick.bind(deadline),
+		_state_tag)
+	_publish_enemy_authority()
+
+
+func _on_chain_contact_tick(expected_tick: float) -> void:
+	if not is_equal_approx(_chain_contact_next_tick, expected_tick):
+		return
+	_chain_contact_next_tick = 0.0
+	if get_state() != "charge" or not _charging or _charge_hit:
+		_publish_enemy_authority()
+		return
+	for segment_position in _authoritative_chain_positions():
+		for target_id in _detection_targets:
+			var target_position := _charge_target_world(target_id)
+			if target_position == Vector3.INF \
+					or segment_position.distance_to(target_position) >= CHAIN_CONTACT_RANGE:
+				continue
+			# The shared strike path owns dodge, sanctuary, downed checks, damage, and deduplication.
+			if _resolve_strike(target_id):
+				_end_charge()
+				return
+	if get_state() == "charge" and _charging and not _charge_hit:
+		_arm_chain_contact_tick(expected_tick + CHAIN_CONTACT_INTERVAL)
+
+
+## Gameplay collision is a pure function of scheduler-authoritative head position plus saved anchor
+## state. The visually smoothed `_segment_positions` never participate in a hit decision.
+func _authoritative_chain_positions() -> Array[Vector3]:
+	var result: Array[Vector3] = []
+	if segment_count <= 0:
+		return result
+	var head := _self_pos()
+	if segment_count == 1:
+		result.append(head)
+		return result
+	if _anchored:
+		for i in range(segment_count):
+			result.append(head.lerp(_anchor_pos, float(i) / float(segment_count - 1)))
+		return result
+	var away_from_tail := head - _anchor_pos
+	var axis := away_from_tail.normalized() if away_from_tail.length_squared() > 0.000001 \
+		else Vector3.FORWARD
+	for i in range(segment_count):
+		result.append(head - axis * segment_spacing * float(i))
+	return result
+
+
+func _publish_enemy_authority() -> void:
+	super._publish_enemy_authority()
+	if _restoring_enemy_authority or not _enemy_authority_initialized \
+			or game_state == null or not game_state.has_method("set_world_state"):
+		return
+	var key := _enemy_authority_key()
+	var saved: Variant = game_state.get_world_state(key, {})
+	if not (saved is Dictionary) \
+			or int(saved.get("version", 0)) != ENEMY_AUTHORITY_VERSION:
+		return
+	var record := (saved as Dictionary).duplicate(true)
+	record["chain"] = {
+		"anchor_pos": _vec3_to_data(_anchor_pos),
+		"anchored": _anchored,
+		"next_contact_tick": _chain_contact_next_tick,
+	}
+	game_state.set_world_state(key, record)
+
+
+func on_game_state_snapshot_restored() -> void:
+	super.on_game_state_snapshot_restored()
+	_chain_contact_next_tick = 0.0
+	if not _has_saved_enemy_authority():
+		return
+	var saved: Dictionary = game_state.get_world_state(_enemy_authority_key(), {})
+	var chain: Dictionary = saved.get("chain", {})
+	if not chain.is_empty():
+		_anchor_pos = _vec3_from_data(chain.get("anchor_pos", []), _anchor_pos)
+		_anchored = bool(chain.get("anchored", true))
+		_chain_contact_next_tick = float(chain.get("next_contact_tick", 0.0))
+	_sync_chain_visual_to_authority()
+	if get_state() == "charge" and _charging and not _charge_hit:
+		var scheduler := _get_scheduler()
+		var deadline := _chain_contact_next_tick
+		if scheduler != null and deadline <= float(scheduler.get_current_tick()):
+			deadline = float(scheduler.get_current_tick()) + CHAIN_CONTACT_INTERVAL
+		_arm_chain_contact_tick(deadline)
+
+
+func _sync_chain_visual_to_authority() -> void:
+	var authoritative := _authoritative_chain_positions()
+	_segment_positions.clear()
+	_segment_positions.append_array(authoritative)
+	_apply_segment_visuals()
+
 # --- Public helpers ---
 
 ## Set initial segment positions. Last point becomes the anchor.
@@ -165,15 +264,19 @@ func set_wall_line(start: Vector3, direction: Vector3) -> void:
 		_segment_positions.append(start + direction.normalized() * (i * segment_spacing))
 	_anchor_pos = _segment_positions[segment_count - 1]
 	_anchored = true
+	_publish_enemy_authority()
 
 ## Detach from the anchor.
 func detach() -> void:
 	_anchored = false
+	_publish_enemy_authority()
 
 ## Attach to an anchor position.
 func anchor_to(pos: Vector3) -> void:
 	_anchor_pos = pos
 	_anchored = true
+	_sync_chain_visual_to_authority()
+	_publish_enemy_authority()
 
 ## Maximum distance the head can reach from the anchor.
 func get_max_reach() -> float:

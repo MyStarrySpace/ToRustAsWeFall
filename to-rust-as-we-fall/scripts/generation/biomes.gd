@@ -81,7 +81,7 @@ const BIOMES := {
 	},
 	"stacks": {
 		"display": "The Open Files Initiative",
-		"flora": ["climbvine", "flure", "hushbloom", "doma"],
+		"flora": ["climbvine", "flure", "hushbloom", "capbage"],
 		"enemies": ["spikers", "tanglers", "gnawers", "sapscraps"],
 		"structures": ["shelter", "junction", "barrier", "carry_gear", "terminal"],
 		"theme": {
@@ -112,7 +112,7 @@ const BIOMES := {
 	},
 	"garden": {
 		"display": "Greenfields Collective",
-		"flora": ["seefern", "scarpet", "capbage", "hushbloom", "gasafoetida", "snapbloom"],
+		"flora": ["seefern", "scarpet", "capbage", "hushbloom", "gasafoetida"],
 		"enemies": ["meebs", "candids", "toxos", "gnawers"],
 		"structures": ["shelter", "forage_cache", "terminal", "root_slide"],
 		"theme": {
@@ -221,6 +221,108 @@ const BIOMES := {
 	},
 }
 
+## Generated districts share a semantic visual hierarchy while retaining their own hue family.
+## World surfaces and broad fill establish place; saturated emission and local light are reserved
+## for actionable controls, live hazards, resources, and state changes. Keeping this as serialized
+## theme data prevents the renderer from guessing gameplay importance from an object's color.
+const VISUAL_HIERARCHY_BY_BIOME := {
+	"channels": {
+		"contract_id": "generated_visual_hierarchy_v1",
+		"floor_tint": [0.38, 0.46, 0.46, 1.0],
+		"risk_tint": [0.42, 0.27, 0.18, 1.0],
+		"background_color": [0.008, 0.015, 0.019, 1.0],
+		"ambient_color": [0.12, 0.20, 0.21, 1.0],
+		"directional_color": [0.36, 0.50, 0.52, 1.0],
+		"background_mix": 0.80,
+		"color_mix": 0.70,
+		"ambient_energy_ceiling": 0.42,
+		"directional_energy_ceiling": 0.72,
+		"glow_intensity_floor": 0.24,
+		"decorative_fill_scale": 0.34,
+		"landmark_albedo_scale": 0.60,
+		"interactive_light_energy": 1.05,
+		"interactive_light_range": 4.4,
+		"inactive_light_energy": 0.05,
+		"completed_light_energy": 0.22,
+	},
+	"stacks": {
+		"contract_id": "generated_visual_hierarchy_v1",
+		"floor_tint": [0.37, 0.41, 0.48, 1.0],
+		"risk_tint": [0.36, 0.27, 0.22, 1.0],
+		"background_color": [0.009, 0.013, 0.022, 1.0],
+		"ambient_color": [0.12, 0.15, 0.22, 1.0],
+		"directional_color": [0.42, 0.49, 0.62, 1.0],
+		"background_mix": 0.80,
+		"color_mix": 0.70,
+		"ambient_energy_ceiling": 0.42,
+		"directional_energy_ceiling": 0.72,
+		"glow_intensity_floor": 0.24,
+		"decorative_fill_scale": 0.36,
+		"landmark_albedo_scale": 0.62,
+		"interactive_light_energy": 1.05,
+		"interactive_light_range": 4.4,
+		"inactive_light_energy": 0.05,
+		"completed_light_energy": 0.22,
+	},
+	"garden": {
+		"contract_id": "generated_visual_hierarchy_v1",
+		"floor_tint": [0.32, 0.41, 0.32, 1.0],
+		"risk_tint": [0.41, 0.33, 0.20, 1.0],
+		"background_color": [0.008, 0.016, 0.012, 1.0],
+		"ambient_color": [0.13, 0.21, 0.15, 1.0],
+		"directional_color": [0.40, 0.55, 0.42, 1.0],
+		"background_mix": 0.78,
+		"color_mix": 0.68,
+		"ambient_energy_ceiling": 0.44,
+		"directional_energy_ceiling": 0.74,
+		"glow_intensity_floor": 0.22,
+		"decorative_fill_scale": 0.38,
+		"landmark_albedo_scale": 0.64,
+		"interactive_light_energy": 1.0,
+		"interactive_light_range": 4.4,
+		"inactive_light_energy": 0.05,
+		"completed_light_energy": 0.22,
+	},
+	"cleanstreets": {
+		"contract_id": "generated_visual_hierarchy_v1",
+		"floor_tint": [0.46, 0.45, 0.40, 1.0],
+		"risk_tint": [0.34, 0.37, 0.39, 1.0],
+		"background_color": [0.015, 0.015, 0.013, 1.0],
+		"ambient_color": [0.22, 0.20, 0.16, 1.0],
+		"directional_color": [0.58, 0.54, 0.44, 1.0],
+		"background_mix": 0.76,
+		"color_mix": 0.66,
+		"ambient_energy_ceiling": 0.46,
+		"directional_energy_ceiling": 0.76,
+		"glow_intensity_floor": 0.22,
+		"decorative_fill_scale": 0.34,
+		"landmark_albedo_scale": 0.62,
+		"interactive_light_energy": 1.05,
+		"interactive_light_range": 4.4,
+		"inactive_light_energy": 0.05,
+		"completed_light_energy": 0.22,
+	},
+	"deadzone": {
+		"contract_id": "generated_visual_hierarchy_v1",
+		"floor_tint": [0.39, 0.31, 0.29, 1.0],
+		"risk_tint": [0.29, 0.28, 0.27, 1.0],
+		"background_color": [0.014, 0.009, 0.009, 1.0],
+		"ambient_color": [0.20, 0.14, 0.13, 1.0],
+		"directional_color": [0.52, 0.38, 0.34, 1.0],
+		"background_mix": 0.82,
+		"color_mix": 0.72,
+		"ambient_energy_ceiling": 0.40,
+		"directional_energy_ceiling": 0.68,
+		"glow_intensity_floor": 0.24,
+		"decorative_fill_scale": 0.32,
+		"landmark_albedo_scale": 0.58,
+		"interactive_light_energy": 1.1,
+		"interactive_light_range": 4.4,
+		"inactive_light_energy": 0.05,
+		"completed_light_energy": 0.22,
+	},
+}
+
 static func biome_ids() -> Array:
 	return BIOME_SEQUENCE.duplicate()
 
@@ -229,6 +331,11 @@ static func has_biome(id: String) -> bool:
 
 static func display_name(id: String) -> String:
 	return str(BIOMES.get(id, {}).get("display", id.capitalize()))
+
+
+static func visual_hierarchy_for(id: String) -> Dictionary:
+	var resolved_id := id if VISUAL_HIERARCHY_BY_BIOME.has(id) else "channels"
+	return (VISUAL_HIERARCHY_BY_BIOME.get(resolved_id, {}) as Dictionary).duplicate(true)
 
 ## The generator `limitations` block for a biome — restricts content to the biome's lists via `allowed`.
 static func limitations_for(id: String) -> Dictionary:
@@ -252,6 +359,7 @@ static func theme_contract_for(id: String, seed: int = 0) -> Dictionary:
 	theme["contract_id"] = "main_game_area_theme_v1"
 	theme["id"] = id
 	theme["display_name"] = display_name(id)
+	theme["visual_hierarchy"] = visual_hierarchy_for(id)
 	theme["infrastructure_catalog"] = INFRASTRUCTURE_CATALOG.duplicate(true)
 	theme["infrastructure_pair"] = (INFRASTRUCTURE_PAIRS.get(id, {}) as Dictionary).duplicate(true)
 	var landmarks: Array = theme.get("landmarks", [])
@@ -300,6 +408,22 @@ static func validate() -> Dictionary:
 		if theme.is_empty():
 			errors.append("Biome '%s' has no area theme" % id)
 			continue
+		var hierarchy: Dictionary = theme.get("visual_hierarchy", {})
+		if str(hierarchy.get("contract_id", "")) != "generated_visual_hierarchy_v1":
+			errors.append("Biome '%s' has no generated visual hierarchy contract" % id)
+		for color_field in [
+			"floor_tint", "risk_tint", "background_color", "ambient_color", "directional_color"
+		]:
+			var color_value: Variant = hierarchy.get(color_field, [])
+			if not (color_value is Array) or (color_value as Array).size() < 3:
+				errors.append("Biome '%s' visual hierarchy is missing %s" % [id, color_field])
+		var fill_scale := float(hierarchy.get("decorative_fill_scale", 1.0))
+		var inactive_energy := float(hierarchy.get("inactive_light_energy", 1.0))
+		var interactive_energy := float(hierarchy.get("interactive_light_energy", 0.0))
+		if fill_scale <= 0.0 or fill_scale >= 0.75:
+			errors.append("Biome '%s' decorative fill does not recede" % id)
+		if interactive_energy <= inactive_energy:
+			errors.append("Biome '%s' interaction lighting has no state contrast" % id)
 		for field in ["source_area", "floor_tile", "risk_tile"]:
 			if str(theme.get(field, "")).strip_edges() == "":
 				errors.append("Biome '%s' theme is missing %s" % [id, field])

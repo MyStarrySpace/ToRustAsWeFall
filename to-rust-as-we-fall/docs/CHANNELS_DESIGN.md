@@ -1,5 +1,11 @@
 # The Channels — Design (Sector 12, the flooded drainage)
 
+> **Canon correction (2026-07-21):** the uppercase `TRACE`, `BLOOM`, and `BRACE`
+> vocabulary retained in older proposals below is design shorthand, not a cast-ability kit.
+> Implement it through target-owned SCAN/HACK, READ/TEND, and place-specific survival
+> interactions/overlays. Do not surface those terms as ability buttons. The committed cast
+> roster is Aster's **EMP** and Peris's **Wrap** only.
+
 The authoritative design intent for the channels stretch. Written down so it stops getting
 re-explained. The current `wash_relay_chunk.gd` is ONE chunk of this larger structure; treat
 this doc as the target the chunk should grow toward.
@@ -11,14 +17,15 @@ this doc as the target the chunk should grow toward.
   from). You **ASCEND** the spiral, climbing against the downward flow — a wash carries you back
   DOWN to the bottom start shelter.
 - **Entry** — you arrive on a **bridge atop the spiral**, where you can see the WHOLE stretch
-  laid out below at a glance: every plant, every terminal, the whole climb. Then you drop in and
+  laid out below at a glance: every plant, every flow control, the whole climb. Then you drop in and
   the climb begins from the bottom. That overlook is the in-fiction reason **Peris knows the
   plants' positions later** — she read them from the bridge, so they stay marked in her flora
   overlay even where the party can't currently see them (see "Perception in the channels").
 - **Chunk** — the stretch is divided into chunks. A chunk is the span from the previous chunk
-  down to **the thing that connects it back to the stretch start** — a **sloperope** or a
-  **terminal**. That connect-back device is the chunk's "checkpoint": a washed member uses it to
-  rejoin at THIS chunk instead of redoing the whole stretch.
+  down to **the sloperope that connects it back to the stretch start**. That physical line is the
+  chunk's "checkpoint": a washed member uses it to
+  rejoin at THIS chunk instead of redoing the whole stretch. It restores no stats; HP/stamina
+  recovery and revival belong to a full shelter rest.
 - **Section** — each chunk is divided into sections. A section is a challenge (or series of
   challenges) that ends in **something that helps the other members advance** — e.g. an
   **override button that stops the channel flow for that section** so the rest of the party can
@@ -72,17 +79,19 @@ outward-ring spread used for party moves), just targeting Capbage slots instead 
 power/unlock it? (b) does this live as the final beat of the existing junction chunk, or its own
 small `channels_wash_intro` chunk between the junction and the spiral?
 
-## Failure & recovery (the core loop)
+## Failure, reunion, and shelter recovery (the core loop)
 
 - A character who is **washed out** (mistimed cross, guard hit) is swept down to the **start of
-  the stretch** (the start shelter). They are **stranded** there until recovered.
-- **Recovery** = they must **climb (sloperope) or telephone (terminal) back up** to the proper
-  chunk. The connect-back device at a chunk's end is what lets a stranded member rejoin at that
-  chunk. Recovery is a **time investment**, not instant — it's a decision, not a freebie.
+  the stretch** (the start shelter). They are **stranded** there until reunited with the party.
+- **Reunion** = they must **climb the deployed sloperope** back up to the proper chunk. The
+  physical connect-back at a chunk's end lets a stranded member rejoin there;
+  it never heals, restores stamina, revives, or clears deprivation.
+- **Recovery** = a **full rest at a shelter**. This is where HP/stamina recovery and revival live,
+  and where the party spends ATP to afford the night.
 - **The decision:** when a member goes down, the party chooses to either
   (a) **invest the time to send them back up** now, or
-  (b) **leave them waiting** while the others finish the section, then bring them up at the
-      chunk end (drop the sloperope / hit the terminal).
+  (b) **leave them waiting** while the others finish the section, then drop the sloperope at the
+      chunk end so they can climb.
 - **Consequence scales with depth:** the deeper into a chunk a member is downed, the more they
   (or the party) must re-cover to get them back to the front — so a late-chunk wash hurts more
   than an early one.
@@ -115,13 +124,14 @@ these isn't "polish-later," it's unfinished.
 1. **Two solves, one geometry (build the Shadow, don't bolt it on).** Author each section as ONE
    space with a Presented solve (the hook member — usually **Endo**, who reads this drainage as
    home) AND a designed **Aster+Peris Shadow** through the *same* hazard. Fill both columns of the
-   spec or the section is unfinished. The Shadow is harder by setup/resource (TRACE the real beat +
-   BLOOM a substitute lane), never a relabel of the same button, never prompted or labeled.
+   spec or the section is unfinished. The Shadow is harder by setup/resource (read the real beat at
+   its gauge + tend or place an already-authored flora tool), never a relabel of the same button,
+   never prompted or labeled.
 2. **Demand two registers, not one button.** A section is legitimate only if clearing it genuinely
-   needs two perception registers composed — one answers WHERE (Peris BLOOM lights the dark lane),
-   the other WHEN (Aster TRACE names the surge window). Each ability is a **state the solve reads**
-   (a bloomed cell is the only walkable read of a dark section; the TRACE window is the only safe
-   cross), not a flavor toast. Test: if reverting an ability doesn't make the section unsolvable or
+   needs two perception registers composed — one answers WHERE (Peris reads or tends the lane),
+   the other WHEN (Aster reads the surge at a gauge or through his overlay). Each contextual action
+   produces a **world state the solve reads** (a tended cell marks walkable ground; a scanned gauge
+   exposes the safe crossing window), not a flavor toast. Test: if reverting that world state doesn't make the section unsolvable or
    strictly harder, it isn't load-bearing — fix it.
 3. **The geometry teaches on first approach; explicit hand-holding is earned, not default.** The
    *implicit* tell is always present from first sight — the flow-strip telegraph brightens before
@@ -142,11 +152,11 @@ these isn't "polish-later," it's unfinished.
    A held console (stand on it → flow holds; vacate → flow resumes) keeps the holder committed and
    exposed; co-locate a guard that threatens the *holder* so losing them forces a re-plan and any
    non-washed member inherits the station. Forbid permanent `_override_locked` latches.
-6. **A wash costs by depth and recovers diegetically — beatable, never soft-lock.** Sweep the
-   member to the start shelter and STRAND them; recovery is a chosen time investment via the chunk's
-   connect-back (Terminal = fast call, Sloperope = slow free climb), scaling with how deep they
-   fell. The held-role section is the natural place to wait for a downed member; all-three-washed =
-   redo the chunk, so reuniting before pushing is the smart play; BRACE refunds the re-cross.
+6. **A wash costs by depth and reunites diegetically — beatable, never soft-lock.** Sweep the
+   member to the start shelter and STRAND them; reunion is a chosen time investment through the
+   physical sloperope, scaling with how deep they fell. The held-role section is the natural place
+   to wait for a washed member; all-three-washed = redo the chunk, so reuniting before pushing is
+   the smart play. Recovery waits for the next full shelter rest.
 7. **Three voices in three registers; the wash is iron, not water.** Cut the `//` readouts to true
    machine confirmations; the rest are character lines in-register — Aster the data read ("Clearance
    holds four seconds"), Peris the relational/flora read ("It pulls down — wait for it to breathe
@@ -163,13 +173,14 @@ these isn't "polish-later," it's unfinished.
 - **PERCEPTION_LOCK** — what is HIDDEN from each single register, revealed only by composing two
   (one WHERE, one WHEN). Name the overlays that must be on to read it.
 - **PRESENTED SOLVE** — the hook member's path (Endo reads home, crosses first, holds the helper).
-- **SHADOW SOLVE (Aster+Peris)** — the harder same-hazard route (Aster TRACE times it + Peris BLOOM
-  lights/causeways the lane, no Endo). Beatable, harder by setup, NEVER prompted or labeled.
+- **SHADOW SOLVE (Aster+Peris)** — the harder same-hazard route (Aster reads WHEN through his overlay
+  or a target-owned gauge; Peris reads/tends WHERE through her flora register, no Endo). Beatable,
+  harder by setup, NEVER prompted or labeled.
 - **ADVANCE_HELPER** — {held-override / held-plate / double-plate / timed-window}; HELD, never a
   latch. Where it sits, what it relieves while held.
 - **ROLE_INHERITANCE** — who takes the held station on a wash + what re-planning the loss forces.
-- **FAIL / RECOVER** — what a wash does here (swept, stranded, dropped) + the depth-scaled cost;
-  which connect-back rejoins at THIS chunk + BRACE refund. Never a soft-lock.
+- **FAIL / REJOIN** — what a wash does here (swept, stranded, dropped), the physical runback/climb
+  cost, and which connect-back reunites the party at THIS chunk. It changes no stats. Never a soft-lock.
 - **TEACH_BEAT** — the diegetic first-encounter tell (staging + binding icon + one in-register line
   played ONCE on entry, not after N failures).
 - **ESCALATION_HOOK** — from the degradation/pressure menu (flora-sensor decay / overlay loss / a
@@ -195,17 +206,18 @@ A guarded basin you ASCEND whose flow-override must be HELD, not latched.
   threatens the HOLDER — knock Endo off and the two on the floor are exposed; whoever isn't
   mid-cross inherits the hold.
 - **Shadow solve (Aster+Peris, harder, unadvertised):** no Endo = no safe-tile overlay AND no spare
-  body to hold while two cross. Aster TRACE solves the next window where BOTH spouts are dark (a real
-  min-gap over the two cadences) for an UNHELD timed crossing; Peris BLOOM plants anchor-flora on a
-  fertile lip → after a germination wait it raises a **causeway** that locally breaks the current
+  body to hold while two cross. Aster scans the basin's real gauge to find the next window where BOTH
+  spouts are dark (a real min-gap over the two cadences) for an UNHELD timed crossing; Peris tends or
+  places an authored traversal-flora cutting on a valid fertile lip → after its visible growth wait
+  it raises a **causeway** that locally breaks the current
   (causeway cells excluded from the wash), so they cross in two timed dashes. Harder: a correct
   double-beat read + a germination wait under threat; the causeway covers only ONE lane.
 - **Teach (no text):** the first step onto the override visibly calms the basin and dims both strips;
   step OFF and they re-brighten and a harmless spout surges where you stood. Player SEES hold=calm,
   release=surge. The bridge overlook already showed the basin + Peris named its plants.
-- **Fail/recover:** a washed member is swept to the start shelter, stranded; recover via Terminal
-  (fast, costly) or Sloperope (slow, free), cost by depth; BRACE refunds the re-cross; all three
-  down = redo the chunk.
+- **Fail/rejoin:** a washed member is swept to the start shelter, stranded but mobile; they run the
+  route again or climb the deployed Sloperope, with travel time priced by depth. Rejoining never
+  restores stats; a full shelter rest owns recovery. All three washed = redo the chunk.
 - **Escalation (same geometry, later):** ramp through Peris's degradation — her lip markers + bridge
   pins go fuzzy/drop and a causeway germinates slower or fails. The Shadow gets harder exactly where
   it leans on her; the Endo Presented path is unchanged. NO new spouts, NO shorter period.
@@ -215,14 +227,14 @@ A guarded basin you ASCEND whose flow-override must be HELD, not latched.
 The shipped `wash_relay_chunk.gd` is effectively **one chunk** of the stretch:
 - ✅ Sections with challenges ending in an advance-helper (override / plate / sluice).
 - ✅ A wash sweeps the member to the start (`START_POS`).
-- ✅ Connect-back devices exist at the chunk end (Terminal = telephone up, Sloperope = climb).
+- ✅ A physical sloperope connect-back exists at the chunk end.
 - ✅ Surge telegraph now survives the real GLB scene (warped under `_strip_root`).
-- ⏳ **Strand-and-rescue is being made real now** — a wash STRANDS the member (immobile at the
-  start); the Terminal/sloperope actually recover stranded members; Endo's BRACE refunds a
-  stranded member's stamina. (Was dead code — `_washed` was never populated.)
+- ✅ **Strand-and-rejoin is real** — a wash STRANDS the member at the start; the deployed sloperope
+  reconnects them without changing HP, stamina, ATP, downed state, or deprivation. Full shelter
+  rest remains the only recovery sink.
 - 🔜 **Multi-chunk stretch** — split the stretch into several chunks, each with its own
-  connect-back device, bookended by two shelters, entered from the spiral-top bridge. Recovery
-  rejoins at the chunk, not the stretch start. (Larger restructure; future.)
+  connect-back device, bookended by two shelters, entered from the spiral-top bridge. Reunion
+  happens at the chunk; recovery happens at shelter. (Larger restructure; future.)
 - 🔜 **Per-section activator co-op** — guarantee each chunk has a hold/activate section where one
   member enables the others and the role can be inherited on a wash.
 - 🔜 **Bridge entry vantage** — the opening over-look that justifies Peris's plant knowledge.

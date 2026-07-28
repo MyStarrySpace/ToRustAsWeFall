@@ -22,6 +22,14 @@ var watch_id := ""                   # the lead/active character whose position 
 ## ...or from a plain node (fallback when there's no GameState).
 var _player_node: Node3D
 
+# apply_to() is intentionally more than a one-shot material conversion. Preview chunks restore and
+# replace presentation materials as their authoritative state changes; without a small lifecycle seam,
+# the first StandardMaterial3D assigned after load silently removes see-through rendering. Keep weak
+# references only to geometry that passed the original height/exemption policy, then repair a replaced
+# compatible material on the next presentation frame. Weak references let streamed chunks disappear
+# without an explicit teardown handshake.
+var _tracked_geometry: Dictionary = {} # instance id -> {node: WeakRef, outline_safe_clip: bool}
+
 func set_player(node: Node3D) -> void:
 	_player_node = node
 	sync_now()
@@ -34,7 +42,10 @@ func set_watch(state, char_id: String) -> void:
 func _process(_delta: float) -> void:
 	if Engine.is_editor_hint():
 		return
+	var perf_started := PerformanceTrace.begin()
 	sync_now()
+	var refreshed := refresh_tracked_materials()
+	PerformanceTrace.end(&"draw", &"camera_occlusion.process", perf_started, watch_id, refreshed + 1)
 
 ## Camera target switches happen during input, before the next process pass. Publish
 ## the matching reveal centre immediately so the close cabin wall cannot render one
@@ -79,22 +90,9 @@ func apply_to(root: Node, minimum_occluder_height := 0.0) -> int:
 			continue
 		if minimum_occluder_height > 0.0 and mi.get_aabb().size.y < minimum_occluder_height:
 			continue
-		# A whole-mesh material_override wins over per-surface overrides, so wrap THAT; otherwise wrap each
-		# surface so per-surface materials (the gltf case) are preserved.
-		if mi.material_override != null:
-			var wrapped_override := _wrap(mi.material_override, outline_safe_clip)
-			if wrapped_override != null:
-				mi.material_override = wrapped_override
-				count += 1
-			continue
-		for s in range(mi.mesh.get_surface_count()):
-			var active_surface := mi.get_active_material(s)
-			if active_surface == null:
-				continue
-			var wrapped_surface := _wrap(active_surface, outline_safe_clip)
-			if wrapped_surface != null:
-				mi.set_surface_override_material(s, wrapped_surface)
-				count += 1
+		count += _refresh_mesh_instance(mi, outline_safe_clip)
+		if _mesh_has_trackable_material(mi):
+			_track_geometry(mi, outline_safe_clip)
 
 	# LevelDecorator batches its dense render-only facade grammar into MultiMeshInstance3D nodes.
 	# They are GeometryInstance3D siblings of MeshInstance3D, not subclasses, so the scan above cannot
@@ -111,12 +109,92 @@ func apply_to(root: Node, minimum_occluder_height := 0.0) -> int:
 			continue
 		if minimum_occluder_height > 0.0 and multimesh_instance.get_aabb().size.y < minimum_occluder_height:
 			continue
-		if multimesh_instance.material_override != null:
-			var wrapped_multimesh := _wrap(multimesh_instance.material_override, outline_safe_clip)
-			if wrapped_multimesh != null:
-				multimesh_instance.material_override = wrapped_multimesh
-				count += 1
+		count += _refresh_multimesh_instance(multimesh_instance, outline_safe_clip)
+		if _is_trackable_material(multimesh_instance.material_override):
+			_track_geometry(multimesh_instance, outline_safe_clip)
 	return count
+
+## Re-wrap compatible materials replaced since apply_to(). This is cheap (no subtree scan): only weakly
+## tracked wall/ceiling geometry is inspected. It is public so a load/reset presenter can force the repair
+## before its next rendered frame; _process() also calls it as the safety net for ordinary runtime swaps.
+func refresh_tracked_materials() -> int:
+	var refreshed := 0
+	for instance_id_v in _tracked_geometry.keys():
+		var instance_id := int(instance_id_v)
+		var record: Dictionary = _tracked_geometry.get(instance_id, {})
+		var node_ref: WeakRef = record.get("node", null)
+		var geometry: Object = node_ref.get_ref() if node_ref != null else null
+		if geometry == null or not is_instance_valid(geometry):
+			_tracked_geometry.erase(instance_id)
+			continue
+		var outline_safe_clip := bool(record.get("outline_safe_clip", false))
+		if geometry is MeshInstance3D:
+			refreshed += _refresh_mesh_instance(geometry as MeshInstance3D, outline_safe_clip)
+		elif geometry is MultiMeshInstance3D:
+			refreshed += _refresh_multimesh_instance(
+				geometry as MultiMeshInstance3D, outline_safe_clip)
+		else:
+			_tracked_geometry.erase(instance_id)
+	return refreshed
+
+func tracked_geometry_count() -> int:
+	# Prune expired weak references while answering diagnostics/tests.
+	refresh_tracked_materials()
+	return _tracked_geometry.size()
+
+func _track_geometry(geometry: GeometryInstance3D, outline_safe_clip: bool) -> void:
+	_tracked_geometry[geometry.get_instance_id()] = {
+		"node": weakref(geometry),
+		"outline_safe_clip": outline_safe_clip,
+	}
+
+func _mesh_has_trackable_material(mi: MeshInstance3D) -> bool:
+	if mi.material_override != null:
+		return _is_trackable_material(mi.material_override)
+	for surface_index in range(mi.mesh.get_surface_count()):
+		if _is_trackable_material(mi.get_active_material(surface_index)):
+			return true
+	return false
+
+func _is_trackable_material(material: Material) -> bool:
+	return material is StandardMaterial3D or (
+		material is ShaderMaterial
+		and (material as ShaderMaterial).shader == OCCLUSION_SHADER
+	)
+
+func _refresh_mesh_instance(mi: MeshInstance3D, outline_safe_clip: bool) -> int:
+	if mi == null or mi.mesh == null:
+		return 0
+	# A whole-mesh material_override wins over per-surface overrides, so wrap THAT; otherwise wrap each
+	# surface so per-surface materials (the gltf case) are preserved.
+	if mi.material_override != null:
+		var wrapped_override := _wrap(mi.material_override, outline_safe_clip)
+		if wrapped_override != null:
+			mi.material_override = wrapped_override
+			return 1
+		return 0
+	var count := 0
+	for surface_index in range(mi.mesh.get_surface_count()):
+		var active_surface := mi.get_active_material(surface_index)
+		if active_surface == null:
+			continue
+		var wrapped_surface := _wrap(active_surface, outline_safe_clip)
+		if wrapped_surface != null:
+			mi.set_surface_override_material(surface_index, wrapped_surface)
+			count += 1
+	return count
+
+func _refresh_multimesh_instance(
+		multimesh_instance: MultiMeshInstance3D, outline_safe_clip: bool
+	) -> int:
+	if multimesh_instance == null or multimesh_instance.multimesh == null \
+			or multimesh_instance.material_override == null:
+		return 0
+	var wrapped := _wrap(multimesh_instance.material_override, outline_safe_clip)
+	if wrapped == null:
+		return 0
+	multimesh_instance.material_override = wrapped
+	return 1
 
 ## Build a ShaderMaterial that runs the occlusion shader but looks like `src` (a StandardMaterial3D).
 ## Authored ShaderMaterials are returned untouched by the caller because replacing them would erase
@@ -126,6 +204,10 @@ func _wrap(src: Material, outline_safe_clip := false) -> ShaderMaterial:
 	# cannot be reconstructed from StandardMaterial fields. Leave them intact; procedural
 	# walls/ceilings and imported GLB surfaces are the actual occlusion targets.
 	if src is ShaderMaterial:
+		return null
+	# The wrapper knows how to preserve StandardMaterial3D fields. Other Material subclasses may carry
+	# renderer-specific behavior just as important as an authored shader, so do not flatten them to defaults.
+	if not src is StandardMaterial3D:
 		return null
 	var m := ShaderMaterial.new()
 	m.shader = OCCLUSION_SHADER

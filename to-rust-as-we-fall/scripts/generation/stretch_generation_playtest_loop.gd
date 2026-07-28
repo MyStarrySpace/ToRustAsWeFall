@@ -1,10 +1,17 @@
 class_name StretchGenerationPlaytestLoop
 extends RefCounted
 
+const RuntimeRegistryScript := preload("res://scripts/generation/generated_node_runtime_registry.gd")
+
 const StretchGeneratorScript := preload("res://scripts/generation/stretch_generator.gd")
+const GameSettingsScript := preload("res://scripts/system/settings.gd")
 const GENERATED_STRETCH_PREVIEW_SCENE_PATH := "res://scenes/fragments/fragment_preview.tscn"
 const ANIMATION_CONTRACT_ID := "playthrough_animation_v1"
 const DEFAULT_CAPTURE_STEP := 0.25
+const GENERATED_INPUT_COMMAND_PREFIX := "qa_generated_node_command/"
+const WORLD_INPUT_COMMAND_PREFIX := "qa_world_interaction/"
+const PHYSICAL_INTERACTION_TIMEOUT := 24.0
+const MAX_PLAYTEST_ADVANCE_SECONDS := 120.0
 const PARTY_IDS := ["aster", "peris", "endo"]
 const PARTY_OFFSETS := {
 	"aster": Vector3(0.0, 0.0, 0.0),
@@ -65,10 +72,17 @@ func playtest_spec(spec: Dictionary, tree: SceneTree, options := {}) -> Dictiona
 	preview_instance.set("preview_menu", false)  # drive the chunk directly, not the picker
 	preview_instance.set("preview_chunk", "generated_stretch")
 	preview_instance.set("scene_title_override", str(spec.get("title", "Generated Stretch")))
-	var preview_config := {}
+	# Generated-content approval uses Scarcity as its default stress-test projection.
+	# A focused test may still request another economy explicitly, but an omitted
+	# configuration must never inherit a local/persisted mode or silently choose an
+	# easier control. In all cases this is applied after generation to the same spec.
+	var preview_config: Dictionary = (
+		GameSettingsScript.GAME_MODE_CHUNK_CONFIGS[GameSettingsScript.GAME_MODE_SCARCITY] as Dictionary
+	).duplicate(true)
 	var requested_preview_config: Variant = options.get("preview_config", {})
-	if requested_preview_config is Dictionary:
+	if requested_preview_config is Dictionary and not (requested_preview_config as Dictionary).is_empty():
 		preview_config = (requested_preview_config as Dictionary).duplicate(true)
+	result["play_config"] = preview_config.duplicate(true)
 	preview_config["spec"] = spec
 	preview_instance.set("preview_chunk_config", preview_config)
 	tree.root.add_child(preview_instance)
@@ -117,50 +131,66 @@ func playtest_spec(spec: Dictionary, tree: SceneTree, options := {}) -> Dictiona
 	_record_check(result, "golden_path_moves_party", int(golden_report.get("movement_commands", 0)) > 0, "Golden path drives preview movement")
 	_record_check(result, "golden_path_uses_routes", int(golden_report.get("route_choices", 0)) >= maxi(0, (golden_report.get("visited_nodes", []) as Array).size() - 1), "Golden path uses the route graph")
 	_record_check(result, "golden_path_uses_multilevel_navigation", bool(golden_report.get("used_multi_y_path", false)), "Golden path movement uses multi-level navigation waypoints")
+	_record_check(
+		result,
+		"golden_path_uses_ordinary_interactions",
+		int(golden_report.get("physical_interactions", 0)) > 0,
+		"Golden approval never entered the ordinary input interaction coordinator"
+	)
+	_record_check(
+		result,
+		"golden_path_physical_actions_complete",
+		(golden_report.get("interaction_failures", []) as Array).is_empty()
+			and (golden_report.get("solution_action_failures", []) as Array).is_empty(),
+		"Golden approval encountered an unreachable, rejected, or incomplete physical action"
+	)
 	_record_check(result, "golden_path_reaches_shelter", bool(golden_report.get("shelter_rested", false)), "Golden path reaches and rests at the exit shelter")
 	if str(spec.get("composition", {}).get("mode", "")) == "chain_nested_poc":
 		var expected_chain_outputs := 0
-		var expected_nested_hosts := 0
 		var expected_carries := 0
+		var golden_node_ids: Array = spec.get("headless", {}).get("golden_path", [])
 		for node_v in spec.get("nodes", []):
 			var node := node_v as Dictionary
-			if str(node.get("chain_output_ref", "")) != "":
+			var node_id := str(node.get("id", ""))
+			if not golden_node_ids.has(node_id):
+				continue
+			var handler_id := RuntimeRegistryScript.declared_handler(node)
+			if str(node.get("runtime_chain_output_ref", "")) != "":
 				expected_chain_outputs += 1
-			if not (node.get("nested_archetypes", []) as Array).is_empty():
-				expected_nested_hosts += 1
-			if bool(node.get("carry_payload", false)):
+			if handler_id == RuntimeRegistryScript.HANDLER_PHYSICAL_PAYLOAD:
 				expected_carries += 1
 		_record_check(result, "chain_outputs_materialize", (golden_report.get("produced_chain_states", {}) as Dictionary).size() == expected_chain_outputs,
-			"Golden path did not materialize every typed chain output")
-		_record_check(result, "nested_support_changes_state", (golden_report.get("prepared_nested_nodes", {}) as Dictionary).size() == expected_nested_hosts,
-			"Nested support remained metadata instead of a prepared runtime state")
+			"Golden path did not materialize every runtime-supported typed chain output")
 		_record_check(result, "carry_payloads_delivered", (golden_report.get("delivered_resource_nodes", []) as Array).size() == expected_carries,
 			"A physical carried payload did not reach shelter delivery state")
-	if (
-		str(preview_config.get("food_test", "")) == "scarcity"
-		and str(spec.get("source", {}).get("complexity_tier", "teaching")) != "teaching"
-	):
-		var food_settings: Dictionary = preview_config.get("food_test_settings", {})
-		var drain_interval := float(food_settings.get("drain_interval_seconds", 60.0))
-		_record_check(
-			result,
-			"scarcity_cycle_relevant_on_golden_path",
-			(
-				float(golden_report.get("duration", 0.0)) >= drain_interval
-				and int(golden_report.get("scarcity_drain_ticks", 0)) >= 1
-			),
-			"Standard-or-later scarcity run reaches shelter before one drain cycle can affect the route"
-		)
-
 	var risky_report := _play_risky_recovery(preview_instance, spec, result, options)
 	result["playthroughs"]["risky_recovery"] = risky_report
 	_merge_playthrough_events(result, risky_report)
 	_record_check(result, "risky_recovery_playable", bool(risky_report.get("recovered", false)), "Risky route recovery remains playable")
+	_record_check(
+		result,
+		"risky_recovery_physical_actions_complete",
+		(risky_report.get("interaction_failures", []) as Array).is_empty()
+			and (risky_report.get("solution_action_failures", []) as Array).is_empty(),
+		"Risky approval encountered an unreachable, rejected, or incomplete physical action"
+	)
 	if bool(risky_report.get("has_risky_route", false)):
 		_record_check(result, "risky_recovery_applies_pressure", float(risky_report.get("damage", 0.0)) > 0.0, "Risky recovery applies pressure before rest")
+		var risky_reward: Dictionary = risky_report.get("reward", {})
+		_record_check(
+			result,
+			"risky_route_grants_physical_reward",
+			str(risky_reward.get("item_type", "")) == "lysate"
+				and bool(risky_reward.get("spawned", false))
+				and bool(risky_reward.get("picked_up", false))
+				and (
+					bool(risky_reward.get("retained_in_hand", false))
+					or bool(risky_reward.get("endocytosis_completed", false))
+				),
+			"Risky optional route did not yield its advertised physical lysate"
+		)
 		if str(spec.get("composition", {}).get("mode", "")) == "chain_nested_poc":
-			var risk_reward: Dictionary = risky_report.get("reward", {})
-			_record_check(result, "risky_route_grants_durable_food", str(risk_reward.get("item_type", "")) == "lysate" and bool(risk_reward.get("retained_in_hand", false)),
+			_record_check(result, "risky_route_grants_durable_food", str(risky_reward.get("item_type", "")) == "lysate" and bool(risky_reward.get("retained_in_hand", false)),
 				"Risky route pressure did not grant a durable carried food reward")
 
 	var shadow_report := _play_shadow_path(preview_instance, spec, result, options)
@@ -169,6 +199,13 @@ func playtest_spec(spec: Dictionary, tree: SceneTree, options := {}) -> Dictiona
 	var choice_node_count := int(spec.get("headless", {}).get("solution_summary", {}).get("choice_node_count", 0))
 	if choice_node_count > 0:
 		_record_check(result, "shadow_path_completes", bool(shadow_report.get("shelter_rested", false)), "Aster+Peris shadow path reaches and rests at the exit shelter")
+		_record_check(
+			result,
+			"shadow_path_physical_actions_complete",
+			(shadow_report.get("interaction_failures", []) as Array).is_empty()
+				and (shadow_report.get("solution_action_failures", []) as Array).is_empty(),
+			"Shadow approval encountered an unreachable, rejected, or incomplete physical action"
+		)
 		_record_check(result, "shadow_path_no_specialist", bool(shadow_report.get("uses_only_pair", false)), "Shadow path never relies on a specialist approach")
 		_record_check(result, "shadow_path_distinct", _solution_paths_differ(golden_report.get("solution_path", []), shadow_report.get("solution_path", [])), "Shadow path solves at least one node a different way than the golden path")
 		_record_check(result, "shadow_party_visibly_excludes_endo", shadow_report.get("active_party", []) == ["aster", "peris"],
@@ -188,15 +225,16 @@ func _validate_progression_gate(result: Dictionary, preview_instance: Node, spec
 	var golden_path: Array = spec.get("headless", {}).get("golden_path", [])
 	if golden_path.size() < 3 or not preview_instance.has_method("headless_call_chunk"):
 		return
-	var attempted := bool(
-		preview_instance.call("headless_call_chunk", "activate_generated_node", ["exit_shelter"])
+	var attempted: Dictionary = _approval_interact_generated_node(
+		preview_instance, spec, "exit_shelter", result, "progression_gate"
 	)
 	var state: Dictionary = preview_instance.call("headless_get_state")
 	var chunk: Dictionary = state.get("chunk", {})
 	_record_check(
 		result,
 		"out_of_order_exit_blocked",
-		not attempted and not bool(chunk.get("shelter_rested", false)),
+		not bool(attempted.get("completed", false))
+			and not bool(chunk.get("shelter_rested", false)),
 		"The exit shelter cannot complete before the causal node chain"
 	)
 	preview_instance.call("headless_call_chunk", "reset_preview_state", [])
@@ -391,12 +429,11 @@ func _exercise_abilities(result: Dictionary, preview_instance: Node) -> void:
 		or not preview_instance.has_method("headless_get_party_ability_routes")
 		or not preview_instance.has_method("headless_activate_ability_action")
 	):
-		_record_check(result, "main_abilities_callable", false, "Preview exposes the 6x2 party-ability action contract")
+		_record_check(result, "main_abilities_callable", false, "Preview exposes the canonical targeted-ability action contract")
 		return
 	var ability_specs := [
-		{"char_id": "aster", "ability_id": "aster_focus"},
-		{"char_id": "peris", "ability_id": "peris_tune"},
-		{"char_id": "endo", "ability_id": "endo_patch"},
+		{"char_id": "aster", "ability_id": "emp"},
+		{"char_id": "peris", "ability_id": "wrap"},
 	]
 	var ability_routes: Dictionary = preview_instance.call("headless_get_party_ability_routes")
 	var all_abilities_ok := true
@@ -409,16 +446,16 @@ func _exercise_abilities(result: Dictionary, preview_instance: Node) -> void:
 		preview_instance.call("headless_select_character", char_id)
 		var before: Dictionary = preview_instance.call("headless_get_state")
 		var before_stats: Dictionary = before.get("character_stats", {}).get(char_id, {})
-		var before_atp := float(before_stats.get("atp", -1.0))
+		var before_stamina := float(before_stats.get("sta", -1.0))
 		var activated := input_action != "" and bool(preview_instance.call("headless_activate_ability_action", input_action))
 		var after: Dictionary = preview_instance.call("headless_get_state")
 		var after_stats: Dictionary = after.get("character_stats", {}).get(char_id, {})
 		var ability_state: Dictionary = after.get("abilities", {}).get(ability_id, {})
-		var spent_atp := float(after_stats.get("atp", before_atp)) < before_atp
+		var spent_stamina := float(after_stats.get("sta", before_stamina)) < before_stamina
 		var state_changed := str(ability_state.get("state", "ready")) != "ready"
 		var ok := (
 			activated
-			and spent_atp
+			and spent_stamina
 			and state_changed
 			and int(route.get("party_slot", -1)) >= 0
 			and int(route.get("ability_slot", -1)) >= 0
@@ -427,7 +464,7 @@ func _exercise_abilities(result: Dictionary, preview_instance: Node) -> void:
 		all_abilities_ok = all_abilities_ok and ok
 		ability_report[ability_id] = {
 			"activated": activated,
-			"spent_atp": spent_atp,
+			"spent_stamina": spent_stamina,
 			"state": str(ability_state.get("state", "")),
 			"keybind": str(ability_state.get("keybind", "")),
 			"input_action": input_action,
@@ -440,9 +477,9 @@ func _exercise_abilities(result: Dictionary, preview_instance: Node) -> void:
 			"keybind": str(ability_state.get("keybind", "")),
 			"input_action": input_action,
 			"activated": activated,
-			"spent_atp": spent_atp,
-			"before_atp": before_atp,
-			"after_atp": float(after_stats.get("atp", before_atp)),
+			"spent_stamina": spent_stamina,
+			"before_stamina": before_stamina,
+			"after_stamina": float(after_stats.get("sta", before_stamina)),
 			"state": str(ability_state.get("state", "")),
 		})
 		_record_animation_snapshot(result, preview_instance, "preview_boot", "%s activated %s" % [char_id.capitalize(), ability_id], {
@@ -452,10 +489,10 @@ func _exercise_abilities(result: Dictionary, preview_instance: Node) -> void:
 			"keybind": str(ability_state.get("keybind", "")),
 			"input_action": input_action,
 			"activated": activated,
-			"spent_atp": spent_atp,
+			"spent_stamina": spent_stamina,
 		})
 	result["ability_report"] = ability_report
-	_record_check(result, "main_abilities_exercised", all_abilities_ok, "Direct 6x2 party-ability actions route to their owners and spend ATP")
+	_record_check(result, "main_abilities_exercised", all_abilities_ok, "Canonical EMP and Wrap route to their owners and spend stamina")
 
 func _play_golden_path(preview_instance: Node, spec: Dictionary, result := {}, options := {}) -> Dictionary:
 	var report := {
@@ -467,13 +504,17 @@ func _play_golden_path(preview_instance: Node, spec: Dictionary, result := {}, o
 		"max_path_points": 0,
 		"used_multi_y_path": false,
 		"route_gaps": [],
+		"physical_interactions": 0,
+		"interaction_failures": [],
+		"solution_action_failures": [],
 		"shelter_rested": false,
 		"first_shelter_beat_fired": false,
 		"events": [],
 	}
 	if not preview_instance.has_method("headless_call_chunk"):
 		return report
-	preview_instance.call("headless_call_chunk", "reset_preview_state", [])
+	if bool(options.get("reset_before_play", true)):
+		preview_instance.call("headless_call_chunk", "reset_preview_state", [])
 	var start_state: Dictionary = preview_instance.call("headless_get_state")
 	report["started_at"] = float(start_state.get("scheduler_tick", 0.0))
 	_append_report_event(report, "golden_path", "path_started", "Golden path reset and started", {
@@ -486,8 +527,27 @@ func _play_golden_path(preview_instance: Node, spec: Dictionary, result := {}, o
 	var path: Array = spec.get("headless", {}).get("golden_path", [])
 	if path.is_empty():
 		path = ["entry", "exit_shelter"]
+	var consumed_solution_actions := {}
 	for i in range(path.size()):
 		var node_id := str(path[i])
+		var abort_after_node := false
+		var action_report := _approval_apply_solution_actions_before_node(
+			preview_instance,
+			spec,
+			node_id,
+			consumed_solution_actions,
+			result,
+			"golden_path"
+		)
+		report["movement_commands"] = int(report.get("movement_commands", 0)) \
+			+ int(action_report.get("movement_commands", 0))
+		(report["solution_action_failures"] as Array).append_array(
+			action_report.get("failures", [])
+		)
+		if bool(options.get("fail_fast", false)) \
+				and not (action_report.get("failures", []) as Array).is_empty():
+			report["abort_reason"] = "solution_action_failed:%s" % node_id
+			break
 		var running_for_move := _node_suggests_running(_find_node(spec, node_id))
 		if i > 0:
 			var from_id := str(path[i - 1])
@@ -499,7 +559,6 @@ func _play_golden_path(preview_instance: Node, spec: Dictionary, result := {}, o
 				running_for_move = running_for_move or _route_suggests_running(route_def)
 				(report["route_ids"] as Array).append(route_id)
 				report["route_choices"] = int(report.get("route_choices", 0)) + 1
-				preview_instance.call("headless_call_chunk", "choose_generated_route", [route_id, false])
 				_append_report_event(report, "golden_path", "route_chosen", "Chose route %s" % route_id, {
 					"route": route_def,
 				})
@@ -514,16 +573,44 @@ func _play_golden_path(preview_instance: Node, spec: Dictionary, result := {}, o
 		report["max_path_points"] = maxi(int(report.get("max_path_points", 0)), int(move_report.get("max_path_points", 0)))
 		report["used_multi_y_path"] = bool(report.get("used_multi_y_path", false)) or bool(move_report.get("used_multi_y_path", false))
 		_append_report_event(report, "golden_path", "party_moved", "Party moved to %s" % node_id, move_report)
-		_capture_node_commit(result, preview_instance, _find_node(spec, node_id), "golden_path")
-		_activate_node_with_nested_capture(result, preview_instance, node_id, "golden_path")
+		var current_node := _find_node(spec, node_id)
+		var runtime_handler := RuntimeRegistryScript.handler_for_node(current_node, str(spec.get("id", "")))
+		_capture_node_commit(result, preview_instance, current_node, "golden_path")
+		var interaction_completed := runtime_handler == ""
+		if runtime_handler != "":
+			var interaction := _approval_interact_generated_node(
+				preview_instance, spec, node_id, result, "golden_path"
+			)
+			interaction_completed = bool(interaction.get("completed", false))
+			report["movement_commands"] = int(report.get("movement_commands", 0)) \
+				+ int(interaction.get("movement_commands", 0))
+			if bool(interaction.get("requested", false)):
+				report["physical_interactions"] = int(
+					report.get("physical_interactions", 0)
+				) + 1
+			if not bool(interaction.get("completed", false)):
+				(report["interaction_failures"] as Array).append(
+					interaction.duplicate(true)
+				)
+				abort_after_node = bool(options.get("fail_fast", false))
 		var node_payload := _node_event_payload(spec, node_id, preview_instance)
-		_append_report_event(report, "golden_path", "node_activated", "Activated %s" % node_id, node_payload)
-		_record_animation_snapshot(result, preview_instance, "golden_path", "Activated %s" % node_id, {
-			"event_type": "node_activated",
+		var event_type := "layout_traversed"
+		var event_label := "Traversed %s" % node_id
+		if runtime_handler != "":
+			event_type = "node_activated" \
+				if interaction_completed else "node_interaction_failed"
+			event_label = ("Activated %s" if interaction_completed \
+				else "Failed to activate %s") % node_id
+		_append_report_event(report, "golden_path", event_type, event_label, node_payload)
+		_record_animation_snapshot(result, preview_instance, "golden_path", event_label, {
+			"event_type": event_type,
 			"node_id": node_id,
 			"node": node_payload,
 		})
-		var resource_report := _capture_resource_beat(result, preview_instance, spec, node_id)
+		var resource_report := (
+			_capture_resource_beat(result, preview_instance, spec, node_id)
+			if interaction_completed else {}
+		)
 		if not resource_report.is_empty():
 			var resource_event_type := "resource_handled"
 			if bool(resource_report.get("retained_in_hand", false)):
@@ -532,20 +619,36 @@ func _play_golden_path(preview_instance: Node, spec: Dictionary, result := {}, o
 				resource_event_type = "resource_endocytosed"
 			_append_report_event(report, "golden_path", resource_event_type, "Resource handled at %s" % node_id, resource_report)
 		(report["visited_nodes"] as Array).append(node_id)
+		if abort_after_node:
+			report["abort_reason"] = "node_interaction_failed:%s" % node_id
+			break
 	var state: Dictionary = preview_instance.call("headless_get_state")
 	report["ended_at"] = float(state.get("scheduler_tick", 0.0))
 	report["duration"] = maxf(0.0, float(report["ended_at"]) - float(report["started_at"]))
 	var chunk: Dictionary = state.get("chunk", {})
 	report["scarcity_drain_ticks"] = int(chunk.get("scarcity_drain_ticks", 0))
 	report["scarcity_atp_drained"] = float(chunk.get("scarcity_atp_drained", 0.0))
+	report["scarcity_drain_per_character"] = float(
+		chunk.get("scarcity_drain_per_character", 0.0)
+	)
+	report["scarcity_atp_floor_per_character"] = float(
+		chunk.get("scarcity_atp_floor_per_character", 0.0)
+	)
 	report["shelter_rested"] = bool(chunk.get("shelter_rested", false))
 	report["first_shelter_beat_fired"] = bool(chunk.get("first_shelter_beat_fired", false))
 	report["final_phase"] = str(chunk.get("route_phase", ""))
 	report["final_outcome"] = str(chunk.get("last_outcome", ""))
+	report["character_stats"] = state.get("character_stats", {}).duplicate(true)
+	report["shortcut_unlocked"] = bool(chunk.get("shortcut_unlocked", false))
+	report["climbvine_states"] = chunk.get("climbvine_states", []).duplicate(true)
+	report["route_risk_field"] = chunk.get("route_risk_field", {}).duplicate(true)
 	report["solution_path"] = chunk.get("solution_path", [])
 	report["resources_collected"] = int(chunk.get("generation", {}).get("resources_collected", 0))
+	report["physical_food_spawned_count"] = int(
+		chunk.get("physical_food_spawned_count", 0)
+	)
+	report["pressure_taken"] = float(chunk.get("pressure_taken", 0.0))
 	report["produced_chain_states"] = chunk.get("produced_chain_states", {})
-	report["prepared_nested_nodes"] = chunk.get("prepared_nested_nodes", {})
 	report["delivered_resource_nodes"] = chunk.get("delivered_resource_nodes", [])
 	if bool(report.get("shelter_rested", false)):
 		_append_report_event(report, "golden_path", "shelter_rested", "Exit shelter reached and rested", {
@@ -571,6 +674,9 @@ func _play_shadow_path(preview_instance: Node, spec: Dictionary, result := {}, o
 		"movement_commands": 0,
 		"max_path_points": 0,
 		"used_multi_y_path": false,
+		"physical_interactions": 0,
+		"interaction_failures": [],
+		"solution_action_failures": [],
 		"shelter_rested": false,
 		"uses_only_pair": true,
 		"solution_path": [],
@@ -589,8 +695,22 @@ func _play_shadow_path(preview_instance: Node, spec: Dictionary, result := {}, o
 	var path: Array = spec.get("headless", {}).get("golden_path", [])
 	if path.is_empty():
 		path = ["entry", "exit_shelter"]
+	var consumed_solution_actions := {}
 	for i in range(path.size()):
 		var node_id := str(path[i])
+		var action_report := _approval_apply_solution_actions_before_node(
+			preview_instance,
+			spec,
+			node_id,
+			consumed_solution_actions,
+			result,
+			"shadow_path"
+		)
+		report["movement_commands"] = int(report.get("movement_commands", 0)) \
+			+ int(action_report.get("movement_commands", 0))
+		(report["solution_action_failures"] as Array).append_array(
+			action_report.get("failures", [])
+		)
 		var running_for_move := _node_suggests_running(_find_node(spec, node_id))
 		if i > 0:
 			var route_id := _find_route_id(spec, str(path[i - 1]), node_id, ["safe", "shortcut"])
@@ -599,21 +719,47 @@ func _play_shadow_path(preview_instance: Node, spec: Dictionary, result := {}, o
 				running_for_move = running_for_move or _route_suggests_running(route_def)
 				(report["route_ids"] as Array).append(route_id)
 				report["route_choices"] = int(report.get("route_choices", 0)) + 1
-				preview_instance.call("headless_call_chunk", "choose_generated_route", [route_id, false])
 		var move_report := _move_party_to_node_report(preview_instance, spec, node_id, result, options, running_for_move, "shadow_path")
 		report["movement_commands"] = int(report.get("movement_commands", 0)) + int(move_report.get("commands", 0))
 		report["used_multi_y_path"] = bool(report.get("used_multi_y_path", false)) or bool(move_report.get("used_multi_y_path", false))
-		_capture_node_commit(result, preview_instance, _find_node(spec, node_id), "shadow_path")
-		_activate_node_with_nested_capture(result, preview_instance, node_id, "shadow_path")
+		var current_node := _find_node(spec, node_id)
+		var runtime_handler := RuntimeRegistryScript.handler_for_node(current_node, str(spec.get("id", "")))
+		_capture_node_commit(result, preview_instance, current_node, "shadow_path")
+		var interaction_completed := runtime_handler == ""
+		if runtime_handler != "":
+			var interaction := _approval_interact_generated_node(
+				preview_instance, spec, node_id, result, "shadow_path"
+			)
+			interaction_completed = bool(interaction.get("completed", false))
+			report["movement_commands"] = int(report.get("movement_commands", 0)) \
+				+ int(interaction.get("movement_commands", 0))
+			if bool(interaction.get("requested", false)):
+				report["physical_interactions"] = int(
+					report.get("physical_interactions", 0)
+				) + 1
+			if not bool(interaction.get("completed", false)):
+				(report["interaction_failures"] as Array).append(
+					interaction.duplicate(true)
+				)
 		var node_payload := _node_event_payload(spec, node_id, preview_instance)
-		_append_report_event(report, "shadow_path", "node_activated", "Activated %s (shadow)" % node_id, node_payload)
-		_record_animation_snapshot(result, preview_instance, "shadow_path", "Shadow solved %s" % node_id, {
-			"event_type": "node_activated",
+		var event_type := "layout_traversed"
+		var event_label := "Traversed %s (shadow)" % node_id
+		if runtime_handler != "":
+			event_type = "node_activated" \
+				if interaction_completed else "node_interaction_failed"
+			event_label = ("Activated %s (shadow)" if interaction_completed \
+				else "Failed to activate %s (shadow)") % node_id
+		_append_report_event(report, "shadow_path", event_type, event_label, node_payload)
+		_record_animation_snapshot(result, preview_instance, "shadow_path", event_label, {
+			"event_type": event_type,
 			"node_id": node_id,
 			"node": node_payload,
 			"loadout": "shadow",
 		})
-		_capture_resource_beat(result, preview_instance, spec, node_id, "shadow_path")
+		if interaction_completed:
+			_capture_resource_beat(
+				result, preview_instance, spec, node_id, "shadow_path"
+			)
 		(report["visited_nodes"] as Array).append(node_id)
 	var state: Dictionary = preview_instance.call("headless_get_state")
 	var chunk: Dictionary = state.get("chunk", {})
@@ -623,7 +769,6 @@ func _play_shadow_path(preview_instance: Node, spec: Dictionary, result := {}, o
 	report["blocked_nodes"] = chunk.get("blocked_nodes", [])
 	report["active_party"] = chunk.get("active_party", [])
 	report["produced_chain_states"] = chunk.get("produced_chain_states", {})
-	report["prepared_nested_nodes"] = chunk.get("prepared_nested_nodes", {})
 	report["delivered_resource_nodes"] = chunk.get("delivered_resource_nodes", [])
 	var solution_path: Array = chunk.get("solution_path", [])
 	report["solution_path"] = solution_path
@@ -644,6 +789,9 @@ func _play_risky_recovery(preview_instance: Node, spec: Dictionary, result := {}
 		"has_risky_route": false,
 		"route_id": "",
 		"movement_commands": 0,
+		"physical_interactions": 0,
+		"interaction_failures": [],
+		"solution_action_failures": [],
 		"damage": 0.0,
 		"recovered": false,
 		"events": [],
@@ -655,9 +803,38 @@ func _play_risky_recovery(preview_instance: Node, spec: Dictionary, result := {}
 		"event_type": "path_started",
 		"path_id": "risky_recovery",
 	})
+	var consumed_solution_actions := {}
 	var risky_route := _find_first_route(spec, ["risky"])
 	if risky_route.is_empty():
-		report["recovered"] = bool(preview_instance.call("headless_call_chunk", "run_generated_golden_path", []))
+		var fallback_path: Array = spec.get("headless", {}).get("golden_path", [])
+		if fallback_path.is_empty():
+			fallback_path = ["entry", "exit_shelter"]
+		var fallback_report := _follow_golden_segment(
+			preview_instance,
+			spec,
+			fallback_path,
+			0,
+			fallback_path.size() - 1,
+			result,
+			options,
+			"risky_recovery",
+			consumed_solution_actions
+		)
+		report["movement_commands"] = int(fallback_report.get("commands", 0))
+		report["physical_interactions"] = int(
+			fallback_report.get("physical_interactions", 0)
+		)
+		report["interaction_failures"] = fallback_report.get(
+			"interaction_failures", []
+		)
+		report["solution_action_failures"] = fallback_report.get(
+			"solution_action_failures", []
+		)
+		report["recovered"] = bool(
+			preview_instance.call("headless_get_state")
+				.get("chunk", {})
+				.get("shelter_rested", false)
+		)
 		_append_report_event(report, "risky_recovery", "no_risky_route", "No risky route was available; fell back to golden path", {
 			"recovered": bool(report.get("recovered", false)),
 		})
@@ -685,9 +862,24 @@ func _play_risky_recovery(preview_instance: Node, spec: Dictionary, result := {}
 	if risky_source_index < 0:
 		return report
 	var prefix_report := _follow_golden_segment(
-		preview_instance, spec, main_path, 0, risky_source_index, result, options, "risky_recovery"
+		preview_instance,
+		spec,
+		main_path,
+		0,
+		risky_source_index,
+		result,
+		options,
+		"risky_recovery",
+		consumed_solution_actions
 	)
 	report["movement_commands"] = int(prefix_report.get("commands", 0))
+	report["physical_interactions"] = int(prefix_report.get("physical_interactions", 0))
+	(report["interaction_failures"] as Array).append_array(
+		prefix_report.get("interaction_failures", [])
+	)
+	(report["solution_action_failures"] as Array).append_array(
+		prefix_report.get("solution_action_failures", [])
+	)
 	report["prefix_nodes"] = prefix_report.get("visited_nodes", [])
 	_append_report_event(report, "risky_recovery", "prefix_completed", "Reached risky route start %s through its prerequisites" % risky_source_id, prefix_report)
 	_record_animation_snapshot(result, preview_instance, "risky_recovery", "Activated risky route start", {
@@ -712,10 +904,33 @@ func _play_risky_recovery(preview_instance: Node, spec: Dictionary, result := {}
 		"route_id": str(risky_route.get("id", "")),
 		"projected_damage": projected_damage,
 	})
-	var risky_move := _move_party_to_node_report(preview_instance, spec, str(risky_route.get("to", "exit_shelter")), result, options, true, "risky_recovery")
+	var risky_destination := str(risky_route.get("to", "exit_shelter"))
+	var risky_action_report := _approval_apply_solution_actions_before_node(
+		preview_instance,
+		spec,
+		risky_destination,
+		consumed_solution_actions,
+		result,
+		"risky_recovery"
+	)
+	report["movement_commands"] = int(report.get("movement_commands", 0)) \
+		+ int(risky_action_report.get("movement_commands", 0))
+	(report["solution_action_failures"] as Array).append_array(
+		risky_action_report.get("failures", [])
+	)
+	if preview_instance.has_method("headless_set_routing_mode"):
+		preview_instance.call("headless_set_routing_mode", "direct")
+	var risky_move := _move_party_to_node_report(
+		preview_instance,
+		spec,
+		risky_destination,
+		result,
+		options,
+		true,
+		"risky_recovery"
+	)
 	report["movement_commands"] = int(report.get("movement_commands", 0)) + int(risky_move.get("commands", 0))
 	_append_report_event(report, "risky_recovery", "party_moved", "Party moved through risky route to %s" % str(risky_route.get("to", "exit_shelter")), risky_move)
-	preview_instance.call("headless_call_chunk", "choose_generated_route", [str(risky_route.get("id", "")), false])
 	_record_animation_snapshot(result, preview_instance, "risky_recovery", "NEAR MISS // -%s HP each" % projected_damage, {
 		"event_type": "route_pressure_impact",
 		"route_id": str(risky_route.get("id", "")),
@@ -727,14 +942,53 @@ func _play_risky_recovery(preview_instance: Node, spec: Dictionary, result := {}
 		"damage": projected_damage,
 	})
 	_capture_node_commit(result, preview_instance, _find_node(spec, str(risky_route.get("to", "exit_shelter"))), "risky_recovery")
-	var risky_destination := str(risky_route.get("to", "exit_shelter"))
-	_activate_node_with_nested_capture(result, preview_instance, risky_destination, "risky_recovery")
-	_append_report_event(report, "risky_recovery", "node_activated", "Activated risky route destination %s" % str(risky_route.get("to", "exit_shelter")), _node_event_payload(spec, str(risky_route.get("to", "exit_shelter")), preview_instance))
-	_record_animation_snapshot(result, preview_instance, "risky_recovery", "Activated risky destination", {
-		"event_type": "node_activated",
+	var risky_node := _find_node(spec, risky_destination)
+	var risky_runtime_handler := RuntimeRegistryScript.handler_for_node(
+		risky_node, str(spec.get("id", ""))
+	)
+	var risky_interaction_completed := risky_runtime_handler == ""
+	if risky_runtime_handler != "":
+		var risky_interaction := _approval_interact_generated_node(
+			preview_instance, spec, risky_destination, result, "risky_recovery"
+		)
+		risky_interaction_completed = bool(
+			risky_interaction.get("completed", false)
+		)
+		report["movement_commands"] = int(report.get("movement_commands", 0)) \
+			+ int(risky_interaction.get("movement_commands", 0))
+		if bool(risky_interaction.get("requested", false)):
+			report["physical_interactions"] = int(
+				report.get("physical_interactions", 0)
+			) + 1
+		if not bool(risky_interaction.get("completed", false)):
+			(report["interaction_failures"] as Array).append(
+				risky_interaction.duplicate(true)
+			)
+	var risky_event_type := "node_activated" \
+		if risky_interaction_completed else "node_interaction_failed"
+	var risky_event_label := ("Activated" if risky_interaction_completed \
+		else "Failed to activate") + " risky route destination %s" % risky_destination
+	_append_report_event(
+		report,
+		"risky_recovery",
+		risky_event_type,
+		risky_event_label,
+		_node_event_payload(spec, risky_destination, preview_instance)
+	)
+	_record_animation_snapshot(result, preview_instance, "risky_recovery", risky_event_label, {
+		"event_type": risky_event_type,
 		"node_id": str(risky_route.get("to", "exit_shelter")),
 	})
-	var risky_resource := _capture_resource_beat(result, preview_instance, spec, risky_destination, "risky_recovery")
+	var risky_resource := (
+		_capture_resource_beat(
+			result,
+			preview_instance,
+			spec,
+			risky_destination,
+			"risky_recovery"
+		)
+		if risky_interaction_completed else {}
+	)
 	if not risky_resource.is_empty():
 		report["reward"] = risky_resource
 	var recovery_id := str(risky_route.get("recovery", ""))
@@ -743,7 +997,23 @@ func _play_risky_recovery(preview_instance: Node, spec: Dictionary, result := {}
 		report["movement_commands"] = int(report.get("movement_commands", 0)) + int(recovery_move.get("commands", 0))
 		_append_report_event(report, "risky_recovery", "party_moved", "Party moved to recovery node %s" % recovery_id, recovery_move)
 		_capture_node_commit(result, preview_instance, _find_node(spec, recovery_id), "risky_recovery")
-		_activate_node_with_nested_capture(result, preview_instance, recovery_id, "risky_recovery")
+		var recovery_node := _find_node(spec, recovery_id)
+		if RuntimeRegistryScript.handler_for_node(
+			recovery_node, str(spec.get("id", ""))
+		) != "":
+			var recovery_interaction := _approval_interact_generated_node(
+				preview_instance, spec, recovery_id, result, "risky_recovery"
+			)
+			report["movement_commands"] = int(report.get("movement_commands", 0)) \
+				+ int(recovery_interaction.get("movement_commands", 0))
+			if bool(recovery_interaction.get("requested", false)):
+				report["physical_interactions"] = int(
+					report.get("physical_interactions", 0)
+				) + 1
+			if not bool(recovery_interaction.get("completed", false)):
+				(report["interaction_failures"] as Array).append(
+					recovery_interaction.duplicate(true)
+				)
 		_append_report_event(report, "risky_recovery", "node_activated", "Activated recovery node %s" % recovery_id, _node_event_payload(spec, recovery_id, preview_instance))
 		_record_animation_snapshot(result, preview_instance, "risky_recovery", "Activated recovery node %s" % recovery_id, {
 			"event_type": "node_activated",
@@ -768,9 +1038,18 @@ func _play_risky_recovery(preview_instance: Node, spec: Dictionary, result := {}
 			main_path.size() - 1,
 			result,
 			options,
-			"risky_recovery"
+			"risky_recovery",
+			consumed_solution_actions
 		)
 		report["movement_commands"] = int(report.get("movement_commands", 0)) + int(suffix_report.get("commands", 0))
+		report["physical_interactions"] = int(report.get("physical_interactions", 0)) \
+			+ int(suffix_report.get("physical_interactions", 0))
+		(report["interaction_failures"] as Array).append_array(
+			suffix_report.get("interaction_failures", [])
+		)
+		(report["solution_action_failures"] as Array).append_array(
+			suffix_report.get("solution_action_failures", [])
+		)
 		report["suffix_nodes"] = suffix_report.get("visited_nodes", [])
 		_append_report_event(report, "risky_recovery", "suffix_completed", "Rejoined and completed the main route", suffix_report)
 	var state: Dictionary = preview_instance.call("headless_get_state")
@@ -778,6 +1057,7 @@ func _play_risky_recovery(preview_instance: Node, spec: Dictionary, result := {}
 	report["damage"] = float(chunk.get("risky_damage_total", 0.0))
 	report["recovered"] = bool(chunk.get("shelter_rested", false))
 	report["final_phase"] = str(chunk.get("route_phase", ""))
+	report["route_risk_field"] = chunk.get("route_risk_field", {}).duplicate(true)
 	if bool(report.get("recovered", false)):
 		_append_report_event(report, "risky_recovery", "shelter_rested", "Risky recovery reached and rested at shelter", {
 			"damage": float(chunk.get("risky_damage_total", 0.0)),
@@ -791,24 +1071,565 @@ func _play_risky_recovery(preview_instance: Node, spec: Dictionary, result := {}
 	return report
 
 
-func _activate_node_with_nested_capture(result: Dictionary, preview_instance: Node, node_id: String, phase: String) -> bool:
-	var activated := bool(preview_instance.call("headless_call_chunk", "activate_generated_node", [node_id]))
-	var state: Dictionary = preview_instance.call("headless_get_state") if preview_instance.has_method("headless_get_state") else {}
-	var outcome := str(state.get("chunk", {}).get("last_outcome", ""))
-	if not activated and outcome == "nested_prepared:%s" % node_id:
-		var prepared_nodes: Dictionary = state.get("chunk", {}).get("prepared_nested_nodes", {})
-		var prepared_state := str((prepared_nodes.get(node_id, {}) as Dictionary).get("prepared_state", "nested_dependency_ready"))
-		_record_animation_snapshot(result, preview_instance, phase, "Nested support prepared at %s" % node_id, {
-			"event_type": "nested_support_prepared",
-			"node_id": node_id,
-			"prepared_state": prepared_state,
-		})
-		_advance_preview_with_animation(result, preview_instance, 1.0, phase, "Reading the supported carry", {
-			"event_type": "nested_support_read",
-			"node_id": node_id,
-		})
-		activated = bool(preview_instance.call("headless_call_chunk", "activate_generated_node", [node_id]))
-	return activated
+## Approval path: resolve the live interaction target, put a real GameState body at its
+## authored data-space approach, then enter through the same semantic input command used
+## by deterministic player recordings. Completion comes only from the chunk's authoritative
+## state. A full hand, blocked route, rejected actor, or missing target therefore remains a
+## visible failed playthrough instead of being papered over by activate_generated_node().
+func _approval_interact_generated_node(
+	preview_instance: Node,
+	spec: Dictionary,
+	node_id: String,
+	result := {},
+	phase := "approval"
+) -> Dictionary:
+	var report := {
+		"node_id": node_id,
+		"actor": "",
+		"target": "",
+		"movement_commands": 0,
+		"reached": false,
+		"requested": false,
+		"completed": false,
+		"last_outcome": "",
+	}
+	if not preview_instance.has_method("headless_call_chunk"):
+		report["failure"] = "missing_preview_chunk"
+		return report
+	var target_v: Variant = preview_instance.call(
+		"headless_call_chunk", "get_node_or_null", ["GeneratedNode_%s" % node_id]
+	)
+	var target := target_v as Node3D if target_v is Node3D else null
+	# get_node_or_null is a Node API rather than a chunk script method, so the generic
+	# headless_call_chunk seam cannot dispatch it. Resolve against the live chunk only
+	# after proving the named target exists; this remains read-only QA discovery.
+	if target == null:
+		var chunk_v: Variant = preview_instance.get("_active_chunk")
+		if chunk_v is Node:
+			target = (chunk_v as Node).get_node_or_null(
+				"GeneratedNode_%s" % node_id
+			) as Node3D
+	if target == null or not target.has_signal("interaction_requested"):
+		report["failure"] = "missing_interactable"
+		return report
+	report["target"] = str(target.name)
+	var node := _find_node(spec, node_id)
+	var approach := _node_approach_position(spec, node_id)
+	var actor := _approval_actor_for_target(preview_instance, node, target, approach)
+	report["actor"] = actor
+	if actor == "":
+		report["failure"] = "no_eligible_actor"
+		return report
+	var formation := _approval_move_party_to_interaction(
+		preview_instance, approach, actor, result, phase, node_id
+	)
+	report["movement_commands"] = int(formation.get("commands", 0))
+	report["reached"] = bool(formation.get("actor_reached", false))
+	if not bool(report["reached"]):
+		report["failure"] = "interaction_approach_unreachable"
+		return report
+	if preview_instance.has_method("headless_select_character"):
+		preview_instance.call("headless_select_character", actor)
+	_approval_send_input_action(
+		preview_instance, GENERATED_INPUT_COMMAND_PREFIX + node_id
+	)
+	report["requested"] = true
+	report["completed"] = _approval_wait_for_node_completion(
+		preview_instance, node_id, result, phase
+	)
+	var final_state: Dictionary = preview_instance.call("headless_get_state")
+	report["last_outcome"] = str(
+		final_state.get("chunk", {}).get("last_outcome", "")
+	)
+	if not bool(report["completed"]):
+		report["failure"] = "interaction_did_not_complete"
+	return report
+
+
+## Execute solution-owned world/branch actions as actual detours. The action identifies
+## a target, but does not grant its result: a body still walks to the source, requests the
+## live interaction, waits on the scheduler, and reads the resulting mechanism state.
+func _approval_apply_solution_actions_before_node(
+	preview_instance: Node,
+	spec: Dictionary,
+	node_id: String,
+	consumed_action_keys: Dictionary,
+	result := {},
+	phase := "approval"
+) -> Dictionary:
+	var report := {
+		"attempted": 0,
+		"completed": 0,
+		"movement_commands": 0,
+		"failures": [],
+		"actions": [],
+	}
+	var solution: Dictionary = spec.get("headless", {}).get("solution", {})
+	var groups := [
+		{"namespace": "world", "actions": solution.get("world_actions", [])},
+		{"namespace": "branch", "actions": solution.get("branch_actions", [])},
+	]
+	for group_v in groups:
+		var group := group_v as Dictionary
+		var action_group := str(group.get("namespace", "action"))
+		var actions: Array = group.get("actions", [])
+		for index in range(actions.size()):
+			var key := "%s:%d" % [action_group, index]
+			if consumed_action_keys.has(key):
+				continue
+			var action_v: Variant = actions[index]
+			if not (action_v is Dictionary):
+				continue
+			var action := action_v as Dictionary
+			var before_nodes: Array = action.get(
+				"before_nodes", [str(action.get("before_node", ""))]
+			)
+			if not before_nodes.has(node_id):
+				continue
+			# One physical attempt is authoritative. Re-running the same action after a
+			# rejection would turn a failed prediction into harness retry magic.
+			consumed_action_keys[key] = true
+			var action_report := _approval_perform_solution_action(
+				preview_instance, spec, action, action_group, result, phase
+			)
+			(report["actions"] as Array).append(action_report)
+			report["attempted"] = int(report.get("attempted", 0)) + 1
+			report["movement_commands"] = int(report.get("movement_commands", 0)) \
+				+ int(action_report.get("movement_commands", 0))
+			if bool(action_report.get("completed", false)):
+				report["completed"] = int(report.get("completed", 0)) + 1
+			else:
+				(report["failures"] as Array).append(action_report.duplicate(true))
+	return report
+
+
+func _approval_perform_solution_action(
+	preview_instance: Node,
+	spec: Dictionary,
+	action: Dictionary,
+	action_group: String,
+	result := {},
+	phase := "approval"
+) -> Dictionary:
+	var action_id := _approval_solution_action_target_id(action, action_group)
+	var report := {
+		"namespace": action_group,
+		"action_id": action_id,
+		"branch_id": str(action.get("branch_id", "")),
+		"movement_commands": 0,
+		"reached": false,
+		"requested": false,
+		"completed": false,
+	}
+	if action_id == "":
+		report["failure"] = "missing_action_target"
+		return report
+	var target_v: Variant = preview_instance.call(
+		"headless_call_chunk", "get_playthrough_interaction_target", [action_id]
+	)
+	var target := target_v as Node3D if target_v is Node3D else null
+	if target == null or not target.has_signal("interaction_requested"):
+		report["failure"] = "missing_action_interactable"
+		return report
+	var target_data := _approval_action_data_position(
+		preview_instance, spec, action, target
+	)
+	if target_data == Vector3.INF:
+		report["failure"] = "missing_action_position"
+		return report
+	var actor := _approval_actor_for_target(preview_instance, {}, target, target_data)
+	report["actor"] = actor
+	if actor == "":
+		report["failure"] = "no_eligible_actor"
+		return report
+	var movement := _approval_move_actor(
+		preview_instance, actor, target_data, result, phase, action_id
+	)
+	report["movement_commands"] = int(movement.get("commands", 0))
+	report["reached"] = bool(movement.get("reached", false))
+	if not bool(report["reached"]):
+		report["failure"] = "action_source_unreachable"
+		return report
+	if preview_instance.has_method("headless_select_character"):
+		preview_instance.call("headless_select_character", actor)
+	_approval_send_input_action(
+		preview_instance, WORLD_INPUT_COMMAND_PREFIX + action_id
+	)
+	report["requested"] = true
+	report["completed"] = _approval_wait_for_solution_action(
+		preview_instance, action, action_group, result, phase, action_id
+	)
+	if not bool(report["completed"]):
+		report["failure"] = "action_did_not_reach_authoritative_state"
+		var state: Dictionary = preview_instance.call("headless_get_state")
+		report["last_outcome"] = str(
+			state.get("chunk", {}).get("last_outcome", "")
+		)
+	return report
+
+
+func _approval_solution_action_target_id(
+	action: Dictionary, action_group: String
+) -> String:
+	if action_group == "branch":
+		return str(action.get("id", ""))
+	match str(action.get("action", "")):
+		"open_sluice", "open_first_sluice":
+			return "open_first_sluice"
+		"release_bridge", "release_cistern_bridge":
+			return "release_cistern_bridge"
+		"divert", "divert_current":
+			return "divert_current"
+		"restore", "restore_main_current":
+			return "restore_main_current"
+		"catch", "catch_spillway":
+			return "catch_spillway"
+		"enter_shelter":
+			return "enter_shelter"
+	return str(action.get("target", ""))
+
+
+func _approval_action_data_position(
+	preview_instance: Node,
+	spec: Dictionary,
+	action: Dictionary,
+	target: Node3D
+) -> Vector3:
+	# The live registered source owns its exact data-space level. A flattened
+	# serialized producer cell cannot reconstruct stacked-grid Y on its own.
+	var gs_v: Variant = preview_instance.get("_game_state")
+	var data_id := str(target.get("data_id")) if "data_id" in target else ""
+	if gs_v != null and data_id != "" \
+			and (gs_v as Object).has_method("has_interactable") \
+			and bool((gs_v as Object).call("has_interactable", data_id)):
+		var registered: Dictionary = (gs_v as Object).call(
+			"get_interactable", data_id
+		)
+		var registered_position_v: Variant = registered.get(
+			"position", Vector3.INF
+		)
+		if registered_position_v is Vector3 \
+				and (registered_position_v as Vector3).is_finite():
+			return registered_position_v as Vector3
+	if target.has_meta("flat_authored_position"):
+		var authored_v: Variant = target.get_meta("flat_authored_position")
+		if authored_v is Vector3:
+			return authored_v as Vector3
+	var producer_cell_v: Variant = action.get("producer_cell", [])
+	if producer_cell_v is Array and (producer_cell_v as Array).size() >= 2:
+		return _navigation_cell_position(
+			spec.get("navigation_grid", {}), producer_cell_v as Array
+		)
+	var world_target := target.global_position
+	if target.has_method("get_interaction_target_position"):
+		var resolved_v: Variant = target.call(
+			"get_interaction_target_position", Vector3.ZERO, target.global_position
+		)
+		if resolved_v is Vector3:
+			world_target = resolved_v as Vector3
+	if gs_v != null and (gs_v as Object).get("coord_map") != null:
+		return (gs_v as Object).get("coord_map").to_data(world_target)
+	return world_target
+
+
+func _navigation_cell_position(navigation: Dictionary, cell: Array) -> Vector3:
+	if cell.size() < 2:
+		return Vector3.INF
+	var origin := _vec3(navigation.get("origin", []), Vector3.ZERO)
+	var cell_size := float(navigation.get("cell_size", 1.0))
+	return Vector3(
+		origin.x + (float(cell[0]) + 0.5) * cell_size,
+		origin.y,
+		origin.z + (float(cell[1]) + 0.5) * cell_size
+	)
+
+
+func _approval_actor_for_target(
+	preview_instance: Node,
+	node: Dictionary,
+	target: Node,
+	target_data: Vector3
+) -> String:
+	var state: Dictionary = preview_instance.call("headless_get_state")
+	var active_party: Array = state.get("chunk", {}).get("active_party", PARTY_IDS)
+	if active_party.is_empty():
+		active_party = PARTY_IDS.duplicate()
+	var required := ""
+	if target != null and "required_character" in target:
+		required = str(target.get("required_character"))
+	if required == "" and target != null and target.has_method("get_interaction_delegate"):
+		var delegate_v: Variant = target.call("get_interaction_delegate")
+		if delegate_v != null and "required_character" in delegate_v:
+			required = str((delegate_v as Object).get("required_character"))
+	if required != "" and active_party.has(required):
+		return required
+	var gs_v: Variant = preview_instance.get("_game_state")
+	var needs_free_hand := RuntimeRegistryScript.handler_for_node(
+		node, ""
+	) in [
+		RuntimeRegistryScript.HANDLER_PHYSICAL_LYSATE,
+		RuntimeRegistryScript.HANDLER_PHYSICAL_PAYLOAD,
+	]
+	if gs_v != null and (gs_v as Object).has_method("pick_interactor"):
+		return str((gs_v as Object).call(
+			"pick_interactor", "", target_data, active_party, needs_free_hand
+		))
+	return str(active_party[0]) if not active_party.is_empty() else ""
+
+
+func _approval_move_party_to_interaction(
+	preview_instance: Node,
+	target: Vector3,
+	actor: String,
+	result: Dictionary,
+	phase: String,
+	label: String
+) -> Dictionary:
+	var report := {"commands": 0, "actor_reached": false}
+	var state: Dictionary = preview_instance.call("headless_get_state")
+	var active_party: Array = state.get("chunk", {}).get("active_party", PARTY_IDS)
+	if active_party.is_empty():
+		active_party = PARTY_IDS.duplicate()
+	var longest_duration := 0.0
+	for char_id_v in active_party:
+		var char_id := str(char_id_v)
+		var offset := _approval_formation_offset(char_id, actor)
+		var move := _approval_move_actor(
+			preview_instance,
+			char_id,
+			target + offset,
+			result,
+			phase,
+			"%s:%s" % [label, char_id],
+			false
+		)
+		report["commands"] = int(report.get("commands", 0)) \
+			+ int(move.get("commands", 0))
+		longest_duration = maxf(
+			longest_duration, float(move.get("duration", 0.0))
+		)
+		if char_id == actor:
+			report["actor_reached"] = bool(move.get("reached", false))
+	report["duration"] = longest_duration
+	return report
+
+
+func _approval_formation_offset(char_id: String, actor: String) -> Vector3:
+	if char_id == actor:
+		return Vector3.ZERO
+	if char_id == "aster" and actor != "aster":
+		return PARTY_OFFSETS.get(actor, Vector3(1.4, 0.0, 0.0)) as Vector3
+	return PARTY_OFFSETS.get(char_id, Vector3(1.4, 0.0, 0.0)) as Vector3
+
+
+func _approval_move_actor(
+	preview_instance: Node,
+	actor: String,
+	target: Vector3,
+	result: Dictionary,
+	phase: String,
+	label: String,
+	capture := true
+) -> Dictionary:
+	var report := {
+		"actor": actor,
+		"target": _vec3_array(target),
+		"commands": 0,
+		"duration": 0.0,
+		"reached": false,
+	}
+	if not preview_instance.has_method("headless_move_character") \
+			or not preview_instance.has_method("headless_advance"):
+		return report
+	var commanded := bool(preview_instance.call(
+		"headless_move_character", actor, target, false
+	))
+	if not commanded:
+		return report
+	report["commands"] = 1
+	var movement_info: Dictionary = (
+		preview_instance.call("headless_get_character_movement_info", actor)
+		if preview_instance.has_method("headless_get_character_movement_info")
+		else {}
+	)
+	var duration := float(movement_info.get("duration", 0.0)) + 0.2
+	if is_nan(duration) or is_inf(duration) \
+			or duration < 0.0 or duration > PHYSICAL_INTERACTION_TIMEOUT:
+		report["duration_invalid"] = true
+		return report
+	duration = maxf(0.1, duration)
+	report["duration"] = duration
+	if capture:
+		_advance_preview_with_animation(
+			result, preview_instance, duration, phase, "Approaching %s" % label, {
+				"event_type": "physical_interaction_approach",
+				"actor": actor,
+				"target": report["target"],
+				"label": label,
+			}
+		)
+	else:
+		preview_instance.call("headless_advance", duration, 0.05)
+	var remaining := maxf(0.0, PHYSICAL_INTERACTION_TIMEOUT - duration)
+	while remaining > 0.0 and preview_instance.has_method(
+		"headless_is_character_moving"
+	) and bool(preview_instance.call("headless_is_character_moving", actor)):
+		var step := minf(0.25, remaining)
+		preview_instance.call("headless_advance", step, 0.05)
+		remaining -= step
+	report["reached"] = _approval_actor_reached(
+		preview_instance, actor, target
+	)
+	return report
+
+
+func _approval_actor_reached(
+	preview_instance: Node, actor: String, target: Vector3
+) -> bool:
+	if preview_instance.has_method("headless_is_character_moving") \
+			and bool(preview_instance.call("headless_is_character_moving", actor)):
+		return false
+	var state: Dictionary = preview_instance.call("headless_get_state")
+	var actual := _vec3(
+		state.get("characters", {}).get(actor, Vector3.INF), Vector3.INF
+	)
+	if actual == Vector3.INF:
+		return false
+	var gs_v: Variant = preview_instance.get("_game_state")
+	if gs_v != null and (gs_v as Object).get("grid") != null:
+		var grid_v: Variant = (gs_v as Object).get("grid")
+		return grid_v.world_to_grid(actual) == grid_v.world_to_grid(target)
+	return actual.distance_to(target) <= 0.35
+
+
+func _approval_send_input_action(
+	preview_instance: Node, action_name: String
+) -> void:
+	var pressed := InputEventAction.new()
+	pressed.action = StringName(action_name)
+	pressed.pressed = true
+	pressed.strength = 1.0
+	# headless_advance advances the authoritative schedulers without pumping a
+	# SceneTree render/input frame. Deliver the same InputEventAction to the
+	# preview's normal _input entry point in that mode; windowed/recording runs
+	# still travel through Input.parse_input_event and PlaythroughSession.
+	if DisplayServer.get_name() == "headless" \
+			and preview_instance.has_method("_input"):
+		preview_instance.call("_input", pressed)
+	else:
+		Input.parse_input_event(pressed)
+	var released := pressed.duplicate() as InputEventAction
+	released.pressed = false
+	released.strength = 0.0
+	if DisplayServer.get_name() == "headless" \
+			and preview_instance.has_method("_input"):
+		preview_instance.call("_input", released)
+	else:
+		Input.parse_input_event(released)
+
+
+func _approval_wait_for_node_completion(
+	preview_instance: Node,
+	node_id: String,
+	result: Dictionary,
+	phase: String
+) -> bool:
+	var remaining := PHYSICAL_INTERACTION_TIMEOUT
+	while remaining >= 0.0:
+		if _approval_node_completed(preview_instance, node_id):
+			return true
+		var step := minf(0.1, remaining)
+		if step <= 0.0:
+			break
+		_advance_preview_with_animation(
+			result, preview_instance, step, phase, "Interacting with %s" % node_id, {
+				"event_type": "physical_interaction_wait",
+				"node_id": node_id,
+			}
+		)
+		remaining -= step
+	return _approval_node_completed(preview_instance, node_id)
+
+
+func _approval_node_completed(preview_instance: Node, node_id: String) -> bool:
+	var state: Dictionary = preview_instance.call("headless_get_state")
+	var chunk: Dictionary = state.get("chunk", {})
+	if node_id == "exit_shelter":
+		return bool(chunk.get("shelter_rested", false))
+	return (chunk.get("generation", {}).get("completed_nodes", []) as Array).has(
+		node_id
+	)
+
+
+func _approval_wait_for_solution_action(
+	preview_instance: Node,
+	action: Dictionary,
+	action_group: String,
+	result: Dictionary,
+	phase: String,
+	action_id: String
+) -> bool:
+	var remaining := PHYSICAL_INTERACTION_TIMEOUT
+	while remaining >= 0.0:
+		if _approval_solution_action_completed(
+			preview_instance, action, action_group
+		):
+			return true
+		var step := minf(0.1, remaining)
+		if step <= 0.0:
+			break
+		_advance_preview_with_animation(
+			result, preview_instance, step, phase, "Resolving %s" % action_id, {
+				"event_type": "physical_world_action_wait",
+				"action_id": action_id,
+				"namespace": action_group,
+			}
+		)
+		remaining -= step
+	return _approval_solution_action_completed(
+		preview_instance, action, action_group
+	)
+
+
+func _approval_solution_action_completed(
+	preview_instance: Node, action: Dictionary, action_group: String
+) -> bool:
+	var state: Dictionary = preview_instance.call("headless_get_state")
+	var chunk: Dictionary = state.get("chunk", {})
+	if action_group == "branch":
+		var branch_id := str(action.get(
+			"branch_id", action.get("target", "")
+		))
+		var expected := str(action.get("expected_phase", "bridged"))
+		for span_v in chunk.get("branch_span_states", []):
+			if span_v is Dictionary \
+					and str((span_v as Dictionary).get("branch_id", "")) == branch_id:
+				return str((span_v as Dictionary).get("phase", "")) == expected
+		return false
+	match str(action.get("action", "")):
+		"open_sluice", "open_first_sluice":
+			return bool(chunk.get("first_sluice_open", false))
+		"release_bridge", "release_cistern_bridge":
+			return bool(chunk.get("cistern_bridge_installed", false))
+		"divert", "divert_current":
+			return bool(chunk.get("borrowed_current_diverted", false))
+		"restore", "restore_main_current":
+			return bool(chunk.get("main_current_restored", false))
+		"catch", "catch_spillway":
+			return bool(chunk.get("hydraulic_spillway_food_collected", false))
+		"enter_shelter":
+			return bool(chunk.get("shelter_rested", false))
+	return false
+
+
+## Kept only for focused data-layer diagnostics. Approval paths above must never call
+## this helper: it bypasses movement, interaction assignment, inventory, and risk contact.
+func _diagnostic_direct_activate_generated_node(
+	preview_instance: Node, node_id: String
+) -> bool:
+	return bool(preview_instance.call(
+		"headless_call_chunk", "activate_generated_node", [node_id]
+	))
 
 
 func _follow_golden_segment(
@@ -819,29 +1640,63 @@ func _follow_golden_segment(
 	end_index: int,
 	result := {},
 	options := {},
-	phase := "movement"
+	phase := "movement",
+	consumed_solution_actions := {}
 ) -> Dictionary:
-	var report := {"commands": 0, "visited_nodes": [], "route_ids": []}
+	var report := {
+		"commands": 0,
+		"visited_nodes": [],
+		"route_ids": [],
+		"physical_interactions": 0,
+		"interaction_failures": [],
+		"solution_action_failures": [],
+	}
 	if path.is_empty() or start_index > end_index:
 		return report
 	var first := maxi(0, start_index)
 	var last := mini(end_index, path.size() - 1)
 	for i in range(first, last + 1):
 		var node_id := str(path[i])
+		var action_report := _approval_apply_solution_actions_before_node(
+			preview_instance,
+			spec,
+			node_id,
+			consumed_solution_actions,
+			result,
+			phase
+		)
+		report["commands"] = int(report.get("commands", 0)) \
+			+ int(action_report.get("movement_commands", 0))
+		(report["solution_action_failures"] as Array).append_array(
+			action_report.get("failures", [])
+		)
 		var running_for_move := _node_suggests_running(_find_node(spec, node_id))
 		if i > 0:
 			var route_id := _find_route_id(spec, str(path[i - 1]), node_id, ["safe", "shortcut"])
 			if route_id != "":
 				var route_def := _find_route(spec, route_id)
 				running_for_move = running_for_move or _route_suggests_running(route_def)
-				preview_instance.call("headless_call_chunk", "choose_generated_route", [route_id, false])
 				(report["route_ids"] as Array).append(route_id)
 		var move_report := _move_party_to_node_report(
 			preview_instance, spec, node_id, result, options, running_for_move, phase
 		)
 		report["commands"] = int(report.get("commands", 0)) + int(move_report.get("commands", 0))
-		_capture_node_commit(result, preview_instance, _find_node(spec, node_id), phase)
-		_activate_node_with_nested_capture(result, preview_instance, node_id, phase)
+		var current_node := _find_node(spec, node_id)
+		_capture_node_commit(result, preview_instance, current_node, phase)
+		if RuntimeRegistryScript.handler_for_node(current_node, str(spec.get("id", ""))) != "":
+			var interaction := _approval_interact_generated_node(
+				preview_instance, spec, node_id, result, phase
+			)
+			report["commands"] = int(report.get("commands", 0)) \
+				+ int(interaction.get("movement_commands", 0))
+			if bool(interaction.get("requested", false)):
+				report["physical_interactions"] = int(
+					report.get("physical_interactions", 0)
+				) + 1
+			if not bool(interaction.get("completed", false)):
+				(report["interaction_failures"] as Array).append(
+					interaction.duplicate(true)
+				)
 		(report["visited_nodes"] as Array).append(node_id)
 	return report
 
@@ -869,6 +1724,7 @@ func _move_party_to_node_report(preview_instance: Node, spec: Dictionary, node_i
 	var commands := 0
 	var max_path_points := 0
 	var used_multi_y_path := false
+	var invalid_movement_durations: Array[String] = []
 	for char_id_v in active_party:
 		var char_id := str(char_id_v)
 		var target_pos := target + (PARTY_OFFSETS.get(char_id, Vector3.ZERO) as Vector3)
@@ -876,8 +1732,18 @@ func _move_party_to_node_report(preview_instance: Node, spec: Dictionary, node_i
 		var distance := current_pos.distance_to(target_pos)
 		var commanded := bool(preview_instance.call("headless_move_character", char_id, target_pos, running))
 		var movement_info: Dictionary = preview_instance.call("headless_get_character_movement_info", char_id) if preview_instance.has_method("headless_get_character_movement_info") else {}
-		var movement_duration := float(movement_info.get("duration", distance / float(CHARACTER_SPEEDS.get(char_id, 3.0)))) + 0.15
-		longest_duration = maxf(longest_duration, movement_duration)
+		var movement_duration := 0.0
+		if commanded:
+			movement_duration = float(movement_info.get(
+				"duration", distance / float(CHARACTER_SPEEDS.get(char_id, 3.0))
+			)) + 0.15
+			if is_nan(movement_duration) or is_inf(movement_duration) \
+					or movement_duration < 0.0 \
+					or movement_duration > MAX_PLAYTEST_ADVANCE_SECONDS:
+				invalid_movement_durations.append(char_id)
+				movement_duration = 0.0
+			else:
+				longest_duration = maxf(longest_duration, movement_duration)
 		max_path_points = maxi(max_path_points, int(movement_info.get("path_count", 0)))
 		used_multi_y_path = used_multi_y_path or _serialized_path_uses_multiple_y(movement_info.get("path", []))
 		if commanded:
@@ -898,6 +1764,7 @@ func _move_party_to_node_report(preview_instance: Node, spec: Dictionary, node_i
 	report["max_duration"] = longest_duration
 	report["max_path_points"] = max_path_points
 	report["used_multi_y_path"] = used_multi_y_path
+	report["invalid_movement_durations"] = invalid_movement_durations
 	if commands > 0:
 		_record_animation_snapshot(result, preview_instance, phase, "Move started to %s" % node_id, {
 			"event_type": "party_move_started",
@@ -950,6 +1817,31 @@ func _build_animation_layout(spec: Dictionary) -> Dictionary:
 		var node := (raw_node as Dictionary).duplicate(true)
 		var node_id := str(node.get("id", ""))
 		node["position"] = _vec3_array(_node_position(spec, node_id))
+		var realized_placements := []
+		if node.has("content_placements"):
+			for placement_v in node.get("content_placements", []):
+				if not (placement_v is Dictionary):
+					continue
+				var placement := placement_v as Dictionary
+				if RuntimeRegistryScript.generated_content_is_realized(
+					str(placement.get("category", "")),
+					str(placement.get("id", placement.get("key", "")))
+				):
+					realized_placements.append(placement.duplicate(true))
+		else:
+			# True legacy layouts get only proven runtime content at the node origin;
+			# HTML capture must never resurrect unbound nouns as diagram symbols.
+			for category in ["flora", "enemies", "structures"]:
+				for content_id_v in node.get(category, []):
+					var content_id := str(content_id_v)
+					if RuntimeRegistryScript.generated_content_is_realized(category, content_id):
+						realized_placements.append({
+							"id": content_id,
+							"category": category,
+							"position": node["position"],
+							"size": [0.8, 0.8, 0.8],
+						})
+		node["content_placements"] = realized_placements
 		nodes.append(node)
 	var routes := []
 	for raw_route in spec.get("routes", []):
@@ -975,7 +1867,9 @@ func _capture_step(result: Dictionary) -> float:
 	return maxf(0.05, float(animation.get("capture_step", DEFAULT_CAPTURE_STEP)))
 
 func _advance_preview_with_animation(result: Dictionary, preview_instance: Node, duration: float, phase: String, label: String, data := {}) -> void:
-	if not preview_instance.has_method("headless_advance") or duration <= 0.0:
+	if not preview_instance.has_method("headless_advance") or duration <= 0.0 \
+			or is_nan(duration) or is_inf(duration) \
+			or duration > MAX_PLAYTEST_ADVANCE_SECONDS:
 		return
 	if not _capture_enabled(result):
 		preview_instance.call("headless_advance", duration, 0.05)
@@ -1088,13 +1982,21 @@ func _capture_animation_chunk(chunk: Variant) -> Dictionary:
 		"first_shelter_beat_fired": bool(source.get("first_shelter_beat_fired", false)),
 		"last_outcome": str(source.get("last_outcome", "")),
 		"risky_damage_total": float(source.get("risky_damage_total", 0.0)),
+		"scarcity_clock_started": bool(source.get("scarcity_clock_started", false)),
+		"scarcity_drain_armed": bool(source.get("scarcity_drain_armed", false)),
+		"scarcity_drain_ticks": int(source.get("scarcity_drain_ticks", 0)),
+		"scarcity_atp_drained": float(source.get("scarcity_atp_drained", 0.0)),
+		"scarcity_hp_drained": float(source.get("scarcity_hp_drained", 0.0)),
+		"scarcity_hp_absorbed": float(source.get("scarcity_hp_absorbed", 0.0)),
+		"scarcity_zero_atp_hp_drain_per_character": float(
+			source.get("scarcity_zero_atp_hp_drain_per_character", 0.0)
+		),
 		"resources_collected": int(generation.get("resources_collected", 0)),
 		"active_loadout": str(source.get("active_loadout", generation.get("active_loadout", "spotlight"))),
 		"active_party": source.get("active_party", generation.get("active_party", PARTY_IDS)),
 		"completed_nodes": generation.get("completed_nodes", []),
 		"activated_routes": generation.get("activated_routes", []),
 		"produced_chain_states": source.get("produced_chain_states", generation.get("produced_chain_states", {})),
-		"prepared_nested_nodes": source.get("prepared_nested_nodes", generation.get("prepared_nested_nodes", {})),
 		"delivered_resource_nodes": source.get("delivered_resource_nodes", generation.get("delivered_resource_nodes", [])),
 		"graybox": source.get("graybox", {}),
 	})
@@ -1164,11 +2066,15 @@ func _capture_node_commit(
 ) -> void:
 	if node.is_empty() or not preview_instance.has_method("headless_advance"):
 		return
+	if str(node.get("runtime_handler", "")) == "":
+		return
 	var node_id := str(node.get("id", ""))
 	var role := str(node.get("role", ""))
 	if node_id == "entry" or role == "boundary":
 		return
-	var action := str(node.get("action_verb", "INTERVENE"))
+	var action := str(node.get("action_verb", ""))
+	if action == "":
+		return
 	var prediction := str(node.get("prediction_hint", node.get("systems_beat", {}).get("prediction", "")))
 	_record_animation_snapshot(result, preview_instance, phase, "%s // predict the result" % action, {
 		"event_type": "system_prediction",
@@ -1219,68 +2125,31 @@ func _capture_resource_beat(result: Dictionary, preview_instance: Node, spec: Di
 	var systems_verb := str(node.get("systems_beat", {}).get("verb", ""))
 	if str(node.get("survival_kind", "")) != "forage" and systems_verb != "forage":
 		return {}
-	if not preview_instance.has_method("spawn_preview_item") or not preview_instance.has_method("pick_up_preview_item"):
-		return {}
-	var state: Dictionary = preview_instance.call("headless_get_state") if preview_instance.has_method("headless_get_state") else {}
-	var endo_pos := _vec3(state.get("characters", {}).get("endo", _node_position(spec, node_id)), _node_position(spec, node_id))
-	if preview_instance.has_method("headless_select_character"):
-		preview_instance.call("headless_select_character", "endo")
-	var item_id := str(preview_instance.call("spawn_preview_item", "lysate", endo_pos, {
-		"display_name": "Foraged Lysate",
-		"endocytosis_duration": 0.8,
-		"atp_restore": 1.0,
-	}))
+	# QA observes the runtime transaction; it must never manufacture the reward it
+	# is supposed to verify. A missing held lysate makes Scarcity approval fail and
+	# points back to the node/runtime contract instead of masking the defect.
 	var report := {
 		"node_id": node_id,
-		"character": "endo",
-		"item_id": item_id,
+		"character": "",
+		"item_id": "",
 		"item_type": "lysate",
-		"spawned": item_id != "",
+		"spawned": false,
 		"picked_up": false,
 		"endocytosis_started": false,
 		"endocytosis_completed": false,
+		"missing_runtime_reward": true,
 	}
-	_record_animation_snapshot(result, preview_instance, phase, "Resource spawned at %s" % node_id, {
-		"event_type": "resource_spawned",
+	_record_check(
+		result,
+		"%s_physical_resource_%s" % [phase, node_id],
+		false,
+		"Forage node %s completed without producing a real carried lysate item" % node_id
+	)
+	_record_animation_snapshot(result, preview_instance, phase, "Missing physical reward at %s" % node_id, {
+		"event_type": "resource_missing",
 		"node_id": node_id,
-		"item_id": item_id,
 		"item_type": "lysate",
 	})
-	if item_id == "":
-		return report
-	var picked := bool(preview_instance.call("pick_up_preview_item", "endo", item_id))
-	report["picked_up"] = picked
-	_record_animation_snapshot(result, preview_instance, phase, "Endo picked up %s" % item_id, {
-		"event_type": "resource_picked_up",
-		"node_id": node_id,
-		"item_id": item_id,
-		"picked_up": picked,
-	})
-	if not picked or not preview_instance.has_method("endocytose_preview_item"):
-		return report
-	var started := bool(preview_instance.call("endocytose_preview_item", "endo", item_id))
-	report["endocytosis_started"] = started
-	_record_animation_snapshot(result, preview_instance, phase, "Endo started endocytosis", {
-		"event_type": "endocytosis_started",
-		"node_id": node_id,
-		"item_id": item_id,
-		"started": started,
-	})
-	if started:
-		_advance_preview_with_animation(result, preview_instance, 0.95, phase, "Endocytosis effect", {
-			"event_type": "endocytosis_effect",
-			"node_id": node_id,
-			"item_id": item_id,
-			"character": "endo",
-		})
-		var after: Dictionary = preview_instance.call("headless_get_state") if preview_instance.has_method("headless_get_state") else {}
-		report["endocytosis_completed"] = not bool(after.get("inventory", {}).get("endocytosing", {}).get("endo", false))
-		_record_animation_snapshot(result, preview_instance, phase, "Endocytosis completed", {
-			"event_type": "endocytosis_completed",
-			"node_id": node_id,
-			"item_id": item_id,
-			"completed": bool(report.get("endocytosis_completed", false)),
-		})
 	return report
 
 
@@ -1380,6 +2249,14 @@ func _node_position(spec: Dictionary, node_id: String) -> Vector3:
 			return _vec3((node as Dictionary).get("position", Vector3.ZERO), Vector3.ZERO)
 	return Vector3.ZERO
 
+
+func _node_approach_position(spec: Dictionary, node_id: String) -> Vector3:
+	var node := _find_node(spec, node_id)
+	return _vec3(
+		node.get("approach_position", []), _node_position(spec, node_id)
+	)
+
+
 func _find_route_id(spec: Dictionary, from_id: String, to_id: String, allowed_kinds: Array) -> String:
 	for route in spec.get("routes", []):
 		if not (route is Dictionary):
@@ -1438,6 +2315,7 @@ func _serialized_path_uses_multiple_y(path: Variant) -> bool:
 	return seen.size() > 1
 
 func _summarize_preview_state(state: Dictionary) -> Dictionary:
+	var chunk: Dictionary = state.get("chunk", {}).duplicate(true)
 	return {
 		"preview_chunk": str(state.get("preview_chunk", "")),
 		"preview_party_preset": str(state.get("preview_party_preset", "")),
@@ -1446,7 +2324,21 @@ func _summarize_preview_state(state: Dictionary) -> Dictionary:
 		"character_stats": state.get("character_stats", {}).duplicate(true),
 		"abilities": state.get("abilities", {}).duplicate(true),
 		"navigation": state.get("navigation", {}).duplicate(true),
-		"chunk": state.get("chunk", {}).duplicate(true),
+		"chunk": chunk,
+		"scarcity_experiment": {
+			"enabled": str(chunk.get("food_test", "")) == "scarcity",
+			"interval_seconds": float(chunk.get("scarcity_drain_interval", 0.0)),
+			"drain_per_character": float(chunk.get("scarcity_drain_per_character", 0.0)),
+			"floor_per_character": float(chunk.get("scarcity_atp_floor_per_character", 0.0)),
+			"hp_drain_at_zero_per_character": float(
+				chunk.get("scarcity_zero_atp_hp_drain_per_character", 0.0)
+			),
+			"started": bool(chunk.get("scarcity_clock_started", false)),
+			"ticks": int(chunk.get("scarcity_drain_ticks", 0)),
+			"atp_drained": float(chunk.get("scarcity_atp_drained", 0.0)),
+			"hp_drained": float(chunk.get("scarcity_hp_drained", 0.0)),
+			"hp_absorbed": float(chunk.get("scarcity_hp_absorbed", 0.0)),
+		},
 	}
 
 func _dispose_preview(preview_instance: Node, tree: SceneTree) -> void:

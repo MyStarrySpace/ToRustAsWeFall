@@ -1,12 +1,21 @@
 class_name GameState
 extends RefCounted
 
+const CanonicalCharacterAbilityScript := preload(
+	"res://scripts/game/mechanics/canonical_character_ability.gd")
+
 
 ## Scheduler-driven state for movement, stats, items, hazards, and replay.
 ## Positions are derived from ticks. Detection is predicted when movement changes.
 
 signal character_arrived(id: String)
 signal movement_started(id: String)  # a movement committed for id (derived event, like character_arrived)
+signal external_traversal_started(id: String, state: Dictionary)
+signal external_traversal_finished(id: String, traversal_id: StringName)
+signal external_traversal_cancelled(id: String, traversal_id: StringName, reason: StringName)
+signal mechanism_phase_started(mechanism_id: StringName, state: Dictionary)
+signal mechanism_phase_completed(mechanism_id: StringName, phase: StringName)
+signal mechanism_phase_reset(mechanism_id: StringName, reason: StringName)
 signal detection_predicted(detector_id: String, target_id: String)
 signal physics_collision(obj_id: String, collider_id: String, impulse: Vector3)
 signal pendulum_hit(pendulum_id: String, target_id: String, bob_velocity: Vector3)
@@ -21,10 +30,15 @@ signal knockdown_started(char_id: String)
 signal knockdown_ended(char_id: String)
 signal dodge_finished(char_id: String)
 signal stat_changed(char_id: String, stat: String, value: float)
+signal damage_absorbed(char_id: String, amount: float, shield_remaining: float, source_id: String)
+signal damage_shield_changed(char_id: String, amount: float, source_id: String)
 signal running_changed(char_id: String, running: bool)
 signal interactable_registered(id: String)
 signal interactable_triggered(id: String, character: String)
 signal interactable_enabled_changed(id: String, enabled: bool)
+## Emitted once after an authoritative snapshot has been rebuilt and prediction queues are armed.
+## Scene presenters may rebind here; no gameplay command is emitted during restoration.
+signal snapshot_restored(snapshot: Dictionary)
 
 var grid: GridWorld
 var route_cautious := false  # global safe/direct routing (Tab); set via set_route_mode (logged)
@@ -45,6 +59,9 @@ var _next_item_id := 1
 var _endocytosing: Dictionary = {} # char_id → {item_id, handle} for in-progress endocytosis
 var _dodging: Dictionary = {}     # char_id → {end_tick, handle}
 var _knocked_down: Dictionary = {}  # char_id → {end_tick, handle} — fell on a no-stamina dodge; vulnerable
+## Ability shields are scheduler-derived combat state. WRAP applies one of these; ordinary
+## negative HP deltas pass through this single resolver instead of scene-private shield flags.
+var _damage_shields: Dictionary = {}  # char_id -> {amount, source_id, handle, expires_tick}
 ## Per-character running tick state. Missing key = walking.
 var _running: Dictionary = {}
 ## Cooperative-pathfinding space-time reservations: Vector2i cell →
@@ -52,8 +69,8 @@ var _running: Dictionary = {}
 ## padded time window so others can plan paths that never overlap it in
 ## space and time. Derived from movement, never serialized.
 var _reservations: Dictionary = {}
-## Space-time nodes the LAST _plan_cooperative call expanded (0 when an early-out — incl. the reachability
-## cull — fired before the search). Derived diagnostic for perf tests; never serialized.
+## Space-time nodes the LAST _plan_cooperative call expanded (0 when an early-out or the uncontested
+## spatial fast path handled it). Derived diagnostic for perf tests; never serialized.
 var _coop_last_nodes := 0
 ## Pathfinding tracing — run with PATHFIND_DEBUG=1. Prints every cooperative search + the preview, AND
 ## appends to the flushed file GridWorld writes (user://pathfind.log) so it survives a hard crash.
@@ -65,6 +82,17 @@ static var _pf_debug: bool = OS.has_environment("PATHFIND_DEBUG")
 ## walks the next segment. Derived from one KIND_MOVE_CROSS_LEVEL command, never
 ## serialized — replay re-runs the command and reproduces every transition.
 var _cross_level_plan: Dictionary = {}
+
+## Authoritative mechanism-owned movement. Unlike an ordinary path, its simulation/data endpoints
+## may differ from its visible endpoints (a generated helix climb is vertical in the rendered world
+## while returning one loop in flat data space). Progress is always a pure scheduler-tick function.
+## `locked` refuses ordinary movement until derived completion or an explicit authorized cancel.
+var _external_traversals: Dictionary = {} # char_id -> traversal state + scheduler handle
+
+## Logged, saveable scheduler phases for world mechanisms. Scene nodes are deliberately only views:
+## they query this registry to render progress and enable their interactions. A mechanism remains
+## deploying/deployed through replay or save/load even when its presenting node is constructed later.
+var _timed_mechanism_phases: Dictionary = {} # mechanism_id -> phase state + scheduler handle
 
 const HP_MAX := 100.0
 const STAMINA_MAX := 100.0
@@ -105,6 +133,11 @@ var _performance_counters := {
 	"detection_predictions_solved": 0,
 	"detection_events_scheduled": 0,
 	"cooperative_plans": 0,
+	"cooperative_fast_paths": 0,
+	"cooperative_wait_fast_paths": 0,
+	"cooperative_conflict_searches": 0,
+	"group_replans": 0,
+	"group_replan_members": 0,
 	"plain_plans": 0,
 }
 
@@ -273,7 +306,7 @@ func get_character_level(id: String) -> int:
 ## Set a character's floor (a level transition — a ladder/ramp arrival). Stops any current move and
 ## snaps the data-layer Y to that floor, so positions/paths read at the right height.
 func set_character_level(id: String, level: int) -> void:
-	if not characters.has(id):
+	if not characters.has(id) or is_external_traversal_active(id):
 		return
 	_emit(GameEvent.KIND_SET_LEVEL, {"id": id, "level": level})
 	_apply_set_level(id, level)
@@ -296,6 +329,8 @@ func _apply_set_level(id: String, level: int) -> void:
 
 func unregister_character(id: String) -> void:
 	_emit(GameEvent.KIND_UNREGISTER_CHARACTER, {"id": id})
+	clear_damage_shield(id)
+	_cancel_external_traversal_derived(id, &"unregistered")
 	_end_drag_involving(id)
 	_cross_level_plan.erase(id)
 	if characters.has(id):
@@ -316,6 +351,491 @@ func unregister_character(id: String) -> void:
 	_coop_exempt.erase(id)
 
 # --- Movement Commands ---
+
+## Commit a mechanism-owned traversal. The event records both coordinate spaces and the complete
+## time interval; once accepted, the rider is immediately owned by this state machine rather than
+## standing at the origin until a delayed teleport. `locked` is the sole policy today: ordinary
+## move/stop commands are refused, while a hazard or checkpoint may invoke the separately logged
+## cancel command with an explicit reason.
+func command_external_traversal(
+		id: String,
+		traversal_id: StringName,
+		data_destination: Vector3,
+		render_origin: Vector3,
+		render_destination: Vector3,
+		duration: float,
+		interrupt_policy: StringName = &"locked"
+	) -> bool:
+	var data_origin := get_position(id) if characters.has(id) else Vector3.ZERO
+	return command_external_path_traversal(
+		id,
+		traversal_id,
+		[data_origin, data_destination],
+		[render_origin, render_destination],
+		duration,
+		interrupt_policy)
+
+
+## Path-preserving mechanism traversal. A crawl/rail/river may cross grid-forbidden space along
+## authored bends; reducing that transit to an endpoint lerp changes both what can see the rider and
+## what a replay shows. The complete paired data/render waypoint paths are logged and serialized.
+func command_external_path_traversal(
+		id: String,
+		traversal_id: StringName,
+		data_path_value: Array,
+		render_path_value: Array,
+		duration: float,
+		interrupt_policy: StringName = &"locked"
+	) -> bool:
+	if not characters.has(id) or scheduler == null or duration <= 0.0:
+		return false
+	if _external_traversals.has(id) or interrupt_policy != &"locked":
+		return false
+	if is_endocytosing(id) or is_dodging(id) or is_knocked_down(id) \
+			or is_downed(id) or is_dragging(id):
+		return false
+	var data_path := _validated_external_path(data_path_value)
+	var render_path := _validated_external_path(render_path_value)
+	if data_path.size() < 2 or render_path.size() != data_path.size() \
+			or not (data_path[0] as Vector3).is_equal_approx(get_position(id)):
+		return false
+	if is_running(id):
+		set_running(id, false)
+	var start_tick := float(scheduler.get_current_tick())
+	var data_path_payload := _external_path_to_payload(data_path)
+	var render_path_payload := _external_path_to_payload(render_path)
+	var payload := {
+		"id": id,
+		"traversal_id": traversal_id,
+		"data_origin": data_path_payload[0],
+		"data_destination": data_path_payload[data_path_payload.size() - 1],
+		"render_origin": render_path_payload[0],
+		"render_destination": render_path_payload[render_path_payload.size() - 1],
+		"data_path": data_path_payload,
+		"render_path": render_path_payload,
+		"start_tick": start_tick,
+		"end_tick": start_tick + duration,
+		"progress_start": 0.0,
+		"interrupt_policy": interrupt_policy,
+	}
+	_emit(GameEvent.KIND_BEGIN_EXTERNAL_TRAVERSAL, payload)
+	return _apply_external_traversal(payload)
+
+
+## Explicit interruption seam for hazards/checkpoints. Ordinary player movement never calls this
+## for a locked traversal. Cancellation freezes the authoritative data position at the current tick.
+func cancel_external_traversal(id: String, reason: StringName = &"cancelled") -> bool:
+	if not _external_traversals.has(id):
+		return false
+	var state: Dictionary = _external_traversals[id]
+	var payload := {
+		"id": id,
+		"traversal_id": state.get("traversal_id", &""),
+		"reason": reason,
+	}
+	_emit(GameEvent.KIND_CANCEL_EXTERNAL_TRAVERSAL, payload)
+	return _apply_cancel_external_traversal(payload)
+
+
+func is_external_traversal_active(id: String) -> bool:
+	return _external_traversals.has(id)
+
+
+## Handle-free readback for saves, interaction guards, tests, and pause inspection.
+func get_external_traversal_state(id: String) -> Dictionary:
+	if not _external_traversals.has(id):
+		return {}
+	var state: Dictionary = _external_traversals[id]
+	var out := state.duplicate(true)
+	out.erase("handle")
+	var now := float(scheduler.get_current_tick()) if scheduler != null else float(state["start_tick"])
+	var progress := _external_traversal_progress_at(state, now)
+	out["progress"] = progress
+	out["remaining"] = maxf(0.0, float(state["end_tick"]) - now)
+	out["data_position"] = _external_data_position_at(state, now)
+	out["render_position"] = _external_render_position_at(state, now)
+	return out
+
+
+func _apply_external_traversal(payload: Dictionary) -> bool:
+	var id := str(payload.get("id", ""))
+	if not characters.has(id) or scheduler == null or _external_traversals.has(id):
+		return false
+	var policy := StringName(str(payload.get("interrupt_policy", "")))
+	if policy != &"locked":
+		return false
+	var start_tick := float(payload.get("start_tick", scheduler.get_current_tick()))
+	var end_tick := float(payload.get("end_tick", start_tick))
+	var progress_start := clampf(float(payload.get("progress_start", 0.0)), 0.0, 1.0)
+	if end_tick <= start_tick or end_tick < float(scheduler.get_current_tick()) \
+			or progress_start >= 1.0:
+		return false
+	var data_origin := GameEvent.arr_to_v3(payload.get("data_origin", [0.0, 0.0, 0.0]))
+	var data_destination := GameEvent.arr_to_v3(payload.get("data_destination", [0.0, 0.0, 0.0]))
+	var render_origin := GameEvent.arr_to_v3(payload.get("render_origin", [0.0, 0.0, 0.0]))
+	var render_destination := GameEvent.arr_to_v3(payload.get("render_destination", [0.0, 0.0, 0.0]))
+	var data_path := _external_path_from_payload(
+		payload.get("data_path", []), data_origin, data_destination)
+	var render_path := _external_path_from_payload(
+		payload.get("render_path", []), render_origin, render_destination)
+	var traversal_id := StringName(str(payload.get("traversal_id", "")))
+	if String(traversal_id).is_empty() or data_path.size() < 2 \
+			or render_path.size() != data_path.size():
+		return false
+	data_origin = data_path[0]
+	data_destination = data_path[data_path.size() - 1]
+	render_origin = render_path[0]
+	render_destination = render_path[render_path.size() - 1]
+
+	_cross_level_plan.erase(id)
+	_cancel_movement(id)
+	_stop_rest(id)
+	cancel_field_restore(id)
+	characters[id]["position"] = data_origin
+	if grid != null:
+		characters[id]["grid_cell"] = grid.world_to_grid(data_origin)
+		_clear_reservations(id)
+	var handle := int(scheduler.schedule_at(
+		end_tick,
+		_finish_external_traversal.bind(id, traversal_id, start_tick),
+		"external_traversal_%s" % id
+	))
+	if handle <= 0:
+		return false
+	var path_cumulative := _external_path_cumulative(data_path)
+	if float(path_cumulative[path_cumulative.size() - 1]) <= 0.000001:
+		path_cumulative = _external_path_cumulative(render_path)
+	if float(path_cumulative[path_cumulative.size() - 1]) <= 0.000001:
+		scheduler.cancel(handle)
+		return false
+	_external_traversals[id] = {
+		"traversal_id": traversal_id,
+		"data_origin": data_origin,
+		"data_destination": data_destination,
+		"render_origin": render_origin,
+		"render_destination": render_destination,
+		"data_path": data_path,
+		"render_path": render_path,
+		"path_cumulative": path_cumulative,
+		"start_tick": start_tick,
+		"end_tick": end_tick,
+		"progress_start": progress_start,
+		"interrupt_policy": policy,
+		"handle": handle,
+	}
+	movement_started.emit(id)
+	external_traversal_started.emit(id, get_external_traversal_state(id))
+	_recompute_all_detection_predictions(id)
+	_recompute_physics_predictions()
+	_recompute_pendulum_predictions()
+	return true
+
+
+func _finish_external_traversal(id: String, traversal_id: StringName, start_tick: float) -> void:
+	if not characters.has(id) or not _external_traversals.has(id):
+		return
+	var state: Dictionary = _external_traversals[id]
+	if state.get("traversal_id", &"") != traversal_id \
+			or not is_equal_approx(float(state.get("start_tick", -1.0)), start_tick):
+		return
+	var destination: Vector3 = state["data_destination"]
+	_external_traversals.erase(id)
+	characters[id]["position"] = destination
+	if grid != null:
+		characters[id]["grid_cell"] = grid.world_to_grid(destination)
+		characters[id]["level"] = _level_for_y(destination.y)
+		_reserve_parked(id, characters[id]["grid_cell"])
+	external_traversal_finished.emit(id, traversal_id)
+	character_arrived.emit(id)
+	_recompute_all_detection_predictions(id)
+	_recompute_physics_predictions()
+	_recompute_pendulum_predictions()
+
+
+func _apply_cancel_external_traversal(payload: Dictionary) -> bool:
+	var id := str(payload.get("id", ""))
+	if not characters.has(id) or not _external_traversals.has(id):
+		return false
+	var state: Dictionary = _external_traversals[id]
+	var requested_id := StringName(str(payload.get("traversal_id", "")))
+	if requested_id != state.get("traversal_id", &""):
+		return false
+	var now := float(scheduler.get_current_tick()) if scheduler != null else float(state["start_tick"])
+	var pinned := _external_data_position_at(state, now)
+	if scheduler != null:
+		scheduler.cancel(int(state.get("handle", 0)))
+	_external_traversals.erase(id)
+	characters[id]["position"] = pinned
+	if grid != null:
+		characters[id]["grid_cell"] = grid.world_to_grid(pinned)
+		characters[id]["level"] = _level_for_y(pinned.y)
+		_reserve_parked(id, characters[id]["grid_cell"])
+	var reason := StringName(str(payload.get("reason", "cancelled")))
+	external_traversal_cancelled.emit(id, requested_id, reason)
+	character_arrived.emit(id)
+	_recompute_all_detection_predictions(id)
+	_recompute_physics_predictions()
+	_recompute_pendulum_predictions()
+	return true
+
+
+func _cancel_external_traversal_derived(id: String, reason: StringName) -> bool:
+	if not _external_traversals.has(id):
+		return false
+	var state: Dictionary = _external_traversals[id]
+	return _apply_cancel_external_traversal({
+		"id": id,
+		"traversal_id": state.get("traversal_id", &""),
+		"reason": reason,
+	})
+
+
+func _external_traversal_progress_at(state: Dictionary, tick: float) -> float:
+	var progress_start := clampf(float(state.get("progress_start", 0.0)), 0.0, 1.0)
+	return lerpf(progress_start, 1.0, _external_traversal_local_progress_at(state, tick))
+
+
+func _external_traversal_local_progress_at(state: Dictionary, tick: float) -> float:
+	var start := float(state.get("start_tick", tick))
+	var finish := float(state.get("end_tick", start))
+	if finish <= start:
+		return 1.0
+	return clampf((tick - start) / (finish - start), 0.0, 1.0)
+
+
+func _external_data_position_at(state: Dictionary, tick: float) -> Vector3:
+	var path: Array = state.get("data_path", [])
+	var cumulative: Array = state.get("path_cumulative", [])
+	if path.size() >= 2 and cumulative.size() == path.size():
+		return _external_path_position_at(
+			path, cumulative, _external_traversal_progress_at(state, tick))
+	return (state.get("data_origin", Vector3.ZERO) as Vector3).lerp(
+		state.get("data_destination", Vector3.ZERO) as Vector3,
+		_external_traversal_local_progress_at(state, tick))
+
+
+func _external_render_position_at(state: Dictionary, tick: float) -> Vector3:
+	var path: Array = state.get("render_path", [])
+	var cumulative: Array = state.get("path_cumulative", [])
+	if path.size() >= 2 and cumulative.size() == path.size():
+		return _external_path_position_at(
+			path, cumulative, _external_traversal_progress_at(state, tick))
+	return (state.get("render_origin", Vector3.ZERO) as Vector3).lerp(
+		state.get("render_destination", Vector3.ZERO) as Vector3,
+		_external_traversal_local_progress_at(state, tick))
+
+
+func _validated_external_path(raw: Array) -> Array[Vector3]:
+	var out: Array[Vector3] = []
+	for value in raw:
+		if not value is Vector3 or not (value as Vector3).is_finite():
+			return []
+		out.append(value as Vector3)
+	return out
+
+
+func _external_path_to_payload(path: Array) -> Array:
+	var out: Array = []
+	for point in path:
+		out.append(GameEvent.v3_to_arr(point as Vector3))
+	return out
+
+
+func _external_path_from_payload(
+		raw: Variant, fallback_origin: Vector3, fallback_destination: Vector3
+	) -> Array[Vector3]:
+	var out: Array[Vector3] = []
+	if raw is Array:
+		for value in raw as Array:
+			var point: Vector3
+			if value is Vector3:
+				point = value as Vector3
+			elif value is Array and (value as Array).size() >= 3:
+				point = GameEvent.arr_to_v3(value)
+			else:
+				return []
+			if not point.is_finite():
+				return []
+			out.append(point)
+	if out.size() >= 2:
+		return out
+	return [fallback_origin, fallback_destination]
+
+
+func _external_path_cumulative(path: Array) -> Array[float]:
+	var out: Array[float] = [0.0]
+	for i in range(1, path.size()):
+		out.append(out[i - 1] + (path[i - 1] as Vector3).distance_to(path[i] as Vector3))
+	return out
+
+
+func _external_path_position_at(path: Array, cumulative: Array, progress: float) -> Vector3:
+	if path.is_empty():
+		return Vector3.ZERO
+	if path.size() == 1 or cumulative.size() != path.size():
+		return path[path.size() - 1] as Vector3
+	var total := float(cumulative[cumulative.size() - 1])
+	if total <= 0.000001:
+		return path[path.size() - 1] as Vector3
+	var distance := clampf(progress, 0.0, 1.0) * total
+	for i in range(1, cumulative.size()):
+		var segment_end := float(cumulative[i])
+		if distance > segment_end and i < cumulative.size() - 1:
+			continue
+		var segment_start := float(cumulative[i - 1])
+		var span := segment_end - segment_start
+		var local := clampf((distance - segment_start) / span, 0.0, 1.0) \
+			if span > 0.000001 else 1.0
+		return (path[i - 1] as Vector3).lerp(path[i] as Vector3, local)
+	return path[path.size() - 1] as Vector3
+
+
+# --- Scheduler-owned mechanism phases ---
+
+## Commit a one-way timed phase such as `deploying -> deployed`. The full timing window is logged at
+## commitment; progress and completion are derived from scheduler time. An existing state (active or
+## completed) refuses a second commitment until an explicit reset, preventing double-tend exploits.
+func command_begin_mechanism_phase(
+		mechanism_id: StringName,
+		phase: StringName,
+		duration: float,
+		completion_phase: StringName,
+		metadata: Dictionary = {}
+	) -> bool:
+	if scheduler == null or String(mechanism_id).is_empty() or String(phase).is_empty() \
+			or String(completion_phase).is_empty() or phase == completion_phase or duration <= 0.0:
+		return false
+	if _timed_mechanism_phases.has(mechanism_id):
+		return false
+	var start_tick := float(scheduler.get_current_tick())
+	var payload := {
+		"mechanism_id": mechanism_id,
+		"phase": phase,
+		"completion_phase": completion_phase,
+		"start_tick": start_tick,
+		"end_tick": start_tick + duration,
+		"progress_start": 0.0,
+		"metadata": metadata.duplicate(true),
+	}
+	_emit(GameEvent.KIND_BEGIN_MECHANISM_PHASE, payload)
+	return _apply_begin_mechanism_phase(payload)
+
+
+## Explicitly clear either an active or completed mechanism phase. Reset is itself logged so a
+## checkpoint replay cannot leave a gate open merely because its old completion callback once ran.
+func command_reset_mechanism_phase(
+		mechanism_id: StringName,
+		reason: StringName = &"reset"
+	) -> bool:
+	if not _timed_mechanism_phases.has(mechanism_id):
+		return false
+	var payload := {
+		"mechanism_id": mechanism_id,
+		"reason": reason,
+	}
+	_emit(GameEvent.KIND_RESET_MECHANISM_PHASE, payload)
+	return _apply_reset_mechanism_phase(payload)
+
+
+func has_mechanism_phase(mechanism_id: StringName) -> bool:
+	return _timed_mechanism_phases.has(mechanism_id)
+
+
+## Handle-free authoritative readback. Presentation code may sample this every frame; doing so never
+## mutates simulation or adds log entries.
+func get_mechanism_phase_state(mechanism_id: StringName) -> Dictionary:
+	if not _timed_mechanism_phases.has(mechanism_id):
+		return {}
+	var state: Dictionary = _timed_mechanism_phases[mechanism_id]
+	var out := state.duplicate(true)
+	out.erase("handle")
+	var now := float(scheduler.get_current_tick()) if scheduler != null \
+		else float(state.get("start_tick", 0.0))
+	var completed: bool = state.get("phase", &"") == state.get("completion_phase", &"")
+	out["progress"] = 1.0 if completed else _mechanism_phase_progress_at(state, now)
+	out["remaining"] = 0.0 if completed \
+		else maxf(0.0, float(state.get("end_tick", now)) - now)
+	return out
+
+
+func _apply_begin_mechanism_phase(payload: Dictionary) -> bool:
+	if scheduler == null:
+		return false
+	var mechanism_id := StringName(str(payload.get("mechanism_id", "")))
+	var phase := StringName(str(payload.get("phase", "")))
+	var completion_phase := StringName(str(payload.get("completion_phase", "")))
+	if String(mechanism_id).is_empty() or String(phase).is_empty() \
+			or String(completion_phase).is_empty() or phase == completion_phase \
+			or _timed_mechanism_phases.has(mechanism_id):
+		return false
+	var now := float(scheduler.get_current_tick())
+	var start_tick := float(payload.get("start_tick", now))
+	var end_tick := float(payload.get("end_tick", start_tick))
+	var progress_start := clampf(float(payload.get("progress_start", 0.0)), 0.0, 1.0)
+	if end_tick <= start_tick or end_tick < now or progress_start >= 1.0:
+		return false
+	var handle := int(scheduler.schedule_at(
+		end_tick,
+		_finish_mechanism_phase.bind(mechanism_id, phase, start_tick),
+		"mechanism_phase_%s" % String(mechanism_id)
+	))
+	if handle <= 0:
+		return false
+	_timed_mechanism_phases[mechanism_id] = {
+		"mechanism_id": mechanism_id,
+		"phase": phase,
+		"completion_phase": completion_phase,
+		"start_tick": start_tick,
+		"end_tick": end_tick,
+		"progress_start": progress_start,
+		"metadata": (payload.get("metadata", {}) as Dictionary).duplicate(true),
+		"handle": handle,
+	}
+	mechanism_phase_started.emit(mechanism_id, get_mechanism_phase_state(mechanism_id))
+	return true
+
+
+func _finish_mechanism_phase(
+		mechanism_id: StringName,
+		expected_phase: StringName,
+		expected_start_tick: float
+	) -> void:
+	if not _timed_mechanism_phases.has(mechanism_id):
+		return
+	var state: Dictionary = _timed_mechanism_phases[mechanism_id]
+	if state.get("phase", &"") != expected_phase \
+			or not is_equal_approx(float(state.get("start_tick", -1.0)), expected_start_tick):
+		return
+	var completion_phase := StringName(str(state.get("completion_phase", "")))
+	state["phase"] = completion_phase
+	state["handle"] = 0
+	_timed_mechanism_phases[mechanism_id] = state
+	mechanism_phase_completed.emit(mechanism_id, completion_phase)
+
+
+func _apply_reset_mechanism_phase(payload: Dictionary) -> bool:
+	var mechanism_id := StringName(str(payload.get("mechanism_id", "")))
+	if not _timed_mechanism_phases.has(mechanism_id):
+		return false
+	var state: Dictionary = _timed_mechanism_phases[mechanism_id]
+	if scheduler != null:
+		var handle := int(state.get("handle", 0))
+		if handle > 0:
+			scheduler.cancel(handle)
+	_timed_mechanism_phases.erase(mechanism_id)
+	var reason := StringName(str(payload.get("reason", "reset")))
+	mechanism_phase_reset.emit(mechanism_id, reason)
+	return true
+
+
+func _mechanism_phase_progress_at(state: Dictionary, tick: float) -> float:
+	var progress_start := clampf(float(state.get("progress_start", 0.0)), 0.0, 1.0)
+	var start_tick := float(state.get("start_tick", tick))
+	var end_tick := float(state.get("end_tick", start_tick))
+	if end_tick <= start_tick:
+		return 1.0
+	var interval_progress := clampf((tick - start_tick) / (end_tick - start_tick), 0.0, 1.0)
+	return lerpf(progress_start, 1.0, interval_progress)
 
 func get_navigation_state() -> Dictionary:
 	# The grid is the ONE traversal layer — gridless scenes resolve straight-line moves only.
@@ -341,11 +861,15 @@ func get_navigation_state() -> Dictionary:
 func can_accept_move_command(id: String) -> bool:
 	if not characters.has(id) or not scheduler:
 		return false
-	return not is_endocytosing(id) and not is_knocked_down(id) and not is_downed(id)
+	return not is_endocytosing(id) and not is_dodging(id) \
+		and not is_knocked_down(id) and not is_downed(id) \
+		and not is_external_traversal_active(id)
 
 ## Shared side effects of a fresh explicit movement command. These are derived state, so replay
 ## applies them through the same command/application path without recording additional events.
 func _prepare_explicit_move(id: String) -> void:
+	if is_external_traversal_active(id):
+		return
 	_cross_level_plan.erase(id)
 	if not _push_plans.is_empty() and _push_plans.has(id):
 		_push_plans.erase(id)
@@ -381,7 +905,8 @@ func _do_move_cross_level(id: String, end_cell: Vector2i, end_level: int) -> boo
 	_cross_level_plan.erase(id)
 	if not characters.has(id) or not grid or not scheduler:
 		return false
-	if is_endocytosing(id):
+	if is_endocytosing(id) or is_dodging(id) or is_knocked_down(id) or is_downed(id) \
+			or is_external_traversal_active(id):
 		return false
 	var cur_pos := get_position(id)
 	var cur_level := get_character_level(id)
@@ -428,7 +953,12 @@ func _on_cross_level_arrival(id: String) -> void:
 	_do_move_to_cell(id, cells[cells.size() - 1])
 
 # Internal move without its own log entry.
-func _do_move_to_pos(id: String, pos: Vector3) -> bool:
+func _do_move_to_pos(
+		id: String,
+		pos: Vector3,
+		allow_group_start_wait := false,
+		already_prepared := false
+	) -> bool:
 	if not can_accept_move_command(id):
 		return false
 	# On a grid a position move routes on the CELLS (the cooperative planner, same as a cell move) —
@@ -446,11 +976,17 @@ func _do_move_to_pos(id: String, pos: Vector3) -> bool:
 			var target_cell := grid.nearest_walkable_cell(grid.world_to_grid(pos), target_level)
 			if target_level != get_character_level(id):
 				return _do_move_cross_level(id, target_cell, target_level)
-			return _do_move_to_cell(id, target_cell)
-		return _do_move_to_cell(id, grid.nearest_walkable_cell(grid.world_to_grid(pos), get_character_level(id)))
+			return _do_move_to_cell(
+				id, target_cell, allow_group_start_wait, already_prepared)
+		return _do_move_to_cell(
+			id,
+			grid.nearest_walkable_cell(grid.world_to_grid(pos), get_character_level(id)),
+			allow_group_start_wait,
+			already_prepared)
 	var current_pos := get_position(id)
 	var target := Vector3(pos.x, pos.y, pos.z)
-	_cancel_movement(id)
+	if not already_prepared:
+		_cancel_movement(id)
 	characters[id].position = current_pos
 	_start_movement(id, _resolve_world_path(current_pos, target))
 	return true
@@ -461,7 +997,8 @@ func command_walk_path(id: String, path: Array[Vector3]) -> void:
 	_emit(GameEvent.KIND_WALK_PATH, {"id": id, "path": GameEvent.path_to_arr(path)})
 	if not characters.has(id) or not scheduler or path.is_empty():
 		return
-	if is_endocytosing(id):
+	if is_endocytosing(id) or is_dodging(id) or is_knocked_down(id) or is_downed(id) \
+			or is_external_traversal_active(id):
 		return
 	var current_pos := get_position(id)
 	_cancel_movement(id)
@@ -479,6 +1016,8 @@ func command_stop(id: String) -> void:
 func _do_stop(id: String) -> void:
 	if not characters.has(id):
 		return
+	if is_external_traversal_active(id) or is_dodging(id) or is_knocked_down(id):
+		return
 	var ch: Dictionary = characters[id]
 	if ch.movement != null:
 		ch.position = get_position(id)
@@ -491,9 +1030,9 @@ func _do_stop(id: String) -> void:
 ## the position (keeping the character's own Y/level) + grid cell, re-parks, recomputes detection.
 ## Commits an enemy's attack-lunge end-point so its next move doesn't snap back to where it began.
 func snap_character_to(id: String, pos: Vector3) -> void:
-	_emit(GameEvent.KIND_SNAP_POSITION, {"id": id, "pos": GameEvent.v3_to_arr(pos)})
-	if not characters.has(id):
+	if not characters.has(id) or is_external_traversal_active(id):
 		return
+	_emit(GameEvent.KIND_SNAP_POSITION, {"id": id, "pos": GameEvent.v3_to_arr(pos)})
 	var ch: Dictionary = characters[id]
 	_cancel_movement(id)
 	ch.position = Vector3(pos.x, ch.position.y, pos.z)
@@ -537,7 +1076,9 @@ func _resolve_world_path(current_pos: Vector3, target: Vector3) -> Array[Vector3
 ## corridor / straight line when gridless; a plain A* route on a grid), so a hover preview matches what
 ## the click commits. Touches no movement, no reservations, no EventLog. Returns [] if unreachable.
 func compute_preview_path(id: String, target_pos: Vector3) -> Array[Vector3]:
+	var perf_started := PerformanceTrace.begin()
 	if not characters.has(id):
+		PerformanceTrace.end(&"nav", &"game_state.compute_preview_path", perf_started, id, 0)
 		return []
 	if _pf_debug:
 		GridWorld._pf_trace("[preview] compute_preview_path '%s' -> %v" % [id, target_pos])
@@ -556,19 +1097,24 @@ func compute_preview_path(id: String, target_pos: Vector3) -> Array[Vector3]:
 		# find_path returns WORLD positions (one per cell) already on the right level.
 		var waypoints: Array[Vector3] = grid.find_path(start_cell, end_cell, {}, route_cautious, {}, {}, level)
 		if waypoints.is_empty():
+			PerformanceTrace.end(&"nav", &"game_state.compute_preview_path", perf_started, id, 0)
 			return []
 		out = [current]
 		out.append_array(waypoints)
 		if _pf_debug:
 			GridWorld._pf_trace("[preview] returning %d pts" % out.size())
+		PerformanceTrace.end(&"nav", &"game_state.compute_preview_path", perf_started, id, out.size())
 		return out
-	return _resolve_world_path(current, target_pos)
+	var direct := _resolve_world_path(current, target_pos)
+	PerformanceTrace.end(&"nav", &"game_state.compute_preview_path", perf_started, id, direct.size())
+	return direct
 
 ## READ-ONLY per-member route preview: the path EACH party member WOULD take to its own spread
 ## destination on a party move. Mirrors party_move_to_pos's spread EXACTLY — distinct grid cells via
 ## _assign_party_cells, or a deterministic Z-fan when gridless — so the preview matches what the click
 ## commits. Pure UI: no mutation, no move, no log. Returns [{char_id, path}].
 func compute_preview_party_paths(target_pos: Vector3) -> Array:
+	var perf_started := PerformanceTrace.begin()
 	var members := _main_group()
 	var out: Array = []
 	if grid != null:
@@ -583,6 +1129,7 @@ func compute_preview_party_paths(target_pos: Vector3) -> Array:
 			var lateral := (float(i) - float(count - 1) / 2.0) * _PARTY_GRIDLESS_SPACING
 			var dest: Vector3 = target_pos + Vector3(0.0, 0.0, lateral)
 			out.append({"char_id": members[i], "path": compute_preview_path(members[i], dest)})
+	PerformanceTrace.end(&"nav", &"game_state.compute_preview_party_paths", perf_started, "party", out.size())
 	return out
 
 # --- Queries ---
@@ -597,6 +1144,10 @@ var coord_map = null
 ## The position a character's NODE should render at: the flat data position warped through coord_map
 ## (identity when no map is installed, so every flat scene is unchanged).
 func get_render_position(id: String) -> Vector3:
+	if _external_traversals.has(id):
+		var state: Dictionary = _external_traversals[id]
+		var now := float(scheduler.get_current_tick()) if scheduler != null else float(state["start_tick"])
+		return _external_render_position_at(state, now)
 	var p := get_position(id)
 	return p if coord_map == null else coord_map.to_world(p)
 
@@ -610,6 +1161,10 @@ func get_position(id: String) -> Vector3:
 	var drag_owner := get_dragger_of(id)
 	if drag_owner != "":
 		return get_position(drag_owner) + DRAG_TRAIL_OFFSET
+	if _external_traversals.has(id):
+		var external: Dictionary = _external_traversals[id]
+		var now := float(scheduler.get_current_tick()) if scheduler != null else float(external["start_tick"])
+		return _external_data_position_at(external, now)
 	var ch: Dictionary = characters[id]
 	if ch.movement == null or not scheduler:
 		return ch.position
@@ -627,6 +1182,11 @@ func get_position(id: String) -> Vector3:
 func predict_position(id: String, dt: float) -> Vector3:
 	if not characters.has(id):
 		return Vector3.ZERO
+	if _external_traversals.has(id):
+		var external: Dictionary = _external_traversals[id]
+		var future_external_tick := (float(scheduler.get_current_tick()) if scheduler != null else 0.0) \
+			+ maxf(0.0, dt)
+		return _external_data_position_at(external, future_external_tick)
 	var ch: Dictionary = characters[id]
 	if ch.movement == null or not scheduler:
 		return get_position(id)
@@ -642,7 +1202,7 @@ func predict_position(id: String, dt: float) -> Vector3:
 func is_moving(id: String) -> bool:
 	if not characters.has(id):
 		return false
-	return characters[id].movement != null
+	return characters[id].movement != null or is_external_traversal_active(id)
 
 ## The final waypoint of the character's current (or queued) move, in DATA space; Vector3.INF when the
 ## character isn't moving. The path/marker renderers read this to mark where a move ENDS for ANY character
@@ -650,6 +1210,8 @@ func is_moving(id: String) -> bool:
 func get_destination(id: String) -> Vector3:
 	if not characters.has(id):
 		return Vector3.INF
+	if _external_traversals.has(id):
+		return _external_traversals[id].get("data_destination", Vector3.INF)
 	var mv = characters[id].movement
 	if mv == null:
 		return Vector3.INF
@@ -682,9 +1244,13 @@ func get_stat_cap(id: String, stat: String) -> float:
 		"atp": return ATP_MAX_PIPS
 	return 0.0
 
-## Set a stat and clamp hp/stamina/atp to their caps.
-func set_stat(id: String, stat: String, value: float) -> void:
-	_emit(GameEvent.KIND_SET_STAT, {"id": id, "stat": stat, "value": value})
+## Set a stat and clamp hp/stamina/atp to their caps. Optional source metadata is
+## diagnostic provenance only; replay remains driven by the resulting absolute value.
+func set_stat(id: String, stat: String, value: float, source := "") -> void:
+	var payload := {"id": id, "stat": stat, "value": value}
+	if source != "":
+		payload["source"] = source
+	_emit(GameEvent.KIND_SET_STAT, payload)
 	if not characters.has(id):
 		return
 	var clamped: float = value
@@ -703,9 +1269,72 @@ func set_stat(id: String, stat: String, value: float) -> void:
 	if stat == "hp" and clamped <= 0.0 and not is_downed(id) and not bool(characters[id].stats.get("dead", false)):
 		_mark_downed(id)
 
-## Shorthand for relative stat changes (damage, drain, healing).
-func adjust_stat(id: String, stat: String, delta: float) -> void:
-	set_stat(id, stat, get_stat(id, stat) + delta)
+## Apply or refresh a finite damage shield. Duration follows the gameplay scheduler, so pause,
+## fast-forward, replay, and headless tests all observe the same window.
+func apply_damage_shield(
+		char_id: String,
+		amount: float,
+		duration: float,
+		source_id := ""
+	) -> bool:
+	if not characters.has(char_id) or amount <= 0.0 or duration <= 0.0 or scheduler == null:
+		return false
+	clear_damage_shield(char_id)
+	var tag := "damage_shield_" + char_id
+	var cid := char_id
+	var handle := scheduler.schedule_after(duration, func(): clear_damage_shield(cid), tag)
+	_damage_shields[char_id] = {
+		"amount": amount,
+		"source_id": source_id,
+		"handle": handle,
+		"expires_tick": scheduler.get_current_tick() + duration,
+	}
+	damage_shield_changed.emit(char_id, amount, source_id)
+	return true
+
+func clear_damage_shield(char_id: String) -> void:
+	if not _damage_shields.has(char_id):
+		return
+	var shield: Dictionary = _damage_shields[char_id]
+	_damage_shields.erase(char_id)
+	if scheduler:
+		var handle := int(shield.get("handle", 0))
+		if handle != 0:
+			scheduler.cancel(handle)
+	damage_shield_changed.emit(char_id, 0.0, str(shield.get("source_id", "")))
+
+func get_damage_shield(char_id: String) -> float:
+	return float((_damage_shields.get(char_id, {}) as Dictionary).get("amount", 0.0))
+
+func _resolve_incoming_damage(char_id: String, incoming: float) -> float:
+	if incoming <= 0.0 or not _damage_shields.has(char_id):
+		return incoming
+	var shield: Dictionary = _damage_shields[char_id]
+	var available := float(shield.get("amount", 0.0))
+	var absorbed := minf(available, incoming)
+	var remaining := maxf(0.0, available - absorbed)
+	var source_id := str(shield.get("source_id", ""))
+	if remaining <= 0.0:
+		clear_damage_shield(char_id)
+	else:
+		shield["amount"] = remaining
+		_damage_shields[char_id] = shield
+		damage_shield_changed.emit(char_id, remaining, source_id)
+	damage_absorbed.emit(char_id, absorbed, remaining, source_id)
+	return incoming - absorbed
+
+## Shorthand for relative stat changes (damage, drain, healing). Negative HP changes pass through
+## the shared shield resolver; source metadata keeps the cause diagnosable in the event log.
+func adjust_stat(
+		id: String,
+		stat: String,
+		delta: float,
+		source := ""
+	) -> void:
+	var resolved_delta := delta
+	if stat == "hp" and delta < 0.0:
+		resolved_delta = -_resolve_incoming_damage(id, -delta)
+	set_stat(id, stat, get_stat(id, stat) + resolved_delta, source)
 
 ## Apply a stat_upgrade payload. Capacity upgrades also refill the stat.
 func _apply_stat_upgrade(char_id: String, payload: Dictionary) -> void:
@@ -748,6 +1377,11 @@ func set_running(id: String, running: bool) -> void:
 	_emit(GameEvent.KIND_SET_RUNNING, {"id": id, "running": running})
 	if not characters.has(id):
 		return
+	if running and is_external_traversal_active(id):
+		return
+	if running and (is_endocytosing(id) or is_dodging(id) or is_knocked_down(id) \
+			or is_downed(id) or is_field_restoring(id) or is_resting(id)):
+		return
 	if running == is_running(id):
 		return
 	if running:
@@ -757,9 +1391,12 @@ func set_running(id: String, running: bool) -> void:
 		# dragging). The haul pace IS the pace.
 		if is_dragging(id):
 			return
-		_running[id] = {"tick_handle": 0}
+		_running[id] = {"tick_handle": 0, "next_tick": 0.0}
 		change_move_speed(id, RUN_SPEED)
-		_schedule_running_tick(id)
+		# A mid-move speed rebuild enters _start_movement(), which already arms the drain from the
+		# new movement epoch. Do not add a second callback for the same runner.
+		if int(_running[id].get("tick_handle", 0)) == 0:
+			_schedule_running_tick(id)
 	else:
 		var entry: Dictionary = _running.get(id, {})
 		var handle: int = int(entry.get("tick_handle", 0))
@@ -772,23 +1409,31 @@ func set_running(id: String, running: bool) -> void:
 func toggle_running(id: String) -> void:
 	set_running(id, not is_running(id))
 
-func _schedule_running_tick(id: String) -> void:
+func _schedule_running_tick(id: String, delay: float = RUN_TICK_INTERVAL) -> void:
 	if not is_running(id) or not scheduler:
 		return
+	# One authoritative cadence per runner. This defensive guard also prevents two callers in the
+	# same command boundary from silently doubling the stamina economy.
+	if int(_running[id].get("tick_handle", 0)) != 0:
+		return
+	delay = maxf(0.000001, delay)
 	var handle := scheduler.schedule_after(
-		RUN_TICK_INTERVAL,
+		delay,
 		func(): _on_running_tick(id),
 		"running_" + id
 	)
 	_running[id]["tick_handle"] = handle
+	_running[id]["next_tick"] = scheduler.get_current_tick() + delay
 
 func _on_running_tick(id: String) -> void:
 	if not is_running(id) or not characters.has(id):
 		return
+	# The scheduler consumed this handle before invoking us. Clear it first so the next cadence can
+	# be armed exactly once, including when a stat listener synchronously changes movement.
+	_running[id]["tick_handle"] = 0
+	_running[id]["next_tick"] = 0.0
 	if not is_moving(id):
 		# Pause stamina ticks while idle.
-		if _running.has(id):
-			_running[id]["tick_handle"] = 0
 		return
 	var new_val: float = maxf(0.0, get_stat(id, "stamina") - run_stamina_drain_per_sec * RUN_TICK_INTERVAL)
 	set_stat(id, "stamina", new_val)
@@ -800,6 +1445,7 @@ func _on_running_tick(id: String) -> void:
 ## Restore all registered characters to full stats and clear running flags.
 func reset_characters_to_full() -> void:
 	for id in characters.keys():
+		clear_damage_shield(id)
 		if is_running(id):
 			set_running(id, false)
 		set_stat(id, "hp", get_stat_cap(id, "hp"))
@@ -817,7 +1463,8 @@ func get_grid_cell(id: String) -> Vector2i:
 func state_hash() -> int:
 	return serialize().hash()
 
-## Snapshot for save/load. Movement is re-established by sequences.
+## Complete authoritative snapshot for save/load. Every committed gameplay phase is restored with
+## its remaining scheduler time; presentation and prediction queues are rebuilt from this state.
 func serialize() -> Dictionary:
 	var char_data := {}
 	for id in characters:
@@ -826,25 +1473,1113 @@ func serialize() -> Dictionary:
 		char_data[id] = {
 			"position": [pos.x, pos.y, pos.z],
 			"grid_cell": [ch.grid_cell.x, ch.grid_cell.y],
+			"level": int(ch.get("level", 0)),
 			"move_speed": ch.move_speed,
 			"stats": ch.stats.duplicate(),
+			"hands": (ch.get("hands", [null, null]) as Array).duplicate(true),
+			"internal": (ch.get("internal", []) as Array).duplicate(true),
 		}
+	var coop_exempt_ids := _coop_exempt.keys()
+	coop_exempt_ids.sort()
 	return {
 		"characters": char_data,
+		"character_movements": _serialize_character_movements(),
+		"cross_level_plans": _serialize_cross_level_plans(),
 		"explored": _serialize_explored(),
+		"route_cautious": route_cautious,
 		"world_state": world_state.duplicate(true),
+		"rng_registry": rng_registry.serialize(),
+		"items": _serialize_items(),
+		"next_item_id": _next_item_id,
+		"collection": collection.duplicate(),
+		"interactables": _serialize_interactables(),
+		"physics_objects": _serialize_physics_objects(),
+		"pendulums": _serialize_pendulums(),
+		"flora": _serialize_flora(),
+		"flora_seq": _flora_seq,
+		"party": party.duplicate(),
+		"split_members": _split_members.duplicate(),
+		"coop_exempt": coop_exempt_ids,
+		"clock_state": _serialize_clock_state(),
+		"endocytosing": _serialize_endocytosing(),
+		"dodging": _serialize_dodging(),
+		"knocked_down": _serialize_knocked_down(),
+		"running": _serialize_running(),
+		"resting": _serialize_resting(),
+		"revive_state": _serialize_revive_state(),
+		"field_restores": _serialize_field_restores(),
+		"queued_canonical_abilities": _serialize_queued_canonical_abilities(),
+		"drags": _serialize_drags(),
+		"push_plans": _serialize_push_plans(),
+		"damage_shields": _serialize_damage_shields(),
+		"external_traversals": _serialize_external_traversals(),
+		"timed_mechanism_phases": _serialize_timed_mechanism_phases(),
 	}
 
 func deserialize(data: Dictionary) -> void:
+	# A loaded snapshot replaces every scheduler-owned phase represented below. Scene construction may already
+	# have registered the same characters and armed callbacks; cancel/clear those derived records before rearming
+	# from saved remaining durations. This method deliberately emits no gameplay commands while restoring.
+	_clear_snapshot_runtime_phases()
 	if data.has("characters"):
+		# A snapshot replaces the roster; it is not a patch over whichever actors the current scene
+		# happened to spawn before loading.  Keeping a later-spawned enemy here lets a player save before
+		# a wave, trigger it, then load and retain the extra body (and sometimes its collision/detection)
+		# even though every callback that created the wave was rolled back.
+		var saved_character_ids := {}
+		for saved_id_v in (data["characters"] as Dictionary).keys():
+			saved_character_ids[str(saved_id_v)] = true
+		for current_id_v in characters.keys():
+			var current_id := str(current_id_v)
+			if saved_character_ids.has(current_id):
+				continue
+			characters.erase(current_id)
+			explored.erase(current_id)
+			_coop_exempt.erase(current_id)
+			_rest_deprived.erase(current_id)
 		for id in data.characters:
 			var cd: Dictionary = data.characters[id]
-			var pos := Vector3(cd.position[0], cd.position[1], cd.position[2])
-			register_character(id, pos, cd.get("move_speed", 3.0), cd.get("stats", {}))
+			var position_data: Array = cd.get("position", [0.0, 0.0, 0.0])
+			var pos := Vector3(
+				float(position_data[0]), float(position_data[1]), float(position_data[2])
+			)
+			var existing: Dictionary = characters.get(str(id), {})
+			var hands: Array = (cd.get(
+				"hands", existing.get("hands", [null, null])
+			) as Array).duplicate(true)
+			while hands.size() < 2:
+				hands.append(null)
+			characters[str(id)] = {
+				"position": pos,
+				"grid_cell": grid.world_to_grid(pos) if grid != null else Vector2i.ZERO,
+				"level": int(cd.get("level", _level_for_y(pos.y))),
+				"move_speed": float(cd.get("move_speed", existing.get("move_speed", 3.0))),
+				"stats": (cd.get("stats", existing.get("stats", {})) as Dictionary).duplicate(true),
+				"movement": null,
+				"hands": hands,
+				"internal": (cd.get(
+					"internal", existing.get("internal", [])
+				) as Array).duplicate(true),
+			}
+			if not explored.has(str(id)):
+				explored[str(id)] = {}
+			if grid != null:
+				_reserve_parked(str(id), grid.world_to_grid(pos))
 	if data.has("explored"):
 		_deserialize_explored(data.explored)
+	if data.has("route_cautious"):
+		route_cautious = bool(data["route_cautious"])
 	if data.has("world_state"):
 		world_state = (data["world_state"] as Dictionary).duplicate(true)
+	if data.has("rng_registry"):
+		rng_registry.deserialize(data["rng_registry"] as Dictionary)
+		base_seed = rng_registry.base_seed
+		if event_log != null:
+			event_log.base_seed = base_seed
+	if data.has("items"):
+		_restore_items(data["items"] as Dictionary)
+		_next_item_id = maxi(1, int(data.get("next_item_id", 1)))
+		collection.clear()
+		for item_id_v in (data.get("collection", []) as Array):
+			collection.append(str(item_id_v))
+	if data.has("interactables"):
+		_restore_interactables(data["interactables"] as Dictionary)
+	if data.has("physics_objects"):
+		_restore_physics_objects(data["physics_objects"] as Dictionary)
+	if data.has("pendulums"):
+		_restore_pendulums(data["pendulums"] as Dictionary)
+	if data.has("flora"):
+		_restore_flora(data["flora"] as Dictionary)
+		_flora_seq = maxi(0, int(data.get("flora_seq", 0)))
+	if data.has("party"):
+		party.clear()
+		for member_v in (data["party"] as Array):
+			party.append(str(member_v))
+	if data.has("split_members"):
+		_split_members.clear()
+		for member_v in (data["split_members"] as Array):
+			_split_members.append(str(member_v))
+	if data.has("coop_exempt"):
+		_coop_exempt.clear()
+		for member_v in (data["coop_exempt"] as Array):
+			_coop_exempt[str(member_v)] = true
+	if data.has("clock_state"):
+		_restore_clock_state(data["clock_state"] as Dictionary)
+	if data.has("cross_level_plans"):
+		_restore_cross_level_plans(data["cross_level_plans"] as Dictionary)
+	if data.has("push_plans"):
+		_restore_push_plans(data["push_plans"] as Dictionary)
+	if data.has("drags"):
+		_restore_drags(data["drags"] as Dictionary)
+	if data.has("dodging"):
+		_restore_dodging(data["dodging"] as Dictionary)
+	if data.has("character_movements"):
+		_restore_character_movements(data["character_movements"] as Dictionary)
+	if data.has("knocked_down"):
+		_restore_knocked_down(data["knocked_down"] as Dictionary)
+	if data.has("endocytosing"):
+		_restore_endocytosing(data["endocytosing"] as Dictionary)
+	if data.has("resting"):
+		_restore_resting(data["resting"] as Dictionary)
+	if data.has("revive_state"):
+		_restore_revive_state(data["revive_state"] as Dictionary)
+	if data.has("field_restores"):
+		_restore_field_restores(data["field_restores"] as Dictionary)
+	if data.has("queued_canonical_abilities"):
+		_restore_queued_canonical_abilities(
+			data["queued_canonical_abilities"] as Dictionary)
+	if data.has("running"):
+		_restore_running(data["running"] as Dictionary)
+	if data.has("damage_shields"):
+		_restore_damage_shields(data["damage_shields"] as Dictionary)
+	if data.has("external_traversals"):
+		_restore_external_traversals(data["external_traversals"] as Dictionary)
+	if data.has("timed_mechanism_phases"):
+		_restore_timed_mechanism_phases(data["timed_mechanism_phases"] as Dictionary)
+	_recompute_all_detection_predictions()
+	_recompute_physics_predictions()
+	_recompute_pendulum_predictions()
+	evaluate_mechanisms()
+	snapshot_restored.emit(data.duplicate(true))
+
+
+func _clear_snapshot_runtime_phases() -> void:
+	# The scheduler itself is cleared by the owning save loader before its clock is restored. Cancelling here is
+	# still useful for direct GameState.deserialize callers and harmless after that clear.
+	for state_v in _external_traversals.values():
+		var state := state_v as Dictionary
+		var handle := int(state.get("handle", 0))
+		if scheduler != null and handle != 0:
+			scheduler.cancel(handle)
+	_external_traversals.clear()
+	for state_v in _timed_mechanism_phases.values():
+		var state := state_v as Dictionary
+		var handle := int(state.get("handle", 0))
+		if scheduler != null and handle != 0:
+			scheduler.cancel(handle)
+	_timed_mechanism_phases.clear()
+	for state_v in _damage_shields.values():
+		var state := state_v as Dictionary
+		var handle := int(state.get("handle", 0))
+		if scheduler != null and handle != 0:
+			scheduler.cancel(handle)
+	_damage_shields.clear()
+	for state_v in _endocytosing.values():
+		var state := state_v as Dictionary
+		var handle := int(state.get("handle", 0))
+		if scheduler != null and handle != 0:
+			scheduler.cancel(handle)
+	_endocytosing.clear()
+	for state_v in _dodging.values():
+		var state := state_v as Dictionary
+		var handle := int(state.get("handle", 0))
+		if scheduler != null and handle != 0:
+			scheduler.cancel(handle)
+	_dodging.clear()
+	for state_v in _knocked_down.values():
+		var state := state_v as Dictionary
+		var handle := int(state.get("handle", 0))
+		if scheduler != null and handle != 0:
+			scheduler.cancel(handle)
+	_knocked_down.clear()
+	for state_v in _running.values():
+		var state := state_v as Dictionary
+		var handle := int(state.get("tick_handle", 0))
+		if scheduler != null and handle != 0:
+			scheduler.cancel(handle)
+	_running.clear()
+	for char_id_v in _queued_abilities.keys():
+		if scheduler != null:
+			scheduler.cancel_tag("ability_range_" + str(char_id_v))
+	_queued_abilities.clear()
+	_cross_level_plan.clear()
+	_push_plans.clear()
+	if character_arrived.is_connected(_on_push_char_arrived):
+		character_arrived.disconnect(_on_push_char_arrived)
+	if scheduler != null:
+		for char_id_v in _resting.keys():
+			scheduler.cancel_tag("rest_" + str(char_id_v))
+		for caster_id_v in _field_restores.keys():
+			scheduler.cancel_tag("field_restore_" + str(caster_id_v))
+		scheduler.cancel_tag("shelter_revive_watch")
+		scheduler.cancel_tag("game_clock_poll")
+		for dragger_id_v in _drags.keys():
+			scheduler.cancel_tag("drag_" + str(dragger_id_v))
+	_resting.clear()
+	_field_restores.clear()
+	_revive_progress.clear()
+	_revive_watch_running = false
+	_revive_next_tick = 0.0
+	_clock_next_poll_tick = 0.0
+	_drags.clear()
+	_drag_prev_speed.clear()
+	_drag_next_tick.clear()
+	_reservations.clear()
+	for obj_id_v in physics_objects.keys():
+		var obj: Dictionary = physics_objects[obj_id_v]
+		if obj.get("movement", null) != null and scheduler != null:
+			var movement: Dictionary = obj["movement"]
+			var handle := int(movement.get("handle", 0))
+			if handle != 0:
+				scheduler.cancel(handle)
+		if grid != null:
+			grid.remove_dynamic_blocker(obj.get("grid_cell", Vector2i.ZERO))
+		obj["movement"] = null
+		obj["throw"] = null
+	for id_v in characters.keys():
+		var id := str(id_v)
+		if characters[id].get("movement", null) != null:
+			_cancel_movement(id)
+
+
+func _serialize_character_movements() -> Dictionary:
+	var result := {}
+	if scheduler == null:
+		return result
+	var now := float(scheduler.get_current_tick())
+	for id_v in characters.keys():
+		var id := str(id_v)
+		if _external_traversals.has(id) or _dodging.has(id):
+			continue
+		var movement_v: Variant = characters[id].get("movement", null)
+		if movement_v == null:
+			continue
+		var movement := movement_v as Dictionary
+		var path := movement.get("path", []) as Array
+		if path.size() < 2:
+			continue
+		var absolute_ticks := movement.get("arrival_ticks", []) as Array
+		if absolute_ticks.size() != path.size():
+			absolute_ticks = []
+			var start_tick := float(movement.get("start_tick", now))
+			var duration := maxf(0.0, float(movement.get("duration", 0.0)))
+			var cum_dist := movement.get("cum_dist", []) as Array
+			var total_distance := maxf(0.0001, float(movement.get("total_distance", 0.0)))
+			for i in range(path.size()):
+				var dist := float(cum_dist[i]) if i < cum_dist.size() else 0.0
+				absolute_ticks.append(start_tick + duration * dist / total_distance)
+		var remaining_path: Array = [GameEvent.v3_to_arr(get_position(id))]
+		var relative_ticks: Array = [0.0]
+		for i in range(1, path.size()):
+			var arrival := float(absolute_ticks[i])
+			if arrival <= now + 0.000001:
+				continue
+			remaining_path.append(GameEvent.v3_to_arr(path[i] as Vector3))
+			relative_ticks.append(arrival - now)
+		if remaining_path.size() >= 2:
+			result[id] = {
+				"path": remaining_path,
+				"relative_arrival_ticks": relative_ticks,
+			}
+	return result
+
+
+func _restore_character_movements(saved: Dictionary) -> void:
+	if scheduler == null:
+		return
+	var now := float(scheduler.get_current_tick())
+	for id_v in saved.keys():
+		var id := str(id_v)
+		if not characters.has(id) or _external_traversals.has(id) or _dodging.has(id) \
+				or _knocked_down.has(id) or _endocytosing.has(id):
+			continue
+		var state := saved[id_v] as Dictionary
+		var encoded_path := state.get("path", []) as Array
+		var relative := state.get("relative_arrival_ticks", []) as Array
+		if encoded_path.size() < 2 or relative.size() != encoded_path.size():
+			continue
+		var path: Array[Vector3] = []
+		var ticks: Array[float] = []
+		for point_v in encoded_path:
+			path.append(GameEvent.arr_to_v3(point_v))
+		for relative_v in relative:
+			ticks.append(now + maxf(0.0, float(relative_v)))
+		characters[id]["position"] = path[0]
+		_start_movement(id, path, ticks)
+
+
+func _serialize_cross_level_plans() -> Dictionary:
+	var result := {}
+	for id_v in _cross_level_plan.keys():
+		var encoded_segments: Array = []
+		for segment_v in (_cross_level_plan[id_v] as Array):
+			var segment := segment_v as Dictionary
+			var cells: Array = []
+			for cell_v in (segment.get("cells", []) as Array):
+				cells.append(GameEvent.v2i_to_arr(cell_v as Vector2i))
+			encoded_segments.append({"level": int(segment.get("level", 0)), "cells": cells})
+		result[str(id_v)] = encoded_segments
+	return result
+
+
+func _restore_cross_level_plans(saved: Dictionary) -> void:
+	_cross_level_plan.clear()
+	for id_v in saved.keys():
+		var id := str(id_v)
+		if not characters.has(id):
+			continue
+		var segments: Array = []
+		for segment_v in (saved[id_v] as Array):
+			var encoded := segment_v as Dictionary
+			var cells: Array[Vector2i] = []
+			for cell_v in (encoded.get("cells", []) as Array):
+				cells.append(GameEvent.arr_to_v2i(cell_v))
+			segments.append({"level": int(encoded.get("level", 0)), "cells": cells})
+		if not segments.is_empty():
+			_cross_level_plan[id] = segments
+	if not _cross_level_plan.is_empty() and not character_arrived.is_connected(_on_cross_level_arrival):
+		character_arrived.connect(_on_cross_level_arrival)
+
+
+func _serialize_push_plans() -> Dictionary:
+	var result := {}
+	for id_v in _push_plans.keys():
+		var plan := _push_plans[id_v] as Dictionary
+		var encoded_steps: Array = []
+		for step_v in (plan.get("steps", []) as Array):
+			var step := step_v as Dictionary
+			encoded_steps.append({
+				"obj_from": GameEvent.v2i_to_arr(step.get("obj_from", Vector2i.ZERO)),
+				"obj_to": GameEvent.v2i_to_arr(step.get("obj_to", Vector2i.ZERO)),
+				"char_push_cell": GameEvent.v2i_to_arr(
+					step.get("char_push_cell", Vector2i.ZERO)),
+			})
+		result[str(id_v)] = {
+			"obj_id": str(plan.get("obj_id", "")),
+			"steps": encoded_steps,
+			"index": int(plan.get("index", 0)),
+			"stage": str(plan.get("stage", "approach")),
+		}
+	return result
+
+
+func _restore_push_plans(saved: Dictionary) -> void:
+	_push_plans.clear()
+	for id_v in saved.keys():
+		var id := str(id_v)
+		var encoded := saved[id_v] as Dictionary
+		var obj_id := str(encoded.get("obj_id", ""))
+		if not characters.has(id) or not physics_objects.has(obj_id):
+			continue
+		var steps: Array = []
+		for step_v in (encoded.get("steps", []) as Array):
+			var step := step_v as Dictionary
+			steps.append({
+				"obj_from": GameEvent.arr_to_v2i(step.get("obj_from", [0, 0])),
+				"obj_to": GameEvent.arr_to_v2i(step.get("obj_to", [0, 0])),
+				"char_push_cell": GameEvent.arr_to_v2i(
+					step.get("char_push_cell", [0, 0])),
+			})
+		if steps.is_empty():
+			continue
+		_push_plans[id] = {
+			"obj_id": obj_id,
+			"steps": steps,
+			"index": clampi(int(encoded.get("index", 0)), 0, steps.size()),
+			"stage": str(encoded.get("stage", "approach")),
+		}
+	if not _push_plans.is_empty() and not character_arrived.is_connected(_on_push_char_arrived):
+		character_arrived.connect(_on_push_char_arrived)
+
+
+func _serialize_items() -> Dictionary:
+	var result := {}
+	for item_id_v in items.keys():
+		var item_id := str(item_id_v)
+		var item := items[item_id_v] as Dictionary
+		result[item_id] = {
+			"type": str(item.get("type", "")),
+			"holder": str(item.get("holder", "")),
+			"location": str(item.get("location", "ground")),
+			"position": GameEvent.v3_to_arr(item.get("position", Vector3.ZERO)),
+			"properties": (item.get("properties", {}) as Dictionary).duplicate(true),
+		}
+	return result
+
+
+func _restore_items(saved: Dictionary) -> void:
+	items.clear()
+	for item_id_v in saved.keys():
+		var item_id := str(item_id_v)
+		var encoded := saved[item_id_v] as Dictionary
+		items[item_id] = {
+			"type": str(encoded.get("type", "")),
+			"holder": str(encoded.get("holder", "")),
+			"location": str(encoded.get("location", "ground")),
+			"position": GameEvent.arr_to_v3(encoded.get("position", [0.0, 0.0, 0.0])),
+			"properties": (encoded.get("properties", {}) as Dictionary).duplicate(true),
+		}
+
+
+func _serialize_interactables() -> Dictionary:
+	var result := {}
+	for interactable_id_v in interactables.keys():
+		var interactable_id := str(interactable_id_v)
+		var spec := interactables[interactable_id_v] as Dictionary
+		var encoded := spec.duplicate(true)
+		encoded["position"] = GameEvent.v3_to_arr(spec.get("position", Vector3.ZERO))
+		result[interactable_id] = encoded
+	return result
+
+
+func _restore_interactables(saved: Dictionary) -> void:
+	interactables.clear()
+	for interactable_id_v in saved.keys():
+		var interactable_id := str(interactable_id_v)
+		var encoded := (saved[interactable_id_v] as Dictionary).duplicate(true)
+		encoded["id"] = interactable_id
+		var spec := _normalize_interactable_spec(encoded)
+		spec["triggered"] = bool(encoded.get("triggered", false))
+		spec["enabled"] = bool(encoded.get("enabled", true))
+		# Legacy saves have only the ever-triggered bit; seed their monotonic identity at one so the
+		# next repeat receipt still expects a distinct acceptance.
+		spec["trigger_count"] = maxi(0, int(encoded.get(
+			"trigger_count", 1 if bool(spec["triggered"]) else 0)))
+		spec["last_trigger_character"] = String(encoded.get("last_trigger_character", ""))
+		interactables[interactable_id] = spec
+
+
+func _serialize_flora() -> Dictionary:
+	var result := {}
+	for flora_id_v in flora.keys():
+		var flora_id := str(flora_id_v)
+		var growth := (flora[flora_id_v] as Dictionary).duplicate(true)
+		growth["position"] = GameEvent.v3_to_arr(growth.get("position", Vector3.ZERO))
+		result[flora_id] = growth
+	return result
+
+
+func _restore_flora(saved: Dictionary) -> void:
+	flora.clear()
+	for flora_id_v in saved.keys():
+		var flora_id := str(flora_id_v)
+		var growth := (saved[flora_id_v] as Dictionary).duplicate(true)
+		growth["position"] = GameEvent.arr_to_v3(
+			growth.get("position", [0.0, 0.0, 0.0]))
+		flora[flora_id] = growth
+
+
+func _serialize_pendulums() -> Dictionary:
+	var result := {}
+	var now := float(scheduler.get_current_tick()) if scheduler != null else 0.0
+	for pendulum_id_v in pendulums.keys():
+		var pendulum_id := str(pendulum_id_v)
+		var pendulum := pendulums[pendulum_id_v] as Dictionary
+		result[pendulum_id] = {
+			"anchor": GameEvent.v3_to_arr(pendulum.get("anchor", Vector3.ZERO)),
+			"length": float(pendulum.get("length", 1.0)),
+			"amplitude": float(pendulum.get("amplitude", 0.0)),
+			"phase": float(pendulum.get("phase", 0.0)),
+			"swing_axis": GameEvent.v3_to_arr(
+				pendulum.get("swing_axis", Vector3.FORWARD)),
+			"bob_radius": float(pendulum.get("bob_radius", 0.4)),
+			"damping": float(pendulum.get("damping", 0.0)),
+			"elapsed": maxf(0.0, now - float(pendulum.get("start_tick", now))),
+		}
+	return result
+
+
+func _restore_pendulums(saved: Dictionary) -> void:
+	pendulums.clear()
+	var now := float(scheduler.get_current_tick()) if scheduler != null else 0.0
+	for pendulum_id_v in saved.keys():
+		var pendulum_id := str(pendulum_id_v)
+		var encoded := saved[pendulum_id_v] as Dictionary
+		pendulums[pendulum_id] = {
+			"anchor": GameEvent.arr_to_v3(encoded.get("anchor", [0.0, 0.0, 0.0])),
+			"length": float(encoded.get("length", 1.0)),
+			"amplitude": float(encoded.get("amplitude", 0.0)),
+			"phase": float(encoded.get("phase", 0.0)),
+			"swing_axis": GameEvent.arr_to_v3(
+				encoded.get("swing_axis", [0.0, 0.0, 1.0])).normalized(),
+			"bob_radius": float(encoded.get("bob_radius", 0.4)),
+			"damping": float(encoded.get("damping", 0.0)),
+			"start_tick": now - maxf(0.0, float(encoded.get("elapsed", 0.0))),
+		}
+
+
+func _serialize_physics_objects() -> Dictionary:
+	var result := {}
+	var now := float(scheduler.get_current_tick()) if scheduler != null else 0.0
+	for obj_id_v in physics_objects.keys():
+		var obj_id := str(obj_id_v)
+		var obj := physics_objects[obj_id_v] as Dictionary
+		var encoded := {
+			"position": GameEvent.v3_to_arr(get_physics_position(obj_id)),
+			"radius": float(obj.get("radius", 0.5)),
+			"mass": float(obj.get("mass", 2.0)),
+			"friction": float(obj.get("friction", 0.6)),
+			"pushable": bool(obj.get("pushable", true)),
+		}
+		if obj.has("signature"):
+			encoded["signature"] = str(obj.get("signature", "physics_object"))
+		var movement_v: Variant = obj.get("movement", null)
+		if movement_v != null:
+			var movement := movement_v as Dictionary
+			var remaining := maxf(0.0,
+				float(movement.get("start_tick", now))
+				+ float(movement.get("duration", 0.0)) - now)
+			var path := movement.get("path", []) as Array
+			if remaining > 0.0 and not path.is_empty():
+				var movement_state := {
+					"destination": GameEvent.v3_to_arr(path[path.size() - 1] as Vector3),
+					"remaining": remaining,
+					"kind": "throw" if obj.get("throw", null) != null else "slide",
+				}
+				if obj.get("throw", null) != null:
+					var throw_state := obj["throw"] as Dictionary
+					var elapsed := now - float(throw_state.get("start_tick", now))
+					movement_state["vertical_velocity"] = \
+						float(throw_state.get("vy", 0.0)) - PENDULUM_GRAVITY * elapsed
+					movement_state["ground_y"] = float(throw_state.get("ground_y", 0.0))
+				encoded["movement"] = movement_state
+		result[obj_id] = encoded
+	return result
+
+
+func _restore_physics_objects(saved: Dictionary) -> void:
+	physics_objects.clear()
+	var now := float(scheduler.get_current_tick()) if scheduler != null else 0.0
+	for obj_id_v in saved.keys():
+		var obj_id := str(obj_id_v)
+		var encoded := saved[obj_id_v] as Dictionary
+		var current := GameEvent.arr_to_v3(encoded.get("position", [0.0, 0.0, 0.0]))
+		var obj := {
+			"position": current,
+			"radius": float(encoded.get("radius", 0.5)),
+			"mass": float(encoded.get("mass", 2.0)),
+			"friction": float(encoded.get("friction", 0.6)),
+			"movement": null,
+			"throw": null,
+			"grid_cell": grid.world_to_grid(current) if grid != null else Vector2i.ZERO,
+			"pushable": bool(encoded.get("pushable", true)),
+		}
+		if encoded.has("signature"):
+			obj["signature"] = StringName(str(encoded.get("signature", "physics_object")))
+		physics_objects[obj_id] = obj
+		var movement_state := encoded.get("movement", {}) as Dictionary
+		var remaining := maxf(0.0, float(movement_state.get("remaining", 0.0)))
+		if scheduler != null and remaining > 0.0:
+			var destination := GameEvent.arr_to_v3(movement_state.get(
+				"destination", GameEvent.v3_to_arr(current)))
+			var kind := str(movement_state.get("kind", "slide"))
+			var path_start := current
+			if kind == "throw":
+				var ground_y := float(movement_state.get("ground_y", 0.0))
+				path_start.y = ground_y
+				destination.y = ground_y
+				obj["throw"] = {
+					"start_tick": now,
+					"start_y": current.y,
+					"vy": float(movement_state.get("vertical_velocity", 0.0)),
+					"ground_y": ground_y,
+					"landing_tick": now + remaining,
+				}
+			var path: Array[Vector3] = [path_start, destination]
+			var cum_dist := _compute_cum_dist(path)
+			var handle := scheduler.schedule_at(
+				now + remaining,
+				_restore_physics_completion.bind(obj_id, kind),
+				("throw_" if kind == "throw" else "physics_move_") + obj_id)
+			obj["movement"] = {
+				"path": path,
+				"cum_dist": cum_dist,
+				"total_distance": maxf(0.001, float(cum_dist[cum_dist.size() - 1])),
+				"start_tick": now,
+				"duration": remaining,
+				"handle": handle,
+			}
+		elif grid != null and not bool(obj.get("pushable", true)):
+			grid.add_dynamic_blocker(obj["grid_cell"], obj_id)
+
+
+func _restore_physics_completion(obj_id: String, kind: String) -> void:
+	if kind == "throw":
+		_on_throw_landing(obj_id)
+	else:
+		_on_physics_arrival(obj_id)
+
+
+func _serialize_endocytosing() -> Dictionary:
+	var result := {}
+	var now := float(scheduler.get_current_tick()) if scheduler != null else 0.0
+	for char_id_v in _endocytosing.keys():
+		var state := _endocytosing[char_id_v] as Dictionary
+		result[str(char_id_v)] = {
+			"item_id": str(state.get("item_id", "")),
+			"remaining": maxf(0.0, float(state.get("end_tick", now)) - now),
+		}
+	return result
+
+
+func _restore_endocytosing(saved: Dictionary) -> void:
+	if scheduler == null:
+		return
+	var now := float(scheduler.get_current_tick())
+	for char_id_v in saved.keys():
+		var char_id := str(char_id_v)
+		var state := saved[char_id_v] as Dictionary
+		var item_id := str(state.get("item_id", ""))
+		var remaining := maxf(0.0, float(state.get("remaining", 0.0)))
+		if not characters.has(char_id) or not items.has(item_id):
+			continue
+		if remaining <= 0.0:
+			_complete_endocytosis(char_id, item_id)
+			continue
+		var handle := scheduler.schedule_at(
+			now + remaining,
+			_complete_endocytosis.bind(char_id, item_id),
+			"endocytose_" + char_id)
+		_endocytosing[char_id] = {
+			"item_id": item_id,
+			"end_tick": now + remaining,
+			"handle": handle,
+		}
+
+
+func _serialize_dodging() -> Dictionary:
+	var result := {}
+	var now := float(scheduler.get_current_tick()) if scheduler != null else 0.0
+	for char_id_v in _dodging.keys():
+		var char_id := str(char_id_v)
+		if not characters.has(char_id):
+			continue
+		var movement_v: Variant = characters[char_id].get("movement", null)
+		if movement_v == null:
+			continue
+		var movement := movement_v as Dictionary
+		var path := movement.get("path", []) as Array
+		if path.is_empty():
+			continue
+		var state := _dodging[char_id_v] as Dictionary
+		result[char_id] = {
+			"position": GameEvent.v3_to_arr(get_position(char_id)),
+			"destination": GameEvent.v3_to_arr(path[path.size() - 1] as Vector3),
+			"remaining": maxf(0.0, float(state.get("end_tick", now)) - now),
+		}
+	return result
+
+
+func _restore_dodging(saved: Dictionary) -> void:
+	if scheduler == null:
+		return
+	var now := float(scheduler.get_current_tick())
+	for char_id_v in saved.keys():
+		var char_id := str(char_id_v)
+		if not characters.has(char_id):
+			continue
+		var state := saved[char_id_v] as Dictionary
+		var from := GameEvent.arr_to_v3(state.get("position", [0.0, 0.0, 0.0]))
+		var destination := GameEvent.arr_to_v3(state.get(
+			"destination", GameEvent.v3_to_arr(from)))
+		var remaining := maxf(0.0, float(state.get("remaining", 0.0)))
+		characters[char_id]["position"] = from
+		if remaining <= 0.0:
+			characters[char_id]["position"] = destination
+			continue
+		var path: Array[Vector3] = [from, destination]
+		var ticks: Array[float] = [now, now + remaining]
+		var handle := scheduler.schedule_at(
+			now + remaining, _on_dodge_end.bind(char_id), "dodge_" + char_id)
+		characters[char_id]["movement"] = {
+			"path": path,
+			"cum_dist": _compute_cum_dist(path),
+			"arrival_ticks": ticks,
+			"total_distance": maxf(0.001, from.distance_to(destination)),
+			"start_tick": now,
+			"duration": remaining,
+			"handle": handle,
+		}
+		_reserve_path(char_id, path, ticks)
+		_dodging[char_id] = {"end_tick": now + remaining, "handle": handle}
+
+
+func _serialize_knocked_down() -> Dictionary:
+	var result := {}
+	var now := float(scheduler.get_current_tick()) if scheduler != null else 0.0
+	for char_id_v in _knocked_down.keys():
+		var state := _knocked_down[char_id_v] as Dictionary
+		result[str(char_id_v)] = {
+			"remaining": maxf(0.0, float(state.get("end_tick", now)) - now),
+		}
+	return result
+
+
+func _restore_knocked_down(saved: Dictionary) -> void:
+	if scheduler == null:
+		return
+	var now := float(scheduler.get_current_tick())
+	for char_id_v in saved.keys():
+		var char_id := str(char_id_v)
+		if not characters.has(char_id):
+			continue
+		var remaining := maxf(0.0, float(
+			(saved[char_id_v] as Dictionary).get("remaining", 0.0)))
+		if remaining <= 0.0:
+			continue
+		var handle := scheduler.schedule_at(
+			now + remaining, _on_knockdown_end.bind(char_id), "knockdown_" + char_id)
+		_knocked_down[char_id] = {"end_tick": now + remaining, "handle": handle}
+
+
+func _serialize_running() -> Dictionary:
+	var result := {}
+	var now := float(scheduler.get_current_tick()) if scheduler != null else 0.0
+	for char_id_v in _running.keys():
+		var state := _running[char_id_v] as Dictionary
+		var next_tick := float(state.get("next_tick", 0.0))
+		result[str(char_id_v)] = {
+			"remaining_to_tick": maxf(0.0, next_tick - now) if next_tick > 0.0 else 0.0,
+		}
+	return result
+
+
+func _restore_running(saved: Dictionary) -> void:
+	if scheduler == null:
+		return
+	for char_id_v in saved.keys():
+		var char_id := str(char_id_v)
+		if not characters.has(char_id) or is_dragging(char_id) or is_dodging(char_id) \
+				or is_external_traversal_active(char_id):
+			continue
+		_running[char_id] = {"tick_handle": 0, "next_tick": 0.0}
+		characters[char_id]["move_speed"] = RUN_SPEED
+		if is_moving(char_id):
+			var remaining := float(
+				(saved[char_id_v] as Dictionary).get("remaining_to_tick", RUN_TICK_INTERVAL))
+			_schedule_running_tick(char_id, remaining if remaining > 0.0 else RUN_TICK_INTERVAL)
+
+
+func _serialize_resting() -> Dictionary:
+	var result := {}
+	var now := float(scheduler.get_current_tick()) if scheduler != null else 0.0
+	for char_id_v in _resting.keys():
+		var state := _resting[char_id_v] as Dictionary
+		result[str(char_id_v)] = {
+			"pip_seconds": float(state.get("pip_seconds", REST_SECONDS_PER_PIP)),
+			"remaining_to_tick": maxf(0.0, float(state.get("next_tick", now)) - now),
+		}
+	return result
+
+
+func _restore_resting(saved: Dictionary) -> void:
+	if scheduler == null:
+		return
+	for char_id_v in saved.keys():
+		var char_id := str(char_id_v)
+		if not characters.has(char_id):
+			continue
+		var encoded := saved[char_id_v] as Dictionary
+		_resting[char_id] = {
+			"pip_seconds": float(encoded.get("pip_seconds", REST_SECONDS_PER_PIP)),
+			"next_tick": 0.0,
+		}
+		var remaining := float(encoded.get("remaining_to_tick", 1.0))
+		_schedule_rest_tick(char_id, remaining if remaining > 0.0 else 1.0)
+
+
+func _serialize_field_restores() -> Dictionary:
+	var result := {}
+	var now := float(scheduler.get_current_tick()) if scheduler != null else 0.0
+	for caster_id_v in _field_restores.keys():
+		var state := _field_restores[caster_id_v] as Dictionary
+		result[str(caster_id_v)] = {
+			"target_id": str(state.get("target_id", "")),
+			"remaining": maxf(0.0, float(state.get("end_tick", now)) - now),
+		}
+	return result
+
+
+func _restore_field_restores(saved: Dictionary) -> void:
+	if scheduler == null:
+		return
+	var now := float(scheduler.get_current_tick())
+	for caster_id_v in saved.keys():
+		var caster_id := str(caster_id_v)
+		var encoded := saved[caster_id_v] as Dictionary
+		var target_id := str(encoded.get("target_id", ""))
+		var remaining := maxf(0.0, float(encoded.get("remaining", 0.0)))
+		if not characters.has(caster_id) or not characters.has(target_id) or remaining <= 0.0:
+			continue
+		_field_restores[caster_id] = {
+			"target_id": target_id,
+			"end_tick": now + remaining,
+		}
+		scheduler.schedule_at(
+			now + remaining,
+			_on_field_restore_complete.bind(caster_id),
+			"field_restore_" + caster_id)
+
+
+func _serialize_queued_canonical_abilities() -> Dictionary:
+	var result := {}
+	for char_id_v in _queued_abilities.keys():
+		var state := _queued_abilities[char_id_v] as Dictionary
+		var canonical := state.get("canonical", {}) as Dictionary
+		if canonical.is_empty():
+			continue
+		result[str(char_id_v)] = {
+			"ability": str(state.get("ability", "")),
+			"target_pos": GameEvent.v3_to_arr(state.get("target_pos", Vector3.ZERO)),
+			"range": float(state.get("range", 0.0)),
+			"canonical": canonical.duplicate(true),
+		}
+	return result
+
+
+func _restore_queued_canonical_abilities(saved: Dictionary) -> void:
+	for char_id_v in saved.keys():
+		var char_id := str(char_id_v)
+		if not characters.has(char_id):
+			continue
+		var encoded := saved[char_id_v] as Dictionary
+		var canonical := encoded.get("canonical", {}) as Dictionary
+		if canonical.is_empty():
+			continue
+		_queued_abilities[char_id] = {
+			"ability": str(encoded.get("ability", "")),
+			"target_pos": GameEvent.arr_to_v3(
+				encoded.get("target_pos", [0.0, 0.0, 0.0])),
+			"range": float(encoded.get("range", 0.0)),
+			"callback": Callable(),
+			"canonical": canonical.duplicate(true),
+			"world_root": null,
+		}
+		_schedule_ability_in_range(char_id)
+
+
+func _serialize_drags() -> Dictionary:
+	var result := {}
+	var now := float(scheduler.get_current_tick()) if scheduler != null else 0.0
+	for dragger_id_v in _drags.keys():
+		var dragger_id := str(dragger_id_v)
+		var next_tick := float(_drag_next_tick.get(dragger_id, 0.0))
+		result[dragger_id] = {
+			"downed_id": str(_drags[dragger_id_v]),
+			"previous_speed": float(_drag_prev_speed.get(dragger_id, WALK_SPEED)),
+			"remaining_to_tick": maxf(0.0, next_tick - now) if next_tick > 0.0 else DRAG_TICK,
+		}
+	return result
+
+
+func _restore_drags(saved: Dictionary) -> void:
+	if scheduler == null:
+		return
+	for dragger_id_v in saved.keys():
+		var dragger_id := str(dragger_id_v)
+		var encoded := saved[dragger_id_v] as Dictionary
+		var downed_id := str(encoded.get("downed_id", ""))
+		if not characters.has(dragger_id) or not characters.has(downed_id):
+			continue
+		_drags[dragger_id] = downed_id
+		_drag_prev_speed[dragger_id] = float(encoded.get("previous_speed", WALK_SPEED))
+		var remaining := float(encoded.get("remaining_to_tick", DRAG_TICK))
+		_arm_drag_tick(dragger_id, remaining if remaining > 0.0 else DRAG_TICK)
+
+
+func _serialize_revive_state() -> Dictionary:
+	var now := float(scheduler.get_current_tick()) if scheduler != null else 0.0
+	return {
+		"progress": _revive_progress.duplicate(true),
+		"watch_running": _revive_watch_running,
+		"remaining_to_tick": maxf(0.0, _revive_next_tick - now) \
+			if _revive_watch_running and _revive_next_tick > 0.0 else 0.0,
+	}
+
+
+func _restore_revive_state(saved: Dictionary) -> void:
+	_revive_progress = (saved.get("progress", {}) as Dictionary).duplicate(true)
+	_revive_watch_running = bool(saved.get("watch_running", false))
+	if not _revive_watch_running or scheduler == null:
+		_revive_next_tick = 0.0
+		return
+	var remaining := float(saved.get("remaining_to_tick", 1.0))
+	_schedule_revive_watch_tick(remaining if remaining > 0.0 else 1.0)
+
+
+func _serialize_clock_state() -> Dictionary:
+	var now := float(scheduler.get_current_tick()) if scheduler != null else 0.0
+	var deprived: Array = []
+	for char_id_v in _rest_deprived.keys():
+		deprived.append(str(char_id_v))
+	deprived.sort()
+	return {
+		"day": get_game_day(),
+		"time": get_time_of_day(),
+		"day_length_seconds": day_length_seconds,
+		"last_polled_day": _last_polled_day,
+		"rest_deprived": deprived,
+		"remaining_to_poll": maxf(0.0, _clock_next_poll_tick - now) \
+			if day_length_seconds > 0.0 and _clock_next_poll_tick > 0.0 else 0.0,
+	}
+
+
+func _restore_clock_state(saved: Dictionary) -> void:
+	game_day = maxi(1, int(saved.get("day", 1)))
+	game_time = clampf(float(saved.get("time", 0.25)), 0.0, 1.0)
+	day_length_seconds = maxf(0.0, float(saved.get("day_length_seconds", 0.0)))
+	_clock_base_tick = float(scheduler.get_current_tick()) if scheduler != null else 0.0
+	_last_polled_day = int(saved.get("last_polled_day", game_day))
+	_rest_deprived.clear()
+	for char_id_v in (saved.get("rest_deprived", []) as Array):
+		var char_id := str(char_id_v)
+		if characters.has(char_id):
+			_rest_deprived[char_id] = true
+	if scheduler != null and day_length_seconds > 0.0:
+		var remaining := float(saved.get("remaining_to_poll", 0.5))
+		_schedule_clock_poll(remaining if remaining > 0.0 else 0.5)
+
+
+func _serialize_external_traversals() -> Dictionary:
+	var result := {}
+	for id_variant in _external_traversals.keys():
+		var id := str(id_variant)
+		var state: Dictionary = _external_traversals[id_variant]
+		var readback := get_external_traversal_state(id)
+		var data_path: Array = state.get("data_path", [])
+		var render_path: Array = state.get("render_path", [])
+		result[id] = {
+			"traversal_id": state.get("traversal_id", &""),
+			# A save resumes from where the rider actually is, never from the original mouth.
+			"data_origin": GameEvent.v3_to_arr(readback.get("data_position", Vector3.ZERO)),
+			"data_destination": GameEvent.v3_to_arr(state.get("data_destination", Vector3.ZERO)),
+			"render_origin": GameEvent.v3_to_arr(readback.get("render_position", Vector3.ZERO)),
+			"render_destination": GameEvent.v3_to_arr(state.get("render_destination", Vector3.ZERO)),
+			"data_path": _external_path_to_payload(data_path),
+			"render_path": _external_path_to_payload(render_path),
+			"progress_start": float(readback.get("progress", 0.0)),
+			"remaining": float(readback.get("remaining", 0.0)),
+			"interrupt_policy": state.get("interrupt_policy", &"locked"),
+			"original_start_tick": float(state.get("start_tick", 0.0)),
+			"original_end_tick": float(state.get("end_tick", 0.0)),
+		}
+	return result
+
+
+func _restore_external_traversals(saved: Dictionary) -> void:
+	if scheduler == null:
+		return
+	for id_variant in saved.keys():
+		var id := str(id_variant)
+		if not characters.has(id):
+			continue
+		var state: Dictionary = saved[id_variant]
+		var remaining := float(state.get("remaining", 0.0))
+		var destination := GameEvent.arr_to_v3(state.get(
+			"data_destination", GameEvent.v3_to_arr(get_position(id))))
+		if remaining <= 0.0:
+			characters[id]["position"] = destination
+			continue
+		var now := float(scheduler.get_current_tick())
+		var payload := {
+			"id": id,
+			"traversal_id": state.get("traversal_id", &""),
+			"data_origin": state.get("data_origin", GameEvent.v3_to_arr(get_position(id))),
+			"data_destination": state.get("data_destination", GameEvent.v3_to_arr(destination)),
+			"render_origin": state.get("render_origin", GameEvent.v3_to_arr(get_render_position(id))),
+			"render_destination": state.get("render_destination", GameEvent.v3_to_arr(destination)),
+			"data_path": state.get("data_path", []),
+			"render_path": state.get("render_path", []),
+			"start_tick": now,
+			"end_tick": now + remaining,
+			"progress_start": float(state.get("progress_start", 0.0)),
+			"interrupt_policy": state.get("interrupt_policy", &"locked"),
+		}
+		_apply_external_traversal(payload)
+
+
+func _serialize_timed_mechanism_phases() -> Dictionary:
+	var result := {}
+	var ids := _timed_mechanism_phases.keys()
+	ids.sort()
+	for id_variant in ids:
+		var mechanism_id := StringName(str(id_variant))
+		var state: Dictionary = _timed_mechanism_phases[id_variant]
+		var readback := get_mechanism_phase_state(mechanism_id)
+		result[String(mechanism_id)] = {
+			"phase": state.get("phase", &""),
+			"completion_phase": state.get("completion_phase", &""),
+			"progress": float(readback.get("progress", 0.0)),
+			"remaining": float(readback.get("remaining", 0.0)),
+			"metadata": (state.get("metadata", {}) as Dictionary).duplicate(true),
+			"original_start_tick": float(state.get("start_tick", 0.0)),
+			"original_end_tick": float(state.get("end_tick", 0.0)),
+		}
+	return result
+
+
+func _restore_timed_mechanism_phases(saved: Dictionary) -> void:
+	if scheduler == null:
+		return
+	var ids := saved.keys()
+	ids.sort()
+	for id_variant in ids:
+		var mechanism_id := StringName(str(id_variant))
+		if String(mechanism_id).is_empty() or _timed_mechanism_phases.has(mechanism_id):
+			continue
+		var saved_state: Dictionary = saved[id_variant]
+		var phase := StringName(str(saved_state.get("phase", "")))
+		var completion_phase := StringName(str(saved_state.get("completion_phase", "")))
+		if String(phase).is_empty() or String(completion_phase).is_empty():
+			continue
+		var now := float(scheduler.get_current_tick())
+		var remaining := maxf(0.0, float(saved_state.get("remaining", 0.0)))
+		var progress := clampf(float(saved_state.get("progress", 0.0)), 0.0, 1.0)
+		var metadata := (saved_state.get("metadata", {}) as Dictionary).duplicate(true)
+		if phase == completion_phase or progress >= 1.0 or remaining <= 0.0:
+			_timed_mechanism_phases[mechanism_id] = {
+				"mechanism_id": mechanism_id,
+				"phase": completion_phase,
+				"completion_phase": completion_phase,
+				"start_tick": now,
+				"end_tick": now,
+				"progress_start": 1.0,
+				"metadata": metadata,
+				"handle": 0,
+			}
+			continue
+		_apply_begin_mechanism_phase({
+			"mechanism_id": mechanism_id,
+			"phase": phase,
+			"completion_phase": completion_phase,
+			"start_tick": now,
+			"end_tick": now + remaining,
+			"progress_start": progress,
+			"metadata": metadata,
+		})
+
+func _serialize_damage_shields() -> Dictionary:
+	var result := {}
+	var now := scheduler.get_current_tick() if scheduler != null else 0.0
+	for id_variant in _damage_shields.keys():
+		var char_id := str(id_variant)
+		var shield: Dictionary = _damage_shields[id_variant]
+		var remaining := maxf(0.0, float(shield.get("expires_tick", now)) - now)
+		var amount := float(shield.get("amount", 0.0))
+		if amount <= 0.0 or remaining <= 0.0:
+			continue
+		result[char_id] = {
+			"amount": amount,
+			"source_id": str(shield.get("source_id", "")),
+			"remaining": remaining,
+		}
+	return result
+
+func _restore_damage_shields(serialized: Dictionary) -> void:
+	for id_variant in _damage_shields.keys():
+		clear_damage_shield(str(id_variant))
+	if scheduler == null:
+		return
+	for id_variant in serialized.keys():
+		var char_id := str(id_variant)
+		if not characters.has(char_id):
+			continue
+		var shield: Dictionary = serialized[id_variant]
+		apply_damage_shield(
+			char_id,
+			float(shield.get("amount", 0.0)),
+			float(shield.get("remaining", 0.0)),
+			str(shield.get("source_id", "")))
 
 # --- Internal ---
 
@@ -877,7 +2612,7 @@ func _start_movement(id: String, full_path: Array[Vector3], arrival_ticks: Array
 	var duration := final_tick - start_tick
 	var handle := scheduler.schedule_at(
 		final_tick,
-		func(): _on_arrival(id),
+		_on_arrival.bind(id),
 		"movement_" + id
 	)
 	ch.movement = {
@@ -1002,6 +2737,11 @@ const _COOP_PREVIEW_MAX_NODES := 1500
 ## Extra wait/detour slack (in cell-times) the planner may spend beyond the
 ## straight-line estimate before giving up.
 const _COOP_WAIT_SLACK_CELLS := 48.0
+## Rally/group commands mean "leave together". A later member may cheaply wait
+## at its start for an earlier member's route reservation to clear, but only for
+## a short, legible beat. Longer or permanent conflicts still use cooperative A*.
+const _GROUP_START_WAIT_MAX_SECONDS := 1.5
+const _GROUP_START_WAIT_ATTEMPTS := 12
 
 func _clear_reservations(id: String) -> void:
 	# exempt characters never write reservations — nothing to scan for (the erase is a full-table
@@ -1073,8 +2813,85 @@ func _coop_h(cell: Vector2i, end: Vector2i, card: float) -> float:
 	var dz := absf(cell.y - end.y)
 	return (maxf(dx, dz) + 0.4142136 * minf(dx, dz)) * card
 
-func _coop_key(cell: Vector2i, t: float, t_start: float, tq: float) -> String:
-	return "%d,%d,%d" % [cell.x, cell.y, int(round((t - t_start) / tq))]
+func _coop_key(cell: Vector2i, t: float, t_start: float, tq: float) -> Vector3i:
+	return Vector3i(cell.x, cell.y, int(round((t - t_start) / tq)))
+
+## Turn the cheap 2D path into a timed cooperative plan and report whether it
+## intersects another character's reservation. Most player commands are
+## uncontested; accepting that route directly avoids a reachability flood plus
+## a second, allocation-heavy space-time search. A real conflict still falls
+## through to the full cooperative A* below, preserving waits and detours.
+func _time_spatial_path(
+		start: Vector2i,
+		world_path: Array[Vector3],
+		speed: float,
+		t_start: float,
+		exclude_id: String
+) -> Dictionary:
+	var cells: Array[Vector2i] = [start]
+	var ticks: Array[float] = [t_start]
+	var previous := start
+	var arrival := t_start
+	for world_point in world_path:
+		var cell := grid.world_to_grid(world_point)
+		if cell == previous:
+			continue
+		var diagonal := cell.x != previous.x and cell.y != previous.y
+		var distance := grid.cell_size * (1.4142136 if diagonal else 1.0)
+		var dt := distance / speed if speed > 0.0 else 1.0
+		var next_arrival := arrival + dt
+		if _cell_reserved(cell, arrival - _RESERVE_BUFFER,
+				next_arrival + _RESERVE_BUFFER, exclude_id):
+			return {"conflict": true, "cells": cells, "ticks": ticks}
+		cells.append(cell)
+		ticks.append(next_arrival)
+		previous = cell
+		arrival = next_arrival
+	return {"conflict": false, "cells": cells, "ticks": ticks}
+
+## Rally-scoped fast path for a convoy conflict. Keep the ordinary spatial route
+## and try a tightly bounded wait at the member's current cell before paying for
+## the allocation-heavy space-time search. The duplicated start cell makes the
+## wait explicit in arrival_ticks, so prediction, replay, and path reservations
+## all observe the same deterministic timing.
+func _try_group_start_wait_spatial_path(
+		start: Vector2i,
+		world_path: Array[Vector3],
+		speed: float,
+		t_start: float,
+		exclude_id: String
+	) -> Dictionary:
+	var card := (grid.cell_size / speed) if speed > 0.0 else 1.0
+	var wait_step := minf(_GROUP_START_WAIT_MAX_SECONDS, maxf(card * 0.5,
+		_GROUP_START_WAIT_MAX_SECONDS / float(_GROUP_START_WAIT_ATTEMPTS)))
+	for attempt in range(1, _GROUP_START_WAIT_ATTEMPTS + 1):
+		var wait_seconds := minf(
+			wait_step * float(attempt), _GROUP_START_WAIT_MAX_SECONDS)
+		# A wait is itself occupancy. The earlier-planned member may cross this
+		# member's start cell, in which case blindly delaying only the onward
+		# route would manufacture an overlap the full space-time planner avoids.
+		if _cell_reserved(start, t_start - _RESERVE_BUFFER,
+				t_start + wait_seconds + _RESERVE_BUFFER, exclude_id):
+			if wait_seconds >= _GROUP_START_WAIT_MAX_SECONDS:
+				break
+			continue
+		var delayed := _time_spatial_path(
+			start, world_path, speed, t_start + wait_seconds, exclude_id)
+		if bool(delayed.get("conflict", true)):
+			# minf() caps later attempts to the same value; do not repeat the
+			# identical path scan after the maximum allowed wait already failed.
+			if wait_seconds >= _GROUP_START_WAIT_MAX_SECONDS:
+				break
+			continue
+		var cells: Array[Vector2i] = [start]
+		for cell_variant in delayed.get("cells", []):
+			var cell: Vector2i = cell_variant
+			cells.append(cell)
+		var ticks: Array[float] = [t_start]
+		for tick_variant in delayed.get("ticks", []):
+			ticks.append(float(tick_variant))
+		return {"cells": cells, "ticks": ticks, "wait": wait_seconds}
+	return {}
 
 ## Space-time A*: a grid-cell path from start to end whose timed transit avoids
 ## every reserved (cell, time) window owned by another character, inserting
@@ -1083,58 +2900,89 @@ func _coop_key(cell: Vector2i, t: float, t_start: float, tq: float) -> String:
 # Binary min-heap for the cooperative A* open set. Ordered by f, then by insertion seq so ties break
 # deterministically (FIFO) — replaces the old O(n) linear min-scan, which made a large/hard search
 # O(n²) (≈ seconds at the 12k-node budget) and froze the per-hover path preview.
-static func _coop_heap_less(a: Dictionary, b: Dictionary) -> bool:
-	if a.f != b.f:
-		return a.f < b.f
-	return int(a.seq) < int(b.seq)
-
-static func _coop_heap_push(heap: Array, node: Dictionary) -> void:
-	heap.append(node)
+# Cooperative heap entries are immutable records in parallel packed arrays;
+# the heap itself stores only their integer ids. This preserves the exact
+# f-score/insertion-sequence ordering while avoiding one Dictionary allocation
+# for every candidate space-time state.
+static func _coop_entry_heap_push(
+		heap: PackedInt32Array,
+		entry_f: PackedFloat64Array,
+		entry_seq: PackedInt32Array,
+		entry_id: int
+	) -> void:
+	heap.append(entry_id)
 	var i := heap.size() - 1
 	while i > 0:
 		var parent := (i - 1) >> 1
-		if not _coop_heap_less(heap[i], heap[parent]):
+		var child_id := heap[i]
+		var parent_id := heap[parent]
+		if entry_f[child_id] > entry_f[parent_id] or (entry_f[child_id] == entry_f[parent_id] \
+				and entry_seq[child_id] >= entry_seq[parent_id]):
 			break
-		var tmp = heap[parent]; heap[parent] = heap[i]; heap[i] = tmp
+		heap[i] = parent_id
+		heap[parent] = child_id
 		i = parent
 
-static func _coop_heap_pop(heap: Array) -> Dictionary:
-	var top: Dictionary = heap[0]
-	var last: Dictionary = heap.pop_back()
-	if not heap.is_empty():
-		heap[0] = last
-		var i := 0
-		var n := heap.size()
-		while true:
-			var smallest := i
-			var l := 2 * i + 1
-			var r := 2 * i + 2
-			if l < n and _coop_heap_less(heap[l], heap[smallest]):
-				smallest = l
-			if r < n and _coop_heap_less(heap[r], heap[smallest]):
-				smallest = r
-			if smallest == i:
-				break
-			var tmp = heap[smallest]; heap[smallest] = heap[i]; heap[i] = tmp
-			i = smallest
-	return top
+static func _coop_entry_heap_pop(
+		heap: PackedInt32Array,
+		entry_f: PackedFloat64Array,
+		entry_seq: PackedInt32Array
+	) -> int:
+	var top_id := heap[0]
+	var last_index := heap.size() - 1
+	if last_index == 0:
+		heap.resize(0)
+		return top_id
+	heap[0] = heap[last_index]
+	heap.resize(last_index)
+	var i := 0
+	var heap_size := heap.size()
+	while true:
+		var smallest := i
+		var left := 2 * i + 1
+		var right := left + 1
+		if left < heap_size:
+			var left_id := heap[left]
+			var smallest_id := heap[smallest]
+			if entry_f[left_id] < entry_f[smallest_id] or (entry_f[left_id] == entry_f[smallest_id] \
+					and entry_seq[left_id] < entry_seq[smallest_id]):
+				smallest = left
+		if right < heap_size:
+			var right_id := heap[right]
+			var smallest_id := heap[smallest]
+			if entry_f[right_id] < entry_f[smallest_id] or (entry_f[right_id] == entry_f[smallest_id] \
+					and entry_seq[right_id] < entry_seq[smallest_id]):
+				smallest = right
+		if smallest == i:
+			break
+		var tmp_id := heap[smallest]
+		heap[smallest] = heap[i]
+		heap[i] = tmp_id
+		i = smallest
+	return top_id
 
-func _plan_cooperative(start: Vector2i, end: Vector2i, speed: float, t_start: float, exclude_id: String, level: int = 0, max_nodes: int = _COOP_MAX_NODES) -> Dictionary:
+func _plan_cooperative(
+		start: Vector2i,
+		end: Vector2i,
+		speed: float,
+		t_start: float,
+		exclude_id: String,
+		level: int = 0,
+		max_nodes: int = _COOP_MAX_NODES,
+		allow_group_start_wait := false
+	) -> Dictionary:
+	var perf_started := PerformanceTrace.begin()
 	_coop_last_nodes = 0
 	if _pf_debug:
 		GridWorld._pf_trace("[coop A*] start %v -> %v (budget %d, for '%s')" % [start, end, max_nodes, exclude_id])
 	if not grid:
+		PerformanceTrace.end(&"nav", &"game_state.plan_cooperative", perf_started, "no_grid", 0)
 		return {}
 	if start == end:
+		PerformanceTrace.end(&"nav", &"game_state.plan_cooperative", perf_started, exclude_id, 1)
 		return {"cells": [start] as Array[Vector2i], "ticks": [t_start] as Array[float]}
 	if not grid.is_in_bounds(end.x, end.y) or not grid.is_walkable(end.x, end.y, {}, {}, level):
-		return {}
-	# Geometric-reachability fast-reject: if the destination can't be reached from a walkable start by ANY
-	# route (a wall partition no wait/reservation can bridge), bail INSTANTLY instead of exhausting the
-	# space-time wait-state search. Only when `start` is itself walkable — an off-mesh start (the preview
-	# passes an unsnapped position) must fall through, never cull. Outcome-identical to today (the search
-	# would also return {}), so replay + state_hash are unchanged; just no longer "seconds" on a dead target.
-	if grid.is_walkable(start.x, start.y, {}, {}, level) and not grid.reachable(start, end, level, route_cautious):
+		PerformanceTrace.end(&"nav", &"game_state.plan_cooperative", perf_started, "blocked", 0)
 		return {}
 	var card: float = (grid.cell_size / speed) if speed > 0.0 else 1.0
 	var diag: float = card * 1.4142136
@@ -1150,9 +2998,57 @@ func _plan_cooperative(start: Vector2i, end: Vector2i, speed: float, t_start: fl
 	# endless waits (12k space-time expansions ≈ seconds; this runs per hover frame via the preview).
 	for s in _reservations.get(end, []):
 		if s.id != exclude_id and float(s.t0) <= t_start and float(s.t1) >= t_start + time_budget:
+			PerformanceTrace.end(&"nav", &"game_state.plan_cooperative", perf_started, "reserved", 0)
 			return {}
+	# First solve the ordinary 2D problem. Besides being the common fast path,
+	# an empty result is the geometric-unreachability proof that the old BFS
+	# computed separately. This avoids traversing reachable space twice.
+	var spatial_path := grid.find_path(start, end, {}, route_cautious, {}, {}, level)
+	if spatial_path.is_empty():
+		PerformanceTrace.end(&"nav", &"game_state.plan_cooperative", perf_started, "unreachable", 0)
+		return {}
+	var spatial_plan := _time_spatial_path(start, spatial_path, speed, t_start, exclude_id)
+	if not bool(spatial_plan.get("conflict", true)):
+		_performance_counters["cooperative_fast_paths"] = \
+			int(_performance_counters["cooperative_fast_paths"]) + 1
+		var spatial_cells := (spatial_plan.get("cells", []) as Array).size()
+		PerformanceTrace.end(&"nav", &"game_state.plan_cooperative", perf_started,
+			"spatial:%s" % exclude_id, spatial_cells)
+		return {"cells": spatial_plan.cells, "ticks": spatial_plan.ticks}
+	if allow_group_start_wait:
+		var waited_plan := _try_group_start_wait_spatial_path(
+			start, spatial_path, speed, t_start, exclude_id)
+		if not waited_plan.is_empty():
+			_performance_counters["cooperative_wait_fast_paths"] = \
+				int(_performance_counters["cooperative_wait_fast_paths"]) + 1
+			var waited_cells := (waited_plan.get("cells", []) as Array).size()
+			PerformanceTrace.end(&"nav", &"game_state.plan_cooperative", perf_started,
+				"wait:%s" % exclude_id, waited_cells)
+			return {"cells": waited_plan.cells, "ticks": waited_plan.ticks}
+	_performance_counters["cooperative_conflict_searches"] = \
+		int(_performance_counters["cooperative_conflict_searches"]) + 1
+	# Reuse GridWorld's derived dense predicates. Cooperative A* has no
+	# query-specific locked doors, so byte/float lookups are exactly equivalent
+	# to repeatedly probing tile, level-footprint, blocker and risk Dictionaries.
+	var walkability_mask := grid.get_path_walkability_mask(level)
+	var risk_penalties := PackedFloat64Array()
+	var risk_blocked := PackedByteArray()
+	var risk_potential := PackedFloat64Array()
+	if route_cautious:
+		var risk_masks := grid.get_path_risk_masks()
+		risk_penalties = risk_masks.get("penalties", PackedFloat64Array())
+		risk_blocked = risk_masks.get("blocked", PackedByteArray())
+		risk_potential = grid.get_cautious_goal_risk_potential(end)
 	var seq := 0
-	var open: Array = [{"cell": start, "t": t_start, "g": 0.0, "f": _coop_h(start, end, card), "seq": seq}]
+	var entry_x := PackedInt32Array([start.x])
+	var entry_z := PackedInt32Array([start.y])
+	var entry_t := PackedFloat64Array([t_start])
+	var entry_g := PackedFloat64Array([0.0])
+	var start_risk_potential := risk_potential[start.y * grid.width + start.x] * card \
+		if not risk_potential.is_empty() else 0.0
+	var entry_f := PackedFloat64Array([_coop_h(start, end, card) + start_risk_potential])
+	var entry_seq := PackedInt32Array([seq])
+	var open := PackedInt32Array([0])
 	seq += 1
 	var start_key := _coop_key(start, t_start, t_start, tq)
 	var best_g: Dictionary = {start_key: 0.0}
@@ -1161,17 +3057,19 @@ func _plan_cooperative(start: Vector2i, end: Vector2i, speed: float, t_start: fl
 	while not open.is_empty() and nodes < max_nodes:
 		nodes += 1
 		_coop_last_nodes = nodes
-		var cur: Dictionary = _coop_heap_pop(open)
-		var ccell: Vector2i = cur.cell
-		var ct: float = cur.t
+		var current_entry := _coop_entry_heap_pop(open, entry_f, entry_seq)
+		var ccell := Vector2i(entry_x[current_entry], entry_z[current_entry])
+		var ct: float = entry_t[current_entry]
 		var cur_key := _coop_key(ccell, ct, t_start, tq)
 		# A stale entry (we already reached this state cheaper) — skip.
-		if cur.g > float(best_g.get(cur_key, INF)) + 0.0001:
+		if entry_g[current_entry] > float(best_g.get(cur_key, INF)) + 0.0001:
 			continue
 		if ccell == end:
 			if _pf_debug:
 				GridWorld._pf_trace("[coop A*] done: reached in %d nodes" % nodes)
-			return _coop_reconstruct(came, cur_key)
+			var result := _coop_reconstruct(came, cur_key)
+			PerformanceTrace.end(&"nav", &"game_state.plan_cooperative", perf_started, exclude_id, nodes)
+			return result
 		# Eight moves plus a wait-in-place.
 		for di in range(dirs.size() + 1):
 			var is_wait := di == dirs.size()
@@ -1181,23 +3079,30 @@ func _plan_cooperative(start: Vector2i, end: Vector2i, speed: float, t_start: fl
 				var dir := dirs[di]
 				var is_diag := dir.x != 0 and dir.y != 0
 				dt = diag if is_diag else card
-				if not grid.is_in_bounds(ncell.x, ncell.y) or not grid.is_walkable(ncell.x, ncell.y, {}, {}, level):
+				if not grid.is_in_bounds(ncell.x, ncell.y):
+					continue
+				var ncell_index := ncell.y * grid.width + ncell.x
+				if walkability_mask[ncell_index] == 0:
 					continue
 				if is_diag:
-					if not grid.is_walkable(ccell.x + dir.x, ccell.y, {}, {}, level) or not grid.is_walkable(ccell.x, ccell.y + dir.y, {}, {}, level):
+					var adjacent_a_index := ccell.y * grid.width + ccell.x + dir.x
+					var adjacent_b_index := (ccell.y + dir.y) * grid.width + ccell.x
+					if walkability_mask[adjacent_a_index] == 0 \
+							or walkability_mask[adjacent_b_index] == 0:
 						continue
 			# Cautious (safe) routing: never enter a non-recoverable risky cell; a recoverable one
 			# costs extra so the plan detours when a detour exists. Penalty is scaled to time units
 			# (g is time-shaped) via card. Direct routing ignores risk.
 			if route_cautious and not is_wait:
-				if grid.cautious_cell_blocked(ncell):
+				var risk_index := ncell.y * grid.width + ncell.x
+				if risk_blocked[risk_index] != 0:
 					continue
 			var nt: float = ct + dt
 			if _cell_reserved(ncell, ct - _RESERVE_BUFFER, nt + _RESERVE_BUFFER, exclude_id):
 				continue
-			var ng: float = cur.g + dt
+			var ng: float = entry_g[current_entry] + dt
 			if route_cautious and not is_wait:
-				ng += grid.risk_penalty(ncell) * card
+				ng += risk_penalties[ncell.y * grid.width + ncell.x] * card
 			# Budget on ELAPSED TIME (not cost): risk penalties shape route choice but must not
 			# starve the search budget.
 			if nt - t_start > time_budget:
@@ -1206,21 +3111,31 @@ func _plan_cooperative(start: Vector2i, end: Vector2i, speed: float, t_start: fl
 			if ng < float(best_g.get(nkey, INF)) - 0.0001:
 				best_g[nkey] = ng
 				came[nkey] = {"cell": ncell, "t": nt, "pkey": cur_key}
-				_coop_heap_push(open, {"cell": ncell, "t": nt, "g": ng, "f": ng + _coop_h(ncell, end, card), "seq": seq})
+				var next_entry := entry_x.size()
+				entry_x.append(ncell.x)
+				entry_z.append(ncell.y)
+				entry_t.append(nt)
+				entry_g.append(ng)
+				var remaining_risk := risk_potential[ncell.y * grid.width + ncell.x] * card \
+					if not risk_potential.is_empty() else 0.0
+				entry_f.append(ng + _coop_h(ncell, end, card) + remaining_risk)
+				entry_seq.append(seq)
+				_coop_entry_heap_push(open, entry_f, entry_seq, next_entry)
 				seq += 1
 	if _pf_debug:
 		GridWorld._pf_trace("[coop A*] done: EXHAUSTED %d nodes (budget %d) — no conflict-free path, falling back" % [nodes, max_nodes])
+	PerformanceTrace.end(&"nav", &"game_state.plan_cooperative", perf_started, "exhausted", nodes)
 	return {}
 
-func _coop_reconstruct(came: Dictionary, key: String) -> Dictionary:
+func _coop_reconstruct(came: Dictionary, key: Variant) -> Dictionary:
 	var cells: Array[Vector2i] = []
 	var ticks: Array[float] = []
-	var k := key
-	while k != "" and came.has(k):
+	var k: Variant = key
+	while came.has(k):
 		var node: Dictionary = came[k]
 		cells.push_front(node.cell)
 		ticks.push_front(float(node.t))
-		k = String(node.pkey)
+		k = node.pkey
 	return {"cells": cells, "ticks": ticks}
 
 ## Convert a planned cell sequence (cell centers + absolute arrival ticks) into a
@@ -1393,15 +3308,19 @@ func _cancel_detection_prediction_tags(only_id: String = "") -> void:
 		_detection_active_pairs.erase(tag)
 
 func _recompute_all_detection_predictions(only_id: String = "") -> void:
+	var perf_started := PerformanceTrace.begin()
 	if _detection_batch_depth > 0:
 		_detection_batch_dirty = true
 		if only_id == "":
 			_detection_batch_all_dirty = true
 		else:
 			_detection_batch_dirty_ids[only_id] = true
+		PerformanceTrace.end(&"update", &"game_state.recompute_detection", perf_started, "deferred", 0)
 		return
 	if not scheduler:
+		PerformanceTrace.end(&"update", &"game_state.recompute_detection", perf_started, "no_scheduler", 0)
 		return
+	var pairs_before := int(_performance_counters["detection_pairs_considered"])
 	_performance_counters["detection_recomputes"] = int(_performance_counters["detection_recomputes"]) + 1
 	_cancel_detection_prediction_tags(only_id)
 	var now := scheduler.get_current_tick()
@@ -1443,6 +3362,10 @@ func _recompute_all_detection_predictions(only_id: String = "") -> void:
 				_performance_counters["detection_events_scheduled"]) + 1
 			scheduler.schedule_at(detection_tick,
 				func(): _on_detection_event(scheduled_detector, scheduled_target), tag)
+	PerformanceTrace.end(
+		&"update", &"game_state.recompute_detection", perf_started,
+		only_id if only_id != "" else "all",
+		int(_performance_counters["detection_pairs_considered"]) - pairs_before)
 
 func _on_detection_event(detector_id: String, target_id: String, recheck_hops: int = 0) -> void:
 	if not characters.has(detector_id) or not characters.has(target_id):
@@ -1553,6 +3476,30 @@ func _predict_detection_time(detector_id: String, target_id: String, det_range: 
 	return earliest
 
 func _get_movement_segments(id: String) -> Array[Dictionary]:
+	if _external_traversals.has(id):
+		var external: Dictionary = _external_traversals[id]
+		var start: Vector3 = external["data_origin"]
+		var destination: Vector3 = external["data_destination"]
+		var start_tick := float(external["start_tick"])
+		var end_tick := float(external["end_tick"])
+		var span := end_tick - start_tick
+		var velocity := Vector3.ZERO
+		if span > 0.0001:
+			velocity = Vector3(destination.x - start.x, 0.0, destination.z - start.z) / span
+		return [
+			{
+				"start_tick": start_tick,
+				"end_tick": end_tick,
+				"start_pos": Vector3(start.x, 0.0, start.z),
+				"velocity": velocity,
+			},
+			{
+				"start_tick": end_tick,
+				"end_tick": 1e12,
+				"start_pos": Vector3(destination.x, 0.0, destination.z),
+				"velocity": Vector3.ZERO,
+			},
+		]
 	var ch: Dictionary = characters[id]
 	if ch.movement == null:
 		var pos: Vector3 = ch.position
@@ -1595,8 +3542,8 @@ func _get_movement_segments(id: String) -> Array[Dictionary]:
 ## ANALYTIC WAITING — the reason the scheduler architecture exists. Position is a pure function of the
 ## tick, so "when is `id` first within `radius` of `point`?" is SOLVED from its current movement plan, not
 ## discovered by polling. Tests jump the scheduler exactly to the returned tick (identical to waiting,
-## none of the cost), and the WHEN register reads the same number diegetically (a patrol gate's TRACE =
-## this query against the sentry's beat). Returns the absolute tick, or -1.0 if the CURRENT plan never
+## none of the cost), and the WHEN register reads the same number diegetically (for example, a
+## target-owned patrol-gauge scan queries the sentry's real beat). Returns the absolute tick, or -1.0 if the CURRENT plan never
 ## comes that close (a future plan — the next patrol leg, a new command — needs a re-ask after it exists).
 func predict_proximity_tick(id: String, point: Vector3, radius: float) -> float:
 	if not characters.has(id) or scheduler == null:
@@ -1620,6 +3567,8 @@ func get_plan_end_tick(id: String) -> float:
 	if not characters.has(id) or scheduler == null:
 		return -1.0
 	var now: float = scheduler.get_current_tick()
+	if _external_traversals.has(id):
+		return maxf(float(_external_traversals[id].get("end_tick", now)), now)
 	var ch: Dictionary = characters[id]
 	if ch.movement == null:
 		return now
@@ -1643,7 +3592,8 @@ func dodge_roll(char_id: String, direction: Vector3) -> bool:
 	})
 	if not characters.has(char_id) or not scheduler:
 		return false
-	if is_endocytosing(char_id):
+	if is_endocytosing(char_id) or is_external_traversal_active(char_id) \
+			or is_dragging(char_id) or is_resting(char_id) or is_field_restoring(char_id):
 		return false
 	var ch: Dictionary = characters[char_id]
 	if not ch.stats.get("dodge_unlocked", false):
@@ -1663,6 +3613,10 @@ func dodge_roll(char_id: String, direction: Vector3) -> bool:
 	if stamina < DODGE_STAMINA_COST:
 		_begin_knockdown(char_id)
 		return false
+	# A dodge is its own committed locomotion policy. Retire sprint before installing the dodge
+	# callback so a run-toggle cannot cancel that callback and leave permanent dodge immunity.
+	if is_running(char_id):
+		set_running(char_id, false)
 
 	# Compute the dodge destination FIRST and reject a fully wall-blocked dodge before spending anything —
 	# a dodge that never moves must cost neither stamina NOR the cooldown (else a corner traps you on cd).
@@ -1739,7 +3693,7 @@ func is_dodging(char_id: String) -> bool:
 
 # --- Knockdown (the failed dodge): flat on the ground, can't move or dodge, strikes land. ---
 # Derived state: a deterministic consequence of the logged dodge_roll command + stamina, with the
-# recovery riding the scheduler — replay reproduces it; never serialized.
+# recovery riding the scheduler. Replay derives it from the command and snapshots preserve its remainder.
 
 func is_knocked_down(char_id: String) -> bool:
 	return _knocked_down.has(char_id)
@@ -1797,7 +3751,8 @@ func _on_dodge_end(char_id: String) -> void:
 
 var _queued_abilities: Dictionary = {} # char_id → {ability, target_pos, range, callback}
 
-## Replay-safe ability handlers by ability id.
+## Legacy replay handlers for non-canonical callback abilities. EMP and WRAP carry a serializable
+## command payload and resolve through CanonicalCharacterAbility without this registry.
 var _ability_handlers: Dictionary = {}
 
 func register_ability_handler(ability_id: StringName, handler: Callable) -> void:
@@ -1810,30 +3765,105 @@ func queue_ability(char_id: String, ability: String, target_pos: Vector3, abilit
 		"target_pos": GameEvent.v3_to_arr(target_pos),
 		"range": ability_range,
 	})
+	_queue_ability_internal(char_id, ability, target_pos, ability_range, callback)
+
+## Queue a canonical cast as one authoritative, replayable command. target_pos is DATA-space, like
+## every GameState movement command. WRAP also requires options.target_id; options.allowed_target_ids
+## defaults to the current party roster. A scene can explicitly authorize a conscious non-party ward
+## such as Monos without admitting every registered actor. world_root is a runtime-only EMP receiver
+## root: replay rebuilds all
+## GameState consequences (including stamina and WRAP) without a handler, while scene objects are
+## expected to be rebuilt by their scene just like other scene-scoped mechanisms.
+func queue_canonical_ability(
+		char_id: String,
+		ability: String,
+		target_pos: Vector3,
+		options: Dictionary = {},
+		world_root: Node = null,
+		callback: Callable = Callable()
+	) -> Dictionary:
+	var canonical := _canonical_command_options(ability, options)
+	var ability_range := float(canonical.get(
+		"approach_range", CanonicalCharacterAbilityScript.cast_range(ability)))
+	_emit(GameEvent.KIND_QUEUE_ABILITY, {
+		"char_id": char_id,
+		"ability": ability,
+		"target_pos": GameEvent.v3_to_arr(target_pos),
+		"range": ability_range,
+		"canonical": canonical.duplicate(true),
+	})
+	var validation := CanonicalCharacterAbilityScript.validate_cast(
+		self, ability, char_id, target_pos, canonical, false)
+	if not bool(validation.get("accepted", false)):
+		return validation
+	return _queue_ability_internal(
+		char_id, ability, target_pos, ability_range, callback, canonical, world_root)
+
+func _canonical_command_options(ability: String, options: Dictionary) -> Dictionary:
+	var requested_targets = options.get(
+		"allowed_target_ids", options.get("party_ids", get_party()))
+	var allowed_target_ids: Array = requested_targets.duplicate() \
+		if requested_targets is Array else []
+	var canonical := {
+		"target_is_data": true,
+		"allowed_target_ids": allowed_target_ids,
+	}
+	if options.has("approach_range"):
+		canonical["approach_range"] = maxf(0.0, float(options.get("approach_range", 0.0)))
+	if options.has("duration"):
+		canonical["duration"] = float(options.get("duration", 0.0))
+	if ability == CanonicalCharacterAbilityScript.WRAP_ID:
+		canonical["target_id"] = str(options.get("target_id", ""))
+		if not canonical.has("duration"):
+			canonical["duration"] = CanonicalCharacterAbilityScript.WRAP_DURATION_SECONDS
+	return canonical
+
+func _queue_ability_internal(
+		char_id: String,
+		ability: String,
+		target_pos: Vector3,
+		ability_range: float,
+		callback: Callable,
+		canonical: Dictionary = {},
+		world_root: Node = null
+	) -> Dictionary:
 	if not characters.has(char_id):
-		return
+		return {"accepted": false, "reason": "invalid_owner"}
 	var char_pos := get_position(char_id)
 	var dist := Vector2(char_pos.x - target_pos.x, char_pos.z - target_pos.z).length()
 	if dist <= ability_range:
-		callback.call()
-		ability_fired.emit(char_id, ability, target_pos)
-		return
+		var immediate := _execute_ability_entry(char_id, {
+			"ability": ability,
+			"target_pos": target_pos,
+			"range": ability_range,
+			"callback": callback,
+			"canonical": canonical,
+			"world_root": world_root,
+		})
+		if bool(immediate.get("accepted", false)):
+			ability_fired.emit(char_id, ability, target_pos)
+		immediate["queued"] = false
+		return immediate
+	if scheduler:
+		scheduler.cancel_tag("ability_range_" + char_id)
 	_queued_abilities[char_id] = {
 		"ability": ability,
 		"target_pos": target_pos,
 		"range": ability_range,
 		"callback": callback,
+		"canonical": canonical,
+		"world_root": world_root,
 	}
-	var dir := Vector3(target_pos.x - char_pos.x, 0, target_pos.z - char_pos.z).normalized()
 	var move_target := target_pos
 	_do_move_to_pos(char_id, move_target)
 	_schedule_ability_in_range(char_id)
+	return {"accepted": true, "queued": true}
 
 func cancel_queued_ability(char_id: String) -> void:
 	_emit(GameEvent.KIND_CANCEL_QUEUED_ABILITY, {"char_id": char_id})
 	_queued_abilities.erase(char_id)
 	if scheduler:
-		scheduler.cancel_tag("ability_range")
+		scheduler.cancel_tag("ability_range_" + char_id)
 
 func has_queued_ability(char_id: String) -> bool:
 	return _queued_abilities.has(char_id)
@@ -1867,8 +3897,29 @@ func _on_ability_in_range(char_id: String) -> void:
 	var qa: Dictionary = _queued_abilities[char_id]
 	_queued_abilities.erase(char_id)
 	_do_stop(char_id)
-	qa.callback.call()
-	ability_fired.emit(char_id, qa.ability, qa.target_pos)
+	var result := _execute_ability_entry(char_id, qa)
+	if bool(result.get("accepted", false)):
+		ability_fired.emit(char_id, qa.ability, qa.target_pos)
+
+func _execute_ability_entry(char_id: String, queued: Dictionary) -> Dictionary:
+	var canonical: Dictionary = queued.get("canonical", {})
+	var callback: Callable = queued.get("callback", Callable())
+	if not canonical.is_empty():
+		var runtime_options := canonical.duplicate(true)
+		runtime_options["world_root"] = queued.get("world_root")
+		var result := CanonicalCharacterAbilityScript.execute(
+			self,
+			str(queued.get("ability", "")),
+			char_id,
+			queued.get("target_pos", Vector3.ZERO),
+			runtime_options)
+		if bool(result.get("accepted", false)) and callback.is_valid():
+			callback.call()
+		return result
+	if callback.is_valid():
+		callback.call()
+		return {"accepted": true}
+	return {"accepted": false, "reason": "missing_handler"}
 
 # --- Items / Hands / Endocytosis ---
 
@@ -1990,12 +4041,20 @@ func endocytose_item(char_id: String, item_id: String) -> bool:
 		return false
 	if _endocytosing.has(char_id):
 		return false
+	if is_dodging(char_id) or is_knocked_down(char_id) or is_downed(char_id) \
+			or is_external_traversal_active(char_id) or is_dragging(char_id) \
+			or is_resting(char_id) or is_field_restoring(char_id):
+		return false
 	_do_stop(char_id)
 	var duration: float = item.properties.get("endocytosis_duration", ENDOCYTOSE_DEFAULT_DURATION)
+	var end_tick := scheduler.get_current_tick() + duration
 	var cid := char_id
 	var iid := item_id
-	var handle := scheduler.schedule_after(duration, func(): _complete_endocytosis(cid, iid), "endocytose_" + char_id)
-	_endocytosing[char_id] = {"item_id": item_id, "handle": handle}
+	var handle := scheduler.schedule_at(
+		end_tick, func(): _complete_endocytosis(cid, iid), "endocytose_" + char_id)
+	_endocytosing[char_id] = {
+		"item_id": item_id, "end_tick": end_tick, "handle": handle,
+	}
 	return true
 
 func cancel_endocytosis(char_id: String) -> void:
@@ -2025,7 +4084,12 @@ func _complete_endocytosis(char_id: String, item_id: String) -> void:
 		"digest":
 			var restore: float = normalize_atp(float(item.properties.get("atp_restore", 0.0)))
 			var current_atp: float = normalize_atp(float(ch.stats.get("atp", 0.0)))
-			ch.stats["atp"] = clamp_atp(current_atp + restore)
+			var restored_atp := clamp_atp(current_atp + restore)
+			ch.stats["atp"] = restored_atp
+			# Endocytosis is already the logged transaction; publish its derived stat
+			# mutation without creating a second command. HUD consumers and optional
+			# scarcity clocks then observe the same authoritative refill immediately.
+			stat_changed.emit(char_id, "atp", restored_atp)
 			items.erase(item_id)
 		"store":
 			item.location = "internal"
@@ -2295,7 +4359,9 @@ func _get_velocity_at_tick(id: String, tick: float) -> Vector3:
 # --- Physics Collision Prediction ---
 
 func _recompute_physics_predictions() -> void:
+	var perf_started := PerformanceTrace.begin()
 	if not scheduler:
+		PerformanceTrace.end(&"update", &"game_state.recompute_physics", perf_started, "no_scheduler", 0)
 		return
 	scheduler.cancel_tag("physics_predict")
 	var now := scheduler.get_current_tick()
@@ -2336,6 +4402,9 @@ func _recompute_physics_predictions() -> void:
 				var a := id_a
 				var b := id_b
 				scheduler.schedule_at(t, func(): _on_physics_obj_collision(a, b), "physics_predict")
+	PerformanceTrace.end(
+		&"update", &"game_state.recompute_physics", perf_started, "pairs",
+		characters.size() * physics_objects.size() + (obj_ids.size() * (obj_ids.size() - 1)) / 2)
 
 func _predict_collision_time(segs_a: Array[Dictionary], segs_b: Array[Dictionary], collision_range: float, now: float) -> float:
 	var earliest := -1.0
@@ -2535,9 +4604,10 @@ var game_day := 1
 var game_time := 0.25                 # 0..1 time-of-day
 
 var _shelters: Array = []             # [{min: Vector2, max: Vector2}] world-XZ rects (scene setup)
-var _resting := {}                    # char_id -> {pip_seconds: float} - derived, never serialized
+var _resting := {}                    # char_id -> {pip_seconds, next_tick}; authoritative while active
 var _revive_progress := {}            # char_id -> float seconds - derived
 var _revive_watch_running := false
+var _revive_next_tick := 0.0
 
 signal rest_started(char_id: String)
 signal rest_stopped(char_id: String)
@@ -2586,8 +4656,9 @@ const REST_DEPRIVED_STAMINA_FACTOR := 0.6  # the brutal next day: stamina cap cu
 
 var day_length_seconds := 0.0
 var _clock_base_tick := 0.0
-var _rest_deprived := {}     # char_id -> true — derived from rollovers/skips, never serialized
+var _rest_deprived := {}     # char_id -> true; persistent consequence of rollovers/skips
 var _last_polled_day := 0
+var _clock_next_poll_tick := 0.0
 
 signal day_rolled_over(new_day: int)
 signal rest_deprivation_changed(char_id: String, deprived: bool)
@@ -2600,7 +4671,17 @@ func set_day_length(seconds: float) -> void:
 	_last_polled_day = game_day
 	if day_length_seconds > 0.0 and scheduler:
 		scheduler.cancel_tag("game_clock_poll")
-		scheduler.schedule_after(0.5, _on_clock_poll, "game_clock_poll")
+		_schedule_clock_poll()
+	else:
+		_clock_next_poll_tick = 0.0
+
+func _schedule_clock_poll(delay: float = 0.5) -> void:
+	if scheduler == null or day_length_seconds <= 0.0:
+		_clock_next_poll_tick = 0.0
+		return
+	delay = maxf(0.000001, delay)
+	_clock_next_poll_tick = scheduler.get_current_tick() + delay
+	scheduler.schedule_after(delay, _on_clock_poll, "game_clock_poll")
 
 ## The live time of day [0..1): the anchored base plus scheduler time since the anchor.
 func get_time_of_day() -> float:
@@ -2642,7 +4723,7 @@ func _on_clock_poll() -> void:
 		_advance_flora_day()
 		day_rolled_over.emit(live_day)
 		game_clock_changed.emit(live_day, get_time_of_day())
-	scheduler.schedule_after(0.5, _on_clock_poll, "game_clock_poll")
+	_schedule_clock_poll()
 
 func is_rest_deprived(char_id: String) -> bool:
 	return _rest_deprived.has(char_id)
@@ -2662,27 +4743,172 @@ func _set_rest_deprived(char_id: String, deprived: bool) -> void:
 		_rest_deprived.erase(char_id)
 	rest_deprivation_changed.emit(char_id, deprived)
 
-## Begin resting at a shelter. Gates (GDD): must be AT a shelter, conscious, hurt, and able to
-## afford sleep - one ATP pip buys REST_SECONDS_PER_PIP seconds, charged up front. Movement
-## interrupts; healing stops when full or when the next pip can't be paid.
+## Begin resting at a shelter. Gates (GDD): must be AT a shelter, conscious, in need of HP or
+## stamina recovery (or committing to the night), and able to afford sleep. One ATP pip buys
+## REST_SECONDS_PER_PIP seconds, charged up front. Movement interrupts; daytime recovery stops
+## when both HP and stamina are full, while a fully recovered night sleeper stays bedded down so
+## the rest of the party can join and trigger the full-night skip.
 func command_rest(char_id: String) -> bool:
 	_emit(GameEvent.KIND_REST, {"char_id": char_id})
 	return _do_rest(char_id)
 
+## Commit one complete, already-settled roster to shelter rest. This is deliberately a separate
+## command from repeated command_rest() calls: the latter expose a signal boundary after each ATP
+## charge, allowing a signal-time save to contain a partially paid party. Here every mutable guard
+## is checked first, then ATP and rest records are installed for the whole batch before any
+## stat_changed/rest_started feedback is emitted. The single event gives replay the same boundary.
+func command_party_rest(char_ids: Array) -> bool:
+	var members := _normalize_party_rest_members(char_ids)
+	if members.is_empty() or not _can_party_rest_members(members):
+		return false
+	_emit(GameEvent.KIND_PARTY_REST, {"char_ids": members.duplicate()})
+	return _do_party_rest(members)
+
+
+## Pure preflight used by exact authored shelters before they publish a committed transaction.
+## Group rest requires parked bodies because stopping several active movement plans would itself
+## expose movement/detection signal seams before the batch was fully installed.
+func can_party_rest(char_ids: Array) -> bool:
+	var members := _normalize_party_rest_members(char_ids)
+	return not members.is_empty() and _can_party_rest_members(members)
+
+
+func _normalize_party_rest_members(char_ids: Array) -> Array[String]:
+	var members: Array[String] = []
+	for char_id_v in char_ids:
+		var char_id := str(char_id_v).strip_edges()
+		if char_id.is_empty() or members.has(char_id):
+			return []
+		members.append(char_id)
+	return members
+
+
+func _can_party_rest_members(members: Array[String]) -> bool:
+	if scheduler == null or members.is_empty():
+		return false
+	for char_id in members:
+		if not characters.has(char_id) or is_moving(char_id) or _resting.has(char_id) \
+				or is_downed(char_id) or is_knocked_down(char_id) or is_dodging(char_id) \
+				or is_endocytosing(char_id) or is_external_traversal_active(char_id) \
+				or is_dragging(char_id) or is_field_restoring(char_id) \
+				or not is_at_shelter(char_id):
+			return false
+		var hp_full := get_stat(char_id, "hp") >= get_stat_cap(char_id, "hp")
+		var stamina_full := get_stat(char_id, "stamina") >= get_stat_cap(char_id, "stamina")
+		if hp_full and stamina_full and get_time_of_day() < NIGHT_START:
+			return false
+		if get_stat(char_id, "atp") < 1.0:
+			return false
+	return true
+
+
+func _do_party_rest(members: Array[String]) -> bool:
+	# Replay dispatch reaches this method only after the recorded command has rebuilt the same guards.
+	# Fail closed on a malformed/tampered event instead of charging a prefix.
+	if not _can_party_rest_members(members):
+		return false
+	var next_atp := {}
+	for char_id in members:
+		next_atp[char_id] = clampf(
+			quantize_atp(get_stat(char_id, "atp") - 1.0),
+			0.0,
+			get_stat_cap(char_id, "atp")
+		)
+
+	# Authoritative batch mutation. No externally observable signal is emitted until every member
+	# owns both the paid ATP value and a scheduled-rest record.
+	for char_id in members:
+		characters[char_id].stats["atp"] = float(next_atp[char_id])
+		_resting[char_id] = {"pip_seconds": REST_SECONDS_PER_PIP, "next_tick": 0.0}
+	for char_id in members:
+		_schedule_rest_tick(char_id)
+
+	if _party_rest_can_skip_night_atomically():
+		_apply_atomic_restful_night_skip(members, next_atp)
+	else:
+		for char_id in members:
+			stat_changed.emit(char_id, "atp", float(next_atp[char_id]))
+			rest_started.emit(char_id)
+	return true
+
+
+func _party_rest_can_skip_night_atomically() -> bool:
+	if get_time_of_day() < NIGHT_START or characters.is_empty():
+		return false
+	# The existing night-skip contract also handles downed-body shelter revival. Batch rest is the
+	# conscious-roster path; refuse to collapse that distinct revive transaction into this helper.
+	for char_id_v in characters.keys():
+		var char_id := str(char_id_v)
+		if is_downed(char_id) or not _resting.has(char_id):
+			return false
+	return true
+
+
+func _apply_atomic_restful_night_skip(members: Array[String], next_atp: Dictionary) -> void:
+	var night_remaining := clampf(
+		(1.0 - get_time_of_day()) / (1.0 - NIGHT_START), 0.0, 1.0)
+	var heal := NIGHT_SKIP_MAX_HEAL * night_remaining * RESTFUL_BONUS
+	var previously_deprived: Array[String] = []
+	var next_hp := {}
+	var next_stamina := {}
+	for char_id_v in characters.keys():
+		var char_id := str(char_id_v)
+		next_hp[char_id] = clampf(
+			get_stat(char_id, "hp") + heal, 0.0, get_stat_cap(char_id, "hp"))
+		next_stamina[char_id] = get_stat_cap(char_id, "stamina")
+		if _rest_deprived.has(char_id):
+			previously_deprived.append(char_id)
+
+	# Complete the entire night result before the first feedback signal. A save made by any listener
+	# therefore contains either the pre-command world or the complete paid dawn, never a half-party.
+	for char_id_v in characters.keys():
+		var char_id := str(char_id_v)
+		characters[char_id].stats["hp"] = float(next_hp[char_id])
+		characters[char_id].stats["stamina"] = float(next_stamina[char_id])
+		_rest_deprived.erase(char_id)
+		if scheduler != null:
+			scheduler.cancel_tag("rest_" + char_id)
+	_resting.clear()
+	_advance_flora_day()
+	game_day += 1
+	game_time = DAWN_TIME
+	_clock_base_tick = scheduler.get_current_tick() if scheduler else 0.0
+	_last_polled_day = game_day
+
+	for char_id in members:
+		stat_changed.emit(char_id, "atp", float(next_atp[char_id]))
+		rest_started.emit(char_id)
+	for char_id_v in characters.keys():
+		var char_id := str(char_id_v)
+		stat_changed.emit(char_id, "hp", float(next_hp[char_id]))
+		stat_changed.emit(char_id, "stamina", float(next_stamina[char_id]))
+		if previously_deprived.has(char_id):
+			rest_deprivation_changed.emit(char_id, false)
+		rest_stopped.emit(char_id)
+	game_clock_changed.emit(game_day, game_time)
+	night_skipped.emit(game_day)
+
+
 func _do_rest(char_id: String) -> bool:
 	if not scheduler or not characters.has(char_id):
 		return false
-	if _resting.has(char_id) or is_downed(char_id) or is_knocked_down(char_id):
+	if _resting.has(char_id) or is_downed(char_id) or is_knocked_down(char_id) \
+			or is_dodging(char_id) or is_endocytosing(char_id) \
+			or is_external_traversal_active(char_id) or is_dragging(char_id) \
+			or is_field_restoring(char_id):
 		return false
 	if not is_at_shelter(char_id):
 		return false
-	if get_stat(char_id, "hp") >= get_stat_cap(char_id, "hp"):
+	var hp_full := get_stat(char_id, "hp") >= get_stat_cap(char_id, "hp")
+	var stamina_full := get_stat(char_id, "stamina") >= get_stat_cap(char_id, "stamina")
+	var committing_to_night := get_time_of_day() >= NIGHT_START
+	if hp_full and stamina_full and not committing_to_night:
 		return false
 	if get_stat(char_id, "atp") < 1.0:
 		return false  # too low to sleep - the Rain World gate
 	_do_stop(char_id)
 	_apply_stat_delta(char_id, "atp", -1.0)
-	_resting[char_id] = {"pip_seconds": REST_SECONDS_PER_PIP}
+	_resting[char_id] = {"pip_seconds": REST_SECONDS_PER_PIP, "next_tick": 0.0}
 	rest_started.emit(char_id)
 	_schedule_rest_tick(char_id)
 	_check_night_skip()
@@ -2701,11 +4927,15 @@ func _stop_rest(char_id: String) -> void:
 		scheduler.cancel_tag("rest_" + char_id)
 	rest_stopped.emit(char_id)
 
-func _schedule_rest_tick(char_id: String) -> void:
+func _schedule_rest_tick(char_id: String, delay: float = 1.0) -> void:
+	if scheduler == null or not _resting.has(char_id):
+		return
+	delay = maxf(0.000001, delay)
 	var cid := char_id
-	scheduler.schedule_after(1.0, func(): _on_rest_tick(cid), "rest_" + char_id)
+	_resting[char_id]["next_tick"] = scheduler.get_current_tick() + delay
+	scheduler.schedule_after(delay, func(): _on_rest_tick(cid), "rest_" + char_id)
 
-## One second of sleep: +1 HP, part of a pip. Derived - mutates via the no-emit path.
+## One second of sleep: +1 HP and +4 stamina, part of a pip. Derived - mutates via the no-emit path.
 func _on_rest_tick(char_id: String) -> void:
 	if not _resting.has(char_id) or not characters.has(char_id):
 		return
@@ -2713,7 +4943,9 @@ func _on_rest_tick(char_id: String) -> void:
 	_apply_stat_delta(char_id, "stamina", REST_STAMINA_PER_SEC)
 	var state: Dictionary = _resting[char_id]
 	state["pip_seconds"] = float(state["pip_seconds"]) - 1.0
-	if get_stat(char_id, "hp") >= get_stat_cap(char_id, "hp"):
+	var fully_recovered := get_stat(char_id, "hp") >= get_stat_cap(char_id, "hp") \
+		and get_stat(char_id, "stamina") >= get_stat_cap(char_id, "stamina")
+	if fully_recovered and get_time_of_day() < NIGHT_START:
 		_stop_rest(char_id)
 		return
 	if float(state["pip_seconds"]) <= 0.0:
@@ -2730,6 +4962,8 @@ func _on_rest_tick(char_id: String) -> void:
 func _apply_stat_delta(char_id: String, stat: String, delta: float) -> void:
 	if not characters.has(char_id):
 		return
+	if stat == "hp" and delta < 0.0:
+		delta = -_resolve_incoming_damage(char_id, -delta)
 	var value: float = float(characters[char_id].stats.get(stat, 0.0)) + delta
 	match stat:
 		"hp":
@@ -2748,8 +4982,9 @@ func _apply_stat_delta(char_id: String, stat: String, delta: float) -> void:
 const FIELD_RESTORE_CAST_SECONDS := 8.0
 const FIELD_RESTORE_STAMINA_COST := 60.0
 const FIELD_RESTORE_RANGE := 2.0
+const FIELD_RESTORE_CASTER := "oli"
 
-var _field_restores := {}  # caster_id -> {target_id} — derived, never serialized
+var _field_restores := {}  # caster_id -> {target_id, end_tick}; authoritative while casting
 
 signal field_restore_started(caster_id: String, target_id: String)
 signal field_restore_finished(caster_id: String, target_id: String)
@@ -2768,7 +5003,14 @@ func command_field_restore(caster_id: String, target_id: String) -> bool:
 func _do_field_restore(caster_id: String, target_id: String) -> bool:
 	if not scheduler or not characters.has(caster_id) or not characters.has(target_id):
 		return false
-	if _field_restores.has(caster_id) or is_downed(caster_id) or is_knocked_down(caster_id):
+	# Restore is Oli's committed late-game field exception, not a generic party verb.
+	# Keep authority at the simulation boundary so a scene cannot silently grant it
+	# to whichever character happens to be active.
+	if caster_id != FIELD_RESTORE_CASTER:
+		return false
+	if _field_restores.has(caster_id) or is_downed(caster_id) or is_knocked_down(caster_id) \
+			or is_dodging(caster_id) or is_endocytosing(caster_id) \
+			or is_external_traversal_active(caster_id) or is_dragging(caster_id):
 		return false
 	if not is_downed(target_id):
 		return false
@@ -2779,9 +5021,10 @@ func _do_field_restore(caster_id: String, target_id: String) -> bool:
 	_do_stop(caster_id)
 	_stop_rest(caster_id)
 	_apply_stat_delta(caster_id, "stamina", -FIELD_RESTORE_STAMINA_COST)
-	_field_restores[caster_id] = {"target_id": target_id}
+	var end_tick := scheduler.get_current_tick() + FIELD_RESTORE_CAST_SECONDS
+	_field_restores[caster_id] = {"target_id": target_id, "end_tick": end_tick}
 	var cid := caster_id
-	scheduler.schedule_after(FIELD_RESTORE_CAST_SECONDS,
+	scheduler.schedule_at(end_tick,
 		func(): _on_field_restore_complete(cid), "field_restore_" + caster_id)
 	field_restore_started.emit(caster_id, target_id)
 	return true
@@ -2819,7 +5062,15 @@ func _start_revive_watch() -> void:
 	if not _any_character_downed():
 		return
 	_revive_watch_running = true
-	scheduler.schedule_after(1.0, _on_revive_watch_tick, "shelter_revive_watch")
+	_schedule_revive_watch_tick()
+
+func _schedule_revive_watch_tick(delay: float = 1.0) -> void:
+	if scheduler == null or not _revive_watch_running:
+		_revive_next_tick = 0.0
+		return
+	delay = maxf(0.000001, delay)
+	_revive_next_tick = scheduler.get_current_tick() + delay
+	scheduler.schedule_after(delay, _on_revive_watch_tick, "shelter_revive_watch")
 
 func _any_character_downed() -> bool:
 	for char_id in characters.keys():
@@ -2832,6 +5083,7 @@ func _any_character_downed() -> bool:
 func _on_revive_watch_tick() -> void:
 	if not scheduler:
 		_revive_watch_running = false
+		_revive_next_tick = 0.0
 		return
 	for char_id in characters.keys():
 		var cid := str(char_id)
@@ -2848,9 +5100,10 @@ func _on_revive_watch_tick() -> void:
 		else:
 			_revive_progress[cid] = progress
 	if _any_character_downed():
-		scheduler.schedule_after(1.0, _on_revive_watch_tick, "shelter_revive_watch")
+		_schedule_revive_watch_tick()
 	else:
 		_revive_watch_running = false
+		_revive_next_tick = 0.0
 
 func _conscious_ally_near(char_id: String) -> bool:
 	var p := get_position(char_id)
@@ -2923,8 +5176,9 @@ func _check_night_skip() -> void:
 # --- The floral network (GDD: flora tending / the mycelial information layer) ---------------
 # Peris plants and tends bioluminescent growths. A growth TENDED during the day advances one
 # stage at the day rollover (the living-world beat: return tomorrow and it has grown); untended
-# growths hold. Established growths yield a restorative item once per day; flourishing growths
-# shed the most light (the night counter). Growths within FLORA_CONNECT_RADIUS of each other are
+# growths hold. Species-authored growths may yield their canonical carried tool; generic growths
+# do not manufacture healing items. Flourishing growths shed the most light (the night counter).
+# Growths within FLORA_CONNECT_RADIUS of each other are
 # one NETWORK — the mycelial layer that remembers (network ids are stable, derived, queryable).
 # Commands are logged; growth advances derive from the logged tends + the tick-derived clock.
 
@@ -2932,6 +5186,7 @@ const FLORA_STAGES := ["planted", "sprouting", "established", "flourishing"]
 const FLORA_LIGHT_RADIUS := [0.5, 1.5, 3.0, 5.0]   # per stage — the night-vision counter
 const FLORA_CONNECT_RADIUS := 4.0                  # growths this close share a network
 const FLORA_TEND_RANGE := 2.0
+const FLORA_SITE_TOLERANCE := 0.1                  # one physical site; full 3D keeps stacked floors distinct
 const FLORA_HARVEST_STAGE := 2                     # established+ growths yield
 const FLORA_TENDER := "peris"                      # only Peris's hands grow things
 
@@ -2955,18 +5210,47 @@ func _do_plant_flora(char_id: String, pos: Vector3) -> String:
 	var char_pos := get_position(char_id)
 	if Vector2(char_pos.x - pos.x, char_pos.z - pos.z).length() > FLORA_TEND_RANGE:
 		return ""
+	# Site occupancy is world truth, not a scene-pad convention. Sort IDs so a malformed legacy
+	# overlap still has a stable identity, and reject before looking up/consuming the carried seed.
+	if find_flora_at_site(pos) != "":
+		return ""
 	var seed_id := _find_carried_item(char_id, "flora_seed")
 	if seed_id == "":
 		return ""
+	var seed_properties: Dictionary = (items.get(seed_id, {}) as Dictionary).get(
+		"properties", {}).duplicate(true)
 	_consume_item(char_id, seed_id)
 	_flora_seq += 1
 	var flora_id := "flora_%d" % _flora_seq
 	flora[flora_id] = {
 		"position": pos, "stage": 0, "tended_today": true,
 		"harvested_day": -1, "planted_day": get_game_day(),
+		# Preserve the consumed physical seed's identity across the flora signal/save boundary.
+		# Scene-level pad authority can then reconcile a snapshot captured after consumption but
+		# before its own presenter callback without guessing from position or plant type.
+		"source_seed_id": seed_id,
+		"species": str(seed_properties.get("flora_species", "")),
+		"harvest_item_type": str(seed_properties.get("harvest_item_type", "")),
+		"harvest_item_properties": (seed_properties.get(
+			"harvest_item_properties", {}) as Dictionary).duplicate(true),
 	}
 	flora_planted.emit(flora_id)
 	return flora_id
+
+
+## Stable full-3D site identity. Two plants within tolerance are the same physical planting site;
+## identical X/Z on genuinely different floors remains legal because their Y separation exceeds it.
+func find_flora_at_site(pos: Vector3, tolerance := FLORA_SITE_TOLERANCE) -> String:
+	var flora_ids := flora.keys()
+	flora_ids.sort()
+	var site_tolerance := maxf(float(tolerance), 0.0)
+	for flora_id_v in flora_ids:
+		var flora_id := str(flora_id_v)
+		var growth: Dictionary = flora[flora_id]
+		var growth_pos: Vector3 = growth.get("position", Vector3.INF)
+		if growth_pos.distance_to(pos) <= site_tolerance:
+			return flora_id
+	return ""
 
 ## Tend a growth: it will advance one stage at the next day rollover. Re-tending after each
 ## rollover is the loop — an abandoned growth simply holds (or, later, gets colonized).
@@ -2983,13 +5267,17 @@ func command_tend_flora(char_id: String, flora_id: String) -> bool:
 	flora_tended.emit(flora_id)
 	return true
 
-## Harvest an established growth: spawns a restorative item on the ground beside it (the hands
-## system carries it from there). One yield per growth per day; harvesting never regresses growth.
+## Harvest an established, species-authored growth. The seed owns the resulting item type and
+## properties (for example, a Climbvine cutting or Gasafoetida pod); a generic decorative/network
+## growth has no harvest. One yield per growth per day; harvesting never regresses growth.
 func command_harvest_flora(char_id: String, flora_id: String) -> String:
 	_emit(GameEvent.KIND_HARVEST_FLORA, {"char_id": char_id, "flora_id": flora_id})
-	if not flora.has(flora_id) or not characters.has(char_id):
+	if char_id != FLORA_TENDER or not flora.has(flora_id) or not characters.has(char_id):
 		return ""
 	var growth: Dictionary = flora[flora_id]
+	var harvest_item_type := str(growth.get("harvest_item_type", ""))
+	if harvest_item_type == "":
+		return ""
 	if int(growth.stage) < FLORA_HARVEST_STAGE:
 		return ""
 	if int(growth.harvested_day) >= get_game_day():
@@ -2999,7 +5287,10 @@ func command_harvest_flora(char_id: String, flora_id: String) -> String:
 	if Vector2(char_pos.x - fp.x, char_pos.z - fp.z).length() > FLORA_TEND_RANGE:
 		return ""
 	growth["harvested_day"] = get_game_day()
-	var item_id := spawn_item("flora_tonic", fp + Vector3(0.4, 0.0, 0.2), {"hp_restore": 15.0})
+	var harvest_properties: Dictionary = (growth.get(
+		"harvest_item_properties", {}) as Dictionary).duplicate(true)
+	var item_id := spawn_item(
+		harvest_item_type, fp + Vector3(0.4, 0.0, 0.2), harvest_properties)
 	flora_harvested.emit(flora_id, item_id)
 	return item_id
 
@@ -3059,6 +5350,13 @@ func get_flora_light_at(pos: Vector3) -> float:
 	return best
 
 ## A carried item of a type, in a hand or internal storage ('' when not carrying one).
+## Read-only inventory query for world objects that need to gate an affordance on a
+## specifically carried item. Mutating commands keep using the private helper so they
+## can share the exact deterministic lookup without emitting a second event.
+func find_carried_item(char_id: String, item_type: String) -> String:
+	return _find_carried_item(char_id, item_type)
+
+
 func _find_carried_item(char_id: String, item_type: String) -> String:
 	var ch: Dictionary = characters[char_id]
 	for slot in ch.hands:
@@ -3081,18 +5379,23 @@ func _consume_item(char_id: String, item_id: String) -> void:
 
 const PUSH_STEP_TIME := 0.45  # scheduler seconds per one-cell shove
 
-var _push_plans := {}  # char_id -> {obj_id, steps, index, stage("approach"|"shove")} — derived, never serialized
+var _push_plans := {}  # char_id -> {obj_id, steps, index, stage("approach"|"shove")}; saveable plan
 
 ## Read-only: the plan a push to target_cell WOULD take (for ghost previews / the blocked cursor).
 func plan_push_for(char_id: String, obj_id: String, target_cell: Vector2i) -> Dictionary:
+	var perf_started := PerformanceTrace.begin()
 	if not grid or not characters.has(char_id) or not physics_objects.has(obj_id):
+		PerformanceTrace.end(&"nav", &"game_state.plan_push", perf_started, char_id, 0)
 		return {}
 	if not bool(physics_objects[obj_id].get("pushable", false)):
+		PerformanceTrace.end(&"nav", &"game_state.plan_push", perf_started, char_id, 0)
 		return {}
-	return grid.plan_push(
+	var plan := grid.plan_push(
 		grid.world_to_grid(get_physics_position(obj_id)),
 		grid.world_to_grid(get_position(char_id)),
 		target_cell, get_character_level(char_id))
+	PerformanceTrace.end(&"nav", &"game_state.plan_push", perf_started, char_id, (plan.get("steps", []) as Array).size())
+	return plan
 
 ## Push the object to target_cell: the character walks behind it and shoves one cardinal cell at a
 ## time (re-positioning between direction changes), exactly the planner's step list. ONE logged
@@ -3601,8 +5904,8 @@ func _on_pendulum_hit_physics(pendulum_id: String, obj_id: String) -> void:
 #
 # Replay re-issues logged inputs at their original ticks.
 
-## Build a fresh GameState by replaying a log.
-## ability_handlers restores queued ability behavior. re_record_into checks determinism.
+## Build a fresh GameState by replaying a log. Canonical abilities are self-resolving; the optional
+## ability_handlers map remains for legacy/modded callback abilities. re_record_into checks determinism.
 static func replay(log: EventLog, world_grid: GridWorld, ability_handlers: Dictionary = {}, re_record_into: EventLog = null) -> GameState:
 	var sched := EventScheduler.new()
 	var gs := GameState.new()
@@ -3646,6 +5949,21 @@ func _dispatch(kind: StringName, payload: Dictionary) -> void:
 			command_move_to_pos(String(payload["id"]), GameEvent.arr_to_v3(payload["pos"]))
 		GameEvent.KIND_WALK_PATH:
 			command_walk_path(String(payload["id"]), GameEvent.arr_to_path(payload["path"]))
+		GameEvent.KIND_BEGIN_EXTERNAL_TRAVERSAL:
+			# Preserve the exact recorded endpoints/ticks; deriving them again from a warped scene
+			# would make replay presentation and save-state ownership diverge.
+			_emit(GameEvent.KIND_BEGIN_EXTERNAL_TRAVERSAL, payload)
+			_apply_external_traversal(payload)
+		GameEvent.KIND_CANCEL_EXTERNAL_TRAVERSAL:
+			_emit(GameEvent.KIND_CANCEL_EXTERNAL_TRAVERSAL, payload)
+			_apply_cancel_external_traversal(payload)
+		GameEvent.KIND_BEGIN_MECHANISM_PHASE:
+			# Preserve recorded timing and metadata; a presenting scene may not exist during replay.
+			_emit(GameEvent.KIND_BEGIN_MECHANISM_PHASE, payload)
+			_apply_begin_mechanism_phase(payload)
+		GameEvent.KIND_RESET_MECHANISM_PHASE:
+			_emit(GameEvent.KIND_RESET_MECHANISM_PHASE, payload)
+			_apply_reset_mechanism_phase(payload)
 		GameEvent.KIND_STOP:
 			command_stop(String(payload["id"]))
 		GameEvent.KIND_CHANGE_SPEED:
@@ -3653,7 +5971,12 @@ func _dispatch(kind: StringName, payload: Dictionary) -> void:
 		GameEvent.KIND_SET_ROUTE_MODE:
 			set_route_mode(bool(payload["cautious"]))
 		GameEvent.KIND_SET_STAT:
-			set_stat(String(payload["id"]), String(payload["stat"]), float(payload["value"]))
+			set_stat(
+				String(payload["id"]),
+				String(payload["stat"]),
+				float(payload["value"]),
+				String(payload.get("source", ""))
+			)
 		GameEvent.KIND_SET_RUNNING:
 			set_running(String(payload["id"]), bool(payload["running"]))
 		GameEvent.KIND_ADD_SHELTER:
@@ -3664,6 +5987,8 @@ func _dispatch(kind: StringName, payload: Dictionary) -> void:
 			command_field_restore(String(payload["caster_id"]), String(payload["target_id"]))
 		GameEvent.KIND_REST:
 			command_rest(String(payload["char_id"]))
+		GameEvent.KIND_PARTY_REST:
+			command_party_rest(payload.get("char_ids", []) as Array)
 		GameEvent.KIND_STOP_REST:
 			command_stop_rest(String(payload["char_id"]))
 		GameEvent.KIND_SET_GAME_CLOCK:
@@ -3754,16 +6079,24 @@ func _dispatch(kind: StringName, payload: Dictionary) -> void:
 			dodge_roll(String(payload["char_id"]), GameEvent.arr_to_v3(payload["direction"]))
 		GameEvent.KIND_QUEUE_ABILITY:
 			var ab_id := String(payload["ability"])
-			var handler: Callable = _ability_handlers.get(StringName(ab_id), Callable())
-			if not handler.is_valid():
-				handler = func(): pass
-			queue_ability(
-				String(payload["char_id"]),
-				ab_id,
-				GameEvent.arr_to_v3(payload["target_pos"]),
-				float(payload["range"]),
-				handler
-			)
+			var canonical: Dictionary = payload.get("canonical", {})
+			if not canonical.is_empty():
+				queue_canonical_ability(
+					String(payload["char_id"]),
+					ab_id,
+					GameEvent.arr_to_v3(payload["target_pos"]),
+					canonical)
+			else:
+				var handler: Callable = _ability_handlers.get(StringName(ab_id), Callable())
+				if not handler.is_valid():
+					handler = func(): pass
+				queue_ability(
+					String(payload["char_id"]),
+					ab_id,
+					GameEvent.arr_to_v3(payload["target_pos"]),
+					float(payload["range"]),
+					handler
+				)
 		GameEvent.KIND_CANCEL_QUEUED_ABILITY:
 			cancel_queued_ability(String(payload["char_id"]))
 		GameEvent.KIND_DOWN_CHARACTER:
@@ -3844,30 +6177,37 @@ func _main_group() -> Array[String]:
 			result.append(m)
 	return result
 
-func party_move_to_cell(cell: Vector2i) -> void:
+func party_move_to_cell(cell: Vector2i) -> int:
 	_emit(GameEvent.KIND_PARTY_MOVE_TO_CELL, {"cell": GameEvent.v2i_to_arr(cell)})
 	var members := _main_group()
 	for char_id in members:
 		_cross_level_plan.erase(char_id)
 	if grid:
 		var assigned := _assign_party_cells(members, cell)
+		var destinations: Array[Vector3] = []
 		for char_id in members:
-			_do_move_to_cell(char_id, assigned[char_id])
-	else:
-		for char_id in members:
-			_do_move_to_cell(char_id, cell)
+			var level := get_character_level(char_id) if characters.has(char_id) else 0
+			destinations.append(grid.grid_to_world(assigned[char_id], level))
+		# A party click is one simultaneous intent, just like Rally. Reuse the same
+		# atomic reservation release and bounded start-wait planner so members can
+		# convoy through a one-cell gate instead of treating siblings who are about
+		# to leave as permanent blockers.
+		return _apply_rally_destinations(members, destinations)
+	return 0
 
-func party_move_to_pos(pos: Vector3) -> void:
+func party_move_to_pos(pos: Vector3) -> int:
 	_emit(GameEvent.KIND_PARTY_MOVE_TO_POS, {"pos": GameEvent.v3_to_arr(pos)})
 	var members := _main_group()
 	for char_id in members:
 		_cross_level_plan.erase(char_id)
+	var destinations: Array[Vector3] = []
 	if grid:
 		# Snap to the grid so the party spreads onto distinct cells around the
 		# clicked point and moves cooperatively (no stacking, no overlap).
 		var assigned := _assign_party_cells(members, grid.world_to_grid(pos))
 		for char_id in members:
-			_do_move_to_cell(char_id, assigned[char_id])
+			var level := get_character_level(char_id) if characters.has(char_id) else 0
+			destinations.append(grid.grid_to_world(assigned[char_id], level))
 	else:
 		# No grid (e.g. the elevator): cooperative cell spread isn't available, so fan
 		# members out along Z around the target by party order — a pure function of the
@@ -3875,7 +6215,8 @@ func party_move_to_pos(pos: Vector3) -> void:
 		var count := members.size()
 		for i in range(count):
 			var lateral := (float(i) - float(count - 1) / 2.0) * _PARTY_GRIDLESS_SPACING
-			_do_move_to_pos(members[i], pos + Vector3(0.0, 0.0, lateral))
+			destinations.append(pos + Vector3(0.0, 0.0, lateral))
+	return _apply_rally_destinations(members, destinations)
 
 ## Move an explicit ordered set of characters into a deterministic formation around `target`.
 ## This deliberately does NOT read or mutate `party`: the caller owns availability/lock filtering,
@@ -3887,8 +6228,13 @@ func party_move_to_pos(pos: Vector3) -> void:
 ## alter an already-recorded rally.
 func command_rally_members(member_ids: Array, target: Vector3, anchor_id := "") -> int:
 	var members: Array[String] = []
+	var seen_members: Dictionary = {}
 	for raw_id in member_ids:
-		members.append(str(raw_id))
+		var id := str(raw_id)
+		if seen_members.has(id):
+			continue
+		seen_members[id] = true
+		members.append(id)
 	var destinations: Array[Vector3] = compute_rally_destinations(members, target, str(anchor_id))
 	_emit(GameEvent.KIND_RALLY_MEMBERS, {
 		"members": members.duplicate(),
@@ -3901,25 +6247,33 @@ func command_rally_members(member_ids: Array, target: Vector3, anchor_id := "") 
 ## Pure/read-only formation resolver shared by command previews. Returns one destination per supplied
 ## id, in the same order, without filtering or de-duplicating the caller's list.
 func compute_rally_destinations(member_ids: Array, target: Vector3, anchor_id := "") -> Array[Vector3]:
+	var perf_started := PerformanceTrace.begin()
 	var destinations: Array[Vector3] = []
 	var count := member_ids.size()
 	if count == 0:
+		PerformanceTrace.end(&"nav", &"game_state.compute_rally_destinations", perf_started, "empty", 0)
 		return destinations
 	if grid != null:
 		var target_cell := grid.world_to_grid(target)
 		var taken: Dictionary = {}
 		if str(anchor_id) != "":
 			taken[target_cell] = true
-		for raw_id in member_ids:
+		var lateral_step := Vector2i.ZERO if str(anchor_id) != "" \
+			else _party_formation_lateral_step(member_ids, target_cell)
+		for member_index in range(member_ids.size()):
+			var raw_id = member_ids[member_index]
 			var id := str(raw_id)
 			var level := get_character_level(id) if characters.has(id) else grid.level_for_y(target.y)
 			# A cautious rally must keep every formation pill out of a known hazard,
 			# not merely route the centre member around it.  The old resolver chose
 			# adjacent walkable cells without consulting risk, so a safe target on
 			# the edge of an iron field could place the second unit inside the field.
-			var cell := _nearest_free_cell(target_cell, taken, route_cautious, level)
+			var preferred_cell := target_cell + lateral_step \
+				* _party_formation_lateral_offset(member_index)
+			var cell := _nearest_free_cell(preferred_cell, taken, route_cautious, level)
 			taken[cell] = true
 			destinations.append(grid.grid_to_world(cell, level))
+		PerformanceTrace.end(&"nav", &"game_state.compute_rally_destinations", perf_started, str(anchor_id), count)
 		return destinations
 
 	if str(anchor_id) != "":
@@ -3933,6 +6287,7 @@ func compute_rally_destinations(member_ids: Array, target: Vector3, anchor_id :=
 		for i in range(count):
 			var lateral := (float(i) - float(count - 1) / 2.0) * _PARTY_GRIDLESS_SPACING
 			destinations.append(target + Vector3(0.0, 0.0, lateral))
+	PerformanceTrace.end(&"nav", &"game_state.compute_rally_destinations", perf_started, str(anchor_id), count)
 	return destinations
 
 ## Replay entry point: destinations are already final data-space positions and must not be spread again.
@@ -3940,13 +6295,128 @@ func _apply_rally_destinations(member_ids: Array, destinations: Array[Vector3]) 
 	if member_ids.size() != destinations.size():
 		push_warning("Rally event has %d members but %d destinations" % [member_ids.size(), destinations.size()])
 		return 0
-	var moved_count := 0
+	# Treat malformed or legacy duplicate-member payloads exactly like the canonical
+	# command boundary: the first occurrence wins. Planning the same character twice
+	# overwrites its movement record while leaving the first scheduler handle alive,
+	# allowing that stale callback to finish the replacement route prematurely.
+	var unique_members: Array[String] = []
+	var unique_destinations: Array[Vector3] = []
+	var seen_members: Dictionary = {}
 	for i in range(member_ids.size()):
+		var member_id := str(member_ids[i])
+		if seen_members.has(member_id):
+			continue
+		seen_members[member_id] = true
+		unique_members.append(member_id)
+		unique_destinations.append(destinations[i])
+	member_ids = unique_members
+	destinations = unique_destinations
+	# A Rally is one simultaneous intent. Retire every participating member's OLD
+	# path/parked reservation before planning the first new route; otherwise that
+	# first planner treats siblings who are about to leave as permanent blockers.
+	# Keep the whole transaction in one detection batch, and preserve each
+	# interpolated position before cancelling its old scheduler handle.
+	var prepared: Dictionary = {}
+	if grid != null:
+		begin_detection_update_batch()
+		prepared = _prepare_group_replan(member_ids)
+	# Resolve the front of the formation first. If a rear/centre slot parks
+	# before a farther slot is planned, the latter may be forced around its own
+	# party through an exposed side route. Sorting only the synchronous planning
+	# order (never the member/destination mapping) lets a formation flow through
+	# a chokepoint from front to back while replay retains the exact same slots.
+	var planning_indices: Array[int] = []
+	for i in range(member_ids.size()):
+		if grid == null or prepared.has(str(member_ids[i])):
+			planning_indices.append(i)
+	if grid != null and planning_indices.size() > 1:
+		var origin_centroid := Vector3.ZERO
+		var destination_centroid := Vector3.ZERO
+		for i in planning_indices:
+			origin_centroid += prepared[str(member_ids[i])] as Vector3
+			destination_centroid += destinations[i]
+		origin_centroid /= float(planning_indices.size())
+		destination_centroid /= float(planning_indices.size())
+		var approach := Vector2(
+			destination_centroid.x - origin_centroid.x,
+			destination_centroid.z - origin_centroid.z)
+		if not approach.is_zero_approx():
+			approach = approach.normalized()
+			planning_indices.sort_custom(func(a: int, b: int) -> bool:
+				var da: Vector3 = destinations[a]
+				var db: Vector3 = destinations[b]
+				var score_a := Vector2(da.x, da.z).dot(approach)
+				var score_b := Vector2(db.x, db.z).dot(approach)
+				return a < b if is_equal_approx(score_a, score_b) else score_a > score_b
+			)
+	# Non-movable ids were deliberately absent from `prepared`; append them only
+	# so the ordinary guard path can reject them without disturbing valid plans.
+	for i in range(member_ids.size()):
+		if not planning_indices.has(i):
+			planning_indices.append(i)
+	var moved_count := 0
+	var planned_prepared := 0
+	for i in planning_indices:
 		var id := str(member_ids[i])
-		_prepare_explicit_move(id)
-		if _do_move_to_pos(id, destinations[i]):
+		if grid == null:
+			_prepare_explicit_move(id)
+		var is_prepared := prepared.has(id)
+		var allow_start_wait := is_prepared and planned_prepared > 0
+		if _do_move_to_pos(id, destinations[i], allow_start_wait, is_prepared):
 			moved_count += 1
+			if is_prepared:
+				planned_prepared += 1
+	if grid != null:
+		end_detection_update_batch()
 	return moved_count
+
+## Prepare an atomic group replan without choosing any destinations. Only valid,
+## movable participants lose their old reservations; nonparticipants and
+## temporarily immovable members retain theirs. Returns the pinned-position map
+## so the caller can mark those members as already cancelled while planning.
+func _prepare_group_replan(member_ids: Array) -> Dictionary:
+	var prepared: Dictionary = {}
+	for raw_id in member_ids:
+		var id := str(raw_id)
+		if prepared.has(id):
+			continue
+		_prepare_explicit_move(id)
+		if not can_accept_move_command(id):
+			continue
+		prepared[id] = get_position(id)
+	for id_variant in prepared.keys():
+		var id := str(id_variant)
+		var pinned_position: Vector3 = prepared[id]
+		_cancel_movement(id)
+		characters[id].position = pinned_position
+		if grid != null:
+			characters[id].grid_cell = grid.world_to_grid(pinned_position)
+	# Releasing every obsolete path reservation must not make a departing body
+	# disappear. Until each later member receives its replacement path, keep a
+	# finite claim on its start cell for the physical time needed to leave it.
+	# The member's own _start_movement replaces this provisional claim with its
+	# exact path reservation. This lets the first planner route around siblings
+	# without treating them as permanent parked blockers or crossing through them
+	# during the first fraction of a simultaneous group command.
+	if grid != null and scheduler != null:
+		var now := float(scheduler.get_current_tick())
+		for id_variant in prepared.keys():
+			var id := str(id_variant)
+			var start_position: Vector3 = prepared[id]
+			var level := get_character_level(id)
+			var start_cell := grid.world_to_grid(start_position)
+			var start_center := grid.grid_to_world(start_cell, level)
+			var speed := maxf(float(characters[id].move_speed), 0.001)
+			var departure_seconds := start_position.distance_to(start_center) / speed \
+				+ grid.cell_size / speed + _RESERVE_BUFFER
+			_add_reservation(start_cell, now - _RESERVE_BUFFER,
+				now + departure_seconds, id)
+	if not prepared.is_empty():
+		_performance_counters["group_replans"] = \
+			int(_performance_counters["group_replans"]) + 1
+		_performance_counters["group_replan_members"] = \
+			int(_performance_counters["group_replan_members"]) + prepared.size()
+	return prepared
 
 ## Give each party member a distinct, walkable destination cell around target so
 ## a single party move never stacks everyone on one cell. The order of members
@@ -3954,11 +6424,47 @@ func _apply_rally_destinations(member_ids: Array, destinations: Array[Vector3]) 
 func _assign_party_cells(members: Array, target: Vector2i) -> Dictionary:
 	var assigned: Dictionary = {}
 	var taken: Dictionary = {}
-	for id in members:
-		var cell := _nearest_free_cell(target, taken)
+	var lateral_step := _party_formation_lateral_step(members, target)
+	for member_index in range(members.size()):
+		var id = members[member_index]
+		var preferred_cell := target + lateral_step \
+			* _party_formation_lateral_offset(member_index)
+		var cell := _nearest_free_cell(preferred_cell, taken)
 		assigned[id] = cell
 		taken[cell] = true
 	return assigned
+
+
+## Three or more bodies should form across the direction of travel, not along it.
+## Keeping launch and crossing slots on parallel lanes avoids needless path braids,
+## cooperative start waits, and one member being routed through a hazard that the
+## clicked centre line avoids.  Two-member Rally retains its convoy semantics.
+func _party_formation_lateral_step(members: Array, target: Vector2i) -> Vector2i:
+	if grid == null or members.size() < 3:
+		return Vector2i.ZERO
+	var centroid := Vector2.ZERO
+	var counted := 0
+	for raw_id in members:
+		var id := str(raw_id)
+		if not characters.has(id):
+			continue
+		var cell: Vector2i = grid.world_to_grid(get_position(id))
+		centroid += Vector2(cell.x, cell.y)
+		counted += 1
+	if counted == 0:
+		return Vector2i.ZERO
+	centroid /= float(counted)
+	var approach := Vector2(float(target.x), float(target.y)) - centroid
+	if absf(approach.x) >= absf(approach.y):
+		return Vector2i(0, 1)
+	return Vector2i(1, 0)
+
+
+func _party_formation_lateral_offset(member_index: int) -> int:
+	if member_index <= 0:
+		return 0
+	var magnitude := int((member_index + 1) / 2)
+	return -magnitude if member_index % 2 == 1 else magnitude
 
 ## Outward ring search from target for the closest walkable cell not already
 ## taken by another member. Deterministic tie-break by distance then coordinate.
@@ -4014,17 +6520,26 @@ func end_split() -> void:
 	_split_members.clear()
 
 # Internal cell move without its own log entry.
-func _do_move_to_cell(id: String, cell: Vector2i) -> bool:
+func _do_move_to_cell(
+		id: String,
+		cell: Vector2i,
+		allow_group_start_wait := false,
+		already_prepared := false
+	) -> bool:
 	if not grid or not can_accept_move_command(id):
 		return false
 	var current_pos := get_position(id)
 	var current_cell := grid.world_to_grid(current_pos)
 	var speed: float = characters[id].move_speed
-	begin_detection_update_batch()
-	_cancel_movement(id)
+	if not already_prepared:
+		begin_detection_update_batch()
+		_cancel_movement(id)
 	characters[id].position = current_pos
-	var moved := _begin_cooperative_move(id, current_pos, current_cell, cell, speed)
-	end_detection_update_batch()
+	characters[id].grid_cell = current_cell
+	var moved := _begin_cooperative_move(
+		id, current_pos, current_cell, cell, speed, allow_group_start_wait)
+	if not already_prepared:
+		end_detection_update_batch()
 	return moved
 
 ## Plan a cooperative path from current_cell to dest_cell (waiting/detouring to
@@ -4046,7 +6561,15 @@ func set_coop_exempt(id: String, exempt := true) -> void:
 	else:
 		_coop_exempt.erase(id)
 
-func _begin_cooperative_move(id: String, current_pos: Vector3, current_cell: Vector2i, dest_cell: Vector2i, speed: float) -> bool:
+func _begin_cooperative_move(
+		id: String,
+		current_pos: Vector3,
+		current_cell: Vector2i,
+		dest_cell: Vector2i,
+		speed: float,
+		allow_group_start_wait := false
+	) -> bool:
+	var perf_started := PerformanceTrace.begin()
 	var level := get_character_level(id)  # keep waypoints on the character's current floor
 	# A character parked off the carved footprint still routes: snap the START to the nearest walkable
 	# cell (the glide from current_pos to the first cell center walks it onto the mesh).
@@ -4058,24 +6581,37 @@ func _begin_cooperative_move(id: String, current_pos: Vector3, current_cell: Vec
 		var dest_snapped := grid.nearest_walkable_cell(dest_cell, level)
 		var plain := grid.find_path(current_cell, dest_snapped, {}, route_cautious, {}, {}, level)
 		if plain.is_empty():
+			PerformanceTrace.end(&"nav", &"game_state.begin_move", perf_started, id, 0)
 			return false
 		var plain_full: Array[Vector3] = [current_pos]
 		plain_full.append_array(plain)
 		_start_movement(id, plain_full)
+		PerformanceTrace.end(&"nav", &"game_state.begin_move", perf_started, id, plain_full.size())
 		return true
 	_performance_counters["cooperative_plans"] = int(_performance_counters["cooperative_plans"]) + 1
-	var plan := _plan_cooperative(current_cell, dest_cell, speed, scheduler.get_current_tick(), id, level)
+	var plan := _plan_cooperative(
+		current_cell,
+		dest_cell,
+		speed,
+		scheduler.get_current_tick(),
+		id,
+		level,
+		_COOP_MAX_NODES,
+		allow_group_start_wait)
 	if not plan.is_empty() and not plan.cells.is_empty():
 		var built := _build_timed_world_path(current_pos, plan.cells, plan.ticks, speed, level)
 		_start_movement(id, built.path, built.ticks)
+		PerformanceTrace.end(&"nav", &"game_state.begin_move", perf_started, id, built.path.size())
 		return true
 	var path := grid.find_path(current_cell, dest_cell, {}, route_cautious, {}, {}, level)
 	if path.is_empty():
 		_reserve_parked(id, current_cell)
+		PerformanceTrace.end(&"nav", &"game_state.begin_move", perf_started, id, 0)
 		return false
 	var full_path: Array[Vector3] = [current_pos]
 	full_path.append_array(path)
 	_start_movement(id, full_path)
+	PerformanceTrace.end(&"nav", &"game_state.begin_move", perf_started, id, full_path.size())
 	return true
 
 # --- Narrative state transitions (downed / restored) ---
@@ -4097,6 +6633,8 @@ func down_character(char_id: String) -> void:
 ## here, so the state can never diverge by cause. They drop where they stood, dead weight until
 ## restored/revived; a downed caster drops the cast.
 func _mark_downed(char_id: String) -> void:
+	clear_damage_shield(char_id)
+	_cancel_external_traversal_derived(char_id, &"incapacitated")
 	var ch: Dictionary = characters[char_id]
 	ch.stats["hp"] = 0.0
 	ch.stats["stamina"] = 0.0
@@ -4113,17 +6651,18 @@ func restore_character(char_id: String) -> void:
 		return
 	var ch: Dictionary = characters[char_id]
 	var stats: Dictionary = ch.stats
+	# Checkpoint/wipe reset, not shelter rest or food. HP and stamina put a
+	# knocked-out character back in play; ATP is preserved because only lysate
+	# replenishes the rest budget.
 	# Legacy "max_hp"/"max_stamina" keys win if authored; otherwise the standard stat caps
 	# (get_stat_cap honours "<stat>_max" overrides and the engine defaults) — a restore always
 	# actually refills, never leaves a walking 0-hp character.
 	stats["hp"] = float(stats["max_hp"]) if stats.has("max_hp") else get_stat_cap(char_id, "hp")
 	stats["stamina"] = float(stats["max_stamina"]) if stats.has("max_stamina") else get_stat_cap(char_id, "stamina")
-	stats["atp"] = ATP_MAX_PIPS
 	stats["narrative_available"] = true
 	_end_drag_involving(char_id)   # a restored character stands up out of any drag
 	stat_changed.emit(char_id, "hp", float(stats["hp"]))
 	stat_changed.emit(char_id, "stamina", float(stats["stamina"]))
-	stat_changed.emit(char_id, "atp", ATP_MAX_PIPS)
 	character_restored.emit(char_id)
 
 func is_narratively_available(char_id: String) -> bool:
@@ -4161,8 +6700,9 @@ const DRAG_TRAIL_OFFSET := Vector3(-0.45, 0.0, 0.4)   # the body trails just off
 signal drag_started(dragger_id: String, downed_id: String)
 signal drag_stopped(dragger_id: String, downed_id: String)
 
-var _drags := {}              # dragger_id -> downed_id. Rebuilt from the logged commands; never serialized.
+var _drags := {}              # dragger_id -> downed_id; authoritative two-hand carry ownership
 var _drag_prev_speed := {}    # dragger_id -> move_speed before the drag slowdown
+var _drag_next_tick := {}     # dragger_id -> absolute scheduler tick for the next stamina charge
 
 ## Take hold of a downed character. Fails from too far away, for a downed/occupied dragger, or if
 ## either side is already part of a drag. Taking hold stops the dragger — the next move hauls.
@@ -4173,7 +6713,9 @@ func command_start_drag(dragger_id: String, downed_id: String) -> bool:
 		return false
 	if is_dragging(dragger_id) or get_dragger_of(downed_id) != "":
 		return false
-	if is_endocytosing(dragger_id) or is_knocked_down(dragger_id):
+	if is_endocytosing(dragger_id) or is_knocked_down(dragger_id) \
+			or is_dodging(dragger_id) or is_external_traversal_active(dragger_id) \
+			or is_resting(dragger_id) or is_field_restoring(dragger_id):
 		return false
 	var dp := get_position(dragger_id)
 	var bp := get_position(downed_id)
@@ -4237,6 +6779,7 @@ func _end_drag_for(dragger_id: String) -> void:
 	if characters.has(dragger_id) and _drag_prev_speed.has(dragger_id):
 		characters[dragger_id].move_speed = float(_drag_prev_speed[dragger_id])
 	_drag_prev_speed.erase(dragger_id)
+	_drag_next_tick.erase(dragger_id)
 	if scheduler:
 		scheduler.cancel_tag("drag_" + dragger_id)
 	drag_stopped.emit(dragger_id, downed_id)
@@ -4251,10 +6794,12 @@ func _end_drag_involving(char_id: String) -> void:
 ## The stamina burn rides the scheduler and only bites while the dragger is actually MOVING the
 ## load. Direct stat write + signal (derived, no log entry): replay re-arms this tick from the
 ## logged start-drag and re-derives the identical drain.
-func _arm_drag_tick(dragger_id: String) -> void:
+func _arm_drag_tick(dragger_id: String, delay: float = DRAG_TICK) -> void:
 	if scheduler == null:
 		return
-	scheduler.schedule_after(DRAG_TICK, func(): _on_drag_tick(dragger_id), "drag_" + dragger_id)
+	delay = maxf(0.000001, delay)
+	_drag_next_tick[dragger_id] = scheduler.get_current_tick() + delay
+	scheduler.schedule_after(delay, func(): _on_drag_tick(dragger_id), "drag_" + dragger_id)
 
 func _on_drag_tick(dragger_id: String) -> void:
 	if not _drags.has(dragger_id) or not characters.has(dragger_id):
@@ -4271,6 +6816,7 @@ func die_scripted(char_id: String) -> void:
 	_emit(GameEvent.KIND_DIE_SCRIPTED, {"char_id": char_id})
 	if not characters.has(char_id):
 		return
+	_cancel_external_traversal_derived(char_id, &"scripted_death")
 	_do_stop(char_id)
 	var ch: Dictionary = characters[char_id]
 	ch.stats["hp"] = 0.0
@@ -4328,14 +6874,49 @@ func evaluate_mechanisms() -> void:
 # registry and re-fires triggers; dwell timing stays on the scheduler (the log
 # records the result at the completion tick), keeping fast-forward invariance.
 
+const INTERACTABLE_TYPE_HOLD_ACTION := 0
+const INTERACTABLE_TYPE_INSPECTION := 1
+const INTERACTABLE_TYPE_TIMED_ACTION := 2
+
+
+## Keep the data layer independent from the scene-node class while preserving its complete
+## three-state activation grammar. Old events/saves only carried `requires_hold`; they still
+## deterministically migrate to HOLD_ACTION or INSPECTION.
+func _normalize_interactable_type(value: Variant, legacy_requires_hold: bool) -> int:
+	var fallback := INTERACTABLE_TYPE_HOLD_ACTION \
+		if legacy_requires_hold else INTERACTABLE_TYPE_INSPECTION
+	if value == null:
+		return fallback
+	if value is String or value is StringName:
+		match str(value).to_upper():
+			"HOLD_ACTION":
+				return INTERACTABLE_TYPE_HOLD_ACTION
+			"INSPECTION":
+				return INTERACTABLE_TYPE_INSPECTION
+			"TIMED_ACTION":
+				return INTERACTABLE_TYPE_TIMED_ACTION
+			_:
+				return fallback
+	var normalized := int(value)
+	if normalized < INTERACTABLE_TYPE_HOLD_ACTION \
+			or normalized > INTERACTABLE_TYPE_TIMED_ACTION:
+		return fallback
+	return normalized
+
+
 ## Normalize a spec dict into the stored shape (defaults + a Vector3 position).
 func _normalize_interactable_spec(spec: Dictionary) -> Dictionary:
 	var pos_raw: Variant = spec.get("position", Vector3.ZERO)
 	var pos: Vector3 = GameEvent.arr_to_v3(pos_raw) if pos_raw is Array else pos_raw
+	var legacy_requires_hold := bool(spec.get("requires_hold", true))
+	var interaction_type := _normalize_interactable_type(
+		spec.get("interactable_type", null), legacy_requires_hold)
 	return {
 		"id": String(spec.get("id", "")),
 		"position": pos,
-		"requires_hold": bool(spec.get("requires_hold", true)),
+		# Retain the legacy projection for old consumers, but the richer type is authoritative.
+		"requires_hold": interaction_type == INTERACTABLE_TYPE_HOLD_ACTION,
+		"interactable_type": interaction_type,
 		"hold_time": float(spec.get("hold_time", 1.0)),
 		"one_shot": bool(spec.get("one_shot", false)),
 		"required_character": String(spec.get("required_character", "")),
@@ -4345,6 +6926,10 @@ func _normalize_interactable_spec(spec: Dictionary) -> Dictionary:
 		"catalog_id": String(spec.get("catalog_id", "")),
 		"enabled": bool(spec.get("enabled", true)),
 		"triggered": false,
+		# Monotonic acceptance identity for repeatable interactables. `triggered` answers whether the
+		# object has ever fired; it cannot distinguish a newly accepted source receipt from an old use.
+		"trigger_count": maxi(0, int(spec.get("trigger_count", 0))),
+		"last_trigger_character": String(spec.get("last_trigger_character", "")),
 	}
 
 ## Register an interactable spec. id is required and unique within the scene.
@@ -4357,6 +6942,7 @@ func register_interactable(spec: Dictionary) -> void:
 		"id": norm.id,
 		"position": GameEvent.v3_to_arr(norm.position),
 		"requires_hold": norm.requires_hold,
+		"interactable_type": norm.interactable_type,
 		"hold_time": norm.hold_time,
 		"one_shot": norm.one_shot,
 		"required_character": norm.required_character,
@@ -4440,6 +7026,8 @@ func trigger_interactable(id: String, character := "") -> bool:
 		return false
 	_emit(GameEvent.KIND_TRIGGER_INTERACTABLE, {"id": id, "character": character})
 	spec["triggered"] = true
+	spec["trigger_count"] = int(spec.get("trigger_count", 0)) + 1
+	spec["last_trigger_character"] = String(character)
 	if bool(spec.get("one_shot", false)):
 		spec["enabled"] = false
 	interactable_triggered.emit(id, character)

@@ -29,15 +29,28 @@ const GAME_MODE_NEUTRAL := "neutral"
 const GAME_MODE_EXPEDITION := "expedition"
 const GAME_MODE_SCARCITY := "scarcity"
 const GAME_MODE_IDS := [GAME_MODE_NEUTRAL, GAME_MODE_EXPEDITION, GAME_MODE_SCARCITY]
+const FOOD_TEST_NEUTRAL := "neutral"
+const FOOD_TEST_EXPEDITION := "return_loop"
+const FOOD_TEST_SCARCITY := "scarcity"
+const FOOD_TEST_BY_GAME_MODE := {
+	GAME_MODE_NEUTRAL: FOOD_TEST_NEUTRAL,
+	GAME_MODE_EXPEDITION: FOOD_TEST_EXPEDITION,
+	GAME_MODE_SCARCITY: FOOD_TEST_SCARCITY,
+}
+const GAME_MODE_BY_FOOD_TEST := {
+	FOOD_TEST_NEUTRAL: GAME_MODE_NEUTRAL,
+	FOOD_TEST_EXPEDITION: GAME_MODE_EXPEDITION,
+	FOOD_TEST_SCARCITY: GAME_MODE_SCARCITY,
+}
 const GAME_MODE_LABELS := {
 	GAME_MODE_NEUTRAL: "Neutral",
 	GAME_MODE_EXPEDITION: "Expedition",
 	GAME_MODE_SCARCITY: "Scarcity",
 }
 const GAME_MODE_DESCRIPTIONS := {
-	GAME_MODE_NEUTRAL: "No passive drain; generated stretches keep their original refill economy.",
-	GAME_MODE_EXPEDITION: "Optional branches hold carried food instead of party-wide refills.",
-	GAME_MODE_SCARCITY: "Expedition rules plus ATP drain after the party starts moving; one action pip is protected.",
+	GAME_MODE_NEUTRAL: "Canonical ATP economy: exploration is free; carried lysate restores ATP when endocytosed.",
+	GAME_MODE_EXPEDITION: "Zero-drain experimental control: physical lysate and shelter rules match Scarcity, without its clock.",
+	GAME_MODE_SCARCITY: "Experimental: after movement begins, each character loses 1 ATP every 60 seconds. At zero ATP, later ticks deal 5 HP damage; WRAP can absorb it.",
 }
 const GAME_MODE_CHUNK_CONFIGS := {
 	GAME_MODE_NEUTRAL: {
@@ -54,6 +67,7 @@ const GAME_MODE_CHUNK_CONFIGS := {
 		"food_test_settings": {
 			"drain_interval_seconds": 60.0,
 			"drain_atp": 1.0,
+			"zero_atp_hp_drain": 5.0,
 		},
 	},
 }
@@ -151,6 +165,24 @@ static func game_mode_label(mode_id: String) -> String:
 static func game_mode_description(mode_id: String) -> String:
 	var canonical := canonical_game_mode(mode_id)
 	return str(GAME_MODE_DESCRIPTIONS.get(canonical, ""))
+
+## Normalize the compatibility-era game_mode/food_test pair at the runtime boundary.
+## game_mode is authoritative when both are supplied because it is the player-facing
+## setting; a lone legacy food_test is still mapped to its canonical mode. This keeps
+## the displayed profile and active mechanics from ever disagreeing.
+static func normalize_generated_play_config(config: Dictionary, fallback_mode := GAME_MODE_NEUTRAL) -> Dictionary:
+	var normalized := config.duplicate(true)
+	var mode := canonical_game_mode(str(normalized.get("game_mode", fallback_mode)))
+	if not normalized.has("game_mode") and normalized.has("food_test"):
+		mode = str(GAME_MODE_BY_FOOD_TEST.get(
+			str(normalized.get("food_test", FOOD_TEST_NEUTRAL)).strip_edges().to_lower(),
+			canonical_game_mode(fallback_mode)
+		))
+	normalized["game_mode"] = mode
+	normalized["food_test"] = str(FOOD_TEST_BY_GAME_MODE.get(mode, FOOD_TEST_NEUTRAL))
+	if mode != GAME_MODE_SCARCITY:
+		normalized.erase("food_test_settings")
+	return normalized
 
 ## Per-chunk projection of the selected gameplay preset. Keeping this mapping in
 ## Settings makes the mode a configuration while the level remains mode-agnostic.

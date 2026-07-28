@@ -41,6 +41,12 @@ var height := 0
 var grid: Array = []  # Array of Array[int] — grid[z][x]
 var cell_size := 1.0
 var origin := Vector3.ZERO
+var _path_walkability_revision := 0
+var _path_walkability_cache: Dictionary = {}
+var _path_risk_revision := 0
+var _path_risk_cache: Dictionary = {}
+var _goal_risk_potential_cache: Dictionary = {}
+var _last_path_iterations := 0
 var dynamic_blockers: Dictionary = {}  # Vector2i → obj_id
 
 # --- Per-cell risk (the safe/direct routing vocabulary). A risky cell stays WALKABLE — risk only
@@ -109,13 +115,43 @@ func links_from(cell: Vector2i, from_level: int) -> Array:
 func allow_cell_on_level(cell: Vector2i, level: int) -> void:
 	if not level_allowed.has(level):
 		level_allowed[level] = {}
+	if level_allowed[level].has(cell):
+		return
 	level_allowed[level][cell] = true
+	_invalidate_path_walkability()
 
 ## Mark an inclusive rectangle of cells walkable on a level.
 func allow_cell_region_on_level(min_cell: Vector2i, max_cell: Vector2i, level: int) -> void:
+	if not level_allowed.has(level):
+		level_allowed[level] = {}
+	var allowed: Dictionary = level_allowed[level]
+	var changed := false
 	for z in range(mini(min_cell.y, max_cell.y), maxi(min_cell.y, max_cell.y) + 1):
 		for x in range(mini(min_cell.x, max_cell.x), maxi(min_cell.x, max_cell.x) + 1):
-			allow_cell_on_level(Vector2i(x, z), level)
+			var cell := Vector2i(x, z)
+			if not allowed.has(cell):
+				allowed[cell] = true
+				changed = true
+	if changed:
+		_invalidate_path_walkability()
+
+## Remove one cell from a restricted level's footprint. Keeping footprint
+## mutation behind GridWorld guarantees derived path masks invalidate with it.
+func disallow_cell_on_level(cell: Vector2i, level: int) -> void:
+	if level_allowed.has(level) and (level_allowed[level] as Dictionary).erase(cell):
+		_invalidate_path_walkability()
+
+## Remove an inclusive cell rectangle from one restricted level's footprint.
+func disallow_cell_region_on_level(min_cell: Vector2i, max_cell: Vector2i, level: int) -> void:
+	if not level_allowed.has(level):
+		return
+	var allowed: Dictionary = level_allowed[level]
+	var changed := false
+	for z in range(mini(min_cell.y, max_cell.y), maxi(min_cell.y, max_cell.y) + 1):
+		for x in range(mini(min_cell.x, max_cell.x), maxi(min_cell.x, max_cell.x) + 1):
+			changed = allowed.erase(Vector2i(x, z)) or changed
+	if changed:
+		_invalidate_path_walkability()
 
 ## Mark a world-space XZ rectangle walkable on a level — convenient when authoring from world
 ## coordinates (a chunk's footprint). Converts the AABB corners to cells.
@@ -222,6 +258,8 @@ static func _arr_to_vec2i(raw: Variant) -> Vector2i:
 ## Load from an array of strings (prototype MAP_DATA format).
 ## Each character maps to a tile type (0-9).
 func load_from_strings(data: PackedStringArray) -> void:
+	_invalidate_path_walkability()
+	_invalidate_path_risk()
 	height = data.size()
 	width = 0
 	grid.clear()
@@ -263,6 +301,8 @@ func load_from_json(path: String) -> void:
 
 ## Create a simple rectangular room with wall borders.
 func create_room(w: int, h: int, wall_border := true) -> void:
+	_invalidate_path_walkability()
+	_invalidate_path_risk()
 	width = w
 	height = h
 	grid.clear()
@@ -279,6 +319,8 @@ func create_room(w: int, h: int, wall_border := true) -> void:
 func set_tile(x: int, z: int, tile: int) -> void:
 	if x >= 0 and x < width and z >= 0 and z < height:
 		grid[z][x] = tile
+		_invalidate_path_walkability()
+		_invalidate_path_risk()
 
 # --- Queries ---
 
@@ -302,11 +344,273 @@ func is_walkable(x: int, z: int, explored: Dictionary = {}, locked_doors: Dictio
 		return false
 	return true
 
+## In-bounds planner hot-path equivalent of is_walkable(). Avoids a second
+## get_tile() call and only constructs a Vector2i when one of the keyed blocker
+## sets can actually affect this query. `explored` is intentionally absent: the
+## public predicate does not use it either.
+func _path_cell_walkable(x: int, z: int, locked_doors: Dictionary, level: int) -> bool:
+	var tile: int = grid[z][x]
+	if tile == Tile.WALL:
+		return false
+	var needs_key := tile == Tile.LOCKED_DOOR and not locked_doors.is_empty()
+	needs_key = needs_key or not dynamic_blockers.is_empty() or level_allowed.has(level)
+	if not needs_key:
+		return true
+	var cell := Vector2i(x, z)
+	if tile == Tile.LOCKED_DOOR and bool(locked_doors.get(cell, false)):
+		return false
+	if dynamic_blockers.has(cell):
+		return false
+	if level_allowed.has(level) and not level_allowed[level].has(cell):
+		return false
+	return true
+
+func _invalidate_path_walkability() -> void:
+	_path_walkability_revision += 1
+	_path_walkability_cache.clear()
+
+## Monotonic derived-topology token for systems that cache their own spatial
+## query (for example, a crowd flow field). Callers must still rebuild their
+## cache when their own origins/goals change; this token covers tiles, dynamic
+## blockers, and per-level footprint mutations made through GridWorld's API.
+func get_path_walkability_revision() -> int:
+	return _path_walkability_revision
+
+func _invalidate_path_risk() -> void:
+	_path_risk_revision += 1
+	_path_risk_cache.clear()
+	_goal_risk_potential_cache.clear()
+
+## Read-only dense walkability view for planners that already bounds-check cells.
+## Locked-door dictionaries remain query-specific and must be layered by callers.
+func get_path_walkability_mask(level: int) -> PackedByteArray:
+	var allowed_count := -1
+	if level_allowed.has(level):
+		allowed_count = (level_allowed[level] as Dictionary).size()
+	var cached: Dictionary = _path_walkability_cache.get(level, {})
+	if int(cached.get("revision", -1)) == _path_walkability_revision \
+			and int(cached.get("dynamic_count", -1)) == dynamic_blockers.size() \
+			and int(cached.get("allowed_count", -2)) == allowed_count:
+		return cached.get("mask", PackedByteArray()) as PackedByteArray
+	var mask := PackedByteArray()
+	mask.resize(width * height)
+	mask.fill(0)
+	var restricted := level_allowed.has(level)
+	var allowed: Dictionary = level_allowed.get(level, {})
+	var has_dynamic := not dynamic_blockers.is_empty()
+	for z in range(height):
+		for x in range(width):
+			var tile: int = grid[z][x]
+			if tile == Tile.WALL:
+				continue
+			if not has_dynamic and not restricted:
+				mask[z * width + x] = 1
+				continue
+			var cell := Vector2i(x, z)
+			if has_dynamic and dynamic_blockers.has(cell):
+				continue
+			if restricted and not allowed.has(cell):
+				continue
+			mask[z * width + x] = 1
+	_path_walkability_cache[level] = {
+		"revision": _path_walkability_revision,
+		"dynamic_count": dynamic_blockers.size(),
+		"allowed_count": allowed_count,
+		"mask": mask,
+	}
+	return mask
+
+## Read-only dense cautious-routing penalties and hard-risk blocks.
+func get_path_risk_masks() -> Dictionary:
+	if int(_path_risk_cache.get("revision", -1)) == _path_risk_revision \
+			and int(_path_risk_cache.get("risk_count", -1)) == risk_cells.size():
+		return _path_risk_cache
+	var penalties := PackedFloat64Array()
+	penalties.resize(width * height)
+	penalties.fill(0.0)
+	var blocked := PackedByteArray()
+	blocked.resize(width * height)
+	blocked.fill(0)
+	for z in range(height):
+		for x in range(width):
+			if int(grid[z][x]) == Tile.IRON_BLOOM:
+				penalties[z * width + x] = 20.0
+	for cell_variant in risk_cells.keys():
+		var cell: Vector2i = cell_variant
+		if not is_in_bounds(cell.x, cell.y):
+			continue
+		var info: Dictionary = risk_cells[cell]
+		var index := cell.y * width + cell.x
+		penalties[index] += float(info.get("penalty", 0.0))
+		if not bool(info.get("recoverable", true)):
+			blocked[index] = 1
+	_path_risk_cache = {
+		"revision": _path_risk_revision,
+		"risk_count": risk_cells.size(),
+		"penalties": penalties,
+		"blocked": blocked,
+	}
+	return _path_risk_cache
+
+## Cached admissible lower bound for the cautious risk still required to reach
+## `end`. Octile distance alone cannot see that a destination sits several cells
+## inside a costly region; a short click could therefore expand the entire safe
+## floor before accepting unavoidable goal risk.
+##
+## This relaxed graph keeps only the goal's connected positive-risk component
+## and collapses all zero-risk space into one OUTSIDE node. Reverse Dijkstra
+## gives the exact remaining risk in that relaxation. Walls and movement
+## distance are omitted, so adding this potential to the geometric heuristic
+## never overestimates a real route. Results are cached per goal/risk revision
+## and shared by spatial and cooperative planning.
+func get_cautious_goal_risk_potential(end: Vector2i) -> PackedFloat64Array:
+	var perf_started := PerformanceTrace.begin()
+	if not is_in_bounds(end.x, end.y):
+		PerformanceTrace.end(&"nav", &"grid.risk_potential", perf_started, "out_of_bounds", 0)
+		return PackedFloat64Array()
+	var end_index := end.y * width + end.x
+	if _goal_risk_potential_cache.has(end_index):
+		var cached: PackedFloat64Array = _goal_risk_potential_cache[end_index]
+		PerformanceTrace.end(&"nav", &"grid.risk_potential", perf_started, "cached", cached.size())
+		return cached
+	var masks := get_path_risk_masks()
+	var penalties: PackedFloat64Array = masks.get("penalties", PackedFloat64Array())
+	var blocked: PackedByteArray = masks.get("blocked", PackedByteArray())
+	if penalties.is_empty() or penalties[end_index] <= 0.0 or blocked[end_index] != 0:
+		var empty := PackedFloat64Array()
+		_goal_risk_potential_cache[end_index] = empty
+		PerformanceTrace.end(&"nav", &"grid.risk_potential", perf_started, "zero", 0)
+		return empty
+
+	var cell_count := width * height
+	var in_component := PackedByteArray()
+	in_component.resize(cell_count)
+	in_component.fill(0)
+	var component_cells := PackedInt32Array([end_index])
+	in_component[end_index] = 1
+	var dirs: Array[Vector2i] = [
+		Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1),
+		Vector2i(1, 1), Vector2i(1, -1), Vector2i(-1, 1), Vector2i(-1, -1),
+	]
+	var scan_i := 0
+	while scan_i < component_cells.size():
+		var scanned_index := component_cells[scan_i]
+		scan_i += 1
+		var scanned_x := scanned_index % width
+		var scanned_z := int(scanned_index / width)
+		for dir in dirs:
+			var nx := scanned_x + dir.x
+			var nz := scanned_z + dir.y
+			if not is_in_bounds(nx, nz):
+				continue
+			var neighbor_index := nz * width + nx
+			if in_component[neighbor_index] != 0 or blocked[neighbor_index] != 0 \
+					or penalties[neighbor_index] <= 0.0:
+				continue
+			in_component[neighbor_index] = 1
+			component_cells.append(neighbor_index)
+
+	var boundary_cells := PackedInt32Array()
+	var boundary_mask := PackedByteArray()
+	boundary_mask.resize(cell_count)
+	boundary_mask.fill(0)
+	for component_index in component_cells:
+		var component_x := component_index % width
+		var component_z := int(component_index / width)
+		for dir in dirs:
+			var nx := component_x + dir.x
+			var nz := component_z + dir.y
+			if not is_in_bounds(nx, nz):
+				continue
+			var neighbor_index := nz * width + nx
+			if in_component[neighbor_index] == 0 and blocked[neighbor_index] == 0 \
+					and penalties[neighbor_index] <= 0.0:
+				boundary_cells.append(component_index)
+				boundary_mask[component_index] = 1
+				break
+
+	var outside_index := cell_count
+	var distance := PackedFloat64Array()
+	distance.resize(cell_count + 1)
+	distance.fill(INF)
+	distance[end_index] = 0.0
+	var settled := PackedByteArray()
+	settled.resize(cell_count + 1)
+	settled.fill(0)
+	var heap_nodes := PackedInt32Array()
+	var heap_costs := PackedFloat64Array()
+	var heap_sequence := PackedInt32Array()
+	var sequence := 0
+	_gw_dense_heap_push(heap_nodes, heap_costs, heap_sequence, end_index, 0.0, sequence)
+	sequence += 1
+	while not heap_nodes.is_empty():
+		var dijkstra_node := _gw_dense_heap_pop(heap_nodes, heap_costs, heap_sequence)
+		if settled[dijkstra_node] != 0:
+			continue
+		settled[dijkstra_node] = 1
+		var current_distance := distance[dijkstra_node]
+		if dijkstra_node == outside_index:
+			# Forward boundary -> OUTSIDE costs zero: leaving danger adds no risk.
+			for boundary_index in boundary_cells:
+				if current_distance < distance[boundary_index]:
+					distance[boundary_index] = current_distance
+					_gw_dense_heap_push(heap_nodes, heap_costs, heap_sequence,
+						boundary_index, current_distance, sequence)
+					sequence += 1
+			continue
+		var current_x := dijkstra_node % width
+		var current_z := int(dijkstra_node / width)
+		# Reverse an in-component edge. Forward predecessor -> current pays
+		# the current cell's penalty on entry.
+		var predecessor_cost := current_distance + penalties[dijkstra_node]
+		for dir in dirs:
+			var px := current_x + dir.x
+			var pz := current_z + dir.y
+			if not is_in_bounds(px, pz):
+				continue
+			var predecessor_index := pz * width + px
+			if in_component[predecessor_index] == 0 \
+					or predecessor_cost >= distance[predecessor_index]:
+				continue
+			distance[predecessor_index] = predecessor_cost
+			_gw_dense_heap_push(heap_nodes, heap_costs, heap_sequence,
+				predecessor_index, predecessor_cost, sequence)
+			sequence += 1
+		if boundary_mask[dijkstra_node] != 0 and predecessor_cost < distance[outside_index]:
+			distance[outside_index] = predecessor_cost
+			_gw_dense_heap_push(heap_nodes, heap_costs, heap_sequence,
+				outside_index, predecessor_cost, sequence)
+			sequence += 1
+
+	var outside_cost := distance[outside_index]
+	if not is_finite(outside_cost):
+		# No zero-risk entry exists in the relaxed in-bounds graph. Zero is the
+		# conservative fallback; the ordinary planner still proves reachability.
+		outside_cost = 0.0
+	var potential := PackedFloat64Array()
+	potential.resize(cell_count)
+	potential.fill(outside_cost)
+	for component_index in component_cells:
+		potential[component_index] = distance[component_index] \
+			if is_finite(distance[component_index]) else 0.0
+	_goal_risk_potential_cache[end_index] = potential
+	PerformanceTrace.end(&"nav", &"grid.risk_potential", perf_started, "built", component_cells.size())
+	return potential
+
+## Deterministic diagnostic used by performance regressions and the trace's
+## `units` field. It never affects path ordering or serialized state.
+func get_last_path_iterations() -> int:
+	return _last_path_iterations
+
 func add_dynamic_blocker(cell: Vector2i, obj_id: String) -> void:
+	if dynamic_blockers.has(cell) and str(dynamic_blockers[cell]) == obj_id:
+		return
 	dynamic_blockers[cell] = obj_id
+	_invalidate_path_walkability()
 
 func remove_dynamic_blocker(cell: Vector2i) -> void:
-	dynamic_blockers.erase(cell)
+	if dynamic_blockers.erase(cell):
+		_invalidate_path_walkability()
 
 # --- Sight blocking (line of sight). A cell blocks sight if it's a WALL / locked door, or an explicitly
 # registered sight blocker (for scenes whose walls aren't WALL tiles). Declared at build like occupancy —
@@ -361,9 +665,11 @@ func has_line_of_sight(from_world: Vector3, to_world: Vector3) -> bool:
 
 func set_cell_risk(cell: Vector2i, penalty := 20.0, recoverable := true) -> void:
 	risk_cells[cell] = {"penalty": maxf(0.0, penalty), "recoverable": recoverable}
+	_invalidate_path_risk()
 
 func clear_cell_risk(cell: Vector2i) -> void:
-	risk_cells.erase(cell)
+	if risk_cells.erase(cell):
+		_invalidate_path_risk()
 
 ## Mark a world-space XZ rectangle risky — authoring convenience for a hazard band/corridor.
 func set_world_region_risk(min_xz: Vector2, max_xz: Vector2, penalty := 20.0, recoverable := true) -> void:
@@ -378,6 +684,15 @@ func is_cell_risky(cell: Vector2i) -> bool:
 
 func risk_penalty(cell: Vector2i) -> float:
 	return float((risk_cells.get(cell, {}) as Dictionary).get("penalty", 0.0))
+
+## One authoritative cautious-routing cost shared by the spatial and
+## cooperative planners. Keeping the terrain tile and authored risk penalty in
+## one function prevents previews and committed conflict detours from drifting.
+func cautious_cost_penalty(cell: Vector2i) -> float:
+	var penalty := risk_penalty(cell)
+	if get_tile(cell.x, cell.y) == Tile.IRON_BLOOM:
+		penalty += 20.0
+	return penalty
 
 ## A non-recoverable risky cell is never entered by cautious (safe) routing.
 func cautious_cell_blocked(cell: Vector2i) -> bool:
@@ -397,11 +712,14 @@ func _reach_walkable(x: int, z: int, level: int, cautious: bool) -> bool:
 	return not (cautious and cautious_cell_blocked(Vector2i(x, z)))
 
 func reachable(start: Vector2i, end: Vector2i, level: int = 0, cautious: bool = false) -> bool:
+	var perf_started := PerformanceTrace.begin()
 	if _pf_debug:
 		_pf_trace("[A*] reachable BFS %v -> %v" % [start, end])
 	if start == end:
+		PerformanceTrace.end(&"nav", &"grid.reachable", perf_started, "same_cell", 1)
 		return true
 	if not _reach_walkable(start.x, start.y, level, cautious) or not _reach_walkable(end.x, end.y, level, cautious):
+		PerformanceTrace.end(&"nav", &"grid.reachable", perf_started, "blocked", 0)
 		return false
 	var dirs := [
 		Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1),
@@ -422,9 +740,11 @@ func reachable(start: Vector2i, end: Vector2i, level: int = 0, cautious: bool = 
 				if not _reach_walkable(c.x + dir.x, c.y, level, cautious) or not _reach_walkable(c.x, c.y + dir.y, level, cautious):
 					continue
 			if n == end:
+				PerformanceTrace.end(&"nav", &"grid.reachable", perf_started, "reached", seen.size())
 				return true
 			seen[n] = true
 			queue.append(n)
+	PerformanceTrace.end(&"nav", &"grid.reachable", perf_started, "unreachable", seen.size())
 	return false
 
 func world_to_grid(world_pos: Vector3) -> Vector2i:
@@ -525,6 +845,90 @@ static func _gw_heap_pop(heap: Array) -> Dictionary:
 			i = smallest
 	return top
 
+# Dense A* heap. Each open entry used to be a Dictionary containing a
+# Vector2i, f-score and sequence number. On Web, allocating and probing those
+# Dictionaries costs more than the path math itself (a 227-cell straight route
+# measured about 9 ms). Parallel packed arrays keep the exact same f/sequence
+# ordering without allocating an object per discovered cell.
+static func _gw_dense_heap_less(
+		heap_f: PackedFloat64Array,
+		heap_seq: PackedInt32Array,
+		a: int,
+		b: int
+	) -> bool:
+	if heap_f[a] != heap_f[b]:
+		return heap_f[a] < heap_f[b]
+	return heap_seq[a] < heap_seq[b]
+
+static func _gw_dense_heap_push(
+		heap_cells: PackedInt32Array,
+		heap_f: PackedFloat64Array,
+		heap_seq: PackedInt32Array,
+		cell_index: int,
+		f_score: float,
+		sequence: int
+	) -> void:
+	heap_cells.append(cell_index)
+	heap_f.append(f_score)
+	heap_seq.append(sequence)
+	var i := heap_cells.size() - 1
+	while i > 0:
+		var parent := (i - 1) >> 1
+		if not _gw_dense_heap_less(heap_f, heap_seq, i, parent):
+			break
+		var tmp_cell := heap_cells[parent]
+		heap_cells[parent] = heap_cells[i]
+		heap_cells[i] = tmp_cell
+		var tmp_f := heap_f[parent]
+		heap_f[parent] = heap_f[i]
+		heap_f[i] = tmp_f
+		var tmp_seq := heap_seq[parent]
+		heap_seq[parent] = heap_seq[i]
+		heap_seq[i] = tmp_seq
+		i = parent
+
+static func _gw_dense_heap_pop(
+		heap_cells: PackedInt32Array,
+		heap_f: PackedFloat64Array,
+		heap_seq: PackedInt32Array
+	) -> int:
+	var top := heap_cells[0]
+	var last_index := heap_cells.size() - 1
+	if last_index == 0:
+		heap_cells.resize(0)
+		heap_f.resize(0)
+		heap_seq.resize(0)
+		return top
+	heap_cells[0] = heap_cells[last_index]
+	heap_f[0] = heap_f[last_index]
+	heap_seq[0] = heap_seq[last_index]
+	heap_cells.resize(last_index)
+	heap_f.resize(last_index)
+	heap_seq.resize(last_index)
+	var i := 0
+	var n := heap_cells.size()
+	while true:
+		var smallest := i
+		var left := 2 * i + 1
+		var right := left + 1
+		if left < n and _gw_dense_heap_less(heap_f, heap_seq, left, smallest):
+			smallest = left
+		if right < n and _gw_dense_heap_less(heap_f, heap_seq, right, smallest):
+			smallest = right
+		if smallest == i:
+			break
+		var tmp_cell := heap_cells[smallest]
+		heap_cells[smallest] = heap_cells[i]
+		heap_cells[i] = tmp_cell
+		var tmp_f := heap_f[smallest]
+		heap_f[smallest] = heap_f[i]
+		heap_f[i] = tmp_f
+		var tmp_seq := heap_seq[smallest]
+		heap_seq[smallest] = heap_seq[i]
+		heap_seq[i] = tmp_seq
+		i = smallest
+	return top
+
 ## Find a path from start cell to end cell.
 ## Returns array of world positions (Vector3) for the path waypoints.
 func find_path(
@@ -536,12 +940,28 @@ func find_path(
 	locked_doors: Dictionary = {},
 	level: int = 0
 ) -> Array[Vector3]:
+	var perf_started := PerformanceTrace.begin()
+	_last_path_iterations = 0
 	if start == end:
+		PerformanceTrace.end(&"nav", &"grid.find_path", perf_started, "same_cell", 1)
 		return [grid_to_world(end, level)]
 	if not is_in_bounds(end.x, end.y):
+		PerformanceTrace.end(&"nav", &"grid.find_path", perf_started, "out_of_bounds", 0)
 		return []
 	if not is_walkable(end.x, end.y, explored, locked_doors, level):
+		PerformanceTrace.end(&"nav", &"grid.find_path", perf_started, "blocked", 0)
 		return []
+	if cautious and cautious_cell_blocked(end):
+		PerformanceTrace.end(&"nav", &"grid.find_path", perf_started, "risk_blocked", 0)
+		return []
+	# Normal movement snaps starts onto the footprint first, but preserve the
+	# historical ability to step in from a start immediately outside the grid.
+	if not is_in_bounds(start.x, start.y):
+		var sparse := _find_path_sparse_start(
+			start, end, explored, cautious, roads, locked_doors, level)
+		PerformanceTrace.end(&"nav", &"grid.find_path", perf_started,
+			"sparse_start" if not sparse.is_empty() else "no_path", sparse.size())
+		return sparse
 	# (No reachability pre-check here: the heap A* below already explores an unreachable target's whole
 	# component in O(n log n) — adding a BFS pre-check would just DOUBLE the cost for the common reachable
 	# case. The cull lives in _plan_cooperative, where it saves the far more expensive space-time search.)
@@ -549,11 +969,35 @@ func find_path(
 	# A* with octile heuristic, binary-heap open set
 	if _pf_debug:
 		_pf_trace("[A*] find_path start %v -> %v (grid %dx%d, cautious=%s)" % [start, end, width, height, cautious])
-	var came_from: Dictionary = {}  # Vector2i -> Vector2i
-	var g_score: Dictionary = {start: 0.0}    # Vector2i -> float (best known cost-to-reach)
-	var closed: Dictionary = {}     # cells finalized at their best g (lazy-deletion skip)
+	var cell_count := width * height
+	var came_from := PackedInt32Array()
+	came_from.resize(cell_count)
+	came_from.fill(-1)
+	var g_score := PackedFloat64Array()
+	g_score.resize(cell_count)
+	g_score.fill(INF)
+	var closed := PackedByteArray()
+	closed.resize(cell_count)
+	closed.fill(0)
+	var start_index := start.y * width + start.x
+	var end_index := end.y * width + end.x
+	g_score[start_index] = 0.0
+	var walkability_mask := get_path_walkability_mask(level)
+	var risk_penalties := PackedFloat64Array()
+	var risk_blocked := PackedByteArray()
+	var risk_potential := PackedFloat64Array()
+	if cautious:
+		var risk_masks := get_path_risk_masks()
+		risk_penalties = risk_masks.get("penalties", PackedFloat64Array())
+		risk_blocked = risk_masks.get("blocked", PackedByteArray())
+		risk_potential = get_cautious_goal_risk_potential(end)
 	var seq := 0
-	var open: Array = [{"cell": start, "f": _heuristic(start, end), "seq": seq}]
+	var open_cells := PackedInt32Array()
+	var open_f := PackedFloat64Array()
+	var open_seq := PackedInt32Array()
+	var start_risk_potential := risk_potential[start_index] if not risk_potential.is_empty() else 0.0
+	_gw_dense_heap_push(open_cells, open_f, open_seq,
+		start_index, _heuristic(start, end) + start_risk_potential, seq)
 	seq += 1
 
 	# 8 directions: cardinal + diagonal
@@ -565,65 +1009,204 @@ func find_path(
 	var iterations := 0
 	var max_iterations := width * height * 4
 
-	while not open.is_empty() and iterations < max_iterations:
+	while not open_cells.is_empty() and iterations < max_iterations:
 		iterations += 1
 
-		var current: Vector2i = _gw_heap_pop(open).cell
+		# Pop the packed heap inline. Passing three reference-counted packed arrays
+		# through a helper for every expansion is measurably expensive in Web builds.
+		var current_index := open_cells[0]
+		var heap_last_index := open_cells.size() - 1
+		if heap_last_index == 0:
+			open_cells.resize(0)
+			open_f.resize(0)
+			open_seq.resize(0)
+		else:
+			open_cells[0] = open_cells[heap_last_index]
+			open_f[0] = open_f[heap_last_index]
+			open_seq[0] = open_seq[heap_last_index]
+			open_cells.resize(heap_last_index)
+			open_f.resize(heap_last_index)
+			open_seq.resize(heap_last_index)
+			var heap_i := 0
+			var heap_size := open_cells.size()
+			while true:
+				var heap_smallest := heap_i
+				var heap_left := 2 * heap_i + 1
+				var heap_right := heap_left + 1
+				if heap_left < heap_size and (open_f[heap_left] < open_f[heap_smallest] \
+						or (open_f[heap_left] == open_f[heap_smallest] \
+						and open_seq[heap_left] < open_seq[heap_smallest])):
+					heap_smallest = heap_left
+				if heap_right < heap_size and (open_f[heap_right] < open_f[heap_smallest] \
+						or (open_f[heap_right] == open_f[heap_smallest] \
+						and open_seq[heap_right] < open_seq[heap_smallest])):
+					heap_smallest = heap_right
+				if heap_smallest == heap_i:
+					break
+				var heap_tmp_cell := open_cells[heap_smallest]
+				open_cells[heap_smallest] = open_cells[heap_i]
+				open_cells[heap_i] = heap_tmp_cell
+				var heap_tmp_f := open_f[heap_smallest]
+				open_f[heap_smallest] = open_f[heap_i]
+				open_f[heap_i] = heap_tmp_f
+				var heap_tmp_seq := open_seq[heap_smallest]
+				open_seq[heap_smallest] = open_seq[heap_i]
+				open_seq[heap_i] = heap_tmp_seq
+				heap_i = heap_smallest
 		# A stale duplicate (already finalized cheaper) — skip. Consistent (octile) heuristic, so a cell
 		# popped once is at its best g and never needs reopening.
+		if closed[current_index] != 0:
+			continue
+		closed[current_index] = 1
+
+		if current_index == end_index:
+			if _pf_debug:
+				_pf_trace("[A*] find_path done: reached in %d iters" % iterations)
+			var result := _reconstruct_dense_path(came_from, current_index, start_index, level)
+			_last_path_iterations = iterations
+			PerformanceTrace.end(&"nav", &"grid.find_path", perf_started, "reached", iterations)
+			return result
+
+		var current_x := current_index % width
+		var current_z := int(current_index / width)
+		for dir in dirs:
+			var neighbor_x := current_x + dir.x
+			var neighbor_z := current_z + dir.y
+			if not is_in_bounds(neighbor_x, neighbor_z):
+				continue
+			var neighbor_index := neighbor_z * width + neighbor_x
+			if walkability_mask[neighbor_index] == 0:
+				continue
+			if not locked_doors.is_empty() and int(grid[neighbor_z][neighbor_x]) == Tile.LOCKED_DOOR \
+					and bool(locked_doors.get(Vector2i(neighbor_x, neighbor_z), false)):
+				continue
+
+			# Diagonal corner-cutting prevention
+			var is_diagonal := dir.x != 0 and dir.y != 0
+			if is_diagonal:
+				var adjacent_a_index := current_z * width + current_x + dir.x
+				var adjacent_b_index := (current_z + dir.y) * width + current_x
+				if walkability_mask[adjacent_a_index] == 0:
+					continue
+				if walkability_mask[adjacent_b_index] == 0:
+					continue
+				if not locked_doors.is_empty() and (
+						(int(grid[current_z][current_x + dir.x]) == Tile.LOCKED_DOOR \
+						and bool(locked_doors.get(Vector2i(current_x + dir.x, current_z), false))) \
+						or (int(grid[current_z + dir.y][current_x]) == Tile.LOCKED_DOOR \
+						and bool(locked_doors.get(Vector2i(current_x, current_z + dir.y), false)))):
+					continue
+			# Cautious (safe) routing never enters a non-recoverable risky cell.
+			if cautious and risk_blocked[neighbor_index] != 0:
+				continue
+
+			# Movement cost
+			var base_cost := 1.414 if is_diagonal else 1.0
+
+			# Cautious mode: use the same cost vocabulary as cooperative A*.
+			if cautious:
+				base_cost += risk_penalties[neighbor_index]
+
+			# Road bonus
+			if not roads.is_empty() and roads.has(Vector2i(neighbor_x, neighbor_z)):
+				base_cost -= 0.4
+
+			var tentative_g: float = g_score[current_index] + base_cost
+			if tentative_g < g_score[neighbor_index]:
+				came_from[neighbor_index] = current_index
+				g_score[neighbor_index] = tentative_g
+				var heuristic_dx := absi(neighbor_x - end.x)
+				var heuristic_dz := absi(neighbor_z - end.y)
+				var heuristic := float(maxi(heuristic_dx, heuristic_dz)) \
+					+ (1.414 - 1.0) * float(mini(heuristic_dx, heuristic_dz))
+				open_cells.append(neighbor_index)
+				var remaining_risk := risk_potential[neighbor_index] \
+					if not risk_potential.is_empty() else 0.0
+				open_f.append(tentative_g + heuristic + remaining_risk)
+				open_seq.append(seq)
+				var push_i := open_cells.size() - 1
+				while push_i > 0:
+					var push_parent := (push_i - 1) >> 1
+					if open_f[push_i] > open_f[push_parent] or (open_f[push_i] == open_f[push_parent] \
+							and open_seq[push_i] >= open_seq[push_parent]):
+						break
+					var push_tmp_cell := open_cells[push_parent]
+					open_cells[push_parent] = open_cells[push_i]
+					open_cells[push_i] = push_tmp_cell
+					var push_tmp_f := open_f[push_parent]
+					open_f[push_parent] = open_f[push_i]
+					open_f[push_i] = push_tmp_f
+					var push_tmp_seq := open_seq[push_parent]
+					open_seq[push_parent] = open_seq[push_i]
+					open_seq[push_i] = push_tmp_seq
+					push_i = push_parent
+				seq += 1
+
+	# No path found
+	if _pf_debug:
+		_pf_trace("[A*] find_path done: NO PATH after %d iters (max %d)" % [iterations, max_iterations])
+	_last_path_iterations = iterations
+	PerformanceTrace.end(&"nav", &"grid.find_path", perf_started, "no_path", iterations)
+	return []
+
+## Rare compatibility path for a start just outside the grid. Dense storage
+## cannot index that start, while the historical sparse A* could step in from
+## it. Kept separate so normal in-bounds queries never pay these allocations.
+func _find_path_sparse_start(
+		start: Vector2i,
+		end: Vector2i,
+		explored: Dictionary,
+		cautious: bool,
+		roads: Dictionary,
+		locked_doors: Dictionary,
+		level: int
+	) -> Array[Vector3]:
+	var came_from: Dictionary = {}
+	var g_score: Dictionary = {start: 0.0}
+	var closed: Dictionary = {}
+	var seq := 0
+	var open: Array = [{"cell": start, "f": _heuristic(start, end), "seq": seq}]
+	seq += 1
+	var dirs: Array[Vector2i] = [
+		Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1),
+		Vector2i(1, 1), Vector2i(1, -1), Vector2i(-1, 1), Vector2i(-1, -1),
+	]
+	var iterations := 0
+	var max_iterations := width * height * 4
+	while not open.is_empty() and iterations < max_iterations:
+		iterations += 1
+		var current: Vector2i = _gw_heap_pop(open).cell
 		if closed.has(current):
 			continue
 		closed[current] = true
-
 		if current == end:
-			if _pf_debug:
-				_pf_trace("[A*] find_path done: reached in %d iters" % iterations)
 			return _reconstruct_path(came_from, current, level)
-
 		for dir in dirs:
 			var neighbor := current + dir
 			if not is_in_bounds(neighbor.x, neighbor.y):
 				continue
 			if not is_walkable(neighbor.x, neighbor.y, explored, locked_doors, level):
 				continue
-
-			# Diagonal corner-cutting prevention
 			var is_diagonal := dir.x != 0 and dir.y != 0
 			if is_diagonal:
-				var adj_a := Vector2i(current.x + dir.x, current.y)
-				var adj_b := Vector2i(current.x, current.y + dir.y)
-				if not is_walkable(adj_a.x, adj_a.y, explored, locked_doors, level):
+				if not is_walkable(current.x + dir.x, current.y, explored, locked_doors, level):
 					continue
-				if not is_walkable(adj_b.x, adj_b.y, explored, locked_doors, level):
+				if not is_walkable(current.x, current.y + dir.y, explored, locked_doors, level):
 					continue
-
-			# Cautious (safe) routing never enters a non-recoverable risky cell.
 			if cautious and cautious_cell_blocked(neighbor):
 				continue
-
-			# Movement cost
 			var base_cost := 1.414 if is_diagonal else 1.0
-
-			# Cautious mode: penalize IRON_BLOOM tiles and risky cells
 			if cautious:
-				if get_tile(neighbor.x, neighbor.y) == Tile.IRON_BLOOM:
-					base_cost += 20.0
-				base_cost += risk_penalty(neighbor)
-
-			# Road bonus
+				base_cost += cautious_cost_penalty(neighbor)
 			if roads.has(neighbor):
 				base_cost -= 0.4
-
-			var tentative_g: float = g_score.get(current, INF) + base_cost
-			if tentative_g < g_score.get(neighbor, INF):
+			var tentative_g: float = float(g_score.get(current, INF)) + base_cost
+			if tentative_g < float(g_score.get(neighbor, INF)):
 				came_from[neighbor] = current
 				g_score[neighbor] = tentative_g
-				_gw_heap_push(open, {"cell": neighbor, "f": tentative_g + _heuristic(neighbor, end), "seq": seq})
+				_gw_heap_push(open, {"cell": neighbor,
+					"f": tentative_g + _heuristic(neighbor, end), "seq": seq})
 				seq += 1
-
-	# No path found
-	if _pf_debug:
-		_pf_trace("[A*] find_path done: NO PATH after %d iters (max %d)" % [iterations, max_iterations])
 	return []
 
 ## A* ACROSS floors: route from (start_cell, start_level) to (end_cell, end_level) using same-level
@@ -635,9 +1218,12 @@ func find_multi_level_path(
 	start_cell: Vector2i, start_level: int, end_cell: Vector2i, end_level: int,
 	explored: Dictionary = {}, locked_doors: Dictionary = {}
 ) -> Array:
+	var perf_started := PerformanceTrace.begin()
 	if start_cell == end_cell and start_level == end_level:
+		PerformanceTrace.end(&"nav", &"grid.find_multi_level_path", perf_started, "same_cell", 1)
 		return [{"cell": end_cell, "level": end_level}]
 	if not is_in_bounds(end_cell.x, end_cell.y) or not is_walkable(end_cell.x, end_cell.y, explored, locked_doors, end_level):
+		PerformanceTrace.end(&"nav", &"grid.find_multi_level_path", perf_started, "blocked", 0)
 		return []
 	var dirs: Array[Vector2i] = [
 		Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1),
@@ -662,7 +1248,9 @@ func find_multi_level_path(
 		var cur_cell: Vector2i = _ml_cell(cur_key)
 		var cur_level: int = _ml_level(cur_key)
 		if cur_cell == end_cell and cur_level == end_level:
-			return _ml_reconstruct(came_from, cur_key)
+			var result := _ml_reconstruct(came_from, cur_key)
+			PerformanceTrace.end(&"nav", &"grid.find_multi_level_path", perf_started, "reached", iters)
+			return result
 		open.erase(cur_key)
 		var cur_g: float = g.get(cur_key, INF)
 		# Same-level 8-dir moves.
@@ -682,6 +1270,7 @@ func find_multi_level_path(
 		for to_level in links_from(cur_cell, cur_level):
 			_ml_relax(_ml_key(cur_cell, to_level), cur_key, cur_g + get_link_cost(cur_cell, cur_level, to_level),
 				cur_cell, to_level, end_cell, end_level, came_from, g, f, open)
+	PerformanceTrace.end(&"nav", &"grid.find_multi_level_path", perf_started, "no_path", iters)
 	return []
 
 func _ml_key(cell: Vector2i, level: int) -> String:
@@ -733,6 +1322,25 @@ func _reconstruct_path(came_from: Dictionary, current: Vector2i, level: int = 0)
 	var path: Array[Vector3] = []
 	for i in range(1, cells.size()):
 		path.append(grid_to_world(cells[i], level))
+	return path
+
+func _reconstruct_dense_path(
+		came_from: PackedInt32Array,
+		current_index: int,
+		start_index: int,
+		level: int = 0
+	) -> Array[Vector3]:
+	# Collect backwards, then emit forwards. This avoids push_front's repeated
+	# array shifts while retaining one waypoint per cell and excluding the start.
+	var reversed_indices := PackedInt32Array()
+	while current_index != start_index and current_index >= 0:
+		reversed_indices.append(current_index)
+		current_index = came_from[current_index]
+	var path: Array[Vector3] = []
+	for i in range(reversed_indices.size() - 1, -1, -1):
+		var cell_index := reversed_indices[i]
+		path.append(grid_to_world(
+			Vector2i(cell_index % width, int(cell_index / width)), level))
 	return path
 
 # --- Sokoban push planning -------------------------------------------------

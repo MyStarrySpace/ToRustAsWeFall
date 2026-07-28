@@ -5,11 +5,20 @@ extends Node
 ## the live scene. Each GameState also keeps its authoritative EventLog and final snapshot in
 ## the artifact, so a rendered replay can report whether it reproduced the recorded run.
 
+signal autonomous_input_session_changed(active: bool)
+signal camera_input_policy_changed(ambient_mouse_controls_enabled: bool)
+
 const CONTRACT := "deterministic_playthrough_v1"
 const FORMAT_VERSION := 1
 const REPLAY_EVENT_META := &"trwf_playthrough_replay"
 const CAPTURED_EVENT_META := &"trwf_playthrough_captured"
 const GENERATED_CASE_ACTION_PREFIX := "qa_play_generated_case/"
+const GENERATED_NODE_ACTION_PREFIX := "qa_generated_node_command/"
+const GENERATED_WORLD_ACTION_PREFIX := "qa_world_interaction/"
+const INPUT_OWNER_MANUAL := "manual"
+const INPUT_OWNER_GENERATED_AUTOPILOT := "generated_autopilot"
+const CAMERA_POLICY_KEY := "camera_policy"
+const CAMERA_POLICY_AMBIENT_MOUSE_CONTROLS := "ambient_mouse_controls"
 const SAVE_INTERVAL_SECONDS := 5.0
 const TICK_EPSILON := 0.0005
 
@@ -18,6 +27,10 @@ enum Mode { OFF, RECORD, PLAYBACK }
 var mode: Mode = Mode.OFF
 var recording_path := ""
 var quit_on_playback_end := false
+var _input_owner := INPUT_OWNER_MANUAL
+var _camera_input_policy := {
+	CAMERA_POLICY_AMBIENT_MOUSE_CONTROLS: true,
+}
 
 var _artifact: Dictionary = {}
 var _timeline := 0.0
@@ -41,7 +54,7 @@ func _ready() -> void:
 	var args := OS.get_cmdline_user_args()
 	var record_path := _argument_value(args, "--record-playthrough")
 	var replay_path := _argument_value(args, "--replay-playthrough")
-	var autoplay_generated_case := _argument_value(args, "--autoplay-generated-case")
+	var autoplay_generated_case := _argument_value(args, "--autoplay-generated-case").strip_edges()
 	if OS.has_feature("web"):
 		if record_path == "":
 			var web_record := _web_query_value("record_playthrough")
@@ -55,7 +68,9 @@ func _ready() -> void:
 	if replay_path != "":
 		begin_playback(replay_path, quit_on_playback_end)
 	elif record_path != "":
-		begin_recording(record_path)
+		var input_owner := INPUT_OWNER_GENERATED_AUTOPILOT \
+			if autoplay_generated_case != "" else INPUT_OWNER_MANUAL
+		begin_recording(record_path, input_owner)
 		if autoplay_generated_case != "":
 			_install_generated_input_driver(autoplay_generated_case)
 
@@ -169,11 +184,14 @@ func _exit_tree() -> void:
 	if mode == Mode.RECORD and recording_path != "":
 		_save_recording(true)
 
-func begin_recording(path: String) -> bool:
+func begin_recording(path: String, input_owner := INPUT_OWNER_MANUAL) -> bool:
 	if mode != Mode.OFF:
 		push_warning("PlaythroughSession: a session is already active")
 		return false
 	recording_path = _normalize_path(path)
+	_input_owner = INPUT_OWNER_GENERATED_AUTOPILOT \
+		if str(input_owner) == INPUT_OWNER_GENERATED_AUTOPILOT else INPUT_OWNER_MANUAL
+	_camera_input_policy = _default_camera_input_policy(_input_owner)
 	mode = Mode.RECORD
 	_timeline = 0.0
 	_input_order = 0
@@ -181,6 +199,8 @@ func begin_recording(path: String) -> bool:
 		"contract": CONTRACT,
 		"version": FORMAT_VERSION,
 		"created_unix": int(Time.get_unix_time_from_system()),
+		"input_owner": _input_owner,
+		CAMERA_POLICY_KEY: _camera_input_policy.duplicate(true),
 		"initial_scene": "",
 		"viewport_size": _viewport_size(),
 		"duration": 0.0,
@@ -195,6 +215,8 @@ func begin_recording(path: String) -> bool:
 				root_window.close_requested.connect(_on_close_requested)
 			if not root_window.window_input.is_connected(_on_window_input):
 				root_window.window_input.connect(_on_window_input)
+	autonomous_input_session_changed.emit(is_autonomous_input_session())
+	camera_input_policy_changed.emit(ambient_mouse_camera_controls_enabled())
 	print("[PLAYTHROUGH/record] Recording normal play to %s" % recording_path)
 	print("[PLAYTHROUGH/record] Planning pauses collapse on replay; live simulation time remains.")
 	if OS.has_feature("web"):
@@ -214,6 +236,8 @@ func stop_recording(quit_after := false) -> void:
 		recording_path,
 	])
 	mode = Mode.OFF
+	autonomous_input_session_changed.emit(false)
+	camera_input_policy_changed.emit(true)
 	if get_tree() != null:
 		get_tree().auto_accept_quit = true
 		if quit_after:
@@ -231,6 +255,8 @@ func begin_playback(path: String, quit_after := false) -> bool:
 		push_error("PlaythroughSession: unsupported artifact contract in %s" % recording_path)
 		return false
 	_artifact = loaded
+	_input_owner = _resolve_artifact_input_owner(_artifact)
+	_camera_input_policy = _resolve_artifact_camera_input_policy(_artifact, _input_owner)
 	mode = Mode.PLAYBACK
 	quit_on_playback_end = quit_after
 	_timeline = 0.0
@@ -240,6 +266,8 @@ func begin_playback(path: String, quit_after := false) -> bool:
 	_playback_failed = false
 	_playback_trace_variance = false
 	_playback_initial_scene_ready = false
+	autonomous_input_session_changed.emit(is_autonomous_input_session())
+	camera_input_policy_changed.emit(ambient_mouse_camera_controls_enabled())
 	print("[PLAYTHROUGH/replay] Replaying %d inputs from %s (start: %s)" % [
 		(_artifact.get("inputs", []) as Array).size(), recording_path, _playback_initial_scene()])
 	call_deferred("_ensure_initial_scene")
@@ -282,6 +310,61 @@ func is_recording() -> bool:
 
 func is_playing_back() -> bool:
 	return mode == Mode.PLAYBACK
+
+## Autonomous recordings deliberately contain only the pilot's semantic gameplay commands.
+## Ambient host mouse position is not part of that input ownership contract, so presentation
+## systems use this flag to ignore cursor-driven camera motion in both record and playback.
+func is_autonomous_input_session() -> bool:
+	return mode != Mode.OFF and _input_owner == INPUT_OWNER_GENERATED_AUTOPILOT
+
+## The camera policy is stored independently from the pilot label so a future automated
+## capture can opt into recorded pointer motion without changing who owns the tape.
+func ambient_mouse_camera_controls_enabled() -> bool:
+	if mode == Mode.OFF:
+		return true
+	return bool(_camera_input_policy.get(CAMERA_POLICY_AMBIENT_MOUSE_CONTROLS, true))
+
+func _resolve_artifact_input_owner(artifact: Dictionary) -> String:
+	if str(artifact.get("input_owner", "")) == INPUT_OWNER_GENERATED_AUTOPILOT:
+		return INPUT_OWNER_GENERATED_AUTOPILOT
+	if artifact.has("input_owner"):
+		return INPUT_OWNER_MANUAL
+	# Compatibility for autonomous tapes recorded before input ownership became part of
+	# the artifact. These semantic action namespaces are emitted only by the QA pilot.
+	for raw_entry in artifact.get("inputs", []):
+		if not (raw_entry is Dictionary):
+			continue
+		var event_data: Dictionary = (raw_entry as Dictionary).get("event", {})
+		if str(event_data.get("type", "")) != "action":
+			continue
+		var action_name := str(event_data.get("action", ""))
+		if action_name.begins_with(GENERATED_CASE_ACTION_PREFIX) \
+				or action_name.begins_with(GENERATED_NODE_ACTION_PREFIX) \
+				or action_name.begins_with(GENERATED_WORLD_ACTION_PREFIX):
+			return INPUT_OWNER_GENERATED_AUTOPILOT
+	return INPUT_OWNER_MANUAL
+
+func _default_camera_input_policy(input_owner: String) -> Dictionary:
+	return {
+		CAMERA_POLICY_AMBIENT_MOUSE_CONTROLS:
+			input_owner != INPUT_OWNER_GENERATED_AUTOPILOT,
+	}
+
+func _resolve_artifact_camera_input_policy(
+	artifact: Dictionary,
+	input_owner: String
+) -> Dictionary:
+	var fallback := _default_camera_input_policy(input_owner)
+	var raw_policy: Variant = artifact.get(CAMERA_POLICY_KEY, {})
+	if not raw_policy is Dictionary:
+		return fallback
+	var policy := raw_policy as Dictionary
+	if not policy.has(CAMERA_POLICY_AMBIENT_MOUSE_CONTROLS):
+		return fallback
+	return {
+		CAMERA_POLICY_AMBIENT_MOUSE_CONTROLS:
+			bool(policy.get(CAMERA_POLICY_AMBIENT_MOUSE_CONTROLS, true)),
+	}
 
 func current_timeline_tick() -> float:
 	return _timeline
@@ -347,6 +430,8 @@ func _finish_playback() -> void:
 	else:
 		print("[PLAYTHROUGH/replay] COMPLETE — authoritative events and final snapshots match.")
 	mode = Mode.OFF
+	autonomous_input_session_changed.emit(false)
+	camera_input_policy_changed.emit(true)
 	if quit_on_playback_end and get_tree() != null:
 		get_tree().quit(1 if _playback_failed else 0)
 

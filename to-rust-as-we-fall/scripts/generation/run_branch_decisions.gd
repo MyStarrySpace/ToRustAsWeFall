@@ -23,7 +23,7 @@ const DISPLAY_NAMES := {
 	"marco": "Makrov Mage", "endo": "Endo", "myke": "Myke", "oli": "Oli", "tyreg": "Tyreg",
 	"brobla": "Brobla", "vasca": "Vasca", "senchy": "Senchy", "swan": "Swan", "ninj": "Ninj", "pendy": "Pendy",
 }
-const GEAR_POOL := ["hushbloom", "gasafoetida", "seefern"]   # tool flora a salvage branch can grant (canonical)
+const GEAR_POOL := ["hushbloom", "seefern"]   # only live tool flora may enter the salvage reward pool
 
 static func display_name(id: String) -> String:
 	return str(DISPLAY_NAMES.get(id, id.capitalize()))
@@ -87,26 +87,30 @@ static func _build(pattern: String, depth: int, seed: int, roster: Array) -> Dic
 						"low", _settings(seed, depth, "clean", base_tier, roster), {}),
 				]}
 		"respite":
-			# The inverse fork: the SAFE path costs TIME (longer, more exposure) but restores more ATP via an extra
-			# shelter; the risky path is a short brutal sprint. Tuned (run_economy) so clean play prefers the banked
-			# ATP of the haul while sloppy play prefers the short sprint — a crossover, neither dominates.
+			# The inverse fork: the SAFE path costs TIME (longer, more exposure) but authors more physical
+			# lysate-cache opportunities; the risky path is a short brutal sprint. No branch choice itself
+			# changes ATP: the party must find, carry, and endocytose any food the generated stretch places.
 			return {
 				"pattern": "respite", "prompt": "The route splits: a long sheltered haul, or a short brutal sprint.",
 				"options": [
 					_opt("sprint", "Sprint it", "Short and savage — no mid-rest.",
-						"high", _settings(seed, depth, "sprint", hard_tier, roster, {"node_count": [4, 5]}), {}),
-					_opt("haul", "Take the long haul", "Longer and more exposed, but an extra shelter to rest at.",
-						"low", _settings(seed, depth, "haul", base_tier, roster, {"node_count": [9, 11], "resource_beats": 2}), {"atp_head_start": 18}),
+						"high", _settings(seed, depth, "sprint", hard_tier, roster,
+							{"node_count": [4, 5], "optional_node_count": 0, "resource_beats": 0}), {}),
+					_opt("haul", "Take the long haul", "Longer and more exposed, with more lysate caches to work for.",
+						"low", _settings(seed, depth, "haul", base_tier, roster,
+							{"node_count": [9, 11], "optional_node_count": 4, "resource_beats": 2}), {}),
 				]}
 		_:  # risk_reward (the decided default)
 			# The costly vein is LONGER + richer (more forage), not just higher-tier: its extra length is extra
-			# exposure, so it out-values the shallow cut for clean play but is punished by sloppy play (run_economy
-			# tunes the head-start + length so the crossover lands mid-range — neither branch dominates).
+			# exposure. Its value must come from physical caches in the generated level, never an invisible
+			# resource grant attached to choosing the menu option.
 			return {
 				"pattern": "risk_reward", "prompt": "The vein forks — deep and rich, or shallow and lean.",
 				"options": [
 					_opt("deep", "Work the deep vein", "Harder fighting and water, far more to forage.",
-						"high", _settings(seed, depth, "deep", hard_tier, roster, {"node_count": [8, 10], "flora_slots": [4, 6], "resource_beats": 2}), {"atp_head_start": 10}),
+						"high", _settings(seed, depth, "deep", hard_tier, roster,
+							{"node_count": [8, 10], "optional_node_count": 4,
+							"flora_slots": [4, 6], "resource_beats": 2}), {}),
 					_opt("shallow", "Take the shallow cut", "Easier going, leaner pickings.",
 						"low", _settings(seed, depth, "shallow", base_tier, roster, {"node_count": [5, 6]}), {}),
 				]}

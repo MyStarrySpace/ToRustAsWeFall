@@ -1,26 +1,41 @@
 class_name AbilityData
 
-## Ability display names, descriptions, and tuning — the single source of truth, loaded from
-## data/abilities/en/abilities.xlsx (mirrors DialogueData). Mechanics (keybind / owner / color) stay in
-## code as the canonical bindings; this owns the player-facing CONTENT so it can be edited + translated
-## like dialogue.
+## Ability display names, bindings, and provisional tuning loaded from
+## data/abilities/en/abilities.xlsx (mirrors DialogueData). ABILITY_ORDER is the implemented-cast
+## authority: localized data can describe or tune those casts, but cannot create new ones.
 ##
 ## xlsx columns: key, display_name, duration, cooldown, message, note
-## Keys are "<context>.<ability_id>" — e.g. "refuge_run.aster_focus", "refuge_run.peris_tune",
-## "peris_sim.protect". A chunk pulls its whole ability set with for_context("<chunk>").
+## Keys are "<context>.<ability_id>" — e.g. "default.emp" or "peris_sim.wrap". Contextual verbs
+## such as HACK, SCAN, and TEND live on compatible world targets instead of masquerading as casts.
 ##
 ## Usage:
 ##   AbilityData.load_dir("res://data/abilities/en/")
-##   var a := AbilityData.get_ability("refuge_run.peris_tune")   # {id, display_name, duration, ...}
-##   var all := AbilityData.for_context("refuge_run")            # Array of those dicts, id set
+##   var a := AbilityData.get_ability("default.wrap")   # {id, display_name, duration, ...}
+##   var all := AbilityData.for_context("peris_sim")    # Array of canonical dicts, id set
 
 const DIR := "res://data/abilities/en/"
 
 ## Canonical party order so for_context() is independent of the xlsx row order.
-const ABILITY_ORDER := ["aster_focus", "peris_tune", "endo_patch"]
+## Currently implemented early-game casts. Later GDD commitments (Inflame, Barrier/Restore, and
+## Suppress) stay canonical but unavailable until their full runtime contracts are authored.
+## Aster's hacking/scan register and Peris's flora tending/reading remain contextual world verbs
+## owned by the target object, not reskinned buttons.
+const ABILITY_ORDER := ["emp", "wrap"]
+const CANONICAL_NAMED_ABILITIES := {
+	"emp": "aster",
+	"wrap": "peris",
+	"inflame": "myke",
+	"barrier": "oli",
+	"restore": "oli",
+	"suppress": "tyreg",
+}
+const CONTEXTUAL_VERBS := {
+	"aster": ["hack", "scan"],
+	"peris": ["tend", "read_flora"],
+}
 
 static var _abilities: Dictionary = {}  # "context.id" -> {id, display_name, duration, cooldown, message, note}
-static var _bindings: Dictionary = {}   # ability_id -> {owner, keybind, keycode, color, atp_cost, active_status, sta_delta, hp_delta}
+static var _bindings: Dictionary = {}   # ability_id -> {owner, keybind, keycode, color, stamina_cost, active_status}
 static var _loaded := false
 
 ## Load every abilities workbook in a directory. Translation: point at another locale dir.
@@ -76,31 +91,41 @@ static func _parse_content(rows: Array) -> void:
 			"note": str(row[5]).strip_edges() if row.size() > 5 else "",
 		}
 
-## "bindings" sheet: per-ability_id MECHANICS (owner / keybind / color / atp_cost / status / deltas).
+## "bindings" sheet: per-ability_id mechanics (owner / keybind / color / stamina_cost / status).
 static func _parse_bindings(rows: Array) -> void:
 	var first_row: Array = rows[0]
 	var start := 1 if first_row.size() > 0 and str(first_row[0]).strip_edges().to_lower() == "id" else 0
+	var columns := {}
+	for column_index in range(first_row.size()):
+		columns[str(first_row[column_index]).strip_edges().to_lower()] = column_index
 	for i in range(start, rows.size()):
 		var row: Array = rows[i]
 		if row.size() < 2 or str(row[0]).strip_edges() == "":
 			continue
 		var id := str(row[0]).strip_edges()
-		var keybind := str(row[2]).strip_edges() if row.size() > 2 else ""
+		# A workbook row cannot silently rewrite a character's kit. The GDD-backed manifest above
+		# must change deliberately before a new cast ability becomes live.
+		if not ABILITY_ORDER.has(id):
+			push_warning("AbilityData: ignored non-canonical ability binding '%s'" % id)
+			continue
+		var keybind := str(_row_value(row, columns, "keybind", 2)).strip_edges()
 		var binding := {
-			"owner": str(row[1]).strip_edges() if row.size() > 1 else "",
+			"owner": str(_row_value(row, columns, "owner", 1)).strip_edges(),
 			"keybind": keybind,
 			"keycode": _keycode_for(keybind),
-			"atp_cost": _to_float(row[4]) if row.size() > 4 else 0.0,
-			"active_status": str(row[5]).strip_edges() if row.size() > 5 else "",
+			# Cast abilities spend stamina. There is intentionally no ATP field here: ATP is
+			# exclusively the shelter-rest budget and cannot be authored as a cast cost.
+			"stamina_cost": _to_float(_row_value(row, columns, "stamina_cost", -1)),
+			"active_status": str(_row_value(row, columns, "active_status", 5)).strip_edges(),
 		}
-		var color_str := str(row[3]).strip_edges() if row.size() > 3 else ""
+		var color_str := str(_row_value(row, columns, "color", 3)).strip_edges()
 		if color_str != "":
 			binding["color"] = _to_color(color_str)
-		if row.size() > 6 and str(row[6]).strip_edges() != "":
-			binding["sta_delta"] = _to_float(row[6])
-		if row.size() > 7 and str(row[7]).strip_edges() != "":
-			binding["hp_delta"] = _to_float(row[7])
 		_bindings[id] = binding
+
+static func _row_value(row: Array, columns: Dictionary, column_name: String, fallback_index: int):
+	var index := int(columns.get(column_name, fallback_index))
+	return row[index] if index >= 0 and index < row.size() else ""
 
 static func _to_float(cell) -> float:
 	var s := str(cell).strip_edges()
@@ -121,12 +146,15 @@ static func _to_color(s: String) -> Color:
 	var a := float(parts[3]) if parts.size() > 3 else 1.0
 	return Color(float(parts[0]), float(parts[1]), float(parts[2]), a)
 
-## The per-ability MECHANICS (owner / keybind / keycode / color / atp_cost / active_status / deltas) for an
+## The per-ability mechanics (owner / keybind / keycode / color / stamina_cost / active_status) for an
 ## ability_id, or {} if absent. Keyed by bare ability_id (the binding is the same across every context).
 static func binding(ability_id: String) -> Dictionary:
 	if not _loaded:
 		load_dir()
 	return (_bindings.get(ability_id, {}) as Dictionary).duplicate(true)
+
+static func is_canonical_ability(ability_id: String) -> bool:
+	return ABILITY_ORDER.has(ability_id)
 
 ## The ability dict for a key, or {} if absent. Lazy-loads on first access. Copy-on-read.
 static func get_ability(key: String) -> Dictionary:
@@ -151,7 +179,9 @@ static func for_context(context: String) -> Array:
 	for key in _abilities.keys():
 		if str(key).begins_with(prefix):
 			var a := get_ability(key)
-			found[str(a.get("id", ""))] = a
+			var id := str(a.get("id", ""))
+			if is_canonical_ability(id):
+				found[id] = a
 	# Canonical party order first, then any extras in sheet order.
 	var result: Array = []
 	for id in ABILITY_ORDER:

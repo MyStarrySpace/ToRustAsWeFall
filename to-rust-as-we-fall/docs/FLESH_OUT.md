@@ -56,7 +56,8 @@ Each loop pass does ONE item end-to-end, commits, marks it done here, and the lo
 - [~] `cov-playthrough-audit` **IN PROGRESS** — Beatability test per chunk that lacks one (wash-relay pattern:
   drive to `complete` via the data layer). ONE chunk per pass. Audit of the 15 chunks:
   - Covered: `wash_relay` (`--test-wash-relay-playthrough`), `lure_relay` (`--test-lure-relay` reaches `complete`),
-    `showcase_gallery` (`--test-showcase-gallery` asserts the tour completes), `refuge_run`
+    `showcase_gallery` (`--test-showcase-gallery` guards real exhibit structure and exit negatives;
+    `verify_showcase_gallery_spatial_concealment.gd` performs the ordinary-action survey and exact-trio exit), `refuge_run`
     (`--test-refuge-run-playthrough`, **DONE** this pass — see Done log).
   - **READY** (have a `complete`/win concept, still need a playthrough): `endo_junction_stretch`,
     `generated_stretch`, `mother_flure`, `survival_range`. (Do one per pass.)

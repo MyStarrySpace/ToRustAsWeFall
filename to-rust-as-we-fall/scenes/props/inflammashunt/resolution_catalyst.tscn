@@ -1,0 +1,23 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Mesh" path="res://resources/models/inflammashunt/resolution_catalyst/resolution_catalyst.obj" id="1_mesh"]
+[ext_resource type="Texture2D" path="res://resources/models/inflammashunt/resolution_catalyst/resolution_catalyst.png" id="2_texture"]
+
+[sub_resource type="StandardMaterial3D" id="CatalystMaterial"]
+albedo_texture = ExtResource("2_texture")
+metallic = 0.54
+roughness = 0.38
+emission_enabled = true
+emission = Color(0.08, 0.24, 0.16, 1)
+emission_energy_multiplier = 0.42
+texture_filter = 0
+
+[node name="InflammashuntResolutionCatalyst" type="Node3D"]
+metadata/asset_contract = "editable_3d_v1"
+metadata/editable_asset_root = "res://resources/models/inflammashunt/resolution_catalyst"
+metadata/visual_identity = "inflammashunt_resolution_catalyst_v1"
+
+[node name="Model" type="MeshInstance3D" parent="."]
+material_override = SubResource("CatalystMaterial")
+mesh = ExtResource("1_mesh")
+

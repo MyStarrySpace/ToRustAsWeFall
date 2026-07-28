@@ -1,0 +1,36 @@
+{
+  "lines": [
+    {
+      "key": "ring.reassignment.marco.pair",
+      "speaker": "Marco",
+      "style": "normal",
+      "wait": false,
+      "text": "It's the two of you. Separations and Transport walking in beside a therapist—that's what a reassignment looks like from down here.",
+      "context": "GDD 5.10: Marco names the analyst-plus-therapist configuration residents recognize."
+    },
+    {
+      "key": "ring.reassignment.peris.start",
+      "speaker": "Peris",
+      "style": "normal",
+      "wait": false,
+      "text": "A reassignment? Marco, we aren't—",
+      "context": "The Rings scene plants dread but does not give Peris the later recognition yet."
+    },
+    {
+      "key": "ring.reassignment.marco.scatter",
+      "speaker": "Marco",
+      "style": "normal",
+      "wait": false,
+      "text": "I know. They don't. People see that shape and get out of the corridor before it chooses them.",
+      "context": "GDD 5.10: the scatter is caused by the reassignment configuration, not rank."
+    },
+    {
+      "key": "ring.reassignment.peris.shift",
+      "speaker": "Narration",
+      "style": "narration",
+      "wait": false,
+      "text": "Peris looks from Marco to Aster, then to Endo watching the corridor. Something has shifted, but she cannot name the whole of it yet.",
+      "context": "GDD 5.10: this scene holds the seed; recognition belongs to the later Psyknapse scene."
+    }
+  ]
+}

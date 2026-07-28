@@ -1,5 +1,10 @@
 # Level-Design Research: Elements Fished from Comparable Games
 
+> **Character-kit note (2026-07-21):** older TRAWF translations in this research use
+> `TRACE`, `BLOOM`, and `BRACE` as proposal shorthand. They are not canonical cast
+> abilities. Preserve the underlying asymmetric-information lesson through contextual
+> world interactions and overlays; the committed cast roster is EMP and Wrap only.
+
 Deep-research pass over the pause-and-direct stealth-party / procedural-gating / escalation-clock corpus.
 Every claim below survived adversarial verification (3 independent votes; 24 of 25 unanimous) and traces to
 a primary source (GDC/devcom talks, developer postmortems, peer-reviewed PCG papers). 25 claims merged into
@@ -79,7 +84,7 @@ WITHIN-CHUNK — SHORT SYNCHRONIZED BURSTS, NOT LONG ACTION CHAINS: Showdown mod
 
 WITHIN-CHUNK/RUN — WEAKNESS-FORCED COMBINATION AND ANY-SUBSET SOLVABILITY (the shadow-solve rule stated by a shipped studio): Mimimi's explicit character rule is that every skill is strong in combination with teammates' skills yet effective solo (Shadow Tactics), and Shadow Gambit's free crew selection (any subset per mission) is balanced by built-in per-character weaknesses that force combination play (e.g. sniper Teresa must physically recover her projectile after each shot), so encounters must remain solvable by MANY different character combinations rather than a fixed roster.
 
-**Evidence & TRAWF translation:** Shadow Tactics postmortem verbatim: 'every character skill was strong in combination with skills of other teammates but also quite effective on its own' (framed as the corrective to Commandos 2 making characters 'too powerful, eventually harming the unique team play aspect'). Shadow Gambit Dev Diary #4 verbatim: 'The long ranged sniper Theresa for example needs to regain her arrow after shooting,' with weaknesses explicitly overcome by combining crew abilities, and islands 'designed to allow multiple different approaches.' TRAWF translation: this is TRAWF's shadow-solve principle validated by two shipped games — design each ability with a built-in cost/weakness whose mitigation is another member's ability (Peris's flora-light enabling Aster's TRACE positioning, Endo's BRACE covering a recovery), then require the generator's solver to prove solvability for the designated 2-character subparties, exactly Shadow Gambit's any-subset constraint.
+**Evidence & TRAWF translation:** Shadow Tactics postmortem verbatim: 'every character skill was strong in combination with skills of other teammates but also quite effective on its own' (framed as the corrective to Commandos 2 making characters 'too powerful, eventually harming the unique team play aspect'). Shadow Gambit Dev Diary #4 verbatim: 'The long ranged sniper Theresa for example needs to regain her arrow after shooting,' with weaknesses explicitly overcome by combining crew abilities, and islands 'designed to allow multiple different approaches.' TRAWF translation: this is TRAWF's shadow-solve principle validated by two shipped games — give each committed mechanic a legible cost or weakness whose mitigation comes from another character's contextual perception or action (for example, Peris revealing flora ground that makes Aster's timing read usable), then require the generator's solver to prove solvability for the designated 2-character subparties, exactly Shadow Gambit's any-subset constraint. This lesson does not authorize inventing character abilities.
 
 **Confidence:** high | **Verification:** 3-0 (x2, merged claims 9+12)
 - https://www.gamedeveloper.com/business/postmortem-mimimi-s-i-shadow-tactics-blades-of-the-shogun-i-
@@ -162,7 +167,7 @@ RUN-SCALE — QUANTIZE THE CLOCK INTO FEW, TELEGRAPHED, FIXED-EFFECT THRESHOLDS:
 
 CHUNK-TOPOLOGY (TOOLING) — BOSS KEYS NOTATION AS A GATING VOCABULARY: Mark Brown's Boss Keys dungeon-graph notation encodes gating as typed lock/key node pairs — red diamond/square = small key/locked door, orange = dungeon key item/the obstacles it overcomes, blue = boss key/boss door, lettered green (then purple/yellow/pink) diamond/square = switch/the barrier it removes — a compact, third-party-adopted vocabulary for drawing gated compositions as dependency graphs.
 
-**Evidence & TRAWF translation:** Legend verified verbatim via multiple independent reproductions of the Patreon post (direct fetch blocked, HTTP 403): 'Red diamonds are small keys. Red squares are locked doors... Orange diamonds are for the key item... Blue diamonds are for the boss key... A green diamond with the letter A is some kind of switch, a green square is whatever barrier is removed.' Corroborated by BorisTheBrave's lock-and-key survey and the pfirsich/DungeonGraphs tool, which adopt it as canonical. Vote was unanimous but the source could not be fetched directly, hence medium. TRAWF translation: adopt as the authoring/debug notation for chunk compositions — consumable keys (red) vs persistent abilities (orange: TRACE/BLOOM/BRACE-gated obstacles) vs the stretch's end-gate (blue) vs held-state switches (green: held-override consoles and dynamic grid blockers, which are switch/barrier pairs exactly); it slots straight onto Dormans' tight-coupling edges and gives the generator's mission graphs a human-readable rendering for level review.
+**Evidence & TRAWF translation:** Legend verified verbatim via multiple independent reproductions of the Patreon post (direct fetch blocked, HTTP 403): 'Red diamonds are small keys. Red squares are locked doors... Orange diamonds are for the key item... Blue diamonds are for the boss key... A green diamond with the letter A is some kind of switch, a green square is whatever barrier is removed.' Corroborated by BorisTheBrave's lock-and-key survey and the pfirsich/DungeonGraphs tool, which adopt it as canonical. Vote was unanimous but the source could not be fetched directly, hence medium. TRAWF translation: adopt as the authoring/debug notation for chunk compositions — consumable keys (red) vs persistent character capabilities or learned world-state access (orange) vs the stretch's end-gate (blue) vs held-state switches (green: held-override consoles and dynamic grid blockers, which are switch/barrier pairs exactly); it slots straight onto Dormans' tight-coupling edges and gives the generator's mission graphs a human-readable rendering for level review. Orange does not imply that every gate needs a new cast ability.
 
 **Confidence:** medium | **Verification:** 3-0
 - https://www.patreon.com/posts/how-my-boss-key-13801754
@@ -188,7 +193,7 @@ means every mechanic named already exists in the codebase.
    Serves P2/P6/P10.
 3. **Stage-gated overlook + POI-visibility scarcity** (register; reinforced by Mimimi's info-as-objective mission):
    the generator emits a vantage node only at low progression stages. Serves P1/P3/P16.
-4. **Depth-scaled diegetic recovery cost** (register): terminal ATP price / sloperope duration as monotone
+4. **Depth-scaled diegetic reunion cost** (register): physical sloperope/runback duration as monotone
    functions of wash depth. Serves P11/P12/P16.
 5. **Quantized day-clock thresholds** (Klei: 20-30 fine alarm levels FAILED legibility; ~6 telegraphed fixed-effect
    thresholds worked): restate TRAWF's day as 5-6 named dusk stages with fixed effects, telegraphed in-world.

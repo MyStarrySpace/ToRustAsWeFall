@@ -30,7 +30,7 @@ hardened the *contract*. So we build two layers that force each other:
 ## Director rulings (locked this session, 2026-07-01)
 
 - **P11 wash target = the BOTTOM (start shelter).** The doc is canon; A2 fixes `wash_relay`'s previous-gap
-  divergence to match. Recovery is a depth-scaled diegetic time cost (sloperope/terminal).
+  divergence to match. Reunion is a depth-scaled physical time cost (runback/sloperope); recovery remains shelter rest.
 - **C1 (charge-structure impact) + C3 (systemic lure-stimulus channel): GREEN-LIT.** C3 scheduled right after
   A2, before a third fragment hand-puppets the enemy FSM.
 - **Location renames applied** (GDD 4.4 canonical; see `reference-docs/act1_timeline.md` + memory

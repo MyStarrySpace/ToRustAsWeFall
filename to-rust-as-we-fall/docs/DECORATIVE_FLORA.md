@@ -1,8 +1,9 @@
 # Decorative Flora — the ornamental invasives (director, 2026-07-12)
 
 The director's brief: decorative flora with NO gameplay value that does NOT highlight like
-functional flora — unless Peris uses her harvest ability, and then the highlight is YELLOW rather
-than white. Several species, playing on INVASIVE flora that were planted to make things pretty.
+functional flora. Several species play on INVASIVE flora that were planted to make things pretty.
+Because these are scenery, they expose no READ, TEND, CLEAR, reward, or stat mutation; functional
+flora keeps those affordances unambiguous.
 This doc details each species, how they get removed or stay on death, and how they interact with
 the runback mechanic (the wipe-restart within a run, and the roguelite's death ledger).
 
@@ -20,16 +21,14 @@ the runback mechanic (the wipe-restart within a run, and the roguelite's death l
   *installed*. A corridor full of ornamentals is not a corridor with conditions for life — it is
   a corridor something was paid to beautify. Learning to read that difference is the point.
 
-## The read grammar (why the yellow matters)
+## Interaction grammar
 
 - Decorative flora takes NO hover outline and NO SHIFT-reveal — the interaction grammar treats it
   as scenery, exactly like a wall. New players will try to tend it; nothing responds.
-- **Peris's harvest reveal**: when Peris (active) uses her harvest ability, every decorative in
-  range lights a YELLOW outline for a few seconds — her worker's eye telling you "this one is
-  just pretty." Yellow is the new tint in the outline grammar: white = interactive, character
-  tint = queued, YELLOW = *decorative, harvestable only to clear*.
-- Harvesting a decorative yields NOTHING and REMOVES the instance. Clearing prettiness is a real
-  verb (and the only counterplay to Verdanta's spread, below).
+- Decorative planting history can still be legible through shape, placement, and runback state.
+  It does not need a bespoke interaction to explain that it is decorative.
+- If a future placement blocks a route or hides a clue, that placement must use a separate typed
+  gameplay object with a real consequence; the general decorative class remains scenery.
 
 ## The species (feral cultivar brand lines)
 
@@ -42,8 +41,8 @@ The corporate groundcover pile: a uniform, impossibly even green carpet that cli
   recorded in the run ledger) grows +1 Verdanta patch near where the party fell. The world gets
   prettier and deader with every attempt — your failures are landscaped over. The spread count is
   seeded from the run's death ledger, so replay reproduces it.
-- **Interaction:** Peris can harvest-clear a patch (nothing yielded). Verdanta over a wall's weak
-  point hides the crack tell — clearing it is occasionally *useful*, never rewarded.
+- **Interaction:** none. A route-blocking or clue-covering patch must be authored as a distinct
+  functional object, not silently promoted from this decorative class.
 
 ### Curbelia™ — the median bedding rows
 Identical pastel blossoms in dead-straight rows: street-median bedding stock (Bradford-pear /
@@ -52,7 +51,7 @@ municipal-planting register). Planted by the meter, by contract.
   always in lines, never in drifts — geometry is the tell that nothing wild grows this way.
 - **On death / runback: STAYS, unchanged.** Contract plantings do not care that you died. Their
   indifference is the read.
-- **Interaction:** none. Harvest clears a row segment.
+- **Interaction:** none.
 
 ### Lilypall™ — the pond dresser
 Pale rosette rafts that tile a water surface edge-to-edge (water-hyacinth register). Sold to make
@@ -72,7 +71,7 @@ draped catenaries. Installed for openings, festivals, inspections; never taken d
   read. In the Aghora it is everywhere and still fed.
 - **On death / runback: DROOPS.** The instance stays but flips to a wilted state for the rest of
   the run — the celebration is over, and the level quietly marks how many attempts this place has
-  cost. Harvesting a drooped Festoona clears it.
+  cost.
 - **Interaction:** none beyond the state read.
 
 ## Placement (the generator's decor pass)
@@ -87,18 +86,14 @@ patches beyond the base density, near recorded fall positions.
 
 - `DecorativeFlora` (scripts/game/objects/decorative_flora.gd): the 4 species' procedural
   visuals; dormant scenery (not interactive, not ray-pickable, never wired into the white outline
-  grammar); `set_harvest_reveal()` registers the meshes straight with the OutlineMaskManager at
-  `REVEAL_COLOR` (yellow); once READ it stays clearable after the yellow fades (a committed clear
-  order must not be silently refused — the disabled-trigger lesson); CLEAR yields nothing and
-  removes the instance.
-- Loader (`data_fragment_chunk`): object kinds `decorative_flora` + `spike_strip`; Peris's
-  HARVEST ability (`data_fragment.peris_harvest` in abilities.xlsx, bound to **Y**, owner-gated to
-  Peris) pulses the reveal for everything in `HARVEST_REVEAL_RANGE`; the runback decor pass runs
+  grammar), with no reveal/clear state.
+- Loader (`data_fragment_chunk`): object kinds `decorative_flora` and `spike_strip`; the runback
+  decor pass runs
   in the wipe restart — Verdanta +1 patch near the fall (seeded from fragment id + wipe count),
   Festoona droops, Lilypall re-rolls; Curbelia untouched; host reset restores the authored street.
 - Demo: **`--preview=hostile_streets`** ("Hostile Streets (decor + studs)", top of the picker) —
   all four species + two spike strips + a lure-across-the-studs pack + wipe-restart runbacks.
-- Guarded by `--test-decorative-flora` (in `--test-all`): the scenery contract, the yellow read,
-  clear semantics, both drains (party + enemy), all four runback rules, host reset.
+- Guarded by `--test-decorative-flora` (in `--test-all`): the non-interactive scenery contract,
+  both stud drains (party + enemy), all four runback rules, and host reset.
 - Generator placement (decor density per node register, Verdanta spread off the RunSession death
   ledger) is queued with the element-vocabulary track (ROGUELITE_RUN.md "Next").

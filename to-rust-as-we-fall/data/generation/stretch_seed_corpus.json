@@ -1,6 +1,6 @@
 {
   "contract_id": "stretch_seed_corpus_v1",
-  "description": "Named generator configurations used for repeated solver, replay, and human playthrough QA. A case is approved only after its blocking issues are fixed and it has been replayed from the recorded seed.",
+  "description": "Named generator configurations used for repeated solver, replay, and human playthrough QA. A case is approved only after its blocking issues are fixed and it has been replayed from the recorded seed. Cases are generated independently of play profile and normally approved under the Scarcity mastery projection.",
   "status_flow": ["candidate", "tuning", "blocked", "approved"],
   "evaluation_principles": [
     {
@@ -16,8 +16,20 @@
       "rule": "The briefing, HUD, rewards, and simulation must derive from one normalized play configuration and describe the same active economy."
     },
     {
+      "id": "mode_independent_generation",
+      "rule": "Generate each seed once. Difficulty and ATP-drain profiles project pressure onto that same spec and must not add, remove, move, replace, or retune its geometry, actors, resources, rewards, routes, prerequisites, or solutions."
+    },
+    {
+      "id": "scarcity_mastery_oracle",
+      "rule": "Scarcity is the preferred approval run. A deterministic ideal-resource-management persona must reach the exit under Scarcity; deliberate, legible losses are allowed, but an easier-profile pass cannot approve a Scarcity failure."
+    },
+    {
+      "id": "monotone_pressure_projection",
+      "rule": "For the same generated spec, roster, and action trace, each easier profile may only reduce or disable pressure. A trace that completes under Scarcity must remain completable under every easier profile."
+    },
+    {
       "id": "risk_scaled_rewards",
-      "rule": "Optional travel and danger must buy a proportionally larger recovery reward, while sparse spine resources guide movement without erasing scarcity."
+      "rule": "Optional travel and danger must buy proportionally stronger physically carried lysate; mandatory spine travel must never mint abstract ATP breadcrumbs."
     },
     {
       "id": "scenario_fidelity",
@@ -33,7 +45,8 @@
     "food_test": "scarcity",
     "food_test_settings": {
       "drain_interval_seconds": 60.0,
-      "drain_atp": 1.0
+      "drain_atp": 1.0,
+      "zero_atp_hp_drain": 5.0
     }
   },
   "cases": [
@@ -105,9 +118,9 @@
       ],
       "playtest_notes": [
         "Required-node and shelter progression now reject out-of-order completion without seed-specific logic.",
-        "The maintained corpus runs scarcity mode at a 60-second drain, making the detour cache meaningful on the first stretch.",
+        "The maintained corpus deliberately tests the experimental scarcity preset: after first movement, each character loses 1 ATP every 60 seconds down to zero; a later zero-ATP tick costs 5 HP.",
         "Shelter completion now has visible confirmation and disables repeat completion.",
-        "The rendered briefing now truthfully reports the active scarcity configuration."
+        "The rendered briefing reports the active drain values; detour lysate remains physical, carried, and deliberately endocytosed, while shelter rest still costs one ATP."
       ],
       "settings": {
         "id": "qa_first_fork_2207",
@@ -118,7 +131,7 @@
         "limitations": {
           "allowed": {
             "archetypes": ["1", "2", "3", "4", "5", "6", "7", "8", "10", "11"],
-            "flora": ["seefern", "scarpet", "flure", "mother_flure", "hushbloom", "doma", "snapbloom", "gasafoetida"],
+            "flora": ["seefern", "scarpet", "flure", "mother_flure", "hushbloom", "capbage", "gasafoetida"],
             "enemies": ["sapscraps", "naturalizers"]
           },
           "required": {
@@ -152,10 +165,10 @@
       ],
       "blocking_issues": [
         "The opening is spatially broad and low-contrast: the local entry reads on hover, but the first downstream beat is not visually dominant without scanning.",
-        "A human-paced pass still needs to judge ten-node scarcity pacing and whether the five salvage detours read as choices rather than route noise."
+        "A human-paced pass still needs to judge ten-node resource pacing and whether the five salvage detours read as choices rather than route noise."
       ],
       "playtest_notes": [
-        "Machine analysis and deterministic golden, shadow, and risky-recovery runs pass under the shared scarcity configuration.",
+        "Machine analysis and deterministic golden, shadow, and risky-recovery runs pass under the shared experimental scarcity plus physical-lysate/rest configuration.",
         "The risky persona exposed a harness teleport assumption; it now walks the legal prefix, rejoins the main route, and completes the legal suffix."
       ],
       "settings": {
@@ -213,7 +226,7 @@
       ],
       "blocking_issues": [],
       "playtest_notes": [
-        "The final streamer replay reaches shelter in 68.22 seconds, triggers one 60-second scarcity drain, and visibly retains the generated Flure tool in Endo's hand for a carrier decision.",
+        "The July 18 streamer replay reached shelter in 68.22 seconds and crossed one 60-second scarcity interval, but that timing is historical evidence only: current approval remeasures elapsed simulation and requires an observed drain tick rather than trusting this note.",
         "Generated targets now name concrete actions and reserve prediction/intervention dwell time, while the random walk limits consecutive and overall archetype repetition.",
         "The entry party uses the shelter's open face, causal links render above the party overlay stack, and null-material outline copies are covered by a focused regression.",
         "Risk buys an optional reward detour instead of skipping mandatory causal beats; its cost is previewed and lands as a visible NEAR MISS before recovery.",
@@ -228,7 +241,7 @@
         "limitations": {
           "allowed": {
             "archetypes": ["1", "2", "3", "4", "5", "6", "7", "8", "10", "11"],
-            "flora": ["seefern", "scarpet", "flure", "mother_flure", "hushbloom", "doma", "snapbloom", "gasafoetida"],
+            "flora": ["seefern", "scarpet", "flure", "mother_flure", "hushbloom", "capbage", "gasafoetida"],
             "enemies": ["sapscraps", "naturalizers"]
           },
           "required": {
@@ -273,7 +286,7 @@
       "playtest_notes": [
         "The generator now emits two complete four-link cycles; every cycle-scoped output feeds a later input, including cycle crossover and the final shelter handshake.",
         "Both nested carry hosts require a visible preparation interaction, then place separate payloads in Aster and Peris's hand slots; shelter records two delivered payloads.",
-        "The 26-HP risky detour now pays a carried 3-ATP lysate, so scarcity presents a real reserve-versus-exposure decision instead of a final unavoidable tax.",
+        "The 26-HP risky detour pays a carried 3-ATP lysate, creating a reserve-versus-exposure decision under the explicitly selected scarcity clock.",
         "The shadow replay moves only Aster and Peris, marks Endo outside the active party, uses pair-specific solutions, and still delivers both payloads.",
         "Rendered replay QA and all six maintained live seed playthroughs pass under the shared generator rules."
       ],
@@ -286,7 +299,7 @@
         "limitations": {
           "allowed": {
             "archetypes": ["1", "2", "3", "4", "5", "6", "7", "8", "10", "11"],
-            "flora": ["seefern", "scarpet", "flure", "mother_flure", "hushbloom", "doma", "snapbloom", "gasafoetida"],
+            "flora": ["seefern", "scarpet", "flure", "mother_flure", "hushbloom", "capbage", "gasafoetida"],
             "enemies": ["sapscraps", "naturalizers"]
           },
           "required": {
@@ -338,7 +351,7 @@
         "limitations": {
           "allowed": {
             "archetypes": ["1", "2", "3", "4", "5", "6", "7", "8", "10", "11"],
-            "flora": ["seefern", "scarpet", "flure", "mother_flure", "hushbloom", "doma", "snapbloom", "gasafoetida"],
+            "flora": ["seefern", "scarpet", "flure", "mother_flure", "hushbloom", "capbage", "gasafoetida"],
             "enemies": ["sapscraps", "naturalizers"]
           },
           "required": {

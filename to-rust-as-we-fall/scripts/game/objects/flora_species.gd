@@ -16,7 +16,7 @@ const SPECIES := {
 		"primary_function": "light_vision_extension",
 		"secondary_function": "reveal_camouflaged",
 		"tier": Tier.NONE,
-		"reveals": ["hidra", "crust_early", "nosoma"],
+		"reveals": ["hidra", "crust_early", "redactor"],
 		"peris_words": ["the vines", "the glow-vines", "the little ones"],
 		"scent_healthy": "faint sweet, moist, like rain on warm rock",
 		"scent_dying": "standing water; loss-register",
@@ -59,39 +59,43 @@ const SPECIES := {
 		"scent_dying": "sharply of damp stone",
 		"regen_seconds": 7200.0,  # ~couple corridor traversals
 	},
-	"doma": {
-		"display_name": "Doma",
+	"capbage": {
+		"display_name": "Capbage",
 		"primary_function": "tight_cover_enclosure",
-		"secondary_function": "",
+		"secondary_function": "general_cache",
 		"tier": Tier.TIGHT,
-		"name_etymology": "shortened from 'domatia' (real botanical term)",
-		"peris_words": ["the blooms", "my blooms", "the safeholds"],
-		"scent_healthy": "faintly sweet, like honey or overripe fruit",
-		"scent_dying": "loss-register over the honey",
+		"biology_basis": "self-sealing cabbage-like leaf head with a mutualist cavity",
+		"peris_words": ["the heads", "my heads", "the safeholds"],
+		"scent_healthy": "faintly sweet and vegetal, like fresh-cut cabbage with a honey undertone",
 		"capacity_default": 1,
 		"capacity_rare_max": 3,
+		"hide_rest_atp_cost": 0,
+		"hide_rest_restores_hp": false,
+		"hide_rest_tiredness": "major",
 		"hum_signal": "steady when comfortable, agitated when threats near, silent when stressed",
 	},
-	"snapbloom": {
-		"display_name": "Snapbloom",
-		"primary_function": "repellent_burst_camouflaged",
-		"secondary_function": "fire_reactive_hazard",
+	"gasafoetida": {
+		"display_name": "Gasafoetida",
+		"primary_function": "carried_repellent_gas_pod",
+		"secondary_function": "fire_reactive_combustible_projectile_cluster",
 		"tier": Tier.NONE,
-		"repellent_targets": ["chain", "tangler", "nosoma"],
-		"repellent_immune": ["naturalizer"],
-		"peris_words": ["the snappers", "the popcorns", "the loud ones"],
-		"scent_healthy": "sharper than Hushbloom, slightly sweet, ready-to-react",
-		"scent_dying": "sharp loss-register",
-		"popcorn_projectile_count": 4,  # range 3-5; deterministic anchor
+		"biology_basis": "asafoetida sulfur chemistry with serotinous-cone fire dispersal",
+		"repellent_scope": "all_enemy_classes",
+		"held_pod_duration_seconds": [30.0, 45.0],
+		"peris_words": ["the stinkers", "the pods", "the smelly ones"],
+		"fire_reaction_worker_phrase": "the popcorn going off",
+		"scent_healthy": "sharp sulfurous asafoetida resin, eye-watering and ready to react",
+		"serotinous_projectile_count_default": 4,  # authored range is 3-5
 	},
 }
 
-## Retired keys preserved for dialogue/save compatibility.
+## Retired keys preserved only at load/save compatibility boundaries.
 const LEGACY_REDIRECT := {
 	"lumivine": "seefern",
 	"rustmoss": "scarpet",
-	"flure": "flure",
 	"hushcap": "hushbloom",
+	"doma": "capbage",
+	"snapbloom": "gasafoetida",
 	"veilcap": "",  # cut entirely, no replacement
 	"rootwall": "scarpet",
 	"stormcap": "",  # absorbed into network
@@ -99,6 +103,19 @@ const LEGACY_REDIRECT := {
 	"pando": "",
 	"siphonbloom": "",  # cut entirely
 }
+
+## Convert a current or persisted retired key to the runtime species key.
+## Unknown keys stay normalized so callers can report them without inventing a species.
+static func canonical_key(key: String) -> String:
+	var normalized := key.strip_edges().to_lower()
+	if SPECIES.has(normalized):
+		return normalized
+	if LEGACY_REDIRECT.has(normalized):
+		return str(LEGACY_REDIRECT[normalized])
+	return normalized
+
+static func is_legacy_key(key: String) -> bool:
+	return LEGACY_REDIRECT.has(key.strip_edges().to_lower())
 
 ## Non-tendable atmospheric flora.
 const AMBIENT := {
@@ -123,11 +140,9 @@ const PUZZLE_ONLY := {
 
 ## Lookup a current or retired species key.
 static func get_species(key: String) -> Dictionary:
-	var k := key.to_lower()
+	var k := canonical_key(key)
 	if SPECIES.has(k):
 		return (SPECIES[k] as Dictionary).duplicate(true)
-	if LEGACY_REDIRECT.has(k) and LEGACY_REDIRECT[k] != "":
-		return (SPECIES[LEGACY_REDIRECT[k]] as Dictionary).duplicate(true)
 	return {}
 
 ## Display name for current or retired keys.

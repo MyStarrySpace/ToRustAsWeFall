@@ -1,0 +1,294 @@
+[gd_scene load_steps=10 format=3]
+
+[sub_resource type="BoxMesh" id="UnitBox"]
+size = Vector3(1, 1, 1)
+
+[sub_resource type="TorusMesh" id="PortalOuterRingMesh"]
+inner_radius = 0.84
+outer_radius = 1.12
+rings = 32
+ring_segments = 14
+
+[sub_resource type="TorusMesh" id="PortalInnerRingMesh"]
+inner_radius = 0.73
+outer_radius = 0.81
+rings = 32
+ring_segments = 10
+
+[sub_resource type="CylinderMesh" id="PortalCoilMesh"]
+top_radius = 0.18
+bottom_radius = 0.22
+height = 0.38
+radial_segments = 16
+
+[sub_resource type="TorusMesh" id="GearRingMesh"]
+inner_radius = 0.42
+outer_radius = 0.7
+rings = 32
+ring_segments = 14
+
+[sub_resource type="CylinderMesh" id="GearHubMesh"]
+top_radius = 0.22
+bottom_radius = 0.22
+height = 0.26
+radial_segments = 20
+
+[sub_resource type="CapsuleMesh" id="MembraneVaneMesh"]
+radius = 0.2
+height = 2.0
+radial_segments = 12
+rings = 6
+
+[sub_resource type="SphereMesh" id="MembraneAnchorMesh"]
+radius = 0.2
+height = 0.4
+radial_segments = 12
+rings = 6
+
+[sub_resource type="CylinderMesh" id="MembraneTendonMesh"]
+top_radius = 0.13
+bottom_radius = 0.13
+height = 2.9
+radial_segments = 16
+
+[node name="MotherFlureMechanismsBakeSource" type="Node3D"]
+metadata/tooling_only = true
+metadata/asset_contract = "editable_3d_v1"
+
+[node name="PortalOuterRing" type="MeshInstance3D" parent="."]
+position = Vector3(0, 1.18, 0)
+rotation = Vector3(1.570796, 0, 0)
+scale = Vector3(0.78, 1, 1.08)
+mesh = SubResource("PortalOuterRingMesh")
+
+[node name="PortalInnerRing" type="MeshInstance3D" parent="."]
+position = Vector3(0, 1.18, -0.025)
+rotation = Vector3(1.570796, 0, 0)
+scale = Vector3(0.78, 1, 1.08)
+mesh = SubResource("PortalInnerRingMesh")
+
+[node name="PortalFoot" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.07, 0)
+scale = Vector3(2, 0.14, 0.74)
+mesh = SubResource("UnitBox")
+
+[node name="PortalCoilLeft" type="MeshInstance3D" parent="."]
+position = Vector3(-0.72, 0.22, 0)
+mesh = SubResource("PortalCoilMesh")
+
+[node name="PortalCoilRight" type="MeshInstance3D" parent="."]
+position = Vector3(0.72, 0.22, 0)
+mesh = SubResource("PortalCoilMesh")
+
+[node name="PortalCableLeft" type="MeshInstance3D" parent="."]
+position = Vector3(-0.79, 0.5, 0)
+rotation = Vector3(0, 0, -0.14)
+scale = Vector3(0.15, 0.58, 0.16)
+mesh = SubResource("UnitBox")
+
+[node name="PortalCableRight" type="MeshInstance3D" parent="."]
+position = Vector3(0.79, 0.5, 0)
+rotation = Vector3(0, 0, 0.14)
+scale = Vector3(0.15, 0.58, 0.16)
+mesh = SubResource("UnitBox")
+
+[node name="GearRing" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.16, 0)
+mesh = SubResource("GearRingMesh")
+
+[node name="GearHub" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.16, 0)
+mesh = SubResource("GearHubMesh")
+
+[node name="GearSpoke0" type="MeshInstance3D" parent="."]
+position = Vector3(0.29, 0.16, 0)
+scale = Vector3(0.5, 0.11, 0.1)
+mesh = SubResource("UnitBox")
+
+[node name="GearSpoke1" type="MeshInstance3D" parent="."]
+position = Vector3(0.205, 0.16, 0.205)
+rotation = Vector3(0, -0.785398, 0)
+scale = Vector3(0.5, 0.11, 0.1)
+mesh = SubResource("UnitBox")
+
+[node name="GearSpoke2" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.16, 0.29)
+rotation = Vector3(0, -1.570796, 0)
+scale = Vector3(0.5, 0.11, 0.1)
+mesh = SubResource("UnitBox")
+
+[node name="GearSpoke3" type="MeshInstance3D" parent="."]
+position = Vector3(-0.205, 0.16, 0.205)
+rotation = Vector3(0, -2.356194, 0)
+scale = Vector3(0.5, 0.11, 0.1)
+mesh = SubResource("UnitBox")
+
+[node name="GearSpoke4" type="MeshInstance3D" parent="."]
+position = Vector3(-0.29, 0.16, 0)
+rotation = Vector3(0, 3.141593, 0)
+scale = Vector3(0.5, 0.11, 0.1)
+mesh = SubResource("UnitBox")
+
+[node name="GearSpoke5" type="MeshInstance3D" parent="."]
+position = Vector3(-0.205, 0.16, -0.205)
+rotation = Vector3(0, 2.356194, 0)
+scale = Vector3(0.5, 0.11, 0.1)
+mesh = SubResource("UnitBox")
+
+[node name="GearSpoke6" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.16, -0.29)
+rotation = Vector3(0, 1.570796, 0)
+scale = Vector3(0.5, 0.11, 0.1)
+mesh = SubResource("UnitBox")
+
+[node name="GearSpoke7" type="MeshInstance3D" parent="."]
+position = Vector3(0.205, 0.16, -0.205)
+rotation = Vector3(0, 0.785398, 0)
+scale = Vector3(0.5, 0.11, 0.1)
+mesh = SubResource("UnitBox")
+
+[node name="GearTooth0" type="MeshInstance3D" parent="."]
+position = Vector3(0.75, 0.16, 0)
+scale = Vector3(0.2, 0.17, 0.22)
+mesh = SubResource("UnitBox")
+
+[node name="GearTooth1" type="MeshInstance3D" parent="."]
+position = Vector3(0.65, 0.16, 0.375)
+rotation = Vector3(0, -0.523599, 0)
+scale = Vector3(0.2, 0.17, 0.22)
+mesh = SubResource("UnitBox")
+
+[node name="GearTooth2" type="MeshInstance3D" parent="."]
+position = Vector3(0.375, 0.16, 0.65)
+rotation = Vector3(0, -1.047198, 0)
+scale = Vector3(0.2, 0.17, 0.22)
+mesh = SubResource("UnitBox")
+
+[node name="GearTooth3" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.16, 0.75)
+rotation = Vector3(0, -1.570796, 0)
+scale = Vector3(0.2, 0.17, 0.22)
+mesh = SubResource("UnitBox")
+
+[node name="GearTooth4" type="MeshInstance3D" parent="."]
+position = Vector3(-0.375, 0.16, 0.65)
+rotation = Vector3(0, -2.094395, 0)
+scale = Vector3(0.2, 0.17, 0.22)
+mesh = SubResource("UnitBox")
+
+[node name="GearTooth5" type="MeshInstance3D" parent="."]
+position = Vector3(-0.65, 0.16, 0.375)
+rotation = Vector3(0, -2.617994, 0)
+scale = Vector3(0.2, 0.17, 0.22)
+mesh = SubResource("UnitBox")
+
+[node name="GearTooth6" type="MeshInstance3D" parent="."]
+position = Vector3(-0.75, 0.16, 0)
+rotation = Vector3(0, 3.141593, 0)
+scale = Vector3(0.2, 0.17, 0.22)
+mesh = SubResource("UnitBox")
+
+[node name="GearTooth7" type="MeshInstance3D" parent="."]
+position = Vector3(-0.65, 0.16, -0.375)
+rotation = Vector3(0, 2.617994, 0)
+scale = Vector3(0.2, 0.17, 0.22)
+mesh = SubResource("UnitBox")
+
+[node name="GearTooth8" type="MeshInstance3D" parent="."]
+position = Vector3(-0.375, 0.16, -0.65)
+rotation = Vector3(0, 2.094395, 0)
+scale = Vector3(0.2, 0.17, 0.22)
+mesh = SubResource("UnitBox")
+
+[node name="GearTooth9" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.16, -0.75)
+rotation = Vector3(0, 1.570796, 0)
+scale = Vector3(0.2, 0.17, 0.22)
+mesh = SubResource("UnitBox")
+
+[node name="GearTooth10" type="MeshInstance3D" parent="."]
+position = Vector3(0.375, 0.16, -0.65)
+rotation = Vector3(0, 1.047198, 0)
+scale = Vector3(0.2, 0.17, 0.22)
+mesh = SubResource("UnitBox")
+
+[node name="GearTooth11" type="MeshInstance3D" parent="."]
+position = Vector3(0.65, 0.16, -0.375)
+rotation = Vector3(0, 0.523599, 0)
+scale = Vector3(0.2, 0.17, 0.22)
+mesh = SubResource("UnitBox")
+
+[node name="GearGripLeft" type="MeshInstance3D" parent="."]
+position = Vector3(-0.88, 0.2, 0)
+scale = Vector3(0.16, 0.25, 0.34)
+mesh = SubResource("UnitBox")
+
+[node name="GearGripRight" type="MeshInstance3D" parent="."]
+position = Vector3(0.88, 0.2, 0)
+scale = Vector3(0.16, 0.25, 0.34)
+mesh = SubResource("UnitBox")
+
+[node name="MembraneVane0" type="MeshInstance3D" parent="."]
+position = Vector3(-1.225, 0.84, 0.02)
+rotation = Vector3(0, -0.16, 0)
+scale = Vector3(1, 0.84, 1)
+mesh = SubResource("MembraneVaneMesh")
+
+[node name="MembraneVane1" type="MeshInstance3D" parent="."]
+position = Vector3(-0.875, 0.92, -0.03)
+rotation = Vector3(0, 0.13, 0)
+scale = Vector3(1, 0.92, 1)
+mesh = SubResource("MembraneVaneMesh")
+
+[node name="MembraneVane2" type="MeshInstance3D" parent="."]
+position = Vector3(-0.525, 1.01, 0.04)
+rotation = Vector3(0, -0.11, 0)
+scale = Vector3(1, 1.01, 1)
+mesh = SubResource("MembraneVaneMesh")
+
+[node name="MembraneVane3" type="MeshInstance3D" parent="."]
+position = Vector3(-0.175, 1.08, -0.04)
+rotation = Vector3(0, 0.08, 0)
+scale = Vector3(1, 1.08, 1)
+mesh = SubResource("MembraneVaneMesh")
+
+[node name="MembraneVane4" type="MeshInstance3D" parent="."]
+position = Vector3(0.175, 1.08, 0.04)
+rotation = Vector3(0, -0.08, 0)
+scale = Vector3(1, 1.08, 1)
+mesh = SubResource("MembraneVaneMesh")
+
+[node name="MembraneVane5" type="MeshInstance3D" parent="."]
+position = Vector3(0.525, 1.01, -0.04)
+rotation = Vector3(0, 0.11, 0)
+scale = Vector3(1, 1.01, 1)
+mesh = SubResource("MembraneVaneMesh")
+
+[node name="MembraneVane6" type="MeshInstance3D" parent="."]
+position = Vector3(0.875, 0.92, 0.03)
+rotation = Vector3(0, -0.13, 0)
+scale = Vector3(1, 0.92, 1)
+mesh = SubResource("MembraneVaneMesh")
+
+[node name="MembraneVane7" type="MeshInstance3D" parent="."]
+position = Vector3(1.225, 0.84, -0.02)
+rotation = Vector3(0, 0.16, 0)
+scale = Vector3(1, 0.84, 1)
+mesh = SubResource("MembraneVaneMesh")
+
+[node name="MembraneTendon" type="MeshInstance3D" parent="."]
+position = Vector3(0, 2.13, 0)
+rotation = Vector3(0, 0, 1.570796)
+mesh = SubResource("MembraneTendonMesh")
+
+[node name="MembraneAnchorLeft" type="MeshInstance3D" parent="."]
+position = Vector3(-1.05, 2.13, 0)
+mesh = SubResource("MembraneAnchorMesh")
+
+[node name="MembraneAnchorCenter" type="MeshInstance3D" parent="."]
+position = Vector3(0, 2.13, 0)
+mesh = SubResource("MembraneAnchorMesh")
+
+[node name="MembraneAnchorRight" type="MeshInstance3D" parent="."]
+position = Vector3(1.05, 2.13, 0)
+mesh = SubResource("MembraneAnchorMesh")

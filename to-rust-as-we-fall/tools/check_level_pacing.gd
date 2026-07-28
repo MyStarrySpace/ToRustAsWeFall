@@ -99,6 +99,26 @@ func _run_analyzer_self_checks(manifest: Dictionary) -> void:
 	}
 	_expect_failure(target, dishonest_categories, rules, ["category_sum"], "uncategorized active time cannot hide padding")
 
+	var planning_target: Dictionary = PacingContract.target_by_id(manifest, "aster_sim")
+	var concise_canonical_metrics := valid_metrics.duplicate(true)
+	concise_canonical_metrics["meaningful_active_seconds"] = 120.0
+	concise_canonical_metrics["total_play_seconds"] = 140.0
+	concise_canonical_metrics["decision_count"] = 1
+	concise_canonical_metrics["branch_count"] = 0
+	concise_canonical_metrics["category_seconds"] = {
+		"movement_and_interaction": 60.0,
+		"tutorial_feedback": 60.0,
+	}
+	var planning_report: Dictionary = PacingContract.analyze(planning_target, concise_canonical_metrics, rules)
+	_expect(bool(planning_report.get("passed", false)),
+		"a concise canonical scene is not failed by a provisional planning quota",
+		planning_report.get("errors", []))
+	_expect(_has_warning_code(planning_report, "below_duration_band")
+		and _has_warning_code(planning_report, "decisions")
+		and _has_warning_code(planning_report, "branches"),
+		"planning-band duration and count misses remain visible as advisory warnings",
+		planning_report.get("warnings", []))
+
 
 func _expect_failure(
 	target: Dictionary,
@@ -122,6 +142,13 @@ func _expect_failure(
 
 func _has_error_code(report: Dictionary, code: String) -> bool:
 	for issue_variant in report.get("errors", []):
+		if issue_variant is Dictionary and str((issue_variant as Dictionary).get("code", "")) == code:
+			return true
+	return false
+
+
+func _has_warning_code(report: Dictionary, code: String) -> bool:
+	for issue_variant in report.get("warnings", []):
 		if issue_variant is Dictionary and str((issue_variant as Dictionary).get("code", "")) == code:
 			return true
 	return false

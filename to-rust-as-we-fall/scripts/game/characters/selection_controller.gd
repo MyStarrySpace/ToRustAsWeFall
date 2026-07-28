@@ -161,18 +161,24 @@ func _unhandled_input(event: InputEvent) -> void:
 			_marquee.clear_rect()
 
 func _process(_delta: float) -> void:
+	var perf_started := PerformanceTrace.begin()
 	if is_inside_tree() and get_tree().paused:
 		if _command_pressed or _command_suppressed_until_release:
 			cancel_command_hold()
+		PerformanceTrace.end(&"update", &"selection.process", perf_started, "paused", 0)
 		return
+	var hold_started := PerformanceTrace.begin()
 	_update_command_hold()
+	PerformanceTrace.end(&"update", &"selection.command_hold", hold_started, "active" if _command_pressed else "idle", 1)
 	if not _pressed or _marquee == null or not is_inside_tree():
+		PerformanceTrace.end(&"update", &"selection.process", perf_started, "no_marquee", 0)
 		return
 	var cur := get_viewport().get_mouse_position()
 	if not _dragging and _press_pos.distance_to(cur) > DRAG_THRESHOLD:
 		_dragging = true
 	if _dragging:
 		_marquee.set_rect(Rect2(_press_pos, cur - _press_pos))
+	PerformanceTrace.end(&"update", &"selection.process", perf_started, "marquee", 1)
 
 func _begin_command_hold(event: InputEventMouseButton) -> void:
 	if _command_pressed:
@@ -378,6 +384,7 @@ func _rally_members_share_anchor_level(members: Array[String], anchor_id: String
 ## destination formation and route computation that release will commit. The signature cache keeps
 ## stationary holds read-only and cheap instead of pathfinding every frame.
 func _update_rally_preview_at_screen(screen_pos: Vector2) -> void:
+	var perf_started := PerformanceTrace.begin()
 	var anchor_id := _pick_character_id(screen_pos)
 	var target := Vector3.INF
 	if anchor_id != "" and _game_state.characters.has(anchor_id):
@@ -385,25 +392,34 @@ func _update_rally_preview_at_screen(screen_pos: Vector2) -> void:
 	else:
 		target = _rally_ground_target(screen_pos)
 	_update_rally_preview(target, anchor_id)
+	PerformanceTrace.end(&"nav", &"selection.rally_target", perf_started, anchor_id, 1)
 
 func _update_rally_preview(target: Vector3, anchor_id := "") -> void:
+	var perf_started := PerformanceTrace.begin()
 	if _game_state == null or not _game_state.has_method("compute_rally_destinations"):
 		_clear_rally_preview()
+		PerformanceTrace.end(&"nav", &"selection.rally_preview", perf_started, "unavailable", 0)
 		return
 	var members := _rally_candidate_ids()
 	if anchor_id != "":
 		members.erase(anchor_id)
 	if not target.is_finite() or members.is_empty() or not _rally_members_share_anchor_level(members, anchor_id):
 		_clear_rally_preview()
+		PerformanceTrace.end(&"nav", &"selection.rally_preview", perf_started, "invalid", members.size())
 		return
-	var signature := "%s|%s|%s" % [anchor_id, str(target), ",".join(members)]
+	# On grid scenes the resolved formation cannot change while the pointer stays
+	# inside one cell. Key the cache by that causal destination, not raw ray-hit
+	# floats; camera/pointer jitter inside a cell used to rerun one A* per member.
+	var signature := _rally_preview_target_signature(target, anchor_id, members)
 	if signature == _rally_preview_signature:
+		PerformanceTrace.end(&"nav", &"selection.rally_preview", perf_started, "cached", members.size())
 		return
 	_clear_rally_preview()
 	_rally_preview_signature = signature
 	var raw_destinations = _game_state.call("compute_rally_destinations", members, target, anchor_id)
 	if not (raw_destinations is Array) or raw_destinations.size() != members.size():
 		_clear_rally_preview()
+		PerformanceTrace.end(&"nav", &"selection.rally_preview", perf_started, "no_formation", members.size())
 		return
 	# Resolve and lock every member BEFORE assigning any formation endpoints. Activating a Player's
 	# external preview clears its previous single/group hover, which can touch other party members;
@@ -447,6 +463,32 @@ func _update_rally_preview(target: Vector3, anchor_id := "") -> void:
 			renderer.clear_explicit_path()
 		if "preview_move_target" in node:
 			node.preview_move_target = path[path.size() - 1] if not path.is_empty() else destination
+	PerformanceTrace.end(&"nav", &"selection.rally_preview", perf_started, anchor_id, entries.size())
+
+func _rally_preview_target_signature(target: Vector3, anchor_id: String, members: Array[String]) -> String:
+	var target_key := str(target)
+	var planning_key := "gridless"
+	if _game_state != null and _game_state.grid != null:
+		var grid: GridWorld = _game_state.grid
+		var cell: Vector2i = grid.world_to_grid(target)
+		target_key = "%d,%d,%d" % [cell.x, cell.y, grid.level_for_y(target.y)]
+		# A target cell alone determines the final formation, but each displayed
+		# route also starts at the member's live cell/level and uses the current
+		# cautious/direct mode. Keep sub-cell pointer jitter cached while a moving
+		# member crossing a cell (or a route-mode change) invalidates stale paths.
+		var origins := PackedStringArray()
+		for id in members:
+			if not _game_state.characters.has(id):
+				origins.append("%s:missing" % id)
+				continue
+			var origin_cell: Vector2i = grid.world_to_grid(_game_state.get_position(id))
+			origins.append("%s:%d,%d,%d" % [
+				id, origin_cell.x, origin_cell.y, _game_state.get_character_level(id)])
+		planning_key = "%s|%s" % [
+			"cautious" if _game_state.is_route_cautious() else "direct",
+			",".join(origins),
+		]
+	return "%s|%s|%s|%s" % [anchor_id, target_key, ",".join(members), planning_key]
 
 func _clear_rally_preview() -> void:
 	for raw_id in _rally_previews.keys():

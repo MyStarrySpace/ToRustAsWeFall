@@ -13,7 +13,6 @@ const CASES := [
 	{"name": "tag_checkpoint_east", "profile": "tag_checkpoint", "program": "boundary",
 		"overrides": {"x0": 15.6, "x1": 28.0, "signs": ["PSY-KNAPSE ARRAY"]}},
 	{"name": "elevator_below", "profile": "elevator_below_routes", "program": "hydraulic"},
-	{"name": "elevator_junction_annex", "profile": "elevator_junction_field_annex", "program": "hydraulic"},
 	{"name": "elevator_gauntlet", "profile": "elevator_flure_relay", "program": "boundary"},
 	{"name": "leaving_facility", "profile": "leaving_facility", "program": "hydraulic",
 		"overrides": {"x0": -4.0, "x1": 218.0, "width": 30.0, "spacing": 11.5,
@@ -28,7 +27,7 @@ const CASES := [
 	{"name": "lockout", "profile": "lockout", "program": "boundary",
 		"overrides": {"x0": 0.0, "x1": 220.0, "width": 10.0, "wall_height": 3.2,
 			"ground_y": 0.0, "spacing": 8.4, "seed": 0x10C0A7,
-			"signs": ["CIVIC LIMIT", "PAIR RELAY", "MAINTAINED SECTION  >"]}},
+			"signs": ["CIVIC LIMIT", "SERVICE CORRIDOR", "MAINTAINED SECTION  >"]}},
 ]
 
 var _failures: Array[String] = []

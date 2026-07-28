@@ -553,115 +553,101 @@
 			]
 		},
 		{
-			"id": "stacks_support_log_intro",
-			"display_name": "Stacks Support Log Intro",
+			"id": "stacks_bank_deduction",
+			"display_name": "Stacks Three-Bank Deduction",
 			"scene": "res://scenes/tutorial/act1.tscn",
-			"kind": "hybrid",
-			"tags": ["stacks", "engram", "memory", "tutorial"],
+			"kind": "deduction",
+			"tags": ["stacks", "comparison", "evidence", "aster"],
 			"setup": [
-				{"type": "call", "method": "prepare_stacks_fragment", "args": ["engram"]}
+				{"type": "call", "method": "prepare_stacks_fragment", "args": ["bank"]}
 			],
 			"scenarios": [
 				{
-					"id": "support_log_opens_and_hands_back",
-					"display_name": "Support Log Opens And Hands Back",
+					"id": "all_feeds_then_unsigned_commit",
+					"display_name": "All Feeds Then Unsigned Commit",
 					"script": [
-						{"type": "call", "method": "trigger_stacks_support_log"},
-						{"type": "assert_path", "path": "stacks.engram.entry_count", "op": "==", "value": 1},
-						{"type": "assert_path", "path": "stacks.engram.overlay_visible", "op": "==", "value": true},
-						{"type": "assert_path", "path": "stacks.engram.story_key", "op": "==", "value": "stacks_support_team_log"},
-						{"type": "call", "method": "close_stacks_engram_overlay"},
-						{"type": "advance", "seconds": 0.2},
-						{"type": "assert_path", "path": "current_step", "op": "==", "value": "stacks_terminal"}
+						{"type": "call", "method": "trigger_stacks_bank", "args": ["bank_a"]},
+						{"type": "call", "method": "trigger_stacks_bank", "args": ["bank_b"]},
+						{"type": "call", "method": "trigger_stacks_bank", "args": ["bank_c"]},
+						{"type": "assert_path", "path": "stacks.bank_resolved", "op": "==", "value": false},
+						{"type": "call", "method": "trigger_stacks_bank", "args": ["bank_b"]},
+						{"type": "advance", "seconds": 0.3},
+						{"type": "assert_path", "path": "stacks.bank_resolved", "op": "==", "value": true},
+						{"type": "assert_path", "path": "current_step", "op": "==", "value": "stacks_shelter"}
 					]
 				}
 			]
 		},
 		{
-			"id": "stacks_terminal_signal",
-			"display_name": "Stacks Terminal To Signal",
+			"id": "stacks_optional_records",
+			"display_name": "Stacks Optional Records",
 			"scene": "res://scenes/tutorial/act1.tscn",
-			"kind": "hybrid",
-			"tags": ["stacks", "terminal", "expectation", "handoff"],
+			"kind": "worldbuilding",
+			"tags": ["stacks", "optional", "engram", "terminal"],
 			"setup": [
-				{"type": "call", "method": "prepare_stacks_fragment", "args": ["terminal"]}
+				{"type": "call", "method": "prepare_stacks_fragment", "args": ["bank"]}
 			],
 			"scenarios": [
 				{
-					"id": "terminal_advances_to_signal",
-					"display_name": "Terminal Advances To Signal",
+					"id": "records_never_gate_the_route",
+					"display_name": "Records Never Gate The Route",
 					"script": [
 						{"type": "call", "method": "trigger_stacks_terminal"},
-						{"type": "assert_path", "path": "stacks.terminal_interacted", "op": "==", "value": true},
-						{"type": "assert_path", "path": "current_step", "op": "==", "value": "stacks_signal"}
-					]
-				}
-			]
-		},
-		{
-			"id": "stacks_signal_wall",
-			"display_name": "Stacks Signal Wall",
-			"scene": "res://scenes/tutorial/act1.tscn",
-			"kind": "hybrid",
-			"tags": ["stacks", "signal", "sensor", "arbitration"],
-			"setup": [
-				{"type": "call", "method": "prepare_stacks_fragment", "args": ["signal"]}
-			],
-			"scenarios": [
-				{
-					"id": "signal_advances_to_archive",
-					"display_name": "Signal Advances To Archive",
-					"script": [
-						{"type": "call", "method": "trigger_stacks_signal"},
-						{"type": "assert_path", "path": "stacks.signal_interacted", "op": "==", "value": true},
-						{"type": "assert_path", "path": "current_step", "op": "==", "value": "stacks_archive"}
-					]
-				}
-			]
-		},
-		{
-			"id": "stacks_support_log_revisit",
-			"display_name": "Stacks Support Log Revisit",
-			"scene": "res://scenes/tutorial/act1.tscn",
-			"kind": "hybrid",
-			"tags": ["stacks", "engram", "memory", "revisit"],
-			"setup": [
-				{"type": "call", "method": "prepare_stacks_fragment", "args": ["explore"]}
-			],
-			"scenarios": [
-				{
-					"id": "support_log_reopens_without_advancing",
-					"display_name": "Support Log Reopens Without Advancing",
-					"script": [
-						{"type": "call", "method": "trigger_stacks_support_log"},
-						{"type": "assert_path", "path": "stacks.engram.entry_count", "op": "==", "value": 1},
-						{"type": "assert_path", "path": "stacks.engram.overlay_visible", "op": "==", "value": true},
-						{"type": "assert_path", "path": "stacks.engram.story_key", "op": "==", "value": "stacks_support_team_log"},
-						{"type": "call", "method": "close_stacks_engram_overlay"},
-						{"type": "advance", "seconds": 0.2},
-						{"type": "assert_path", "path": "current_step", "op": "==", "value": "stacks_explore"}
-					]
-				}
-			]
-		},
-		{
-			"id": "stacks_archive_audit",
-			"display_name": "Stacks Archive Audit",
-			"scene": "res://scenes/tutorial/act1.tscn",
-			"kind": "hybrid",
-			"tags": ["stacks", "archive", "audit", "inference"],
-			"setup": [
-				{"type": "call", "method": "prepare_stacks_fragment", "args": ["archive"]}
-			],
-			"scenarios": [
-				{
-					"id": "workspace_flags_hidden_author",
-					"display_name": "Workspace Flags Hidden Author",
-					"script": [
 						{"type": "call", "method": "trigger_stacks_archive"},
-						{"type": "assert_path", "path": "stacks.archive_interacted", "op": "==", "value": true},
-						{"type": "assert_path", "path": "stacks.audit_flags_found", "op": "==", "value": true},
+						{"type": "call", "method": "trigger_stacks_signal"},
+						{"type": "assert_path", "path": "stacks.optional_record_count", "op": "==", "value": 3},
+						{"type": "assert_path", "path": "stacks.bank_resolved", "op": "==", "value": false},
+						{"type": "assert_path", "path": "current_step", "op": "==", "value": "stacks_bank_audit"}
+					]
+				}
+			]
+		},
+		{
+			"id": "stacks_shelter_anxiety",
+			"display_name": "Stacks Shelter Anxiety Conversation",
+			"scene": "res://scenes/tutorial/act1.tscn",
+			"kind": "story",
+			"tags": ["stacks", "shelter", "rest", "peris", "aster"],
+			"setup": [
+				{"type": "call", "method": "prepare_stacks_fragment", "args": ["shelter"]}
+			],
+			"scenarios": [
+				{
+					"id": "peris_asks_what_aster_knows",
+					"display_name": "Peris Asks What Aster Knows",
+					"script": [
+						{"type": "teleport", "char_id": "aster", "anchor": "stacks_shelter"},
+						{"type": "teleport", "char_id": "peris", "anchor": "stacks_shelter", "offset": [-1.0, 0.0, 1.0]},
+						{"type": "teleport", "char_id": "endo", "anchor": "stacks_shelter", "offset": [1.0, 0.0, -1.0]},
+						{"type": "call", "method": "trigger_stacks_shelter_rest", "args": [false]},
+						{"type": "assert_path", "path": "stacks.anxiety_seen", "op": "==", "value": true},
 						{"type": "assert_path", "path": "current_step", "op": "==", "value": "stacks_explore"}
+					]
+				}
+			]
+		},
+		{
+			"id": "rings_reassignment_beat",
+			"display_name": "Rings Reassignment Beat",
+			"scene": "res://scenes/tutorial/act1.tscn",
+			"kind": "story",
+			"tags": ["rings", "marco", "reassignment", "endo", "optional-worldbuilding"],
+			"setup": [
+				{"type": "call", "method": "prepare_rings_fragment", "args": ["client"]}
+			],
+			"scenarios": [
+				{
+					"id": "ambient_reads_do_not_gate_marco",
+					"display_name": "Ambient Reads Do Not Gate Marco",
+					"script": [
+						{"type": "call", "method": "trigger_rings_trace", "args": ["doorvine"]},
+						{"type": "call", "method": "trigger_rings_trace", "args": ["client_bloom"]},
+						{"type": "call", "method": "trigger_rings_trace", "args": ["forget_me_not"]},
+						{"type": "assert_path", "path": "rings.trace_count", "op": "==", "value": 3},
+						{"type": "assert_path", "path": "current_step", "op": "==", "value": "rings_client"},
+						{"type": "call", "method": "trigger_rings_client", "args": [false]},
+						{"type": "assert_path", "path": "rings.client_seen", "op": "==", "value": true},
+						{"type": "assert_path", "path": "current_step", "op": "==", "value": "endo_departs"}
 					]
 				}
 			]
@@ -984,7 +970,8 @@
 						{"type": "call_chunk", "method": "activate_slit_lure"},
 						{"type": "teleport", "char_id": "aster", "anchor": "hide_slit"},
 						{"type": "advance", "seconds": 0.5},
-						{"type": "assert_path", "path": "chunk.slit_phase", "op": "==", "value": "hidden"},
+						{"type": "assert_path", "path": "chunk.slit_phase", "op": "==", "value": "window"},
+						{"type": "assert_path", "path": "chunk.slit_occupied", "op": "==", "value": true},
 						{"type": "advance", "seconds": 6.0},
 						{"type": "assert_path", "path": "chunk.slit_phase", "op": "==", "value": "safe"}
 					]
@@ -1011,12 +998,16 @@
 					"script": [
 						{"type": "call_chunk", "method": "reset_preview_state"},
 						{"type": "call_chunk", "method": "choose_route", "args": ["north"]},
+						{"type": "call_chunk", "method": "activate_slit_lure"},
+						{"type": "teleport", "char_id": "aster", "anchor": "hide_slit"},
+						{"type": "advance", "seconds": 6.5},
+						{"type": "assert_path", "path": "chunk.slit_phase", "op": "==", "value": "safe"},
 						{"type": "teleport", "char_id": "aster", "anchor": "hide_spot"},
 						{"type": "teleport", "char_id": "peris", "anchor": "hide_spot"},
 						{"type": "teleport", "char_id": "endo", "anchor": "hide_spot"},
 						{"type": "call_chunk", "method": "activate_spot_sweep"},
 						{"type": "advance", "seconds": 0.5},
-						{"type": "assert_path", "path": "chunk.spot_phase", "op": "==", "value": "hidden"},
+						{"type": "assert_path", "path": "chunk.spot_phase", "op": "==", "value": "sweeping"},
 						{"type": "advance", "seconds": 6.0},
 						{"type": "assert_path", "path": "chunk.spot_phase", "op": "==", "value": "safe"}
 					]
@@ -1028,12 +1019,16 @@
 					"script": [
 						{"type": "call_chunk", "method": "reset_preview_state"},
 						{"type": "call_chunk", "method": "choose_route", "args": ["north"]},
+						{"type": "call_chunk", "method": "activate_slit_lure"},
+						{"type": "teleport", "char_id": "aster", "anchor": "hide_slit"},
+						{"type": "advance", "seconds": 6.5},
+						{"type": "assert_path", "path": "chunk.slit_phase", "op": "==", "value": "safe"},
 						{"type": "teleport", "char_id": "aster", "anchor": "hide_spot"},
 						{"type": "teleport", "char_id": "peris", "anchor": "hide_spot"},
 						{"type": "teleport", "char_id": "endo", "anchor": "hide_spot"},
 						{"type": "call_chunk", "method": "activate_spot_sweep"},
 						{"type": "advance", "seconds": 1.0},
-						{"type": "assert_path", "path": "chunk.spot_phase", "op": "==", "value": "hidden"},
+						{"type": "assert_path", "path": "chunk.spot_phase", "op": "==", "value": "sweeping"},
 						{"type": "teleport", "char_id": "aster", "anchor": "converge"},
 						{"type": "advance", "seconds": 1.0},
 						{"type": "assert_path", "path": "chunk.spot_phase", "op": "==", "value": "failed"}
@@ -1070,6 +1065,8 @@
 						{"type": "call_chunk", "method": "reset_preview_state"},
 						{"type": "call_chunk", "method": "choose_route", "args": ["south"]},
 						{"type": "assert_path", "path": "chunk.route_choice", "op": "==", "value": "south"},
+						{"type": "teleport", "char_id": "aster", "anchor": "risky_bloom"},
+						{"type": "advance", "seconds": 1.1},
 						{"type": "assert_path", "path": "chunk.hazard_taken", "op": "==", "value": true}
 					]
 				},

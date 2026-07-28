@@ -13,6 +13,71 @@ exists-today or not. This is a WORKING register: edit it, strike entries, re-ran
 
 The world is a truthful, deterministic machine that never cheats — all challenge lives in the widening gap between that truth and the party's degrading, composited perception of it, and all meaning lives in care (tending, patience, maintenance, trust) as the only real counter to the decay. The ONE design test every proposed element must pass: "Is this challenge expressed as information or capability withdrawn from the CHARACTERS (never hardness added to the world), and is it still PROVEN — by solver verdict and real-player replay, not topology or narration — that Aster and Peris alone can finish it?" If the world had to get bigger, denser, faster, or random to be hard, or solvability is only asserted, redesign.
 
+## Character-action authority
+
+The cast kit comes from committed character canon, never from a local puzzle's need for a button.
+The currently implemented early-game casts are Aster's **EMP** and Peris's **Wrap**. The GDD also
+commits later identities such as Myke's **Inflame**, Oli's **Barrier** and field-exception
+**Restore**, and Tyreg's **Suppress**; preserve those names and effects, but do not invent the rest
+of an incomplete kit merely to fill buttons. Aster's HACK/SCAN work and Peris's READ/TEND work are
+target-owned contextual interactions or overlay information, not extra ability slots. Endo and any
+underdetailed later kit receive no placeholder active abilities until their behavior is explicitly
+committed. All cast abilities use stamina; ATP is never an ability cost. In
+the canonical economy ATP is spent at shelter rest; the opt-in scarcity experiment below is the sole
+approved exception for passive exploration drain.
+Older `TRACE`, `BLOOM`, `BRACE`, `RECOVER`, and `SCOUT` labels in proposal material do not override
+this authority.
+
+### Canon gate for new interactions
+
+Do not invent a replacement verb when removing an invalid ability. Every new player-facing action
+must cite either committed GDD text or an explicit director request and must name the world object
+whose state it changes. Terminals may read data or visibly operate a portal, gate, valve, scanner,
+or other level object; they may not heal, refill stamina/ATP, revive, summon crew abstractly, or
+advance a dictionary-only checklist. Narrative terminals and logbooks remain immediate inspections
+unless canon assigns them a physical target. Full shelter rest is the normal recovery/revival path.
+
+A feature that exists only to lengthen a scene, replace a removed ability one-for-one, or make a
+local timing spreadsheet pass fails this gate. Fix the existing geometry, timing, information, or
+world state instead. Reviews and tests should record the canon citation next to any approved new
+verb so unsupported mechanics are detectable before they spread across scenes.
+
+### Approved experiment: ATP scarcity pressure projection
+
+The director has explicitly approved passive ATP drain as a configurable experiment even though it
+is not in the GDD. **Scarcity is a pressure projection over generated content, never an input to
+content generation.** Generate a seed once, without consulting its difficulty or ATP-drain settings;
+every projection must use the same geometry, actors, resources, rewards, causal requirements, and
+available solutions.
+
+**Scarcity is the preferred mastery and balance oracle for generated-stretch QA.** An approval run
+must prove that ideal, resource-aware play can reach the exit under Scarcity. Ideal play may
+deliberately spend resources and accept legible HP or opportunity losses; it need not be lossless.
+Permanent party-member loss is not assumed by this oracle unless that run's separate roster and
+exit contracts explicitly support survivor-only completion. A pass on an easier projection does not excuse a Scarcity failure, and a
+stretch may not receive Scarcity-only resources, routes, rewards, or tuning to make that proof pass.
+Across a multi-stretch run, authoritative HP, stamina, ATP, and carried resources survive level
+handoffs; only an actual world action such as lysate use or shelter recovery may change them.
+
+Every easier difficulty is a monotone relaxation of the same simulation. It may reduce or disable
+pressure, but it must not add difficulty, replace content, invalidate an action trace that completes
+under Scarcity, or expose a solution unavailable under Scarcity. This is analogous to preferring
+story-mode shadow-solution validation: the demanding path is an internal mastery proof over the same
+authored world, not a separately built version of it.
+
+Profiles with reduced or disabled drain retain the same content and mechanics while monotonically
+relaxing only metabolic pressure. Scarcity begins only after the party first moves, uses visible `drain_interval_seconds` and
+`drain_atp` settings, and follows the deterministic gameplay scheduler. ATP may reach zero. A
+character who begins a later scarcity tick at zero ATP loses the separately visible and configurable
+`zero_atp_hp_drain`; the tick that consumes the last ATP does not also damage HP, so the threshold
+and reaction window are legible. Physical lysate still occupies a hand and restores only its carrier
+after explicit endocytosis; shelter rest still costs ATP and is the normal HP/stamina recovery path.
+Zero-ATP HP loss uses the shared damage contract, so an already-active WRAP can absorb it and the
+scarcity feedback must report that absorption rather than hiding the pressure. This exception does
+not authorize ATP ability costs, terminal recovery, hidden party-wide rewards, or passive drain in
+authored story scenes. Living tracked members remain under metabolic pressure while downed;
+permanently dead members are excluded.
+
 ## Pillars
 
 1. Perception, information, and learning are the content
@@ -41,23 +106,23 @@ The world is a truthful, deterministic machine that never cheats — all challen
 
 ### P2-composite-perception
 
-**Asymmetric perception IS the gameplay: each character is a distinct cognitive REGISTER (not a recolor), the player's view is the composite, overlay visibility is decoupled from selection and keyed to consciousness (lose the hands, keep the eyes) — and a legitimate section composes at least TWO registers, one answering WHERE and the other WHEN, each ability load-bearing state, never flavor.**
+**Asymmetric perception IS the gameplay: each character is a distinct cognitive REGISTER (not a recolor), the player's view is the composite, overlay visibility is decoupled from selection and keyed to consciousness (lose the hands, keep the eyes) — and a legitimate section composes at least TWO registers, one answering WHERE and the other WHEN, with each observation or contextual action producing a load-bearing world state, never flavor.**
 
 - Pillar: Perception, information, and learning are the content
 - Sources: GDD §2.2/2.2.1/2.2.2 (lines 210, 328), §2.4.3; CHANNELS_DESIGN §Section-design #2 + PERCEPTION_LOCK template field; slices 1.2, 2.6, 3.3
-- FORBIDS: Any single layer that shows everything; tying an overlay to being the active character; killing a conscious character's overlay when merely out of play; one-button sections clearable by a single register; ability effects that are toasts; a section solvable at identical difficulty with an ability reverted.
+- FORBIDS: Any single layer that shows everything; tying an overlay to being the active character; killing a conscious character's overlay when merely out of play; one-button sections clearable by a single register; observation effects that are only toasts; a section solvable at identical difficulty with its claimed information/action state reverted; inventing cast abilities to fill a puzzle role.
 - DEMANDS: Six distinct visual registers (Aster cyan data, Peris warm flora/memory, Endo survival, Myke roads, Oli power, Tyreg patrols) that stack without interfering; per-level content legible only through specific layers; a PERCEPTION_LOCK per section naming what each single register cannot see; swept-but-conscious members keep contributing.
-- Machine-checkable: Enforceable via an ABLATION slot: regenerate a section, remove one ability from the stretch_capabilities loadout, assert the solver returns BLOCKED or strictly costlier (natural extension of stretch_capabilities.gd/stretch_solution_solver.gd, not built); plus PERCEPTION_LOCK as a validated spec field. TRACE truthfulness already enforced.
+- Machine-checkable: Enforceable via an ABLATION slot: regenerate a section, remove one required perception provider or contextual capability from the stretch_capabilities loadout, assert the solver returns BLOCKED or strictly costlier (natural extension of stretch_capabilities.gd/stretch_solution_solver.gd, not built); plus PERCEPTION_LOCK as a validated spec field. Contextual gauge-read truthfulness is already enforced.
 - Translations:
-  - [EXISTS] (mechanic-composition) TRACE/BLOOM/BRACE: each character extracts DIFFERENT info from the same section (wash_relay_chunk.gd; --test-wash-relay-abilities) — the embryo of layer-asymmetry
-  - [EXISTS] (test-invariant) --test-wash-relay-trace-cadence: TRACE names the REAL scheduled beat, not a guess
+  - [EXISTS] (mechanic-composition) target-owned SCAN FLOW gauges and TEND FLORA fixtures: characters extract different information or change different world state in the same section without gaining new cast abilities (wash_relay_chunk.gd; --test-wash-relay-abilities)
+  - [EXISTS] (test-invariant) --test-wash-relay-cadence-scan: the contextual cadence read names the REAL scheduled beat, not a guess
   - [BUILD] (new-mechanic) Six toggleable overlays decoupled from selection, availability keyed to consciousness — per-chunk aster/peris overlays exist; the composite six-layer toggle system does not
   - [BUILD] (generator-constraint) PERCEPTION_LOCK as a required generator field {where_register, when_register, hidden_from_each}
   - [BUILD] (generator-constraint) Generator constraint: ≥1 hazard/resource per node readable only via a specific register — stretch_poi_distribution.gd places POIs but doesn't tag them by layer
 
 ### P3-information-scarcity
 
-**Information is content and gets scarcer: the whole-stretch overlook is a diegetic gift in story mode and the first few roguelike stretches ONLY; foreknowledge (layout, plant/enemy positions, cadence values) is budgeted like ATP — granted freely early to teach, then earned via abilities, sparse vantages, recruits, or paid recon; perception has PROVENANCE (pins exist because a character actually observed them, so they can later fuzz and drop).**
+**Information is content and gets scarcer: the whole-stretch overlook is a diegetic gift in story mode and the first few roguelike stretches ONLY; foreknowledge (layout, plant/enemy positions, cadence values) is budgeted like ATP — granted freely early to teach, then earned via contextual reads, sparse vantages, recruits, or paid recon; perception has PROVENANCE (pins exist because a character actually observed them, so they can later fuzz and drop).**
 
 - Pillar: Perception, information, and learning are the content
 - Sources: director, session 2026-07-01 (cited in ALL five slices); CHANNELS_DESIGN §Spatial structure Entry (bridge overlook is why Peris knows the plants); dlc_roguelike_mode.md info-kit characters (Pendy/Swan/Vasca); GDD §2.3.3-2.3.5; slices 1.1, 2.6, 3.11, 5.6
@@ -109,6 +174,10 @@ The world is a truthful, deterministic machine that never cheats — all challen
 - Sources: GDD §2.6.2; director 2026-07-01 (cited in all five slices; commit ef797e6 'topology-gating != solvable'); channels_hide_encounter_spec math/failure-modes/harness list; design_archetypes step 7; ChunkGenerator code-of-record doc; run_session.gd seed discipline; slices 1.4, 3.9, 4.5, 4.6, 5.8
 - FORBIDS: Shipping a puzzle whose 'solution' exists only as topology or narration; claiming an archetype buildable without a tested chunk; enemy cheating (wall-hack detection, teleport strikes); coin-flip failure modes; multi-solution declared because approaches were authored; success flags not backed by a solver or replay; randf/wall-clock in generation or branch selection.
 - DEMANDS: verify() per chunk (locked_blocks/solved_connects/ordering_ok); mechanic() ledger naming the real backing system or declaring NOT BUILDABLE YET; solver error severities (shadow_broken, multi_solution_missing, no_puzzle_nodes for hard/setpiece); _solution_script consumed by stretch_replay_builder + the playtest loop; deterministic seed hashing at every level; derived variables tables (d_run_max = v_run × S_max / D_run).
+- State-machine authority: every gameplay phase becomes GameState at commitment and preserves its
+  origin/target, scheduler timing, progress rule, and interruption policy through save/load/replay.
+  A view may illustrate that state; it may never keep a character logically at an origin until an
+  animation finishes, because targeting, collision, saves, and reloads would observe a false world.
 - Machine-checkable: Largely ENFORCED: verify(), solver severities, replay artifact, --test-run-session-e2e, --test-wash-relay-playthrough. Open verifier slots: in-engine replay of generated stretches, shadow-path replay, per-failure-mode triggers.
 - Translations:
   - [EXISTS] (test-invariant) ChunkGenerator.verify(): flood-fill with the game's own movement rule proves start→end blocked while any gate is shut, mechanisms nested in order (chunk_generator.gd:220-281)
@@ -139,11 +208,11 @@ The world is a truthful, deterministic machine that never cheats — all challen
 - Pillar: Levels are gated, proven, multi-solution compositions
 - Sources: director 2026-07-01 (gated composition; stairs/links everywhere = design failure; chunk atom — commits 98aeeaa, aea8251); CHANNELS_DESIGN §Spatial structure + §Failure & recovery; GDD §2.6; level_design_canon memory; slices 1.7, 2.8, 3.1, 4.6
 - FORBIDS: Stairs/links everywhere connecting everything; a generated stretch walkable end-to-end without solving; descending or flat layouts where the wash has no directional cost; failure that merely respawns in place; a chunk without a verify() proof.
-- DEMANDS: verify() per chunk; two-shelter bookends (start bottom, end top under the entry bridge); connect-back (sloperope/terminal) per chunk with recovery rejoining at the CHUNK, not the stretch start; monotone ascent at stretch level; meta-template macro shapes (spiral/rect/polygon hubs + spokes) reading hub-and-spoke.
+- DEMANDS: verify() per chunk; two-shelter bookends (start bottom, end top under the entry bridge); a physical Climbvine/sloperope connect-back per chunk that reunites the party without changing stats; monotone ascent at stretch level; meta-template macro shapes (spiral/rect/polygon hubs + spokes) reading hub-and-spoke.
 - Machine-checkable: ENFORCED per chunk today (verify()). Open slot: lift to stretch level — monotone ascent + per-chunk checkpoint constraint in stretch_generator.gd, asserted in the generation tests.
 - Translations:
   - [EXISTS] (test-invariant) ChunkGenerator.verify() {locked_blocks, solved_connects, ordering_ok}
-  - [EXISTS] (mechanic-composition) wash_relay sweep + Terminal/Sloperope connect-back recovery
+  - [EXISTS] (mechanic-composition) wash_relay sweep + physical Sloperope climb-back; shelter rest remains the separate recovery verb
   - [BUILD] (level-element) Multi-chunk stretch with per-chunk connect-back — explicit 🔜 in CHANNELS_DESIGN
   - [BUILD] (generator-constraint) Monotone-ascent stretch-level verifier: each chunk's exit strictly deeper/higher than its entry, wash target = current chunk's start, verify() run per chunk in the emitted stretch
   - [EXISTS] (generator-constraint) Meta-template macro shapes (SpiralCoordMap / hub_shape_coord_map / hub_meta_template / stretch_branch_weaver) — the warp armature exists but connectivity is currently free-walk/descending — the gated-ASCENT rework is THE open task (spiral_meta_template_system memory)
@@ -182,17 +251,17 @@ The world is a truthful, deterministic machine that never cheats — all challen
 
 ### P11-fail-forward
 
-**Failure costs exactly one section at a chosen, depth-scaled, diegetic price: a wash sweeps the member back (mobile at the previous gap, or stranded-but-recoverable at the start shelter), recovery is a CHOSEN time investment (Terminal fast/priced, Sloperope slow/cheap) scaling with how deep you fell, the party may defer it, all-washed means redo the chunk — and no reachable state soft-locks.**
+**Failure costs exactly one section at a legible, depth-scaled, diegetic price: a wash sweeps the member to the start shelter while leaving them mobile; they can run the route again or use the physical Sloperope after it is deployed. Rejoining never changes HP, stamina, ATP, or downed state; recovery remains an explicit full shelter rest. All-washed means redo the chunk, and no reachable state soft-locks.**
 
 - Pillar: Levels are gated, proven, multi-solution compositions
 - Sources: CHANNELS_DESIGN §Failure & recovery (lines 75-91) + §Section-design #6; channels_hide_encounter_spec 'Failure is recoverable in spirit' (line 155) + soft-lock harness demand (line 166); director 2026-07-01 (depth-scaled diegetic cost); slices 1.7, 3.7
-- FORBIDS: Failure that costs the whole run OR nothing; instant free respawn at the party; a downed member silently teleporting back; flat recovery cost regardless of depth; unrecoverable strands.
-- DEMANDS: Sweep to the previous gap / start shelter; a real recover-now vs leave-until-chunk-end choice; BRACE refunds re-cross stamina; recovery time as a place where the day-clock bites; per-chunk (not per-stretch) checkpointing.
+- FORBIDS: Failure that costs the whole run OR nothing; instant free respawn at the party; a downed member silently teleporting back; an abstract terminal that summons or heals crew; unrecoverable strands.
+- DEMANDS: Sweep to the start shelter; a physical runback or deployed-climb choice whose travel time grows with depth; no hidden stat refund; per-chunk (not per-stretch) connect-backs.
 - Machine-checkable: Partially ENFORCED (--test-wash-relay-checkpoint). Open slots: soft-lock absence sweep over reachable states; monotone depth→cost assertion.
 - Translations:
-  - [EXISTS] (mechanic-composition) wash_relay _washed registry + Terminal telephone-up + Sloperope deploy-then-climb + BRACE refund
+  - [EXISTS] (mechanic-composition) wash_relay _washed registry + Sloperope deploy-then-climb, with no stat mutation
   - [EXISTS] (test-invariant) --test-wash-relay-checkpoint: a wash loses ONE section, counts one sweep, leaves the member MOBILE
-  - [BUILD] (generator-constraint) Depth-scaled recovery cost: Terminal ATP/time price and Sloperope climb duration as functions of fall depth — devices exist; cost is flat — director ties this to 'runs too easy vs the day/night cycle'
+  - [BUILD] (generator-constraint) Depth-scaled reunion cost: Sloperope climb/runback duration as a function of fall depth, without spending or restoring ATP
   - [BUILD] (test-invariant) Soft-lock absence sweep: from every reachable state (any washed subset, any lure/override state) the solver reaches the exit or the redo path — demanded verbatim by the hide-encounter spec harness list
 
 ### P12-held-commitment
@@ -216,17 +285,17 @@ The world is a truthful, deterministic machine that never cheats — all challen
 **Every enemy is a regulator doing its old job in a context where the job no longer makes sense, inside an ecosystem that fights itself: each pursues a world resource (iron, metabolic signal, neural activity, tags) on ONE perception channel with a legible non-combat counter, never detects through walls, and ships with three mandatory components — universal FSM behavior, deployment sub-archetypes per biome, and counterplay verified against the live mechanics — so the player routes THROUGH enemy relationships, and combat is rarely the best move.**
 
 - Pillar: A legible ecology that carries the theme mechanically
-- Sources: GDD §7 intro + §7.2-7.14 ('every encounter is multilateral') + §2.7 (line 537) + §1.1 (line 228: maintenance, not combat); design_archetypes.md enemy framework + Techos worked example (lines 241-303); director 2026-07-01 (no wall-hacks; real bait mechanics); slices 1.6, 2.1, 2.2, 4.7
+- Sources: GDD §7 intro + §7.2-7.14 ('every encounter is multilateral') + §2.7 (line 537) + §1.1 (line 228: maintenance, not combat); design_archetypes.md enemy framework + Sapscraps worked example (lines 241-303); director 2026-07-01 (no wall-hacks; real bait mechanics); slices 1.6, 2.1, 2.2, 4.7
 - FORBIDS: A zoo of isolated stat-check encounters; enemies whose only goal is to block/aggro the player; omniscient or through-wall detection; a same-for-everyone detection radius; a threat whose only answer is damage; counterplay by designer fiat; encounters whose only exit is killing everything; identical placement across biomes; combat-power progression as the reward spine.
-- DEMANDS: Resource-seeking home modes (roam-to-iron, converge-on-metabolic-spike); an inter-enemy predation/competition matrix as routable content (Naturalizer clears a Neutro, trapped locusts cannibalize, Tangler into a Candid zone); channel-keyed detection (LOS/scent/metabolic/neural/tag) each with a channel-appropriate counter; distribution readable as corridor history; 4-8 ways-to-deal per deployment with archetype refs.
+- DEMANDS: Resource-seeking home modes (roam-to-iron, converge-on-metabolic-spike); an inter-enemy predation/competition matrix as routable content (Naturalizer clears a Flare, trapped locusts cannibalize, Tangler into a Candid zone); channel-keyed detection (LOS/scent/metabolic/neural/tag) each with a channel-appropriate counter; distribution readable as corridor history; 4-8 ways-to-deal per deployment with archetype refs.
 - Machine-checkable: Counterplay stack ENFORCED today. Open: per-matrix-edge tests as edges are built (analytic, tick-driven); palette schema validation for deployment contexts; 'no wall-hack' already guarded (--test-detection-vertical-band + LOS gate).
 - Translations:
   - [EXISTS] (mechanic-composition) enemy.gd universal FSM (idle/roam/patrol/alert/pursuit/windup/charge/impact/recover/search/return), scheduler-driven, disengage guards (--test-enemy-pursuit-timeout, --test-enemy-roaming)
   - [EXISTS] (test-invariant) Mechanical-truth counterplay stack: LOS-blocked predictive detection + DETECTION_VERTICAL_BAND + CONCEAL tiers + lure distraction + dodge-at-impact (--test-two-tier-detection, --test-hidden-detection, --test-lure-relay, --test-dodge-combat-timing)
   - [BUILD] (new-mechanic) Inter-enemy interaction matrix (13 species; enemy-on-enemy resolution) — _resolve_strike is enemy→party only today; every matrix edge must be scheduler-analytic or FF invariance breaks
   - [BUILD] (generator-constraint) Deployment sub-archetype schema in content_palette.json (per-enemy, per-biome: hiding_spots, cover, affordances, ways_to_deal)
-  - [BUILD] (new-mechanic) Seefern reveal layer exposing invisible enemies (Nosoma/Redactor outlines) within a glow radius
-  - [BUILD] (content-pattern) Distribution-as-history dressing (dead Spikers where Tanglers fed, Neutro corpses under Naturalizers) — use the CANONICAL renamed roster — Sapscraps/Aembers/Flares/Redactors per fauna_roster.md
+  - [BUILD] (new-mechanic) Seefern reveal layer exposing invisible enemies (Redactor outlines) within a glow radius
+  - [BUILD] (content-pattern) Distribution-as-history dressing (dead Spikers where Tanglers fed, Flare corpses under Naturalizers) — use the CANONICAL renamed roster — Sapscraps/Aembers/Flares/Redactors per fauna_roster.md
 
 ### P14-flora-one-verb
 
@@ -263,15 +332,15 @@ The world is a truthful, deterministic machine that never cheats — all challen
 
 ### P16-clock-budget
 
-**The day is a finite forage-then-shelter budget and the four bars CASCADE rather than stack: ATP is the night gate spent only at shelter, stamina the stable moment budget (never shrinks), HP the encounter cost, sleep-deprivation a one-directional multi-day ratchet cleared only by full rest — and run length, content density, and recovery time are tuned so a tier-N stretch finishes near-but-NOT-comfortably before dusk.**
+**The day is a finite forage-then-shelter budget and the four bars CASCADE rather than stack: canonically ATP is the night gate spent at shelter, stamina the stable moment budget (never shrinks), HP the encounter cost, sleep-deprivation a one-directional multi-day ratchet cleared only by full rest — and run length, content density, and recovery time are tuned so a tier-N stretch finishes near-but-NOT-comfortably before dusk. Scarcity is the preferred generated-stretch QA projection, not a generated-content variant. A tier-N stretch must be completable by ideal, resource-aware play under Scarcity, with strategically justified losses permitted; every easier setting must monotonically relax pressure over the identical generated spec.**
 
 - Pillar: Time and choice have measured prices
 - Sources: GDD §2.4.1-2.4.5 ('cascade rather than stack'; 'the ratchet is one-directional') + §2.5 (12-unpaused-minute day); director 2026-07-01 ('runs too easy vs the day/night cycle' — cited in three slices); run_meta_decisions.md shelter/ATP-cadence candidates; slices 1.8, 2.5, 5.7
-- FORBIDS: Run lengths/density that let the player ignore dusk; ATP draining during exploration (it drains only at rest); shrinking stamina over the campaign; HP-drain-from-low-ATP (explicitly de-canonized, §2.4.4); free night skips; shelters so dense the night is never faced in the open; a safe branch that is ALSO fast.
-- DEMANDS: Discrete countable ATP; rest at shelter as the only night skip; skipped/partial rest → next-day deprivation debuffs; traversal time priced as exposure; a day/night term in the economy model; risky-route-out-values-safe for clean play and vice versa for sloppy play.
+- FORBIDS: Run lengths/density that let the player ignore dusk; unlabeled or mandatory ATP drain outside the approved generated-stretch scarcity experiment; shrinking stamina over the campaign; HP-drain-from-low-ATP outside that same explicitly selected experiment (de-canonized for the base economy in §2.4.4); free night skips; shelters so dense the night is never faced in the open; a safe branch that is ALSO fast; difficulty-dependent generation; Scarcity-only nodes, resources, rewards, routes, enemies, prerequisites, or tuning; approving content because an easier projection passes when Scarcity fails.
+- DEMANDS: Discrete countable ATP; rest at shelter as the only night skip and normal recovery verb; skipped/partial rest → next-day deprivation debuffs; traversal time priced as exposure; a day/night term in the economy model; risky-route-out-values-safe for clean play and vice versa for sloppy play. Record a content fingerprint for the generated spec, prove it is identical across pressure projections, require the ideal Scarcity replay to complete, and require every easier projection to preserve that completion trace with no worse ATP/HP pressure outcome. Scarcity tests must report their exact interval, ATP drain, zero-ATP HP drain, start condition, zero threshold, and result separately from content-generation and canonical-balance conclusions.
 - Machine-checkable: Enforceable in the headless playtest loop: nominal-pace completion time vs remaining daylight must land in a target band per tier (host exists; assertion not built). Bar mechanics partially enforced via existing state tests.
 - Translations:
-  - [EXISTS] (mechanic-composition) run_economy.gd (atp_reward, SHELTER_RESTORE=8.0, TRAVERSAL_EXPOSURE, exposure priced in ATP-equivalents)
+  - [EXISTS] (mechanic-composition) run_economy.gd (physical lysate opportunity value, TRAVERSAL_EXPOSURE, exposure priced in ATP-equivalents; shelter rest is excluded from ATP gain)
   - [EXISTS] (mechanic-composition) Dusk Run chunk + _rest_deprived derived state + REST_DEPRIVED_STAMINA_FACTOR (sleep before rollover or wake DEPRIVED) — also Lysate endocytosis as the ATP refill verb (item_data.gd)
   - [BUILD] (generator-constraint) Day/night term in expected_net (projected dusk overrun from stretch length × cadence vs remaining daylight), generator budgets validated against it
   - [BUILD] (test-invariant) Dusk-margin playtest assertion: clean player reaches shelter with margin, doom-scroller wakes deprived — measured by the headless loop, not asserted by hand — stretch_generation_playtest_loop.gd exists to host it; the 'too easy vs the clock' regression guard
@@ -312,10 +381,10 @@ The world is a truthful, deterministic machine that never cheats — all challen
 1. **Degrading flora-network read-window with observation PROVENANCE: a run-scoped milestone-keyed duration (60s→2-3s), pins populated from observation events (the bridge overlook), freshness-stamped enemy-position snapshots that go stale, relationship-keyed decay order** (effort: large; serves: P1-degradation-difficulty, P2-composite-perception, P3-information-scarcity, P4-no-memory-gate, P5-deterministic-emergent, P14-flora-one-verb) — THE convergence point — six principles land on this one mechanic. Substrate exists: get_flora_network(), FloraLight, flora_garden_chunk, the deterministic detection layer to snapshot. This is also what finally makes the long-arc difficulty ramp (P1) buildable at all.
 2. **Scarpet: medium-tier scent-mask ground cover + the drag/carry state (slow, no combat, perception loss)** (effort: medium; serves: P10-shadow-law, P12-held-commitment, P13-ecology-of-regulators, P14-flora-one-verb, P15-canon-and-meaning, P18-taught-by-scene) — One flora unlocks the canonical Mother Flure shadow solve (GDD 2.6.4), completes the hide-tier triad (CONCEAL_MEDIUM already hosts it, code even name-checks 'scarpet'), and later carries Marco's diegetic demo scene. Highest leverage-per-effort on the list.
 3. **Stage-gated overlook + POI-visibility scarcity in stretch_generator, with its test (high-stage specs emit no full-layout vantage; preview data omits undiscovered POIs)** (effort: small; serves: P1-degradation-difficulty, P3-information-scarcity, P16-clock-budget, P17-crossover-decisions) — Direct encoding of the director's 'information gets scarcer'; fits the existing stage-keyed curriculum pattern. Turns scouting into a time spend, feeding the clock.
-4. **Ability-ablation verifier slot in stretch_solution_solver: regenerate a section minus one ability, assert BLOCKED or strictly costlier** (effort: small; serves: P2-composite-perception, P6-proven-mechanical-truth, P10-shadow-law) — Makes 'load-bearing, not flavor' a machine verdict. Natural extension of stretch_capabilities.gd — the loadout model already exists.
+4. **Capability-ablation verifier slot in stretch_solution_solver: regenerate a section minus one required perception/contextual capability, assert BLOCKED or strictly costlier** (effort: small; serves: P2-composite-perception, P6-proven-mechanical-truth, P10-shadow-law) — Makes 'load-bearing, not flavor' a machine verdict without manufacturing an ability button. Natural extension of stretch_capabilities.gd — the loadout model already exists.
 5. **Day-clock term in RunEconomy + dusk-margin assertion in the headless playtest loop (nominal-pace finish lands near-but-not-before-comfortably dusk, per tier)** (effort: medium; serves: P7-one-simulation, P11-fail-forward, P16-clock-budget, P17-crossover-decisions) — The regression guard for the director's 'runs too easy vs the day/night cycle'. Host (stretch_generation_playtest_loop.gd) and economy model (run_economy.gd) both exist; this is wiring + a target band.
 6. **Monotone-ascent stretch-level verifier (chunk exits strictly ascend, wash target = current chunk start, verify() per chunk in emitted stretches) — the gated-ASCENT rework of the meta-template connectivity** (effort: medium; serves: P6-proven-mechanical-truth, P8-gated-ascent, P11-fail-forward) — Memory flags the spiral meta-template connectivity as free-walk/descending — the register's clearest existing violation. verify() exists per chunk; lift it to stretch level and fix the weaver.
-7. **Depth-scaled diegetic recovery cost: Terminal ATP/time price and Sloperope climb duration as monotone functions of fall depth** (effort: small; serves: P11-fail-forward, P12-held-commitment, P16-clock-budget) — Devices exist with flat costs. This is where the clock bites failure — small change, closes the loop between the failure grammar and the day budget.
+7. **Depth-scaled diegetic reunion cost: Sloperope climb and runback duration increase monotonically with fall depth** (effort: small; serves: P11-fail-forward, P12-held-commitment, P16-clock-budget) — The physical line exists; timing it by distance lets the day clock price failure without inventing a terminal or touching ATP.
 8. **Inter-enemy interaction matrix, built scheduler-analytic edge by edge (Naturalizer-vs-Flare friendly fire, Meeb engulf-freeze window, locust cannibalize, siderophore iron-gradient seeking)** (effort: large; serves: P5-deterministic-emergent, P6-proven-mechanical-truth, P9-archetype-vocabulary, P13-ecology-of-regulators, P15-canon-and-meaning) — Ecology as routable content — the GDD's multilateral encounters. _resolve_strike is enemy→party only today. MUST be scheduled predictions, not per-frame contact (the swarm-surge lesson), or FF invariance breaks. Use the canonical renamed roster.
 9. **Live in-engine replay of a GENERATED stretch, including the SHADOW path (real detection, washes, dwell — not the solver graph)** (effort: large; serves: P5-deterministic-emergent, P6-proven-mechanical-truth, P7-one-simulation, P10-shadow-law) — The named missing rung closing 'topology-gating != solvable' at run scale. Solver artifact + replay builder + real-input test patterns all exist; compose them.
 10. **Held-helper hardening: generator field (helper ∈ held types, never latch) + holder-washed-mid-hold inheritance test + one authored guard-threatens-the-holder section** (effort: medium; serves: P2-composite-perception, P12-held-commitment, P13-ecology-of-regulators) — The wash_relay held controls exist; this makes the commitment grammar a rule, proves role inheritance, and ships the first stacked WHERE+WHEN pressure section (also serves P1's escalation menu).
@@ -462,7 +531,13 @@ inflammashunt popcorn rides it; toggled by the level's own mechanisms). The root
 `Enemy._resolve_strike` — the kit's ONE strike path, so dodge/sanctuary/conceal/corpse-skip
 apply to it for free. All five scripted sentry re-posts are `Enemy.re_post()`.
 
-**Still on the ledger (each needs a kit verb before it can burn):** the chase's portal-follow
-pursuer hops (2), its barricade clamber (1) and checkpoint resume (snap+restore — restart-grade
-machinery, like the loader's), the boss knockback (snap+adjust), the set-piece magnet pin (1),
-and the wash_relay reset flow (2).
+The chase's barricade/body-pile clambers now use locked GameState external traversals, and its
+portal-follow pursuers commit through `PortalPad.begin_external_transit`; both have saved analytic
+midpoints instead of delayed stuns or endpoint snaps.
+
+The boss scree knockback now uses a locked external traversal. Set Piece's magnet lift, trolley
+shunt, and drop use saved external traversals too; its retired endpoint-snap helper has been removed.
+
+**Still on the ledger:** only explicit restart-grade repositioning remains—the chase checkpoint
+resume (snap+restore, like the loader's) and Wash Relay's reset flow (2). These reset construction
+truth after an attempt; they are not player-facing puzzle consequences.

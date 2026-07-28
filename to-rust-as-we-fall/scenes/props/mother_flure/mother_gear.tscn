@@ -1,0 +1,19 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Mesh" path="res://resources/models/mother-flure/mother_gear/mother_gear.obj" id="1_mesh"]
+[ext_resource type="Texture2D" path="res://resources/models/mother-flure/mother_gear/mother_gear.png" id="2_texture"]
+
+[sub_resource type="StandardMaterial3D" id="GearMaterial"]
+albedo_texture = ExtResource("2_texture")
+metallic = 0.8
+roughness = 0.4
+texture_filter = 0
+
+[node name="MotherGearVisual" type="Node3D"]
+metadata/asset_contract = "editable_3d_v1"
+metadata/editable_asset_root = "res://resources/models/mother-flure/mother_gear"
+metadata/visual_identity = "mother_gear_v1"
+
+[node name="Model" type="MeshInstance3D" parent="."]
+material_override = SubResource("GearMaterial")
+mesh = ExtResource("1_mesh")

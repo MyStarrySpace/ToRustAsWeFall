@@ -4,7 +4,7 @@ extends "res://scripts/fragments/chunks/data_fragment_chunk.gd"
 ## path inflammashunt_shadow_solution.md): the Resolution Catalyst retrieval — the Manage
 ## Conflict puzzle. Three character-coded INFORMATION routes feed a shared eight-interactable
 ## junction room; every route report is honest and confidently WRONG; the correct solve is
-## "water, clean, clean, tend, open". Route info is EFFICIENCY, not a gate (informed holds are
+## "water, clean, clean, tend, open, physically retrieve". Route info is EFFICIENCY, not a gate (informed holds are
 ## short, uninformed holds are long); every wrong approach teaches exactly one rule and is
 ## recoverable without a reload (the hostile-root herding sub-puzzle is the largest recovery).
 ## The survival clock is OFF in here — danger is local state, not day/night attrition
@@ -32,6 +32,7 @@ const RING_CENTER := Vector3(48.0, 0.0, 1.5)
 const FLORA_POS := Vector3(32.5, 0.0, 6.8)
 const HOUSING_POS := Vector3(51.5, 0.0, 5.5)
 const GRATE_POS := Vector3(53.2, 0.0, 5.5)
+const SAC_SOURCE_POS := FLORA_POS + Vector3(1.3, 0.3, 0.4)
 
 # --- Tuning (spec values) ---
 const SAC_DURATION := 22.0
@@ -43,128 +44,40 @@ const RAGE_SECS := 16.0
 const BUFFER_REFORM_SECS := 4.0
 const POPCORN_DPS_TICK := 2.5
 const HazardFieldScript := preload("res://scripts/game/objects/hazard_field.gd")
-const LevelDecoratorScript := preload("res://scripts/generation/level_decorator.gd")
+const WATER_FLOW_DURATION := 1.6
+const ROOT_CONNECT_DURATION := 2.4
+const HOUSING_OPEN_DURATION := 1.4
+const INFLAMMASHUNT_AUTHORITY_VERSION := 5
+const INFLAMMASHUNT_AUTHORITY_KEY := "chunk:inflammashunt:runtime"
+const INTERACTION_POSITION_TOLERANCE := 0.2
+const SHARED_POLL_INTERVAL := 0.5
+const ROOT_POLL_INTERVAL := 0.35
+const DEVICE_ITEM_TYPE := "cure_component"
+const DEVICE_VISUAL_SCENE := "res://scenes/props/inflammashunt/resolution_catalyst.tscn"
+const DEVICE_SOURCE_POS := HOUSING_POS + Vector3(0.0, 0.16, 0.0)
+const DEVICE_PHASE_AVAILABLE := "available"
+const DEVICE_PHASE_CLAIMING := "claiming"
+const DEVICE_PHASE_CLAIMED := "claimed"
 
-# The device housing is the end of the original five-step puzzle, but not the end of
-# the level.  A live Resolution Catalyst cannot simply be carried out through the
-# fire-damaged branch: the party must recommission its four support loops and seat it
-# in the insulated extraction cradle.  Every site is spatial, click-gated work.  No
-# phase advances from dialogue, elapsed time, or a platform-specific fallback.
-const COMMISSIONING_EVIDENCE_SECONDS := 9.0
-const COMMISSIONING_DECISION_SECONDS := 8.0
-const COMMISSIONING_EXECUTION_SECONDS := 14.0
-const EXTRACTION_WORK_SECONDS := 16.0
-const COMMISSIONING_PROTOCOL_ORDER := ["coolant", "root_return", "buffer", "transfer"]
-const COMMISSIONING_CLEAN_CHOICES := {
-	"coolant": "coolant_balanced_feed",
-	"root_return": "root_capillary_feed",
-	# The wet lane is also the Aster+Peris shadow solution.  With Myke present the
-	# dry-burn lane remains a distinct, equally valid specialist branch.
-	"buffer": "buffer_wet_lane",
-	"transfer": "transfer_linked_clock",
-}
-const COMMISSIONING_PROTOCOLS := {
-	"coolant": {
-		"label": "FLUSH LOOP / 01",
-		"category": "hydraulic_recommissioning",
-		"evidence": [
-			{"id": "coolant_inlet_trace", "pos": Vector3(63.0, 0.5, -7.0), "role": "aster", "verb": "TRACE INLET", "kind": "data"},
-			{"id": "coolant_root_sample", "pos": Vector3(68.0, 0.5, 6.5), "role": "peris", "verb": "SAMPLE RETURN", "kind": "root"},
-			{"id": "coolant_pressure_read", "pos": Vector3(73.0, 0.5, -5.5), "role": "aster", "verb": "READ PRESSURE", "kind": "data"},
-			{"id": "coolant_biofilm_read", "pos": Vector3(78.0, 0.5, 7.5), "role": "peris", "verb": "READ BIOFILM", "kind": "root"},
-			{"id": "coolant_crossfeed_trace", "pos": Vector3(83.0, 0.5, -3.5), "role": "aster", "verb": "TRACE CROSSFEED", "kind": "data"},
-		],
-		"choices": [
-			{"id": "coolant_balanced_feed", "pos": Vector3(88.0, 0.5, -7.0), "role": "aster", "verb": "BALANCE FEED", "kind": "decision"},
-			{"id": "coolant_root_priority", "pos": Vector3(88.0, 0.5, 7.0), "role": "peris", "verb": "PRIORITIZE ROOT", "kind": "decision"},
-		],
-		"resolutions": {
-			"coolant_balanced_feed": {"id": "coolant_metered_flush", "pos": Vector3(94.0, 0.5, -5.5), "role": "aster", "verb": "METER FLUSH", "kind": "execution"},
-			"coolant_root_priority": {"id": "coolant_living_flush", "pos": Vector3(94.0, 0.5, 5.5), "role": "peris", "verb": "TEND FLUSH", "kind": "execution"},
-		},
-	},
-	"root_return": {
-		"label": "ROOT RETURN / 02",
-		"category": "living_network_balance",
-		"evidence": [
-			{"id": "return_capillary_sample", "pos": Vector3(101.0, 0.5, 7.0), "role": "peris", "verb": "SAMPLE CAPILLARY", "kind": "root"},
-			{"id": "return_load_trace", "pos": Vector3(106.0, 0.5, -6.5), "role": "aster", "verb": "TRACE LOAD", "kind": "data"},
-			{"id": "return_growth_read", "pos": Vector3(111.0, 0.5, 5.5), "role": "peris", "verb": "READ GROWTH", "kind": "root"},
-			{"id": "return_valve_scan", "pos": Vector3(116.0, 0.5, -7.5), "role": "aster", "verb": "SCAN VALVE", "kind": "data"},
-			{"id": "return_pulse_map", "pos": Vector3(121.0, 0.5, 3.5), "role": "peris", "verb": "MAP PULSE", "kind": "root"},
-		],
-		"choices": [
-			{"id": "root_capillary_feed", "pos": Vector3(126.0, 0.5, 7.0), "role": "peris", "verb": "FEED CAPILLARY", "kind": "decision"},
-			{"id": "root_bypass_feed", "pos": Vector3(126.0, 0.5, -7.0), "role": "aster", "verb": "OPEN BYPASS", "kind": "decision"},
-		],
-		"resolutions": {
-			"root_capillary_feed": {"id": "root_tend_return", "pos": Vector3(132.0, 0.5, 5.5), "role": "peris", "verb": "TEND RETURN", "kind": "execution"},
-			"root_bypass_feed": {"id": "root_meter_bypass", "pos": Vector3(132.0, 0.5, -5.5), "role": "aster", "verb": "METER BYPASS", "kind": "execution"},
-		},
-	},
-	"buffer": {
-		"label": "BUFFER PERIMETER / 03",
-		"category": "buffer_containment",
-		"evidence": [
-			{"id": "buffer_thermal_read", "pos": Vector3(139.0, 0.5, -7.0), "role": "aster", "verb": "READ THERMAL", "kind": "data"},
-			{"id": "buffer_husk_sample", "pos": Vector3(144.0, 0.5, 6.5), "role": "peris", "verb": "SAMPLE HUSK", "kind": "root"},
-			{"id": "buffer_gap_trace", "pos": Vector3(149.0, 0.5, -5.5), "role": "aster", "verb": "TRACE GAP", "kind": "data"},
-			{"id": "buffer_filament_read", "pos": Vector3(154.0, 0.5, 7.5), "role": "peris", "verb": "READ FILAMENT", "kind": "root"},
-			{"id": "buffer_airflow_scan", "pos": Vector3(159.0, 0.5, -3.5), "role": "aster", "verb": "SCAN AIRFLOW", "kind": "data"},
-		],
-		"choices": [
-			{"id": "buffer_dry_burn_lane", "pos": Vector3(164.0, 0.5, -7.0), "role": "myke", "verb": "MARK BURN LANE", "kind": "decision"},
-			{"id": "buffer_wet_lane", "pos": Vector3(164.0, 0.5, 7.0), "role": "aster", "verb": "MARK WET LANE", "kind": "decision"},
-		],
-		"resolutions": {
-			"buffer_dry_burn_lane": {"id": "buffer_burn_break", "pos": Vector3(170.0, 0.5, -5.5), "role": "myke", "verb": "BURN BREAK", "kind": "execution"},
-			"buffer_wet_lane": {"id": "buffer_scrape_break", "pos": Vector3(170.0, 0.5, 5.5), "role": "aster", "verb": "SCRAPE BREAK", "kind": "execution"},
-		},
-	},
-	"transfer": {
-		"label": "TRANSFER CLOCK / 04",
-		"category": "catalyst_transfer",
-		"evidence": [
-			{"id": "transfer_root_clock", "pos": Vector3(177.0, 0.5, 7.0), "role": "peris", "verb": "READ ROOT CLOCK", "kind": "root"},
-			{"id": "transfer_phase_trace", "pos": Vector3(182.0, 0.5, -6.5), "role": "aster", "verb": "TRACE PHASE", "kind": "data"},
-			{"id": "transfer_membrane_read", "pos": Vector3(187.0, 0.5, 5.5), "role": "peris", "verb": "READ MEMBRANE", "kind": "root"},
-			{"id": "transfer_cradle_scan", "pos": Vector3(192.0, 0.5, -7.5), "role": "aster", "verb": "SCAN CRADLE", "kind": "data"},
-			{"id": "transfer_pulse_match", "pos": Vector3(197.0, 0.5, 3.5), "role": "peris", "verb": "MATCH PULSE", "kind": "root"},
-		],
-		"choices": [
-			{"id": "transfer_linked_clock", "pos": Vector3(202.0, 0.5, 7.0), "role": "peris", "verb": "LINK CLOCK", "kind": "decision"},
-			{"id": "transfer_isolated_clock", "pos": Vector3(202.0, 0.5, -7.0), "role": "aster", "verb": "ISOLATE CLOCK", "kind": "decision"},
-		],
-		"resolutions": {
-			"transfer_linked_clock": {"id": "transfer_living_sync", "pos": Vector3(208.0, 0.5, 5.5), "role": "peris", "verb": "SYNC TRANSFER", "kind": "execution"},
-			"transfer_isolated_clock": {"id": "transfer_machine_sync", "pos": Vector3(208.0, 0.5, -5.5), "role": "aster", "verb": "SYNC TRANSFER", "kind": "execution"},
-		},
-	},
-}
-const EXTRACTION_POS := Vector3(219.0, 0.5, 0.0)
-const ROLE_WALK_SPEEDS := {"aster": 3.2, "peris": 3.0, "myke": 3.1}
-const COMMISSIONING_DECORATION_PROFILE := {
-	"id": "inflammashunt_commissioning",
-	"x0": 56.0,
-	"x1": 224.0,
-	"width": 28.0,
-	"wall_height": 4.8,
-	"ground_y": 0.0,
-	"seed": 0x1F1A5A,
-	"program": "hydraulic",
-	"spacing": 10.5,
-	"floor_tile": "deck_metal",
-	"wall_tile": "rust_iron",
-	"floor_tint": Color(0.12, 0.14, 0.15),
-	"wall_tint": Color(0.17, 0.15, 0.14),
-	"trim": Color(0.40, 0.38, 0.34),
-	"inset": Color(0.045, 0.050, 0.055),
-	"service": Color(0.20, 0.23, 0.22),
-	"rust": Color(0.40, 0.16, 0.065),
-	"glow": Color(0.36, 0.91, 0.50),
-	"light": Color(0.45, 0.53, 0.43),
-	"signs": ["RESOLUTION SERVICE / 01", "LIVING RETURN SPINE", "CATALYST TRANSFER  >"],
-}
+const ACTION_ASTER_LOG := "aster_log"
+const ACTION_PIPE_DIAGRAM := "pipe_diagram"
+const ACTION_DEAD_ROOTS := "dead_roots"
+const ACTION_LIVING_JUNCTION := "living_junction"
+const ACTION_GRATE_OBSERVATION := "grate_observation"
+const ACTION_DEVICE_GAP := "device_gap"
+const ACTION_VALVE := "valve"
+const ACTION_CHAR_A := "char_a"
+const ACTION_CHAR_B := "char_b"
+const ACTION_TEND_ROOT := "tend_root"
+const ACTION_EXAMINE_CLUSTER := "examine_cluster"
+const ACTION_OBSERVE_FEEDING := "observe_feeding"
+const ACTION_STRIKE_CLUSTER := "strike_cluster"
+const ACTION_TEND_FLORA := "tend_flora"
+const ACTION_TAKE_SAC := "take_sac"
+const ACTION_HACK_TERMINAL := "hack_terminal"
+const ACTION_THERMAL_RESET := "thermal_reset"
+const ACTION_OPEN_HOUSING := "open_housing"
+const ACTION_TAKE_DEVICE := "take_device"
 
 ## Hold-time table (spec "Route Information As Efficiency"): [with info, without info].
 const HOLDS := {
@@ -184,13 +97,20 @@ var route_info := {
 	"myke_buffer_ring": false,
 }
 var valve_open := false
+var water_phase := "dry"        # dry, flowing, full
+var water_deadline := -1.0
 var char_a_state := "dry"        # dry, damp, cleared, burned
 var char_b_state := "dry"
-var root_state := "suppressed"   # suppressed, tame, hostile, recovering, connected
+var root_state := "suppressed"   # suppressed, tame, hostile, recovering, connecting, connected
+var root_connect_deadline := -1.0
 var buffer_state := "stable"     # stable, shattered, reforming
-var gas_sac_state := "idle"      # idle, tended, carried, expired, ignited
+var gas_sac_state := "idle"      # idle, tended, claiming, active, expired, ignited
 var healing_zone := 0.0
 var housing_unlocked := false
+var housing_state := "sealed"    # sealed, opening, open
+var housing_deadline := -1.0
+# Compatibility/read-model cache. The source-tagged GameState item and transaction phase below are
+# authoritative; opening the lid alone never changes this value.
 var device_retrieved := false
 var wrong_events: Array = []
 var long_hold_count := 0
@@ -201,19 +121,42 @@ var _reports := {}               # route -> true once the confident wrong answer
 var _reunion_played := false
 var _popcorn := false
 var _popcorn_field = null
+var _sac_item_id := ""
+# Presentation/cache only. Ownership lives in GameState.items and may change through ordinary
+# drop/transfer commands without a bespoke chunk command.
 var _sac_carrier := ""
 var _sac_expires := -1.0
-var _sac_visual: MeshInstance3D
 var _rage_until := -1.0
 var _raged := {}                 # chelator id -> true while in the woken encounter
 var _extra_chelators: Array = []
 var _root_enemy: ChainEnemy
 var _whip_ready := {}
 var _polls_armed := false
+var _shared_poll_deadline := -1.0
+var _root_timer_mode := ""
+var _root_deadline := -1.0
+var _buffer_reform_deadline := -1.0
+var _restoring_inflammashunt_authority := false
 var _healing_glow: MeshInstance3D
 var _char_a_mesh: MeshInstance3D
 var _char_b_mesh: MeshInstance3D
 var _husks: Array = []
+var _water_route_segments: Array[MeshInstance3D] = []
+var _root_filament_segments: Array[MeshInstance3D] = []
+var _housing_lid_pivot: Node3D
+var _housing_lid: MeshInstance3D
+var _device_item_id := ""
+var _device_phase := DEVICE_PHASE_AVAILABLE
+var _device_claimed_by := ""
+var _device_claim_serial := 0
+var _sac_claim_serial := 0
+var _terminal_hacked := false
+## Per-action monotonic GameState trigger identities already incorporated into the saved semantic
+## model. A GameState trigger whose count is newer than this map is an accepted-source-before-
+## callback snapshot and owns no consequence; restore re-arms that exact source.
+var _source_committed_counts := {}
+var _interaction_sources := {}
+var _active_source_receipt := {}
 
 var _valve_it: Area3D
 var _char_a_it: Area3D
@@ -224,17 +167,10 @@ var _take_sac_it: Area3D
 var _terminal_it: Area3D
 var _reset_it: Area3D
 var _housing_it: Area3D
+var _device_it: Area3D
 var _examine_it: Area3D
 var _strike_it: Area3D
 var _observe_it: Area3D
-var _commissioning_sites := {}
-var _commissioning_evidence := {}
-var _commissioning_choices := {}
-var _commissioning_resolved := {}
-var _commissioning_completed_actions: Array[String] = []
-var _commissioning_phase := "locked"
-var _extraction_it: Area3D
-var _decoration_audit := {}
 
 func get_scene_title() -> String:
 	return "The Inflammashunt (danger zone)"
@@ -262,14 +198,16 @@ func _build_chunk() -> void:
 	_build_approach()
 	_build_routes()
 	_build_junction_room()
-	_build_commissioning_gallery()
+	_ensure_popcorn_field()
 	_spawn_active_chelators()
 	_refresh_hold_times()
-	_decoration_audit = LevelDecoratorScript.decorate_corridor(self, COMMISSIONING_DECORATION_PROFILE)
+	_apply_inflammashunt_presenters()
+	_publish_inflammashunt_authority()
 
 func _update(delta: float) -> void:
 	super._update(delta)
 	_ensure_polls()
+	_sync_transition_presenters()
 
 # --- The fragment (floors, walls, grid, spawns) ---
 
@@ -299,8 +237,6 @@ func _inflammashunt_fragment() -> Fragment:
 		{"pos": Vector3(28.5, -0.05, 0.0), "size": Vector3(3.5, 0.1, 3.2), "color": scorch, "tile": "deck_metal"},
 		{"pos": Vector3(42.75, -0.05, 0.0), "size": Vector3(25.5, 0.1, JCT_HALF_Z * 2.0), "color": Color(0.1, 0.095, 0.09), "tile": "deck_metal"},
 		{"pos": Vector3(32.5, -0.05, -12.25), "size": Vector3(6.0, 0.1, 4.5), "color": Color(0.07, 0.065, 0.06), "tile": "deck_metal"},
-		# The measured service gallery begins at the housing's east threshold.
-		{"pos": Vector3(140.0, -0.05, 0.0), "size": Vector3(168.0, 0.1, 28.0), "color": Color(0.105, 0.11, 0.115), "tile": "deck_metal"},
 	]
 	var wallc := Color(0.06, 0.055, 0.05)
 	frag.walls = [
@@ -323,9 +259,7 @@ func _inflammashunt_fragment() -> Fragment:
 		# junction shell
 		{"pos": Vector3(42.75, 1.5, -8.9), "size": Vector3(25.5, 3.0, 0.4), "color": wallc},
 		{"pos": Vector3(42.75, 1.5, 8.9), "size": Vector3(25.5, 3.0, 0.4), "color": wallc},
-		# split around the service-gallery threshold
-		{"pos": Vector3(55.9, 1.5, -6.0), "size": Vector3(0.4, 3.0, 6.2), "color": wallc},
-		{"pos": Vector3(55.9, 1.5, 6.0), "size": Vector3(0.4, 3.0, 6.2), "color": wallc},
+		{"pos": Vector3(55.9, 1.5, 0.0), "size": Vector3(0.4, 3.0, 18.2), "color": wallc},
 		{"pos": Vector3(29.8, 1.5, -5.25), "size": Vector3(0.4, 3.0, 7.3), "color": wallc},
 		{"pos": Vector3(29.8, 1.5, 5.25), "size": Vector3(0.4, 3.0, 7.3), "color": wallc},
 		# the crawl pocket's sealed shell
@@ -333,10 +267,6 @@ func _inflammashunt_fragment() -> Fragment:
 		{"pos": Vector3(32.5, 1.2, -14.7), "size": Vector3(6.4, 2.4, 0.4), "color": wallc},
 		{"pos": Vector3(29.3, 1.2, -12.25), "size": Vector3(0.4, 2.4, 4.9), "color": wallc},
 		{"pos": Vector3(35.7, 1.2, -12.25), "size": Vector3(0.4, 2.4, 4.9), "color": wallc},
-		# commissioning gallery shell
-		{"pos": Vector3(140.0, 2.4, -14.15), "size": Vector3(168.0, 4.8, 0.3), "color": Color(0.12, 0.11, 0.105), "tile": "rust_iron"},
-		{"pos": Vector3(140.0, 2.4, 14.15), "size": Vector3(168.0, 4.8, 0.3), "color": Color(0.12, 0.11, 0.105), "tile": "rust_iron"},
-		{"pos": Vector3(224.15, 2.4, 0.0), "size": Vector3(0.3, 4.8, 28.0), "color": Color(0.10, 0.095, 0.09), "tile": "rust_iron"},
 	]
 	frag.lights = [
 		{"pos": Vector3(8.0, 3.6, 0.0), "color": Color(0.9, 0.68, 0.5), "energy": 1.2, "range": 16.0},
@@ -345,21 +275,16 @@ func _inflammashunt_fragment() -> Fragment:
 		{"pos": Vector3(22.0, 3.4, -10.0), "color": Color(0.6, 0.75, 0.95), "energy": 1.1, "range": 14.0},
 		{"pos": Vector3(38.0, 3.8, 0.0), "color": Color(0.85, 0.78, 0.68), "energy": 1.6, "range": 22.0},
 		{"pos": Vector3(50.0, 3.6, 4.0), "color": Color(0.5, 0.9, 0.62), "energy": 1.2, "range": 14.0},
-		{"pos": Vector3(75.0, 3.7, 0.0), "color": Color(0.42, 0.62, 0.58), "energy": 1.1, "range": 18.0},
-		{"pos": Vector3(116.0, 3.7, 0.0), "color": Color(0.40, 0.58, 0.48), "energy": 1.1, "range": 18.0},
-		{"pos": Vector3(157.0, 3.7, 0.0), "color": Color(0.54, 0.46, 0.36), "energy": 1.1, "range": 18.0},
-		{"pos": Vector3(198.0, 3.7, 0.0), "color": Color(0.38, 0.62, 0.44), "energy": 1.2, "range": 18.0},
 	]
 	frag.labels = [
 		{"pos": Vector3(8.0, 3.0, 0.0), "text": "MAINTENANCE BRANCH 7 — DECOMMISSIONED", "color": Color(0.62, 0.58, 0.55)},
 	]
-	frag.labels.append({"pos": Vector3(58.0, 3.1, 0.0), "text": "RESOLUTION SUPPORT // FOUR LOOPS", "color": Color(0.44, 0.78, 0.56)})
 	frag.objects = []
 	frag.params = {"restart_on_wipe": false}
 	frag.time_state = {"note_default": "Salvage run. The survival clock holds outside — in here the danger is local.",
 		"routing_mode": "direct"}
 	var cs := 1.5
-	var w := 150
+	var w := 40
 	var hgrid := 22
 	var cells: Array = []
 	for z in range(hgrid):
@@ -382,8 +307,6 @@ func _inflammashunt_fragment() -> Fragment:
 			elif wx >= HUB_X1 and wx < JCT_X0 and absf(wz) < 1.6:
 				ok = true
 			elif wx >= JCT_X0 and wx < JCT_X1 and absf(wz) < JCT_HALF_Z:
-				ok = true
-			elif wx >= JCT_X1 and wx < 224.0 and absf(wz) < 13.5:
 				ok = true
 			elif wx > POCKET[0] and wx < POCKET[1] and wz > POCKET[2] and wz < POCKET[3]:
 				ok = true
@@ -416,27 +339,27 @@ func _build_routes() -> void:
 	# Route A (Aster): engineering log + pipe diagram
 	_add_label(self, "A — RECORDS", Vector3(22.0, 2.9, -8.0), Color(0.6, 0.75, 0.95))
 	var a1 := _add_interactable(self, "AsterLogTerminal", "Read the final engineering log",
-		Vector3(20.0, 0.6, -11.5), "READ LOG", "aster", 1.0, false, 1.6)
+		Vector3(20.0, 0.6, -11.5), "READ LOG", "aster", 1.0, true, 1.6)
 	_outline_interactable_child(a1, _add_box(a1, Vector3(0, 0.55, 0), Vector3(0.7, 1.1, 0.4),
 		Color(0.14, 0.16, 0.2), Color(0.36, 0.91, 0.5), 0.5), "AsterLogTerminal", 1.6)
-	a1.interacted.connect(_on_aster_log)
+	_configure_inflammashunt_source(a1, ACTION_ASTER_LOG)
 	var a2 := _add_interactable(self, "PipeDiagram", "Scan the pipe junction diagram",
-		Vector3(24.0, 0.6, -11.5), "SCAN DIAGRAM", "aster", 1.0, false, 1.6)
+		Vector3(24.0, 0.6, -11.5), "SCAN DIAGRAM", "aster", 1.0, true, 1.6)
 	_outline_interactable_child(a2, _add_box(a2, Vector3(0, 0.9, -0.4), Vector3(1.6, 1.2, 0.12),
 		Color(0.16, 0.18, 0.22), Color(0.5, 0.7, 0.95), 0.4), "PipeDiagram", 1.6)
-	a2.interacted.connect(_on_pipe_diagram)
+	_configure_inflammashunt_source(a2, ACTION_PIPE_DIAGRAM)
 	# Route B (Peris): dead roots + the living root-Chelator junction
 	_add_label(self, "B — UNDERGROWTH", Vector3(22.0, 2.9, 8.0), Color(0.45, 0.85, 0.6))
 	var p1 := _add_interactable(self, "DeadRootNetwork", "Examine the dead root network",
-		Vector3(20.0, 0.4, 11.5), "EXAMINE ROOTS", "peris", 1.0, false, 1.6)
+		Vector3(20.0, 0.4, 11.5), "EXAMINE ROOTS", "peris", 1.0, true, 1.6)
 	_outline_interactable_child(p1, _add_box(p1, Vector3(0, 0.2, 0), Vector3(1.7, 0.4, 1.0),
 		Color(0.16, 0.13, 0.1)), "DeadRootNetwork", 1.7)
-	p1.interacted.connect(_on_dead_roots)
+	_configure_inflammashunt_source(p1, ACTION_DEAD_ROOTS)
 	var p2 := _add_interactable(self, "LivingJunction", "Examine the living root-Chelator junction",
-		Vector3(24.0, 0.4, 11.5), "EXAMINE JUNCTION", "peris", 1.0, false, 1.6)
+		Vector3(24.0, 0.4, 11.5), "EXAMINE JUNCTION", "peris", 1.0, true, 1.6)
 	_outline_interactable_child(p2, _add_box(p2, Vector3(0, 0.25, 0), Vector3(1.4, 0.5, 1.0),
 		Color(0.14, 0.2, 0.15), Color(0.4, 0.9, 0.55), 0.6), "LivingJunction", 1.7)
-	p2.interacted.connect(_on_living_junction)
+	_configure_inflammashunt_source(p2, ACTION_LIVING_JUNCTION)
 	# Route C (Myke): the crawlspace — physically character-coded
 	var crawl_in := CrawlTunnel.new()
 	crawl_in.name = "MykeCrawlIn"
@@ -453,21 +376,41 @@ func _build_routes() -> void:
 		[Vector3(28.2, 0.7, -8.0), Vector3(25.4, 0.0, -4.0)], 1.3, 1.1)
 	_wire_myke_crawl(crawl_out)
 	var m1 := _add_interactable(self, "GrateObservation", "Watch the corridor floor through the grate",
-		Vector3(31.8, 0.4, -13.2), "WATCH FEEDERS", "myke", 1.0, false, 1.6)
+		Vector3(31.8, 0.4, -13.2), "WATCH FEEDERS", "myke", 1.0, true, 1.6)
 	_outline_interactable_child(m1, _add_box(m1, Vector3(0, 0.3, 0.5), Vector3(1.2, 0.6, 0.14),
 		Color(0.14, 0.14, 0.15)), "GrateObservation", 1.6)
-	m1.interacted.connect(_on_grate_observation)
+	_configure_inflammashunt_source(m1, ACTION_GRATE_OBSERVATION)
 	var m2 := _add_interactable(self, "DeviceGap", "Sight the device through the gap",
-		Vector3(34.2, 0.4, -13.2), "SIGHT DEVICE", "myke", 1.0, false, 1.6)
+		Vector3(34.2, 0.4, -13.2), "SIGHT DEVICE", "myke", 1.0, true, 1.6)
 	_outline_interactable_child(m2, _add_box(m2, Vector3(0, 0.3, 0.5), Vector3(1.2, 0.6, 0.14),
 		Color(0.14, 0.14, 0.15), Color(0.5, 0.9, 0.62), 0.3), "DeviceGap", 1.6)
-	m2.interacted.connect(_on_device_gap)
+	_configure_inflammashunt_source(m2, ACTION_DEVICE_GAP)
 
 func _wire_myke_crawl(crawl: CrawlTunnel) -> void:
+	crawl.required_character = "myke"
 	crawl.requirement = func() -> bool: return str(crawl.active_character) == "myke"
 	crawl.refused.connect(func() -> void:
 		_show_note("The gap is a hand-span wide. Only Myke could fit through there.", 2.4))
 	add_child(crawl)
+	# CrawlTunnel owns its saved traversal transaction, but this bespoke mouth is not created
+	# through SceneChunk._add_interactable(). Bind an exact GameState source explicitly so its
+	# accepted receipt has stable identity, canonical data-space position, and Myke authority.
+	var gs = _get_game_state()
+	if gs != null:
+		var source_id := _interactable_data_id(str(crawl.name))
+		gs.register_interactable({
+			"id": source_id,
+			"position": crawl.get_data_mouth(),
+			"requires_hold": false,
+			"interactable_type": Interactable.InteractableType.INSPECTION,
+			"hold_time": 1.0,
+			"one_shot": false,
+			"required_character": "myke",
+			"radius": crawl.interaction_radius,
+			"tutorial_label": crawl.tutorial_label,
+			"enabled": true,
+		})
+		crawl.bind_data(gs, source_id)
 	_register_interactable(crawl)
 	var stub := _add_box(crawl, Vector3(0.0, 0.35, 0.0), Vector3(0.5, 0.7, 0.5), Color(0.1, 0.1, 0.11))
 	_outline_interactable_child(crawl, stub, crawl.name, 1.4)
@@ -478,35 +421,35 @@ func _build_junction_room() -> void:
 	var gs = _get_game_state()
 	# 1. drainage valve (wall-mounted, near the terminal but visually distinct)
 	_valve_it = _add_interactable(self, "DrainageValve", "Open the drainage valve",
-		VALVE_POS, "OPEN VALVE", "", HOLDS["valve"][1], false, 1.7,
+		VALVE_POS, "OPEN VALVE", "", HOLDS["valve"][1], true, 1.7,
 		Interactable.InteractableType.TIMED_ACTION)
 	_outline_interactable_child(_valve_it, _add_box(_valve_it, Vector3(0, 0.4, -0.5), Vector3(0.9, 0.9, 0.35),
 		Color(0.2, 0.28, 0.34), Color(0.4, 0.7, 0.9), 0.4), "DrainageValve", 1.7)
-	_valve_it.interacted.connect(_on_valve)
+	_configure_inflammashunt_source(_valve_it, ACTION_VALVE)
 	# 2 + 3. char deposits
 	_char_a_mesh = _add_box(self, CHAR_A_POS + Vector3(0, 0.12, 0), Vector3(2.2, 0.24, 1.8), Color(0.05, 0.045, 0.04))
 	_char_a_it = _add_interactable(self, "CharDepositA", "Clear the char deposit",
-		CHAR_A_POS, "CLEAR CHAR", "", HOLDS["char_a"][1], false, 1.7,
+		CHAR_A_POS, "CLEAR CHAR", "", HOLDS["char_a"][1], true, 1.7,
 		Interactable.InteractableType.TIMED_ACTION)
 	_outline_interactable_child(_char_a_it, _add_box(_char_a_it, Vector3(0, 0.1, 0), Vector3(1.6, 0.2, 1.3),
 		Color(0.06, 0.055, 0.05)), "CharDepositA", 1.8)
-	_char_a_it.interacted.connect(func() -> void: _on_char_deposit("a"))
+	_configure_inflammashunt_source(_char_a_it, ACTION_CHAR_A)
 	_char_b_mesh = _add_box(self, CHAR_B_POS + Vector3(0, 0.12, 0), Vector3(1.8, 0.24, 1.5), Color(0.05, 0.045, 0.04))
 	_char_b_it = _add_interactable(self, "CharDepositB", "Clear the char deposit by the root crack",
-		CHAR_B_POS, "CLEAR CHAR", "", HOLDS["char_b"][1], false, 1.6,
+		CHAR_B_POS, "CLEAR CHAR", "", HOLDS["char_b"][1], true, 1.6,
 		Interactable.InteractableType.TIMED_ACTION)
 	_outline_interactable_child(_char_b_it, _add_box(_char_b_it, Vector3(0, 0.1, 0), Vector3(1.3, 0.2, 1.1),
 		Color(0.06, 0.055, 0.05)), "CharDepositB", 1.7)
-	_char_b_it.interacted.connect(func() -> void: _on_char_deposit("b"))
+	_configure_inflammashunt_source(_char_b_it, ACTION_CHAR_B)
 	# 4. the root tendril in the floor crack near char B
 	var crack := _add_box(self, ROOT_BASE_POS + Vector3(0, 0.03, 0), Vector3(1.2, 0.06, 0.5), Color(0.03, 0.03, 0.03))
 	crack.name = "RootCrack"
 	_root_it = _add_interactable(self, "RootTendril", "Tend the suppressed root tendril",
-		ROOT_BASE_POS, "TEND ROOT", "peris", HOLDS["root"][1], false, 1.5,
+		ROOT_BASE_POS, "TEND ROOT", "peris", HOLDS["root"][1], true, 1.5,
 		Interactable.InteractableType.TIMED_ACTION)
 	_outline_interactable_child(_root_it, _add_box(_root_it, Vector3(0, 0.18, 0), Vector3(0.35, 0.36, 0.35),
 		Color(0.16, 0.24, 0.17), Color(0.4, 0.9, 0.55), 0.25), "RootTendril", 1.5)
-	_root_it.interacted.connect(_on_tend_root)
+	_configure_inflammashunt_source(_root_it, ACTION_TEND_ROOT)
 	# 5. the dormant Chelator ring: examine is the read, strike is the mistake
 	for i in range(5):
 		var ang := TAU * float(i) / 5.0
@@ -515,46 +458,61 @@ func _build_junction_room() -> void:
 		husk.name = "DormantHusk%d" % i
 		_husks.append(husk)
 	_examine_it = _add_interactable(self, "ExamineCluster", "Examine the dormant Chelator ring",
-		RING_CENTER + Vector3(-2.0, 0.4, -0.9), "EXAMINE", "", 1.0, false, 1.6)
+		RING_CENTER + Vector3(-2.0, 0.4, -0.9), "EXAMINE", "", 1.0, true, 1.6)
 	_outline_interactable_child(_examine_it, _add_box(_examine_it, Vector3(0, 0.25, 0), Vector3(0.3, 0.5, 0.3),
 		Color(0.2, 0.2, 0.22), Color(0.55, 0.75, 1.0), 0.3), "ExamineCluster", 1.6)
-	_examine_it.interacted.connect(_on_examine_cluster)
+	_configure_inflammashunt_source(_examine_it, ACTION_EXAMINE_CLUSTER)
 	_strike_it = _add_interactable(self, "StrikeCluster", "Strike the dormant Chelators",
-		RING_CENTER + Vector3(1.6, 0.4, -1.1), "STRIKE", "", 1.0, false, 1.6)
+		RING_CENTER + Vector3(1.6, 0.4, -1.1), "STRIKE", "", 1.0, true, 1.6)
 	_outline_interactable_child(_strike_it, _add_box(_strike_it, Vector3(0, 0.2, 0), Vector3(0.4, 0.4, 0.4),
 		Color(0.24, 0.14, 0.12), Color(0.9, 0.4, 0.25), 0.3), "StrikeCluster", 1.6)
-	_strike_it.interacted.connect(_on_strike_cluster)
+	_configure_inflammashunt_source(_strike_it, ACTION_STRIKE_CLUSTER)
 	# 6. gas sac flora in the damp corner (Gasafoetida — flora_taxonomy: Peris-only tend,
 	# carryable repellent pod)
 	_flora_it = _add_interactable(self, "GasSacFlora", "Tend the gas sac flora",
-		FLORA_POS, "TEND FLORA", "peris", 2.0, false, 1.7,
+		FLORA_POS, "TEND FLORA", "peris", 2.0, true, 1.7,
 		Interactable.InteractableType.TIMED_ACTION)
 	_outline_interactable_child(_flora_it, _add_box(_flora_it, Vector3(0, 0.35, 0), Vector3(0.8, 0.7, 0.8),
 		Color(0.2, 0.26, 0.16), Color(0.6, 0.8, 0.3), 0.4), "GasSacFlora", 1.7)
-	_flora_it.interacted.connect(_on_tend_flora)
+	_configure_inflammashunt_source(_flora_it, ACTION_TEND_FLORA)
 	_take_sac_it = _add_interactable(self, "TakeSac", "Take the swollen gas sac",
-		FLORA_POS + Vector3(1.3, 0.3, 0.4), "TAKE SAC", "", 0.8, false, 1.4)
-	_outline_interactable_child(_take_sac_it, _add_box(_take_sac_it, Vector3(0, 0.18, 0), Vector3(0.35, 0.35, 0.35),
-		Color(0.35, 0.5, 0.2), Color(0.7, 0.9, 0.3), 0.5), "TakeSac", 1.4)
-	_take_sac_it.interacted.connect(_on_take_sac)
+		SAC_SOURCE_POS, "TAKE SAC", "", 0.8, true, 1.4,
+		Interactable.InteractableType.INSPECTION, false)
+	_configure_inflammashunt_source(_take_sac_it, ACTION_TAKE_SAC)
 	# 7. the terminal (hack = read-only diagnostics; the reset command is the trap)
 	_terminal_it = _add_interactable(self, "JunctionTerminal", "Hack the maintenance terminal",
-		TERMINAL_POS, "HACK", "aster", 1.0, false, 1.7)
+		TERMINAL_POS, "HACK", "aster", 1.0, true, 1.7)
 	_outline_interactable_child(_terminal_it, _add_box(_terminal_it, Vector3(0, 0.5, -0.5), Vector3(0.9, 1.0, 0.3),
 		Color(0.13, 0.15, 0.19), Color(0.36, 0.91, 0.5), 0.6), "JunctionTerminal", 1.7)
-	_terminal_it.interacted.connect(_on_hack_terminal)
+	_configure_inflammashunt_source(_terminal_it, ACTION_HACK_TERMINAL)
 	_reset_it = _add_interactable(self, "ThermalResetConfirm", "Initiate the logged thermal reset",
-		TERMINAL_POS + Vector3(1.5, 0.5, 0.6), "THERMAL RESET", "aster", 1.2, false, 1.4)
+		TERMINAL_POS + Vector3(1.5, 0.5, 0.6), "THERMAL RESET", "aster", 1.2, true, 1.4)
 	_outline_interactable_child(_reset_it, _add_box(_reset_it, Vector3(0, 0.3, 0), Vector3(0.32, 0.6, 0.32),
 		Color(0.3, 0.12, 0.1), Color(0.95, 0.3, 0.15), 0.7), "ThermalResetConfirm", 1.4)
-	_reset_it.interacted.connect(_on_thermal_reset)
+	_configure_inflammashunt_source(_reset_it, ACTION_THERMAL_RESET)
 	# 8. the device housing + the healing zone under the grate
 	_housing_it = _add_interactable(self, "DeviceHousing", "Open the device housing",
-		HOUSING_POS, "OPEN HOUSING", "", 1.2, false, 1.6,
+		HOUSING_POS, "OPEN HOUSING", "", 1.2, true, 1.6,
 		Interactable.InteractableType.TIMED_ACTION)
-	_outline_interactable_child(_housing_it, _add_box(_housing_it, Vector3(0, 0.3, 0), Vector3(1.1, 0.6, 1.1),
-		Color(0.18, 0.2, 0.22), Color(0.5, 0.9, 0.62), 0.3), "DeviceHousing", 1.7)
-	_housing_it.interacted.connect(_on_open_housing)
+	_add_box(_housing_it, Vector3(0, 0.14, 0), Vector3(1.18, 0.28, 1.18),
+		Color(0.12, 0.14, 0.16), Color(0.3, 0.55, 0.42), 0.12, "HousingShell")
+	_housing_lid_pivot = Node3D.new()
+	_housing_lid_pivot.name = "HousingLidHinge"
+	_housing_lid_pivot.position = Vector3(0.0, 0.32, -0.55)
+	_housing_it.add_child(_housing_lid_pivot)
+	_housing_lid = _add_box(_housing_lid_pivot, Vector3(0, 0, 0.55), Vector3(1.1, 0.12, 1.1),
+		Color(0.18, 0.2, 0.22), Color(0.5, 0.9, 0.62), 0.3, "HousingLid")
+	_outline_interactable_child(_housing_it, _housing_lid, "DeviceHousing", 1.7)
+	_configure_inflammashunt_source(_housing_it, ACTION_OPEN_HOUSING)
+	# The housing and its contents are separate actions. The item exists at this exact source from
+	# construction onward, but the lid physically conceals it and this pickup seam stays disabled until
+	# the opening process commits. No completion flag is awarded by the lid animation.
+	_device_it = _add_interactable(self, "InflammashuntDevice",
+		"Lift the warm Resolution Catalyst from its housing",
+		DEVICE_SOURCE_POS, "TAKE DEVICE", "", 0.8, true, 1.35,
+		Interactable.InteractableType.INSPECTION, false)
+	_configure_inflammashunt_source(_device_it, ACTION_TAKE_DEVICE)
+	_ensure_device_source_item()
 	var grate := _add_box(self, GRATE_POS + Vector3(0, 0.02, 0), Vector3(2.2, 0.05, 2.2), Color(0.12, 0.13, 0.14))
 	grate.name = "HealingGrate"
 	_healing_glow = _add_box(self, GRATE_POS + Vector3(0, -0.35, 0), Vector3(0.8, 0.15, 0.8),
@@ -562,188 +520,112 @@ func _build_junction_room() -> void:
 	_healing_glow.name = "HealingZoneGlow"
 	# the shadow observation point: watching the feeders from inside the room
 	_observe_it = _add_interactable(self, "ObserveFeeding", "Watch the active Chelators around the char",
-		CHAR_A_POS + Vector3(1.8, 0.4, 1.4), "OBSERVE", "", 1.0, false, 1.6)
+		CHAR_A_POS + Vector3(1.8, 0.4, 1.4), "OBSERVE", "", 1.0, true, 1.6)
 	_outline_interactable_child(_observe_it, _add_box(_observe_it, Vector3(0, 0.06, 0), Vector3(0.9, 0.12, 0.9),
 		Color(0.13, 0.14, 0.15), Color(0.55, 0.75, 1.0), 0.2), "ObserveFeeding", 1.6)
-	_observe_it.interacted.connect(_on_observe_feeding)
+	_configure_inflammashunt_source(_observe_it, ACTION_OBSERVE_FEEDING)
+	_build_process_presenters()
 	# the thermal-reset command is not offered until the terminal has been hacked
 	if gs != null:
 		gs.set_interactable_enabled(_interactable_data_id("ThermalResetConfirm"), false)
 
-# --- Long-form commissioning gallery: four evidence -> decision -> execution loops ---
 
-func _build_commissioning_gallery() -> void:
-	var gallery := Node3D.new()
-	gallery.name = "CommissioningGallery"
-	add_child(gallery)
-	var frames := Node3D.new()
-	frames.name = "ProtocolFrames"
-	gallery.add_child(frames)
-	var datums := Node3D.new()
-	datums.name = "MeasurementDatums"
-	gallery.add_child(datums)
-	var instruments := Node3D.new()
-	instruments.name = "CommissioningInstruments"
-	gallery.add_child(instruments)
+## The solve describes three physical processes, so the room shows those processes instead of
+## asking prose and booleans to stand in for them. These strips are generic gameplay feedback,
+## not authored landmark assets: water advances out of the valve, Peris's filaments grow from
+## the exposed root, and the actual housing lid hinges open over its saved interval.
+func _build_process_presenters() -> void:
+	_water_route_segments.clear()
+	_root_filament_segments.clear()
+	_append_process_route(_water_route_segments, [
+		VALVE_POS + Vector3(0.0, -0.5, 0.0),
+		Vector3(38.0, 0.06, -4.8),
+		Vector3(34.0, 0.06, -4.8),
+		CHAR_A_POS + Vector3(0.0, 0.06, 0.0),
+		Vector3(40.0, 0.06, -2.0),
+		Vector3(44.0, 0.06, -2.0),
+		CHAR_B_POS + Vector3(0.0, 0.06, 0.0),
+		ROOT_BASE_POS + Vector3(0.0, 0.06, 0.0),
+		HOUSING_POS + Vector3(0.0, 0.06, 0.0),
+	], 0.16, Color(0.06, 0.26, 0.38), Color(0.22, 0.72, 1.0), "WaterRoute")
+	var filament_targets: Array[Vector3] = [
+		RING_CENTER + Vector3(-2.1, 0.18, 0.0),
+		RING_CENTER + Vector3(0.0, 0.18, -2.1),
+		RING_CENTER + Vector3(1.7, 0.18, 1.2),
+		HOUSING_POS + Vector3(0.0, 0.18, 0.0),
+	]
+	for target in filament_targets:
+		_append_process_route(_root_filament_segments, [
+			ROOT_BASE_POS + Vector3(0.0, 0.18, 0.0), target,
+		], 0.07, Color(0.11, 0.25, 0.13), Color(0.42, 0.95, 0.48), "RootFilament")
 
-	var datum_count := 0
-	var station_count := 0
-	for protocol_index in range(COMMISSIONING_PROTOCOL_ORDER.size()):
-		var protocol_id := str(COMMISSIONING_PROTOCOL_ORDER[protocol_index])
-		var protocol: Dictionary = COMMISSIONING_PROTOCOLS[protocol_id]
-		_build_commissioning_protocol_frame(frames, datums, protocol_id, protocol_index, protocol)
-		for evidence_index in range((protocol["evidence"] as Array).size()):
-			var evidence: Dictionary = (protocol["evidence"] as Array)[evidence_index]
-			_build_commissioning_site(instruments, protocol_id, evidence, "evidence",
-				COMMISSIONING_EVIDENCE_SECONDS, evidence_index)
-			station_count += 1
-			datum_count += 1
-		for choice_variant in protocol["choices"] as Array:
-			var choice: Dictionary = choice_variant
-			_build_commissioning_site(instruments, protocol_id, choice, "decision",
-				COMMISSIONING_DECISION_SECONDS)
-			station_count += 1
-		for choice_id_variant in (protocol["resolutions"] as Dictionary).keys():
-			var choice_id := str(choice_id_variant)
-			var resolution: Dictionary = (protocol["resolutions"] as Dictionary)[choice_id]
-			_build_commissioning_site(instruments, protocol_id, resolution, "execution",
-				COMMISSIONING_EXECUTION_SECONDS, -1, choice_id)
-			station_count += 1
-
-	# The cradle is not a presentation trigger: seating and sealing the live device is
-	# one final outlined timed action, enabled only after all four executions.
-	_extraction_it = _add_interactable(instruments, "Commissioning_extraction_cradle",
-		"Seat the live Resolution Catalyst in the insulated extraction cradle",
-		EXTRACTION_POS, "SEAT CATALYST", "aster", EXTRACTION_WORK_SECONDS, true, 2.0,
-		Interactable.InteractableType.TIMED_ACTION, false)
-	var cradle := _add_box(_extraction_it, Vector3(0.0, 0.55, 0.0), Vector3(2.4, 1.1, 1.6),
-		Color(0.14, 0.17, 0.16), Color(0.36, 0.91, 0.50), 0.65, "ExtractionCradle")
-	_outline_interactable_child(_extraction_it, cradle, "Commissioning_extraction_cradle", 2.0)
-	_extraction_it.set_meta("commissioning_stage", "extraction")
-	_extraction_it.set_meta("commissioning_category", "extraction_handoff")
-	_extraction_it.interacted.connect(_on_extraction_cradle_completed)
-	_extraction_it.set_interaction_enabled(false)
-	_commissioning_sites["extraction_cradle"] = _extraction_it
-	station_count += 1
-
-	# Continuous longitudinal measurement rails bind the four bays into one readable
-	# service system.  They are paper-thin rendering-only datums, not obstacles.
-	for guide_z in [-9.6, 0.0, 9.6]:
-		var guide := _add_box(datums, Vector3(140.0, 0.024, float(guide_z)),
-			Vector3(164.0, 0.018, 0.055), Color(0.08, 0.15, 0.11),
-			Color(0.36, 0.91, 0.50), 0.55, "LongitudinalDatum_%s" % str(guide_z))
-		guide.set_meta("rendering_only", true)
-		datum_count += 1
-
-	gallery.set_meta("environment_audit", {
-		"contract_id": "inflammashunt_commissioning_environment_v1",
-		"protocol_frames": COMMISSIONING_PROTOCOL_ORDER.size(),
-		"station_count": station_count,
-		"measurement_datums": datum_count,
-		"collision_shapes": 0,
-		"clearance": "rendering_only_outside_station_footprints",
-		"deterministic": true,
+	for target in [_char_a_mesh, _char_b_mesh, _root_it]:
+		_add_causal_feedback_link(_valve_it, target, Color(0.22, 0.72, 1.0), {
+			"name": "ValveWaterLink", "interaction_source": _valve_it,
+			"show_label": false, "path_style": "movement_chevrons",
+			"owner_character": "aster", "visibility_policy": "contextual",
+			"feedback_mode": "predicted", "flow_speed": 0.34, "dash_count": 8,
+			"source_offset": Vector3(0.0, 0.35, 0.0), "target_offset": Vector3(0.0, 0.25, 0.0),
+		})
+	_add_causal_feedback_link(_root_it, _housing_lid, Color(0.42, 0.95, 0.48), {
+		"name": "RootHousingLink", "interaction_source": _root_it,
+		"show_label": false, "path_style": "movement_chevrons",
+		"owner_character": "peris", "visibility_policy": "contextual",
+		"feedback_mode": "predicted", "flow_speed": 0.24, "dash_count": 9,
+		"source_offset": Vector3(0.0, 0.35, 0.0), "target_offset": Vector3(0.0, 0.35, 0.0),
 	})
+	_sync_transition_presenters()
 
-func _build_commissioning_protocol_frame(
-	frames: Node3D,
-	datums: Node3D,
-	protocol_id: String,
-	protocol_index: int,
-	protocol: Dictionary
-) -> void:
-	var evidence: Array = protocol["evidence"]
-	var first_x := float((evidence[0] as Dictionary)["pos"].x) - 3.0
-	var resolutions: Dictionary = protocol["resolutions"]
-	var last_x := first_x + 34.0
-	for resolution_variant in resolutions.values():
-		last_x = maxf(last_x, float((resolution_variant as Dictionary)["pos"].x) + 3.0)
-	var frame := Node3D.new()
-	frame.name = "ProtocolFrame_%02d_%s" % [protocol_index + 1, protocol_id]
-	frames.add_child(frame)
-	var frame_color := Color(0.26, 0.29, 0.28) if protocol_index % 2 == 0 else Color(0.30, 0.25, 0.21)
-	for arch_x in [first_x, last_x]:
-		for side_z in [-10.8, 10.8]:
-			_add_box(frame, Vector3(float(arch_x), 1.8, float(side_z)), Vector3(0.34, 3.6, 0.34),
-				frame_color, Color.BLACK, 0.0, "ArchColumn")
-		_add_box(frame, Vector3(float(arch_x), 3.45, 0.0), Vector3(0.34, 0.24, 21.9),
-			frame_color, Color.BLACK, 0.0, "ArchBeam")
-	var span := last_x - first_x
-	_add_box(frame, Vector3((first_x + last_x) * 0.5, 0.035, -11.0),
-		Vector3(span, 0.025, 0.12), frame_color, Color(0.36, 0.91, 0.50), 0.42,
-		"ProtocolBoundary")
-	_add_label(frame, "%s // %03dm-%03dm" % [str(protocol["label"]), int(first_x), int(last_x)],
-		Vector3(first_x + 3.0, 2.75, -10.55), Color(0.58, 0.86, 0.67))
-	var light := _add_light(frame, Vector3((first_x + last_x) * 0.5, 3.25, 0.0),
-		Color(0.38, 0.58, 0.46), 0.72, 10.0)
-	light.name = "ProtocolLight_%02d" % (protocol_index + 1)
-	light.shadow_enabled = false
 
-	for evidence_variant in evidence:
-		var pos: Vector3 = (evidence_variant as Dictionary)["pos"]
-		_add_box(datums, Vector3(pos.x, 0.026, 0.0), Vector3(0.055, 0.022, 22.0),
-			Color(0.07, 0.12, 0.10), Color(0.36, 0.91, 0.50), 0.38,
-			"StationDatum_%s" % str((evidence_variant as Dictionary)["id"]))
+func _append_process_route(
+		storage: Array[MeshInstance3D], points: Array[Vector3], width: float,
+		base_color: Color, emission: Color, prefix: String
+	) -> void:
+	for index in range(points.size() - 1):
+		var start := points[index]
+		var finish := points[index + 1]
+		var delta := finish - start
+		var flat_length := Vector2(delta.x, delta.z).length()
+		if flat_length <= 0.01:
+			continue
+		var strip := _add_box(self, (start + finish) * 0.5,
+			Vector3(width, 0.035, flat_length), base_color, emission, 0.85,
+			"%s_%02d" % [prefix, storage.size()])
+		strip.rotation.y = atan2(delta.x, delta.z)
+		strip.visible = false
+		strip.set_meta("camera_occlusion_exempt", true)
+		storage.append(strip)
 
-func _build_commissioning_site(
-	parent: Node3D,
-	protocol_id: String,
-	site: Dictionary,
-	stage: String,
-	dwell_seconds: float,
-	evidence_index := -1,
-	choice_id := ""
-) -> void:
-	var site_id := str(site["id"])
-	var role := str(site["role"])
-	var node_name := "Commissioning_%s" % site_id
-	var interactable := _add_interactable(parent, node_name,
-		"%s: %s" % [str((COMMISSIONING_PROTOCOLS[protocol_id] as Dictionary)["label"]),
-			str(site["verb"]).capitalize()],
-		site["pos"], str(site["verb"]), role, dwell_seconds, true, 1.8,
-		Interactable.InteractableType.TIMED_ACTION, false)
-	var role_color := Color(0.34, 0.58, 0.92) if role == "aster" else (
-		Color(0.50, 0.78, 0.38) if role == "peris" else Color(0.86, 0.34, 0.18))
-	var kind := str(site.get("kind", "data"))
-	var body_size := Vector3(0.9, 1.05, 0.65)
-	if kind == "root":
-		body_size = Vector3(1.35, 0.60, 1.10)
-	elif kind == "decision":
-		body_size = Vector3(1.25, 0.86, 0.82)
-	elif kind == "execution":
-		body_size = Vector3(1.65, 1.20, 1.10)
-	var body := _add_box(interactable, Vector3(0.0, body_size.y * 0.5, 0.0), body_size,
-		Color(0.13, 0.15, 0.15), role_color, 0.48, "%sBody" % site_id)
-	# A second silhouette layer tells evidence, choice, and execution apart at camera distance.
-	if kind == "root":
-		for offset in [-0.38, 0.0, 0.38]:
-			_add_box(interactable, Vector3(float(offset), 0.76, 0.0), Vector3(0.11, 0.55, 0.11),
-				role_color.darkened(0.20), role_color, 0.30, "%sRootStem" % site_id)
-	elif kind == "decision":
-		_add_box(interactable, Vector3(0.0, 1.05, 0.0), Vector3(1.75, 0.10, 0.22),
-			role_color.darkened(0.25), role_color, 0.55, "%sDecisionBar" % site_id)
-	elif kind == "execution":
-		_add_box(interactable, Vector3(0.0, 1.45, 0.0), Vector3(0.28, 0.42, 0.28),
-			role_color.darkened(0.25), role_color, 0.70, "%sExecutionBeacon" % site_id)
-	else:
-		_add_box(interactable, Vector3(0.0, 1.18, 0.0), Vector3(0.58, 0.18, 0.16),
-			role_color.darkened(0.25), role_color, 0.65, "%sDataVane" % site_id)
-	_outline_interactable_child(interactable, body, node_name, 1.8)
-	interactable.set_meta("commissioning_protocol", protocol_id)
-	interactable.set_meta("commissioning_stage", stage)
-	interactable.set_meta("commissioning_role", role)
-	interactable.set_meta("commissioning_category",
-		str((COMMISSIONING_PROTOCOLS[protocol_id] as Dictionary)["category"]))
-	if stage == "evidence":
-		interactable.set_meta("commissioning_index", evidence_index)
-		interactable.interacted.connect(_on_commissioning_evidence.bind(protocol_id, evidence_index, site_id))
-	elif stage == "decision":
-		interactable.interacted.connect(_on_commissioning_choice.bind(protocol_id, site_id))
-	else:
-		interactable.set_meta("commissioning_choice", choice_id)
-		interactable.interacted.connect(_on_commissioning_execution.bind(protocol_id, choice_id, site_id))
-	interactable.set_interaction_enabled(false)
-	_commissioning_sites[site_id] = interactable
+
+func _sync_transition_presenters() -> void:
+	var now := _now()
+	var water_progress := 1.0 if water_phase == "full" else 0.0
+	if water_phase == "flowing":
+		water_progress = clampf(1.0 - (water_deadline - now) / WATER_FLOW_DURATION, 0.0, 1.0)
+	_reveal_process_segments(_water_route_segments, water_progress)
+
+	var root_progress := 1.0 if root_state == "connected" else 0.0
+	if root_state == "connecting":
+		root_progress = clampf(1.0 - (root_connect_deadline - now) / ROOT_CONNECT_DURATION, 0.0, 1.0)
+	_reveal_process_segments(_root_filament_segments, root_progress)
+
+	var housing_progress := 1.0 if housing_state == "open" else 0.0
+	if housing_state == "opening":
+		housing_progress = clampf(1.0 - (housing_deadline - now) / HOUSING_OPEN_DURATION, 0.0, 1.0)
+	if _housing_lid_pivot != null and is_instance_valid(_housing_lid_pivot):
+		_housing_lid_pivot.rotation.x = lerpf(0.0, -1.32, smoothstep(0.0, 1.0, housing_progress))
+	if _housing_lid != null and is_instance_valid(_housing_lid):
+		_housing_lid.visible = true
+
+
+func _reveal_process_segments(segments: Array[MeshInstance3D], progress: float) -> void:
+	if segments.is_empty():
+		return
+	var revealed := progress * float(segments.size())
+	for index in range(segments.size()):
+		var segment := segments[index]
+		if segment != null and is_instance_valid(segment):
+			segment.visible = revealed > float(index) + 0.01
 
 func _spawn_active_chelators() -> void:
 	var gs = _get_game_state()
@@ -776,43 +658,418 @@ func _spawn_active_chelators() -> void:
 		_enemy_posts[eid] = enemy.position
 		_enemies.append(enemy)
 
+# --- Exact physical interaction authority ---
+
+## Every consequential room action uses a one-shot Interactable as a short-lived receipt, including
+## mechanisms that can later be retried. GameState's monotonic trigger_count distinguishes a new
+## physical use from a direct callback, a manual signal emission, or an old receipt in the same tick.
+func _configure_inflammashunt_source(source: Node, action_id: String) -> void:
+	if not is_instance_valid(source):
+		return
+	_interaction_sources[action_id] = source
+	source.set_pre_trigger_validator(
+		_validate_inflammashunt_source_trigger.bind(action_id, source))
+	source.interacted.connect(
+		_on_inflammashunt_source_interacted.bind(action_id, source))
+
+
+func _validate_inflammashunt_source_trigger(
+		source: Node, actor: String, action_id: String, expected_source: Node
+	) -> bool:
+	return is_instance_valid(source) and source == expected_source \
+		and _interaction_sources.get(action_id) == source \
+		and _inflammashunt_actor_ready_at(source, actor) \
+		and _inflammashunt_action_ready(action_id, actor)
+
+
+func _inflammashunt_actor_ready_at(source: Node, actor: String) -> bool:
+	var gs = _get_game_state()
+	if gs == null or not is_instance_valid(source) or not (source is Node3D) \
+			or actor == "" or not _party.has(actor) or not gs.characters.has(actor) \
+			or not gs.is_narratively_available(actor) or gs.is_downed(actor) \
+			or gs.is_knocked_down(actor) or gs.is_moving(actor) \
+			or gs.is_resting(actor) or gs.is_dodging(actor) \
+			or gs.is_endocytosing(actor) or gs.is_external_traversal_active(actor) \
+			or gs.is_dragging(actor) or gs.is_field_restoring(actor) \
+			or gs.is_pushing(actor):
+		return false
+	var required_actor := str(source.get("required_character"))
+	if required_actor != "" and actor != required_actor:
+		return false
+	var source_position := _inflammashunt_source_data_position(source)
+	var actor_position: Vector3 = gs.get_position(actor)
+	var radius := float(source.get("interaction_radius")) + INTERACTION_POSITION_TOLERANCE
+	return Vector2(actor_position.x, actor_position.z).distance_to(
+		Vector2(source_position.x, source_position.z)) <= radius \
+		and absf(actor_position.y - source_position.y) <= maxf(1.5, radius)
+
+
+func _inflammashunt_source_data_position(source: Node) -> Vector3:
+	var gs = _get_game_state()
+	var data_id := str(source.get("data_id")) if is_instance_valid(source) else ""
+	if gs != null and data_id != "" and gs.has_interactable(data_id):
+		return gs.get_interactable(data_id).get("position", Vector3.ZERO)
+	if source is Node3D:
+		var source_position := (source as Node3D).global_position
+		if gs != null and gs.coord_map != null and gs.coord_map.has_method("to_data"):
+			source_position = gs.coord_map.to_data(source_position)
+		return source_position
+	return Vector3.INF
+
+
+func _inflammashunt_action_ready(action_id: String, actor: String) -> bool:
+	match action_id:
+		ACTION_ASTER_LOG:
+			return not bool(route_info["aster_log"])
+		ACTION_PIPE_DIAGRAM:
+			return not bool(route_info["aster_pipe_diagram"])
+		ACTION_DEAD_ROOTS:
+			return not bool(route_info["peris_dead_roots"])
+		ACTION_LIVING_JUNCTION:
+			return not bool(route_info["peris_living_junction"])
+		ACTION_GRATE_OBSERVATION:
+			return not bool(route_info["myke_char_feed"])
+		ACTION_DEVICE_GAP:
+			return not bool(route_info["myke_buffer_ring"])
+		ACTION_VALVE:
+			return water_phase == "dry"
+		ACTION_CHAR_A:
+			return char_a_state != "cleared"
+		ACTION_CHAR_B:
+			return char_b_state != "cleared"
+		ACTION_TEND_ROOT:
+			return root_state in ["suppressed", "tame"]
+		ACTION_EXAMINE_CLUSTER:
+			return buffer_state == "stable" and not bool(route_info["myke_buffer_ring"])
+		ACTION_OBSERVE_FEEDING:
+			return not bool(route_info["myke_char_feed"])
+		ACTION_STRIKE_CLUSTER:
+			return buffer_state == "stable"
+		ACTION_TEND_FLORA:
+			return gas_sac_state in ["idle", "expired"] \
+				and _live_sac_item_state().is_empty()
+		ACTION_TAKE_SAC:
+			return gas_sac_state == "tended" and _sac_item_at_source() \
+				and _actor_has_free_hand(actor)
+		ACTION_HACK_TERMINAL:
+			return not _terminal_hacked
+		ACTION_THERMAL_RESET:
+			return _terminal_hacked and not wrong_events.has("thermal_reset")
+		ACTION_OPEN_HOUSING:
+			return not device_retrieved and housing_state == "sealed"
+		ACTION_TAKE_DEVICE:
+			return housing_state == "open" \
+				and _device_phase == DEVICE_PHASE_AVAILABLE \
+				and _device_item_at_source() and _actor_has_free_hand(actor)
+	return false
+
+
+func _actor_has_free_hand(actor: String) -> bool:
+	var gs = _get_game_state()
+	return gs != null and gs.characters.has(actor) and gs.has_free_hands(actor, 1)
+
+
+func _inflammashunt_source_receipt_count(source: Node, action_id: String) -> int:
+	if not is_instance_valid(source) or _interaction_sources.get(action_id) != source:
+		return -1
+	var actor := str(source.get("active_character"))
+	if not _validate_inflammashunt_source_trigger(source, actor, action_id, source) \
+			or not bool(source.get("one_shot")) or not bool(source.get("_used")) \
+			or bool(source.get("interaction_enabled")):
+		return -1
+	var gs = _get_game_state()
+	var data_id := str(source.get("data_id"))
+	if gs == null or data_id == "" or not gs.has_interactable(data_id):
+		return -1
+	var spec: Dictionary = gs.get_interactable(data_id)
+	var trigger_count := int(spec.get("trigger_count", 0))
+	if not bool(spec.get("one_shot", false)) \
+			or not bool(spec.get("triggered", false)) \
+			or bool(spec.get("enabled", true)) \
+			or str(spec.get("last_trigger_character", "")) != actor \
+			or trigger_count <= int(_source_committed_counts.get(action_id, 0)):
+		return -1
+	return trigger_count
+
+
+func _on_inflammashunt_source_interacted(action_id: String, source: Node) -> void:
+	var trigger_count := _inflammashunt_source_receipt_count(source, action_id)
+	if trigger_count < 0:
+		return
+	var actor := str(source.get("active_character"))
+	# Set the local receipt identity before the first action publication. Thus every semantic phase
+	# snapshot contains its source count, while a snapshot captured from GameState's trigger signal
+	# (before this callback) contains neither and is safely re-armed on restore.
+	_source_committed_counts[action_id] = trigger_count
+	_active_source_receipt = {
+		"action": action_id,
+		"actor": actor,
+		"trigger_count": trigger_count,
+	}
+	var committed := _commit_inflammashunt_action(action_id, actor)
+	_active_source_receipt.clear()
+	if not committed:
+		_rearm_inflammashunt_source(source)
+		_publish_inflammashunt_authority()
+		return
+	_sync_inflammashunt_source_presenters()
+
+
+func _commit_inflammashunt_action(action_id: String, actor: String) -> bool:
+	if not _source_commit_is_active(action_id, actor):
+		return false
+	match action_id:
+		ACTION_ASTER_LOG:
+			return _read_aster_log_from_receipt()
+		ACTION_PIPE_DIAGRAM:
+			return _read_pipe_diagram_from_receipt()
+		ACTION_DEAD_ROOTS:
+			return _read_dead_roots_from_receipt()
+		ACTION_LIVING_JUNCTION:
+			return _read_living_junction_from_receipt()
+		ACTION_GRATE_OBSERVATION:
+			return _read_grate_observation_from_receipt()
+		ACTION_DEVICE_GAP:
+			return _read_device_gap_from_receipt()
+		ACTION_VALVE:
+			return _open_valve_from_receipt(actor)
+		ACTION_CHAR_A:
+			return _service_char_deposit_from_receipt("a", actor)
+		ACTION_CHAR_B:
+			return _service_char_deposit_from_receipt("b", actor)
+		ACTION_TEND_ROOT:
+			return _tend_root_from_receipt(actor)
+		ACTION_EXAMINE_CLUSTER:
+			return _examine_cluster_from_receipt()
+		ACTION_OBSERVE_FEEDING:
+			return _observe_feeding_from_receipt()
+		ACTION_STRIKE_CLUSTER:
+			return _strike_cluster_from_receipt()
+		ACTION_TEND_FLORA:
+			return _tend_flora_from_receipt()
+		ACTION_TAKE_SAC:
+			return _take_sac_from_receipt(actor)
+		ACTION_HACK_TERMINAL:
+			return _hack_terminal_from_receipt()
+		ACTION_THERMAL_RESET:
+			return _thermal_reset_from_receipt()
+		ACTION_OPEN_HOUSING:
+			return _open_housing_from_receipt()
+		ACTION_TAKE_DEVICE:
+			return _take_device_from_receipt(actor)
+	return false
+
+
+func _source_commit_is_active(action_id: String, actor := "") -> bool:
+	return str(_active_source_receipt.get("action", "")) == action_id \
+		and (actor == "" or str(_active_source_receipt.get("actor", "")) == actor) \
+		and int(_active_source_receipt.get("trigger_count", 0)) > 0 \
+		and int(_source_committed_counts.get(action_id, 0)) \
+			== int(_active_source_receipt.get("trigger_count", -1))
+
+
+func _rearm_inflammashunt_source(source: Node) -> void:
+	if not is_instance_valid(source):
+		return
+	if source.is_node_ready():
+		source.reset()
+		return
+	var gs = _get_game_state()
+	var data_id := str(source.get("data_id"))
+	if gs != null and data_id != "" and gs.has_interactable(data_id):
+		gs.reset_interactable(data_id)
+	source.set("_used", false)
+	source.set("interaction_enabled", true)
+
+
+func _sync_inflammashunt_source_presenters() -> void:
+	for action_id_v in _interaction_sources.keys():
+		_project_inflammashunt_source(str(action_id_v))
+
+
+func _project_inflammashunt_source(action_id: String) -> void:
+	var source: Node = _interaction_sources.get(action_id)
+	if not is_instance_valid(source):
+		return
+	var gs = _get_game_state()
+	var data_id := str(source.get("data_id"))
+	if gs == null or data_id == "" or not gs.has_interactable(data_id):
+		return
+	var should_enable := _inflammashunt_source_should_enable(action_id)
+	var spec: Dictionary = gs.get_interactable(data_id)
+	var triggered := bool(spec.get("triggered", false))
+	if should_enable and triggered:
+		_rearm_inflammashunt_source(source)
+		return
+	gs.set_interactable_enabled(data_id, should_enable)
+	if source.has_method("restore_one_shot_presenter"):
+		source.restore_one_shot_presenter(triggered, should_enable)
+
+
+func _inflammashunt_source_should_enable(action_id: String) -> bool:
+	match action_id:
+		ACTION_ASTER_LOG:
+			return not bool(route_info["aster_log"])
+		ACTION_PIPE_DIAGRAM:
+			return not bool(route_info["aster_pipe_diagram"])
+		ACTION_DEAD_ROOTS:
+			return not bool(route_info["peris_dead_roots"])
+		ACTION_LIVING_JUNCTION:
+			return not bool(route_info["peris_living_junction"])
+		ACTION_GRATE_OBSERVATION:
+			return not bool(route_info["myke_char_feed"])
+		ACTION_DEVICE_GAP:
+			return not bool(route_info["myke_buffer_ring"])
+		ACTION_VALVE:
+			return water_phase == "dry"
+		ACTION_CHAR_A:
+			return char_a_state != "cleared"
+		ACTION_CHAR_B:
+			return char_b_state != "cleared"
+		ACTION_TEND_ROOT:
+			return root_state in ["suppressed", "tame"]
+		ACTION_EXAMINE_CLUSTER:
+			return buffer_state == "stable" and not bool(route_info["myke_buffer_ring"])
+		ACTION_OBSERVE_FEEDING:
+			return not bool(route_info["myke_char_feed"])
+		ACTION_STRIKE_CLUSTER:
+			return buffer_state == "stable"
+		ACTION_TEND_FLORA:
+			return gas_sac_state in ["idle", "expired"] \
+				and _live_sac_item_state().is_empty()
+		ACTION_TAKE_SAC:
+			return gas_sac_state == "tended" and _sac_item_at_source()
+		ACTION_HACK_TERMINAL:
+			return not _terminal_hacked
+		ACTION_THERMAL_RESET:
+			return _terminal_hacked and not wrong_events.has("thermal_reset")
+		ACTION_OPEN_HOUSING:
+			return not device_retrieved and housing_state == "sealed"
+		ACTION_TAKE_DEVICE:
+			return housing_state == "open" \
+				and _device_phase == DEVICE_PHASE_AVAILABLE \
+				and _device_item_at_source()
+	return false
+
+
+## Legacy test/automation handlers are deliberately inert. Consequences can only be reached through
+## _commit_inflammashunt_action after the exact source's accepted trigger receipt.
+func _on_aster_log() -> void:
+	pass
+
+func _on_pipe_diagram() -> void:
+	pass
+
+func _on_dead_roots() -> void:
+	pass
+
+func _on_living_junction() -> void:
+	pass
+
+func _on_grate_observation() -> void:
+	pass
+
+func _on_device_gap() -> void:
+	pass
+
+func _on_valve() -> void:
+	pass
+
+func _on_char_deposit(_which: String) -> void:
+	pass
+
+func _on_tend_root() -> void:
+	pass
+
+func _on_examine_cluster() -> void:
+	pass
+
+func _on_observe_feeding() -> void:
+	pass
+
+func _on_strike_cluster() -> void:
+	pass
+
+func _on_tend_flora() -> void:
+	pass
+
+func _on_take_sac() -> void:
+	pass
+
+func _on_hack_terminal() -> void:
+	pass
+
+func _on_thermal_reset() -> void:
+	pass
+
+func _on_open_housing() -> void:
+	pass
+
+func _on_take_device() -> bool:
+	return false
+
+
 # --- Route handlers: every report is honest and confidently wrong ---
 
-func _on_aster_log() -> void:
+func _read_aster_log_from_receipt() -> bool:
+	if not _source_commit_is_active(ACTION_ASTER_LOG):
+		return false
 	route_info["aster_log"] = true
 	_show_note("FINAL ENTRY // Resolution capacity exceeded. Recommend thermal reset. // Filed: same day as section removal from registry.", 4.2)
 	_maybe_report("aster")
 	_refresh_hold_times()
+	_publish_inflammashunt_authority()
+	return true
 
-func _on_pipe_diagram() -> void:
+func _read_pipe_diagram_from_receipt() -> bool:
+	if not _source_commit_is_active(ACTION_PIPE_DIAGRAM):
+		return false
 	route_info["aster_pipe_diagram"] = true
 	_show_note("Drainage routing — the valve feeds from the Plumbing Power Project. Flow and pressure ratings. Water infrastructure, not heat.", 3.8)
 	_maybe_report("aster")
 	_refresh_hold_times()
+	_publish_inflammashunt_authority()
+	return true
 
-func _on_dead_roots() -> void:
+func _read_dead_roots_from_receipt() -> bool:
+	if not _source_commit_is_active(ACTION_DEAD_ROOTS):
+		return false
 	route_info["peris_dead_roots"] = true
 	_show_note("The old network is hollow — tunneled from inside, then coated by char. It was eaten before it burned.", 3.6)
 	_maybe_report("peris")
 	_refresh_hold_times()
+	_publish_inflammashunt_authority()
+	return true
 
-func _on_living_junction() -> void:
+func _read_living_junction_from_receipt() -> bool:
+	if not _source_commit_is_active(ACTION_LIVING_JUNCTION):
+		return false
 	route_info["peris_living_junction"] = true
 	_show_note("Living filaments feed the dormant husks — and the husks feed the roots back. A cycle, still running.", 3.6)
 	_maybe_report("peris")
 	_refresh_hold_times()
+	_publish_inflammashunt_authority()
+	return true
 
-func _on_grate_observation() -> void:
+func _read_grate_observation_from_receipt() -> bool:
+	if not _source_commit_is_active(ACTION_GRATE_OBSERVATION):
+		return false
 	route_info["myke_char_feed"] = true
 	_show_note("The active crawlers aren't roaming. They're feeding — clustered on the char.", 3.2)
 	_maybe_report("myke")
 	_refresh_hold_times()
+	_publish_inflammashunt_authority()
+	return true
 
-func _on_device_gap() -> void:
+func _read_device_gap_from_receipt() -> bool:
+	if not _source_commit_is_active(ACTION_DEVICE_GAP):
+		return false
 	route_info["myke_buffer_ring"] = true
 	_show_note("Dormant crawlers ring the device — calm, inside. The active ones press from outside the ring.", 3.2)
 	_maybe_report("myke")
 	_refresh_hold_times()
+	_publish_inflammashunt_authority()
+	return true
 
 ## The confident wrong answer, played once when a route's pair of reads is complete.
 func _maybe_report(route: String) -> void:
@@ -846,6 +1103,7 @@ func _check_reunion() -> void:
 		if p.x < HUB_X0 or p.x > HUB_X1 or absf(p.z) > HUB_HALF_Z:
 			return
 	_reunion_played = true
+	_publish_inflammashunt_authority()
 	var sched = _get_scheduler()
 	if sched == null:
 		return
@@ -862,25 +1120,65 @@ func _check_reunion() -> void:
 
 # --- Junction handlers ---
 
-func _on_valve() -> void:
-	if not valve_open:
-		if not route_info["aster_pipe_diagram"]:
-			_long_hold(str(_valve_it.active_character))
-		valve_open = true
-		if char_a_state == "dry" or char_a_state == "burned":
-			char_a_state = "damp"
-		if char_b_state == "dry" or char_b_state == "burned":
-			char_b_state = "damp"
-		_sync_char_visuals()
-		if _popcorn:
-			_end_popcorn("The flood takes the fire. Scorched sacs drift in the runoff.")
-		else:
-			_show_note("The pipes rumble. The floor channels fill — the char darkens and steams. The crawlers recoil.", 3.6)
-		_refresh_hold_times()
+func _open_valve_from_receipt(actor: String) -> bool:
+	if not _source_commit_is_active(ACTION_VALVE, actor):
+		return false
+	if water_phase != "dry":
+		_show_note("The valve is already open. The channel is still filling." if water_phase == "flowing"
+			else "The flush line is already full.", 2.0)
+		return false
+	if not route_info["aster_pipe_diagram"]:
+		_long_hold(actor)
+	valve_open = true
+	water_phase = "flowing"
+	water_deadline = _now() + WATER_FLOW_DURATION
+	_set_interactable_runtime_enabled(_valve_it, false)
+	_set_causal_feedback_mode(_valve_it, "active")
+	_set_causal_feedback_latched(_valve_it, true)
+	_flash_causal_feedback(_valve_it, WATER_FLOW_DURATION, 1.1)
+	_sync_transition_presenters()
+	_publish_inflammashunt_authority()
+	_show_note("The valve opens. Water races visibly through the floor channels toward both deposits.", 3.0)
+	_arm_water_flow(water_deadline)
+	return true
 
-func _on_char_deposit(which: String) -> void:
-	var it := _char_a_it if which == "a" else _char_b_it
-	var actor := str(it.active_character)
+
+func _arm_water_flow(deadline: float) -> void:
+	var sched = _get_scheduler()
+	if sched == null:
+		return
+	sched.cancel_tag("inflam_water_flow")
+	water_deadline = deadline
+	sched.schedule_after(maxf(0.0, deadline - _now()),
+		_finish_water_flow_from_timer.bind(deadline), "inflam_water_flow")
+
+
+func _finish_water_flow_from_timer(expected_deadline: float) -> void:
+	if water_phase != "flowing" \
+			or not is_equal_approx(expected_deadline, water_deadline) \
+			or _now() + 0.000001 < expected_deadline:
+		return
+	water_phase = "full"
+	water_deadline = -1.0
+	if char_a_state == "dry" or char_a_state == "burned":
+		char_a_state = "damp"
+	if char_b_state == "dry" or char_b_state == "burned":
+		char_b_state = "damp"
+	_sync_char_visuals()
+	_sync_transition_presenters()
+	_set_causal_feedback_mode(_valve_it, "complete")
+	_set_causal_feedback_latched(_valve_it, false)
+	if _popcorn:
+		_end_popcorn("The flood reaches the fire and takes it. Scorched sacs drift in the runoff.")
+	else:
+		_show_note("The water reaches both deposits. The char darkens and steams; the crawlers recoil.", 3.4)
+	_refresh_hold_times()
+	_publish_inflammashunt_authority()
+
+func _service_char_deposit_from_receipt(which: String, actor: String) -> bool:
+	var action_id := ACTION_CHAR_A if which == "a" else ACTION_CHAR_B
+	if not _source_commit_is_active(action_id, actor):
+		return false
 	var state := char_a_state if which == "a" else char_b_state
 	match state:
 		"dry", "burned":
@@ -901,8 +1199,13 @@ func _on_char_deposit(which: String) -> void:
 			_sync_char_visuals()
 		"cleared":
 			_show_note("Bare floor. Nothing left to clear.", 2.0)
+	_publish_inflammashunt_authority()
+	return true
 
 func _burn_char(which: String) -> void:
+	var action_id := ACTION_CHAR_A if which == "a" else ACTION_CHAR_B
+	if not _source_commit_is_active(action_id, "myke"):
+		return
 	if which == "a":
 		char_a_state = "burned"
 		_wrong("burned_char_a")
@@ -915,203 +1218,407 @@ func _burn_char(which: String) -> void:
 		_show_note("The char flashes off — and the root beside it whips out of the crack, thrashing.", 3.2)
 		_spawn_hostile_root()
 	_sync_char_visuals()
+	_publish_inflammashunt_authority()
 
-func _on_tend_root() -> void:
+func _tend_root_from_receipt(actor: String) -> bool:
+	if not _source_commit_is_active(ACTION_TEND_ROOT, actor):
+		return false
 	if root_state == "hostile" or root_state == "recovering":
 		_show_note("The root is in no state to be tended.", 2.2)
-		return
+		return false
+	if root_state == "connecting":
+		_show_note("The new filaments are still growing toward the ring.", 2.0)
+		return false
+	if root_state == "connected":
+		_show_note("The living circuit is already connected.", 2.0)
+		return false
 	if char_a_state != "cleared" or char_b_state != "cleared":
 		_show_note("The pulse flickers under Peris's hands and dies down. The residue is still smothering it.", 3.2)
 		if not route_info["peris_living_junction"]:
-			_long_hold("peris")
-		return
+			_long_hold(actor)
+		_publish_inflammashunt_authority()
+		return true
 	if not route_info["peris_living_junction"]:
-		_long_hold("peris")
+		_long_hold(actor)
+	root_state = "connecting"
+	root_connect_deadline = _now() + ROOT_CONNECT_DURATION
+	_set_interactable_runtime_enabled(_root_it, false)
+	_set_causal_feedback_mode(_root_it, "active")
+	_set_causal_feedback_latched(_root_it, true)
+	_flash_causal_feedback(_root_it, ROOT_CONNECT_DURATION, 1.1)
+	_sync_transition_presenters()
+	_publish_inflammashunt_authority()
+	_show_note("The root brightens. Watch the filaments thread toward the dormant ring and housing.", 3.2)
+	_arm_root_connection(root_connect_deadline)
+	return true
+
+
+func _arm_root_connection(deadline: float) -> void:
+	var sched = _get_scheduler()
+	if sched == null:
+		return
+	sched.cancel_tag("inflam_root_connect")
+	root_connect_deadline = deadline
+	sched.schedule_after(maxf(0.0, deadline - _now()),
+		_finish_root_connection_from_timer.bind(deadline), "inflam_root_connect")
+
+
+func _finish_root_connection_from_timer(expected_deadline: float) -> void:
+	if root_state != "connecting" \
+			or not is_equal_approx(expected_deadline, root_connect_deadline) \
+			or _now() + 0.000001 < expected_deadline:
+		return
 	root_state = "connected"
+	root_connect_deadline = -1.0
 	healing_zone = 1.0
 	housing_unlocked = true
 	_sync_healing_visual()
-	_show_note("The root brightens. Filaments thread toward the dormant ring — and the glow under the grate spreads to the housing.", 4.0)
+	_sync_transition_presenters()
+	_set_causal_feedback_mode(_root_it, "complete")
+	_set_causal_feedback_latched(_root_it, false)
+	_publish_inflammashunt_authority()
+	_show_note("The last filament seats. The grate glow reaches the housing and its lock releases.", 3.4)
 
-func _on_examine_cluster() -> void:
+func _examine_cluster_from_receipt() -> bool:
+	if not _source_commit_is_active(ACTION_EXAMINE_CLUSTER):
+		return false
 	_show_note("Warm. Connected by thin filaments. Not feeding, not moving — a perimeter.", 3.2)
 	if route_info["peris_living_junction"] and not route_info["myke_buffer_ring"]:
 		route_info["myke_buffer_ring"] = true
 		_show_note("Peris: \"They're in the same state as the junction underground. It's a buffer — not a siege.\"", 3.6)
 		_refresh_hold_times()
+	_publish_inflammashunt_authority()
+	return true
 
-func _on_observe_feeding() -> void:
+func _observe_feeding_from_receipt() -> bool:
+	if not _source_commit_is_active(ACTION_OBSERVE_FEEDING):
+		return false
 	_show_note("The active crawlers cluster on the char deposits. They don't wander off them.", 3.0)
 	if route_info["aster_pipe_diagram"] and route_info["peris_living_junction"] \
 			and not route_info["myke_char_feed"]:
 		route_info["myke_char_feed"] = true
 		_show_note("Aster: \"The system was built to flush something. They're eating it. The char is the food.\"", 3.6)
 		_refresh_hold_times()
+	_publish_inflammashunt_authority()
+	return true
 
-func _on_strike_cluster() -> void:
+func _strike_cluster_from_receipt() -> bool:
+	if not _source_commit_is_active(ACTION_STRIKE_CLUSTER):
+		return false
 	if buffer_state != "stable":
 		_show_note("The scattered husks don't react.", 2.0)
-		return
+		return false
 	buffer_state = "shattered"
 	_wrong("attacked_buffer")
-	if root_state == "connected" and not device_retrieved:
+	if root_state in ["connecting", "connected"] and not device_retrieved:
+		_cancel_process_transition("inflam_root_connect")
+		root_connect_deadline = -1.0
 		root_state = "suppressed"
 		healing_zone = 0.0
 		housing_unlocked = false
+		_set_interactable_runtime_enabled(_root_it, true)
+		_set_causal_feedback_mode(_root_it, "failed")
+		_set_causal_feedback_latched(_root_it, false)
+		if housing_state == "opening":
+			_cancel_process_transition("inflam_housing_open")
+			housing_state = "sealed"
+			housing_deadline = -1.0
+			_set_interactable_runtime_enabled(_housing_it, true)
 		_sync_healing_visual()
+		_sync_transition_presenters()
 	_show_note("The ring shatters — and everything that was calm isn't. The root snaps back into its crack.", 3.4)
 	for husk in _husks:
 		if is_instance_valid(husk):
 			husk.visible = false
 	_wake_chelators(2)
+	_publish_inflammashunt_authority()
+	return true
 
-func _on_tend_flora() -> void:
+func _tend_flora_from_receipt() -> bool:
+	if not _source_commit_is_active(ACTION_TEND_FLORA):
+		return false
 	if gas_sac_state == "ignited":
 		_show_note("The flora is still burning. Nothing to tend yet.", 2.2)
-		return
+		return false
+	if not _live_sac_item_state().is_empty():
+		_show_note("A ripe sac is already out in the room.", 2.0)
+		return false
+	_sac_item_id = _spawn_sac_source_item()
+	if _sac_item_id == "":
+		_show_note("The tended pod has not separated from the plant yet.", 2.0)
+		return false
 	gas_sac_state = "tended"
+	_apply_sac_interactable_state()
+	_publish_inflammashunt_authority()
 	_show_note("The flora swells under Peris's hands. A sac ripens, ready to carry.", 3.0)
+	return true
 
-func _on_take_sac() -> void:
+
+func _spawn_sac_source_item(properties: Dictionary = {}) -> String:
+	var item_properties := {
+		"display_name": "Repellent Gas Sac",
+		"hand_slots": 1,
+		"visual_kind": "gas_sac",
+		"visual_color": Color(0.5, 0.7, 0.25),
+		"inflammashunt_authority": INFLAMMASHUNT_AUTHORITY_KEY,
+		"source_fixture": "GasSacFlora",
+		"endocytosis_allowed": false,
+	}
+	item_properties.merge(properties, true)
+	return _spawn_item("gas_sac", SAC_SOURCE_POS, item_properties)
+
+func _take_sac_from_receipt(actor: String) -> bool:
+	if not _source_commit_is_active(ACTION_TAKE_SAC, actor):
+		return false
 	if gas_sac_state != "tended":
 		_show_note("No ripe sac. The flora needs tending first.", 2.2)
-		return
-	var actor := str(_take_sac_it.active_character)
+		return false
 	if actor == "":
-		return
+		return false
+	var gs = _get_game_state()
+	if gs == null or not gs.characters.has(actor):
+		return false
+	if not gs.has_free_hands(actor, 1):
+		_show_note("%s needs a free hand for the gas sac." % actor.capitalize(), 2.2)
+		return false
+	if not _sac_item_at_source():
+		_show_note("The ripe pod is no longer seated on this plant.", 2.2)
+		return false
+	gas_sac_state = "claiming"
 	_sac_carrier = actor
 	_sac_expires = _now() + SAC_DURATION
-	gas_sac_state = "carried"
-	_attach_sac_visual(actor)
+	_sac_claim_serial += 1
+	_apply_sac_interactable_state()
+	_publish_inflammashunt_authority()
+	if not _pick_up_item(actor, _sac_item_id):
+		gas_sac_state = "tended"
+		_sac_carrier = ""
+		_sac_expires = -1.0
+		_apply_sac_interactable_state()
+		_publish_inflammashunt_authority()
+		_show_note("The sac stays on the plant; the carrier needs a free hand.", 2.2)
+		return false
+	gas_sac_state = "active"
+	_apply_sac_interactable_state()
+	_publish_inflammashunt_authority()
 	_show_note("%s carries the sac at arm's length. The smell peels paint — nothing rooted will come near it." % actor.capitalize(), 3.2)
 
-func _on_hack_terminal() -> void:
+	return true
+
+func _hack_terminal_from_receipt() -> bool:
+	if not _source_commit_is_active(ACTION_HACK_TERMINAL):
+		return false
 	var gs = _get_game_state()
+	_terminal_hacked = true
 	_show_note("Read-only diagnostics: resolution loop INCOMPLETE // residue accumulating // flush line INTACT. One logged command is still queued: THERMAL RESET.", 4.2)
 	if gs != null:
 		gs.set_interactable_enabled(_interactable_data_id("ThermalResetConfirm"), true)
+	_publish_inflammashunt_authority()
+	return true
 
-func _on_thermal_reset() -> void:
+func _thermal_reset_from_receipt() -> bool:
+	if not _source_commit_is_active(ACTION_THERMAL_RESET):
+		return false
 	if _popcorn:
-		return
+		return false
 	_wrong("thermal_reset")
+	_remove_live_sac_item()
 	gas_sac_state = "ignited"
+	_sac_expires = -1.0
+	_apply_sac_interactable_state()
 	_popcorn = true
 	_arm_popcorn_poll()
+	_publish_inflammashunt_authority()
 	_show_note("Heaters cough alive — and the gas sacs go up. Flaming sacs skip off the walls. The VALVE. Flood the room.", 3.8)
 
-func _on_open_housing() -> void:
+	return true
+
+func _open_housing_from_receipt() -> bool:
+	if not _source_commit_is_active(ACTION_OPEN_HOUSING):
+		return false
 	if device_retrieved:
-		return
+		return false
+	if housing_state == "opening":
+		_show_note("The housing latches are still withdrawing.", 1.8)
+		return false
 	if not housing_unlocked:
 		_show_note("It does not budge. The lock is warm, but the warmth is coming from below, not from the panel.", 3.4)
+		_publish_inflammashunt_authority()
+		return true
+	housing_state = "opening"
+	housing_deadline = _now() + HOUSING_OPEN_DURATION
+	_set_interactable_runtime_enabled(_housing_it, false)
+	_sync_transition_presenters()
+	_publish_inflammashunt_authority()
+	_show_note("The living lock withdraws in sequence. The lid begins to hinge open.", 2.6)
+	_arm_housing_open(housing_deadline)
+
+
+	return true
+
+func _arm_housing_open(deadline: float) -> void:
+	var sched = _get_scheduler()
+	if sched == null:
 		return
-	device_retrieved = true
-	_phase = "catalyst_retrieved"
+	sched.cancel_tag("inflam_housing_open")
+	housing_deadline = deadline
+	sched.schedule_after(maxf(0.0, deadline - _now()),
+		_finish_housing_open_from_timer.bind(deadline), "inflam_housing_open")
+
+
+func _finish_housing_open_from_timer(expected_deadline: float) -> void:
+	if housing_state != "opening" or not housing_unlocked \
+			or not is_equal_approx(expected_deadline, housing_deadline) \
+			or _now() + 0.000001 < expected_deadline:
+		return
+	housing_state = "open"
+	housing_deadline = -1.0
+	_sync_transition_presenters()
+	_apply_device_interactable_state()
+	_publish_inflammashunt_authority()
 	_sync_healing_visual()
-	_begin_commissioning()
-	_show_note("The housing opens. The Inflammashunt — still running, still warm. Salvage worth the walk.", 3.6)
+	_show_note("The housing opens. The Inflammashunt is still running inside — warm, loose, and ready to lift.", 3.6)
+
+
+## Opening exposes the prize; this exact-source pickup is the retrieval. The transient claiming
+## phase makes a snapshot taken from GameState.item_picked_up unambiguous on restore without ever
+## substituting another character, item, or free hand.
+func _take_device_from_receipt(actor: String) -> bool:
+	if not _source_commit_is_active(ACTION_TAKE_DEVICE, actor):
+		return false
+	if housing_state != "open" or _device_phase != DEVICE_PHASE_AVAILABLE \
+			or not _device_item_at_source():
+		return false
+	var gs = _get_game_state()
+	if actor == "" or gs == null or not gs.characters.has(actor):
+		return false
+	if not gs.has_free_hands(actor, 1):
+		_show_note("%s needs a free hand to lift the Inflammashunt." % actor.capitalize(), 2.2)
+		return false
+
+	_device_phase = DEVICE_PHASE_CLAIMING
+	_device_claimed_by = actor
+	_device_claim_serial += 1
+	_apply_device_interactable_state()
+	_publish_inflammashunt_authority()
+	if not _pick_up_item(actor, _device_item_id):
+		_device_phase = DEVICE_PHASE_AVAILABLE
+		_device_claimed_by = ""
+		_apply_device_interactable_state()
+		_publish_inflammashunt_authority()
+		_show_note("The device stays seated; stand at the open housing with one hand free.", 2.2)
+		return false
+
+	_device_phase = DEVICE_PHASE_CLAIMED
+	device_retrieved = true
+	_phase = "complete"
+	_apply_device_interactable_state()
+	_publish_inflammashunt_authority()
+	_set_preview_step("inflammashunt_complete")
+	_sync_healing_visual()
+	_show_note("%s lifts the Inflammashunt free — a warm Resolution Catalyst, now real salvage in hand." \
+		% actor.capitalize(), 3.6)
 	var sched = _get_scheduler()
 	if sched != null and _party.has("myke"):
 		sched.schedule_after(4.0, func() -> void:
 			_show_note("Myke: \"...Huh. So that's what it looks like when somebody finishes the job.\"", 3.8), "inflam_after")
+	return true
 
-func _begin_commissioning() -> void:
-	if _commissioning_phase != "locked":
-		return
-	_commissioning_evidence.clear()
-	_commissioning_choices.clear()
-	_commissioning_resolved.clear()
-	_commissioning_completed_actions.clear()
-	for protocol_id_variant in COMMISSIONING_PROTOCOL_ORDER:
-		var protocol_id := str(protocol_id_variant)
-		_commissioning_evidence[protocol_id] = []
-		_commissioning_resolved[protocol_id] = false
-	_commissioning_phase = str(COMMISSIONING_PROTOCOL_ORDER[0])
-	_set_preview_step("inflammashunt_commissioning_%s" % _commissioning_phase)
-	_enable_commissioning_site(_first_evidence_id(_commissioning_phase), true)
-	_show_note("The east service gallery answers: FLUSH // ROOT RETURN // BUFFER // TRANSFER. Five reads, one decision, one execution per loop.", 4.4)
 
-func _on_commissioning_evidence(protocol_id: String, evidence_index: int, site_id: String) -> void:
-	if _commissioning_phase != protocol_id:
-		return
-	var completed: Array = _commissioning_evidence.get(protocol_id, [])
-	if evidence_index != completed.size():
-		return
-	completed.append(site_id)
-	_commissioning_evidence[protocol_id] = completed
-	_commissioning_completed_actions.append(site_id)
-	var protocol: Dictionary = COMMISSIONING_PROTOCOLS[protocol_id]
-	var evidence: Array = protocol["evidence"]
-	if completed.size() < evidence.size():
-		var next_site: Dictionary = evidence[completed.size()]
-		_enable_commissioning_site(str(next_site["id"]), true)
-		_show_note("%s evidence %d/%d recorded. The next datum lights east." % [
-			str(protocol["label"]), completed.size(), evidence.size()], 2.6)
-	else:
-		for choice_variant in protocol["choices"] as Array:
-			_enable_commissioning_site(str((choice_variant as Dictionary)["id"]), true)
-		_show_note("%s is mapped. Choose the support strategy the evidence can sustain." % str(protocol["label"]), 3.2)
+func _spawn_device_item(properties: Dictionary = {}) -> String:
+	var item_properties := {
+		"display_name": "Inflammashunt Resolution Catalyst",
+		"hand_slots": 1,
+		"source_inflammashunt": INFLAMMASHUNT_AUTHORITY_KEY,
+		"visual_kind": "inflammashunt_resolution_catalyst",
+		"visual_scene": DEVICE_VISUAL_SCENE,
+		"visual_identity": "inflammashunt_resolution_catalyst_v1",
+		"visual_color": Color(0.46, 0.88, 0.68),
+		"ground_visual_y": 0.17,
+		"endocytosis_allowed": true,
+		"adds_to_collection": true,
+	}
+	item_properties.merge(properties, true)
+	return _spawn_item(DEVICE_ITEM_TYPE, DEVICE_SOURCE_POS, item_properties)
 
-func _on_commissioning_choice(protocol_id: String, choice_id: String) -> void:
-	if _commissioning_phase != protocol_id or _commissioning_choices.has(protocol_id):
-		return
-	var protocol: Dictionary = COMMISSIONING_PROTOCOLS[protocol_id]
-	if (_commissioning_evidence.get(protocol_id, []) as Array).size() < (protocol["evidence"] as Array).size():
-		return
-	_commissioning_choices[protocol_id] = choice_id
-	_commissioning_completed_actions.append(choice_id)
-	for choice_variant in protocol["choices"] as Array:
-		_enable_commissioning_site(str((choice_variant as Dictionary)["id"]), false)
-	var resolution: Dictionary = (protocol["resolutions"] as Dictionary)[choice_id]
-	_enable_commissioning_site(str(resolution["id"]), true)
-	_show_note("Strategy committed. The matching execution rig is live; the unused lane goes dark.", 3.0)
 
-func _on_commissioning_execution(protocol_id: String, choice_id: String, site_id: String) -> void:
-	if _commissioning_phase != protocol_id \
-			or str(_commissioning_choices.get(protocol_id, "")) != choice_id \
-			or bool(_commissioning_resolved.get(protocol_id, false)):
+func _is_device_item(item_id: String) -> bool:
+	var item := _get_item_state(item_id)
+	if item.is_empty() or str(item.get("type", "")) != DEVICE_ITEM_TYPE:
+		return false
+	var properties: Dictionary = item.get("properties", {})
+	return str(properties.get("source_inflammashunt", "")) == INFLAMMASHUNT_AUTHORITY_KEY
+
+
+func _find_device_item_id() -> String:
+	var gs = _get_game_state()
+	if gs == null or not "items" in gs:
+		return ""
+	var candidates: Array[String] = []
+	for item_id_v in gs.items.keys():
+		var item_id := str(item_id_v)
+		if _is_device_item(item_id):
+			candidates.append(item_id)
+	candidates.sort()
+	return candidates[0] if not candidates.is_empty() else ""
+
+
+func _remove_device_items() -> void:
+	var gs = _get_game_state()
+	if gs == null or not "items" in gs:
 		return
-	_commissioning_resolved[protocol_id] = true
-	_commissioning_completed_actions.append(site_id)
-	var protocol_index := COMMISSIONING_PROTOCOL_ORDER.find(protocol_id)
-	if protocol_index + 1 < COMMISSIONING_PROTOCOL_ORDER.size():
-		_commissioning_phase = str(COMMISSIONING_PROTOCOL_ORDER[protocol_index + 1])
-		_set_preview_step("inflammashunt_commissioning_%s" % _commissioning_phase)
-		_enable_commissioning_site(_first_evidence_id(_commissioning_phase), true)
-		_show_note("%s holds. The next loop answers farther down the service spine." %
-			str((COMMISSIONING_PROTOCOLS[protocol_id] as Dictionary)["label"]), 3.2)
-	else:
-		_commissioning_phase = "extraction"
-		_set_preview_step("inflammashunt_extraction")
-		_extraction_it.set_interaction_enabled(true)
-		_show_note("All four support loops hold together. Carry the catalyst to the green cradle and seal it for transit.", 3.6)
+	var remove_ids: Array[String] = []
+	for item_id_v in gs.items.keys():
+		var item_id := str(item_id_v)
+		if _is_device_item(item_id):
+			remove_ids.append(item_id)
+	for item_id in remove_ids:
+		_remove_item(item_id)
 
-func _on_extraction_cradle_completed() -> void:
-	if _commissioning_phase != "extraction":
+
+func _ensure_device_source_item() -> void:
+	if _is_device_item(_device_item_id):
 		return
-	for protocol_id_variant in COMMISSIONING_PROTOCOL_ORDER:
-		if not bool(_commissioning_resolved.get(str(protocol_id_variant), false)):
-			return
-	_commissioning_completed_actions.append("extraction_cradle")
-	_commissioning_phase = "complete"
-	_phase = "complete"
-	_set_preview_step("inflammashunt_complete")
-	_show_note("The cradle closes around the warm housing. The Inflammashunt is stable, portable, and finally clear of the burn branch.", 4.0)
+	_device_item_id = _find_device_item_id()
+	if _device_item_id == "":
+		_device_item_id = _spawn_device_item()
 
-func _first_evidence_id(protocol_id: String) -> String:
-	var evidence: Array = (COMMISSIONING_PROTOCOLS[protocol_id] as Dictionary)["evidence"]
-	return str((evidence[0] as Dictionary)["id"])
 
-func _enable_commissioning_site(site_id: String, enabled: bool) -> void:
-	var site: Node = _commissioning_sites.get(site_id)
-	if site != null and is_instance_valid(site):
-		site.call("set_interaction_enabled", enabled)
+func _device_item_at_source() -> bool:
+	if not _is_device_item(_device_item_id):
+		return false
+	var item := _get_item_state(_device_item_id)
+	return str(item.get("location", "")) == "ground" \
+		and (item.get("position", DEVICE_SOURCE_POS) as Vector3).distance_to(DEVICE_SOURCE_POS) <= 0.05
+
+
+func _device_item_holder() -> String:
+	var item := _get_item_state(_device_item_id)
+	return str(item.get("holder", "")) if not item.is_empty() else ""
+
+
+func _apply_device_interactable_state() -> void:
+	_project_inflammashunt_source(ACTION_TAKE_DEVICE)
+
+
+func _cancel_process_transition(tag: String) -> void:
+	var sched = _get_scheduler()
+	if sched != null:
+		sched.cancel_tag(tag)
+
+
+func _set_interactable_runtime_enabled(interactable: Area3D, enabled: bool) -> void:
+	if interactable == null:
+		return
+	var gs = _get_game_state()
+	if gs != null:
+		gs.set_interactable_enabled(_interactable_data_id(str(interactable.name)), enabled)
 
 # --- Wrong-approach machinery ---
 
 func _wrong(event: String) -> void:
 	wrong_events.append(event)
+	_publish_inflammashunt_authority()
 	var missing: Array = []
 	for k in route_info:
 		if not bool(route_info[k]):
@@ -1135,6 +1642,7 @@ func _wrong(event: String) -> void:
 ## Hold-without-info: counted, and the hint ladder pushes RECONNAISSANCE, never solutions.
 func _long_hold(actor: String) -> void:
 	long_hold_count += 1
+	_publish_inflammashunt_authority()
 	match mini(long_hold_count, 3):
 		1:
 			match actor:
@@ -1196,6 +1704,7 @@ func _wake_chelators(extra: int) -> void:
 		var target := _nearest_party_to(gs.get_position(enemy.char_id))
 		if target != "" and enemy.has_method("engage_target"):
 			enemy.engage_target(target)
+	_publish_inflammashunt_authority()
 
 func _thin_out_chelators() -> void:
 	# the food source is gone: the feeders disperse (roam wide, away from the cleared deposit)
@@ -1220,15 +1729,31 @@ func _cool_encounters(now: float) -> void:
 		_show_note("The crawlers settle. Whatever woke them, it's over.", 2.6)
 		if buffer_state == "shattered":
 			buffer_state = "reforming"
-			var sched = _get_scheduler()
-			if sched != null:
-				sched.schedule_after(BUFFER_REFORM_SECS, _reform_buffer, "inflam_reform")
+			_arm_buffer_reform(now + BUFFER_REFORM_SECS)
+		_publish_inflammashunt_authority()
 
-func _reform_buffer() -> void:
+
+func _arm_buffer_reform(deadline: float) -> void:
+	var sched = _get_scheduler()
+	if sched == null:
+		return
+	sched.cancel_tag("inflam_reform")
+	_buffer_reform_deadline = deadline
+	sched.schedule_after(maxf(0.0, deadline - _now()),
+		_reform_buffer_from_timer.bind(deadline), "inflam_reform")
+
+func _reform_buffer_from_timer(expected_deadline: float) -> void:
+	if buffer_state != "reforming" \
+			or not is_equal_approx(expected_deadline, _buffer_reform_deadline) \
+			or _now() + 0.000001 < expected_deadline:
+		return
+	_buffer_reform_deadline = -1.0
 	buffer_state = "stable"
 	for husk in _husks:
 		if is_instance_valid(husk):
 			husk.visible = true
+	_project_inflammashunt_source(ACTION_STRIKE_CLUSTER)
+	_publish_inflammashunt_authority()
 	_show_note("One by one the husks drift back into their ring around the housing.", 3.0)
 
 # --- The hostile-root recovery sub-puzzle (Chain AI, herd it home with a sac) ---
@@ -1254,15 +1779,43 @@ func _spawn_hostile_root() -> void:
 	_root_enemy = root
 	_whip_ready.clear()
 	_arm_root_poll()
+	_publish_inflammashunt_authority()
 
 func _arm_root_poll() -> void:
-	var sched = _get_scheduler()
-	if sched != null:
-		sched.cancel_tag("inflam_root")
-		sched.schedule_after(0.35, _root_poll, "inflam_root")
+	_arm_root_timer("poll", _now() + ROOT_POLL_INTERVAL)
 
-func _root_poll() -> void:
+
+func _arm_root_timer(mode: String, deadline: float) -> void:
+	var sched = _get_scheduler()
+	if sched == null:
+		return
+	sched.cancel_tag("inflam_root")
+	_root_timer_mode = mode
+	_root_deadline = deadline
+	if mode in ["poll", "retract", "regrow"]:
+		sched.schedule_after(maxf(0.0, deadline - _now()),
+			_run_inflammashunt_root_timer.bind(mode, deadline), "inflam_root")
+
+
+func _run_inflammashunt_root_timer(mode: String, expected_deadline: float) -> void:
+	if mode != _root_timer_mode \
+			or not is_equal_approx(expected_deadline, _root_deadline) \
+			or _now() + 0.000001 < expected_deadline:
+		return
+	match mode:
+		"poll":
+			_root_poll_from_timer()
+		"retract":
+			_retract_root_from_timer()
+		"regrow":
+			_finish_root_regrow_from_timer()
+
+
+func _root_poll_from_timer() -> void:
+	_root_timer_mode = ""
+	_root_deadline = -1.0
 	if not is_inside_tree() or _root_enemy == null or not is_instance_valid(_root_enemy):
+		_publish_inflammashunt_authority()
 		return
 	var gs = _get_game_state()
 	var sched = _get_scheduler()
@@ -1270,7 +1823,13 @@ func _root_poll() -> void:
 		return
 	var now := _now()
 	var rp: Vector3 = gs.get_position("hostile_root")
-	var carrier_live: bool = _sac_carrier != "" and now < _sac_expires and gs.characters.has(_sac_carrier)
+	# Only a completed ACTIVE pickup creates the repellent field. During CLAIMING,
+	# _sac_carrier is the immutable reservation actor; deriving it from a wrong/forged
+	# physical holder here would silently retarget the saved transaction.
+	if gas_sac_state == "active":
+		_sac_carrier = _sac_holder()
+	var carrier_live: bool = gas_sac_state == "active" \
+		and _sac_carrier != "" and now < _sac_expires
 	if carrier_live:
 		var cp: Vector3 = gs.get_position(_sac_carrier)
 		var d := Vector2(rp.x - cp.x, rp.z - cp.z)
@@ -1283,7 +1842,8 @@ func _root_poll() -> void:
 			# boxed in at its base: it goes home
 			if Vector2(rp.x - ROOT_BASE_POS.x, rp.z - ROOT_BASE_POS.z).length() < ROOT_CAPTURE_RADIUS:
 				gs.command_stop("hostile_root")
-				sched.schedule_after(ROOT_RETRACT_DELAY, _retract_root, "inflam_root")
+				_arm_root_timer("retract", now + ROOT_RETRACT_DELAY)
+				_publish_inflammashunt_authority()
 				return
 	else:
 		# aggressive: threads toward the nearest character and whips at close range
@@ -1300,10 +1860,97 @@ func _root_poll() -> void:
 				_root_enemy._charge_hit = false
 				if _root_enemy._resolve_strike(target):
 					_show_note("The root whips %s across the deck." % target.capitalize(), 2.0)
-	sched.schedule_after(0.35, _root_poll, "inflam_root")
+	_arm_root_timer("poll", now + ROOT_POLL_INTERVAL)
+	_publish_inflammashunt_authority()
 
-func _retract_root() -> void:
+
+## The sac is an ordinary GameState item. These helpers derive the chunk's read model from that
+## canonical ownership so inventory drop/transfer commands immediately change the herding system.
+func _is_live_sac_item_id(item_id: String) -> bool:
+	var gs = _get_game_state()
+	if gs == null or item_id == "" or not gs.items.has(item_id):
+		return false
+	var item: Dictionary = gs.items[item_id]
+	if str(item.get("type", "")) != "gas_sac":
+		return false
+	var properties: Dictionary = item.get("properties", {})
+	return str(properties.get("inflammashunt_authority", "")) == INFLAMMASHUNT_AUTHORITY_KEY
+
+
+func _live_sac_item_state() -> Dictionary:
+	var gs = _get_game_state()
+	if gs == null or not _is_live_sac_item_id(_sac_item_id):
+		return {}
+	var item: Dictionary = gs.items[_sac_item_id]
+	return item
+
+
+func _find_sac_item_id() -> String:
+	var gs = _get_game_state()
+	if gs == null or not "items" in gs:
+		return ""
+	var candidates: Array[String] = []
+	for item_id_v in gs.items.keys():
+		var item_id := str(item_id_v)
+		var item: Dictionary = gs.items.get(item_id, {})
+		if str(item.get("type", "")) != "gas_sac":
+			continue
+		var properties: Dictionary = item.get("properties", {})
+		if str(properties.get("inflammashunt_authority", "")) == INFLAMMASHUNT_AUTHORITY_KEY:
+			candidates.append(item_id)
+	candidates.sort()
+	return candidates[0] if not candidates.is_empty() else ""
+
+
+func _sac_item_at_source() -> bool:
+	var item := _live_sac_item_state()
+	return not item.is_empty() \
+		and str(item.get("location", "")) == "ground" \
+		and (item.get("position", SAC_SOURCE_POS) as Vector3).distance_to(SAC_SOURCE_POS) <= 0.05
+
+
+func _sac_holder() -> String:
+	var item := _live_sac_item_state()
+	if item.is_empty() or str(item.get("location", "")) != "hand":
+		return ""
+	var holder := str(item.get("holder", ""))
+	var gs = _get_game_state()
+	return holder if gs != null and gs.characters.has(holder) else ""
+
+
+func _remove_live_sac_item() -> void:
+	var gs = _get_game_state()
+	if gs != null:
+		# Authority absence and old-save migration must also retract an item whose cached id was lost.
+		for item_id_v in gs.items.keys().duplicate():
+			var item_id := str(item_id_v)
+			var item: Dictionary = gs.items.get(item_id, {})
+			var properties: Dictionary = item.get("properties", {})
+			if str(properties.get("inflammashunt_authority", "")) == INFLAMMASHUNT_AUTHORITY_KEY:
+				_remove_item(item_id)
+	_sac_item_id = ""
+	_sac_carrier = ""
+
+
+func _expire_sac() -> void:
+	_remove_live_sac_item()
+	gas_sac_state = "expired"
+	_sac_expires = -1.0
+	_apply_sac_interactable_state()
+
+
+func _apply_sac_interactable_state() -> void:
+	_project_inflammashunt_source(ACTION_TEND_FLORA)
+	_project_inflammashunt_source(ACTION_TAKE_SAC)
+
+func _retract_root_from_timer() -> void:
+	_root_timer_mode = ""
+	_root_deadline = -1.0
+	var pending_sched = _get_scheduler()
+	if pending_sched != null:
+		pending_sched.cancel_tag("inflam_root")
 	if _root_enemy == null or not is_instance_valid(_root_enemy):
+		_publish_inflammashunt_authority()
 		return
 	var gs = _get_game_state()
 	if gs != null and gs.characters.has("hostile_root"):
@@ -1312,17 +1959,62 @@ func _retract_root() -> void:
 	_root_enemy.queue_free()
 	_root_enemy = null
 	root_state = "recovering"
+	_root_timer_mode = "regrow"
+	_root_deadline = _now() + ROOT_REGROW_DELAY
+	_publish_inflammashunt_authority()
 	_show_note("The root pours itself back into the crack and stills.", 3.0)
-	var sched = _get_scheduler()
-	if sched != null:
-		sched.schedule_after(ROOT_REGROW_DELAY, func() -> void:
-			root_state = "suppressed"
-			_show_note("A smaller tendril noses back out of the crack. Tame — and still smothered.", 3.0), "inflam_root")
+	_arm_root_timer("regrow", _root_deadline)
+
+
+func _finish_root_regrow_from_timer() -> void:
+	_root_timer_mode = ""
+	_root_deadline = -1.0
+	root_state = "suppressed"
+	_project_inflammashunt_source(ACTION_TEND_ROOT)
+	_publish_inflammashunt_authority()
+	_show_note("A smaller tendril noses back out of the crack. Tame — and still smothered.", 3.0)
+
+
+## Retired process shortcuts. Root phase transitions are consumed only by their saved scheduler
+## mode/deadline receipt, never by a direct callback from a test or automation driver.
+func _finish_water_flow() -> void:
+	pass
+
+
+func _finish_root_connection() -> void:
+	pass
+
+
+func _finish_housing_open() -> void:
+	pass
+
+
+func _reform_buffer() -> void:
+	pass
+
+
+func _root_poll() -> void:
+	pass
+
+
+func _retract_root() -> void:
+	pass
+
+
+func _finish_root_regrow() -> void:
+	pass
+
 
 # --- The popcorn hazard (thermal reset trap): a kit HazardField owns the burn; the chunk only
 # --- places it over the junction and toggles it from its own mechanisms (reset lever / valve) ---
 
 func _arm_popcorn_poll() -> void:
+	_ensure_popcorn_field()
+	if _popcorn_field != null and is_instance_valid(_popcorn_field):
+		_popcorn_field.set_active(true)
+
+
+func _ensure_popcorn_field() -> void:
 	var gs = _get_game_state()
 	var sched = _get_scheduler()
 	if gs == null or sched == null:
@@ -1334,13 +2026,16 @@ func _arm_popcorn_poll() -> void:
 		add_child(_popcorn_field)
 	_popcorn_field.setup(gs, sched, Vector2(JCT_X0, -JCT_HALF_Z), Vector2(JCT_X1, JCT_HALF_Z),
 		_party, {"dps_tick": POPCORN_DPS_TICK, "interval": 1.0, "tag": "inflam_popcorn"})
-	_popcorn_field.set_active(true)
 
 func _end_popcorn(msg: String) -> void:
 	_popcorn = false
+	_remove_live_sac_item()
 	gas_sac_state = "idle"
+	_sac_expires = -1.0
+	_apply_sac_interactable_state()
 	if _popcorn_field != null and is_instance_valid(_popcorn_field):
 		_popcorn_field.set_active(false)
+	_publish_inflammashunt_authority()
 	_show_note(msg, 3.4)
 
 # --- The shared cadence poll ---
@@ -1348,13 +2043,21 @@ func _end_popcorn(msg: String) -> void:
 func _ensure_polls() -> void:
 	if _polls_armed:
 		return
+	_arm_shared_poll(_now() + SHARED_POLL_INTERVAL)
+
+
+func _arm_shared_poll(deadline: float) -> void:
 	var sched = _get_scheduler()
 	if sched == null:
 		return
+	sched.cancel_tag("inflam_shared")
 	_polls_armed = true
-	sched.schedule_after(0.5, _shared_poll, "inflam_shared")
+	_shared_poll_deadline = deadline
+	sched.schedule_after(maxf(0.0, deadline - _now()), _shared_poll, "inflam_shared")
 
 func _shared_poll() -> void:
+	_polls_armed = false
+	_shared_poll_deadline = -1.0
 	if not is_inside_tree():
 		return
 	var gs = _get_game_state()
@@ -1367,17 +2070,19 @@ func _shared_poll() -> void:
 			if gs.characters.has(cid) and gs.get_position(cid).x > 10.0:
 				_play_entry_beat()
 				break
-	if _sac_carrier != "" and now >= _sac_expires:
-		_sac_carrier = ""
-		gas_sac_state = "expired"
-		_detach_sac_visual()
-		_show_note("The sac wilts and goes quiet. Peris can tend another.", 2.8)
+	if gas_sac_state == "active":
+		_sac_carrier = _sac_holder()
+		if _live_sac_item_state().is_empty() or now >= _sac_expires:
+			_expire_sac()
+			_show_note("The sac wilts and goes quiet. Peris can tend another.", 2.8)
 	_cool_encounters(now)
 	_check_reunion()
-	sched.schedule_after(0.5, _shared_poll, "inflam_shared")
+	_arm_shared_poll(now + SHARED_POLL_INTERVAL)
+	_publish_inflammashunt_authority()
 
 func _play_entry_beat() -> void:
 	_entry_played = true
+	_publish_inflammashunt_authority()
 	var sched = _get_scheduler()
 	if sched == null:
 		return
@@ -1389,6 +2094,553 @@ func _play_entry_beat() -> void:
 			_show_note("Myke: \"Yeah.\"", 1.8), "inflam_entry")
 	else:
 		_show_note("Scorched walls, fused conduit — elegant routing under all that burn. Somebody fought here for a long time, and nobody cleaned up.", 4.0)
+
+# --- Save/load authority ---
+
+func _inflammashunt_authority_state() -> Dictionary:
+	var extra_ids: Array[String] = []
+	for enemy in _extra_chelators:
+		if is_instance_valid(enemy) and str(enemy.char_id) != "":
+			extra_ids.append(str(enemy.char_id))
+	return {
+		"version": INFLAMMASHUNT_AUTHORITY_VERSION,
+		"phase": _phase,
+		"route_info": route_info.duplicate(true),
+		"valve_open": valve_open,
+		"water_phase": water_phase,
+		"water_deadline": water_deadline,
+		"char_a_state": char_a_state,
+		"char_b_state": char_b_state,
+		"root_state": root_state,
+		"root_connect_deadline": root_connect_deadline,
+		"buffer_state": buffer_state,
+		"gas_sac_state": gas_sac_state,
+		"healing_zone": healing_zone,
+		"housing_unlocked": housing_unlocked,
+		"housing_state": housing_state,
+		"housing_deadline": housing_deadline,
+		"device_retrieved": device_retrieved,
+		"device_phase": _device_phase,
+		"device_item_id": _device_item_id,
+		"device_claimed_by": _device_claimed_by,
+		"device_claim_serial": _device_claim_serial,
+		"sac_claim_serial": _sac_claim_serial,
+		"terminal_hacked": _terminal_hacked,
+		"source_committed_counts": _source_committed_counts.duplicate(true),
+		"wrong_events": wrong_events.duplicate(true),
+		"long_hold_count": long_hold_count,
+		"entry_played": _entry_played,
+		"reports": _reports.duplicate(true),
+		"reunion_played": _reunion_played,
+		"popcorn": _popcorn,
+		"sac_item_id": _sac_item_id,
+		"sac_carrier": _sac_carrier if gas_sac_state == "claiming" else _sac_holder(),
+		"sac_expires": _sac_expires,
+		"rage_until": _rage_until,
+		"raged_ids": _raged.keys(),
+		"whip_ready": _whip_ready.duplicate(true),
+		"polls_armed": _polls_armed,
+		"shared_poll_deadline": _shared_poll_deadline,
+		"root_timer_mode": _root_timer_mode,
+		"root_deadline": _root_deadline,
+		"buffer_reform_deadline": _buffer_reform_deadline,
+		"extra_chelator_ids": extra_ids,
+		"hostile_root_present": _root_enemy != null and is_instance_valid(_root_enemy),
+	}
+
+
+func _publish_inflammashunt_authority() -> void:
+	if _restoring_inflammashunt_authority:
+		return
+	var gs = _get_game_state()
+	if gs != null and gs.has_method("set_world_state"):
+		gs.set_world_state(INFLAMMASHUNT_AUTHORITY_KEY, _inflammashunt_authority_state())
+
+
+## The production loader clears every opaque scheduler Callable. This restores the puzzle's stocks,
+## dynamic bodies, and exact absolute deadlines before reattaching one callback for each active phase.
+func on_game_state_snapshot_restored() -> void:
+	super.on_game_state_snapshot_restored()
+	_cancel_inflammashunt_callbacks()
+	var gs = _get_game_state()
+	var raw: Variant = gs.get_world_state(INFLAMMASHUNT_AUTHORITY_KEY, null) \
+			if gs != null and gs.has_method("get_world_state") else null
+	if not raw is Dictionary or int(raw.get("version", 0)) \
+			not in [1, 2, 3, 4, INFLAMMASHUNT_AUTHORITY_VERSION]:
+		_retract_inflammashunt_presenter_to_defaults()
+		return
+
+	var saved: Dictionary = raw
+	var saved_version := int(saved.get("version", 1))
+	_restoring_inflammashunt_authority = true
+	_phase = str(saved.get("phase", "ready"))
+	if _phase not in ["ready", "active", "failed", "complete"]:
+		_phase = "ready"
+	var saved_route: Variant = saved.get("route_info", {})
+	for key_v in route_info.keys():
+		var key := str(key_v)
+		route_info[key] = bool((saved_route as Dictionary).get(key, false)) \
+				if saved_route is Dictionary else false
+	valve_open = bool(saved.get("valve_open", false))
+	water_phase = _valid_string(saved.get("water_phase", "full" if valve_open else "dry"),
+		["dry", "flowing", "full"], "dry") if saved_version >= 2 else ("full" if valve_open else "dry")
+	water_deadline = float(saved.get("water_deadline", -1.0)) if saved_version >= 2 else -1.0
+	char_a_state = _valid_string(saved.get("char_a_state", "dry"),
+		["dry", "damp", "cleared", "burned"], "dry")
+	char_b_state = _valid_string(saved.get("char_b_state", "dry"),
+		["dry", "damp", "cleared", "burned"], "dry")
+	root_state = _valid_string(saved.get("root_state", "suppressed"),
+		["suppressed", "tame", "hostile", "recovering", "connecting", "connected"], "suppressed")
+	root_connect_deadline = float(saved.get("root_connect_deadline", -1.0)) if saved_version >= 2 else -1.0
+	buffer_state = _valid_string(saved.get("buffer_state", "stable"),
+		["stable", "shattered", "reforming"], "stable")
+	gas_sac_state = _valid_string(saved.get("gas_sac_state", "idle"),
+		["idle", "tended", "claiming", "active", "carried", "expired", "ignited"], "idle")
+	healing_zone = clampf(float(saved.get("healing_zone", 0.0)), 0.0, 1.0)
+	housing_unlocked = bool(saved.get("housing_unlocked", false))
+	housing_state = _valid_string(saved.get("housing_state", "open" if bool(saved.get("device_retrieved", false)) else "sealed"),
+		["sealed", "opening", "open"], "sealed") if saved_version >= 2 \
+		else ("open" if bool(saved.get("device_retrieved", false)) else "sealed")
+	housing_deadline = float(saved.get("housing_deadline", -1.0)) if saved_version >= 2 else -1.0
+	var legacy_device_retrieved := bool(saved.get("device_retrieved", false))
+	device_retrieved = legacy_device_retrieved
+	_device_phase = _valid_string(saved.get("device_phase", DEVICE_PHASE_AVAILABLE),
+		[DEVICE_PHASE_AVAILABLE, DEVICE_PHASE_CLAIMING, DEVICE_PHASE_CLAIMED],
+		DEVICE_PHASE_AVAILABLE) if saved_version >= 4 else DEVICE_PHASE_AVAILABLE
+	_device_item_id = str(saved.get("device_item_id", "")) if saved_version >= 4 else ""
+	_device_claimed_by = str(saved.get("device_claimed_by", "")) if saved_version >= 4 else ""
+	_device_claim_serial = maxi(0, int(saved.get("device_claim_serial", 0))) if saved_version >= 4 else 0
+	_sac_claim_serial = maxi(0, int(saved.get("sac_claim_serial", 0))) \
+		if saved_version >= 5 else 0
+	_source_committed_counts.clear()
+	if saved_version >= 5 and saved.get("source_committed_counts", null) is Dictionary:
+		for action_id_v in (saved.get("source_committed_counts", {}) as Dictionary).keys():
+			var action_id := str(action_id_v)
+			if _interaction_sources.has(action_id):
+				_source_committed_counts[action_id] = maxi(
+					0, int((saved.get("source_committed_counts", {}) as Dictionary)[action_id_v]))
+	_normalize_process_authority()
+	wrong_events = (saved.get("wrong_events", []) as Array).duplicate(true) \
+			if saved.get("wrong_events", null) is Array else []
+	_terminal_hacked = bool(saved.get("terminal_hacked", false)) \
+		if saved_version >= 5 else wrong_events.has("thermal_reset")
+	long_hold_count = maxi(0, int(saved.get("long_hold_count", 0)))
+	_entry_played = bool(saved.get("entry_played", false))
+	_reports = (saved.get("reports", {}) as Dictionary).duplicate(true) \
+			if saved.get("reports", null) is Dictionary else {}
+	_reunion_played = bool(saved.get("reunion_played", false))
+	_popcorn = bool(saved.get("popcorn", false))
+	_sac_item_id = str(saved.get("sac_item_id", "")) if saved_version >= 3 else ""
+	_sac_carrier = str(saved.get("sac_carrier", "")) if saved_version >= 4 else ""
+	_sac_expires = float(saved.get("sac_expires", -1.0))
+	_normalize_sac_authority(saved_version)
+	_rage_until = float(saved.get("rage_until", -1.0))
+	_raged.clear()
+	for id_v in (saved.get("raged_ids", []) as Array):
+		_raged[str(id_v)] = true
+	_whip_ready.clear()
+	var saved_whips: Variant = saved.get("whip_ready", {})
+	if saved_whips is Dictionary:
+		for id_v in (saved_whips as Dictionary).keys():
+			_whip_ready[str(id_v)] = float((saved_whips as Dictionary)[id_v])
+	_polls_armed = bool(saved.get("polls_armed", false))
+	_shared_poll_deadline = float(saved.get("shared_poll_deadline", -1.0))
+	_root_timer_mode = _valid_string(saved.get("root_timer_mode", ""),
+		["", "poll", "retract", "regrow"], "")
+	_root_deadline = float(saved.get("root_deadline", -1.0))
+	_buffer_reform_deadline = float(saved.get("buffer_reform_deadline", -1.0))
+	_restore_dynamic_enemy_presenters(
+		saved.get("extra_chelator_ids", []) as Array,
+		bool(saved.get("hostile_root_present", false)))
+	_reconcile_restored_device_transaction(saved_version, legacy_device_retrieved)
+	_apply_inflammashunt_presenters()
+	_restoring_inflammashunt_authority = false
+
+	if _polls_armed and _shared_poll_deadline >= 0.0:
+		_arm_shared_poll(_shared_poll_deadline)
+	if _root_timer_mode != "" and _root_deadline >= 0.0:
+		_arm_root_timer(_root_timer_mode, _root_deadline)
+	if buffer_state == "reforming" and _buffer_reform_deadline >= 0.0:
+		_arm_buffer_reform(_buffer_reform_deadline)
+	if water_phase == "flowing" and water_deadline >= 0.0:
+		_arm_water_flow(water_deadline)
+	if root_state == "connecting" and root_connect_deadline >= 0.0:
+		_arm_root_connection(root_connect_deadline)
+	if housing_state == "opening" and housing_deadline >= 0.0:
+		_arm_housing_open(housing_deadline)
+	# Reconciliation may complete a transaction whose save landed synchronously inside
+	# GameState.item_picked_up (CLAIMING + the exact item already in the reserved hand), or retract
+	# an orphan accepted-source receipt. Publish that normalized truth now so an immediate second
+	# save cannot regress to the stale pre-callback phase and mint/re-arm its reward.
+	_publish_inflammashunt_authority()
+
+
+func _normalize_process_authority() -> void:
+	if water_phase == "dry":
+		valve_open = false
+		water_deadline = -1.0
+	elif water_phase == "full":
+		valve_open = true
+		water_deadline = -1.0
+	elif water_deadline < 0.0:
+		water_phase = "dry"
+		valve_open = false
+
+	if root_state == "connecting" and root_connect_deadline < 0.0:
+		root_state = "suppressed"
+	if root_state != "connecting":
+		root_connect_deadline = -1.0
+	if root_state == "connected":
+		housing_unlocked = true
+	elif not device_retrieved:
+		housing_unlocked = false
+		healing_zone = 0.0
+
+	# An open housing is a durable physical state, not shorthand for owning its contents.
+	# Only the source-tagged item transaction below may derive retrieval/completion.
+	if housing_state == "opening" and (not housing_unlocked or housing_deadline < 0.0):
+		housing_state = "sealed"
+		housing_deadline = -1.0
+	if housing_state != "opening":
+		housing_deadline = -1.0
+
+
+## Reconcile the serializable transaction against the item authority restored by GameState. A
+## snapshot may land immediately before or inside item_picked_up; source-ground means no pickup
+## committed, while any other location means it did. Older boolean-only saves intentionally return
+## the device to the open housing rather than minting ownership to an unknown character.
+func _reconcile_restored_device_transaction(saved_version: int, legacy_retrieved: bool) -> void:
+	# Version 4+ binds this transaction to the saved item id. Do not let a different tagged item
+	# replace that identity if the exact source was deleted, moved through a forged save, or consumed
+	# after a completed claim. Older boolean-only saves may recover their one surviving tagged item.
+	var strict_saved_identity := saved_version >= 4
+	if not _is_device_item(_device_item_id) \
+			and not strict_saved_identity and _device_phase != DEVICE_PHASE_CLAIMED:
+		var recovered_item_id := _find_device_item_id()
+		if recovered_item_id != "":
+			_device_item_id = recovered_item_id
+		else:
+			_device_item_id = ""
+
+	# Exactly one source identity may exist for this encounter. A duplicated item is a save exploit,
+	# not a second reward; discard deterministic extras without touching unrelated cure components.
+	var gs = _get_game_state()
+	if gs != null and "items" in gs:
+		var duplicate_ids: Array[String] = []
+		for item_id_v in gs.items.keys():
+			var item_id := str(item_id_v)
+			if item_id != _device_item_id and _is_device_item(item_id):
+				duplicate_ids.append(item_id)
+		for item_id in duplicate_ids:
+			_remove_item(item_id)
+
+	# An unclaimed missing source retracts to one newly visible item after every possible substitute
+	# has been removed. A completed claim instead retains its saved id as an exact-once tombstone.
+	if not _is_device_item(_device_item_id) and _device_phase != DEVICE_PHASE_CLAIMED:
+		_device_item_id = _spawn_device_item({"legacy_source_recovery": saved_version < 4})
+
+	if saved_version < 4:
+		# The old save only knew that a lid animation had ended. Preserve the solved housing/root,
+		# but require one honest pickup from the visible source before granting completion.
+		_device_phase = DEVICE_PHASE_AVAILABLE
+		_device_claimed_by = ""
+		_device_claim_serial = 0
+		device_retrieved = false
+		if legacy_retrieved:
+			housing_state = "open"
+			housing_deadline = -1.0
+			_phase = "active"
+		return
+
+	var at_source := _device_item_at_source()
+	match _device_phase:
+		DEVICE_PHASE_AVAILABLE:
+			# A moved item without our published reservation is not proof of this interaction.
+			pass
+		DEVICE_PHASE_CLAIMING:
+			if at_source:
+				_device_phase = DEVICE_PHASE_AVAILABLE
+				_device_claimed_by = ""
+			elif _device_claimed_by != "" and _device_item_holder() == _device_claimed_by:
+				_device_phase = DEVICE_PHASE_CLAIMED
+		DEVICE_PHASE_CLAIMED:
+			pass
+
+	device_retrieved = _device_phase == DEVICE_PHASE_CLAIMED
+	if device_retrieved:
+		housing_state = "open"
+		housing_deadline = -1.0
+		_phase = "complete"
+		var actual_holder := _device_item_holder()
+		if actual_holder != "":
+			_device_claimed_by = actual_holder
+		elif _device_claimed_by == "":
+			_device_claimed_by = "stored"
+		_device_claim_serial = maxi(1, _device_claim_serial)
+	elif _phase == "complete":
+		_phase = "active"
+
+
+func _normalize_sac_authority(saved_version: int) -> void:
+	# Recover the exact tagged item when the cached id was lost. Older carrier-string saves and the
+	# old spawn-at-actor pickup seam have no durable reservation, so they retract to one visible pod
+	# at the plant rather than minting or guessing inventory ownership.
+	if not _is_live_sac_item_id(_sac_item_id):
+		# Version 5 binds the transaction to one exact item. If that item is absent, a different
+		# tagged sac is a forged duplicate rather than a substitute for a carried/claiming reward.
+		# Older saves did not have that identity guarantee, so they may still recover their one
+		# surviving tagged item before the legacy migration below.
+		if saved_version < 5:
+			_sac_item_id = _find_sac_item_id()
+	_remove_duplicate_sac_items()
+	if gas_sac_state == "carried":
+		gas_sac_state = "tended" if saved_version < 4 else "active"
+
+	if saved_version < 4 and gas_sac_state != "active":
+		_remove_live_sac_item()
+		_sac_item_id = _spawn_sac_source_item({"legacy_source_recovery": true}) \
+			if gas_sac_state == "tended" else ""
+		_sac_carrier = ""
+		_sac_expires = -1.0
+		return
+
+	match gas_sac_state:
+		"idle", "expired", "ignited":
+			_remove_live_sac_item()
+			_sac_expires = -1.0
+			return
+		"tended":
+			if not _sac_item_at_source():
+				_remove_live_sac_item()
+				_sac_item_id = _spawn_sac_source_item()
+			_sac_carrier = ""
+			_sac_expires = -1.0
+			return
+		"claiming":
+			if _sac_item_at_source():
+				gas_sac_state = "tended"
+				_sac_carrier = ""
+				_sac_expires = -1.0
+				return
+			if _sac_carrier != "" and _sac_holder() == _sac_carrier and _sac_expires >= 0.0:
+				gas_sac_state = "active"
+				_sac_claim_serial = maxi(1, _sac_claim_serial)
+				return
+			if _live_sac_item_state().is_empty():
+				# The reserved exact item never committed to a hand. Retract the interrupted claim
+				# to one new visible source pod instead of leaving a permanent soft lock.
+				_remove_live_sac_item()
+				_sac_item_id = _spawn_sac_source_item()
+				gas_sac_state = "tended"
+				_sac_carrier = ""
+				_sac_expires = -1.0
+				return
+			# Wrong-holder injection remains unresolved and is never silently retargeted.
+			return
+
+	if gas_sac_state == "active" and not _live_sac_item_state().is_empty() and _sac_expires >= 0.0:
+		_sac_carrier = _sac_holder()
+		_sac_claim_serial = maxi(1, _sac_claim_serial)
+		return
+	if gas_sac_state == "active":
+		gas_sac_state = "expired"
+	_remove_live_sac_item()
+	_sac_carrier = ""
+	_sac_expires = -1.0
+
+
+func _remove_duplicate_sac_items() -> void:
+	var gs = _get_game_state()
+	if gs == null or not "items" in gs:
+		return
+	var duplicate_ids: Array[String] = []
+	for item_id_v in gs.items.keys():
+		var item_id := str(item_id_v)
+		if item_id != _sac_item_id and _is_live_sac_item_id(item_id):
+			duplicate_ids.append(item_id)
+	duplicate_ids.sort()
+	for item_id in duplicate_ids:
+		_remove_item(item_id)
+
+
+func _cancel_inflammashunt_callbacks() -> void:
+	var sched = _get_scheduler()
+	if sched != null:
+		sched.cancel_tag("inflam_shared")
+		sched.cancel_tag("inflam_root")
+		sched.cancel_tag("inflam_reform")
+		sched.cancel_tag("inflam_water_flow")
+		sched.cancel_tag("inflam_root_connect")
+		sched.cancel_tag("inflam_housing_open")
+	_polls_armed = false
+
+
+func _retract_inflammashunt_presenter_to_defaults() -> void:
+	_remove_live_sac_item()
+	_remove_device_items()
+	_restoring_inflammashunt_authority = true
+	_phase = "ready"
+	for key_v in route_info.keys():
+		route_info[str(key_v)] = false
+	valve_open = false
+	water_phase = "dry"
+	water_deadline = -1.0
+	char_a_state = "dry"
+	char_b_state = "dry"
+	root_state = "suppressed"
+	root_connect_deadline = -1.0
+	buffer_state = "stable"
+	gas_sac_state = "idle"
+	healing_zone = 0.0
+	housing_unlocked = false
+	housing_state = "sealed"
+	housing_deadline = -1.0
+	device_retrieved = false
+	_device_phase = DEVICE_PHASE_AVAILABLE
+	_device_item_id = ""
+	_device_claimed_by = ""
+	_device_claim_serial = 0
+	_sac_claim_serial = 0
+	_terminal_hacked = false
+	_source_committed_counts.clear()
+	_active_source_receipt.clear()
+	wrong_events.clear()
+	long_hold_count = 0
+	_entry_played = false
+	_reports.clear()
+	_reunion_played = false
+	_popcorn = false
+	_sac_item_id = ""
+	_sac_carrier = ""
+	_sac_expires = -1.0
+	_rage_until = -1.0
+	_raged.clear()
+	_whip_ready.clear()
+	_polls_armed = false
+	_shared_poll_deadline = -1.0
+	_root_timer_mode = ""
+	_root_deadline = -1.0
+	_buffer_reform_deadline = -1.0
+	_restore_dynamic_enemy_presenters([], false)
+	_ensure_device_source_item()
+	_apply_inflammashunt_presenters()
+	_restoring_inflammashunt_authority = false
+
+
+func _apply_inflammashunt_presenters() -> void:
+	_sync_char_visuals()
+	_sync_healing_visual()
+	_sync_transition_presenters()
+	_sync_inflammashunt_source_presenters()
+	_set_causal_feedback_latched(_valve_it, water_phase == "flowing")
+	_set_causal_feedback_mode(_valve_it,
+		"active" if water_phase == "flowing" else ("complete" if water_phase == "full" else "predicted"))
+	_set_causal_feedback_latched(_root_it, root_state == "connecting")
+	_set_causal_feedback_mode(_root_it,
+		"active" if root_state == "connecting" else ("complete" if root_state == "connected" else "predicted"))
+	_sync_healing_visual()
+	for husk in _husks:
+		if is_instance_valid(husk):
+			husk.visible = buffer_state == "stable"
+	if gas_sac_state == "active":
+		_sac_carrier = _sac_holder()
+	elif gas_sac_state != "claiming":
+		_sac_carrier = ""
+	_refresh_hold_times()
+
+
+func _restore_dynamic_enemy_presenters(extra_ids_raw: Array, root_present: bool) -> void:
+	var gs = _get_game_state()
+	if gs == null:
+		return
+	var wanted: Dictionary = {}
+	for id_v in extra_ids_raw:
+		var id := str(id_v)
+		if id.begins_with("chelator_x"):
+			wanted[id] = true
+	for enemy in _extra_chelators.duplicate():
+		if not is_instance_valid(enemy):
+			_extra_chelators.erase(enemy)
+			_enemies.erase(enemy)
+			continue
+		var id := str(enemy.char_id)
+		if wanted.has(id) and gs.characters.has(id):
+			continue
+		_extra_chelators.erase(enemy)
+		_enemies.erase(enemy)
+		if gs.characters.has(id):
+			gs.unregister_character(id)
+		enemy.set_process(false)
+		enemy.call_deferred("queue_free")
+	for id_v in wanted.keys():
+		var id := str(id_v)
+		if not gs.characters.has(id) or _find_extra_chelator(id) != null:
+			continue
+		_create_restored_extra_chelator(id)
+
+	var want_root: bool = root_present and gs.characters.has("hostile_root")
+	if _root_enemy != null and is_instance_valid(_root_enemy) and not want_root:
+		_enemies.erase(_root_enemy)
+		if gs.characters.has("hostile_root"):
+			gs.unregister_character("hostile_root")
+		_root_enemy.set_process(false)
+		_root_enemy.call_deferred("queue_free")
+		_root_enemy = null
+	if want_root and (_root_enemy == null or not is_instance_valid(_root_enemy)):
+		_create_restored_hostile_root()
+
+
+func _find_extra_chelator(char_id: String):
+	for enemy in _extra_chelators:
+		if is_instance_valid(enemy) and str(enemy.char_id) == char_id:
+			return enemy
+	return null
+
+
+func _create_restored_extra_chelator(char_id: String) -> void:
+	var gs = _get_game_state()
+	if gs == null or not gs.characters.has(char_id):
+		return
+	var enemy := Enemy.new()
+	enemy.name = "Enemy_%s" % char_id
+	enemy.scale = Vector3.ONE * 0.62
+	enemy.color = Color(0.5, 0.16, 0.08)
+	enemy.move_speed = 2.2
+	enemy.detection_range = 0.0
+	enemy.windup_duration = 0.4
+	enemy.recover_duration = 0.8
+	enemy.charge_speed = 6.0
+	enemy.attack_range = 1.5
+	enemy.charge_damage = 6.0
+	enemy._detection_targets.assign(_party)
+	enemy.char_id = char_id
+	enemy.game_state = gs
+	add_child(enemy)
+	enemy.global_position = gs.get_render_position(char_id)
+	enemy.activate()
+	_extra_chelators.append(enemy)
+	_enemies.append(enemy)
+
+
+func _create_restored_hostile_root() -> void:
+	var gs = _get_game_state()
+	if gs == null or not gs.characters.has("hostile_root"):
+		return
+	var root := ChainEnemy.new()
+	root.name = "Enemy_hostile_root"
+	root.segment_count = 7
+	root.char_id = "hostile_root"
+	root.game_state = gs
+	add_child(root)
+	root.global_position = gs.get_render_position("hostile_root")
+	_root_enemy = root
+	_enemies.append(root)
+
+
+func _valid_string(raw: Variant, allowed: Array, fallback: String) -> String:
+	var value := str(raw)
+	return value if value in allowed else fallback
+
 
 # --- Helpers ---
 
@@ -1442,283 +2694,79 @@ func _sync_char_visuals() -> void:
 func _sync_healing_visual() -> void:
 	if _healing_glow == null or not is_instance_valid(_healing_glow):
 		return
-	var spread := 0.8 + healing_zone * (3.4 if device_retrieved else 2.2)
+	# The visible expansion is caused by opening the resolution cycle to the grate, not by the
+	# inventory flag that follows. Picking the device up therefore cannot be the hidden VFX switch.
+	var spread := 0.8 + healing_zone * (3.4 if housing_state == "open" else 2.2)
 	_healing_glow.scale = Vector3(spread, 1.0, spread)
-
-func _attach_sac_visual(actor: String) -> void:
-	_detach_sac_visual()
-	var node = _chunk_character_node(actor)
-	if node == null:
-		return
-	_sac_visual = MeshInstance3D.new()
-	var sphere := SphereMesh.new()
-	sphere.radius = 0.22
-	sphere.height = 0.44
-	_sac_visual.mesh = sphere
-	_sac_visual.material_override = _make_material(Color(0.5, 0.7, 0.25), Color(0.7, 0.9, 0.3), 0.8)
-	_sac_visual.position = Vector3(0.5, 1.0, 0.0)
-	node.add_child(_sac_visual)
-
-func _detach_sac_visual() -> void:
-	if _sac_visual != null and is_instance_valid(_sac_visual):
-		_sac_visual.queue_free()
-	_sac_visual = null
-
-func _chunk_character_node(cid: String) -> Node3D:
-	var host := get_parent()
-	while host != null and not host.has_method("get_preview_state"):
-		host = host.get_parent()
-	if host != null and "_characters" in host:
-		var chars: Dictionary = host.get("_characters")
-		if chars.has(cid):
-			return chars[cid]
-	return null
-
-# --- Evidence-backed first-clear pacing model and QA surfaces ---
-
-func get_commissioning_clean_action_plan() -> Array:
-	var plan: Array = []
-	for protocol_id_variant in COMMISSIONING_PROTOCOL_ORDER:
-		var protocol_id := str(protocol_id_variant)
-		var protocol: Dictionary = COMMISSIONING_PROTOCOLS[protocol_id]
-		for evidence_variant in protocol["evidence"] as Array:
-			var evidence: Dictionary = evidence_variant
-			plan.append(_pacing_action(protocol_id, evidence, "evidence",
-				COMMISSIONING_EVIDENCE_SECONDS))
-		var choice_id := str(COMMISSIONING_CLEAN_CHOICES[protocol_id])
-		var chosen: Dictionary = {}
-		for choice_variant in protocol["choices"] as Array:
-			if str((choice_variant as Dictionary)["id"]) == choice_id:
-				chosen = choice_variant
-				break
-		plan.append(_pacing_action(protocol_id, chosen, "decision",
-			COMMISSIONING_DECISION_SECONDS))
-		var resolution: Dictionary = (protocol["resolutions"] as Dictionary)[choice_id]
-		plan.append(_pacing_action(protocol_id, resolution, "execution",
-			COMMISSIONING_EXECUTION_SECONDS))
-	plan.append({
-		"id": "extraction_cradle",
-		"node_name": "Commissioning_extraction_cradle",
-		"protocol": "extraction",
-		"category": "extraction_handoff",
-		"stage": "extraction",
-		"role": "aster",
-		"pos": EXTRACTION_POS,
-		"work_seconds": EXTRACTION_WORK_SECONDS,
-	})
-	return plan
-
-func _pacing_action(protocol_id: String, site: Dictionary, stage: String, work_seconds: float) -> Dictionary:
-	return {
-		"id": str(site["id"]),
-		"node_name": "Commissioning_%s" % str(site["id"]),
-		"protocol": protocol_id,
-		"category": str((COMMISSIONING_PROTOCOLS[protocol_id] as Dictionary)["category"]),
-		"stage": stage,
-		"role": str(site["role"]),
-		"pos": site["pos"],
-		"work_seconds": work_seconds,
-	}
-
-## Hook order for a normal-input driver.  Route C's two crawl interactions are
-## deliberately explicit; a shadow-party driver substitutes ObserveFeeding and
-## ExamineCluster for Myke's crawl/read quartet, then uses the same commissioning plan.
-func get_normal_input_hook_order() -> Array:
-	var order: Array = [
-		{"node_name": "AsterLogTerminal", "role": "aster"},
-		{"node_name": "PipeDiagram", "role": "aster"},
-		{"node_name": "DeadRootNetwork", "role": "peris"},
-		{"node_name": "LivingJunction", "role": "peris"},
-		{"node_name": "MykeCrawlIn", "role": "myke"},
-		{"node_name": "GrateObservation", "role": "myke"},
-		{"node_name": "DeviceGap", "role": "myke"},
-		{"node_name": "MykeCrawlOut", "role": "myke"},
-		{"node_name": "DrainageValve", "role": "aster"},
-		{"node_name": "CharDepositA", "role": "myke"},
-		{"node_name": "CharDepositB", "role": "myke"},
-		{"node_name": "RootTendril", "role": "peris"},
-		{"node_name": "DeviceHousing", "role": "aster"},
-	]
-	for action_variant in get_commissioning_clean_action_plan():
-		var action: Dictionary = action_variant
-		order.append({"node_name": str(action["node_name"]), "role": str(action["role"])})
-	return order
-
-func get_playtime_contract() -> Dictionary:
-	var core := _modeled_core_route()
-	var commissioning := _modeled_commissioning_route()
-	var meaningful_active_seconds := float(core["active_seconds"]) + float(commissioning["active_seconds"])
-	var category_seconds: Dictionary = {"route_reconstruction_and_core_solve": float(core["active_seconds"])}
-	for category_name in (commissioning["category_seconds"] as Dictionary):
-		category_seconds[category_name] = float((commissioning["category_seconds"] as Dictionary)[category_name])
-	var max_single_mode_seconds := maxf(float(core["max_single_mode_seconds"]),
-		float(commissioning["max_single_mode_seconds"]))
-	return {
-		"contract_id": "inflammashunt_first_clear_7_to_9_v1",
-		"required_first_clear_seconds": 420.0,
-		"target_min_seconds": 420.0,
-		"target_max_seconds": 540.0,
-		"modeled_first_clear_seconds": meaningful_active_seconds,
-		"modeled_meaningful_active_seconds": meaningful_active_seconds,
-		"meaningful_active_seconds": meaningful_active_seconds,
-		"total_play_seconds": meaningful_active_seconds,
-		"active_ratio": 1.0,
-		"meaningful_active_ratio": 1.0,
-		"max_dead_gap_seconds": 0.0,
-		"max_single_mode_seconds": max_single_mode_seconds,
-		"category_seconds": category_seconds,
-		"critical_route_meters": float(core["route_meters"]) + float(commissioning["route_meters"]),
-		"modeled_traversal_seconds": float(core["traversal_seconds"]) + float(commissioning["traversal_seconds"]),
-		"modeled_interaction_work_seconds": float(core["work_seconds"]) + float(commissioning["work_seconds"]),
-		"mandatory_route_observations": 6,
-		"mandatory_core_actions": 5,
-		"mandatory_commissioning_protocols": COMMISSIONING_PROTOCOL_ORDER.size(),
-		"mandatory_commissioning_evidence": 20,
-		"mandatory_commissioning_actions": get_commissioning_clean_action_plan().size(),
-		"authored_commissioning_station_count": _commissioning_sites.size(),
-		"decision_count": 7,
-		"branch_count": 10,
-		"hard_idle_lock_seconds": 0.0,
-		"dialogue_seconds_in_model": 0.0,
-		"idle_padding_seconds": 0.0,
-		"platform_fallback_seconds": 0.0,
-		"core_breakdown": core,
-		"commissioning_breakdown": commissioning,
-		"model_note": "Exact authored role-route distances at preview walk speeds plus real TIMED_ACTION dwell. Dialogue, scheduler waiting, failed approaches, combat cooling, and platform fallbacks contribute zero seconds.",
-	}
-
-func _modeled_core_route() -> Dictionary:
-	var route_meters := 0.0
-	var traversal_seconds := 0.0
-	var max_mode := 0.0
-	var role_routes := {
-		"aster": [Vector3(4.0, 0.5, 0.0), Vector3(20.0, 0.6, -11.5),
-			Vector3(24.0, 0.6, -11.5), VALVE_POS, HOUSING_POS],
-		"peris": [Vector3(2.5, 0.5, 1.6), Vector3(20.0, 0.4, 11.5),
-			Vector3(24.0, 0.4, 11.5), ROOT_BASE_POS],
-		# The crawl's slow internal waypoints are priced separately below.
-		"myke": [Vector3(2.5, 0.5, -1.6), Vector3(26.2, 0.0, -4.5)],
-	}
-	for role_variant in role_routes:
-		var role := str(role_variant)
-		var points: Array = role_routes[role]
-		for index in range(1, points.size()):
-			var meters := _planar_distance(points[index - 1], points[index])
-			var seconds := meters / float(ROLE_WALK_SPEEDS[role])
-			route_meters += meters
-			traversal_seconds += seconds
-			max_mode = maxf(max_mode, seconds)
-	var myke_walk_and_crawl := [
-		{"from": Vector3(26.2, 0.0, -4.5), "to": Vector3(28.2, 0.7, -8.0), "speed": 1.1},
-		{"from": Vector3(28.2, 0.7, -8.0), "to": Vector3(31.0, 0.0, -12.0), "speed": 1.1},
-		{"from": Vector3(31.0, 0.0, -12.0), "to": Vector3(31.8, 0.4, -13.2), "speed": 3.1},
-		{"from": Vector3(31.8, 0.4, -13.2), "to": Vector3(34.2, 0.4, -13.2), "speed": 3.1},
-		{"from": Vector3(34.2, 0.4, -13.2), "to": Vector3(30.4, 0.0, -11.0), "speed": 3.1},
-		{"from": Vector3(30.4, 0.0, -11.0), "to": Vector3(28.2, 0.7, -8.0), "speed": 1.1},
-		{"from": Vector3(28.2, 0.7, -8.0), "to": Vector3(25.4, 0.0, -4.0), "speed": 1.1},
-		{"from": Vector3(25.4, 0.0, -4.0), "to": CHAR_A_POS, "speed": 3.1},
-		{"from": CHAR_A_POS, "to": CHAR_B_POS, "speed": 3.1},
-	]
-	for leg_variant in myke_walk_and_crawl:
-		var leg: Dictionary = leg_variant
-		var meters := _planar_distance(leg["from"], leg["to"])
-		var seconds := meters / float(leg["speed"])
-		route_meters += meters
-		traversal_seconds += seconds
-		max_mode = maxf(max_mode, seconds)
-	var work_seconds := HOLDS["valve"][0] + HOLDS["char_a"][0] + HOLDS["char_b"][0] \
-		+ HOLDS["root"][0] + 1.2
-	max_mode = maxf(max_mode, HOLDS["valve"][0])
-	return {
-		"route_meters": route_meters,
-		"traversal_seconds": traversal_seconds,
-		"work_seconds": work_seconds,
-		"active_seconds": traversal_seconds + work_seconds,
-		"max_single_mode_seconds": max_mode,
-	}
-
-func _modeled_commissioning_route() -> Dictionary:
-	# Each next station is state-hidden until the previous action resolves, so this
-	# is an ordered role route rather than a sum of simultaneous free-roam paths.
-	var last_positions := {
-		"aster": HOUSING_POS,
-		"peris": ROOT_BASE_POS,
-		"myke": CHAR_B_POS,
-	}
-	var route_meters := 0.0
-	var traversal_seconds := 0.0
-	var work_seconds := 0.0
-	var max_mode := 0.0
-	var categories := {}
-	for action_variant in get_commissioning_clean_action_plan():
-		var action: Dictionary = action_variant
-		var role := str(action["role"])
-		var pos: Vector3 = action["pos"]
-		var meters := _planar_distance(last_positions[role], pos)
-		var travel_seconds := meters / float(ROLE_WALK_SPEEDS[role])
-		var action_work := float(action["work_seconds"])
-		var category := str(action["category"])
-		route_meters += meters
-		traversal_seconds += travel_seconds
-		work_seconds += action_work
-		categories[category] = float(categories.get(category, 0.0)) + travel_seconds + action_work
-		max_mode = maxf(max_mode, maxf(travel_seconds, action_work))
-		last_positions[role] = pos
-	return {
-		"route_meters": route_meters,
-		"traversal_seconds": traversal_seconds,
-		"work_seconds": work_seconds,
-		"active_seconds": traversal_seconds + work_seconds,
-		"max_single_mode_seconds": max_mode,
-		"category_seconds": categories,
-		"clean_action_count": get_commissioning_clean_action_plan().size(),
-	}
-
-func _planar_distance(a: Vector3, b: Vector3) -> float:
-	return Vector2(a.x - b.x, a.z - b.z).length()
-
-func get_commissioning_anchor_positions() -> Dictionary:
-	var anchors := {"device_housing": HOUSING_POS, "extraction_cradle": EXTRACTION_POS}
-	for protocol_id_variant in COMMISSIONING_PROTOCOL_ORDER:
-		var protocol_id := str(protocol_id_variant)
-		var protocol: Dictionary = COMMISSIONING_PROTOCOLS[protocol_id]
-		anchors[protocol_id] = (protocol["evidence"] as Array)[0]["pos"]
-	return anchors
-
-func get_decoration_audit() -> Dictionary:
-	return _decoration_audit.duplicate(true)
 
 # --- State surfaces (spec: headless_get_state) ---
 
+func reset_preview_state() -> void:
+	super.reset_preview_state()
+	_cancel_inflammashunt_callbacks()
+	_retract_inflammashunt_presenter_to_defaults()
+	if _popcorn_field != null and is_instance_valid(_popcorn_field):
+		_popcorn_field.set_active(false)
+	var gs = _get_game_state()
+	if gs != null:
+		gs.set_interactable_enabled(_interactable_data_id("ThermalResetConfirm"), false)
+	_ensure_polls()
+	_publish_inflammashunt_authority()
+
+
 func headless_get_state() -> Dictionary:
 	return {
-		"current_step": "complete" if _commissioning_phase == "complete" else (
-			"commissioning_%s" % _commissioning_phase if device_retrieved else "ready"),
+		"current_step": "complete" if device_retrieved else "ready",
 		"route_info": route_info.duplicate(),
 		"valve_open": valve_open,
+		"water_phase": water_phase,
+		"water_deadline": water_deadline,
 		"char_a_state": char_a_state,
 		"char_b_state": char_b_state,
 		"root_state": root_state,
+		"root_connect_deadline": root_connect_deadline,
 		"buffer_state": buffer_state,
 		"gas_sac_state": gas_sac_state,
 		"healing_zone": healing_zone,
 		"housing_unlocked": housing_unlocked,
+		"housing_state": housing_state,
+		"housing_deadline": housing_deadline,
 		"device_retrieved": device_retrieved,
+		"device_phase": _device_phase,
+		"device_item_id": _device_item_id,
+		"device_item_at_source": _device_item_at_source(),
+		"device_item_holder": _device_item_holder(),
+		"device_claimed_by": _device_claimed_by,
+		"device_claim_serial": _device_claim_serial,
+		"sac_claim_serial": _sac_claim_serial,
+		"terminal_hacked": _terminal_hacked,
+		"source_committed_counts": _source_committed_counts.duplicate(true),
+		"process_presenters": {
+			"water_visible": _visible_process_segment_count(_water_route_segments),
+			"water_total": _water_route_segments.size(),
+			"filaments_visible": _visible_process_segment_count(_root_filament_segments),
+			"filaments_total": _root_filament_segments.size(),
+			"lid_angle": _housing_lid_pivot.rotation.x if _housing_lid_pivot != null else 0.0,
+		},
 		"wrong_events": wrong_events.duplicate(),
 		"active_hazards": {"popcorn": _popcorn, "hostile_root": _root_enemy != null and is_instance_valid(_root_enemy), "rage": _rage_until > 0.0},
 		"long_hold_count": long_hold_count,
-		"sac_carrier": _sac_carrier,
+		"sac_item_id": _sac_item_id,
+		"sac_carrier": _sac_holder(),
+		"sac_reserved_carrier": _sac_carrier if gas_sac_state == "claiming" else "",
+		"sac_item_at_source": _sac_item_at_source(),
 		"reports": _reports.duplicate(),
-		"commissioning_phase": _commissioning_phase,
-		"commissioning_evidence": _commissioning_evidence.duplicate(true),
-		"commissioning_choices": _commissioning_choices.duplicate(true),
-		"commissioning_resolved": _commissioning_resolved.duplicate(true),
-		"commissioning_completed_actions": _commissioning_completed_actions.duplicate(),
-		"commissioning_complete": _commissioning_phase == "complete",
-		"decoration_audit": _decoration_audit.duplicate(true),
 	}
 
 func get_preview_state() -> Dictionary:
 	var st: Dictionary = super.get_preview_state()
 	st.merge(headless_get_state(), true)
 	return st
+
+
+func _visible_process_segment_count(segments: Array[MeshInstance3D]) -> int:
+	var visible := 0
+	for segment in segments:
+		if segment != null and is_instance_valid(segment) and segment.visible:
+			visible += 1
+	return visible

@@ -30,8 +30,24 @@ static func spawn(
 	node.name = id
 	var pos_raw: Variant = merged.get("position", Vector3.ZERO)
 	node.position = GameEvent.arr_to_v3(pos_raw) if pos_raw is Array else pos_raw
-	if merged.has("description"):
-		node.description = String(merged["description"])
+	# Always mirror the authored spec before _ready. Tutorial sequences build their world before
+	# GameState exists, so relying on bind_data() here silently collapsed one-shots, radii, timed
+	# actions, and labels back to the packed scene defaults. The node is still only a presenter when
+	# GameState is supplied; this fallback simply gives unbound construction the same physical grammar.
+	node.description = String(merged.get("description", ""))
+	node.dwell_time = float(merged.get("hold_time", node.dwell_time))
+	node.interaction_radius = float(merged.get("radius", node.interaction_radius))
+	node.one_shot = bool(merged.get("one_shot", node.one_shot))
+	node.required_character = String(
+		merged.get("required_character", node.required_character))
+	node.dialogue_key = String(merged.get("dialogue_key", node.dialogue_key))
+	node.tutorial_label = String(merged.get("tutorial_label", node.tutorial_label))
+	node.interaction_enabled = bool(merged.get("enabled", node.interaction_enabled))
+	node.interactable_type = int(merged.get(
+		"interactable_type",
+		Interactable.InteractableType.HOLD_ACTION
+			if bool(merged.get("requires_hold", true))
+			else Interactable.InteractableType.INSPECTION))
 	node.dialogue_box = dialogue_box
 	node.active_character = active_character
 	# Keep the catalog id on the node so its _ready still applies the catalog spec
@@ -41,6 +57,10 @@ static func spawn(
 		node.interactable_id = catalog_id
 	if game_state != null:
 		node.bind_data(game_state, id)
+		# The legacy data schema stores click-vs-proximity as requires_hold. Keep the richer
+		# three-state presenter type when the caller supplied it explicitly (notably TIMED_ACTION).
+		if merged.has("interactable_type"):
+			node.interactable_type = int(merged["interactable_type"])
 		if node.has_method("set_movement_authority"):
 			node.set_movement_authority(game_state)
 	if scheduler != null and node.has_method("set_scheduler"):
@@ -58,8 +78,13 @@ static func _merge_catalog(spec: Dictionary) -> Dictionary:
 	if catalog_id == "" or not InteractableCatalog.has_spec(catalog_id):
 		return out
 	var cat := InteractableCatalog.get_spec(catalog_id)
-	if not out.has("requires_hold") and cat.has("interactable_type"):
-		out["requires_hold"] = str(cat["interactable_type"]) == "HOLD_ACTION"
+	if cat.has("interactable_type"):
+		if not out.has("interactable_type"):
+			out["interactable_type"] = InteractableCatalog.parse_interactable_type(
+				cat["interactable_type"])
+		if not out.has("requires_hold"):
+			out["requires_hold"] = int(out["interactable_type"]) \
+				== Interactable.InteractableType.HOLD_ACTION
 	if not out.has("hold_time") and cat.has("dwell_time"):
 		out["hold_time"] = float(cat["dwell_time"])
 	if not out.has("one_shot") and cat.has("one_shot"):

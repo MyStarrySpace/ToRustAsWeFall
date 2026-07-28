@@ -63,6 +63,21 @@ func start(protocol_id := "") -> bool:
 	return true
 
 
+## Whether this sequence actually has mandatory protocol work configured.
+## Story beats can use an empty sequence for a single consequential preparation
+## without inventing a dummy evidence/choice/resolution checklist.
+func has_protocols() -> bool:
+	return not _protocol_order.is_empty()
+
+
+func authored_definition_count() -> int:
+	return _protocols.size()
+
+
+func authored_site_count() -> int:
+	return _sites.size()
+
+
 func current_protocol() -> String:
 	return _current_protocol
 
@@ -218,6 +233,25 @@ func restore(snapshot_data: Dictionary) -> void:
 ## editor tooling can surface these before a player reaches an impossible puzzle.
 func configuration_errors() -> Array[String]:
 	var errors: Array[String] = []
+	if _protocol_order.is_empty() and (not _protocols.is_empty() or not _sites.is_empty()):
+		errors.append("Protocol/site definitions exist but protocol_order is empty.")
+	for protocol_id_variant in _protocols.keys():
+		var authored_protocol_id := str(protocol_id_variant)
+		if not _protocol_order.has(authored_protocol_id):
+			errors.append("Protocol '%s' is defined but absent from protocol_order." % authored_protocol_id)
+	for site_id_variant in _sites.keys():
+		var site_id := str(site_id_variant)
+		var site: Dictionary = _sites[site_id_variant]
+		var owner := str(site.get("protocol", ""))
+		if not _protocol_order.has(owner):
+			errors.append("Site '%s' belongs to protocol '%s', which is absent from protocol_order." % [site_id, owner])
+			continue
+		var owner_protocol: Dictionary = _protocols.get(owner, {})
+		var referenced := (owner_protocol.get("evidence", []) as Array).has(site_id) \
+			or (owner_protocol.get("choices", []) as Array).has(site_id) \
+			or (owner_protocol.get("resolution_sites", {}) as Dictionary).values().has(site_id)
+		if not referenced:
+			errors.append("Site '%s' is not referenced by protocol '%s'." % [site_id, owner])
 	for protocol_id in _protocol_order:
 		if not _protocols.has(protocol_id):
 			errors.append("Missing protocol '%s'." % protocol_id)

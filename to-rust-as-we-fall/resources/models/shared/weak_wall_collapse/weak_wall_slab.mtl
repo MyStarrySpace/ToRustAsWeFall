@@ -1,0 +1,8 @@
+newmtl weak_wall_panel
+Ka 0.08 0.08 0.08
+Kd 0.82 0.82 0.82
+Ks 0.05 0.05 0.05
+Ns 18.0
+d 1.0
+illum 2
+map_Kd ../../channels/channels_wall_panel_v1.png

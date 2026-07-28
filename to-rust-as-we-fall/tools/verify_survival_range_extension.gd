@@ -70,8 +70,8 @@ func _verify_pacing(chunk: Node) -> void:
 		"the role-switched shortest route measures at least 500 combined meters (%.1fm)" % route_distance)
 	_check(float(contract.get("work_seconds", 0.0)) >= 40.0,
 		"more than forty seconds are distinct click-gated field work")
-	_check(int(contract.get("decision_count", 0)) >= 2 and int(contract.get("branch_count", 0)) >= 3,
-		"route, tune, and recovery choices expose at least three outcomes")
+	_check(int(contract.get("decision_count", 0)) >= 1 and int(contract.get("branch_count", 0)) >= 3,
+		"one strategic route decision exposes safe, risky, and bounded-reset outcomes")
 	_check(float(contract.get("idle_lock_seconds", -1.0)) == 0.0,
 		"the duration model contains no idle timer lock")
 	var manifest_variant: Variant = JSON.parse_string(FileAccess.get_file_as_string(
@@ -93,8 +93,8 @@ func _verify_pacing(chunk: Node) -> void:
 		"scouted safe is successful and deliberately longer (%.1fs)" % float(safe.get("total_time", 0.0)))
 	_check(bool(direct.get("success", false)) and float(direct.get("predicted_damage", 0.0)) > float(safe.get("predicted_damage", 0.0)),
 		"direct is a real health-for-time tradeoff")
-	_check(not bool(untuned.get("success", true)) and str(untuned.get("outcome", "")) == "late_window",
-		"skipping the tune creates the authored recoverable window failure")
+	_check(bool(untuned.get("success", false)) and float(untuned.get("window_margin", 0.0)) > 0.0,
+		"the authored safe route succeeds on the base lure window without a reinforcement chore")
 	print("  INFO: shortest %.1fs | active %.1fs | route %.1fm | movement %.1fs | work %.1fs" % [
 		shortest_seconds,
 		active_seconds,
@@ -121,9 +121,8 @@ func _verify_measured_shortest() -> void:
 	_dwell_and_call(preview, chunk, "peris", segments.get("echo", {}), "tune_echo_coupler")
 	_move_segment(preview, segments.get("stage_peris", {}))
 	_dwell_and_call(preview, chunk, "peris", segments.get("lure", {}), "activate_range_lure")
-	_check(bool(preview.call("headless_activate_ability", "peris_tune")),
-		"Peris's real preview ability extends the shortest-route window")
 	_dwell_and_call(preview, chunk, "endo", segments.get("cross", {}), "cross_seam")
+	_advance_external_resolution(preview, chunk, segments.get("cross_traversal", {}))
 	_move_segment(preview, segments.get("hide", {}))
 	_dwell_and_call(preview, chunk, "endo", segments.get("hide", {}), "commit_hide")
 	_check(not bool(chunk.call("rest_at_east_shelter")),
@@ -214,6 +213,17 @@ func _dwell_and_call(preview: Node, chunk: Node, character_id: String,
 		character_id.capitalize(), dwell_seconds])
 
 
+func _advance_external_resolution(preview: Node, chunk: Node, segment: Dictionary) -> void:
+	var duration := float(segment.get("travel_time", 0.0))
+	var before: Dictionary = chunk.call("get_preview_state")
+	_check(bool(before.get("cross_in_progress", false)),
+		"the seam interaction starts an in-flight physical crossing")
+	preview.call("headless_advance", duration + 0.001, 0.05)
+	var after: Dictionary = chunk.call("get_preview_state")
+	_check(not bool(after.get("cross_in_progress", true)) and bool(after.get("seam_crossed", false)),
+		"the crossing commits only when Endo reaches its far edge")
+
+
 func _verify_environment(chunk: Node) -> void:
 	print("\n=== Survival Range environment hierarchy ===")
 	var audit: Dictionary = chunk.call("get_decoration_audit")
@@ -280,48 +290,79 @@ func _verify_interactions(preview: Node, chunk: Node) -> void:
 		"safe routing unlocks scout work before lure work")
 	preview.call("headless_set_routing_mode", "direct")
 	_check(not lure.is_interaction_enabled() and not seam.is_interaction_enabled() and direct.is_interaction_enabled(),
-		"direct exposes its own unprotected clickable bloom but cannot skip Aster's success-critical read")
+		"direct exposes the already-visible physical bloom while Aster's optional read remains information only")
 
 
 func _verify_failure_recovery(preview: Node, chunk: Node) -> void:
 	print("\n=== Survival Range bounded failure recovery ===")
 	preview.call("headless_select_character", "endo")
 	preview.call("headless_set_character_position", "endo", chunk.SHORT_BLOOM_POS)
-	_check(bool(chunk.call("cross_seam")), "Endo can take the exposed direct bloom")
+	_check(bool(chunk.call("cross_seam")), "Endo can commit to the exposed direct bloom")
+	preview.call("headless_advance", chunk.DIRECT_CROSS_DURATION + 0.001, 0.05)
 	preview.call("headless_set_character_position", "endo", chunk.HIDE_SLIT_POS)
-	_check(not bool(chunk.call("commit_hide")), "crossing without a lure fails at the hide slit")
+	chunk.call("headless_process", 0.0)
+	_check(not bool(chunk.call("commit_hide")), "cover alone cannot release Endo while the real sweep still blocks the lane")
 	var state: Dictionary = chunk.call("get_preview_state")
 	_check(str(state.get("route_phase", "")) == "failed"
-		and str(state.get("last_outcome", "")) == "hide_without_window",
+		and str(state.get("last_outcome", "")) == "swarm_still_blocks_release",
 		"the failure has a specific, inspectable cause")
 	var recovery: Node = chunk.find_child("RangeRecoveryInteractable", true, false)
 	_check(recovery.is_interaction_enabled(), "failure enables the local reset winch")
 
 	preview.call("headless_set_character_position", "endo", chunk.RECOVERY_RIG_POS)
-	_check(bool(chunk.call("recover_from_failure")), "Endo can work the reset winch without restarting the fragment")
+	var stats_before_reset := {
+		"hp": preview.call("get_preview_character_stat", "endo", "hp"),
+		"stamina": preview.call("get_preview_character_stat", "endo", "stamina"),
+		"atp": preview.call("get_preview_character_stat", "endo", "atp"),
+	}
+	_check(bool(chunk.call("reset_after_failure")), "Endo can work the reset winch without restarting the fragment")
+	state = chunk.call("get_preview_state")
+	_check(str(state.get("route_phase", "")) == "resetting"
+		and bool(state.get("winch_in_progress", false))
+		and int(state.get("reset_count", 0)) == 0,
+		"the winch begins a real pull instead of granting the reset endpoint")
+	preview.call("headless_advance", chunk.WINCH_PULL_DURATION + 0.001, 0.05)
 	state = chunk.call("get_preview_state")
 	_check(str(state.get("route_phase", "")) != "failed"
-		and int(state.get("recovery_count", 0)) == 1
-		and bool(state.get("recovery_assist", false)),
-		"recovery preserves progress and grants one bounded retry assist")
+		and str(state.get("route_phase", "")) != "resetting"
+		and int(state.get("reset_count", 0)) == 1,
+		"the winch preserves course progress only after Endo physically arrives")
+	for stat_name in ["hp", "atp"]:
+		_check(preview.call("get_preview_character_stat", "endo", stat_name) == stats_before_reset[stat_name],
+			"the reset winch does not alter Endo's %s" % stat_name)
+	var stamina_after_reset := float(preview.call("get_preview_character_stat", "endo", "stamina"))
+	var expected_stamina_after_elapsed_time := minf(
+		float(preview.DEFAULT_STAMINA),
+		float(stats_before_reset["stamina"]) + float(preview.STAMINA_REGEN) * chunk.WINCH_PULL_DURATION)
+	_check(is_equal_approx(stamina_after_reset, expected_stamina_after_elapsed_time),
+		"the pull advances only ordinary field stamina recovery (%.1f -> %.1f)" % [
+			float(stats_before_reset["stamina"]), stamina_after_reset])
 
 	preview.call("headless_select_character", "aster")
 	preview.call("headless_set_character_position", "aster", chunk.SCOUT_PERCH_POS)
 	_check(bool(chunk.call("survey_route")), "a greedy failure rejoins at the missing course-read gate")
+	var echo: Node = chunk.find_child("RangeEchoInteractable", true, false)
+	var lure: Node = chunk.find_child("RangeLureInteractable", true, false)
+	_check(echo.is_interaction_enabled() and lure.is_interaction_enabled(),
+		"scouting exposes a readable choice: test the lane endpoint now or tune the same spindle toward the recess")
 	preview.call("headless_select_character", "peris")
 	preview.call("headless_set_character_position", "peris", chunk.ECHO_COUPLER_POS)
 	_check(bool(chunk.call("tune_echo_coupler")), "Peris restores the missing mid-course echo calibration")
 	preview.call("headless_set_character_position", "peris", chunk.LURE_SPINDLE_POS)
 	_check(bool(chunk.call("activate_range_lure")), "the recovered lure station opens a retry window")
+	preview.call("headless_advance", 12.0, 0.05)
 	state = chunk.call("get_preview_state")
-	_check(float(state.get("lure_remaining", 0.0)) >= chunk.LURE_DURATION + chunk.PERIS_TUNE_BONUS - 0.01,
-		"the winch's one-shot stored pulse makes the retry independently solvable")
+	_check(float(state.get("lure_remaining", 0.0)) >= chunk.LURE_DURATION - 12.01
+		and bool(state.get("swarm_clear", false)),
+		"the retry uses the same window and waits for the visible bodies to clear the lane")
 
 	preview.call("headless_select_character", "endo")
 	preview.call("headless_set_character_position", "endo", chunk.SHORT_BLOOM_POS)
 	_check(bool(chunk.call("cross_seam")), "Endo can recommit the seam after recovery")
+	preview.call("headless_advance", chunk.DIRECT_CROSS_DURATION + 0.001, 0.05)
 	preview.call("headless_set_character_position", "endo", chunk.HIDE_SLIT_POS)
-	_check(bool(chunk.call("commit_hide")), "the recovered concealment releases the shelter sprint immediately")
+	chunk.call("headless_process", 0.0)
+	_check(bool(chunk.call("commit_hide")), "physical full concealment plus a visibly clear lane releases the shelter sprint")
 	preview.call("headless_set_character_position", "endo", chunk.EAST_SHELTER_POS)
 	chunk.call("headless_process", 0.01)
 	state = chunk.call("get_preview_state")

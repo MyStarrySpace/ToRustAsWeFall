@@ -7,6 +7,9 @@ extends Node3D
 @export var display_name := "Citizen"
 @export var color := Color(0.5, 0.5, 0.55)
 @export var move_speed := 2.0
+## Only authored electronic units opt into Aster's EMP receiver contract. Ordinary citizens and
+## biological actors remain unaffected even though they share this lightweight NPC controller.
+@export var emp_compatible := false
 var speed_multiplier := 1.0
 
 ## When set, movement commands go through GameState (interpolation-based).
@@ -39,6 +42,7 @@ var _warp_mat: ShaderMaterial
 
 signal path_complete()
 signal waypoint_reached(index: int)
+signal emp_applied(duration: float)
 
 func _ready() -> void:
 	# Build visual
@@ -73,16 +77,19 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	if Engine.is_editor_hint():
 		return
+	var perf_started := PerformanceTrace.begin()
 	_update_scheduler_fade()
 	# GameState-driven: read interpolated position
 	if game_state and char_id != "":
 		if game_state.is_moving(char_id):
 			var pos := game_state.get_position(char_id)
 			global_position = Vector3(pos.x, global_position.y, pos.z)
+		PerformanceTrace.end(&"update", &"npc.process", perf_started, char_id, 1)
 		return
 
 	# Fallback: local path-following
 	if not _moving or _path.is_empty():
+		PerformanceTrace.end(&"update", &"npc.process", perf_started, char_id, 0)
 		return
 
 	var target := _path[_path_index]
@@ -100,6 +107,7 @@ func _process(delta: float) -> void:
 			path_complete.emit()
 	else:
 		global_position += dir.normalized() * move_speed * speed_multiplier * delta
+	PerformanceTrace.end(&"update", &"npc.process", perf_started, char_id, 1)
 
 func set_scheduler(scheduler_ref) -> void:
 	_scheduler = scheduler_ref
@@ -132,6 +140,15 @@ func stop() -> void:
 	_moving = false
 	_path.clear()
 	_path_index = 0
+
+## Structural interface used by CanonicalCharacterAbility. The owning encounter decides how/when
+## the electronic unit reboots; this controller guarantees the pulse immediately halts movement.
+func apply_emp(duration: float) -> bool:
+	if not emp_compatible or duration <= 0.0:
+		return false
+	stop()
+	emp_applied.emit(duration)
+	return true
 
 ## Walk to a grid cell using A* pathfinding.
 func walk_to_grid(cell: Vector2i) -> void:

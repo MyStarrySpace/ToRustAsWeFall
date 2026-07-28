@@ -8,8 +8,8 @@ const FRAGMENT_CASES := [
 	{
 		"name": "stacks",
 		"scene": "res://scenes/fragments/chunks/stacks_fragment_chunk.tscn",
-		"length": 68.0,
-		"width": 24.0,
+		"length": 188.0,
+		"width": 48.0,
 		"wall_height": 4.0,
 		"program": "archive",
 	},

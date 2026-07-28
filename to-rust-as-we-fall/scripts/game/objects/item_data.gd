@@ -71,12 +71,17 @@ const TYPES := {
 		"endocytosis_effect": "store",
 		"endocytosis_allowed": false,
 	},
+	"gas_sac": {
+		"display_name": "Gas Sac",
+		"hand_slots": 1,
+		"scent": false,
+		"endocytosis_effect": "store",
+		"endocytosis_allowed": false,
+	},
 
 	# --- Permanent upgrade items ---
-	# These produce persistent stat/capability changes when consumed. Effect
-	# handler (stat_upgrade) is registered with GameState; payload describes
-	# which stat moves and by how much. Universal upgrades work on any party
-	# member; character-locked upgrades (Solfloraphane) bind to one cell type.
+	# Only rewards committed by character/story canon belong here. The effect handler
+	# remains generic so future approved innovations can supply an authored payload.
 
 	"curecumin": {
 		"display_name": "Curecumin",
@@ -87,37 +92,6 @@ const TYPES := {
 		"upgrade_stat": "hp_max",
 		"upgrade_amount": 10.0,
 		"register": "institutional_elite",
-	},
-	"laughterferrin": {
-		"display_name": "Laughterferrin",
-		"hand_slots": 1,
-		"scent": false,
-		"endocytosis_effect": "stat_upgrade",
-		"endocytosis_duration": 1.5,
-		"upgrade_stat": "stamina_max",
-		"upgrade_amount": 10.0,
-		"register": "consumer_institutional",
-	},
-	"nommega3": {
-		"display_name": "Nommega 3",
-		"hand_slots": 1,
-		"scent": false,
-		"endocytosis_effect": "stat_upgrade",
-		"endocytosis_duration": 1.5,
-		"upgrade_stat": "atp_max",
-		"upgrade_amount": 1.0,
-		"register": "worker_consumer",
-	},
-	"solfloraphane": {
-		"display_name": "Solfloraphane",
-		"hand_slots": 1,
-		"scent": false,
-		"endocytosis_effect": "stat_upgrade",
-		"endocytosis_duration": 2.0,
-		"upgrade_stat": "tending_speed",
-		"upgrade_amount": 0.15,
-		"locked_to": "peris",
-		"register": "pre_collapse_research",
 	},
 }
 

@@ -7,6 +7,7 @@ render_mode cull_disabled;
 uniform sampler2D from_texture : source_color, filter_nearest, repeat_enable;
 uniform sampler2D to_texture : source_color, filter_nearest, repeat_enable;
 uniform vec4 threshold_tint : source_color = vec4(0.45, 0.55, 0.58, 1.0);
+uniform vec4 surface_tint : source_color = vec4(1.0);
 
 varying vec3 world_position;
 varying vec3 world_normal;
@@ -32,6 +33,7 @@ void fragment() {
 	vec3 to_color = triplanar_sample(to_texture, world_position, world_normal);
 	float eased = smoothstep(0.0, 1.0, transition_progress);
 	vec3 surface_color = mix(from_color, to_color, eased);
+	surface_color *= surface_tint.rgb;
 	// A restrained middle wash makes the threshold readable without becoming a
 	// glowing checkpoint stripe or competing with causal overlays.
 	float threshold = 1.0 - abs(eased * 2.0 - 1.0);

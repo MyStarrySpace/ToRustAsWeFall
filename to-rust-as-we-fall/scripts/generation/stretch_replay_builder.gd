@@ -11,6 +11,9 @@ extends RefCounted
 const SCHEMA := "trawf_stretch_replay_v1"
 const DEFAULT_CELL_WORLD_SIZE := 2.0
 const NODE_BEAT := 1.0  # seconds of replay time spent crossing to / solving each node
+const RuntimeRegistryScript := preload(
+	"res://scripts/generation/generated_node_runtime_registry.gd"
+)
 
 ## Formation offsets (in cells) so party members read as a small group, not one dot.
 ## A six-slot wedge: Aster points, the support pair flanks, the rear rank trails — every
@@ -47,9 +50,12 @@ static func build(spec: Dictionary, options := {}) -> Dictionary:
 	}
 
 	var solutions := []
+	var navigation_grid: Dictionary = spec.get("navigation_grid", {})
 	for path in spec.get("headless", {}).get("solution_paths", []):
 		if path is Dictionary:
-			solutions.append(_build_solution(path as Dictionary, node_cells))
+			solutions.append(_build_solution(
+				path as Dictionary, node_cells, navigation_grid, origin, cell_size
+			))
 
 	return {
 		"schema": SCHEMA,
@@ -65,15 +71,52 @@ static func build(spec: Dictionary, options := {}) -> Dictionary:
 	}
 
 
-static func _build_solution(path: Dictionary, node_cells: Dictionary) -> Dictionary:
+static func _build_solution(
+		path: Dictionary,
+		node_cells: Dictionary,
+		navigation_grid: Dictionary,
+		replay_origin: Array,
+		replay_cell_size: float
+) -> Dictionary:
 	var party := _string_array(path.get("party", ["aster", "peris", "endo"]))
 	var frames := []
 	var node_approaches := []
+	var branch_actions: Array = path.get("branch_actions", [])
+	var branch_actions_by_node := {}
+	for action_v in branch_actions:
+		if not (action_v is Dictionary):
+			continue
+		var before_node := str((action_v as Dictionary).get("before_node", ""))
+		if not branch_actions_by_node.has(before_node):
+			branch_actions_by_node[before_node] = []
+		(branch_actions_by_node[before_node] as Array).append(action_v)
 	var t := 0.0
 	for entry in path.get("approach_per_node", []):
 		if not (entry is Dictionary):
 			continue
 		var node_id := str((entry as Dictionary).get("node", ""))
+		for action_v in branch_actions_by_node.get(node_id, []):
+			var action := action_v as Dictionary
+			var producer_cell := _branch_action_replay_cell(
+				action, navigation_grid, replay_origin, replay_cell_size
+			)
+			frames.append({
+				"t": t,
+				"node": node_id,
+				"role": str(action.get("role", "mandatory_producer")),
+				"approach_id": str(action.get("id", "")),
+				"kind": str(action.get("kind", "mandatory_branch_interaction")),
+				"risk": "safe",
+				"min_stage": 0,
+				"expert": false,
+				"stage_ahead": false,
+				"borrows_from": "",
+				"caption": "SIDE BRANCH — EXTEND DOWNSTREAM SPAN",
+				"blocked": false,
+				"branch_action": action.duplicate(true),
+				"characters": _formation_at(producer_cell, party),
+			})
+			t += NODE_BEAT
 		var cell: Array = node_cells.get(node_id, [0.0, 0.0])
 		var characters := {}
 		for member in party:
@@ -130,7 +173,43 @@ static func _build_solution(path: Dictionary, node_cells: Dictionary) -> Diction
 		"duration": maxf(0.0, t - NODE_BEAT),
 		"frames": frames,
 		"node_approaches": node_approaches,
+		"branch_actions": branch_actions.duplicate(true),
+		"branch_action_count": branch_actions.size(),
 	}
+
+
+static func _branch_action_replay_cell(
+		action: Dictionary,
+		navigation_grid: Dictionary,
+		replay_origin: Array,
+		replay_cell_size: float
+) -> Array:
+	var producer: Array = action.get("producer_cell", [])
+	if producer.size() < 2:
+		return [0.0, 0.0]
+	var nav_origin: Array = navigation_grid.get("origin", [0.0, 0.0, 0.0])
+	var nav_cell_size := float(navigation_grid.get("cell_size", 1.0))
+	return _project([
+		float(nav_origin[0]) + (float(producer[0]) + 0.5) * nav_cell_size,
+		float(nav_origin[1]),
+		float(nav_origin[2]) + (float(producer[1]) + 0.5) * nav_cell_size,
+	], replay_origin, replay_cell_size)
+
+
+static func _formation_at(cell: Array, party: Array) -> Dictionary:
+	var characters := {}
+	for member in party:
+		if not FORMATION.has(member):
+			push_warning(
+				"stretch_replay_builder: no FORMATION slot for '%s' — add one to avoid overlap"
+				% member
+			)
+		var offset: Array = FORMATION.get(member, [0.0, 0.0])
+		characters[member] = [
+			float(cell[0]) + float(offset[0]),
+			float(cell[1]) + float(offset[1]),
+		]
+	return characters
 
 
 static func _project_nodes(nodes: Array, origin: Array, cell_size: float) -> Array:
@@ -182,15 +261,21 @@ static func _project_content(nodes: Array, origin: Array, cell_size: float) -> A
 			continue
 		var n := node as Dictionary
 		var placements: Array = n.get("content_placements", [])
-		if not placements.is_empty():
+		if n.has("content_placements"):
 			for placement in placements:
 				if not (placement is Dictionary):
 					continue
 				var p := placement as Dictionary
+				var category := str(p.get("category", ""))
+				var content_id := str(p.get("key", p.get("id", "")))
+				if not RuntimeRegistryScript.generated_content_is_realized(
+					category, content_id
+				):
+					continue
 				var cell := _project(p.get("position", p.get("world_position", [])), origin, cell_size)
 				result.append({
-					"kind": str(p.get("key", p.get("id", ""))),
-					"category": str(p.get("category", "")),
+					"kind": content_id,
+					"category": category,
 					"cell": [roundi(float(cell[0])), roundi(float(cell[1]))],
 					"level": int(n.get("elevation_index", 0)),
 					"support": str(p.get("support", "")),
@@ -200,6 +285,10 @@ static func _project_content(nodes: Array, origin: Array, cell_size: float) -> A
 			var node_cell := _project(n.get("position", []), origin, cell_size)
 			for category in ["flora", "enemies", "structures"]:
 				for key in n.get(category, []):
+					if not RuntimeRegistryScript.generated_content_is_realized(
+						category, str(key)
+					):
+						continue
 					result.append({
 						"kind": str(key),
 						"category": category,

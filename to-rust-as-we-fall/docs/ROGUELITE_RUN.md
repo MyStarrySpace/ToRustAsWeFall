@@ -30,8 +30,10 @@ by the procedural pipeline (WFC stretches / atom chains) and varies per seed.
 - `RunSession` (scripts/generation/run_session.gd) — the headless run authority owns the whole
   goal: `target_depth`, `at_finale()`, `_generate_finale()`, `retrieve()`, `mark_death()`,
   `run_over`, `summary()`. Deterministic per seed; drivable end-to-end in a test.
-- The finale site loads through the boss_showcase chunk with `{"finale": true}` — the prize
-  interactable ("TAKE THE DOSE") reports `prize_retrieved` through preview state.
+- The finale site loads through the boss_showcase chunk with `{"finale": true}`. The cache owns
+  one source-tagged GameState vial; "TAKE THE DOSE" completes only after that exact vial reaches
+  the interacting character's hand. `prize_retrieved` remains a compatibility preview derived
+  from the saved item transaction, not an independent reward boolean.
 - The presenter (fragment_preview_sequence) polls: prize → `retrieve()` → the report card;
   wipe → the report card; shelter rest → the branch modal (unchanged). Permadeath wires
   `character_downed → mark_death` after every level load.
@@ -66,8 +68,9 @@ Grow the generator's vocabulary so runs vary in MECHANIC, not just layout — th
 classes exist; they need loader object kinds + generator placement:
 
 0. ~~decorative_flora + spike_strip~~ — DONE (2026-07-12): the ornamental invasives
-   (docs/DECORATIVE_FLORA.md, loader kind `decorative_flora`, Peris HARVEST yellow reveal on Y,
-   runback decor pass) and the anti-loiter studs (SET_PIECES 21, loader kind `spike_strip`,
+   (docs/DECORATIVE_FLORA.md, loader kind `decorative_flora`, scenery-only runback decor pass)
+   and the anti-loiter
+   studs (SET_PIECES 21, loader kind `spike_strip`,
    symmetric DoT). Demo: `--preview=hostile_streets`. Cleanstreets generator placement is now
    DONE: authored stud-lane scenes occupy route-risk cells. The general decor density pass remains.
 1. **crawl_tunnel** (CrawlTunnel exists) — squeeze shortcuts across node walls: the shadow-route

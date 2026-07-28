@@ -36,7 +36,7 @@ _test_run_branch_decisions | 5679 | branch = 2 risk-ranked options; recruit orde
 _test_run_economy | 5751 | fork: richer wins clean, leaner wins sloppy, crossover | BEHAVIOR | KEEP | y | neither-branch-dominates guarantee
 _test_generated_traversible | 5836 | flood from entry: every walkable cell + node reachable | BEHAVIOR | KEEP | y | reachable==visible invariant
 _test_generated_stretch_quality | 5910 | corridor widths vary, party spawns on stretch, floor collision | BEHAVIOR | KEEP | y | encodes user-flagged bugs
-_test_generated_food_modes | 6114 | three modes on one level; pickup, scarcity, shelter restore | BEHAVIOR | KEEP | y | de-facto seeded playthrough
+_test_generated_food_modes | 6114 | one generated level under monotone pressure projections; carried-loss Scarcity mastery clear crosses a real drain tick, identical content fingerprint/action trace, easier-profile completion preservation, physical lysate, canonical shelter rest | BEHAVIOR | KEEP | y | de-facto seeded playthrough
 _test_generated_stretch_walk | 6414 | real ground click walks player across generated floor | BEHAVIOR | KEEP | y | catches can't-walk-on-floor
 _test_grid_ascii | 6465 | render spec-ASCII; render-parse lossless roundtrip | GUARD | KEEP | y | interchange roundtrip
 _test_main_menu | 6517 | menu loads, buttons target real scenes, boots into menu | GUARD | KEEP | na | entry-point wiring
@@ -176,7 +176,7 @@ _test_channels_scene | 20134 | glb loads, gameplay maps on model, 9 silhouettes 
 _test_interactable_warp | 20203 | warped scene moves proximity zones onto helix | GUARD | KEEP | na | dwell-never-arms lesson
 _test_wash_relay_branches | 20233 | 5 branches, reachable, deterministic | BEHAVIOR | RESHAPE | y | keep reachability+determinism, drop count
 _test_wash_relay_transit_breaks | 20317 | portal topology, valve 18s, counts | BEHAVIOR | RESHAPE | na | worst count offender
-_test_wash_relay_abilities | 20421 | TRACE/BLOOM/BRACE fire, reset | BEHAVIOR | FOLD | na | subsumed by playthrough
+_test_wash_relay_abilities | 20421 | canonical EMP/Wrap roster + SCAN FLOW/TEND FLORA contextual interactions | BEHAVIOR | KEEP | na | guards against local cast-kit invention
 _test_channels_splash_droplets | 20468 | droplets render round not plus | LAYOUT | RETIRE | na | aesthetic sprite detail
 _test_channels_water_visible_range | 20519 | far water fades, near stays | VISUAL | KEEP | na | pixel-verifies overlay law
 _test_channels_pipe_splash | 20572 | splash leads flood >=0.5s | BEHAVIOR | RESHAPE | na | fairness cue; internal arrays
@@ -205,9 +205,9 @@ _test_occlusion_shader_capture | 22427 | synthetic occlusion PNG | VISUAL | RETI
 _test_peris_room_capture | 22481 | captures peris room PNG | VISUAL | RETIRE | na | tautology
 _test_wash_relay_water_capture | 22508 | captures flood PNG | VISUAL | RETIRE | na | tautology
 _test_wash_relay_flood_visual | 22560 | flooding shows water, drains | BEHAVIOR | RESHAPE | na | visible-cause fairness
-_test_wash_relay_checkpoint | 22599 | wash sweeps, Terminal recovers | BEHAVIOR | FOLD | na | dup of strand_recover
+_test_wash_relay_checkpoint | 22599 | wash sweeps, physical Sloperope reunites | BEHAVIOR | FOLD | na | dup of strand_rejoin
 _test_wash_relay_trace_cadence | 22643 | TRACE names real beat | BEHAVIOR | RESHAPE | na | strip label MIRROR
-_test_wash_relay_strand_recover | 22722 | stranded, BRACE refunds, rejoins | BEHAVIOR | FOLD | na | dup of checkpoint
+_test_wash_relay_strand_rejoin | 22722 | stranded, sloperope rejoin, no stat recovery | BEHAVIOR | KEEP | na | guards shelter-only recovery
 _test_wash_relay_held_override | 22754 | override held not latched | BEHAVIOR | FOLD | na | dup of wash_relay leg
 _test_channels_wash_intro | 22796 | full wash-intro playthrough | BEHAVIOR | KEEP | na | de-facto seeded playthrough
 _test_channels_wash_intro_grammar | 22899 | hover hull / reveal / glow | GUARD | FOLD | na | dup of outline system tests
@@ -293,7 +293,7 @@ _test_determinism_rerecord | 28436 | replay re-record event-for-event | GUARD | 
 _test_scene_triggers | 28500 | trigger types fire-once, priority | GUARD | KEEP | na | dispatch invariant
 _test_no_game_over | 28606 | party down fires no game_over | GUARD | KEEP | na | failure-model law
 _test_scripted_death_only | 28680 | lint: death only in die_scripted | GUARD | KEEP | na | death-path lint
-_test_hub_rest_restore | 28721 | hub rest restores downed | BEHAVIOR | KEEP | na | care thesis
+_test_hub_rest_restore | 28721 | hub arrival cannot impersonate shelter rest | BEHAVIOR | KEEP | na | ATP/recovery authority
 _test_gate_block | 28767 | gate needs Endo; blocks w/ reason | BEHAVIOR | KEEP | na | party gating
 _test_zone_progression | 28832 | zone-spoke-gate transitions | BEHAVIOR | KEEP | na | hub reach
 _test_actuator_composition_blind | 28925 | plate triggers on weight only | GUARD | KEEP | na | actuator law
@@ -367,7 +367,7 @@ _test_intro_chain | 37249 | whole intro chains to Act 1 | GUARD | KEEP | na | ca
 _test_items | 37378 | spawn/pickup/transfer/endocytose + determinism | BEHAVIOR | KEEP | na | item system
 _test_queued_abilities | 37573 | ability queues, auto-moves, cancel | BEHAVIOR | KEEP | na | ability queueing
 _test_dodge_roll | 37646 | dodge basic/locked/cooldown/wall | BEHAVIOR | KEEP | na | distinct from dodge_knockdown
-_test_decorative_flora | 37933 | decoratives place/reveal/clear, drain | BEHAVIOR | KEEP | na | counts/tint are LAYOUT edges
+_test_decorative_flora | 37933 | decoratives stay scenery; studs drain; runback states reset | BEHAVIOR | KEEP | na | counts are LAYOUT edges
 _test_aghora_clearance | 38063 | banner/stack/window clearance across seeds | LAYOUT | KEEP | y | clipping correctness, not aesthetics
 _test_boss_playable | 38133 | boss hazards damage, climb/survey/winch | BEHAVIOR | KEEP | na | showcase-is-encounter
 _test_shelter_sanctuary | 38248 | no detect/strike inside shelter region | BEHAVIOR | KEEP | na | attacked-in-shelter bug

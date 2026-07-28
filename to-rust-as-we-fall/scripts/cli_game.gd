@@ -209,7 +209,7 @@ func _execute_text_command(text: String) -> void:
 		"rest", "sleep":
 			await _sim._execute(SimCommand.rest())
 
-		"protect":
+		"wrap":
 			await _sim._execute(SimCommand.key_press(KEY_X))
 			await _sim._execute(SimCommand.wait_frames(10))
 
@@ -260,8 +260,8 @@ func _execute_text_command(text: String) -> void:
 			print("  give <item> <char>  Hand a held item to another character")
 			print("  throw <obj> <x> <z>  Throw a physics object to a location")
 			print("  queue <x1> <z1> ...  Queue waypoints; walk them in order")
-			print("  rest            Rest at a shelter (restore the party)")
-			print("  protect         Cast Protect ability (X)")
+			print("  rest            Begin shelter rest (costs ATP; heals over time)")
+			print("  wrap            Cast Peris's Wrap ability (X)")
 			print("  route           Toggle safe/direct routing (Tab)")
 			print("  wait <seconds>  Advance game time")
 			print("  advance         Advance dialogue one step (acknowledge)")

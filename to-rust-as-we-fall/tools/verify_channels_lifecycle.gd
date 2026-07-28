@@ -126,6 +126,34 @@ func _advance(host: ChunkHost, chunk: Node, seconds: float, step := 0.1) -> void
 		elapsed += dt
 
 
+func _trigger_vine_tend(chunk: Node, gs: GameState) -> bool:
+	var source: Node = chunk.find_child("ClimbvineTendAnchor", true, false)
+	if source == null:
+		return false
+	if gs.is_moving("peris"):
+		gs.command_stop("peris")
+	gs.snap_character_to("peris", chunk.RETURN_LANDING)
+	source.set("active_character", "peris")
+	return bool(source.call("_trigger", false))
+
+
+func _trigger_vine_climb(chunk: Node, gs: GameState, active: String) -> bool:
+	var source: Node = chunk.find_child("ClimbLine", true, false)
+	if source == null:
+		return false
+	var waiting: Array = (chunk.get("_washed") as Dictionary).keys()
+	waiting.sort()
+	if not waiting.has(active):
+		return false
+	for id_v in waiting:
+		var id := str(id_v)
+		if gs.is_moving(id):
+			gs.command_stop(id)
+		gs.snap_character_to(id, chunk.CLIMB_POS)
+	source.set("active_character", active)
+	return bool(source.call("_trigger", false))
+
+
 func _dispose(host: Node) -> void:
 	host.queue_free()
 	await process_frame
@@ -195,7 +223,15 @@ func _verify_intro() -> void:
 	# This room's authored lesson is now explicit: the wash must take every hunter and
 	# the whole party must gather at the far shelter before the preview can chain onward.
 	for enemy in (chunk.get("_enemies") as Array):
-		chunk.call("_drown_enemy", enemy)
+		gs.snap_character_to(str(enemy.char_id), Vector3(11.0, 0.5, 0.5))
+	chunk.call("_channel_onset", 0)
+	host.scheduler.advance_ticks(0.06)
+	var wash_arrival := float(host.scheduler.get_current_tick())
+	for enemy in (chunk.get("_enemies") as Array):
+		var carry: Dictionary = gs.get_external_traversal_state(str(enemy.char_id))
+		wash_arrival = maxf(wash_arrival, float(carry.get("end_tick", wash_arrival)))
+	host.scheduler.advance_ticks(maxf(0.0,
+		wash_arrival - float(host.scheduler.get_current_tick()) + 0.01))
 	host.messages.clear()
 	gs.snap_character_to("aster", resource.params["exit_pos"])
 	gs.snap_character_to("peris", resource.spawns["peris"])
@@ -264,7 +300,8 @@ func _verify_relay_retry_contract() -> void:
 	chunk.reset_preview_state()
 	await _advance(host, chunk, 0.1)
 	var initial: Dictionary = chunk.get_preview_state()
-	_check(not bool(initial["climb_available"]), "CLIMB is absent until the end reel drops the line")
+	_check(not bool(initial["climb_available"]),
+		"CLIMB is absent until Peris tends and deploys the upper vine")
 	_check(int(initial["guidance_count"]) == int(initial["section_count"]),
 		"every relay section has one local guidance stage")
 	_check(int(initial["guidance_section"]) == 0, "spawn shows only the opening section guidance")
@@ -275,23 +312,42 @@ func _verify_relay_retry_contract() -> void:
 	host.messages.clear()
 	gs.snap_character_to("aster", first_mid)
 	chunk.call("_wash_section", 0)
-	_check(int(chunk.get_preview_state()["washed_count"]) == 1, "washed Aster waits at the start shelter")
+	_check(int(chunk.get_preview_state()["current_carry_count"]) == 1
+			and int(chunk.get_preview_state()["washed_count"]) == 0,
+		"caught Aster enters the real current without being granted shelter arrival")
 	_check(host.messages.size() == 1 and host.messages[0].contains("Aster"),
 		"wash feedback is one immediate character-specific HUD message")
-	# The waiting marker cannot grant secret immunity: forcing Aster back into the same hazard washes him again.
+	await _advance(host, chunk,
+		chunk.WASH_CURRENT_KNOCK_DURATION + chunk.WASH_CURRENT_RETURN_MAX + 0.1)
+	_check(int(chunk.get_preview_state()["washed_count"]) == 1,
+		"Aster waits at the start only after the physical return lands")
+	# The waiting marker cannot grant secret immunity: walking Aster back into the same hazard washes him again.
 	gs.snap_character_to("aster", first_mid)
+	chunk.headless_process(0.0)
 	chunk.call("_wash_section", 0)
-	_check(int(chunk.get_preview_state()["sweep_count"]) == 2 and host.messages.size() == 2,
+	_check(int(chunk.get_preview_state()["sweep_count"]) == 2,
 		"a marked character can be washed again (no hidden flood immunity)")
+	await _advance(host, chunk,
+		chunk.WASH_CURRENT_KNOCK_DURATION + chunk.WASH_CURRENT_RETURN_MAX + 0.1)
 	gs.snap_character_to("aster", first_mid)
+	chunk.headless_process(0.0)
 	chunk.call("_wash_section", 0)
 	_check(not host.notes.is_empty() and host.notes[-1].contains("RUN"),
 		"third failure gives one nonblocking RUN hint")
-	# Walking out of the shelter clears only the convenience-recovery marker.
+	await _advance(host, chunk,
+		chunk.WASH_CURRENT_KNOCK_DURATION + chunk.WASH_CURRENT_RETURN_MAX + 0.1)
+	# Walking out of the shelter clears only the waiting-at-start marker.
 	gs.snap_character_to("aster", Vector3(float(first["x0"]) - 0.25, 0.5, 0.0))
-	chunk.headless_process(0.0)
+	var retry_release_tick := float(
+		chunk.get_preview_state().get("next_spatial_authority_tick", -1.0)
+	)
+	await _advance(
+		host,
+		chunk,
+		maxf(0.0, retry_release_tick - float(host.scheduler.get_current_tick()) + 0.001)
+	)
 	_check(int(chunk.get_preview_state()["washed_count"]) == 0,
-		"leaving the start shelter immediately restores normal retry state")
+		"leaving the start shelter restores normal retry state at the saved spatial boundary")
 
 	var override_i := -1
 	for i in range(sections.size()):
@@ -300,24 +356,52 @@ func _verify_relay_retry_contract() -> void:
 			break
 	_check(override_i >= 0, "relay exposes a held override section")
 	if override_i >= 0:
-		chunk.call("_wash_character", "aster")
 		var override: Dictionary = sections[override_i]
 		gs.snap_character_to("aster", Vector3(float(override["x1"]) + 1.5, 0.5, 0.0))
 		chunk.headless_process(0.0)
 		_check(bool(chunk.call("_section_disabled", override_i)),
 			"a retrying washed character can hold an override normally")
 
-	chunk.call("_on_sloperope")
-	_check(bool(chunk.get_preview_state()["climb_available"]), "dropping the line reveals and enables CLIMB")
+	gs.snap_character_to("peris", chunk.RETURN_LANDING)
+	chunk.call("_on_sloperope", "peris")
+	_check(not bool(chunk.get_preview_state()["climb_available"])
+			and not gs.has_mechanism_phase(&"wash_relay_sloperope:deployment"),
+		"retired upper helper cannot manufacture a Climbvine source receipt")
+	_check(_trigger_vine_tend(chunk, gs),
+		"exact upper Interactable accepts the physical Peris body")
+	await _advance(host, chunk, chunk.SLOPEROPE_DEPLOY_DURATION + 0.1)
+	_check(bool(chunk.get_preview_state()["climb_available"]),
+		"Peris tending the upper anchor grows the vine before CLIMB becomes available")
 	chunk.reset_preview_state()
 	_check(not bool(chunk.get_preview_state()["climb_available"]), "reset hides and disables CLIMB again")
 	chunk.call("_wash_character", "aster")
+	await _advance(host, chunk,
+		chunk.WASH_CURRENT_KNOCK_DURATION + chunk.WASH_CURRENT_RETURN_MAX + 0.1)
+	var aster_hp_before := gs.get_stat("aster", "hp")
+	var aster_stamina_before := gs.get_stat("aster", "stamina")
+	var aster_atp_before := gs.get_stat("aster", "atp")
+	gs.snap_character_to("peris", chunk.RETURN_LANDING)
+	_check(_trigger_vine_tend(chunk, gs),
+		"reset permits a new exact upper-source TEND")
+	await _advance(host, chunk, chunk.SLOPEROPE_DEPLOY_DURATION + 0.1)
 	var peris_before := gs.get_position("peris")
-	chunk.call("_on_terminal")
+	gs.snap_character_to("aster", chunk.CLIMB_POS)
+	chunk.call("_on_climb")
+	_check(not gs.is_external_traversal_active("aster"),
+		"retired lower helper cannot manufacture a Climbvine source receipt")
+	_check(_trigger_vine_climb(chunk, gs, "aster"),
+		"exact lower Interactable accepts the physically gathered waiting body")
+	_check(gs.is_external_traversal_active("aster"),
+		"a stranded member at the lower mouth begins a physical climb instead of teleporting")
+	await _advance(host, chunk, chunk.SLOPEROPE_CLIMB_DURATION + 0.1)
 	_check(gs.get_position("aster").distance_to(resource.params["return_landing"]) < 0.01,
-		"terminal recovers crew still waiting at start")
+		"the deployed physical line reunites crew still waiting at start")
 	_check(gs.get_position("peris").distance_to(peris_before) < 0.01,
-		"terminal does not teleport crew who were never washed")
+		"the climb does not teleport crew who were never washed")
+	_check(is_equal_approx(gs.get_stat("aster", "hp"), aster_hp_before)
+		and is_equal_approx(gs.get_stat("aster", "stamina"), aster_stamina_before)
+		and is_equal_approx(gs.get_stat("aster", "atp"), aster_atp_before),
+		"the climb changes location only and restores no stats")
 	await _dispose(host)
 
 

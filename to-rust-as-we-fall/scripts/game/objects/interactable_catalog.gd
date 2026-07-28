@@ -25,7 +25,7 @@ static func apply_spec(interactable: Node, spec_id: String) -> void:
 		return
 	interactable.set("interactable_id", spec_id)
 	if spec.has("interactable_type"):
-		interactable.set("interactable_type", _parse_interactable_type(str(spec.interactable_type)))
+		interactable.set("interactable_type", parse_interactable_type(spec.interactable_type))
 	if spec.has("dwell_time"):
 		interactable.set("dwell_time", float(spec.dwell_time))
 	if spec.has("one_shot"):
@@ -37,12 +37,14 @@ static func apply_spec(interactable: Node, spec_id: String) -> void:
 	elif spec.has("tutorial_label"):
 		interactable.set("tutorial_label", str(spec.tutorial_label))
 
-static func _parse_interactable_type(value: String) -> int:
-	match value:
+static func parse_interactable_type(value: Variant) -> int:
+	match str(value).to_upper():
 		"INSPECTION":
 			return Interactable.InteractableType.INSPECTION
 		"HOLD_ACTION":
 			return Interactable.InteractableType.HOLD_ACTION
+		"TIMED_ACTION":
+			return Interactable.InteractableType.TIMED_ACTION
 		_:
 			push_warning("Unknown interactable type '%s'; using HOLD_ACTION" % value)
 			return Interactable.InteractableType.HOLD_ACTION

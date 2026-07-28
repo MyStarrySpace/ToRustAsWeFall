@@ -46,6 +46,9 @@ const LURE_DURATION := 12.0       # scheduler ticks a guard stays drawn to a lur
 const LURE_TEND_TIME := 2.5       # Peris tends a flure (after walking to it) before it sings out
 const LURE_PICK_RADIUS := 0.8     # tight click target on the small flure, so a walk-past click misses it
 const GUARD_SPEED := 4.5          # between a character's walk (~3.0) and run (6.0): threatening, escapable
+const LURE_RELAY_AUTHORITY_VERSION := 3
+const LURE_RELAY_AUTHORITY_KEY := "chunk:lure_relay:runtime"
+const WIN_POLL_INTERVAL := 0.1
 
 var _enemies: Array = []
 var _phase := "ready"             # ready | active | complete | failed
@@ -53,8 +56,14 @@ var _failure_reason := ""
 var _lure1_until := -1.0          # scheduler tick a lure stops drawing (<=0 = inactive)
 var _lure2_until := -1.0
 var _committed_lure := 0          # which lure the enemies are currently walking to (0 = none)
-var _lure1_mesh: MeshInstance3D
-var _lure2_mesh: MeshInstance3D
+var _lure1: Flure = null
+var _lure2: Flure = null
+var _accepted_lure1_serial := 0
+var _accepted_lure2_serial := 0
+var _accepted_lure1_trigger_count := 0
+var _accepted_lure2_trigger_count := 0
+var _restoring_lure_relay_authority := false
+var _win_poll_deadline := -1.0
 
 # --- Build ---
 
@@ -62,8 +71,8 @@ func _build_chunk() -> void:
 	_add_floor(self, HALL_CENTER, HALL_SIZE, Color(0.09, 0.1, 0.12))
 	_add_floor(self, OFFSHOOT_CENTER, OFFSHOOT_SIZE, Color(0.08, 0.11, 0.1))
 	_build_walls()
-	_lure1_mesh = _build_lure_visual("Lure1", LURE1_POS)
-	_lure2_mesh = _build_lure_visual("Lure2", LURE2_POS)
+	_build_lure_bed("Lure1", LURE1_POS)
+	_build_lure_bed("Lure2", LURE2_POS)
 	_build_corpse()
 	_add_label(self, "HIDE", HIDE_POS + Vector3(0.0, 1.6, 0.0), Color(0.5, 0.85, 0.7))
 	_add_light(self, HIDE_POS + Vector3(0.0, 1.2, 0.0), Color(0.3, 0.6, 0.5), 0.7, 3.0)
@@ -92,10 +101,10 @@ func _build_walls() -> void:
 	_add_box(self, Vector3(gap_max + 0.15, 1.4, OFFSHOOT_CENTER.z), Vector3(0.3, 2.8, OFFSHOOT_SIZE.z), wc)
 	_add_box(self, Vector3(OFFSHOOT_CENTER.x, 1.4, off_back_z - 0.15), Vector3(OFFSHOOT_SIZE.x, 2.8, 0.3), wc)
 
-func _build_lure_visual(node_name: String, pos: Vector3) -> MeshInstance3D:
-	var mesh := _add_box(self, pos, Vector3(0.4, 0.4, 0.4), Color(0.7, 0.45, 0.15),
-		Color(0.8, 0.4, 0.1), 0.5, node_name + "Mesh")
-	return mesh
+func _build_lure_bed(node_name: String, pos: Vector3) -> void:
+	_add_box(self, pos - Vector3(0.0, 0.42, 0.0), Vector3(1.4, 0.12, 1.2),
+		Color(0.26, 0.17, 0.06), Color(0.95, 0.55, 0.12), 0.55,
+		node_name + "Bed")
 
 func _build_corpse() -> void:
 	# Remains of a previous runner, slumped among the guards.
@@ -109,12 +118,54 @@ func _build_corpse() -> void:
 # flure MESH in the shared outline+particle highlight, so the flure gets the hover outline and the
 # click/active shimmer like any tutorial object (one OutlineFeedbackManager, no per-chunk divergence).
 func _build_interactables() -> void:
-	var lure2 := _add_object_interactable(self, "Lure2Interact", "Flure", LURE2_POS,
-		"Tend", [_lure2_mesh], "peris", LURE_TEND_TIME, true, LURE_PICK_RADIUS, Interactable.InteractableType.TIMED_ACTION)
-	lure2.interacted.connect(func() -> void: activate_lure2())
-	var lure1 := _add_object_interactable(self, "Lure1Interact", "Flure", LURE1_POS,
-		"Tend", [_lure1_mesh], "peris", LURE_TEND_TIME, true, LURE_PICK_RADIUS, Interactable.InteractableType.TIMED_ACTION)
-	lure1.interacted.connect(func() -> void: activate_lure1())
+	_lure2 = _build_physical_lure(
+		"Lure2Interact", "lure_relay:far", LURE2_POS, 2)
+	_lure1 = _build_physical_lure(
+		"Lure1Interact", "lure_relay:near", LURE1_POS, 1)
+
+
+func _build_physical_lure(
+	node_name: String,
+	source_authority_id: String,
+	source_position: Vector3,
+	which: int
+) -> Flure:
+	var gs = _get_game_state()
+	if gs == null:
+		return null
+	var target_ids: Array = []
+	var settle_positions := {}
+	for index in range(GUARD_POSITIONS.size()):
+		var target_id := "relay_guard_%d" % index
+		target_ids.append(target_id)
+		settle_positions[target_id] = source_position \
+			+ Vector3(0.0, 0.0, float(index - 1) * 1.5)
+	var flure: Flure = Flure.new()
+	flure.name = node_name
+	flure.authority_id = source_authority_id
+	flure.configure(gs, source_position, target_ids, 64.0, LURE_PICK_RADIUS,
+		Color(0.95, 0.62, 0.14))
+	flure.required_character = "peris"
+	flure.one_shot = true
+	flure.interactable_type = Interactable.InteractableType.TIMED_ACTION
+	flure.dwell_time = LURE_TEND_TIME
+	flure.description = "Tend Flure %d" % which
+	flure.tutorial_label = "TEND"
+	flure.lure_duration = LURE_DURATION
+	flure.allow_deferred_targets = true
+	flure.set_target_settle_positions(settle_positions)
+	flure.set_enemy_resolver(_resolve_relay_guard)
+	flure.flure_activated.connect(_on_physical_lure_activated.bind(which))
+	add_child(flure)
+	return flure
+
+
+func _resolve_relay_guard(target_id: String):
+	for enemy in _enemies:
+		if is_instance_valid(enemy) and str(enemy.char_id) == target_id:
+			return enemy
+	return null
+
 
 func _spawn_guards() -> void:
 	var gs = _get_game_state()
@@ -171,97 +222,136 @@ func get_grid_data() -> Dictionary:
 # --- Lure relay ---
 
 func activate_lure2() -> bool:
-	return _activate_lure(2)
+	return false
 
 func activate_lure1() -> bool:
-	return _activate_lure(1)
+	return false
 
-func _activate_lure(which: int) -> bool:
+
+## A chunk callback is presentation/coordination only. It accepts a song only when the reusable
+## Flure proves a newer exact Peris source receipt and at least one owned applied/deferred target.
+func _on_physical_lure_activated(_pulled: int, which: int) -> void:
 	if _phase in ["complete", "failed"]:
-		return false
+		return
+	var source: Flure = _lure_for(which)
+	if source == null:
+		return
+	var effect: Dictionary = source.get_effect_state()
+	var source_effect: Dictionary = effect.get("last_effect", {})
+	var serial := int(effect.get("activation_serial", 0))
+	var trigger_count := int(source_effect.get("source_trigger_count", 0))
+	var accepted_serial := _accepted_serial_for(which)
+	var accepted_trigger_count := _accepted_trigger_count_for(which)
+	if str(effect.get("phase", "")) != Flure.PHASE_ACTIVE \
+			or serial <= accepted_serial \
+			or trigger_count <= accepted_trigger_count \
+			or str(source_effect.get("source_actor", "")) != "peris" \
+			or not _effect_has_relay_targets(source_effect):
+		return
+	_set_accepted_source_receipt(which, serial, trigger_count)
 	_phase = "active"
-	var now := _get_scheduler_tick()
-	if which == 2:
-		_lure2_until = now + LURE_DURATION
-		_set_lure_emission(_lure2_mesh, 3.0)
-	else:
-		_lure1_until = now + LURE_DURATION
-		_set_lure_emission(_lure1_mesh, 3.0)
-	# Only seize the enemies if they aren't already committed to a lure (the puzzle relies on Lure 2
-	# holding them until it expires, THEN relaying to Lure 1).
-	if _committed_lure == 0:
-		_commit_enemies_to(which)
-	var sched = _get_scheduler()
-	if sched != null:
-		sched.schedule_after(LURE_DURATION, func() -> void: _on_lure_expired(which), "lure_relay_%d" % which)
+	var pulled_ids: Array = source_effect.get("pulled_ids", [])
+	if not pulled_ids.is_empty():
+		_committed_lure = which
+	_sync_relay_surface()
+	var deadline := float(effect.get("end_tick", -1.0))
+	_arm_relay_handoff(which, serial, deadline)
 	_show_message("Flure %d sings out." % which, 1.4)
 	_set_preview_step("lure_relay_active")
-	return true
+	_publish_lure_relay_authority()
 
-func _commit_enemies_to(which: int) -> void:
-	_committed_lure = which
-	# The committed lure draws for a FULL window from now — a relay resets it, so the runner gets a
-	# clean window to move while the sentries are occupied (not the ~1-tick scrap left on the timer).
-	var now := _get_scheduler_tick()
+
+func _effect_has_relay_targets(source_effect: Dictionary) -> bool:
+	var receipts: Dictionary = source_effect.get("target_receipts", {})
+	for target_id_v in receipts:
+		var target_id := str(target_id_v)
+		var status := str((receipts.get(target_id, {}) as Dictionary).get("status", ""))
+		if target_id.begins_with("relay_guard_") and status in ["applied", "deferred"]:
+			return true
+	return false
+
+
+func _accepted_serial_for(which: int) -> int:
+	return _accepted_lure2_serial if which == 2 else _accepted_lure1_serial
+
+
+func _accepted_trigger_count_for(which: int) -> int:
+	return _accepted_lure2_trigger_count if which == 2 \
+		else _accepted_lure1_trigger_count
+
+
+func _set_accepted_source_receipt(which: int, serial: int, trigger_count: int) -> void:
+	if which == 2:
+		_accepted_lure2_serial = serial
+		_accepted_lure2_trigger_count = trigger_count
+	else:
+		_accepted_lure1_serial = serial
+		_accepted_lure1_trigger_count = trigger_count
+
+
+func _lure_for(which: int) -> Flure:
+	return _lure2 if which == 2 else _lure1
+
+
+## This timer does not expire a song or move a guard. It merely observes the exact source's saved
+## deadline after Flure/Enemy have enacted it, then asks the other still-physical song to claim the
+## now-returning bodies under its original receipt.
+func _arm_relay_handoff(which: int, activation_serial: int, deadline: float) -> void:
 	var sched = _get_scheduler()
-	if which == 2:
-		_lure2_until = now + LURE_DURATION
-	else:
-		_lure1_until = now + LURE_DURATION
-	if sched != null:
-		sched.cancel_tag("lure_relay_%d" % which)
-		sched.schedule_after(LURE_DURATION, func() -> void: _on_lure_expired(which), "lure_relay_%d" % which)
-	var pos: Vector3 = LURE2_POS if which == 2 else LURE1_POS
-	var gs = _get_game_state()
-	for i in range(_enemies.size()):
-		var enemy = _enemies[i]
-		if not is_instance_valid(enemy) or not enemy.is_alive():
-			continue
-		# Drop the hunt and walk to the lure (one direct move; idle on arrival). Deterministic fan
-		# offset (no wall-clock RNG) so the data layer runs the same puzzle headless. The guard stays
-		# alert to the party but DISTRACTED — its reach shrinks, so it won't notice a runner keeping
-		# distance, yet still catches one who steps right into it. Hide as it passes; don't crowd it.
-		# The fan SWEEPS the hall's walkable width (z = -1.5/0/+1.5 across the 4-unit corridor): an
-		# exposed runner crossing the swarm head-on is within even the distracted reach of SOME guard
-		# in every lane — the offshoot hide is the only safe pass. (A tight cluster left wall lanes
-		# open and the lure-1-only cheese slipped past on cooperative side-steps.)
-		enemy._current_target_id = ""
-		if enemy.has_method("_change_state"):
-			enemy._change_state("idle")
-		if gs != null and gs.characters.has(enemy.char_id):
-			gs.set_character_distracted(enemy.char_id, true)
-			gs.command_move_to_pos(enemy.char_id, pos + Vector3(0.0, 0.0, float(i - 1) * 1.5))
-
-func _on_lure_expired(which: int) -> void:
-	if which == 2:
-		_lure2_until = -1.0
-		_set_lure_emission(_lure2_mesh, 0.5)
-	else:
-		_lure1_until = -1.0
-		_set_lure_emission(_lure1_mesh, 0.5)
-	if _committed_lure != which:
+	if sched == null or activation_serial <= 0 or deadline < 0.0:
 		return
-	var now := _get_scheduler_tick()
-	# Relay: if the OTHER lure is still singing, the enemies move on to it; otherwise they give up
-	# and return to guarding (detection re-armed).
-	if which == 2 and _lure1_until > now:
-		_commit_enemies_to(1)
-	elif which == 1 and _lure2_until > now:
-		_commit_enemies_to(2)
-	else:
-		_committed_lure = 0
-		_release_enemies()
+	var tag := "lure_relay_handoff_%d" % which
+	sched.cancel_tag(tag)
+	sched.schedule_after(maxf(0.0, deadline - _get_scheduler_tick()),
+		_on_lure_source_expired.bind(which, activation_serial, deadline), tag)
 
-func _release_enemies() -> void:
-	var gs = _get_game_state()
-	for enemy in _enemies:
-		if is_instance_valid(enemy) and enemy.is_alive():
-			enemy._detection_targets.assign(PARTY_IDS)
-			if gs != null and gs.characters.has(enemy.char_id):
-				gs.set_character_distracted(enemy.char_id, false)
-				gs.command_move_to_pos(enemy.char_id, _guard_post_for(enemy.char_id))
-			if enemy.has_method("_change_state"):
-				enemy._change_state("idle")
+
+func _on_lure_source_expired(
+	which: int,
+	expected_serial: int,
+	expected_deadline: float
+) -> void:
+	var source: Flure = _lure_for(which)
+	if source == null:
+		return
+	var effect: Dictionary = source.get_effect_state()
+	if int(effect.get("activation_serial", 0)) != expected_serial:
+		return
+	var source_phase := str(effect.get("phase", ""))
+	if source_phase == Flure.PHASE_ACTIVE \
+			and is_equal_approx(float(effect.get("end_tick", -1.0)), expected_deadline):
+		# Parent/child restore order can arm this observer before the reusable Flure re-arms its own
+		# same-tick callback. A tiny deterministic retry observes the physical transition; it does
+		# not grant extra song time.
+		var sched = _get_scheduler()
+		if sched != null:
+			sched.schedule_after(0.000001,
+				_on_lure_source_expired.bind(which, expected_serial, expected_deadline),
+				"lure_relay_handoff_%d" % which)
+		return
+	if _committed_lure == which:
+		var other_which := 1 if which == 2 else 2
+		var other_source: Flure = _lure_for(other_which)
+		if other_source != null and other_source.claim_deferred_targets():
+			_committed_lure = other_which
+		else:
+			_committed_lure = 0
+	_sync_relay_surface()
+	_publish_lure_relay_authority()
+
+
+func _sync_relay_surface() -> void:
+	_lure1_until = _physical_lure_deadline(_lure1)
+	_lure2_until = _physical_lure_deadline(_lure2)
+
+
+func _physical_lure_deadline(source: Flure) -> float:
+	if source == null:
+		return -1.0
+	var effect: Dictionary = source.get_effect_state()
+	return float(effect.get("end_tick", -1.0)) \
+		if str(effect.get("phase", "")) in [Flure.PHASE_APPLYING, Flure.PHASE_ACTIVE] \
+		and float(effect.get("end_tick", -1.0)) > _get_scheduler_tick() else -1.0
 
 ## The home post a guard returns to when it gives up a lure (its spawn slot).
 func _guard_post_for(char_id: String) -> Vector3:
@@ -269,10 +359,6 @@ func _guard_post_for(char_id: String) -> Vector3:
 		if is_instance_valid(_enemies[i]) and _enemies[i].char_id == char_id:
 			return GUARD_POSITIONS[i]
 	return GUARD_POSITIONS[0]
-
-func _set_lure_emission(mesh: MeshInstance3D, energy: float) -> void:
-	if mesh != null and mesh.material_override is StandardMaterial3D:
-		(mesh.material_override as StandardMaterial3D).emission_energy_multiplier = energy
 
 # --- Per-frame ---
 
@@ -295,9 +381,41 @@ func _update(_delta: float) -> void:
 		var pos := _get_character_position(char_id)
 		var in_hide := Vector2(pos.x - HIDE_POS.x, pos.z - HIDE_POS.z).length() <= HIDE_RADIUS
 		gs.set_character_hidden(char_id, in_hide)
-	# Win: the lead character clears the exit threshold.
-	if _phase == "active" and _get_character_position(_get_active_character()).x >= EXIT_X:
+
+
+func _start_win_poll() -> void:
+	_arm_win_poll(_get_scheduler_tick() + WIN_POLL_INTERVAL)
+
+
+func _arm_win_poll(deadline: float) -> void:
+	var sched = _get_scheduler()
+	if sched == null:
+		return
+	sched.cancel_tag("lure_relay_win")
+	_win_poll_deadline = deadline
+	sched.schedule_after(maxf(0.0, deadline - _get_scheduler_tick()),
+		_win_poll_tick, "lure_relay_win")
+
+
+func _win_poll_tick() -> void:
+	_win_poll_deadline = -1.0
+	if _phase in ["complete", "failed"]:
+		_publish_lure_relay_authority()
+		return
+	var gs = _get_game_state()
+	if _phase == "active" and gs != null and _full_conscious_party_beyond_exit(gs):
 		_complete()
+		return
+	_arm_win_poll(_get_scheduler_tick() + WIN_POLL_INTERVAL)
+	_publish_lure_relay_authority()
+
+
+func _full_conscious_party_beyond_exit(gs) -> bool:
+	for char_id in PARTY_IDS:
+		if not gs.characters.has(char_id) or gs.is_downed(char_id) \
+				or _get_character_position(char_id).x < EXIT_X:
+			return false
+	return true
 
 func _on_guard_spotted(target_id: String) -> void:
 	# A sentry locking onto an exposed party member ends the run — this is the stealth fail that makes
@@ -308,6 +426,8 @@ func _on_guard_spotted(target_id: String) -> void:
 		return
 	_phase = "failed"
 	_failure_reason = "spotted"
+	_cancel_win_poll()
+	_publish_lure_relay_authority()
 	_show_note("A sentry's eye locks on. Caught.", 2.5)
 	_set_preview_step("lure_relay_failed")
 
@@ -316,13 +436,24 @@ func _on_guard_hit(_target_id: String, _damage: float) -> void:
 		return
 	_phase = "failed"
 	_failure_reason = "caught"
+	_cancel_win_poll()
+	_publish_lure_relay_authority()
 	_show_note("A sentry ran you down. The remains gain a companion.", 2.5)
 	_set_preview_step("lure_relay_failed")
 
 func _complete() -> void:
 	_phase = "complete"
-	_show_note("Past the sentries while the lure held. The exit is yours.", 2.5)
+	_cancel_win_poll()
+	_publish_lure_relay_authority()
+	_show_note("The whole party is past the sentries while the lure holds. The exit is yours.", 2.5)
 	_set_preview_step("lure_relay_complete")
+
+
+func _cancel_win_poll() -> void:
+	_win_poll_deadline = -1.0
+	var sched = _get_scheduler()
+	if sched != null:
+		sched.cancel_tag("lure_relay_win")
 
 # --- SceneChunk interface ---
 
@@ -369,13 +500,23 @@ func reset_preview_state() -> void:
 	_lure1_until = -1.0
 	_lure2_until = -1.0
 	_committed_lure = 0
-	_set_lure_emission(_lure1_mesh, 0.5)
-	_set_lure_emission(_lure2_mesh, 0.5)
-	_release_enemies()
+	_accepted_lure1_serial = 0
+	_accepted_lure2_serial = 0
+	_accepted_lure1_trigger_count = 0
+	_accepted_lure2_trigger_count = 0
+	_cancel_win_poll()
+	var sched = _get_scheduler()
+	if sched != null:
+		sched.cancel_tag("lure_relay_handoff_1")
+		sched.cancel_tag("lure_relay_handoff_2")
+	if _lure1 != null:
+		_lure1.reset_flure()
+	if _lure2 != null:
+		_lure2.reset_flure()
 	var gs = _get_game_state()
 	if gs != null:
-		# A reset TELEPORTS the guards back to their posts (mid-play lure expiry walks them home via
-		# _release_enemies — a reset must not depend on that walk's timing or the puzzle premise
+		# A reset TELEPORTS the guards back to their posts (mid-play lure expiry returns through Enemy's
+		# physical FSM — reset setup must not depend on that walk's timing or the puzzle premise
 		# "sentries guard the exit" only holds whenever the previous attempt happened to end early).
 		for enemy in _enemies:
 			if is_instance_valid(enemy) and enemy.is_alive() and gs.characters.has(enemy.char_id):
@@ -383,17 +524,126 @@ func reset_preview_state() -> void:
 		for char_id in PARTY_IDS:
 			if gs.characters.has(char_id):
 				gs.set_character_hidden(char_id, false)
-				gs.set_character_distracted(char_id, false)
+	_start_win_poll()
+	_publish_lure_relay_authority()
 	_set_preview_step("lure_relay_briefing")
+
+
+func _lure_relay_authority_state() -> Dictionary:
+	return {
+		"version": LURE_RELAY_AUTHORITY_VERSION,
+		"phase": _phase,
+		"failure_reason": _failure_reason,
+		"lure1_until": _lure1_until,
+		"lure2_until": _lure2_until,
+		"committed_lure": _committed_lure,
+		"accepted_lure1_serial": _accepted_lure1_serial,
+		"accepted_lure2_serial": _accepted_lure2_serial,
+		"accepted_lure1_trigger_count": _accepted_lure1_trigger_count,
+		"accepted_lure2_trigger_count": _accepted_lure2_trigger_count,
+		"win_poll_deadline": _win_poll_deadline,
+	}
+
+
+func _publish_lure_relay_authority() -> void:
+	if _restoring_lure_relay_authority:
+		return
+	var gs = _get_game_state()
+	if gs != null and gs.has_method("set_world_state"):
+		gs.set_world_state(LURE_RELAY_AUTHORITY_KEY, _lure_relay_authority_state())
+
+
+## Scheduler snapshots intentionally omit Callables. Rebuild only the relay observers from the exact
+## physical source serial/deadline; Flure and Enemy restore their own windows and movement.
+func on_game_state_snapshot_restored() -> void:
+	var sched = _get_scheduler()
+	if sched != null:
+		sched.cancel_tag("lure_relay_handoff_1")
+		sched.cancel_tag("lure_relay_handoff_2")
+		sched.cancel_tag("lure_relay_win")
+	var gs = _get_game_state()
+	var raw: Variant = gs.get_world_state(LURE_RELAY_AUTHORITY_KEY, null) \
+			if gs != null and gs.has_method("get_world_state") else null
+	if not raw is Dictionary or int(raw.get("version", 0)) != LURE_RELAY_AUTHORITY_VERSION:
+		_retract_lure_relay_presenter()
+		return
+
+	var saved: Dictionary = raw
+	_restoring_lure_relay_authority = true
+	_phase = str(saved.get("phase", "ready"))
+	if _phase not in ["ready", "active", "complete", "failed"]:
+		_phase = "ready"
+	_failure_reason = str(saved.get("failure_reason", ""))
+	_lure1_until = float(saved.get("lure1_until", -1.0))
+	_lure2_until = float(saved.get("lure2_until", -1.0))
+	_committed_lure = int(saved.get("committed_lure", 0))
+	_accepted_lure1_serial = maxi(0, int(saved.get("accepted_lure1_serial", 0)))
+	_accepted_lure2_serial = maxi(0, int(saved.get("accepted_lure2_serial", 0)))
+	_accepted_lure1_trigger_count = maxi(
+		0, int(saved.get("accepted_lure1_trigger_count", 0)))
+	_accepted_lure2_trigger_count = maxi(
+		0, int(saved.get("accepted_lure2_trigger_count", 0)))
+	_win_poll_deadline = float(saved.get("win_poll_deadline", -1.0))
+	if _committed_lure not in [0, 1, 2]:
+		_committed_lure = 0
+	_restoring_lure_relay_authority = false
+	_sync_relay_surface()
+	_restore_relay_observer(1)
+	_restore_relay_observer(2)
+	if _phase not in ["complete", "failed"] and _win_poll_deadline >= 0.0:
+		_arm_win_poll(_win_poll_deadline)
+
+
+func _restore_relay_observer(which: int) -> void:
+	var source: Flure = _lure_for(which)
+	if source == null:
+		return
+	var effect: Dictionary = source.get_effect_state()
+	var serial := int(effect.get("activation_serial", 0))
+	var deadline := float(effect.get("end_tick", -1.0))
+	if serial != _accepted_serial_for(which):
+		return
+	if str(effect.get("phase", "")) == Flure.PHASE_ACTIVE and deadline >= 0.0:
+		_arm_relay_handoff(which, serial, deadline)
+	elif _committed_lure == which:
+		# A snapshot may land after Enemy/Flure publish their same-tick expiry but before this
+		# coordinator consumes it. Resume that saved transaction instead of losing the handoff.
+		var last_effect: Dictionary = effect.get("last_effect", {})
+		var expired_deadline := float(last_effect.get("end_tick", -1.0))
+		var sched = _get_scheduler()
+		if sched != null and expired_deadline >= 0.0:
+			sched.schedule_after(
+				0.000001,
+				_on_lure_source_expired.bind(which, serial, expired_deadline),
+				"lure_relay_handoff_%d" % which)
+
+
+func _retract_lure_relay_presenter() -> void:
+	_restoring_lure_relay_authority = true
+	_phase = "ready"
+	_failure_reason = ""
+	_lure1_until = -1.0
+	_lure2_until = -1.0
+	_committed_lure = 0
+	_accepted_lure1_serial = 0
+	_accepted_lure2_serial = 0
+	_accepted_lure1_trigger_count = 0
+	_accepted_lure2_trigger_count = 0
+	_win_poll_deadline = -1.0
+	_restoring_lure_relay_authority = false
+	_start_win_poll()
 
 func get_preview_state() -> Dictionary:
 	var now := _get_scheduler_tick()
+	var lure1_until: float = _physical_lure_deadline(_lure1)
+	var lure2_until: float = _physical_lure_deadline(_lure2)
 	return {
 		"phase": _phase,
 		"failure_reason": _failure_reason,
-		"lure1_active": _lure1_until > now,
-		"lure2_active": _lure2_until > now,
+		"lure1_active": lure1_until > now,
+		"lure2_active": lure2_until > now,
 		"committed_lure": _committed_lure,
+		"win_poll_deadline": _win_poll_deadline,
 		"complete": _phase == "complete",
 		"failed": _phase == "failed",
 	}

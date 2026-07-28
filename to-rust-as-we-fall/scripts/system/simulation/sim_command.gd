@@ -21,7 +21,7 @@ enum Type {
 	GIVE_ITEM,      # Transfer a held item to another character
 	THROW_OBJECT,   # Throw a physics object to a target location along an arc
 	QUEUE_MOVES,    # Queue several destinations; the character walks them in order
-	REST,           # Restore the party (rest at a shelter)
+	REST,           # Commit the party to real shelter rest
 	ASSERT_STAT,    # Assert a player stat value
 	ASSERT_PHASE,   # Assert the current sequence phase
 	ASSERT_NEAR,    # Assert player is near a position
@@ -143,7 +143,7 @@ static func queue_moves(points: Array, char_id := "") -> SimCommand:
 	cmd.args = {"points": points, "char_id": char_id}
 	return cmd
 
-## Rest at a shelter: restore the party's hp / stamina / atp.
+## Rest at a shelter through GameState's ATP-spending recovery flow.
 static func rest(char_id := "") -> SimCommand:
 	var cmd := SimCommand.new()
 	cmd.type = Type.REST

@@ -8,41 +8,53 @@ extends RefCounted
 ## that needs one is reachable only when a character who provides it is ENABLED in the
 ## roster — which is what makes a puzzle solvable more than one way, and always by the pair.
 ##
-## The six playable characters are brain-cell types (GDD §3); each contributes capabilities
-## and abilities. The "spotlight" loadout is the union of the ENABLED roster's capabilities,
-## so e.g. `combat` exists only if a microglia/T-reg fighter (Myke/Tyreg) is enabled.
+## The six playable characters are brain-cell types (GDD §3); each contributes capabilities.
+## Only explicitly named, authored cast abilities belong in `abilities`. Contextual verbs such as
+## Aster's hacking and Peris's tending remain capabilities resolved through world interactions.
+## Named later-game commitments remain in this registry even when their general cast contract is not
+## wired yet; the status keeps the generator from confusing canon identity with runtime support.
+## Characters whose active kit is still unspecified expose an empty map instead of acquiring
+## placeholders. The "spotlight" loadout is the union of the ENABLED roster's capabilities, so e.g.
+## `combat` exists only if a microglia/T-reg fighter is enabled.
 
 # id -> {name, cell_type, class_code, capabilities[], abilities{ id: {name, grants} }, recruit}
 const CHARACTER_REGISTRY := {
 	"aster": {
 		"name": "Aster", "cell_type": "astrocyte", "class_code": "AST", "recruit": 1,
 		"capabilities": ["data", "electrical", "overlay", "terminal", "scan", "timing", "signal", "ast_class"],
-		"abilities": {"emp": {"name": "EMP Hack", "grants": "electrical"}},
+		"abilities": {"emp": {"name": "EMP", "grants": "electrical"}},
 	},
 	"peris": {
 		"name": "Peris", "cell_type": "pericyte", "class_code": "PCT", "recruit": 1,
 		"capabilities": ["flora", "carry", "physical", "protect", "cover", "tend", "pct_class"],
-		"abilities": {"protect": {"name": "Protect / Wrap", "grants": "protect"}, "harvest": {"name": "Harvest", "grants": "flora"}},
+		"abilities": {"wrap": {"name": "Wrap", "grants": "protect"}},
 	},
 	"endo": {
 		"name": "Endo", "cell_type": "endothelial", "class_code": "ENT", "recruit": 2,
 		"capabilities": ["barrier", "junction", "repair", "gear", "carry", "endo", "ent_class"],
-		"abilities": {"no_pulse": {"name": "NO Pulse", "grants": "endo"}, "cloak": {"name": "Cloak", "grants": "endo"}},
+		"abilities": {},
 	},
 	"myke": {
 		"name": "Myke", "cell_type": "microglia", "class_code": "MCG", "recruit": 3,
 		"capabilities": ["combat", "impact", "force", "carry", "physical", "tend", "class_other"],
-		"abilities": {"inflame": {"name": "Inflame", "grants": "combat"}, "engulf": {"name": "Engulf", "grants": "impact"}},
+		"abilities": {
+			"inflame": {"name": "Inflame", "grants": "combat", "runtime_status": "authored_fragment"},
+		},
 	},
 	"oli": {
 		"name": "Oli", "cell_type": "oligodendrocyte", "class_code": "OLG", "recruit": 4,
 		"capabilities": ["barrier", "insulation", "terminal", "cover", "class_other"],
-		"abilities": {"sheath": {"name": "Sheath", "grants": "barrier"}, "conduct": {"name": "Conduct", "grants": "mobility"}},
+		"abilities": {
+			"barrier": {"name": "Barrier", "grants": "barrier", "runtime_status": "canon_reserved"},
+			"restore": {"name": "Restore", "grants": "field_restore", "runtime_status": "game_state"},
+		},
 	},
 	"tyreg": {
 		"name": "Tyreg", "cell_type": "T-regulatory", "class_code": "TRG", "recruit": 5,
 		"capabilities": ["combat", "force", "scan", "timing", "class_tmc"],
-		"abilities": {"shoot": {"name": "Shoot", "grants": "force"}, "suppress": {"name": "Suppress", "grants": "combat"}},
+		"abilities": {
+			"suppress": {"name": "Suppress", "grants": "combat", "runtime_status": "authored_fragment"},
+		},
 	},
 }
 
@@ -53,20 +65,17 @@ const CANONICAL_ROSTER := ["aster", "peris", "endo", "myke", "oli", "tyreg"]
 
 ## Content the world can place that lends a (non-specialist) capability to whoever stands in
 ## the node. A shadow approach that wants "cover" is satisfiable by Peris alone, but placed
-## scarpet / doma makes it real cover; flure/hushbloom turn a node into a usable tool.
+## scarpet / capbage makes it real cover; flure/hushbloom turn a node into a usable tool.
 const CONTENT_CAPABILITIES := {
 	"flora": {
 		"scarpet": ["cover", "scarpet_cover"],
-		"doma": ["cover", "hide"],
-		"snapbloom": ["cover", "repellent"],
+		"capbage": ["cover", "hide", "cache"],
 		"hushbloom": ["stun"],
 		"flure": ["lure", "iron_decoy"],
 		"mother_flure": ["lure", "iron_decoy"],
 		"seefern": ["reveal", "light"],
 		"climbvine": ["traversal"],
 		"resolution_roots": ["stabilize"],
-		"gasafoetida": ["combustible"],
-		"capbage": ["forage"],
 		"forget_me_nots": ["memory"],
 	},
 	"structures": {

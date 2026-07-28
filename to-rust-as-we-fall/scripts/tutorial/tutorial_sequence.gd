@@ -14,6 +14,15 @@ const CHROMATIC_ABERRATION_SHADER := preload("res://resources/chromatic_aberrati
 const SCREEN_EFFECT_SCENE := preload("res://scenes/ui/screen_effect.tscn")
 const SEQUENCE_ANIMATION_PLAYER_SCENE := preload("res://scenes/ui/sequence_animation_player.tscn")
 const TOUCH_MODE_CONTROLLER_SCENE := preload("res://scenes/ui/touch_mode_controller.tscn")
+const PORTABLE_CONTINUATION_VERSION := 1
+const PORTABLE_CONTINUATION_EPSILON := 0.000001
+const PREVIEW_CAMERA_STATE_KEYS: Array[String] = [
+	"target_id", "follow_offset", "pan_offset", "view_yaw", "view_zoom",
+	"locked", "lock_position", "lock_offset_override", "global_transform",
+]
+const PREVIEW_CAMERA_TRANSFORM_KEYS: Array[String] = [
+	"basis_x", "basis_y", "basis_z", "origin",
+]
 
 @export_group("Post Processing")
 @export var chromatic_aberration_enabled := false:
@@ -33,6 +42,10 @@ const TOUCH_MODE_CONTROLLER_SCENE := preload("res://scenes/ui/touch_mode_control
 var _scheduler: EventScheduler          # gameplay lane (pausable, replay)
 var _ui_scheduler: EventScheduler       # dialogue / thought-fade / UI lane
 var _game_state: GameState
+## Stable id -> view lookup for systems that react synchronously to GameState signals.
+## Walking the whole rendered scene to rediscover a character during a damage/down
+## callback is both unnecessary and especially costly in Web builds.
+var _game_state_character_nodes: Dictionary = {}
 var _path_render_manager                # PathRenderManager: movement paths for all characters
 var _downed_body_manager                # DownedBodyManager: fallen members become clickable carry targets
 var _outline_mask_manager               # OutlineMaskManager: screen-space object outlines for all targets
@@ -49,6 +62,7 @@ var _fade_rect: ColorRect
 var _thought_label: Label
 var _engram_overlay
 var _pause_menu
+var _lazy_sequence_ui
 var _dev_console    # DevConsole (backtick) — the only in-game door to dev switches
 var _touch_modes    # TouchModeController — the mobile camera/select/action mode cluster
 var _chromatic_aberration_layer: CanvasLayer
@@ -86,6 +100,12 @@ var _dlg_chain_keys: Array = []
 var _dlg_chain_index := 0
 var _dlg_chain_next: Callable
 var _dlg_chain_delay := 0.0
+## Scheduler snapshots intentionally omit Callables. Any base helper that owns the only route to
+## the next story beat therefore records a self-method plus its absolute deadline here. The record
+## is part of the sequence save contract; the scheduler callback is only a derived wake-up handle.
+var _portable_continuation: Dictionary = {}
+var _portable_continuation_serial := 0
+var _restoring_portable_continuation := false
 var _did_teardown := false
 var suppress_scene_change := false
 var requested_scene_change := ""
@@ -103,16 +123,33 @@ var _exploration_focus_prev_camera_state := {}
 var _exploration_focus_prev_scheduler_paused := false
 var _exploration_focus_prev_move_enabled := true
 var _story_step_generation := 0
+var _choreography_move_queue: Array[Dictionary] = []
+var _detached_scene_prewarm: Dictionary = {}
+var _preview_cutscene_ownership: Dictionary = {}
+var _preview_cutscene_last_owner_id := ""
 
 func _ready() -> void:
+	var ready_started := PerformanceTrace.begin()
 	if Engine.is_editor_hint():
 		_clear_editor_generated_preview_children()
 	else:
 		_outline_feedback_manager = OutlineFeedbackManager.ensure(self)
+	var scene_started := PerformanceTrace.begin()
 	_build_scene()
+	PerformanceTrace.end(&"update", &"sequence.ready.build_scene", scene_started, name, 1)
+	var characters_started := PerformanceTrace.begin()
 	_build_characters()
+	PerformanceTrace.end(&"update", &"sequence.ready.build_characters", characters_started, name, 1)
 	if Engine.is_editor_hint():
+		PerformanceTrace.end(&"update", &"sequence.ready", ready_started, name, 1)
 		return
+	# DialogueData's authoring source is an XLSX workbook. Parse it while the scene is
+	# still behind its loading/fade boundary; doing this on the first spoken line made
+	# an otherwise trivial story callback hitch for ~30 ms mid-play.
+	var dialogue_data_started := PerformanceTrace.begin()
+	if not DialogueData.is_loaded():
+		DialogueData.load_dir("res://data/dialogue/en/")
+	PerformanceTrace.end(&"update", &"sequence.ready.dialogue_data", dialogue_data_started, name, 1)
 	# Object hover + RTS right-click-to-interact ride the engine's physics picking (Area3D
 	# mouse_entered / input_event). It's off by default, so enable it here — without it the white hover
 	# outline never lit and the interactable's own click path was dead.
@@ -121,6 +158,12 @@ func _ready() -> void:
 	# Second lane: dialogue / thought-fades / UI timers. F-scaled but never frozen
 	# by gameplay pause — "pause gameplay, keep dialogue" is structural, not a hack.
 	_ui_scheduler = EventScheduler.new()
+	if PerformanceTrace.is_enabled():
+		# The native scheduler records each callback's actual wall time. Drain it after
+		# every diagnostic advance so a slow aggregate scheduler sample names the
+		# callback responsible instead of hiding it inside the lane.
+		_scheduler.set_profiling(true)
+		_ui_scheduler.set_profiling(true)
 	_game_state = GameState.new()
 	_game_state.scheduler = _scheduler
 	# A normal-play recording attaches here, before character/object registration, so its
@@ -128,39 +171,56 @@ func _ready() -> void:
 	_playthrough_recorder = get_node_or_null("/root/PlaythroughRecorder")
 	if _playthrough_recorder != null and _playthrough_recorder.has_method("attach_game_state"):
 		_playthrough_recorder.attach_game_state(_game_state, scene_file_path)
+	var registration_started := PerformanceTrace.begin()
 	_register_characters()
+	PerformanceTrace.end(&"update", &"sequence.ready.register_characters", registration_started, name, 1)
 	# One scene-level path renderer for EVERY moving character (player, party, NPC, escort) — the
 	# reusable home for movement-path visuals, not a per-controller one-off.
 	_path_render_manager = PathRenderManager.new()
 	_path_render_manager.name = "PathRenderManager"
 	add_child(_path_render_manager)
+	var path_manager_started := PerformanceTrace.begin()
 	_path_render_manager.setup(_game_state, self)
+	PerformanceTrace.end(&"draw", &"sequence.ready.path_manager", path_manager_started, name, 1)
 	# One scene-level screen-space outline manager: OutlineSurfaceTargets register their meshes with it to show
 	# the crisp object outline (clean on flat-shaded meshes, constant width at any distance). Same once-per-scene
 	# pattern as the path renderer — every OutlineSurfaceTarget in the scene finds it via OutlineMaskManager.find_for.
 	_outline_mask_manager = OutlineMaskManager.new()
 	_outline_mask_manager.name = "OutlineMaskManager"
 	add_child(_outline_mask_manager)
+	var interactables_started := PerformanceTrace.begin()
 	_inject_scheduler_into_interactables(self)
+	PerformanceTrace.end(&"update", &"sequence.ready.interactables", interactables_started, name, 1)
+	var ui_started := PerformanceTrace.begin()
 	_init_ui()
+	PerformanceTrace.end(&"draw", &"sequence.ready.ui", ui_started, name, 1)
 	# One scene-level RTS selection controller (left-click / marquee character select), feeding the HUD
 	# selection set — same once-per-scene pattern as the PathRenderManager. It resolves the HUD + active
 	# player lazily from the sequence (both are created by the subclass _ready, after this base _ready).
 	_selection_controller = SelectionController.new()
 	_selection_controller.name = "SelectionController"
 	add_child(_selection_controller)
+	var selection_started := PerformanceTrace.begin()
 	_selection_controller.setup(_game_state, self)
+	PerformanceTrace.end(&"update", &"sequence.ready.selection", selection_started, name, 1)
 	# One scene-level downed-body manager: a fallen party member becomes a clickable body (click to
 	# CARRY through the shared drag system, click again to set down) — same once-per-scene pattern.
 	_downed_body_manager = DownedBodyManager.new()
 	_downed_body_manager.name = "DownedBodyManager"
 	add_child(_downed_body_manager)
+	var downed_started := PerformanceTrace.begin()
 	_downed_body_manager.setup(_game_state, self)
+	PerformanceTrace.end(&"update", &"sequence.ready.downed_manager", downed_started, name, 1)
+	var story_started := PerformanceTrace.begin()
 	_story_beat_runner.setup(StoryBeatContext.new(
 		self, _game_state, _scheduler, _ui_scheduler, _story_beat_services()
 	))
 	_configure_story_beats()
+	PerformanceTrace.end(&"update", &"sequence.ready.story_beats", story_started, name, 1)
+	var begin_started := PerformanceTrace.begin()
 	_begin()
+	PerformanceTrace.end(&"update", &"sequence.ready.begin", begin_started, name, 1)
+	PerformanceTrace.end(&"update", &"sequence.ready", ready_started, name, 1)
 
 func _process(delta: float) -> void:
 	if Engine.is_editor_hint():
@@ -168,6 +228,10 @@ func _process(delta: float) -> void:
 	# Scene changes can dispatch one final _process after teardown.
 	if _scheduler == null or _game_state == null:
 		return
+	# Chunk items are gameplay state, not decorations left at their spawn point. Keep the
+	# lightweight tutorial presenter attached to the item's authoritative location so a pickup,
+	# drop, transfer, endocytosis, or snapshot rollback is visible on the same frame it commits.
+	_refresh_chunk_item_presenters()
 	var perf_started := PerformanceTrace.begin()
 	# Cosmetic: keep background chunk streams building a slice per frame (independent of the gameplay clock).
 	var chunks_started := PerformanceTrace.begin()
@@ -197,6 +261,7 @@ func _process(delta: float) -> void:
 		gameplay_scheduler.advance_ticks(allowed_ticks)
 	else:
 		gameplay_scheduler.advance(delta)
+	_trace_scheduler_callbacks(gameplay_scheduler, "gameplay")
 	PerformanceTrace.end(&"update", &"sequence.gameplay_scheduler", scheduler_started, name, 1)
 	var gameplay_ticks_advanced := gameplay_scheduler.get_current_tick() - gameplay_tick_before
 	# advance() can fire a scheduled callback — e.g. a scene transition's _complete →
@@ -206,12 +271,14 @@ func _process(delta: float) -> void:
 	if _scheduler == null or _ui_scheduler == null or _game_state == null:
 		PerformanceTrace.end(&"update", &"sequence.process", perf_started, "torn_down", 0)
 		return
+	_advance_choreography_moves()
 	# UI lane: dialogue + thought-fades advance here. F-scaled, but independent of
 	# gameplay pause, so pausing gameplay keeps narrative flowing.
 	var ui_before := _ui_scheduler.get_current_tick()
 	_ui_scheduler.set_speed(_compute_dialogue_speed())
 	var ui_scheduler_started := PerformanceTrace.begin()
 	_ui_scheduler.advance(delta)
+	_trace_scheduler_callbacks(_ui_scheduler, "ui")
 	PerformanceTrace.end(&"update", &"sequence.ui_scheduler", ui_scheduler_started, name, 1)
 	var ui_delta := _ui_scheduler.get_current_tick() - ui_before
 	if _dialogue:
@@ -283,13 +350,67 @@ func _compute_speed() -> float:
 	return 10.0 if Input.is_action_pressed("fast_forward") else 1.0
 
 ## Dialogue clock speed. Intentionally independent of _compute_speed(): holding
-## F fast-forwards dialogue even while gameplay is paused (Peris protect prompt,
+## F fast-forwards dialogue even while gameplay is paused (Peris Wrap prompt,
 ## exploration focus), and a paused scheduler never freezes dialogue.
 func _compute_dialogue_speed() -> float:
 	return 10.0 if Input.is_action_pressed("fast_forward") else 1.0
 
 func _get_speed_recipients() -> Array:
 	return []
+
+## Queue authored walk-on/walk-off choreography without forcing several independent A* plans
+## into one transition callback. One command is planned per simulation update; the generation guard
+## discards stale work if another story beat supersedes the choreography first.
+func _queue_choreography_moves(commands: Array, replace := true) -> void:
+	if replace:
+		_choreography_move_queue.clear()
+	for raw_command in commands:
+		if not (raw_command is Dictionary):
+			continue
+		var command: Dictionary = raw_command
+		var character_id := str(command.get("id", ""))
+		var target = command.get("target", null)
+		if character_id == "" or not (target is Vector3) or not (target as Vector3).is_finite():
+			continue
+		_choreography_move_queue.append({
+			"id": character_id,
+			"target": target,
+			"generation": _story_step_generation,
+		})
+
+func _advance_choreography_moves() -> void:
+	if _game_state == null:
+		_choreography_move_queue.clear()
+		return
+	while not _choreography_move_queue.is_empty() \
+			and int(_choreography_move_queue[0].get("generation", -1)) != _story_step_generation:
+		_choreography_move_queue.pop_front()
+	if _choreography_move_queue.is_empty():
+		return
+	var command: Dictionary = _choreography_move_queue.pop_front()
+	var character_id := str(command.get("id", ""))
+	if not _game_state.characters.has(character_id):
+		return
+	var move_started := PerformanceTrace.begin()
+	_game_state.command_move_to_pos(character_id, command.get("target", Vector3.ZERO))
+	PerformanceTrace.end(&"nav", &"sequence.choreography_move", move_started,
+		character_id, _choreography_move_queue.size() + 1)
+
+func _trace_scheduler_callbacks(scheduler: EventScheduler, lane: String) -> void:
+	if not PerformanceTrace.is_enabled() or scheduler == null:
+		return
+	var profile: Dictionary = scheduler.get_profile()
+	# Re-enabling clears the native aggregate for the next advance.
+	scheduler.set_profiling(true)
+	var threshold := PerformanceTrace.step_threshold_ms()
+	for callback_key in profile:
+		var sample: Array = profile[callback_key]
+		var call_count := int(sample[0])
+		var total_ms := float(sample[1])
+		if total_ms < threshold:
+			continue
+		print("[PERF:SCHEDULER] frame=%d lane=%s callback=%s %.3fms calls=%d" % [
+			Engine.get_process_frames(), lane, str(callback_key), total_ms, call_count])
 
 func headless_advance(duration: float, step := 0.05) -> void:
 	if Engine.is_editor_hint() or _scheduler == null:
@@ -298,12 +419,15 @@ func headless_advance(duration: float, step := 0.05) -> void:
 	while remaining > 0.0001:
 		var dt: float = minf(step, remaining)
 		_scheduler.advance_ticks(dt)
+		_trace_scheduler_callbacks(_scheduler, "gameplay_headless")
 		# Same hazard as _process: a scheduled callback (a scene transition's _complete) can
 		# tear the sequence down mid-advance, nulling _scheduler. Bail before re-using it.
 		if _scheduler == null:
 			return
+		_advance_choreography_moves()
 		if _ui_scheduler:
 			_ui_scheduler.advance_ticks(dt)
+			_trace_scheduler_callbacks(_ui_scheduler, "ui_headless")
 		if _dialogue:
 			# Same UI lane as real play; dt is already in ticks (1x headless).
 			_dialogue.advance_ui_time(dt)
@@ -429,27 +553,27 @@ func _get_perception_target_position() -> Vector3:
 # --- UI setup ---
 
 func _init_ui() -> void:
+	var tutorial_ui_started := PerformanceTrace.begin()
 	var ui := preload("res://scenes/game/tutorial_ui.tscn").instantiate()
 	add_child(ui)
+	PerformanceTrace.end(&"draw", &"sequence.ui.tutorial_ui", tutorial_ui_started, name, 1)
 	_dialogue = ui.get_node("DialogueBox")
 	_tutorial_prompt = ui
 	_fade_rect = ui.get_node("FadeOverlay/FadeRect")
 	_thought_label = ui.get_node("ThoughtOverlay/ThoughtLabel")
 	_fade_rect.color.a = 0.0
 
-	_engram_overlay = preload("res://scenes/ui/engram_overlay.tscn").instantiate()
-	add_child(_engram_overlay)
-
-	# Esc-toggled pause menu (Resume / Settings → accessibility). Self-contained:
-	# it handles its own input and pauses gameplay while open.
-	_pause_menu = preload("res://scenes/ui/pause_menu.tscn").instantiate()
-	_pause_menu.name = "PauseMenu"
-	add_child(_pause_menu)
+	# Engram and pause/settings are normally hidden. Their scene-authored loader
+	# owns the shortcuts and instantiates either panel only on first use.
+	_lazy_sequence_ui = ui.get_node("LazySequenceUI")
+	_lazy_sequence_ui.setup(self)
 
 	# Backtick-toggled developer console — the one sanctioned door to dev switches in normal play
 	# (fog of war stays ON in the game proper; only this console or a dev surface may turn it off).
+	var dev_console_started := PerformanceTrace.begin()
 	_dev_console = preload("res://scenes/ui/dev_console.tscn").instantiate()
 	add_child(_dev_console)
+	PerformanceTrace.end(&"draw", &"sequence.ui.dev_console", dev_console_started, name, 1)
 	_dev_console.register_command("fog", _cmd_fog, "fog on|off — the fog of war (default on)")
 	_dev_console.register_command("fxdebug", _cmd_fxdebug, "fxdebug on|off — path/outline FX traces")
 	_dev_console.register_command("chroma", _cmd_chroma, "chroma on|off — testing-mode ID-color overlay on every interactable")
@@ -467,20 +591,28 @@ func _init_ui() -> void:
 	# Mobile control modes: on touch, ONE finger carries three meanings — CAMERA drag-pan / SELECT
 	# (tap-pick + marquee, with the interactable reveal on) / ACTION (tap = the command click).
 	# The cluster appears on touchscreen devices; `touch on` forces it for desktop testing.
+	var touch_modes_started := PerformanceTrace.begin()
 	_touch_modes = TOUCH_MODE_CONTROLLER_SCENE.instantiate()
 	add_child(_touch_modes)
 	_touch_modes.setup(self)
+	PerformanceTrace.end(&"draw", &"sequence.ui.touch_modes", touch_modes_started, name, 1)
 	# SELECT mode is the LOOK mode: the reveal-all outline (the hold-SHIFT treatment) stays on
 	# while it's active, so every interactable advertises itself.
 	_touch_modes.mode_changed.connect(func(m: String): _on_highlight_held(m == "select"))
 	_dev_console.register_command("touch", _cmd_touch, "touch on|off — force the mobile control-mode cluster")
 
+	var chroma_started := PerformanceTrace.begin()
 	_init_chromatic_aberration_effect()
+	PerformanceTrace.end(&"draw", &"sequence.ui.chromatic_aberration", chroma_started, name, 1)
+	var scene_ui_started := PerformanceTrace.begin()
 	_setup_ui()
+	PerformanceTrace.end(&"draw", &"sequence.ui.scene_hud", scene_ui_started, name, 1)
 	# Wire the shared hold-SHIFT reveal-all HERE, once, after the subclass built its HUD — so no scene
 	# has to remember the connection individually (it drifted: the fragment preview, showcase, and others
 	# were missing it). Scenes that build no HUD no-op.
+	var signals_started := PerformanceTrace.begin()
 	_wire_shared_hud_signals()
+	PerformanceTrace.end(&"update", &"sequence.ui.shared_signals", signals_started, name, 1)
 
 func _cmd_touch(args: Array) -> String:
 	if _touch_modes == null:
@@ -632,6 +764,11 @@ func _teardown_sequence() -> void:
 		return
 	_did_teardown = true
 	_story_beat_runner.deactivate(&"scene_teardown")
+	_choreography_move_queue.clear()
+	for cached_scene in _detached_scene_prewarm.values():
+		if is_instance_valid(cached_scene):
+			(cached_scene as Node).free()
+	_detached_scene_prewarm.clear()
 
 	# Prevent one last _process from touching torn-down state.
 	set_process(false)
@@ -647,6 +784,9 @@ func _teardown_sequence() -> void:
 	_dlg_chain_index = 0
 	_dlg_chain_next = Callable()
 	_dlg_chain_delay = 0.0
+	_portable_continuation.clear()
+	_portable_continuation_serial = 0
+	_restoring_portable_continuation = false
 	_scheduler_animation_states.clear()
 	_thought_fade_active = false
 	_perception_target = null
@@ -681,6 +821,7 @@ func _teardown_sequence() -> void:
 	_thought_label = null
 	_engram_overlay = null
 	_pause_menu = null
+	_lazy_sequence_ui = null
 	_chromatic_aberration_layer = null
 	_chromatic_aberration_rect = null
 	_chromatic_aberration_material = null
@@ -699,53 +840,516 @@ func build_save_snapshot() -> Dictionary:
 		"scene_kind": "tutorial_sequence",
 		"current_step": _current_step,
 		"requested_scene_change": requested_scene_change,
-		"scheduler": _scheduler.serialize() if _scheduler != null else {},
+		"scheduler": _build_persistent_scheduler_snapshot(),
+		"ui_scheduler": _ui_scheduler.serialize() if _ui_scheduler != null else {},
 		"game_state": _game_state.serialize() if _game_state != null else {},
+		"portable_continuation": _portable_continuation.duplicate(true),
+		"dialogue": (
+			_dialogue.call("snapshot_state")
+			if _dialogue != null and _dialogue.has_method("snapshot_state")
+			else {}
+		),
 		"capture_context": get_capture_context(),
 	}
 
+
+## Capture/Engram UI pauses the gameplay lane while it hides overlays and reads the viewport. That
+## modal pause is not gameplay state: persisting it would make every capture autosave reload with a
+## clock that can never advance. Preserve the scheduler's state from before the outermost capture
+## pause instead. A scheduler that was already paused for gameplay remains durably paused.
+func _build_persistent_scheduler_snapshot() -> Dictionary:
+	if _scheduler == null:
+		return {}
+	var snapshot: Dictionary = _scheduler.serialize()
+	if _capture_pause_depth > 0:
+		snapshot["paused"] = _capture_pause_was_paused
+	return snapshot
+
 func apply_save_snapshot(data: Dictionary) -> void:
-	if _scheduler != null and data.has("scheduler"):
-		_scheduler.deserialize(data.scheduler)
-	if data.has("game_state"):
-		_apply_saved_game_state(data.game_state)
+	# Presenters rebuild from GameState below and may need the saved sequence phase to decide whether an
+	# authoritative mechanism completion should advance or stay dormant. Restore these scalar owners
+	# before invoking any attachment hooks.
 	_current_step = str(data.get("current_step", _current_step))
 	requested_scene_change = str(data.get("requested_scene_change", requested_scene_change))
+	_cancel_portable_continuation()
+	if _scheduler != null and data.has("scheduler"):
+		# Scheduler snapshots contain clock policy, not opaque Callable queues. Discard callbacks armed by fresh
+		# scene construction; GameState.deserialize re-arms every saved authoritative phase from remaining time.
+		_scheduler.clear()
+		_scheduler.deserialize(data.scheduler)
+	if _ui_scheduler != null and data.has("ui_scheduler"):
+		_ui_scheduler.clear()
+		_ui_scheduler.deserialize(data.ui_scheduler)
+	if data.has("game_state"):
+		_apply_saved_game_state(data.game_state)
+	_restore_dialogue_presenter_from_snapshot(data.get("dialogue", {}))
+	_notify_dialogue_presenters_after_load()
+	_restore_portable_continuation(data.get("portable_continuation", {}))
+
+
+func _restore_dialogue_presenter_from_snapshot(snapshot: Variant) -> void:
+	if _dialogue == null:
+		return
+	for connection in _dialogue.dialogue_finished.get_connections():
+		_dialogue.dialogue_finished.disconnect(connection.callable)
+	if snapshot is Dictionary and _dialogue.has_method("restore_state"):
+		_dialogue.call("restore_state", snapshot)
+	elif _dialogue.has_method("clear"):
+		_dialogue.call("clear")
+
+
+## GameState presenters rebuild before DialogueBox by design. Story presenters that
+## own a dialogue callback reconcile through this second, deliberately later seam.
+func _notify_dialogue_presenters_after_load() -> void:
+	var pending: Array[Node] = [self]
+	while not pending.is_empty():
+		var node: Node = pending.pop_back()
+		if node.is_queued_for_deletion():
+			continue
+		for child in node.get_children():
+			pending.append(child)
+		if node.has_method("on_dialogue_presenter_snapshot_restored"):
+			node.call("on_dialogue_presenter_snapshot_restored")
 
 func _apply_saved_game_state(snapshot: Dictionary) -> void:
 	if _game_state == null:
 		return
-	var characters_snapshot: Dictionary = snapshot.get("characters", {})
-	for char_id in characters_snapshot.keys():
+	_game_state.deserialize(snapshot)
+	for char_id_v in (snapshot.get("characters", {}) as Dictionary).keys():
+		var char_id := str(char_id_v)
 		if not _game_state.characters.has(char_id):
 			continue
-		var saved_char: Dictionary = characters_snapshot[char_id]
-		var position_arr: Array = saved_char.get("position", [0.0, 0.0, 0.0])
-		var position := Vector3(
-			float(position_arr[0]),
-			float(position_arr[1]),
-			float(position_arr[2])
-		)
-		var runtime_char: Dictionary = _game_state.characters[char_id]
-		runtime_char["position"] = position
-		runtime_char["move_speed"] = float(saved_char.get("move_speed", runtime_char.get("move_speed", 3.0)))
-		runtime_char["stats"] = saved_char.get("stats", {}).duplicate(true)
-		runtime_char["movement"] = null
-		if _game_state.grid != null:
-			runtime_char["grid_cell"] = _game_state.grid.world_to_grid(position)
 		var node := _find_character_node(char_id)
 		if node != null:
-			node.global_position = Vector3(position.x, node.global_position.y, position.z)
-	if snapshot.has("explored"):
-		_game_state._deserialize_explored(snapshot.explored)
+			# During an external traversal this is the saved interpolated render-space point, not an endpoint.
+			node.global_position = _game_state.get_render_position(char_id)
+	_notify_authoritative_presenters_after_load()
+	_refresh_chunk_item_presenters()
 
-func _find_character_node(char_id: String) -> Node3D:
+
+## GameState is the saved authority, but scene nodes still need a deterministic attachment seam after
+## it replaces its snapshot. Presenters use this callback to rebuild collision, animation, labels, or
+## scheduler handles from GameState; they must never use it to restore a second scene-local truth.
+func _notify_authoritative_presenters_after_load() -> void:
+	var pending: Array[Node] = [self]
+	while not pending.is_empty():
+		var node: Node = pending.pop_back()
+		# A streamed level may have been retired immediately before an older snapshot rebuilds its
+		# replacement. queue_free() leaves the discarded presenter in the tree until the end of the
+		# frame; letting it attach here would re-arm callbacks from the future we just rolled back.
+		if node.is_queued_for_deletion():
+			continue
+		for child in node.get_children():
+			pending.append(child)
+		if not node.has_method("on_game_state_snapshot_restored"):
+			continue
+		node.call("on_game_state_snapshot_restored")
+
+func get_game_state_character_node(char_id: String) -> Node3D:
+	var cached = _game_state_character_nodes.get(char_id)
+	if cached is Node3D and is_instance_valid(cached):
+		return cached as Node3D
+	_game_state_character_nodes.erase(char_id)
 	for node in find_children("*", "", true, false):
 		if not (node is Node3D):
 			continue
 		if "char_id" in node and str(node.char_id) == char_id:
-			return node
+			_game_state_character_nodes[char_id] = node
+			return node as Node3D
 	return null
+
+## Shallow copy: callers may inspect the stable Node references but cannot mutate
+## the sequence's registry. Invalidated entries are pruned on the single-node read.
+func get_game_state_character_nodes() -> Dictionary:
+	var live := {}
+	for raw_id in _game_state_character_nodes.keys():
+		var node := get_game_state_character_node(str(raw_id))
+		if node != null:
+			live[str(raw_id)] = node
+	return live
+
+
+## JSON-safe GameCamera framing for authoritative cutscenes. Scene-node targets are
+## encoded by stable character id and resolved through the live presenter registry.
+func capture_preview_camera_state() -> Dictionary:
+	var camera := _camera as Camera3D
+	if camera == null or not is_instance_valid(camera) \
+			or not camera.has_method("capture_view_state"):
+		return {}
+	var view_v: Variant = camera.call("capture_view_state")
+	if not (view_v is Dictionary):
+		return {}
+	var view := view_v as Dictionary
+	var target_v: Variant = view.get("target", null)
+	var target_id := ""
+	if target_v != null:
+		if not (target_v is Node3D) or not is_instance_valid(target_v):
+			return {}
+		target_id = _preview_camera_target_id(target_v as Node3D)
+		if target_id.is_empty():
+			return {}
+	var lock_override_v: Variant = view.get("lock_offset_override", null)
+	var transform_v: Variant = view.get("global_transform", camera.global_transform)
+	if lock_override_v != null and not (lock_override_v is Vector3):
+		return {}
+	if not (transform_v is Transform3D):
+		return {}
+	var encoded := {
+		"target_id": target_id,
+		"follow_offset": _preview_camera_v3_data(view.get("follow_offset", null)),
+		"pan_offset": _preview_camera_v3_data(view.get("pan_offset", null)),
+		"view_yaw": view.get("view_yaw", null),
+		"view_zoom": view.get("view_zoom", null),
+		"locked": view.get("locked", null),
+		"lock_position": _preview_camera_v3_data(view.get("lock_position", null)),
+		"lock_offset_override": (
+			_preview_camera_v3_data(lock_override_v) if lock_override_v is Vector3 else null
+		),
+		"global_transform": _preview_camera_transform_data(transform_v as Transform3D),
+	}
+	return encoded if valid_preview_camera_state(encoded) else {}
+
+
+func valid_preview_camera_state(value: Variant) -> bool:
+	if not (value is Dictionary):
+		return false
+	var state := value as Dictionary
+	if not _preview_exact_string_keys(state, PREVIEW_CAMERA_STATE_KEYS):
+		return false
+	if not (state.get("target_id", null) is String) \
+			or not (state.get("locked", null) is bool):
+		return false
+	var target_id := str(state.get("target_id", ""))
+	if not target_id.is_empty() and get_game_state_character_node(target_id) == null:
+		return false
+	for key in ["follow_offset", "pan_offset", "lock_position"]:
+		if not _preview_camera_v3(state.get(key, null)).is_finite():
+			return false
+	var lock_override_v: Variant = state.get("lock_offset_override", null)
+	if lock_override_v != null and not _preview_camera_v3(lock_override_v).is_finite():
+		return false
+	var yaw_v: Variant = state.get("view_yaw", null)
+	var zoom_v: Variant = state.get("view_zoom", null)
+	if not _preview_finite_number(yaw_v) or not _preview_finite_number(zoom_v):
+		return false
+	var zoom := float(zoom_v)
+	if zoom <= 0.0 or zoom > 10.0:
+		return false
+	var transform_v: Variant = state.get("global_transform", null)
+	if not (transform_v is Dictionary):
+		return false
+	var encoded_transform := transform_v as Dictionary
+	if not _preview_exact_string_keys(encoded_transform, PREVIEW_CAMERA_TRANSFORM_KEYS):
+		return false
+	for key in PREVIEW_CAMERA_TRANSFORM_KEYS:
+		if not _preview_camera_v3(encoded_transform.get(key, null)).is_finite():
+			return false
+	return absf(_preview_camera_transform(encoded_transform).basis.determinant()) > 0.0001
+
+
+func restore_preview_camera_state(value: Variant) -> bool:
+	var camera := _camera as Camera3D
+	if camera == null or not is_instance_valid(camera) \
+			or not camera.has_method("restore_view_state") \
+			or not valid_preview_camera_state(value):
+		return false
+	var state := value as Dictionary
+	var target: Node3D = null
+	var target_id := str(state.get("target_id", ""))
+	if not target_id.is_empty():
+		target = get_game_state_character_node(target_id)
+		if target == null:
+			return false
+	var lock_override_v: Variant = state.get("lock_offset_override", null)
+	camera.call("restore_view_state", {
+		"target": target,
+		"follow_offset": _preview_camera_v3(state.get("follow_offset", null)),
+		"pan_offset": _preview_camera_v3(state.get("pan_offset", null)),
+		"view_yaw": float(state.get("view_yaw", 0.0)),
+		"view_zoom": float(state.get("view_zoom", 1.0)),
+		"locked": bool(state.get("locked", false)),
+		"lock_position": _preview_camera_v3(state.get("lock_position", null)),
+		"lock_offset_override": (
+			_preview_camera_v3(lock_override_v) if lock_override_v != null else null
+		),
+		"global_transform": _preview_camera_transform(state.get("global_transform", null)),
+	})
+	return true
+
+
+func get_preview_game_camera() -> Camera3D:
+	return _camera as Camera3D
+
+
+## Acquire presentation/input ownership for one named cutscene. Repeating begin/end
+## for the same owner is harmless; another owner cannot steal an active lease.
+func begin_preview_cutscene_ownership(
+	owner_id: String,
+	cutscene_camera: Camera3D,
+	return_camera_state: Dictionary = {},
+) -> bool:
+	owner_id = owner_id.strip_edges()
+	if owner_id.is_empty() or cutscene_camera == null or not is_instance_valid(cutscene_camera) \
+			or not cutscene_camera.is_inside_tree():
+		return false
+	if not _preview_cutscene_ownership.is_empty():
+		return str(_preview_cutscene_ownership.get("owner_id", "")) == owner_id \
+			and _preview_cutscene_ownership.get("cutscene_camera", null) == cutscene_camera
+	var game_camera := _camera as Camera3D
+	if game_camera == null or game_camera == cutscene_camera or not is_instance_valid(game_camera):
+		return false
+	var saved_camera := return_camera_state.duplicate(true)
+	if saved_camera.is_empty():
+		saved_camera = capture_preview_camera_state()
+	if not valid_preview_camera_state(saved_camera):
+		return false
+	var viewport := get_viewport()
+	var characters := _preview_cutscene_character_nodes()
+	var move_enabled := {}
+	for character_id in characters:
+		var character: Node3D = characters[character_id]
+		if character.has_method("is_move_enabled") \
+				and character.has_method("restore_move_input_enabled"):
+			move_enabled[str(character_id)] = bool(character.call("is_move_enabled"))
+	var hud := _chunk_host_hud()
+	_preview_cutscene_ownership = {
+		"owner_id": owner_id,
+		"cutscene_camera": cutscene_camera,
+		"return_camera": saved_camera,
+		"move_enabled": move_enabled,
+		"game_camera_process": game_camera.is_processing(),
+		"game_camera_unhandled_input": game_camera.is_processing_unhandled_input(),
+		"selection_process_mode": int(_selection_controller.process_mode) \
+			if is_instance_valid(_selection_controller) else -1,
+		"touch_process_mode": int(_touch_modes.process_mode) \
+			if is_instance_valid(_touch_modes) else -1,
+		"hud_process_mode": int(hud.process_mode) if is_instance_valid(hud) else -1,
+		"host_input": is_processing_input(),
+		"host_unhandled_input": is_processing_unhandled_input(),
+		"host_unhandled_key_input": is_processing_unhandled_key_input(),
+		"physics_object_picking": viewport.physics_object_picking,
+	}
+	if is_instance_valid(_selection_controller):
+		if _selection_controller.has_method("cancel_command_hold"):
+			_selection_controller.call("cancel_command_hold")
+		_selection_controller.process_mode = Node.PROCESS_MODE_DISABLED
+	if is_instance_valid(_touch_modes):
+		if _touch_modes.has_method("_cancel_action_command_proxy"):
+			_touch_modes.call("_cancel_action_command_proxy")
+		_touch_modes.process_mode = Node.PROCESS_MODE_DISABLED
+	if is_instance_valid(hud):
+		hud.process_mode = Node.PROCESS_MODE_DISABLED
+	for character_id in move_enabled:
+		var character: Node3D = characters.get(character_id, null)
+		if character != null and is_instance_valid(character):
+			character.call("restore_move_input_enabled", false)
+	viewport.physics_object_picking = false
+	set_process_input(false)
+	set_process_unhandled_key_input(false)
+	set_process_unhandled_input(true)
+	game_camera.set_process(false)
+	game_camera.set_process_unhandled_input(false)
+	cutscene_camera.make_current()
+	return true
+
+
+func end_preview_cutscene_ownership(owner_id: String) -> bool:
+	owner_id = owner_id.strip_edges()
+	if _preview_cutscene_ownership.is_empty():
+		return not owner_id.is_empty() and owner_id == _preview_cutscene_last_owner_id
+	if str(_preview_cutscene_ownership.get("owner_id", "")) != owner_id:
+		return false
+	var lease := _preview_cutscene_ownership
+	var game_camera := _camera as Camera3D
+	if game_camera != null and is_instance_valid(game_camera):
+		restore_preview_camera_state(lease.get("return_camera", {}))
+		game_camera.make_current()
+		game_camera.set_process(bool(lease.get("game_camera_process", true)))
+		game_camera.set_process_unhandled_input(
+			bool(lease.get("game_camera_unhandled_input", true)))
+	if is_instance_valid(_selection_controller):
+		var mode := int(lease.get("selection_process_mode", -1))
+		if mode >= 0:
+			_selection_controller.process_mode = mode as Node.ProcessMode
+	if is_instance_valid(_touch_modes):
+		var mode := int(lease.get("touch_process_mode", -1))
+		if mode >= 0:
+			_touch_modes.process_mode = mode as Node.ProcessMode
+	var hud := _chunk_host_hud()
+	if is_instance_valid(hud):
+		var mode := int(lease.get("hud_process_mode", -1))
+		if mode >= 0:
+			hud.process_mode = mode as Node.ProcessMode
+	for raw_id in (lease.get("move_enabled", {}) as Dictionary):
+		var character := get_game_state_character_node(str(raw_id))
+		if character != null and character.has_method("restore_move_input_enabled"):
+			character.call("restore_move_input_enabled", bool(lease.move_enabled[raw_id]))
+	get_viewport().physics_object_picking = bool(lease.get("physics_object_picking", true))
+	set_process_input(bool(lease.get("host_input", false)))
+	set_process_unhandled_key_input(bool(lease.get("host_unhandled_key_input", false)))
+	set_process_unhandled_input(bool(lease.get("host_unhandled_input", true)))
+	_preview_cutscene_ownership.clear()
+	_preview_cutscene_last_owner_id = owner_id
+	return true
+
+
+func is_preview_cutscene_input_owned(owner_id := "") -> bool:
+	if _preview_cutscene_ownership.is_empty():
+		return false
+	return owner_id == "" or str(_preview_cutscene_ownership.get("owner_id", "")) == owner_id
+
+
+## GameHUD is disabled during a cutscene lease so its gameplay shortcuts cannot leak
+## through. This narrow base handler retains the shared Space planning pause; F remains
+## an Input state read by _compute_speed and needs no event callback.
+func _unhandled_input(event: InputEvent) -> void:
+	if not is_preview_cutscene_input_owned() or not event.is_action_pressed("pause"):
+		return
+	var paused := not (_scheduler != null and _scheduler.is_paused())
+	if has_method("_on_pause_toggled"):
+		call("_on_pause_toggled", paused)
+	elif _scheduler != null:
+		if paused:
+			_scheduler.pause()
+		else:
+			_scheduler.resume()
+		var hud := _chunk_host_hud()
+		if hud != null and hud.has_method("set_paused"):
+			hud.call("set_paused", _scheduler.is_paused())
+	get_viewport().set_input_as_handled()
+
+
+## Capture only drawable descendants, never the character root. Hiding a cutscene
+## proxy therefore cannot alter presence, movement, fog membership, or GameState.
+## Schema: {character_id: {relative_node_path: visible_bool}}.
+func capture_preview_character_visual_visibility(character_ids: Array) -> Dictionary:
+	var result := {}
+	for raw_id in character_ids:
+		var character_id := str(raw_id)
+		var root := get_game_state_character_node(character_id)
+		if character_id.is_empty() or root == null:
+			return {}
+		var states := {}
+		for visual in _preview_character_visuals(root):
+			states[str(root.get_path_to(visual))] = bool(visual.visible)
+		result[character_id] = states
+	return result
+
+
+func set_preview_character_visual_visibility(character_ids: Array, visible: bool) -> bool:
+	var visuals: Array[Node3D] = []
+	for raw_id in character_ids:
+		var root := get_game_state_character_node(str(raw_id))
+		if root == null:
+			return false
+		visuals.append_array(_preview_character_visuals(root))
+	for visual in visuals:
+		visual.visible = visible
+	return true
+
+
+func restore_preview_character_visual_visibility(value: Variant) -> bool:
+	if not (value is Dictionary):
+		return false
+	var changes: Array[Dictionary] = []
+	for raw_id in (value as Dictionary):
+		if not (raw_id is String):
+			return false
+		var root := get_game_state_character_node(str(raw_id))
+		var states_v: Variant = (value as Dictionary).get(raw_id, null)
+		if root == null or not (states_v is Dictionary):
+			return false
+		for raw_path in (states_v as Dictionary):
+			var visible_v: Variant = (states_v as Dictionary).get(raw_path, null)
+			if not (raw_path is String) or not (visible_v is bool):
+				return false
+			var path := NodePath(str(raw_path))
+			var visual := root.get_node_or_null(path) as Node3D
+			if path.is_absolute() or visual == null or not root.is_ancestor_of(visual) \
+					or not (visual is MeshInstance3D or visual is Label3D):
+				return false
+			changes.append({"node": visual, "visible": visible_v})
+	for change in changes:
+		(change.node as Node3D).visible = bool(change.visible)
+	return true
+
+
+func _preview_cutscene_character_nodes() -> Dictionary:
+	var characters := get_game_state_character_nodes()
+	if _player is Node3D and is_instance_valid(_player):
+		var player_id := str(_player.get("char_id"))
+		if not player_id.is_empty():
+			characters[player_id] = _player
+	return characters
+
+
+func _preview_character_visuals(root: Node3D) -> Array[Node3D]:
+	var result: Array[Node3D] = []
+	for descendant in root.find_children("*", "", true, false):
+		if descendant is MeshInstance3D or descendant is Label3D:
+			result.append(descendant as Node3D)
+	return result
+
+
+func _preview_camera_target_id(target: Node3D) -> String:
+	var characters := _preview_cutscene_character_nodes()
+	for raw_id in characters:
+		if characters.get(raw_id, null) == target:
+			return str(raw_id)
+	return ""
+
+
+static func _preview_exact_string_keys(value: Dictionary, expected: Array[String]) -> bool:
+	if value.size() != expected.size():
+		return false
+	for raw_key in value:
+		if not (raw_key is String) or not expected.has(str(raw_key)):
+			return false
+	return true
+
+
+static func _preview_finite_number(value: Variant) -> bool:
+	return typeof(value) in [TYPE_INT, TYPE_FLOAT] and is_finite(float(value))
+
+
+static func _preview_camera_v3_data(value: Variant) -> Array:
+	if not (value is Vector3) or not (value as Vector3).is_finite():
+		return []
+	var vector := value as Vector3
+	return [vector.x, vector.y, vector.z]
+
+
+static func _preview_camera_v3(value: Variant) -> Vector3:
+	if not (value is Array) or (value as Array).size() != 3:
+		return Vector3.INF
+	var encoded := value as Array
+	for component in encoded:
+		if not _preview_finite_number(component):
+			return Vector3.INF
+	return Vector3(float(encoded[0]), float(encoded[1]), float(encoded[2]))
+
+
+static func _preview_camera_transform_data(value: Transform3D) -> Dictionary:
+	return {
+		"basis_x": _preview_camera_v3_data(value.basis.x),
+		"basis_y": _preview_camera_v3_data(value.basis.y),
+		"basis_z": _preview_camera_v3_data(value.basis.z),
+		"origin": _preview_camera_v3_data(value.origin),
+	}
+
+
+static func _preview_camera_transform(value: Variant) -> Transform3D:
+	if not (value is Dictionary):
+		return Transform3D.IDENTITY
+	var encoded := value as Dictionary
+	return Transform3D(Basis(
+		_preview_camera_v3(encoded.get("basis_x", null)),
+		_preview_camera_v3(encoded.get("basis_y", null)),
+		_preview_camera_v3(encoded.get("basis_z", null))),
+		_preview_camera_v3(encoded.get("origin", null)))
+
+func _find_character_node(char_id: String) -> Node3D:
+	return get_game_state_character_node(char_id)
 
 func set_capture_pause(active: bool) -> void:
 	if _scheduler == null:
@@ -855,6 +1459,13 @@ func _register_gs_character(id: String, node: Node3D, speed: float = 3.0, stats:
 	_game_state.register_character(id, node.position, speed, stats)
 	node.game_state = _game_state
 	node.char_id = id
+	_game_state_character_nodes[id] = node
+	# Characters streamed after the scene-level manager was created join the same
+	# staged body-prewarm queue as the launch roster. Enemy/NPC filtering lives in
+	# the reusable manager, not in each sequence.
+	if _downed_body_manager != null and is_instance_valid(_downed_body_manager) \
+			and _downed_body_manager.has_method("prepare_character"):
+		_downed_body_manager.call("prepare_character", id, node)
 	if node.has_method("set_scheduler"):
 		node.call("set_scheduler", _scheduler)
 	if node == _player and node.has_method("bind_interaction_root"):
@@ -1039,6 +1650,7 @@ func _create_interactable(
 		"hold_time": dwell,
 		"one_shot": one_shot,
 		"requires_hold": interactable_type == Interactable.InteractableType.HOLD_ACTION,
+		"interactable_type": interactable_type,
 		"tutorial_label": label,
 	}
 	if interactable_id != "":
@@ -1348,7 +1960,164 @@ func _exploration_focus_point(focus_node: Node3D) -> Vector3:
 func _fade_from(color: Color, duration: float, next_func: Callable, next_tag: String) -> void:
 	_fade_rect.color = color
 	_fade_start_tick = _scheduler.get_current_tick()
-	_scheduler.schedule_after(duration, next_func, next_tag)
+	var next_method := _portable_self_method(next_func)
+	if next_method == "":
+		# Compatibility for presentation-only callers. Gameplay continuations should always be a
+		# named method on the sequence so a fresh process can reconstruct the callback.
+		_scheduler.schedule_after(duration, next_func, next_tag)
+		return
+	_set_portable_continuation({
+		"kind": "fade_from",
+		"owner_step": _current_step,
+		"next_method": next_method,
+		"tag": next_tag,
+		"start_tick": _fade_start_tick,
+		"deadline": _fade_start_tick + maxf(0.0, duration),
+		"duration": maxf(0.0, duration),
+		"color": [color.r, color.g, color.b, color.a],
+	})
+	_arm_portable_method_continuation(_portable_continuation)
+
+
+## Schedule one linear story hand-off as portable state rather than leaving its only continuation
+## inside EventScheduler's deliberately non-serialized Callable heap. This is for causal sequence
+## gates (a door unlock, the next encounter phase, a rest hand-off), not parallel presentation
+## flourishes. A sequence has one such linear future at a time, matching `_portable_continuation`.
+func _schedule_portable_method(
+		delay: float,
+		next_func: Callable,
+		next_tag: String
+) -> bool:
+	if _scheduler == null:
+		return false
+	var next_method := _portable_self_method(next_func)
+	if next_method == "":
+		# Preserve the old preview-only escape hatch, while returning false so callers and tests can
+		# distinguish it from a continuation that survives a fresh-process load.
+		_scheduler.schedule_after(maxf(0.0, delay), next_func, next_tag)
+		return false
+	var now := float(_scheduler.get_current_tick())
+	_set_portable_continuation({
+		"kind": "method_delay",
+		"owner_step": _current_step,
+		"next_method": next_method,
+		"tag": next_tag,
+		"start_tick": now,
+		"deadline": now + maxf(0.0, delay),
+	})
+	_arm_portable_method_continuation(_portable_continuation)
+	return true
+
+
+func _portable_self_method(next_func: Callable) -> String:
+	if not next_func.is_valid() or next_func.get_object() != self:
+		return ""
+	var method := str(next_func.get_method())
+	if method == "" or method.begins_with("<") or not has_method(method):
+		return ""
+	return method
+
+
+func _set_portable_continuation(record: Dictionary) -> void:
+	_cancel_portable_continuation()
+	_portable_continuation_serial += 1
+	_portable_continuation = record.duplicate(true)
+	_portable_continuation["version"] = PORTABLE_CONTINUATION_VERSION
+	_portable_continuation["serial"] = _portable_continuation_serial
+
+
+func _cancel_portable_continuation() -> void:
+	if not _portable_continuation.is_empty():
+		var tag := str(_portable_continuation.get("tag", ""))
+		if tag != "" and _scheduler != null and _scheduler.has_method("cancel_tag"):
+			_scheduler.cancel_tag(tag)
+	if _dialogue != null:
+		var callback := Callable(self, "_on_dialogue_chain_finished")
+		if _dialogue.dialogue_finished.is_connected(callback):
+			_dialogue.dialogue_finished.disconnect(callback)
+	_portable_continuation.clear()
+
+
+func _arm_portable_method_continuation(record: Dictionary) -> bool:
+	if _scheduler == null or not _valid_portable_method_record(record):
+		return false
+	var now := float(_scheduler.get_current_tick())
+	var deadline := float(record.get("deadline", now))
+	var tag := str(record.get("tag", "tutorial_portable_continuation"))
+	if tag == "":
+		tag = "tutorial_portable_continuation"
+	_scheduler.cancel_tag(tag)
+	_scheduler.schedule_at(
+		maxf(now + PORTABLE_CONTINUATION_EPSILON, deadline),
+		_finish_portable_method_continuation.bind(int(record.get("serial", 0))),
+		tag
+	)
+	return true
+
+
+func _valid_portable_method_record(record: Dictionary) -> bool:
+	if int(record.get("version", 0)) != PORTABLE_CONTINUATION_VERSION:
+		return false
+	var next_method := str(record.get("next_method", ""))
+	return next_method != "" and not next_method.begins_with("<") and has_method(next_method)
+
+
+func _finish_portable_method_continuation(serial: int) -> void:
+	if _portable_continuation.is_empty() \
+			or int(_portable_continuation.get("serial", -1)) != serial:
+		return
+	var record := _portable_continuation.duplicate(true)
+	if not _valid_portable_method_record(record):
+		_cancel_portable_continuation()
+		return
+	var method := str(record.get("next_method", ""))
+	_portable_continuation.clear()
+	call(method)
+
+
+func _restore_portable_continuation(snapshot: Variant) -> void:
+	_cancel_portable_continuation()
+	if not snapshot is Dictionary:
+		return
+	var record := (snapshot as Dictionary).duplicate(true)
+	if int(record.get("version", 0)) != PORTABLE_CONTINUATION_VERSION:
+		return
+	if str(record.get("owner_step", _current_step)) != _current_step:
+		# A subclass may reject or rewind malformed gameplay authority while rebuilding GameState.
+		# Never re-arm a continuation owned by the discarded step.
+		return
+	var serial := maxi(1, int(record.get("serial", 1)))
+	_portable_continuation_serial = maxi(_portable_continuation_serial, serial)
+	_portable_continuation = record
+	_restoring_portable_continuation = true
+	match str(record.get("kind", "")):
+		"fade_from":
+			_restore_portable_fade(record)
+		"method_delay":
+			if not _arm_portable_method_continuation(record):
+				_cancel_portable_continuation()
+		"dialogue_chain":
+			_restore_portable_dialogue_chain(record)
+		_:
+			_cancel_portable_continuation()
+	_restoring_portable_continuation = false
+
+
+func _restore_portable_fade(record: Dictionary) -> void:
+	if _fade_rect == null or not _valid_portable_method_record(record):
+		_cancel_portable_continuation()
+		return
+	_fade_start_tick = float(record.get("start_tick", _scheduler.get_current_tick()))
+	var rgba: Array = record.get("color", [])
+	if rgba.size() != 4:
+		_cancel_portable_continuation()
+		return
+	var color := Color(float(rgba[0]), float(rgba[1]), float(rgba[2]), float(rgba[3]))
+	var duration := maxf(0.0, float(record.get("duration", 0.0)))
+	var elapsed := maxf(0.0, float(_scheduler.get_current_tick()) - _fade_start_tick)
+	color.a = 0.0 if duration <= 0.0 else 1.0 - clampf(elapsed / duration, 0.0, 1.0)
+	_fade_rect.color = color
+	_arm_portable_method_continuation(record)
 
 func _update_fade_in(duration: float = 2.0) -> void:
 	var elapsed := _scheduler.get_current_tick() - _fade_start_tick
@@ -1420,6 +2189,7 @@ func _enter_step(step_name: String) -> bool:
 	# is removed while the gameplay scheduler remains paused forever.
 	if _exploration_focus_active:
 		_finish_exploration_focus()
+	_cancel_portable_continuation()
 	_current_step = step_name
 	var beat_id := StringName(step_name)
 	if _story_beat_runner.has_beat(beat_id):
@@ -1465,31 +2235,154 @@ func _current_story_step_generation() -> int:
 
 ## Play dialogue keys in order, then call next_func.
 func _dialogue_chain(keys: Array, next_func: Callable, delay_between := 0.0) -> void:
-	_dlg_chain_keys = keys
+	_dlg_chain_keys = keys.duplicate()
 	_dlg_chain_index = 0
 	_dlg_chain_next = next_func
 	_dlg_chain_delay = delay_between
+	var next_method := _portable_self_method(next_func)
+	if next_method != "":
+		_set_portable_continuation({
+			"kind": "dialogue_chain",
+			"owner_step": _current_step,
+			"next_method": next_method,
+			"tag": "dlg_chain",
+			"phase": "ready",
+			"keys": _dlg_chain_keys.duplicate(),
+			"index": 0,
+			"line_index": -1,
+			"delay": maxf(0.0, delay_between),
+			"deadline": -1.0,
+		})
 	_dlg_chain_play_next()
 
 func _dlg_chain_play_next() -> void:
 	if _dlg_chain_index >= _dlg_chain_keys.size():
-		if _dlg_chain_next.is_valid():
+		if _portable_continuation.get("kind", "") == "dialogue_chain":
+			_portable_continuation["phase"] = "complete_pending"
+			_portable_continuation["deadline"] = float(_scheduler.get_current_tick())
+			_portable_continuation["tag"] = "dlg_chain_complete"
+			_arm_portable_method_continuation(_portable_continuation)
+		elif _dlg_chain_next.is_valid():
 			_scheduler.schedule_after(0.0, _dlg_chain_next, "dlg_chain_complete")
 		return
 	var key: String = _dlg_chain_keys[_dlg_chain_index]
 	_dlg_chain_index += 1
+	if _portable_continuation.get("kind", "") == "dialogue_chain":
+		_portable_continuation["phase"] = "line"
+		_portable_continuation["index"] = _dlg_chain_index
+		_portable_continuation["line_index"] = _dlg_chain_index - 1
+		_portable_continuation["deadline"] = -1.0
+		_portable_continuation["tag"] = "dlg_chain"
 	DialogueData.say_to(_dialogue, key)
 	# The dialogue box owns UI timing; only stateful follow-ups enter the scheduler.
-	_dialogue.dialogue_finished.connect(func():
-		if _dlg_chain_delay > 0.0 and _dlg_chain_index < _dlg_chain_keys.size():
-			_scheduler.schedule_after(_dlg_chain_delay, _dlg_chain_play_next, "dlg_chain")
+	var callback := Callable(self, "_on_dialogue_chain_finished")
+	if _dialogue.dialogue_finished.is_connected(callback):
+		_dialogue.dialogue_finished.disconnect(callback)
+	_dialogue.dialogue_finished.connect(callback, CONNECT_ONE_SHOT)
+
+
+func _on_dialogue_chain_finished() -> void:
+	if _dlg_chain_delay > 0.0 and _dlg_chain_index < _dlg_chain_keys.size():
+		if _portable_continuation.get("kind", "") == "dialogue_chain":
+			_portable_continuation["phase"] = "delay"
+			_portable_continuation["deadline"] = (
+				float(_scheduler.get_current_tick()) + _dlg_chain_delay
+			)
+			_portable_continuation["tag"] = "dlg_chain"
+			_arm_portable_dialogue_delay(_portable_continuation)
 		else:
+			_scheduler.schedule_after(_dlg_chain_delay, _dlg_chain_play_next, "dlg_chain")
+	else:
+		_dlg_chain_play_next()
+
+
+func _arm_portable_dialogue_delay(record: Dictionary) -> bool:
+	if _scheduler == null or str(record.get("kind", "")) != "dialogue_chain":
+		return false
+	var serial := int(record.get("serial", 0))
+	if serial <= 0:
+		return false
+	var now := float(_scheduler.get_current_tick())
+	_scheduler.cancel_tag("dlg_chain")
+	_scheduler.schedule_at(
+		maxf(now + PORTABLE_CONTINUATION_EPSILON, float(record.get("deadline", now))),
+		_resume_portable_dialogue_chain.bind(serial),
+		"dlg_chain"
+	)
+	return true
+
+
+func _resume_portable_dialogue_chain(serial: int) -> void:
+	if _portable_continuation.get("kind", "") != "dialogue_chain" \
+			or int(_portable_continuation.get("serial", -1)) != serial:
+		return
+	_portable_continuation["phase"] = "ready"
+	_portable_continuation["deadline"] = -1.0
+	_dlg_chain_play_next()
+
+
+func _restore_portable_dialogue_chain(record: Dictionary) -> void:
+	if _dialogue == null or not _valid_portable_method_record(record):
+		_cancel_portable_continuation()
+		return
+	var raw_keys: Variant = record.get("keys", [])
+	if not raw_keys is Array:
+		_cancel_portable_continuation()
+		return
+	_dlg_chain_keys = (raw_keys as Array).duplicate()
+	_dlg_chain_index = clampi(int(record.get("index", 0)), 0, _dlg_chain_keys.size())
+	_dlg_chain_delay = maxf(0.0, float(record.get("delay", 0.0)))
+	_dlg_chain_next = Callable(self, str(record.get("next_method", "")))
+	match str(record.get("phase", "ready")):
+		"line":
+			if _dialogue.has_method("is_active") and bool(_dialogue.call("is_active")):
+				var callback := Callable(self, "_on_dialogue_chain_finished")
+				if not _dialogue.dialogue_finished.is_connected(callback):
+					_dialogue.dialogue_finished.connect(callback, CONNECT_ONE_SHOT)
+			else:
+				# Malformed/legacy dialogue presentation cannot silently consume its only line.
+				_dlg_chain_index = clampi(
+					int(record.get("line_index", _dlg_chain_index - 1)),
+					0,
+					maxi(0, _dlg_chain_keys.size() - 1)
+				)
+				_dlg_chain_play_next()
+		"delay":
+			_arm_portable_dialogue_delay(record)
+		"complete_pending":
+			_arm_portable_method_continuation(record)
+		"ready":
 			_dlg_chain_play_next()
-	, CONNECT_ONE_SHOT)
+		_:
+			_cancel_portable_continuation()
 
 # --- Chunk Management ---
 
 var _chunks: Dictionary = {}
+
+## Instantiate a render-heavy authored scene before the first rendered frame, but keep it detached
+## so `_ready`, physics, input, and processing still begin only at its ordinary story boundary.
+## This moves unavoidable PackedScene allocation into scene loading without changing authored assets.
+func _prewarm_detached_scene(key: StringName, scene: PackedScene) -> Node:
+	var cached: Node = _detached_scene_prewarm.get(key)
+	if is_instance_valid(cached):
+		return cached
+	if scene == null:
+		return null
+	var prewarm_started := PerformanceTrace.begin()
+	cached = scene.instantiate()
+	PerformanceTrace.end(&"draw", &"sequence.detached_scene_prewarm", prewarm_started,
+		str(key), 1 if cached != null else 0)
+	if cached != null:
+		_detached_scene_prewarm[key] = cached
+	return cached
+
+func _take_prewarmed_scene(key: StringName, fallback_scene: PackedScene) -> Node:
+	var cached: Node = _detached_scene_prewarm.get(key)
+	_detached_scene_prewarm.erase(key)
+	if is_instance_valid(cached):
+		return cached
+	return fallback_scene.instantiate() if fallback_scene != null else null
 
 ## Exposed to hosted chunks so their interactables register with the same data
 ## layer the rest of the game uses (SceneChunk reads these through `host`).
@@ -1529,7 +2422,29 @@ func get_preview_dialogue_box() -> Node:
 	return _dialogue
 
 func get_preview_engram_overlay() -> Node:
+	return _ensure_engram_overlay()
+
+
+func _ensure_engram_overlay() -> Node:
+	if is_instance_valid(_engram_overlay):
+		return _engram_overlay
+	if not is_instance_valid(_lazy_sequence_ui):
+		return null
+	var started := PerformanceTrace.begin()
+	_engram_overlay = _lazy_sequence_ui.ensure_engram_overlay()
+	PerformanceTrace.end(&"draw", &"sequence.ui.engram_first_open", started, name, 1)
 	return _engram_overlay
+
+
+func _ensure_pause_menu() -> Node:
+	if is_instance_valid(_pause_menu):
+		return _pause_menu
+	if not is_instance_valid(_lazy_sequence_ui):
+		return null
+	var started := PerformanceTrace.begin()
+	_pause_menu = _lazy_sequence_ui.ensure_pause_menu()
+	PerformanceTrace.end(&"draw", &"sequence.ui.pause_first_open", started, name, 1)
+	return _pause_menu
 
 func get_preview_scheduler_tick() -> float:
 	return _scheduler.get_current_tick() if _scheduler != null else 0.0
@@ -1639,7 +2554,11 @@ var _chunk_item_nodes: Dictionary = {}
 func spawn_preview_item(item_type: String, position: Vector3, properties: Dictionary = {}) -> String:
 	if _game_state == null:
 		return ""
-	var item_id := _game_state.spawn_item(item_type, position, properties)
+	var item_properties := properties.duplicate(true)
+	# This survives GameState serialization so a fresh scene can reconstruct the same presenter
+	# without guessing which items happened to have been spawned through this convenience method.
+	item_properties["tutorial_item_presenter"] = true
+	var item_id := _game_state.spawn_item(item_type, position, item_properties)
 	_ensure_chunk_item_node(item_id)
 	return item_id
 
@@ -1710,7 +2629,8 @@ func _ensure_chunk_item_node(item_id: String) -> void:
 	sphere.height = 0.44
 	node.mesh = sphere
 	var mat := StandardMaterial3D.new()
-	mat.albedo_color = properties.get("visual_color", Color(0.78, 0.78, 0.82))
+	mat.albedo_color = _tutorial_item_visual_color(
+		properties.get("visual_color", Color(0.78, 0.78, 0.82)))
 	mat.emission_enabled = true
 	mat.emission = (mat.albedo_color as Color).lightened(0.1)
 	mat.emission_energy_multiplier = 0.24
@@ -1719,6 +2639,72 @@ func _ensure_chunk_item_node(item_id: String) -> void:
 	add_child(node)
 	node.global_position = Vector3(pos.x, pos.y + 0.42, pos.z)
 	_chunk_item_nodes[item_id] = node
+
+
+func _tutorial_item_visual_color(value: Variant) -> Color:
+	if value is Color:
+		return value as Color
+	if value is Array:
+		var channels := value as Array
+		if channels.size() >= 3:
+			return Color(
+				float(channels[0]), float(channels[1]), float(channels[2]),
+				float(channels[3]) if channels.size() >= 4 else 1.0)
+	# JSON round-trips Variant Colors as "(r, g, b, a)". Parse that explicit form instead
+	# of passing it to Color.from_string(), where it is treated as an invalid named color.
+	if value is String:
+		var encoded := str(value).strip_edges()
+		if encoded.begins_with("(") and encoded.ends_with(")"):
+			var parts := encoded.trim_prefix("(").trim_suffix(")").split(",")
+			if parts.size() >= 3:
+				return Color(
+					float(parts[0]), float(parts[1]), float(parts[2]),
+					float(parts[3]) if parts.size() >= 4 else 1.0)
+	return Color(0.78, 0.78, 0.82)
+
+
+## Project the minimal tutorial item visuals from GameState every frame. The number of these items in
+## a tutorial scene is tiny, and this closes a much more important truthfulness gap: the old sphere
+## stayed at its spawn point after the actual item entered a hand, and stale future spheres survived
+## snapshot rollback. Items not marked for this presenter remain owned by their authored scene views.
+func _refresh_chunk_item_presenters() -> void:
+	if _game_state == null:
+		return
+	for item_id_v in _chunk_item_nodes.keys().duplicate():
+		var item_id := str(item_id_v)
+		if _game_state.items.has(item_id):
+			continue
+		var stale_node: Node3D = _chunk_item_nodes.get(item_id) as Node3D
+		if is_instance_valid(stale_node):
+			stale_node.queue_free()
+		_chunk_item_nodes.erase(item_id)
+	for item_id_v in _game_state.items.keys():
+		var item_id := str(item_id_v)
+		var item: Dictionary = _game_state.items[item_id]
+		var properties: Dictionary = item.get("properties", {})
+		if not bool(properties.get("tutorial_item_presenter", false)):
+			continue
+		_ensure_chunk_item_node(item_id)
+		var node: Node3D = _chunk_item_nodes.get(item_id) as Node3D
+		if not is_instance_valid(node):
+			continue
+		var location := str(item.get("location", "ground"))
+		match location:
+			"ground":
+				node.visible = true
+				var pos: Vector3 = item.get("position", Vector3.ZERO)
+				var visual_y := float(properties.get("ground_visual_y", 0.42))
+				node.global_position = Vector3(pos.x, pos.y + visual_y, pos.z)
+			"hand":
+				var holder := str(item.get("holder", ""))
+				var holder_node := _find_character_node(holder)
+				node.visible = holder_node != null
+				if holder_node != null:
+					node.global_position = holder_node.global_position + Vector3(0.38, 1.05, 0.1)
+			_:
+				# Internalized/collected items remain authoritative inventory without pretending to
+				# be loose world geometry.
+				node.visible = false
 
 ## Register a chunk interactable with the scene's input/feedback wiring (the preview host's
 ## register_preview_interactable equivalent): give it the dialogue box + active character,
@@ -1775,7 +2761,9 @@ func _load_chunk(chunk_name: String) -> Node3D:
 		return _chunks[chunk_name]
 	var chunk := _create_chunk_root(chunk_name)
 	if _get_chunk_scene(chunk_name) == null:
+		var build_started := PerformanceTrace.begin()
 		_build_chunk(chunk_name, chunk)
+		PerformanceTrace.end(&"update", &"sequence.chunk_load", build_started, chunk_name, 1)
 	return chunk
 
 func _unload_chunk(chunk_name: String) -> void:
@@ -1783,10 +2771,47 @@ func _unload_chunk(chunk_name: String) -> void:
 	if not _chunks.has(chunk_name):
 		return
 	var chunk: Node3D = _chunks[chunk_name]
+	var cleanup_started := PerformanceTrace.begin()
+	var cleanup_count := _unregister_chunk_owned_state(chunk)
+	PerformanceTrace.end(&"update", &"sequence.chunk_unload_cleanup", cleanup_started,
+		chunk_name, cleanup_count)
 	if is_instance_valid(chunk) and chunk.has_method("detach_chunk_host"):
 		chunk.call("detach_chunk_host")
 	chunk.queue_free()
 	_chunks.erase(chunk_name)
+
+## Remove data-authority records owned by a chunk before its views leave the tree. Without this,
+## unloaded enemies keep planning/detecting and path UI keeps iterating their orphaned GameState IDs;
+## factory-created interactables likewise remain as ghost range-query entries. Ownership follows the
+## scene tree, so every procedural and authored chunk receives the same cleanup contract.
+func _unregister_chunk_owned_state(chunk: Node) -> int:
+	if _game_state == null or not is_instance_valid(chunk):
+		return 0
+	var removed := 0
+	var pending: Array[Node] = [chunk]
+	var character_ids := {}
+	var interactable_ids := {}
+	while not pending.is_empty():
+		var node: Node = pending.pop_back()
+		if "char_id" in node:
+			var character_id := str(node.get("char_id"))
+			if character_id != "":
+				character_ids[character_id] = true
+		if "data_id" in node:
+			var interactable_id := str(node.get("data_id"))
+			if interactable_id != "":
+				interactable_ids[interactable_id] = true
+		for child in node.get_children():
+			pending.append(child)
+	for character_id in character_ids:
+		if _game_state.characters.has(character_id):
+			_game_state.unregister_character(character_id)
+			removed += 1
+	for interactable_id in interactable_ids:
+		if _game_state.has_interactable(interactable_id):
+			_game_state.unregister_interactable(interactable_id)
+			removed += 1
+	return removed
 
 # --- Reusable chunk STREAMING (prewarm + incremental build) --------------------------------------------------
 # A chunk built the instant it's needed hitches on that frame (a GLB instantiate + a level's worth of nodes). The
@@ -1797,36 +2822,95 @@ func _unload_chunk(chunk_name: String) -> void:
 # smoothing and stays replay/headless-safe (headless simply reveals, which block-finishes).
 var _chunk_streams := {}   # chunk_name -> {chunk: Node3D, steps: Array[Callable], i: int}
 const _CHUNK_STREAM_STEPS_PER_FRAME := 1
+var _chunk_stream_round_robin_cursor := 0
 
 ## Begin building a chunk across frames, hidden, so a later reveal has no hitch. Idempotent; safe if the chunk is
 ## already loaded or streaming. Call it during a quiet moment (stationary dialogue) ahead of when it's revealed.
-func stream_chunk(chunk_name: String) -> void:
+func stream_chunk(chunk_name: String, paused := false) -> void:
 	if _chunks.has(chunk_name) or _chunk_streams.has(chunk_name):
 		return
 	var chunk := _create_chunk_root(chunk_name)
 	chunk.visible = false
+	# Visibility alone does not make a Node3D inert: hidden Area3Ds can still receive input and hidden
+	# StaticBodies can still block the current encounter. Disabling the root removes inherited default
+	# CollisionObject3Ds from physics while the chunk is assembled and prevents hidden per-frame work.
+	chunk.set_meta(&"chunk_stream_original_process_mode", int(chunk.process_mode))
+	chunk.process_mode = Node.PROCESS_MODE_DISABLED
 	var steps: Array = []
 	if _get_chunk_scene(chunk_name) == null:
 		steps = _chunk_build_steps(chunk_name, chunk)
 		if steps.is_empty():
+			var prewarm_started := PerformanceTrace.begin()
 			_build_chunk(chunk_name, chunk)   # one-shot prewarm (no batches provided)
+			PerformanceTrace.end(&"update", &"sequence.chunk_prewarm", prewarm_started, chunk_name, 1)
 	if not steps.is_empty():
-		_chunk_streams[chunk_name] = {"chunk": chunk, "steps": steps, "i": 0}
+		_chunk_streams[chunk_name] = {
+			"chunk": chunk,
+			"steps": steps,
+			"i": 0,
+			"paused": paused,
+		}
+
+## Build a small prefix before the first rendered frame, then hold the stream. Useful when one
+## monolithic authored subtree has unavoidable tree-entry cost: that prefix joins scene loading,
+## while the remaining procedural/detail steps still spread across later quiet frames.
+func prime_chunk_stream(chunk_name: String, prefix_steps := 1) -> void:
+	stream_chunk(chunk_name, true)
+	if not _chunk_streams.has(chunk_name):
+		return
+	var stream: Dictionary = _chunk_streams[chunk_name]
+	stream["paused"] = true
+	# `prefix_steps` is an absolute construction milestone, not extra work every
+	# time priming is requested. This keeps priming idempotent for an already-live
+	# stream and guarantees it stays paused after reaching that milestone.
+	var remaining_prefix := maxi(prefix_steps - int(stream.get("i", 0)), 0)
+	_run_chunk_stream_steps(chunk_name, remaining_prefix)
+
+func resume_chunk_stream(chunk_name: String) -> void:
+	if _chunk_streams.has(chunk_name):
+		(_chunk_streams[chunk_name] as Dictionary)["paused"] = false
 
 ## Advance in-progress streams a few build-steps per frame (cosmetic; correctness comes from reveal_chunk).
 func _advance_chunk_streams() -> void:
 	if _chunk_streams.is_empty():
+		_chunk_stream_round_robin_cursor = 0
 		return
+	# The frame budget is global, not per chunk. Two individually small streams used to run one
+	# step each in the same frame (for example the tail of Bridge plus the start of Below), turning
+	# two acceptable slices into one visible hitch. Round-robin keeps concurrent prewarms fair while
+	# guaranteeing the configured number is the most construction steps any rendered frame receives.
+	var active_streams: Array[String] = []
 	for chunk_name in _chunk_streams.keys():
-		var st: Dictionary = _chunk_streams[chunk_name]
-		var steps: Array = st["steps"]
-		var ran := 0
-		while int(st["i"]) < steps.size() and ran < _CHUNK_STREAM_STEPS_PER_FRAME:
-			(steps[int(st["i"])] as Callable).call()
-			st["i"] = int(st["i"]) + 1
-			ran += 1
-		if int(st["i"]) >= steps.size():
-			_chunk_streams.erase(chunk_name)
+		var stream: Dictionary = _chunk_streams.get(chunk_name, {})
+		if bool(stream.get("paused", false)):
+			continue
+		active_streams.append(str(chunk_name))
+	if active_streams.is_empty():
+		return
+	active_streams.sort()
+	_chunk_stream_round_robin_cursor %= active_streams.size()
+	var selected_stream := active_streams[_chunk_stream_round_robin_cursor]
+	_run_chunk_stream_steps(selected_stream, _CHUNK_STREAM_STEPS_PER_FRAME)
+	_chunk_stream_round_robin_cursor = (
+		_chunk_stream_round_robin_cursor + 1
+	) % active_streams.size()
+
+func _run_chunk_stream_steps(chunk_name: String, max_steps: int) -> void:
+	if max_steps <= 0 or not _chunk_streams.has(chunk_name):
+		return
+	var stream: Dictionary = _chunk_streams[chunk_name]
+	var steps: Array = stream["steps"]
+	var ran := 0
+	while int(stream["i"]) < steps.size() and ran < max_steps:
+		var step_index := int(stream["i"])
+		var step_started := PerformanceTrace.begin()
+		(steps[step_index] as Callable).call()
+		PerformanceTrace.end(&"update", &"sequence.chunk_stream_step", step_started,
+			"%s:%d" % [chunk_name, step_index], 1)
+		stream["i"] = step_index + 1
+		ran += 1
+	if int(stream["i"]) >= steps.size():
+		_chunk_streams.erase(chunk_name)
 
 ## Reveal a (possibly streamed) chunk: finish any remaining build synchronously, make it visible, return it.
 ## Falls back to a full synchronous load if the chunk was never streamed (so callers can always use it).
@@ -1835,13 +2919,20 @@ func reveal_chunk(chunk_name: String) -> Node3D:
 		var st: Dictionary = _chunk_streams[chunk_name]
 		var steps: Array = st["steps"]
 		while int(st["i"]) < steps.size():
-			(steps[int(st["i"])] as Callable).call()
-			st["i"] = int(st["i"]) + 1
+			var step_index := int(st["i"])
+			var step_started := PerformanceTrace.begin()
+			(steps[step_index] as Callable).call()
+			PerformanceTrace.end(&"update", &"sequence.chunk_reveal_step", step_started,
+				"%s:%d" % [str(chunk_name), step_index], 1)
+			st["i"] = step_index + 1
 		_chunk_streams.erase(chunk_name)
 	var chunk: Node3D = _chunks.get(chunk_name)
 	if chunk == null:
 		chunk = _load_chunk(chunk_name)
 	if chunk != null:
+		if chunk.has_meta(&"chunk_stream_original_process_mode"):
+			chunk.process_mode = int(chunk.get_meta(&"chunk_stream_original_process_mode")) as Node.ProcessMode
+			chunk.remove_meta(&"chunk_stream_original_process_mode")
 		chunk.visible = true
 		_on_chunk_revealed(chunk_name, chunk)
 	return chunk
@@ -1922,6 +3013,32 @@ func _play_scheduler_animation(
 	player.play(anim_name)
 	player.speed_scale = 0.0
 	_seek_scheduler_animation(player, anim_name, 0.0 if from_start else player.current_animation_position)
+
+
+## Chunk-safe reconstruction seam: animation time is derived from the saved absolute
+## scheduler start tick, while the AnimationPlayer remains a property-track presenter.
+func play_preview_scheduler_animation_at(
+	player: AnimationPlayer,
+	anim_name: String,
+	start_tick: float,
+	finished := Callable(),
+) -> bool:
+	if player == null or _scheduler == null or not is_finite(start_tick) \
+			or not player.has_animation(anim_name):
+		return false
+	_play_scheduler_animation(player, anim_name, finished)
+	var key := player.get_instance_id()
+	if not _scheduler_animation_states.has(key):
+		return false
+	var state: Dictionary = _scheduler_animation_states[key]
+	state["start_tick"] = start_tick
+	_scheduler_animation_states[key] = state
+	_sync_scheduler_animations()
+	return true
+
+
+func stop_preview_scheduler_animation(player: AnimationPlayer) -> void:
+	_stop_scheduler_animation(player)
 
 func _stop_animation(anim_name: String) -> void:
 	if _anim_player and _anim_player.current_animation == anim_name:

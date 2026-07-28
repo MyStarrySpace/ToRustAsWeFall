@@ -1,0 +1,25 @@
+[remap]
+
+importer="wavefront_obj"
+importer_version=1
+type="Mesh"
+uid="uid://dnb8s5wnyt1y7"
+path="res://.godot/imported/hushbloom_body.obj-0a14fd9c07f9d71fc2863cbde0516773.mesh"
+
+[deps]
+
+files=["res://.godot/imported/hushbloom_body.obj-0a14fd9c07f9d71fc2863cbde0516773.mesh"]
+
+source_file="res://resources/models/shared/biota_placeholders/hushbloom/hushbloom_body.obj"
+dest_files=["res://.godot/imported/hushbloom_body.obj-0a14fd9c07f9d71fc2863cbde0516773.mesh", "res://.godot/imported/hushbloom_body.obj-0a14fd9c07f9d71fc2863cbde0516773.mesh"]
+
+[params]
+
+generate_tangents=true
+generate_lods=true
+generate_shadow_mesh=true
+generate_lightmap_uv2=false
+generate_lightmap_uv2_texel_size=0.2
+scale_mesh=Vector3(1, 1, 1)
+offset_mesh=Vector3(0, 0, 0)
+force_disable_mesh_compression=false

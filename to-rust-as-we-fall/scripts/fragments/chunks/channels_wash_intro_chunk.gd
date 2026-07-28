@@ -11,6 +11,11 @@ extends "res://scripts/fragments/chunks/data_fragment_chunk.gd"
 ## CAPBAGE tight hide; and a PORTAL as the safe crossing once the guards are gone.
 
 const FRAGMENT := preload("res://data/fragments/channels_wash_intro.tres")
+const ExitFixedCadenceScript := preload("res://scripts/system/core/fixed_cadence.gd")
+const WASH_INTRO_AUTHORITY_VERSION := 2
+const ENEMY_WASH_DAMAGE := 100000.0
+const ENEMY_WASH_EDGE_Z := 6.35
+const EXIT_SPATIAL_INTERVAL := 0.1
 
 # Act-1 slot wiring metadata (the region this fragment occupies in the campaign graph).
 const WORLD_SLOT := {
@@ -29,6 +34,8 @@ var _drowned_ids := {}                # char_id -> true: dedupe the drown (once 
 var _washed_back := 0                 # how many times a party member was flushed by a channel
 var _last_outcome := ""
 var _exit_waiting_notified := false   # one cue per partial gather; re-arms if everyone leaves
+var _exit_spatial_epoch := -1.0       # fixed cadence for the whole-party exit predicate
+var _next_exit_spatial_tick := -1.0
 var _flure: Flure                     # cached from the loader's flures()[0]
 var _portal_near: PortalPad           # cached from the loader's _portals (near bank / far bank)
 var _portal_far: PortalPad
@@ -51,6 +58,7 @@ func _build_chunk() -> void:
 	_wash_back = p.get("wash_back_pos", _wash_back)
 	_flure_attract = float(p.get("flure_attract", _flure_attract))
 	_enemy_detect = float(p.get("enemy_detect", _enemy_detect))
+	_configure_channel_sweeps()
 	# Wire the gameplay signals the loader leaves to the behavior (the beats + the lure reaction).
 	if not _flures.is_empty():
 		_flure = _flures[0]
@@ -67,7 +75,7 @@ func _build_chunk() -> void:
 		cap.tucked_in.connect(_on_capbage_tucked)
 	reset_preview_state()
 
-# --- Per-frame mechanics (the unique behavior; the loader/objects own everything else) ---
+# --- Presenter update (gameplay consequences remain scheduler-owned) ---
 
 func _update(_delta: float) -> void:
 	if _phase == "ready":
@@ -75,59 +83,9 @@ func _update(_delta: float) -> void:
 	if _phase in ["complete", "failed"]:
 		return
 	_ensure_scheduled()               # the loader starts each Channel's flood cadence
-	var gs = _get_game_state()
-	if gs == null:
-		return
 
 	# Hide tiers are the LOADER's shared pass now (Capbage FULL > Scarpet MEDIUM > exposed).
 	_update_shared_concealment()
-
-	# Drown: guards caught in this update are announced together so a two-hunter
-	# sweep reads as one result instead of a modal line per body.
-	var drowned_names: Array[String] = []
-	for enemy in _enemies:
-		if not is_instance_valid(enemy) or not enemy.is_alive():
-			continue
-		var ep: Vector3 = gs.get_position(enemy.char_id) if gs.characters.has(enemy.char_id) else enemy.position
-		if _any_channel_floods_at(ep.x, ep.z):
-			var drowned_name := _drown_enemy(enemy)
-			if drowned_name != "":
-				drowned_names.append(drowned_name)
-
-	# Flush: a member standing in a flooding channel is swept back to the section start (snapping out clears the
-	# footprint so it can't re-fire). The portal is the safe way across — the channels themselves are lethal.
-	var washed_names: Array[String] = []
-	for cid in _party_ids:
-		if not gs.characters.has(cid):
-			continue
-		var mp := _get_character_position(cid)
-		if _any_channel_floods_at(mp.x, mp.z):
-			gs.command_stop(cid)
-			_set_character_position(cid, _wash_back)
-			_washed_back += 1
-			washed_names.append(str(cid).capitalize())
-	_announce_wash_results(drowned_names, washed_names)
-
-	# Win: every hunter must have been taken by the wash, and the whole authored party
-	# must be conscious and gathered at the far exit. Nobody advances alone.
-	if _drowned < _enemies.size():
-		return
-	for cid in _party_ids:
-		if not gs.characters.has(cid) or gs.is_downed(cid):
-			return
-	var at_exit := 0
-	for cid in _party_ids:
-		var fp := _get_character_position(cid)
-		if Vector2(fp.x - _exit_pos.x, fp.z - _exit_pos.z).length() <= _exit_radius:
-			at_exit += 1
-	if at_exit < _party_ids.size():
-		if at_exit == 0:
-			_exit_waiting_notified = false
-		elif not _exit_waiting_notified:
-			_exit_waiting_notified = true
-			_show_message("// EXIT // gather the whole party on the far pad", 2.4)
-		return
-	_complete()
 
 func _any_channel_floods_at(x: float, z: float) -> bool:
 	for ch in _channels:
@@ -135,21 +93,230 @@ func _any_channel_floods_at(x: float, z: float) -> bool:
 			return true
 	return false
 
-func _drown_enemy(enemy) -> String:
-	if not is_instance_valid(enemy) or not enemy.is_alive():
-		return ""
-	# Dedupe: take_damage doesn't necessarily flip is_alive() the same frame, and the body can sit in the flooding
-	# strip for a tick or two — without this the drown counted (and announced) twice.
-	if _drowned_ids.has(enemy.char_id):
-		return ""
-	_drowned_ids[enemy.char_id] = true
-	if enemy.has_method("take_damage"):
-		enemy.take_damage(enemy.max_hp)   # die() doesn't zero hp; full damage downs it cleanly
-	_drowned += 1
+## Attach policy to the visible Channel kit. The kit owns stopping, carrying, damage, refractory,
+## and saved cadence; these callbacks only update this room's saved counters and feedback.
+func _configure_channel_sweeps() -> void:
 	var gs = _get_game_state()
-	if gs != null and gs.characters.has(enemy.char_id):
-		gs.set_character_distracted(enemy.char_id, false)
-	return "Hunter %d" % (_enemies.find(enemy) + 1)
+	if gs == null:
+		return
+	for channel in _channels:
+		if not is_instance_valid(channel) or not channel.has_method("set_sweep"):
+			continue
+		channel.set_sweep(gs, _party_ids, _wash_destination, {
+			"party_hp": 0.0,
+			"enemy_damage": ENEMY_WASH_DAMAGE,
+			"enemy_stun": 0.0,
+			"refractory": 4.0,
+			"enemy_resolver": _enemy_for_id,
+			"on_swept": _on_party_channel_swept,
+			"on_enemy_swept": _on_enemy_channel_swept,
+		})
+
+func _wash_destination(char_id: String, position: Vector3) -> Vector3:
+	if char_id in _party_ids:
+		return _wash_back
+	var downstream_sign := signf(position.z)
+	if is_zero_approx(downstream_sign):
+		downstream_sign = 1.0
+	return Vector3(position.x, 0.5, downstream_sign * ENEMY_WASH_EDGE_Z)
+
+func _enemy_for_id(char_id: String):
+	for enemy in _enemies:
+		if is_instance_valid(enemy) and str(enemy.char_id) == char_id:
+			return enemy
+	return null
+
+
+func _hunter_has_physical_wash_result(char_id: String) -> bool:
+	var enemy = _enemy_for_id(char_id)
+	var gs = _get_game_state()
+	if enemy == null or gs == null or not gs.characters.has(char_id) \
+			or not _hunter_has_dead_authority(char_id):
+		return false
+	var body_position: Vector3 = gs.get_position(char_id)
+	return body_position.is_finite() \
+		and absf(body_position.z) >= ENEMY_WASH_EDGE_Z - 0.01
+
+
+## Enemy nodes are presenters during restore and may receive their attachment callback after this
+## chunk. Read the already-deserialized GameState record so a fresh load cannot discard a valid
+## drown receipt merely because the Enemy node still shows its construction-default live pose.
+func _hunter_has_dead_authority(char_id: String) -> bool:
+	var gs = _get_game_state()
+	if gs == null or not gs.has_method("get_world_state"):
+		return false
+	var raw: Variant = gs.get_world_state("runtime:enemy:%s" % char_id, null)
+	if not raw is Dictionary:
+		return false
+	var saved := raw as Dictionary
+	return int(saved.get("version", 0)) == 1 \
+		and str(saved.get("char_id", "")) == char_id \
+		and str(saved.get("state", "")) == "dead" \
+		and float(saved.get("hp", 1.0)) <= 0.0
+
+
+func _all_hunters_physically_drowned() -> bool:
+	if _enemies.is_empty() or _drowned_ids.size() != _enemies.size():
+		return false
+	for enemy in _enemies:
+		if not is_instance_valid(enemy):
+			return false
+		var char_id := str(enemy.char_id)
+		if not _drowned_ids.has(char_id) or not _hunter_has_physical_wash_result(char_id):
+			return false
+	return true
+
+
+## Whole-party exit truth is sampled only on this saved scheduler cadence. Render frames and
+## manually invoked headless presenters can project the room, but cannot discover or complete
+## an exit. The future edge is published before each predicate read so a signal-time save
+## reconstructs one later poll rather than replaying the callback currently being consumed.
+func _restart_exit_spatial_authority() -> void:
+	var scheduler = _get_scheduler()
+	_cancel_exit_spatial_authority_callback()
+	if scheduler == null:
+		_exit_spatial_epoch = -1.0
+		_next_exit_spatial_tick = -1.0
+		return
+	var now := float(scheduler.get_current_tick())
+	_exit_spatial_epoch = now
+	_next_exit_spatial_tick = ExitFixedCadenceScript.next_strict_tick(
+		_exit_spatial_epoch, EXIT_SPATIAL_INTERVAL, now)
+	_publish_fragment_authority()
+	_arm_exit_spatial_authority(_next_exit_spatial_tick)
+
+
+func _arm_exit_spatial_authority(deadline: float) -> void:
+	var scheduler = _get_scheduler()
+	if scheduler == null or deadline <= float(scheduler.get_current_tick()):
+		return
+	scheduler.cancel_tag(_exit_spatial_authority_tag())
+	scheduler.schedule_at(
+		deadline,
+		_exit_spatial_authority_tick.bind(deadline),
+		_exit_spatial_authority_tag())
+
+
+func _exit_spatial_authority_tick(expected_tick: float) -> void:
+	if not is_equal_approx(_next_exit_spatial_tick, expected_tick):
+		return
+	if _phase in ["complete", "failed"]:
+		_stop_exit_spatial_authority()
+		_publish_fragment_authority()
+		return
+	var now := _get_scheduler_tick()
+	_next_exit_spatial_tick = ExitFixedCadenceScript.next_strict_tick(
+		_exit_spatial_epoch, EXIT_SPATIAL_INTERVAL, now)
+	_publish_fragment_authority()
+	_evaluate_exit_spatial_authority()
+	if _phase in ["complete", "failed"]:
+		return
+	_arm_exit_spatial_authority(_next_exit_spatial_tick)
+	_publish_fragment_authority()
+
+
+func _evaluate_exit_spatial_authority() -> void:
+	var gs = _get_game_state()
+	if gs == null or not _all_hunters_physically_drowned():
+		return
+	for cid_v in _party_ids:
+		var cid := str(cid_v)
+		if not gs.characters.has(cid) or gs.is_downed(cid):
+			return
+	var at_exit := 0
+	for cid_v in _party_ids:
+		var cid := str(cid_v)
+		var position := _get_character_position(cid)
+		if Vector2(
+			position.x - _exit_pos.x,
+			position.z - _exit_pos.z
+		).length() <= _exit_radius:
+			at_exit += 1
+	if at_exit < _party_ids.size():
+		if at_exit == 0:
+			if _exit_waiting_notified:
+				_exit_waiting_notified = false
+				_publish_fragment_authority()
+		elif not _exit_waiting_notified:
+			_exit_waiting_notified = true
+			_publish_fragment_authority()
+			_show_message("// EXIT // gather the whole party on the far pad", 2.4)
+		return
+	_complete()
+
+
+func _exit_spatial_authority_tag() -> String:
+	return "channels_wash_intro_exit:%s" % (
+		_fragment_authority_key().sha256_text().substr(0, 12)
+	)
+
+
+func _cancel_exit_spatial_authority_callback() -> void:
+	var scheduler = _get_scheduler()
+	if scheduler != null:
+		scheduler.cancel_tag(_exit_spatial_authority_tag())
+
+
+func _stop_exit_spatial_authority() -> void:
+	_cancel_exit_spatial_authority_callback()
+	_exit_spatial_epoch = -1.0
+	_next_exit_spatial_tick = -1.0
+
+
+func _restore_exit_spatial_authority(saved: Dictionary, saved_version: int) -> bool:
+	_cancel_exit_spatial_authority_callback()
+	if _phase in ["complete", "failed"]:
+		var terminal_normalized := _exit_spatial_epoch >= 0.0 or _next_exit_spatial_tick >= 0.0
+		_exit_spatial_epoch = -1.0
+		_next_exit_spatial_tick = -1.0
+		return terminal_normalized
+	var now := _get_scheduler_tick()
+	var normalized := saved_version < WASH_INTRO_AUTHORITY_VERSION
+	if saved_version >= 2:
+		_exit_spatial_epoch = float(saved.get("exit_spatial_epoch", -1.0))
+		_next_exit_spatial_tick = float(saved.get("next_exit_spatial_tick", -1.0))
+	else:
+		_exit_spatial_epoch = now
+		_next_exit_spatial_tick = ExitFixedCadenceScript.next_strict_tick(
+			_exit_spatial_epoch, EXIT_SPATIAL_INTERVAL, now)
+	if not is_finite(_exit_spatial_epoch) or _exit_spatial_epoch < 0.0 \
+			or not is_finite(_next_exit_spatial_tick) \
+			or _next_exit_spatial_tick <= now:
+		_exit_spatial_epoch = now
+		_next_exit_spatial_tick = ExitFixedCadenceScript.next_strict_tick(
+			_exit_spatial_epoch, EXIT_SPATIAL_INTERVAL, now)
+		normalized = true
+	_arm_exit_spatial_authority(_next_exit_spatial_tick)
+	return normalized
+
+
+func _on_party_channel_swept(char_id: String) -> void:
+	if not (char_id in _party_ids):
+		return
+	_washed_back += 1
+	_last_outcome = "party_swept:%s" % char_id
+	_publish_fragment_authority()
+	_announce_wash_results([], [char_id.capitalize()])
+
+func _on_enemy_channel_swept(char_id: String) -> void:
+	if _drowned_ids.has(char_id):
+		return
+	if not _hunter_has_physical_wash_result(char_id):
+		return
+	_drowned_ids[char_id] = true
+	_drowned = _drowned_ids.size()
+	_last_outcome = "hunter_swept:%s" % char_id
+	_publish_fragment_authority()
+	_announce_wash_results([_hunter_label(char_id)], [])
+
+func _hunter_label(char_id: String) -> String:
+	for idx in range(_enemies.size()):
+		var enemy = _enemies[idx]
+		if is_instance_valid(enemy) and str(enemy.char_id) == char_id:
+			return "Hunter %d" % (idx + 1)
+	return "Hunter"
+
+## Dedupe is now the saved on-arrival bookkeeping above; there is deliberately no direct-drown helper.
 
 func _announce_wash_results(drowned_names: Array[String], washed_names: Array[String]) -> void:
 	var results: Array[String] = []
@@ -169,17 +336,16 @@ func _channel_onset(i: int) -> void:
 
 # --- Beats ---
 
-## Light the flure (the lure logic lives in the Flure object; this gates on phase + delegates). Kept for the
-## data-layer playthrough + tests that trigger it by name. The Flure also self-fires on a real click.
+## Retired compatibility seam. A wash can only start from the exact Flure Interactable accepting
+## the staged body; callers may observe `flure_activated`, never synthesize that physical cause.
 func activate_flure() -> bool:
-	if _phase in ["complete", "failed"] or _flure == null:
-		return false
-	return _flure.activate()
+	return false
 
 func _on_flure_activated(_pulled: int) -> void:
 	if _phase in ["complete", "failed"]:
 		return
 	_last_outcome = "flure_lit"
+	_publish_fragment_authority()
 	_set_preview_step("channels_wash_intro_flure")
 	_show_message("// FLURE // signal up — the hunters lock onto it", 2.2)
 
@@ -196,7 +362,9 @@ func _complete() -> void:
 		return
 	_phase = "complete"
 	_last_outcome = "complete"
+	_stop_exit_spatial_authority()
 	_quiesce_channels()
+	_publish_fragment_authority()
 	_set_preview_step("channels_wash_intro_complete")
 	_say("Across. The spiral's below us now.", "ASTER")
 	_request_preview_handoff("wash_relay")
@@ -217,6 +385,7 @@ func _quiesce_channels() -> void:
 ## Reset only this subclass's per-run mechanics afterward so an in-flight Channel flood
 ## cannot survive the wipe and immediately wash the restored party again.
 func _restart_fragment() -> void:
+	_stop_exit_spatial_authority()
 	super._restart_fragment()
 	_quiesce_channels()
 	_drowned = 0
@@ -224,8 +393,10 @@ func _restart_fragment() -> void:
 	_washed_back = 0
 	_last_outcome = ""
 	_exit_waiting_notified = false
+	_restart_exit_spatial_authority()
 
 func _exit_tree() -> void:
+	_stop_exit_spatial_authority()
 	_quiesce_channels()
 	super._exit_tree()
 
@@ -241,6 +412,7 @@ func get_preview_anchors() -> Dictionary:
 	return anchors
 
 func reset_preview_state() -> void:
+	_stop_exit_spatial_authority()
 	super.reset_preview_state()       # resets flures + channels + scheduling, sets the start step
 	_quiesce_channels()               # also retracts any pending full-wipe restart callback
 	_phase = "ready"
@@ -249,6 +421,86 @@ func reset_preview_state() -> void:
 	_washed_back = 0
 	_last_outcome = ""
 	_exit_waiting_notified = false
+	_configure_channel_sweeps()
+	_restart_exit_spatial_authority()
+
+## Extend the loader's versioned record instead of keeping another scene-local truth. Enemy FSM/HP
+## and Channel cadence have their own kit records; this payload owns only room-level bookkeeping.
+func _fragment_authority_state() -> Dictionary:
+	var state: Dictionary = super._fragment_authority_state()
+	var drowned_ids: Array = _drowned_ids.keys()
+	drowned_ids.sort()
+	state["wash_intro"] = {
+		"version": WASH_INTRO_AUTHORITY_VERSION,
+		"drowned_ids": drowned_ids,
+		"washed_back": _washed_back,
+		"last_outcome": _last_outcome,
+		"exit_waiting_notified": _exit_waiting_notified,
+		"exit_spatial_epoch": _exit_spatial_epoch,
+		"next_exit_spatial_tick": _next_exit_spatial_tick,
+	}
+	return state
+
+func on_game_state_snapshot_restored() -> void:
+	_cancel_exit_spatial_authority_callback()
+	super.on_game_state_snapshot_restored()
+	var gs = _get_game_state()
+	var raw: Variant = gs.get_world_state(_fragment_authority_key(), null) \
+			if gs != null and gs.has_method("get_world_state") else null
+	if not raw is Dictionary:
+		_retract_wash_intro_bookkeeping()
+		return
+	var saved: Variant = (raw as Dictionary).get("wash_intro", null)
+	if not saved is Dictionary:
+		_restore_legacy_drowned_ids()
+		if _restore_exit_spatial_authority({}, 0):
+			_publish_fragment_authority()
+		return
+	var saved_intro := saved as Dictionary
+	var saved_version := int(saved_intro.get("version", 0))
+	if saved_version not in [1, WASH_INTRO_AUTHORITY_VERSION]:
+		_restore_legacy_drowned_ids()
+		if _restore_exit_spatial_authority({}, 0):
+			_publish_fragment_authority()
+		return
+	_drowned_ids.clear()
+	for id_v in (saved_intro.get("drowned_ids", []) as Array):
+		var char_id := str(id_v)
+		# The room record is provenance, not a substitute body. Reject edited or signal-seam
+		# bookkeeping unless the same stable Enemy is dead at the downstream wash endpoint.
+		if _hunter_has_physical_wash_result(char_id):
+			_drowned_ids[char_id] = true
+	_drowned = _drowned_ids.size()
+	_washed_back = maxi(0, int(saved_intro.get("washed_back", 0)))
+	_last_outcome = str(saved_intro.get("last_outcome", ""))
+	_exit_waiting_notified = bool(saved_intro.get("exit_waiting_notified", false))
+	if _restore_exit_spatial_authority(saved_intro, saved_version):
+		_publish_fragment_authority()
+
+func _retract_fragment_presenter_to_defaults() -> void:
+	super._retract_fragment_presenter_to_defaults()
+	_retract_wash_intro_bookkeeping()
+
+func _retract_wash_intro_bookkeeping() -> void:
+	_stop_exit_spatial_authority()
+	_drowned = 0
+	_drowned_ids.clear()
+	_washed_back = 0
+	_last_outcome = ""
+	_exit_waiting_notified = false
+
+func _restore_legacy_drowned_ids() -> void:
+	_retract_wash_intro_bookkeeping()
+	var gs = _get_game_state()
+	if gs == null:
+		return
+	for enemy in _enemies:
+		if not is_instance_valid(enemy):
+			continue
+		var char_id := str(enemy.char_id)
+		if _hunter_has_physical_wash_result(char_id):
+			_drowned_ids[char_id] = true
+	_drowned = _drowned_ids.size()
 
 func get_preview_state() -> Dictionary:
 	var any_flooding := false
@@ -269,9 +521,14 @@ func get_preview_state() -> Dictionary:
 		"any_channel_flooding": any_flooding,
 		"flooding": flooding,
 		"drowned": _drowned,
+		"drowned_ids": _drowned_ids.keys(),
+		"washed_back": _washed_back,
 		"enemies_alive": enemies_alive,
 		"flure_attract_range": _flure_attract,
 		"player_sense_range": _enemy_detect,
 		"last_outcome": _last_outcome,
 		"exit_waiting_notified": _exit_waiting_notified,
+		"exit_spatial_epoch": _exit_spatial_epoch,
+		"next_exit_spatial_tick": _next_exit_spatial_tick,
+		"exit_spatial_interval": EXIT_SPATIAL_INTERVAL,
 	}

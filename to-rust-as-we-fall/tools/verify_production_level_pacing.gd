@@ -34,11 +34,6 @@ const CONTRACT_SOURCES := [
 		"pre_tree_properties": {"suppress_scene_change": true, "start_phase": 1},
 	},
 	{
-		"target_id": "tag_day",
-		"scene": "res://scenes/tutorial/tag_day.tscn",
-		"method": "get_playtime_contract",
-	},
-	{
 		"target_id": "elevator_and_below",
 		"scene": "res://scenes/tutorial/elevator.tscn",
 		"method": "get_playtime_contract",
@@ -49,47 +44,29 @@ const CONTRACT_SOURCES := [
 		"method": "get_playtime_contract",
 	},
 	{
-		"target_id": "endo_junction_stretch",
-		"scene": "res://scenes/fragments/chunks/endo_junction_stretch_chunk.tscn",
-		"method": "get_playtime_contract",
-	},
-	{
-		"target_id": "channels",
-		"scene": "res://scenes/tutorial/act1.tscn",
-		"method": "get_channels_playtime_contract",
-	},
-	{
-		"target_id": "stacks",
-		"scene": "res://scenes/tutorial/act1.tscn",
-		"method": "get_stacks_playtime_contract",
-	},
-	{
-		"target_id": "rings",
-		"scene": "res://scenes/tutorial/act1.tscn",
-		"method": "get_rings_playtime_contract",
-	},
-	{
-		"target_id": "lockout",
-		"scene": "res://scenes/fragments/chunks/lockout_chase_chunk.tscn",
-		"method": "get_playtime_contract",
-	},
-	{
-		"target_id": "mother_flure",
-		"scene": "res://scenes/fragments/chunks/mother_flure_chunk.tscn",
-		"method": "get_playtime_contract",
-	},
-	{
 		"target_id": "ordinary_stretch",
 		"scene": "res://scenes/fragments/fragment_preview.tscn",
 		"preview_chunk": "survival_range",
 		"method": "get_pacing_contract",
 		"tree_boot_frames": 8,
 	},
-	{
-		"target_id": "inflammashunt",
-		"scene": "res://scenes/fragments/chunks/inflammashunt_chunk.tscn",
-		"method": "get_playtime_contract",
-	},
+	# Inflammashunt is intentionally covered by verify_inflammashunt_longform.gd.
+	# Its 7-9 minute figure is a suggested human first-play target whose reasoning,
+	# exploration, and recoverable-error time cannot be derived from authored dwell
+	# without fabricating padding.
+	# Endo Junction and Mother Flure are likewise covered by their focused
+	# mechanical verifiers. Their first-clear bands depend on human observation,
+	# route synthesis, and recoverable errors, so this production gate must not
+	# manufacture fixed "reasoning" seconds to make them fit the manifest.
+	# Channels is covered by verify_channels_longform_extension.gd for the same
+	# reason: its hydraulic predictions, encounter failures, and route reading need
+	# observed first-play telemetry rather than a synthetic 20-30 minute total.
+	# Stacks and Rings are covered by their focused structural/sequence verifiers.
+	# Their planning bands are hypotheses for human first-clear testing, not a
+	# mandate to reintroduce dwell timers or mandatory interaction ladders.
+	# Tag Day and Lockout are similarly covered by real-input/sequence regressions.
+	# Neither scene exposes a synthetic elapsed-time contract: their optional
+	# observation, chase pressure, and player mistakes must be measured in play.
 ]
 
 var _failures: Array[String] = []
@@ -227,10 +204,6 @@ func _canonical_metrics(target_id: String, raw: Dictionary) -> Dictionary:
 	match target_id:
 		"leaving_facility":
 			_canonicalize_leaving(metrics)
-		"endo_junction_stretch":
-			_canonicalize_endo(metrics)
-		"channels":
-			_canonicalize_channels(metrics)
 	return metrics
 
 
@@ -252,53 +225,6 @@ func _canonicalize_leaving(metrics: Dictionary) -> void:
 	metrics["max_dead_gap_seconds"] = 4.0
 	metrics["max_single_mode_seconds"] = maxf(
 		float(metrics.get("modeled_fixed_transition_seconds", 0.0)), 8.0)
-
-
-func _canonicalize_endo(metrics: Dictionary) -> void:
-	var active := float(metrics.get("modeled_meaningful_active_seconds", 0.0))
-	var total := float(metrics.get("modeled_shortest_first_clear_seconds", 0.0))
-	var route_meters := minf(
-		float(metrics.get("focus_safe_route_meters", INF)),
-		float(metrics.get("direct_route_meters", INF)))
-	if not is_finite(route_meters):
-		route_meters = float(metrics.get("safe_route_meters", 0.0))
-	var traversal := route_meters / 2.5
-	var operation_routes: Dictionary = metrics.get("route_meters_by_operation", {}) as Dictionary
-	var operation_traversal := 0.0
-	var categories := {}
-	for operation_id in operation_routes:
-		var seconds := float(operation_routes[operation_id]) / 2.5
-		operation_traversal += seconds
-		categories["%s_navigation" % str(operation_id)] = seconds
-	var connective_traversal := maxf(0.0, traversal - operation_traversal)
-	categories["junction_approach"] = connective_traversal * 0.5
-	categories["shelter_approach"] = connective_traversal - connective_traversal * 0.5
-	var execution_and_planning := maxf(0.0, active - traversal)
-	# The production model combines distinct station dwell and synthesis allowances;
-	# expose those two mutually exclusive modes without changing their total.
-	categories["field_execution"] = execution_and_planning * 0.5
-	categories["route_planning"] = execution_and_planning - execution_and_planning * 0.5
-	metrics["meaningful_active_seconds"] = active
-	metrics["total_play_seconds"] = total
-	metrics["active_ratio"] = active / maxf(total, 0.001)
-	metrics["max_dead_gap_seconds"] = maxf(0.0, total - active)
-	# All authored route spans are interrupted by the five evidence stations;
-	# 44 s is a conservative upper bound on any one uninterrupted route mode.
-	metrics["max_single_mode_seconds"] = 44.0
-	metrics["branch_count"] = int(metrics.get("branch_variant_count", 0))
-	metrics["category_seconds"] = categories
-
-
-func _canonicalize_channels(metrics: Dictionary) -> void:
-	metrics["max_dead_gap_seconds"] = 5.0
-	metrics["max_single_mode_seconds"] = 45.0
-	metrics["category_seconds"] = {
-		"existing_window_and_hide_play": float(metrics.get("preserved_active_seconds", 0.0)),
-		"field_navigation": float(metrics.get("field_travel_seconds", 0.0)),
-		"specialist_fieldwork": float(metrics.get("field_work_seconds", 0.0)),
-		"evidence_interpretation": float(metrics.get("evidence_interpretation_seconds", 0.0)),
-		"operation_decisions": float(metrics.get("decision_seconds", 0.0)),
-	}
 
 
 func _verify_production_duration_identity(

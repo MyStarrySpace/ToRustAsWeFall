@@ -257,9 +257,11 @@ static func _noise_texture() -> Texture2D:
 func _process(_delta: float) -> void:
 	if Engine.is_editor_hint() or not _built:
 		return
+	var perf_started := PerformanceTrace.begin()
 	var vp := get_viewport()
 	var cam: Camera3D = vp.get_camera_3d() if vp != null else null
 	if cam == null:
+		PerformanceTrace.end(&"draw", &"outline_mask.process", perf_started, "no_camera", 0)
 		return
 	var want := _viewport_size()
 	if _sub.size != want:
@@ -270,6 +272,7 @@ func _process(_delta: float) -> void:
 	_sync_cam(_sub_cam, cam)
 	_sync_cam(_glow_cam, cam)
 	# Follow each highlighted object so the masks track it (moving props, the helix deck, etc.).
+	var copy_count := 0
 	for key in _entries.keys():
 		var e = _entries[key]
 		var alive := false
@@ -281,6 +284,7 @@ func _process(_delta: float) -> void:
 			var copy := c["copy"] as MeshInstance3D
 			var src := c["src"] as MeshInstance3D
 			copy.global_transform = src.global_transform
+			copy_count += 1
 			alive = true
 		for c in e["glow_copies"]:
 			if not (is_instance_valid(c["copy"]) and is_instance_valid(c["src"])):
@@ -288,9 +292,11 @@ func _process(_delta: float) -> void:
 			var gcopy := c["copy"] as MeshInstance3D
 			var gsrc := c["src"] as MeshInstance3D
 			gcopy.global_transform = gsrc.global_transform
+			copy_count += 1
 		# The source object was freed (chunk reload) — drop the stale registration.
 		if not alive and not e["copies"].is_empty():
 			unregister(key)
+	PerformanceTrace.end(&"draw", &"outline_mask.process", perf_started, "copies", copy_count)
 
 func _sync_cam(dst: Camera3D, cam: Camera3D) -> void:
 	dst.global_transform = cam.global_transform

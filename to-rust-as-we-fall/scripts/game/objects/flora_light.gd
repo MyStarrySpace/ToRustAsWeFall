@@ -2,8 +2,8 @@ class_name FloraLight
 extends Node3D
 
 ## A glowing flora bloom: an emissive sphere + an omni light, as one self-contained node. The shared visual for
-## Peris's grown plants — the flora_garden growths (scale + light radius track the growth stage) and the channels
-## BLOOM ability's persistent lights. A fragment / level builder just places one and, for a growing plant, drives
+## Peris's grown plants — the flora_garden growths (scale + light radius track the growth stage) and contextual
+## flora-tending/read lights. A fragment / level builder just places one and, for a growing plant, drives
 ## its scale + light radius over time (set_growth_scale / set_light_range). Cosmetic only: the gameplay read lives
 ## in GameState; this is the light you see.
 ##

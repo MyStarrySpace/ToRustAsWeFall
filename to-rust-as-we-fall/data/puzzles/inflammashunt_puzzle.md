@@ -117,7 +117,7 @@ var puzzle_state := {
 	"char_b_state": "dry",      # dry, damp, cleared, burned
 	"root_state": "suppressed", # suppressed, tame, hostile, recovering, connected
 	"buffer_state": "stable",   # stable, shattered, reforming
-	"gas_sac_state": "idle",    # idle, tended, carried, expired, ignited
+	"gas_sac_state": "idle",    # idle, tended, active, expired, ignited
 	"healing_zone": 0.0,        # 0.0 to 1.0
 	"housing_unlocked": false,
 	"device_retrieved": false,
@@ -683,14 +683,14 @@ Tools:
 
 - Peris tends gas sac flora
 - a gas sac item appears
-- a character carries the sac
+- a character carries the sac in a real hand slot; ordinary drop and transfer rules apply
 - root recoils from the sac aura
 
 Recommended values:
 
 - gas sac duration: 22s
 - repellent aura radius: 3.0 world units
-- root flee preference: move away from carrier while avoiding direct path to base unless boxed in
+- root flee preference: move away from the item's current hand-slot holder while avoiding direct path to base unless boxed in
 - base capture radius: 1.5 world units
 - root retract delay after entering base: 1.0s
 - tame regrowth delay: 4.0s
@@ -702,6 +702,7 @@ Herding behavior:
 - root should not teleport
 - player should be able to cut off escape routes by positioning the carrier and other party members
 - if the sac expires, root becomes aggressive again but stays in current location
+- a dropped sac remains a visible world item but has no carrier aura until someone picks it up
 - Peris can tend another sac
 
 Completion:

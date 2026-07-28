@@ -12,6 +12,7 @@ var active_target: Node
 var active_target_position := Vector3.ZERO
 var _interactor_id := ""   # who is actually servicing active_target (may be a party member, not `character`)
 var _bound_roots: Array[Node] = []
+var _arrival_game_state: Object
 
 signal target_reached(target: Node)
 signal target_cancelled(target: Node)
@@ -20,6 +21,35 @@ func setup(character_node: Node3D) -> void:
 	character = character_node
 	if character != null and character.has_signal("arrived") and not character.is_connected("arrived", _on_character_arrived):
 		character.connect("arrived", _on_character_arrived)
+	_bind_game_state_arrival()
+
+
+## Interaction completion is a gameplay receipt, so consume the authoritative GameState
+## arrival signal directly. `_poll_arrival()` remains a visual/legacy fallback, but headless
+## replay and coarse scheduler steps no longer need a render frame to begin a timed dwell.
+func _bind_game_state_arrival() -> void:
+	var next_game_state = _character_game_state()
+	if _arrival_game_state == next_game_state:
+		return
+	if is_instance_valid(_arrival_game_state) \
+			and _arrival_game_state.has_signal("character_arrived") \
+			and _arrival_game_state.is_connected(
+				"character_arrived", _on_game_state_character_arrived):
+		_arrival_game_state.disconnect(
+			"character_arrived", _on_game_state_character_arrived)
+	_arrival_game_state = next_game_state
+	if is_instance_valid(_arrival_game_state) \
+			and _arrival_game_state.has_signal("character_arrived") \
+			and not _arrival_game_state.is_connected(
+				"character_arrived", _on_game_state_character_arrived):
+		_arrival_game_state.connect(
+			"character_arrived", _on_game_state_character_arrived)
+
+
+func _on_game_state_character_arrived(id: String) -> void:
+	if active_target == null or _interactor_id == "" or id != _interactor_id:
+		return
+	_complete_active_target()
 
 func _process(_delta: float) -> void:
 	_poll_arrival()
@@ -58,6 +88,7 @@ func cancel_active_target() -> void:
 func _on_interaction_requested(target: Node, requested_position: Vector3 = Vector3.INF) -> void:
 	if character == null or target == null:
 		return
+	_bind_game_state_arrival()
 	if not _character_can_accept_interaction():
 		return
 	cancel_active_target()
@@ -71,7 +102,15 @@ func _on_interaction_requested(target: Node, requested_position: Vector3 = Vecto
 	# and never reached the object, so the queued glow never tracked the real walk-to-arrival.
 	var gs = _character_game_state()
 	var flat_target := active_target_position
-	if gs != null and gs.coord_map != null:
+	# A warped interactable retains the exact authored data position used to build
+	# it. Prefer that source over a world->data round trip: a helix map can recover
+	# route progress and lane from the rendered point, but it cannot infer which
+	# stacked gameplay floor originally contributed the point's height.
+	if target.has_meta("flat_authored_position"):
+		var authored_target: Variant = target.get_meta("flat_authored_position")
+		if authored_target is Vector3:
+			flat_target = authored_target as Vector3
+	elif gs != null and gs.coord_map != null:
 		flat_target = gs.coord_map.to_data(active_target_position)
 	# Pick WHO services this interaction: a required character if the object names one, else the nearest
 	# party member (preferring a free hand for a pickup). May be a party member other than the leader.
@@ -114,9 +153,15 @@ func _pick_interactor_for(target: Node, target_pos: Vector3) -> String:
 ## data layer (command_move_to_pos), so it's logged + replay-safe and lands on the right cell on the helix.
 func _drive_interactor_to(world_position: Vector3, flat_position: Vector3) -> bool:
 	var gs = _character_game_state()
-	if _interactor_id == "" or _interactor_id == _self_id() or gs == null:
+	if _interactor_id == "" or gs == null:
 		return _move_character_to(world_position)
-	return bool(gs.command_move_to_pos(_interactor_id, flat_position))
+	# In warped space, drive even the bound/self character through the data-layer
+	# target. Feeding the rendered point back through Player would lose the authored
+	# stacked-floor identity. GameState still owns pathfinding, floor links, arrival
+	# receipts, logging, and replay for this ordinary interaction walk.
+	if _interactor_id != _self_id() or gs.coord_map != null:
+		return bool(gs.command_move_to_pos(_interactor_id, flat_position))
+	return _move_character_to(world_position)
 
 func _self_id() -> String:
 	return str(character.get("char_id")) if character != null else ""

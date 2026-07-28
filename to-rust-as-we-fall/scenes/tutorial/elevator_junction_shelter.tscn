@@ -1,4 +1,4 @@
-[gd_scene load_steps=16 format=3]
+[gd_scene load_steps=14 format=3]
 
 [ext_resource type="Script" path="res://scripts/game/world/authored_spatial_layout_3d.gd" id="1_layout"]
 [ext_resource type="PackedScene" path="res://resources/models/elevator/endo-junction.glb" id="2_model"]
@@ -51,18 +51,6 @@ top_radius = 0.26
 bottom_radius = 0.3
 height = 0.045
 
-[sub_resource type="CylinderMesh" id="RecoverPadMesh"]
-material = SubResource("PerisPinMaterial")
-top_radius = 0.68
-bottom_radius = 0.76
-height = 0.055
-
-[sub_resource type="CylinderMesh" id="ScoutPadMesh"]
-material = SubResource("AsterPinMaterial")
-top_radius = 0.68
-bottom_radius = 0.76
-height = 0.055
-
 [sub_resource type="StandardMaterial3D" id="ContainerMaterial"]
 albedo_color = Color(0.16, 0.2, 0.18, 1)
 metallic = 0.25
@@ -99,8 +87,8 @@ size = Vector3(9.0, 0.12, 7.0)
 script = ExtResource("1_layout")
 hidden_visual_paths = Array[NodePath]([NodePath("Visuals/EndoJunctionModel/Junction_Ceiling"), NodePath("Visuals/EndoJunctionModel/Junction_RockRight"), NodePath("Visuals/EndoJunctionModel/Junction_Facility"), NodePath("Visuals/EndoJunctionModel/Junction_Bedroll"), NodePath("Visuals/EndoJunctionModel/Junction_Pillow"), NodePath("Visuals/EndoJunctionModel/Junction_Flora")])
 occlusion_exempt_paths = Array[NodePath]([NodePath("Visuals/EndoJunctionModel")])
-metadata/archetype_id = "recovery_survey"
-metadata/causal_model = "survey three distinct stations with both perspectives; choose one preparation; follow the field lane; return to the plant"
+metadata/archetype_id = "shelter_tend_transition"
+metadata/causal_model = "optional shelter observations provide context; Peris tends the dormant plant to signal Endo and advance dusk"
 metadata/navigation_rule = "west-east circulation lane remains clear"
 
 [node name="Visuals" type="Node3D" parent="."]
@@ -163,32 +151,6 @@ mesh = SubResource("NeutralPinMesh")
 position = Vector3(2, 0.04, -1.1)
 mesh = SubResource("NeutralPinMesh")
 
-[node name="PrepRecover" type="MeshInstance3D" parent="Visuals/StationPins" groups=["camera_occlusion_exempt"]]
-position = Vector3(-0.55, 0.04, 2.55)
-mesh = SubResource("RecoverPadMesh")
-
-[node name="PrepScout" type="MeshInstance3D" parent="Visuals/StationPins" groups=["camera_occlusion_exempt"]]
-position = Vector3(5.2, 0.04, -2.6)
-mesh = SubResource("ScoutPadMesh")
-
-[node name="PrepRecoverLabel" type="Label3D" parent="Visuals/StationPins" groups=["camera_occlusion_exempt"]]
-position = Vector3(-0.55, 0.12, 2.55)
-text = "RECOVER"
-font_size = 32
-pixel_size = 0.003
-modulate = Color(0.95, 0.62, 0.24, 1)
-outline_size = 8
-billboard = 1
-
-[node name="PrepScoutLabel" type="Label3D" parent="Visuals/StationPins" groups=["camera_occlusion_exempt"]]
-position = Vector3(5.2, 0.12, -2.6)
-text = "SCOUT"
-font_size = 32
-pixel_size = 0.003
-modulate = Color(0.42, 0.72, 1, 1)
-outline_size = 8
-billboard = 1
-
 [node name="DrinkContainer" type="Node3D" parent="Visuals"]
 position = Vector3(-1.85, 0, 2.2)
 
@@ -249,12 +211,6 @@ position = Vector3(4.35, 1, 1.75)
 
 [node name="Game" type="Marker3D" parent="Anchors"]
 position = Vector3(2, 0.95, -1.1)
-
-[node name="PrepRecover" type="Marker3D" parent="Anchors"]
-position = Vector3(-0.55, 0.05, 2.55)
-
-[node name="PrepScout" type="Marker3D" parent="Anchors"]
-position = Vector3(5.2, 0.05, -2.6)
 
 [node name="Plant" type="Marker3D" parent="Anchors"]
 position = Vector3(4.25, 0.55, -1.15)

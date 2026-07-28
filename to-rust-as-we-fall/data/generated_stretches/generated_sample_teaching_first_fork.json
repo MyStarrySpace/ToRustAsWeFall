@@ -1,49 +1,49 @@
 {
 	"anchors": {
 		"aster": [
-			0.0,
-			0.5,
-			1.6
+			1.89999997615814,
+			0.499999988079071,
+			0.600000023841858
 		],
 		"endo": [
-			-1.2,
-			0.5,
-			-1.8
+			0.999999976158142,
+			0.499999988079071,
+			0.880000023841858
 		],
 		"entry": [
-			0.0,
+			2.5,
 			0.449999988079071,
-			-3.0
+			2.5
 		],
 		"exit_shelter": [
-			60.0,
+			42.5,
 			0.449999988079071,
-			3.0
+			2.5
 		],
 		"node_01": [
-			12.0,
-			1.88999998569489,
-			0.0
+			10.5,
+			0.449999988079071,
+			2.5
 		],
 		"node_02": [
-			24.0,
-			1.88999998569489,
-			3.0
+			17.5,
+			0.449999988079071,
+			0.5
 		],
 		"node_03": [
-			36.0,
+			26.5,
 			0.449999988079071,
-			-3.0
+			2.5
 		],
 		"node_04": [
-			48.0,
-			1.88999998569489,
-			0.0
+			33.5,
+			0.449999988079071,
+			1.5
 		],
 		"peris": [
-			-1.6,
-			0.5,
-			0.0
+			2.79999997615814,
+			0.499999988079071,
+			0.880000023841858
 		]
 	},
 	"archetype_chain": [
@@ -125,9 +125,45 @@
 				"aster_peris": true,
 				"notes": "Peris carries the mechanical burden; Aster supplies targeting and confirmation."
 			},
+			"spatial_affordances": [
+				{
+					"emergent_inputs": [
+						"flora state",
+						"fauna perception",
+						"party position",
+						"intervention timing",
+						"route topology"
+					],
+					"failure_prediction": "Crossing before changing the signal leaves ordinary fauna perception intact.",
+					"feature_kind": "grated_platform",
+					"feature_variant": "signal_roost",
+					"feedback": [
+						"the flora state changes at the signal socket",
+						"the fauna response remains visible from the approach"
+					],
+					"id": "grated_signal_roost",
+					"leverage": "Tend the flora before committing the party to the fauna side.",
+					"primary_insight": "The plant on one exposed deck changes how fauna use the connected route.",
+					"priority": 100.0,
+					"socket_policy": "separate_leverage_from_response",
+					"variants": [
+						"flure_iron_decoy",
+						"hushbloom_stun"
+					]
+				}
+			],
 			"stage": 1,
 			"step_count": 5,
 			"survival_kind": "",
+			"systems_dimensions": [
+				"relation",
+				"stock",
+				"flow",
+				"delay",
+				"threshold",
+				"leverage",
+				"transfer"
+			],
 			"tags": [
 				"flora",
 				"peris",
@@ -227,9 +263,19 @@
 				"aster_peris": true,
 				"notes": "Use drag routes, scarpet masking, and slower recovery windows."
 			},
+			"spatial_affordances": [],
 			"stage": 2,
 			"step_count": 5,
 			"survival_kind": "",
+			"systems_dimensions": [
+				"relation",
+				"stock",
+				"flow",
+				"feedback",
+				"local_global",
+				"leverage",
+				"transfer"
+			],
 			"tags": [
 				"carry",
 				"escort",
@@ -239,6 +285,10 @@
 			"variant": "cure_component"
 		}
 	],
+	"area_theme": {
+
+	},
+	"biome": "",
 	"budget": {
 		"archetype_depth": 2,
 		"branch_count": 1,
@@ -248,12 +298,78 @@
 		"optional_node_count": 0,
 		"pressure_budget": 1,
 		"resource_beats": 1,
-		"shortcut_count": 1,
 		"structures_slots": 3
 	},
 	"composition": {
 		"chain": [],
 		"chain_count": 2,
+		"element_coverage": {
+			"complete": true,
+			"contract_id": "trawf_element_coverage_v1",
+			"covered_count": 6,
+			"elements": {
+				"barrier": {
+					"covered": true,
+					"required_by": [
+						"3"
+					],
+					"supplied_by": [
+						"node_02"
+					]
+				},
+				"carry": {
+					"covered": true,
+					"required_by": [
+						"3"
+					],
+					"supplied_by": [
+						"node_02",
+						"node_04"
+					]
+				},
+				"cover": {
+					"covered": true,
+					"required_by": [
+						"3"
+					],
+					"supplied_by": [
+						"entry",
+						"node_02",
+						"node_04"
+					]
+				},
+				"iron_decoy": {
+					"covered": true,
+					"required_by": [
+						"2"
+					],
+					"supplied_by": [
+						"node_01"
+					]
+				},
+				"lure": {
+					"covered": true,
+					"required_by": [
+						"2"
+					],
+					"supplied_by": [
+						"node_01"
+					]
+				},
+				"stun": {
+					"covered": true,
+					"required_by": [
+						"2"
+					],
+					"supplied_by": [
+						"node_03"
+					]
+				}
+			},
+			"required_count": 6,
+			"shared_elements": [],
+			"uncovered": []
+		},
 		"has_nested": false,
 		"host_nodes": [],
 		"links": [],
@@ -261,9 +377,19 @@
 		"nested": [],
 		"nested_count": 0,
 		"nested_depth": 0,
+		"poi_density": {
+			"contract_id": "trawf_poi_density_v1",
+			"distinct_ambient": 2,
+			"per_node_count": 2,
+			"per_node_variety": 2,
+			"stage": 2,
+			"total_ambient": 8
+		},
 		"random_walk": {
 
 		},
+		"runtime_bound_link_count": 0,
+		"teaching_chain": [],
 		"uses_random_walk": false,
 		"walk_archetype_count": 0,
 		"walk_element_count": 0
@@ -271,48 +397,53 @@
 	"graybox": {
 		"bounds": {
 			"center": [
-				30.2999992370605,
-				2.76500010490417,
-				0.149999856948853
+				22.5,
+				2.04999995231628,
+				2.5
 			],
 			"max": [
-				64.5999984741211,
-				5.17000007629395,
-				6.69999980926514
+				46.0,
+				3.72000002861023,
+				6.0
 			],
 			"min": [
-				-4.0,
-				0.359999984502792,
-				-6.40000009536743
+				-1.0,
+				0.379999995231628,
+				-1.0
 			],
 			"size": [
-				68.5999984741211,
-				4.80999994277954,
-				13.1000003814697
+				47.0,
+				3.34000015258789,
+				7.0
 			]
 		},
-		"content_placement_count": 12,
+		"content_placement_count": 4,
 		"contract_id": "generated_stretch_graybox_v1",
-		"elevation_count": 2,
+		"elevation_count": 1,
 		"elevation_indices": [
-			0,
-			2
+			0
 		],
 		"elevation_step": 0.72,
-		"navigation_contract_id": "multi_level_navigation_graph_v1",
-		"navigation_edge_count": 7,
+		"infrastructure_operation_count": 0,
+		"layout_engine": "wfc_v1",
+		"navigation_contract_id": "unified_grid_v1",
+		"navigation_edge_count": 5,
 		"navigation_node_count": 6,
 		"node_surface_count": 6,
-		"route_surface_count": 7,
+		"roompiece_catalog": "trawf_roompiece_catalog_v1",
+		"route_surface_count": 5,
 		"source": {
 			"complexity_tier": "teaching",
 			"node_budget": 6,
 			"spec_id": "generated_sample_teaching_first_fork"
 		},
+		"spatial_feature_count": 0,
 		"supports_click_to_move": true,
-		"supports_multiple_elevations": true,
+		"supports_multiple_elevations": false,
 		"supports_outline_targets": true,
 		"surface_y_base": 0.45,
+		"themed_landmark_count": 0,
+		"themed_setpiece_count": 0,
 		"unit_scale": 1.0
 	},
 	"headless": {
@@ -325,121 +456,197 @@
 			"exit_shelter"
 		],
 		"risky_recovery": [
-			"risky_direct",
+			"entry",
+			"node_01",
+			"node_02",
+			"node_03",
+			"node_04",
 			"exit_shelter"
 		],
+		"solution": {
+			"actions": [
+				{
+					"approach_id": "take_physical_lysate",
+					"kind": "resource_pickup",
+					"node": "node_01",
+					"party": "any",
+					"requires": [],
+					"risk": "safe",
+					"runtime_handler": "physical_lysate_pickup_v1"
+				},
+				{
+					"approach_id": "canonical_shelter_arrival",
+					"kind": "shelter_arrival",
+					"node": "exit_shelter",
+					"party": "any",
+					"requires": [],
+					"risk": "safe",
+					"runtime_handler": "canonical_shelter_arrival_v1"
+				}
+			],
+			"branch_actions": [
+				{
+					"action": "activate",
+					"activation_policy": "interact_at_producer",
+					"before_node": "node_02",
+					"branch_id": "branch_00",
+					"cannot_bypass_unresolved": true,
+					"consumer_cell": [
+						16,
+						6
+					],
+					"consumer_cells": [
+						[
+							16,
+							6
+						]
+					],
+					"expected_phase": "bridged",
+					"id": "activate_branch_00_span",
+					"kind": "mandatory_branch_interaction",
+					"producer_cell": [
+						12,
+						12
+					],
+					"produces_state": "branch_00_resolved",
+					"required_for_progress": true,
+					"role": "mandatory_producer",
+					"runtime_handler": "branch_span_producer",
+					"solution_order": 0,
+					"target": "branch_00",
+					"wait_for_completion": true
+				}
+			],
+			"loadout": "spotlight",
+			"reaches": "exit_shelter",
+			"solvable": true
+		},
 		"solution_paths": [
 			{
 				"approach_per_node": [
 					{
 						"approach_id": "traverse",
 						"blocked": false,
-						"kind": "traverse",
+						"kind": "layout_traversal",
 						"node": "entry",
 						"party": "any",
 						"requires": [],
 						"risk": "safe",
-						"role": "boundary"
+						"role": "boundary",
+						"runtime_handler": ""
 					},
 					{
-						"approach_id": "force_clear",
+						"approach_id": "take_physical_lysate",
 						"blocked": false,
 						"borrows_from": "",
+						"combination_premium": 0.0,
 						"expert": false,
-						"kind": "primary",
-						"label": "Force the obstacle open with raw impact",
+						"kind": "resource_pickup",
+						"label": "TAKE LYSATE",
 						"min_stage": 1,
 						"node": "node_01",
-						"party": "specialist",
-						"requires": [
-							"impact"
-						],
-						"risk": "direct",
+						"node_pressure": 0.0,
+						"party": "any",
+						"requires": [],
+						"risk": "safe",
 						"role": "foraging",
+						"runtime_handler": "physical_lysate_pickup_v1",
 						"stage_ahead": false,
-						"taught_by": "",
-						"uses": [
-							"destroy"
-						]
-					},
-					{
-						"approach_id": "guarded_escort",
-						"blocked": false,
-						"borrows_from": "",
-						"expert": false,
-						"kind": "primary",
-						"label": "A combat specialist guards the carrier across the open",
-						"min_stage": 2,
-						"node": "node_02",
-						"party": "specialist",
-						"requires": [
-							"combat"
-						],
-						"risk": "direct",
-						"role": "danger",
-						"stage_ahead": false,
-						"taught_by": "",
-						"uses": [
-							"critical_resource"
-						]
-					},
-					{
-						"approach_id": "force_clear",
-						"blocked": false,
-						"borrows_from": "",
-						"expert": false,
-						"kind": "primary",
-						"label": "Force the obstacle open with raw impact",
-						"min_stage": 1,
-						"node": "node_03",
-						"party": "specialist",
-						"requires": [
-							"impact"
-						],
-						"risk": "direct",
-						"role": "route_pressure",
-						"stage_ahead": false,
-						"taught_by": "",
-						"uses": [
-							"destroy"
-						]
-					},
-					{
-						"approach_id": "guarded_escort",
-						"blocked": false,
-						"borrows_from": "",
-						"expert": false,
-						"kind": "primary",
-						"label": "A combat specialist guards the carrier across the open",
-						"min_stage": 2,
-						"node": "node_04",
-						"party": "specialist",
-						"requires": [
-							"combat"
-						],
-						"risk": "direct",
-						"role": "setpiece",
-						"stage_ahead": false,
-						"taught_by": "",
-						"uses": [
-							"critical_resource"
-						]
+						"uses": []
 					},
 					{
 						"approach_id": "traverse",
 						"blocked": false,
-						"kind": "traverse",
-						"node": "exit_shelter",
+						"kind": "layout_traversal",
+						"node": "node_02",
 						"party": "any",
 						"requires": [],
 						"risk": "safe",
-						"role": "shelter_arrival"
+						"role": "danger",
+						"runtime_handler": ""
+					},
+					{
+						"approach_id": "traverse",
+						"blocked": false,
+						"kind": "layout_traversal",
+						"node": "node_03",
+						"party": "any",
+						"requires": [],
+						"risk": "safe",
+						"role": "route_pressure",
+						"runtime_handler": ""
+					},
+					{
+						"approach_id": "traverse",
+						"blocked": false,
+						"kind": "layout_traversal",
+						"node": "node_04",
+						"party": "any",
+						"requires": [],
+						"risk": "safe",
+						"role": "setpiece",
+						"runtime_handler": ""
+					},
+					{
+						"approach_id": "canonical_shelter_arrival",
+						"blocked": false,
+						"borrows_from": "",
+						"combination_premium": 0.0,
+						"expert": false,
+						"kind": "shelter_arrival",
+						"label": "ENTER SHELTER",
+						"min_stage": 1,
+						"node": "exit_shelter",
+						"node_pressure": 0.0,
+						"party": "any",
+						"requires": [],
+						"risk": "safe",
+						"role": "shelter_arrival",
+						"runtime_handler": "canonical_shelter_arrival_v1",
+						"stage_ahead": false,
+						"uses": []
 					}
 				],
 				"blocked_nodes": [],
+				"branch_actions": [
+					{
+						"action": "activate",
+						"activation_policy": "interact_at_producer",
+						"before_node": "node_02",
+						"branch_id": "branch_00",
+						"cannot_bypass_unresolved": true,
+						"consumer_cell": [
+							16,
+							6
+						],
+						"consumer_cells": [
+							[
+								16,
+								6
+							]
+						],
+						"expected_phase": "bridged",
+						"id": "activate_branch_00_span",
+						"kind": "mandatory_branch_interaction",
+						"producer_cell": [
+							12,
+							12
+						],
+						"produces_state": "branch_00_resolved",
+						"required_for_progress": true,
+						"role": "mandatory_producer",
+						"runtime_handler": "branch_span_producer",
+						"solution_order": 0,
+						"target": "branch_00",
+						"wait_for_completion": true
+					}
+				],
+				"branch_contract_valid": true,
+				"choice_nodes_taken": 0,
+				"combination_premium": 0.0,
 				"label": "Full party",
 				"loadout": "spotlight",
-				"max_stage_used": 2,
+				"max_stage_used": 0,
 				"party": [
 					"aster",
 					"peris",
@@ -448,9 +655,10 @@
 					"oli",
 					"tyreg"
 				],
+				"pressure": 0.0,
 				"solvable": true,
 				"techniques": [],
-				"total_risk": 4,
+				"total_risk": 0,
 				"uses_future_technique": false,
 				"within_stage": true
 			},
@@ -459,678 +667,1562 @@
 					{
 						"approach_id": "traverse",
 						"blocked": false,
-						"kind": "traverse",
+						"kind": "layout_traversal",
 						"node": "entry",
 						"party": "any",
 						"requires": [],
 						"risk": "safe",
-						"role": "boundary"
+						"role": "boundary",
+						"runtime_handler": ""
 					},
 					{
-						"approach_id": "flora_chain_trap",
-						"blocked": false,
-						"borrows_from": "10",
-						"expert": true,
-						"kind": "shadow_expert",
-						"label": "Peris chains a flure lure into a staged flora trap, a self-contained mini danger-zone that herds the enemy instead of a single tend",
-						"min_stage": 5,
-						"node": "node_01",
-						"party": "aster_peris",
-						"requires": [
-							"flora",
-							"lure"
-						],
-						"risk": "risky",
-						"role": "foraging",
-						"stage_ahead": true,
-						"taught_by": "nested_flora_zone",
-						"uses": []
-					},
-					{
-						"approach_id": "split_carry",
-						"blocked": false,
-						"borrows_from": "5",
-						"expert": true,
-						"kind": "shadow_expert",
-						"label": "Split the carry: Peris drags the load while Aster runs a parallel data lane that holds the hazard's attention",
-						"min_stage": 3,
-						"node": "node_02",
-						"party": "aster_peris",
-						"requires": [
-							"carry",
-							"cover",
-							"data"
-						],
-						"risk": "risky",
-						"role": "danger",
-						"stage_ahead": true,
-						"taught_by": "split_carry",
-						"uses": []
-					},
-					{
-						"approach_id": "flora_finesse",
+						"approach_id": "take_physical_lysate",
 						"blocked": false,
 						"borrows_from": "",
+						"combination_premium": 0.0,
 						"expert": false,
-						"kind": "shadow",
-						"label": "Peris grows or tends the plant tool; Aster confirms the target",
+						"kind": "resource_pickup",
+						"label": "TAKE LYSATE",
 						"min_stage": 1,
-						"node": "node_03",
-						"party": "aster_peris",
-						"requires": [
-							"flora"
-						],
+						"node": "node_01",
+						"node_pressure": 0.0,
+						"party": "any",
+						"requires": [],
 						"risk": "safe",
-						"role": "route_pressure",
+						"role": "foraging",
+						"runtime_handler": "physical_lysate_pickup_v1",
 						"stage_ahead": false,
-						"taught_by": "flora_tending",
-						"uses": [
-							"flure_iron_decoy",
-							"hushbloom_stun",
-							"climbvine_traversal"
-						]
-					},
-					{
-						"approach_id": "split_carry",
-						"blocked": false,
-						"borrows_from": "5",
-						"expert": true,
-						"kind": "shadow_expert",
-						"label": "Split the carry: Peris drags the load while Aster runs a parallel data lane that holds the hazard's attention",
-						"min_stage": 3,
-						"node": "node_04",
-						"party": "aster_peris",
-						"requires": [
-							"carry",
-							"cover",
-							"data"
-						],
-						"risk": "risky",
-						"role": "setpiece",
-						"stage_ahead": true,
-						"taught_by": "split_carry",
 						"uses": []
 					},
 					{
 						"approach_id": "traverse",
 						"blocked": false,
-						"kind": "traverse",
-						"node": "exit_shelter",
+						"kind": "layout_traversal",
+						"node": "node_02",
 						"party": "any",
 						"requires": [],
 						"risk": "safe",
-						"role": "shelter_arrival"
+						"role": "danger",
+						"runtime_handler": ""
+					},
+					{
+						"approach_id": "traverse",
+						"blocked": false,
+						"kind": "layout_traversal",
+						"node": "node_03",
+						"party": "any",
+						"requires": [],
+						"risk": "safe",
+						"role": "route_pressure",
+						"runtime_handler": ""
+					},
+					{
+						"approach_id": "traverse",
+						"blocked": false,
+						"kind": "layout_traversal",
+						"node": "node_04",
+						"party": "any",
+						"requires": [],
+						"risk": "safe",
+						"role": "setpiece",
+						"runtime_handler": ""
+					},
+					{
+						"approach_id": "canonical_shelter_arrival",
+						"blocked": false,
+						"borrows_from": "",
+						"combination_premium": 0.0,
+						"expert": false,
+						"kind": "shelter_arrival",
+						"label": "ENTER SHELTER",
+						"min_stage": 1,
+						"node": "exit_shelter",
+						"node_pressure": 0.0,
+						"party": "any",
+						"requires": [],
+						"risk": "safe",
+						"role": "shelter_arrival",
+						"runtime_handler": "canonical_shelter_arrival_v1",
+						"stage_ahead": false,
+						"uses": []
 					}
 				],
 				"blocked_nodes": [],
+				"branch_actions": [
+					{
+						"action": "activate",
+						"activation_policy": "interact_at_producer",
+						"before_node": "node_02",
+						"branch_id": "branch_00",
+						"cannot_bypass_unresolved": true,
+						"consumer_cell": [
+							16,
+							6
+						],
+						"consumer_cells": [
+							[
+								16,
+								6
+							]
+						],
+						"expected_phase": "bridged",
+						"id": "activate_branch_00_span",
+						"kind": "mandatory_branch_interaction",
+						"producer_cell": [
+							12,
+							12
+						],
+						"produces_state": "branch_00_resolved",
+						"required_for_progress": true,
+						"role": "mandatory_producer",
+						"runtime_handler": "branch_span_producer",
+						"solution_order": 0,
+						"target": "branch_00",
+						"wait_for_completion": true
+					}
+				],
+				"branch_contract_valid": true,
+				"choice_nodes_taken": 0,
+				"combination_premium": 0.0,
 				"label": "Aster + Peris (shadow)",
 				"loadout": "shadow",
-				"max_stage_used": 5,
+				"max_stage_used": 0,
 				"party": [
 					"aster",
 					"peris"
 				],
+				"pressure": 0.0,
 				"solvable": true,
-				"techniques": [
-					"nested_flora_zone",
-					"split_carry",
-					"flora_tending"
-				],
-				"total_risk": 6,
-				"uses_future_technique": true,
+				"techniques": [],
+				"total_risk": 0,
+				"uses_future_technique": false,
 				"within_stage": true
 			}
 		],
 		"solution_summary": {
 			"bare_pair_solvable": true,
-			"choice_node_count": 4,
-			"choice_nodes": [
-				"node_01",
-				"node_02",
-				"node_03",
-				"node_04"
-			],
-			"distinct_node_count": 4,
-			"distinct_nodes": [
-				"node_01",
-				"node_02",
-				"node_03",
-				"node_04"
-			],
-			"multi_solution": true,
+			"branch_contract_valid": true,
+			"choice_node_count": 0,
+			"choice_nodes": [],
+			"combination_pressure_gap": 0.0,
+			"distinct_node_count": 0,
+			"distinct_nodes": [],
+			"mandatory_branch_action_count": 1,
+			"multi_solution": false,
 			"multi_solution_ok": true,
 			"multi_solution_required": false,
 			"progression_stage": 2,
+			"shadow_combination_premium": 0.0,
+			"shadow_pressure": 0.0,
 			"shadow_solvable": true,
-			"shadow_techniques": [
-				"nested_flora_zone",
-				"split_carry",
-				"flora_tending"
-			],
-			"shadow_uses_future_technique": true,
+			"shadow_techniques": [],
+			"shadow_uses_future_technique": false,
 			"solvable_loadout_count": 2,
+			"spotlight_pressure": 0.0,
 			"spotlight_within_stage": true
 		},
 		"state_paths": [
 			"chunk.generation.spec_id",
 			"chunk.generation.route_choice",
 			"chunk.generation.shelter_rested",
-			"chunk.generation.shortcut_unlocked",
 			"chunk.generation.composition",
 			"chunk.generation.composition.random_walk",
 			"chunk.generation.unsupported_placeholder_count",
+			"chunk.generation.omitted_content_count",
 			"chunk.generation.navigation",
+			"chunk.generation.spatial_features",
+			"chunk.generation.area_theme",
+			"chunk.generation.themed_landmarks",
+			"chunk.generation.themed_setpieces",
 			"chunk.generation.active_loadout",
 			"chunk.generation.solution_path",
 			"chunk.generation.blocked_nodes"
 		]
 	},
 	"id": "generated_sample_teaching_first_fork",
-	"navigation": {
-		"contract_id": "multi_level_navigation_graph_v1",
-		"edges": [
+	"infrastructure_operations": [],
+	"navigation_grid": {
+		"branch_count": 2,
+		"branch_weave_contract_id": "generated_branch_weave_v1",
+		"branches": [
 			{
-				"bidirectional": true,
-				"from": "entry",
-				"height_delta": 1.43999999761581,
-				"id": "main_00_01",
-				"kind": "safe",
-				"path_cost": 12.4528551101685,
-				"physical_cost": 12.4528551101685,
-				"recoverable": true,
-				"risk": "safe",
-				"risk_penalty": 0.0,
-				"route_id": "main_00_01",
-				"slope_ratio": 0.116417098150379,
-				"to": "node_01",
-				"traversal": "ramp",
-				"waypoints": [
+				"causal_contract": {
+					"activation_policy": "interact_at_producer",
+					"branch_id": "branch_00",
+					"cannot_bypass_unresolved": true,
+					"cell_frame": "unified_grid_v1",
+					"completion_phase": "bridged",
+					"consumer_addressing": "exact_cell",
+					"consumer_cell": [
+						16,
+						6
+					],
+					"consumer_cell_role": "visual_midpoint",
+					"consumer_cells": [
+						[
+							16,
+							6
+						]
+					],
+					"consumer_cells_addressing": "exact_cut_set",
+					"consumer_derivation": "first_later_spine_disconnect_cut",
+					"consumer_policy": "next_unresolved_spine_blocker",
+					"content_policy": "causal_producer",
+					"contract_id": "generated_branch_role_v1",
+					"cut_proof": "entry_exit_disconnected_when_removed",
+					"producer_cell": [
+						12,
+						12
+					],
+					"produces_state": "branch_00_resolved",
+					"role": "mandatory_producer",
+					"runtime_handler": "branch_span_producer",
+					"spine_column": 14,
+					"starts_active": true,
+					"topology_effect": "unlock_next_spine_blocker",
+					"wait_for_completion": true
+				},
+				"cells": [
 					[
-						0.0,
-						0.449999988079071,
-						-3.0
+						14,
+						9
 					],
 					[
-						6.0,
-						1.16999995708466,
-						-1.5
+						12,
+						10
 					],
 					[
-						12.0,
-						1.88999998569489,
-						0.0
+						13,
+						10
+					],
+					[
+						14,
+						10
+					],
+					[
+						15,
+						10
+					],
+					[
+						12,
+						11
+					],
+					[
+						13,
+						11
+					],
+					[
+						14,
+						11
+					],
+					[
+						15,
+						11
+					],
+					[
+						12,
+						12
+					],
+					[
+						13,
+						12
+					],
+					[
+						14,
+						12
+					],
+					[
+						15,
+						12
 					]
 				],
-				"width": 1.85
+				"id": "branch_00",
+				"neck": [
+					14,
+					9
+				],
+				"normal_route_optional": false,
+				"required_for_progress": true,
+				"role": "mandatory_producer",
+				"shape": "chamber"
 			},
 			{
-				"bidirectional": true,
-				"from": "node_01",
-				"height_delta": 0.0,
-				"id": "main_01_02",
-				"kind": "safe",
-				"path_cost": 12.3693170547485,
-				"physical_cost": 12.3693170547485,
-				"recoverable": true,
-				"risk": "safe",
-				"risk_penalty": 0.0,
-				"route_id": "main_01_02",
-				"slope_ratio": 0.0,
-				"to": "node_02",
-				"traversal": "walkway",
-				"waypoints": [
+				"causal_contract": {
+					"activation_policy": "enter_branch",
+					"branch_id": "branch_01",
+					"cannot_bypass_unresolved": true,
+					"consumer_cells": [],
+					"consumer_policy": "none",
+					"content_policy": "risk_scaled_physical_reward",
+					"contract_id": "generated_branch_role_v1",
+					"produces_state": "",
+					"role": "optional_risk_reward",
+					"spine_column": 34,
+					"starts_active": true,
+					"topology_effect": "none"
+				},
+				"cells": [
 					[
-						12.0,
-						1.88999998569489,
-						0.0
+						34,
+						8
 					],
 					[
-						18.0,
-						1.88999998569489,
-						1.5
+						32,
+						9
 					],
 					[
-						24.0,
-						1.88999998569489,
-						3.0
+						33,
+						9
+					],
+					[
+						34,
+						9
+					],
+					[
+						35,
+						9
+					],
+					[
+						32,
+						10
+					],
+					[
+						33,
+						10
+					],
+					[
+						34,
+						10
+					],
+					[
+						35,
+						10
+					],
+					[
+						32,
+						11
+					],
+					[
+						33,
+						11
+					],
+					[
+						34,
+						11
+					],
+					[
+						35,
+						11
+					],
+					[
+						32,
+						12
+					],
+					[
+						33,
+						12
+					],
+					[
+						34,
+						12
+					],
+					[
+						35,
+						12
 					]
 				],
-				"width": 1.85
-			},
-			{
-				"bidirectional": true,
-				"from": "node_02",
-				"height_delta": -1.43999999761581,
-				"id": "main_02_03",
-				"kind": "safe",
-				"path_cost": 13.4934644699097,
-				"physical_cost": 13.4934644699097,
-				"recoverable": true,
-				"risk": "safe",
-				"risk_penalty": 0.0,
-				"route_id": "main_02_03",
-				"slope_ratio": -0.107331264981121,
-				"to": "node_03",
-				"traversal": "ramp",
-				"waypoints": [
-					[
-						24.0,
-						1.88999998569489,
-						3.0
-					],
-					[
-						30.0,
-						1.16999995708466,
-						0.0
-					],
-					[
-						36.0,
-						0.449999988079071,
-						-3.0
-					]
+				"id": "branch_01",
+				"neck": [
+					34,
+					8
 				],
-				"width": 1.85
-			},
-			{
-				"bidirectional": true,
-				"from": "node_03",
-				"height_delta": 1.43999999761581,
-				"id": "main_03_04",
-				"kind": "safe",
-				"path_cost": 12.4528551101685,
-				"physical_cost": 12.4528551101685,
-				"recoverable": true,
-				"risk": "safe",
-				"risk_penalty": 0.0,
-				"route_id": "main_03_04",
-				"slope_ratio": 0.116417098150379,
-				"to": "node_04",
-				"traversal": "ramp",
-				"waypoints": [
-					[
-						36.0,
-						0.449999988079071,
-						-3.0
-					],
-					[
-						42.0,
-						1.16999995708466,
-						-1.5
-					],
-					[
-						48.0,
-						1.88999998569489,
-						0.0
-					]
-				],
-				"width": 1.85
-			},
-			{
-				"bidirectional": true,
-				"from": "node_04",
-				"height_delta": -1.43999999761581,
-				"id": "main_04_05",
-				"kind": "safe",
-				"path_cost": 12.4528551101685,
-				"physical_cost": 12.4528551101685,
-				"recoverable": true,
-				"risk": "safe",
-				"risk_penalty": 0.0,
-				"route_id": "main_04_05",
-				"slope_ratio": -0.116417098150379,
-				"to": "exit_shelter",
-				"traversal": "ramp",
-				"waypoints": [
-					[
-						48.0,
-						1.88999998569489,
-						0.0
-					],
-					[
-						54.0,
-						1.16999995708466,
-						1.5
-					],
-					[
-						60.0,
-						0.449999988079071,
-						3.0
-					]
-				],
-				"width": 1.85
-			},
-			{
-				"bidirectional": true,
-				"from": "entry",
-				"height_delta": 0.0,
-				"id": "risky_direct",
-				"kind": "risky",
-				"path_cost": 88.2992553710938,
-				"physical_cost": 60.2992553710938,
-				"recoverable": true,
-				"risk": "risky",
-				"risk_penalty": 28.0,
-				"route_id": "risky_direct",
-				"slope_ratio": 0.0,
-				"to": "exit_shelter",
-				"traversal": "walkway",
-				"waypoints": [
-					[
-						0.0,
-						0.449999988079071,
-						-3.0
-					],
-					[
-						30.0,
-						0.449999988079071,
-						0.0
-					],
-					[
-						60.0,
-						0.449999988079071,
-						3.0
-					]
-				],
-				"width": 1.15
-			},
-			{
-				"bidirectional": true,
-				"from": "node_04",
-				"height_delta": -1.43999999761581,
-				"id": "return_shortcut",
-				"kind": "shortcut",
-				"path_cost": 52.1152114868164,
-				"physical_cost": 48.1152114868164,
-				"recoverable": true,
-				"risk": "shortcut",
-				"risk_penalty": 4.0,
-				"route_id": "return_shortcut",
-				"slope_ratio": -0.0299415774159657,
-				"to": "entry",
-				"traversal": "ramp",
-				"waypoints": [
-					[
-						48.0,
-						1.88999998569489,
-						0.0
-					],
-					[
-						24.0,
-						1.16999995708466,
-						-1.5
-					],
-					[
-						0.0,
-						0.449999988079071,
-						-3.0
-					]
-				],
-				"width": 1.25
+				"normal_route_optional": true,
+				"required_for_progress": false,
+				"role": "optional_risk_reward",
+				"shape": "chamber"
 			}
 		],
+		"cell_size": 1.0,
+		"contract_id": "unified_grid_v1",
 		"elevation_indices": [
-			0,
-			2
+			0
 		],
 		"entry_anchor": "entry",
-		"entry_node": "entry",
 		"exit_anchor": "exit_shelter",
-		"exit_node": "exit_shelter",
-		"floor_columns": [
-			{
-				"floors": [
-					{
-						"elevation_index": 0,
-						"node_id": "entry",
-						"y": 0.449999988079071
-					}
+		"height": 13,
+		"level_cells": [],
+		"level_count": 1,
+		"level_height": 0.72,
+		"links": [],
+		"origin": [
+			-3.0,
+			0.449999988079071,
+			-4.0
+		],
+		"risk_cell_list": [],
+		"route_cells": {
+			"main_00_01": {
+				"cells": [
+					[
+						7,
+						6
+					],
+					[
+						8,
+						6
+					],
+					[
+						9,
+						6
+					],
+					[
+						10,
+						6
+					],
+					[
+						11,
+						6
+					]
 				],
-				"xz": [
-					0.0,
-					-3.0
-				]
+				"kind": "safe"
 			},
-			{
-				"floors": [
-					{
-						"elevation_index": 2,
-						"node_id": "node_01",
-						"y": 1.88999998569489
-					}
+			"main_01_02": {
+				"cells": [
+					[
+						15,
+						6
+					],
+					[
+						16,
+						6
+					],
+					[
+						17,
+						6
+					],
+					[
+						18,
+						6
+					],
+					[
+						19,
+						6
+					],
+					[
+						19,
+						5
+					],
+					[
+						19,
+						4
+					]
 				],
-				"xz": [
-					12.0,
-					0.0
-				]
+				"kind": "safe"
 			},
-			{
-				"floors": [
-					{
-						"elevation_index": 2,
-						"node_id": "node_02",
-						"y": 1.88999998569489
-					}
+			"main_02_03": {
+				"cells": [
+					[
+						21,
+						3
+					],
+					[
+						21,
+						4
+					],
+					[
+						21,
+						5
+					],
+					[
+						22,
+						3
+					],
+					[
+						22,
+						4
+					],
+					[
+						22,
+						5
+					],
+					[
+						23,
+						3
+					],
+					[
+						23,
+						4
+					],
+					[
+						23,
+						5
+					],
+					[
+						24,
+						3
+					],
+					[
+						24,
+						4
+					],
+					[
+						24,
+						5
+					],
+					[
+						25,
+						3
+					],
+					[
+						25,
+						4
+					],
+					[
+						25,
+						5
+					],
+					[
+						26,
+						3
+					],
+					[
+						26,
+						4
+					],
+					[
+						26,
+						5
+					],
+					[
+						27,
+						4
+					],
+					[
+						28,
+						4
+					],
+					[
+						27,
+						5
+					],
+					[
+						28,
+						5
+					],
+					[
+						27,
+						3
+					],
+					[
+						28,
+						3
+					],
+					[
+						26,
+						6
+					],
+					[
+						27,
+						6
+					],
+					[
+						28,
+						6
+					],
+					[
+						26,
+						7
+					],
+					[
+						27,
+						7
+					],
+					[
+						28,
+						7
+					]
 				],
-				"xz": [
-					24.0,
-					3.0
-				]
+				"kind": "safe"
 			},
-			{
-				"floors": [
-					{
-						"elevation_index": 0,
-						"node_id": "node_03",
-						"y": 0.449999988079071
-					}
+			"main_03_04": {
+				"cells": [
+					[
+						31,
+						5
+					],
+					[
+						31,
+						6
+					],
+					[
+						31,
+						7
+					],
+					[
+						32,
+						5
+					],
+					[
+						32,
+						6
+					],
+					[
+						32,
+						7
+					],
+					[
+						33,
+						5
+					],
+					[
+						33,
+						6
+					],
+					[
+						33,
+						7
+					],
+					[
+						34,
+						5
+					],
+					[
+						34,
+						6
+					],
+					[
+						34,
+						7
+					],
+					[
+						35,
+						6
+					],
+					[
+						36,
+						6
+					],
+					[
+						34,
+						4
+					],
+					[
+						35,
+						4
+					],
+					[
+						35,
+						5
+					],
+					[
+						36,
+						4
+					],
+					[
+						36,
+						5
+					],
+					[
+						35,
+						7
+					],
+					[
+						36,
+						7
+					]
 				],
-				"xz": [
-					36.0,
-					-3.0
-				]
+				"kind": "safe"
 			},
-			{
-				"floors": [
-					{
-						"elevation_index": 2,
-						"node_id": "node_04",
-						"y": 1.88999998569489
-					}
+			"main_04_05": {
+				"cells": [
+					[
+						37,
+						4
+					],
+					[
+						37,
+						5
+					],
+					[
+						38,
+						4
+					],
+					[
+						38,
+						5
+					],
+					[
+						39,
+						4
+					],
+					[
+						39,
+						5
+					],
+					[
+						40,
+						4
+					],
+					[
+						40,
+						5
+					],
+					[
+						41,
+						4
+					],
+					[
+						41,
+						5
+					],
+					[
+						42,
+						4
+					],
+					[
+						42,
+						5
+					],
+					[
+						43,
+						5
+					],
+					[
+						43,
+						4
+					],
+					[
+						42,
+						6
+					],
+					[
+						43,
+						6
+					]
 				],
-				"xz": [
-					48.0,
-					0.0
-				]
-			},
-			{
-				"floors": [
-					{
-						"elevation_index": 0,
-						"node_id": "exit_shelter",
-						"y": 0.449999988079071
-					}
-				],
-				"xz": [
-					60.0,
-					3.0
-				]
+				"kind": "safe"
 			}
-		],
-		"golden_path_nodes": [
-			"entry",
-			"node_01",
-			"node_02",
-			"node_03",
-			"node_04",
-			"exit_shelter"
-		],
-		"max_snap_distance": 9.0,
-		"nodes": [
-			{
-				"content_count": 2,
-				"elevation_index": 0,
-				"floor_size": [
-					6.0,
-					0.159999996423721,
-					4.19999980926514
-				],
-				"id": "entry",
-				"position": [
-					0.0,
-					0.449999988079071,
-					-3.0
-				],
-				"radius": 3.0,
-				"role": "boundary",
-				"supports_click_to_move": true,
-				"surface_id": "node:entry",
-				"surface_y": 0.45
-			},
-			{
-				"content_count": 2,
-				"elevation_index": 2,
-				"floor_size": [
-					5.80000019073486,
-					0.140000000596046,
-					4.40000009536743
-				],
-				"id": "node_01",
-				"position": [
-					12.0,
-					1.88999998569489,
-					0.0
-				],
-				"radius": 2.90000009536743,
-				"role": "foraging",
-				"supports_click_to_move": true,
-				"surface_id": "node:node_01",
-				"surface_y": 1.89
-			},
-			{
-				"content_count": 2,
-				"elevation_index": 2,
-				"floor_size": [
-					5.40000009536743,
-					0.140000000596046,
-					4.80000019073486
-				],
-				"id": "node_02",
-				"position": [
-					24.0,
-					1.88999998569489,
-					3.0
-				],
-				"radius": 2.70000004768372,
-				"role": "danger",
-				"supports_click_to_move": true,
-				"surface_id": "node:node_02",
-				"surface_y": 1.89
-			},
-			{
-				"content_count": 2,
-				"elevation_index": 0,
-				"floor_size": [
-					5.40000009536743,
-					0.140000000596046,
-					4.80000019073486
-				],
-				"id": "node_03",
-				"position": [
-					36.0,
-					0.449999988079071,
-					-3.0
-				],
-				"radius": 2.70000004768372,
-				"role": "route_pressure",
-				"supports_click_to_move": true,
-				"surface_id": "node:node_03",
-				"surface_y": 0.45
-			},
-			{
-				"content_count": 2,
-				"elevation_index": 2,
-				"floor_size": [
-					6.59999990463257,
-					0.159999996423721,
-					5.19999980926514
-				],
-				"id": "node_04",
-				"position": [
-					48.0,
-					1.88999998569489,
-					0.0
-				],
-				"radius": 3.29999995231628,
-				"role": "setpiece",
-				"supports_click_to_move": true,
-				"surface_id": "node:node_04",
-				"surface_y": 1.89
-			},
-			{
-				"content_count": 2,
-				"elevation_index": 0,
-				"floor_size": [
-					7.19999980926514,
-					0.180000007152557,
-					5.40000009536743
-				],
-				"id": "exit_shelter",
-				"position": [
-					60.0,
-					0.449999988079071,
-					3.0
-				],
-				"radius": 3.59999990463257,
-				"role": "shelter_arrival",
-				"supports_click_to_move": true,
-				"surface_id": "node:exit_shelter",
-				"surface_y": 0.45
-			}
-		],
-		"route_modes": [
-			"safe",
-			"direct"
-		],
-		"source": {
-			"complexity_tier": "teaching",
-			"generator": "archetype_based_stretch_v1",
-			"spec_id": "generated_sample_teaching_first_fork"
 		},
 		"space_id": "generated_sample_teaching_first_fork",
-		"supports_multiple_elevations": true
+		"supports_multiple_elevations": false,
+		"walkable_cells": [
+			[
+				21,
+				3
+			],
+			[
+				22,
+				3
+			],
+			[
+				23,
+				3
+			],
+			[
+				24,
+				3
+			],
+			[
+				25,
+				3
+			],
+			[
+				26,
+				3
+			],
+			[
+				27,
+				3
+			],
+			[
+				28,
+				3
+			],
+			[
+				3,
+				4
+			],
+			[
+				4,
+				4
+			],
+			[
+				5,
+				4
+			],
+			[
+				6,
+				4
+			],
+			[
+				7,
+				4
+			],
+			[
+				11,
+				4
+			],
+			[
+				12,
+				4
+			],
+			[
+				13,
+				4
+			],
+			[
+				14,
+				4
+			],
+			[
+				15,
+				4
+			],
+			[
+				19,
+				4
+			],
+			[
+				20,
+				4
+			],
+			[
+				21,
+				4
+			],
+			[
+				22,
+				4
+			],
+			[
+				23,
+				4
+			],
+			[
+				24,
+				4
+			],
+			[
+				25,
+				4
+			],
+			[
+				26,
+				4
+			],
+			[
+				27,
+				4
+			],
+			[
+				28,
+				4
+			],
+			[
+				29,
+				4
+			],
+			[
+				30,
+				4
+			],
+			[
+				31,
+				4
+			],
+			[
+				34,
+				4
+			],
+			[
+				35,
+				4
+			],
+			[
+				36,
+				4
+			],
+			[
+				37,
+				4
+			],
+			[
+				38,
+				4
+			],
+			[
+				39,
+				4
+			],
+			[
+				40,
+				4
+			],
+			[
+				41,
+				4
+			],
+			[
+				42,
+				4
+			],
+			[
+				43,
+				4
+			],
+			[
+				44,
+				4
+			],
+			[
+				45,
+				4
+			],
+			[
+				46,
+				4
+			],
+			[
+				47,
+				4
+			],
+			[
+				3,
+				5
+			],
+			[
+				4,
+				5
+			],
+			[
+				5,
+				5
+			],
+			[
+				6,
+				5
+			],
+			[
+				7,
+				5
+			],
+			[
+				11,
+				5
+			],
+			[
+				12,
+				5
+			],
+			[
+				13,
+				5
+			],
+			[
+				14,
+				5
+			],
+			[
+				15,
+				5
+			],
+			[
+				19,
+				5
+			],
+			[
+				21,
+				5
+			],
+			[
+				22,
+				5
+			],
+			[
+				23,
+				5
+			],
+			[
+				24,
+				5
+			],
+			[
+				25,
+				5
+			],
+			[
+				26,
+				5
+			],
+			[
+				27,
+				5
+			],
+			[
+				28,
+				5
+			],
+			[
+				29,
+				5
+			],
+			[
+				30,
+				5
+			],
+			[
+				31,
+				5
+			],
+			[
+				32,
+				5
+			],
+			[
+				33,
+				5
+			],
+			[
+				34,
+				5
+			],
+			[
+				35,
+				5
+			],
+			[
+				36,
+				5
+			],
+			[
+				37,
+				5
+			],
+			[
+				38,
+				5
+			],
+			[
+				39,
+				5
+			],
+			[
+				40,
+				5
+			],
+			[
+				41,
+				5
+			],
+			[
+				42,
+				5
+			],
+			[
+				43,
+				5
+			],
+			[
+				44,
+				5
+			],
+			[
+				45,
+				5
+			],
+			[
+				46,
+				5
+			],
+			[
+				47,
+				5
+			],
+			[
+				3,
+				6
+			],
+			[
+				4,
+				6
+			],
+			[
+				5,
+				6
+			],
+			[
+				6,
+				6
+			],
+			[
+				7,
+				6
+			],
+			[
+				8,
+				6
+			],
+			[
+				9,
+				6
+			],
+			[
+				10,
+				6
+			],
+			[
+				11,
+				6
+			],
+			[
+				12,
+				6
+			],
+			[
+				13,
+				6
+			],
+			[
+				14,
+				6
+			],
+			[
+				15,
+				6
+			],
+			[
+				16,
+				6
+			],
+			[
+				17,
+				6
+			],
+			[
+				18,
+				6
+			],
+			[
+				19,
+				6
+			],
+			[
+				26,
+				6
+			],
+			[
+				27,
+				6
+			],
+			[
+				28,
+				6
+			],
+			[
+				29,
+				6
+			],
+			[
+				30,
+				6
+			],
+			[
+				31,
+				6
+			],
+			[
+				32,
+				6
+			],
+			[
+				33,
+				6
+			],
+			[
+				34,
+				6
+			],
+			[
+				35,
+				6
+			],
+			[
+				36,
+				6
+			],
+			[
+				37,
+				6
+			],
+			[
+				42,
+				6
+			],
+			[
+				43,
+				6
+			],
+			[
+				44,
+				6
+			],
+			[
+				45,
+				6
+			],
+			[
+				46,
+				6
+			],
+			[
+				47,
+				6
+			],
+			[
+				3,
+				7
+			],
+			[
+				4,
+				7
+			],
+			[
+				5,
+				7
+			],
+			[
+				6,
+				7
+			],
+			[
+				7,
+				7
+			],
+			[
+				11,
+				7
+			],
+			[
+				12,
+				7
+			],
+			[
+				13,
+				7
+			],
+			[
+				14,
+				7
+			],
+			[
+				15,
+				7
+			],
+			[
+				26,
+				7
+			],
+			[
+				27,
+				7
+			],
+			[
+				28,
+				7
+			],
+			[
+				29,
+				7
+			],
+			[
+				30,
+				7
+			],
+			[
+				31,
+				7
+			],
+			[
+				32,
+				7
+			],
+			[
+				33,
+				7
+			],
+			[
+				34,
+				7
+			],
+			[
+				35,
+				7
+			],
+			[
+				36,
+				7
+			],
+			[
+				43,
+				7
+			],
+			[
+				44,
+				7
+			],
+			[
+				45,
+				7
+			],
+			[
+				46,
+				7
+			],
+			[
+				47,
+				7
+			],
+			[
+				3,
+				8
+			],
+			[
+				4,
+				8
+			],
+			[
+				5,
+				8
+			],
+			[
+				6,
+				8
+			],
+			[
+				7,
+				8
+			],
+			[
+				11,
+				8
+			],
+			[
+				12,
+				8
+			],
+			[
+				13,
+				8
+			],
+			[
+				14,
+				8
+			],
+			[
+				15,
+				8
+			],
+			[
+				27,
+				8
+			],
+			[
+				28,
+				8
+			],
+			[
+				29,
+				8
+			],
+			[
+				30,
+				8
+			],
+			[
+				31,
+				8
+			],
+			[
+				34,
+				8
+			],
+			[
+				43,
+				8
+			],
+			[
+				44,
+				8
+			],
+			[
+				45,
+				8
+			],
+			[
+				46,
+				8
+			],
+			[
+				47,
+				8
+			],
+			[
+				14,
+				9
+			],
+			[
+				32,
+				9
+			],
+			[
+				33,
+				9
+			],
+			[
+				34,
+				9
+			],
+			[
+				35,
+				9
+			],
+			[
+				12,
+				10
+			],
+			[
+				13,
+				10
+			],
+			[
+				14,
+				10
+			],
+			[
+				15,
+				10
+			],
+			[
+				32,
+				10
+			],
+			[
+				33,
+				10
+			],
+			[
+				34,
+				10
+			],
+			[
+				35,
+				10
+			],
+			[
+				12,
+				11
+			],
+			[
+				13,
+				11
+			],
+			[
+				14,
+				11
+			],
+			[
+				15,
+				11
+			],
+			[
+				32,
+				11
+			],
+			[
+				33,
+				11
+			],
+			[
+				34,
+				11
+			],
+			[
+				35,
+				11
+			],
+			[
+				12,
+				12
+			],
+			[
+				13,
+				12
+			],
+			[
+				14,
+				12
+			],
+			[
+				15,
+				12
+			],
+			[
+				32,
+				12
+			],
+			[
+				33,
+				12
+			],
+			[
+				34,
+				12
+			],
+			[
+				35,
+				12
+			]
+		],
+		"width": 51
 	},
 	"nodes": [
 		{
+			"action_verb": "",
 			"approach_position": [
-				0.0,
+				1.89999997615814,
 				0.449999988079071,
-				-1.57200002670288
+				0.600000023841858
 			],
 			"approaches": [],
 			"archetype_id": "11",
 			"archetype_name": "Narrative beat",
 			"atp_reward": 0,
+			"branch_role": "",
+			"carry_payload": false,
+			"chain_cycle": -1,
 			"chain_index": -1,
 			"chain_input": "",
+			"chain_input_ref": "",
 			"chain_label": "",
 			"chain_output": "",
+			"chain_output_ref": "",
 			"composition_role": "",
 			"content_placements": [
 				{
 					"category": "flora",
-					"id": "doma",
-					"label": "doma",
+					"id": "capbage",
+					"label": "capbage",
 					"local_offset": [
-						-2.13000011444092,
+						-1.87999999523163,
 						0.699999988079071,
-						-0.923999965190887
+						-1.39999997615814
 					],
 					"position": [
-						-2.13000011444092,
+						0.620000004768372,
 						1.14999997615814,
-						-3.92400002479553
+						1.10000002384186
 					],
-					"role": "resource",
+					"role": "cover",
 					"rotation_y_degrees": -11.0,
 					"shape": "plant_cluster",
 					"size": [
@@ -1138,49 +2230,26 @@
 						1.39999997615814,
 						1.20000004768372
 					],
-					"support": "implemented"
-				},
-				{
-					"category": "structures",
-					"id": "junction",
-					"label": "junction",
-					"local_offset": [
-						0.0,
-						0.600000023841858,
-						0.755999982357025
-					],
-					"position": [
-						0.0,
-						1.04999995231628,
-						-2.24399995803833
-					],
-					"role": "structure",
-					"rotation_y_degrees": 26.0,
-					"shape": "structure_box",
-					"size": [
-						3.0,
-						1.20000004768372,
-						2.0
-					],
+					"socket_id": "",
 					"support": "implemented"
 				}
 			],
 			"elevation_index": 0,
-			"elevation_meters": 0.0,
+			"elevation_meters": -0.0000000119209289661804,
 			"enemies": [],
 			"exploit_target": "",
 			"floor_size": [
-				6.0,
-				0.159999996423721,
-				4.19999980926514
+				5.0,
+				0.140000000596046,
+				5.0
 			],
 			"flora": [
-				"doma"
+				"capbage"
 			],
 			"footprint": [
-				6.0,
-				0.159999996423721,
-				4.19999980926514
+				5.0,
+				0.140000000596046,
+				5.0
 			],
 			"id": "entry",
 			"label": "Entry Boundary",
@@ -1192,24 +2261,31 @@
 			"nested_depth": 0,
 			"optional": false,
 			"position": [
-				0.0,
+				2.5,
 				0.449999988079071,
-				-3.0
+				2.5
 			],
 			"pressure": 0,
 			"pressure_cost": 0,
 			"resource": false,
 			"resource_beat": false,
+			"resource_item_type": "generated_tool",
+			"resource_kind": "",
+			"reward_atp": 0,
+			"reward_kind": "",
 			"role": "boundary",
+			"runtime_handler": "",
+			"runtime_progression_required": false,
+			"runtime_support": "layout_only",
 			"shadow_solution": {
 
 			},
-			"shortcut": false,
+			"spatial_affordances": [],
 			"stage": 1,
 			"structures": [
 				"junction"
 			],
-			"surface_y": 0.45,
+			"surface_y": 0.449999988079071,
 			"survival_kind": "",
 			"title": "Entry Boundary",
 			"variant": "",
@@ -1220,10 +2296,15 @@
 			"walk_transition": ""
 		},
 		{
+			"action_verb": "TAKE LYSATE",
+			"ambient_flora": [
+				"seefern",
+				"capbage"
+			],
 			"approach_position": [
-				12.0,
-				1.88999998569489,
-				1.49600005149841
+				10.5,
+				0.449999988079071,
+				4.19999980926514
 			],
 			"approaches": [
 				{
@@ -1277,78 +2358,37 @@
 			],
 			"archetype_id": "2",
 			"archetype_name": "Plant as tool",
-			"atp_reward": 0,
+			"atp_reward": 2,
+			"branch_role": "",
+			"carry_payload": false,
+			"chain_cycle": 0,
 			"chain_index": 0,
 			"chain_input": "",
+			"chain_input_ref": "",
 			"chain_label": "",
 			"chain_output": "",
+			"chain_output_ref": "",
 			"composition_role": "required_append",
-			"content_placements": [
-				{
-					"category": "flora",
-					"id": "flure",
-					"label": "flure",
-					"local_offset": [
-						-2.07400012016296,
-						0.725000023841858,
-						-0.967999994754791
-					],
-					"position": [
-						9.92599964141846,
-						2.61500000953674,
-						-0.967999994754791
-					],
-					"role": "puzzle_flora",
-					"rotation_y_degrees": 0.0,
-					"shape": "plant_cluster",
-					"size": [
-						1.79999995231628,
-						1.45000004768372,
-						1.79999995231628
-					],
-					"support": "implemented"
-				},
-				{
-					"category": "structures",
-					"id": "root_slide",
-					"label": "root_slide",
-					"local_offset": [
-						0.0,
-						0.224999994039536,
-						0.791999995708466
-					],
-					"position": [
-						12.0,
-						2.11500000953674,
-						0.791999995708466
-					],
-					"role": "structure",
-					"rotation_y_degrees": 37.0,
-					"shape": "slide",
-					"size": [
-						3.79999995231628,
-						0.449999988079071,
-						1.14999997615814
-					],
-					"support": "implemented"
-				}
+			"content_placements": [],
+			"elevation_index": 0,
+			"elevation_meters": -0.0000000119209289661804,
+			"enemies": [
+				"naturalizers"
 			],
-			"elevation_index": 2,
-			"elevation_meters": 1.44,
-			"enemies": [],
+			"evidence_hint": "the cache clears, one portrait shows held lysate, and ATP changes only after that carrier endocytoses",
 			"exploit_target": "",
 			"floor_size": [
-				5.80000019073486,
+				5.0,
 				0.140000000596046,
-				4.40000009536743
+				5.0
 			],
 			"flora": [
 				"flure"
 			],
 			"footprint": [
-				5.80000019073486,
+				5.0,
 				0.140000000596046,
-				4.40000009536743
+				5.0
 			],
 			"id": "node_01",
 			"label": "Plant as tool · Flure Iron Decoy",
@@ -1359,27 +2399,97 @@
 			"nested_archetypes": [],
 			"nested_depth": 0,
 			"optional": false,
+			"playable_section": {
+				"action": "TAKE LYSATE",
+				"after_state": "one physical lysate occupies one carrier hand until endocytosed",
+				"before_state": "the cache directly refills ATP for the whole party",
+				"boundary": "the local room-piece, its route mouths, and the named cause/effect actors",
+				"completed_preview": "One carrier now holds the lysate; ATP is unchanged until endocytosis",
+				"effect_category": "party",
+				"effect_role": "carrier hand",
+				"failure_prediction": "If the relation is wrong, the named effect target will not enter the predicted state.",
+				"interacting_systems": [
+					"finite lysate cache",
+					"carrier hand",
+					"party position",
+					"route topology"
+				],
+				"observable_evidence": "cache marker clears, the carrier portrait gains lysate, and ATP stays unchanged",
+				"predicted_effect": "Moves one physical lysate into a carrier's hand; ATP changes only after endocytosis",
+				"relationship_label": "CACHE FILLS HAND",
+				"runtime_handler": "physical_lysate_pickup_v1",
+				"schema": "trawf_playable_section_v1",
+				"source_category": "structures",
+				"source_role": "finite lysate cache"
+			},
 			"position": [
-				12.0,
-				1.88999998569489,
-				0.0
+				10.5,
+				0.449999988079071,
+				2.5
 			],
-			"pressure": 0,
+			"prediction_hint": "claiming the cache occupies exactly one hand without changing ATP",
+			"pressure": 1,
 			"pressure_cost": 0,
 			"resource": true,
 			"resource_beat": true,
+			"resource_item_type": "lysate",
+			"resource_kind": "food",
+			"reward_atp": 2,
+			"reward_kind": "food",
 			"role": "foraging",
+			"runtime_handler": "physical_lysate_pickup_v1",
+			"runtime_progression_required": true,
+			"runtime_support": "implemented",
 			"shadow_solution": {
 				"aster_peris": true,
 				"notes": "Peris carries the mechanical burden; Aster supplies targeting and confirmation."
 			},
-			"shortcut": false,
+			"spatial_affordances": [
+				{
+					"emergent_inputs": [
+						"flora state",
+						"fauna perception",
+						"party position",
+						"intervention timing",
+						"route topology"
+					],
+					"failure_prediction": "Crossing before changing the signal leaves ordinary fauna perception intact.",
+					"feature_kind": "grated_platform",
+					"feature_variant": "signal_roost",
+					"feedback": [
+						"the flora state changes at the signal socket",
+						"the fauna response remains visible from the approach"
+					],
+					"id": "grated_signal_roost",
+					"leverage": "Tend the flora before committing the party to the fauna side.",
+					"primary_insight": "The plant on one exposed deck changes how fauna use the connected route.",
+					"priority": 100.0,
+					"socket_policy": "separate_leverage_from_response",
+					"variants": [
+						"flure_iron_decoy",
+						"hushbloom_stun"
+					]
+				}
+			],
 			"stage": 1,
 			"structures": [
 				"root_slide"
 			],
-			"surface_y": 1.89,
+			"surface_y": 0.449999988079071,
 			"survival_kind": "",
+			"systems_beat": {
+				"beat": "apply",
+				"cause": "the party clears the cache window and a character with a free hand takes the lysate",
+				"changed_condition": "flure iron decoy",
+				"critical": true,
+				"effect": "the cache empties and that hand becomes occupied while ATP remains unchanged",
+				"evidence": "the cache clears, one portrait shows held lysate, and ATP changes only after that carrier endocytoses",
+				"intervention": "compare cache yield, exposure, and hand commitments before taking it",
+				"likely_misconception": "touching a cache immediately or party-wide restores ATP",
+				"model_id": "runtime_physical_lysate_pickup_v1",
+				"prediction": "claiming the cache occupies exactly one hand without changing ATP",
+				"verb": "forage"
+			},
 			"title": "Plant as tool · Flure Iron Decoy",
 			"variant": "flure_iron_decoy",
 			"walk_element": "",
@@ -1389,10 +2499,15 @@
 			"walk_transition": ""
 		},
 		{
+			"action_verb": "",
+			"ambient_flora": [
+				"seefern",
+				"capbage"
+			],
 			"approach_position": [
-				22.8120002746582,
-				1.88999998569489,
-				4.63199996948242
+				16.8400001525879,
+				0.449999988079071,
+				0.840000033378601
 			],
 			"approaches": [
 				{
@@ -1462,10 +2577,15 @@
 			"archetype_id": "3",
 			"archetype_name": "Carry the heavy thing",
 			"atp_reward": 0,
+			"branch_role": "",
+			"carry_payload": false,
+			"chain_cycle": 0,
 			"chain_index": 1,
 			"chain_input": "",
+			"chain_input_ref": "",
 			"chain_label": "",
 			"chain_output": "",
+			"chain_output_ref": "",
 			"composition_role": "required_append",
 			"content_placements": [
 				{
@@ -1473,14 +2593,14 @@
 					"id": "scarpet",
 					"label": "scarpet",
 					"local_offset": [
-						-1.96200001239777,
+						-1.24000000953674,
 						0.0799999982118607,
-						-1.05599999427795
+						-0.280000001192093
 					],
 					"position": [
-						22.0380001068115,
-						1.97000002861023,
-						1.94400000572205
+						16.2600002288818,
+						0.529999971389771,
+						0.219999998807907
 					],
 					"role": "cover",
 					"rotation_y_degrees": 11.0,
@@ -1490,49 +2610,26 @@
 						0.159999996423721,
 						1.70000004768372
 					],
-					"support": "implemented"
-				},
-				{
-					"category": "structures",
-					"id": "carry_gear",
-					"label": "carry_gear",
-					"local_offset": [
-						0.0,
-						0.400000005960464,
-						0.864000022411346
-					],
-					"position": [
-						24.0,
-						2.28999996185303,
-						3.86400008201599
-					],
-					"role": "structure",
-					"rotation_y_degrees": 48.0,
-					"shape": "structure_box",
-					"size": [
-						1.10000002384186,
-						0.800000011920929,
-						1.10000002384186
-					],
+					"socket_id": "",
 					"support": "implemented"
 				}
 			],
-			"elevation_index": 2,
-			"elevation_meters": 1.44,
+			"elevation_index": 0,
+			"elevation_meters": -0.0000000119209289661804,
 			"enemies": [],
 			"exploit_target": "",
 			"floor_size": [
-				5.40000009536743,
+				3.0,
 				0.140000000596046,
-				4.80000019073486
+				1.0
 			],
 			"flora": [
 				"scarpet"
 			],
 			"footprint": [
-				5.40000009536743,
+				3.0,
 				0.140000000596046,
-				4.80000019073486
+				1.0
 			],
 			"id": "node_02",
 			"label": "Carry the heavy thing · Cure Component",
@@ -1544,25 +2641,33 @@
 			"nested_depth": 0,
 			"optional": false,
 			"position": [
-				24.0,
-				1.88999998569489,
-				3.0
+				17.5,
+				0.449999988079071,
+				0.5
 			],
 			"pressure": 0,
 			"pressure_cost": 0,
 			"resource": false,
 			"resource_beat": false,
+			"resource_item_type": "generated_tool",
+			"resource_kind": "",
+			"reward_atp": 0,
+			"reward_kind": "",
 			"role": "danger",
+			"runtime_handler": "",
+			"runtime_progression_required": false,
+			"runtime_support": "layout_only",
 			"shadow_solution": {
 				"aster_peris": true,
 				"notes": "Use drag routes, scarpet masking, and slower recovery windows."
 			},
-			"shortcut": false,
+			"spatial_affordances": [],
 			"stage": 2,
 			"structures": [
-				"carry_gear"
+				"carry_gear",
+				"barrier"
 			],
-			"surface_y": 1.89,
+			"surface_y": 0.449999988079071,
 			"survival_kind": "",
 			"title": "Carry the heavy thing · Cure Component",
 			"variant": "cure_component",
@@ -1573,10 +2678,15 @@
 			"walk_transition": ""
 		},
 		{
+			"action_verb": "",
+			"ambient_flora": [
+				"capbage",
+				"seefern"
+			],
 			"approach_position": [
-				34.8120002746582,
+				25.3999996185303,
 				0.449999988079071,
-				-1.36799991130829
+				4.19999980926514
 			],
 			"approaches": [
 				{
@@ -1631,10 +2741,15 @@
 			"archetype_id": "2",
 			"archetype_name": "Plant as tool",
 			"atp_reward": 0,
+			"branch_role": "",
+			"carry_payload": false,
+			"chain_cycle": 1,
 			"chain_index": 0,
 			"chain_input": "",
+			"chain_input_ref": "",
 			"chain_label": "",
 			"chain_output": "",
+			"chain_output_ref": "",
 			"composition_role": "required_append",
 			"content_placements": [
 				{
@@ -1642,14 +2757,14 @@
 					"id": "hushbloom",
 					"label": "hushbloom",
 					"local_offset": [
-						-1.96200001239777,
+						-1.87999999523163,
 						0.550000011920929,
-						-1.05599999427795
+						-1.39999997615814
 					],
 					"position": [
-						34.0379981994629,
+						24.6200008392334,
 						1.0,
-						-4.05599975585938
+						1.10000002384186
 					],
 					"role": "resource",
 					"rotation_y_degrees": 0.0,
@@ -1659,49 +2774,28 @@
 						1.10000002384186,
 						1.0
 					],
-					"support": "implemented"
-				},
-				{
-					"category": "structures",
-					"id": "root_slide",
-					"label": "root_slide",
-					"local_offset": [
-						0.0,
-						0.224999994039536,
-						0.864000022411346
-					],
-					"position": [
-						36.0,
-						0.674999952316284,
-						-2.13599991798401
-					],
-					"role": "structure",
-					"rotation_y_degrees": 37.0,
-					"shape": "slide",
-					"size": [
-						3.79999995231628,
-						0.449999988079071,
-						1.14999997615814
-					],
+					"socket_id": "",
 					"support": "implemented"
 				}
 			],
 			"elevation_index": 0,
-			"elevation_meters": 0.0,
-			"enemies": [],
+			"elevation_meters": -0.0000000119209289661804,
+			"enemies": [
+				"naturalizers"
+			],
 			"exploit_target": "",
 			"floor_size": [
-				5.40000009536743,
+				5.0,
 				0.140000000596046,
-				4.80000019073486
+				5.0
 			],
 			"flora": [
 				"hushbloom"
 			],
 			"footprint": [
-				5.40000009536743,
+				5.0,
 				0.140000000596046,
-				4.80000019073486
+				5.0
 			],
 			"id": "node_03",
 			"label": "Plant as tool · Hushbloom Stun",
@@ -1713,25 +2807,58 @@
 			"nested_depth": 0,
 			"optional": false,
 			"position": [
-				36.0,
+				26.5,
 				0.449999988079071,
-				-3.0
+				2.5
 			],
-			"pressure": 0,
+			"pressure": 1,
 			"pressure_cost": 0,
 			"resource": false,
 			"resource_beat": false,
+			"resource_item_type": "generated_tool",
+			"resource_kind": "",
+			"reward_atp": 0,
+			"reward_kind": "",
 			"role": "route_pressure",
+			"runtime_handler": "",
+			"runtime_progression_required": false,
+			"runtime_support": "layout_only",
 			"shadow_solution": {
 				"aster_peris": true,
 				"notes": "Peris carries the mechanical burden; Aster supplies targeting and confirmation."
 			},
-			"shortcut": false,
+			"spatial_affordances": [
+				{
+					"emergent_inputs": [
+						"flora state",
+						"fauna perception",
+						"party position",
+						"intervention timing",
+						"route topology"
+					],
+					"failure_prediction": "Crossing before changing the signal leaves ordinary fauna perception intact.",
+					"feature_kind": "grated_platform",
+					"feature_variant": "signal_roost",
+					"feedback": [
+						"the flora state changes at the signal socket",
+						"the fauna response remains visible from the approach"
+					],
+					"id": "grated_signal_roost",
+					"leverage": "Tend the flora before committing the party to the fauna side.",
+					"primary_insight": "The plant on one exposed deck changes how fauna use the connected route.",
+					"priority": 100.0,
+					"socket_policy": "separate_leverage_from_response",
+					"variants": [
+						"flure_iron_decoy",
+						"hushbloom_stun"
+					]
+				}
+			],
 			"stage": 1,
 			"structures": [
 				"root_slide"
 			],
-			"surface_y": 0.45,
+			"surface_y": 0.449999988079071,
 			"survival_kind": "",
 			"title": "Plant as tool · Hushbloom Stun",
 			"variant": "hushbloom_stun",
@@ -1742,10 +2869,15 @@
 			"walk_transition": ""
 		},
 		{
+			"action_verb": "",
+			"ambient_flora": [
+				"capbage",
+				"capbage"
+			],
 			"approach_position": [
-				48.0,
-				1.88999998569489,
-				1.76799988746643
+				33.5,
+				0.449999988079071,
+				2.51999998092651
 			],
 			"approaches": [
 				{
@@ -1815,10 +2947,15 @@
 			"archetype_id": "3",
 			"archetype_name": "Carry the heavy thing",
 			"atp_reward": 0,
+			"branch_role": "",
+			"carry_payload": false,
+			"chain_cycle": 1,
 			"chain_index": 1,
 			"chain_input": "",
+			"chain_input_ref": "",
 			"chain_label": "",
 			"chain_output": "",
+			"chain_output_ref": "",
 			"composition_role": "required_append",
 			"content_placements": [
 				{
@@ -1826,14 +2963,14 @@
 					"id": "scarpet",
 					"label": "scarpet",
 					"local_offset": [
-						-2.2979998588562,
+						-1.24000000953674,
 						0.0799999982118607,
-						-1.14399993419647
+						-0.839999973773956
 					],
 					"position": [
-						45.7019996643066,
-						1.97000002861023,
-						-1.14399993419647
+						32.2599983215332,
+						0.529999971389771,
+						0.660000026226044
 					],
 					"role": "cover",
 					"rotation_y_degrees": 11.0,
@@ -1843,49 +2980,26 @@
 						0.159999996423721,
 						1.70000004768372
 					],
-					"support": "implemented"
-				},
-				{
-					"category": "structures",
-					"id": "shortcut_gate",
-					"label": "shortcut_gate",
-					"local_offset": [
-						0.0,
-						1.10000002384186,
-						0.935999989509583
-					],
-					"position": [
-						48.0,
-						2.99000000953674,
-						0.935999989509583
-					],
-					"role": "shortcut",
-					"rotation_y_degrees": 48.0,
-					"shape": "gate",
-					"size": [
-						2.40000009536743,
-						2.20000004768372,
-						0.379999995231628
-					],
+					"socket_id": "",
 					"support": "implemented"
 				}
 			],
-			"elevation_index": 2,
-			"elevation_meters": 1.44,
+			"elevation_index": 0,
+			"elevation_meters": -0.0000000119209289661804,
 			"enemies": [],
 			"exploit_target": "",
 			"floor_size": [
-				6.59999990463257,
-				0.159999996423721,
-				5.19999980926514
+				3.0,
+				0.140000000596046,
+				3.0
 			],
 			"flora": [
 				"scarpet"
 			],
 			"footprint": [
-				6.59999990463257,
-				0.159999996423721,
-				5.19999980926514
+				3.0,
+				0.140000000596046,
+				3.0
 			],
 			"id": "node_04",
 			"label": "Carry the heavy thing · Puzzle Piece",
@@ -1897,25 +3011,32 @@
 			"nested_depth": 0,
 			"optional": false,
 			"position": [
-				48.0,
-				1.88999998569489,
-				0.0
+				33.5,
+				0.449999988079071,
+				1.5
 			],
 			"pressure": 0,
 			"pressure_cost": 0,
 			"resource": false,
 			"resource_beat": false,
+			"resource_item_type": "generated_tool",
+			"resource_kind": "",
+			"reward_atp": 0,
+			"reward_kind": "",
 			"role": "setpiece",
+			"runtime_handler": "",
+			"runtime_progression_required": false,
+			"runtime_support": "layout_only",
 			"shadow_solution": {
 				"aster_peris": true,
 				"notes": "Use drag routes, scarpet masking, and slower recovery windows."
 			},
-			"shortcut": true,
+			"spatial_affordances": [],
 			"stage": 2,
 			"structures": [
-				"shortcut_gate"
+				"carry_gear"
 			],
-			"surface_y": 1.89,
+			"surface_y": 0.449999988079071,
 			"survival_kind": "",
 			"title": "Carry the heavy thing · Puzzle Piece",
 			"variant": "puzzle_piece",
@@ -1926,86 +3047,44 @@
 			"walk_transition": ""
 		},
 		{
+			"action_verb": "ENTER SHELTER",
 			"approach_position": [
-				58.7039985656738,
+				41.9000015258789,
 				0.449999988079071,
-				4.83599996566772
+				0.600000023841858
 			],
 			"approaches": [],
 			"archetype_id": "11",
 			"archetype_name": "Narrative beat",
 			"atp_reward": 0,
+			"branch_role": "",
+			"carry_payload": false,
+			"chain_cycle": -1,
 			"chain_index": -1,
 			"chain_input": "",
+			"chain_input_ref": "",
 			"chain_label": "",
 			"chain_output": "",
+			"chain_output_ref": "",
 			"composition_role": "",
-			"content_placements": [
-				{
-					"category": "flora",
-					"id": "scarpet",
-					"label": "scarpet",
-					"local_offset": [
-						-2.46599984169006,
-						0.0799999982118607,
-						-1.18799996376038
-					],
-					"position": [
-						57.5340003967285,
-						0.529999971389771,
-						1.81200003623962
-					],
-					"role": "cover",
-					"rotation_y_degrees": -11.0,
-					"shape": "mat",
-					"size": [
-						2.20000004768372,
-						0.159999996423721,
-						1.70000004768372
-					],
-					"support": "implemented"
-				},
-				{
-					"category": "structures",
-					"id": "shelter",
-					"label": "shelter",
-					"local_offset": [
-						0.0,
-						1.20000004768372,
-						0.972000002861023
-					],
-					"position": [
-						60.0,
-						1.65000009536743,
-						3.97200012207031
-					],
-					"role": "rest",
-					"rotation_y_degrees": 26.0,
-					"shape": "shelter_shell",
-					"size": [
-						4.80000019073486,
-						2.40000009536743,
-						3.40000009536743
-					],
-					"support": "implemented"
-				}
-			],
+			"content_placements": [],
 			"elevation_index": 0,
-			"elevation_meters": 0.0,
+			"elevation_meters": -0.0000000119209289661804,
 			"enemies": [],
+			"evidence_hint": "presence, recovery need, successful rest starts, and unchanged ATP for already-full members are reported separately",
 			"exploit_target": "",
 			"floor_size": [
-				7.19999980926514,
-				0.180000007152557,
-				5.40000009536743
+				5.0,
+				0.140000000596046,
+				5.0
 			],
 			"flora": [
-				"scarpet"
+				"seefern"
 			],
 			"footprint": [
-				7.19999980926514,
-				0.180000007152557,
-				5.40000009536743
+				5.0,
+				0.140000000596046,
+				5.0
 			],
 			"id": "exit_shelter",
 			"label": "Shelter Arrival",
@@ -2016,26 +3095,70 @@
 			"nested_archetypes": [],
 			"nested_depth": 0,
 			"optional": false,
+			"playable_section": {
+				"action": "ENTER SHELTER",
+				"after_state": "the complete conscious party must be inside; only members needing recovery start canonical ATP-paid rest",
+				"before_state": "reaching a shelter always spends ATP and instantly refills the party",
+				"boundary": "the local room-piece, its route mouths, and the named cause/effect actors",
+				"completed_preview": "Shelter arrival is complete; needed rests started canonically and already-full members spent no ATP",
+				"effect_category": "structures",
+				"effect_role": "shelter arrival outcome",
+				"failure_prediction": "If the relation is wrong, the named effect target will not enter the predicted state.",
+				"interacting_systems": [
+					"complete conscious party",
+					"shelter arrival outcome",
+					"party position",
+					"route topology"
+				],
+				"observable_evidence": "the outcome distinguishes started rests from already-full no-charge arrivals",
+				"predicted_effect": "Completes once the conscious party is inside; starts canonical rest only where recovery is needed",
+				"relationship_label": "PARTY ENTERS",
+				"runtime_handler": "canonical_shelter_arrival_v1",
+				"schema": "trawf_playable_section_v1",
+				"source_category": "party",
+				"source_role": "complete conscious party"
+			},
 			"position": [
-				60.0,
+				42.5,
 				0.449999988079071,
-				3.0
+				2.5
 			],
+			"prediction_hint": "arrival completes only after the party is present and every needed rest command succeeds",
 			"pressure": 0,
 			"pressure_cost": 0,
 			"resource": false,
 			"resource_beat": false,
+			"resource_item_type": "generated_tool",
+			"resource_kind": "",
+			"reward_atp": 0,
+			"reward_kind": "",
 			"role": "shelter_arrival",
+			"runtime_handler": "canonical_shelter_arrival_v1",
+			"runtime_progression_required": true,
+			"runtime_support": "implemented",
 			"shadow_solution": {
 
 			},
-			"shortcut": false,
+			"spatial_affordances": [],
 			"stage": 1,
 			"structures": [
 				"shelter"
 			],
-			"surface_y": 0.45,
+			"surface_y": 0.449999988079071,
 			"survival_kind": "",
+			"systems_beat": {
+				"beat": "apply",
+				"cause": "every active party member reaches the registered shelter region",
+				"changed_condition": "",
+				"critical": true,
+				"effect": "needed recovery starts through command_rest, or an already-full party completes without an ATP charge",
+				"evidence": "presence, recovery need, successful rest starts, and unchanged ATP for already-full members are reported separately",
+				"intervention": "regroup inside the shelter and enter it once the party is ready",
+				"likely_misconception": "rest is free or every cache must be collected",
+				"model_id": "runtime_canonical_shelter_arrival_v1",
+				"prediction": "arrival completes only after the party is present and every needed rest command succeeds",
+				"verb": "recover"
+			},
 			"title": "Shelter Arrival",
 			"variant": "",
 			"walk_element": "",
@@ -2051,8 +3174,8 @@
 			"naturalizers"
 		],
 		"flora": [
-			"snapbloom",
-			"seefern"
+			"flure",
+			"capbage"
 		],
 		"structures": [
 			"shelter",
@@ -2060,32 +3183,793 @@
 			"shortcut_gate"
 		]
 	},
+	"roompieces": {
+		"contract_id": "trawf_roompieces_v1",
+		"corridors": [
+			{
+				"cells": [
+					[
+						4,
+						2
+					],
+					[
+						5,
+						2
+					],
+					[
+						6,
+						2
+					],
+					[
+						7,
+						2
+					],
+					[
+						8,
+						2
+					]
+				],
+				"from": "entry",
+				"from_level": 0,
+				"kind": "safe",
+				"recoverable": true,
+				"route": "main_00_01",
+				"to": "node_01",
+				"to_level": 0
+			},
+			{
+				"cells": [
+					[
+						12,
+						2
+					],
+					[
+						13,
+						2
+					],
+					[
+						14,
+						2
+					],
+					[
+						15,
+						2
+					],
+					[
+						16,
+						2
+					],
+					[
+						16,
+						1
+					],
+					[
+						16,
+						0
+					]
+				],
+				"from": "node_01",
+				"from_level": 0,
+				"kind": "safe",
+				"recoverable": true,
+				"route": "main_01_02",
+				"to": "node_02",
+				"to_level": 0
+			},
+			{
+				"cells": [
+					[
+						18,
+						-1
+					],
+					[
+						18,
+						0
+					],
+					[
+						18,
+						1
+					],
+					[
+						19,
+						-1
+					],
+					[
+						19,
+						0
+					],
+					[
+						19,
+						1
+					],
+					[
+						20,
+						-1
+					],
+					[
+						20,
+						0
+					],
+					[
+						20,
+						1
+					],
+					[
+						21,
+						-1
+					],
+					[
+						21,
+						0
+					],
+					[
+						21,
+						1
+					],
+					[
+						22,
+						-1
+					],
+					[
+						22,
+						0
+					],
+					[
+						22,
+						1
+					],
+					[
+						23,
+						-1
+					],
+					[
+						23,
+						0
+					],
+					[
+						23,
+						1
+					],
+					[
+						24,
+						0
+					],
+					[
+						25,
+						0
+					],
+					[
+						24,
+						1
+					],
+					[
+						25,
+						1
+					],
+					[
+						24,
+						-1
+					],
+					[
+						25,
+						-1
+					],
+					[
+						23,
+						2
+					],
+					[
+						24,
+						2
+					],
+					[
+						25,
+						2
+					],
+					[
+						23,
+						3
+					],
+					[
+						24,
+						3
+					],
+					[
+						25,
+						3
+					]
+				],
+				"from": "node_02",
+				"from_level": 0,
+				"kind": "safe",
+				"recoverable": true,
+				"route": "main_02_03",
+				"to": "node_03",
+				"to_level": 0
+			},
+			{
+				"cells": [
+					[
+						28,
+						1
+					],
+					[
+						28,
+						2
+					],
+					[
+						28,
+						3
+					],
+					[
+						29,
+						1
+					],
+					[
+						29,
+						2
+					],
+					[
+						29,
+						3
+					],
+					[
+						30,
+						1
+					],
+					[
+						30,
+						2
+					],
+					[
+						30,
+						3
+					],
+					[
+						31,
+						1
+					],
+					[
+						31,
+						2
+					],
+					[
+						31,
+						3
+					],
+					[
+						32,
+						2
+					],
+					[
+						33,
+						2
+					],
+					[
+						31,
+						0
+					],
+					[
+						32,
+						0
+					],
+					[
+						32,
+						1
+					],
+					[
+						33,
+						0
+					],
+					[
+						33,
+						1
+					],
+					[
+						32,
+						3
+					],
+					[
+						33,
+						3
+					]
+				],
+				"from": "node_03",
+				"from_level": 0,
+				"kind": "safe",
+				"recoverable": true,
+				"route": "main_03_04",
+				"to": "node_04",
+				"to_level": 0
+			},
+			{
+				"cells": [
+					[
+						34,
+						0
+					],
+					[
+						34,
+						1
+					],
+					[
+						35,
+						0
+					],
+					[
+						35,
+						1
+					],
+					[
+						36,
+						0
+					],
+					[
+						36,
+						1
+					],
+					[
+						37,
+						0
+					],
+					[
+						37,
+						1
+					],
+					[
+						38,
+						0
+					],
+					[
+						38,
+						1
+					],
+					[
+						39,
+						0
+					],
+					[
+						39,
+						1
+					],
+					[
+						40,
+						1
+					],
+					[
+						40,
+						0
+					],
+					[
+						39,
+						2
+					],
+					[
+						40,
+						2
+					]
+				],
+				"from": "node_04",
+				"from_level": 0,
+				"kind": "safe",
+				"recoverable": true,
+				"route": "main_04_05",
+				"to": "exit_shelter",
+				"to_level": 0
+			}
+		],
+		"fallback_used": false,
+		"layout_engine": "wfc_v1",
+		"placements": [
+			{
+				"level": 0,
+				"node": "entry",
+				"origin_cell": [
+					0,
+					0
+				],
+				"piece": "arena",
+				"rotation": 90,
+				"size": [
+					5,
+					5
+				],
+				"spatial_affordance": {
+
+				},
+				"spatial_feature_kind": ""
+			},
+			{
+				"level": 0,
+				"node": "node_01",
+				"origin_cell": [
+					8,
+					0
+				],
+				"piece": "grated_platform",
+				"rotation": 0,
+				"size": [
+					5,
+					5
+				],
+				"spatial_affordance": {
+					"emergent_inputs": [
+						"flora state",
+						"fauna perception",
+						"party position",
+						"intervention timing",
+						"route topology"
+					],
+					"failure_prediction": "Crossing before changing the signal leaves ordinary fauna perception intact.",
+					"feature_kind": "grated_platform",
+					"feature_variant": "signal_roost",
+					"feedback": [
+						"the flora state changes at the signal socket",
+						"the fauna response remains visible from the approach"
+					],
+					"id": "grated_signal_roost",
+					"leverage": "Tend the flora before committing the party to the fauna side.",
+					"primary_insight": "The plant on one exposed deck changes how fauna use the connected route.",
+					"priority": 100.0,
+					"socket_policy": "separate_leverage_from_response",
+					"variants": [
+						"flure_iron_decoy",
+						"hushbloom_stun"
+					]
+				},
+				"spatial_feature_kind": "grated_platform"
+			},
+			{
+				"level": 0,
+				"node": "node_02",
+				"origin_cell": [
+					16,
+					0
+				],
+				"piece": "corridor_straight",
+				"rotation": 0,
+				"size": [
+					3,
+					1
+				],
+				"spatial_affordance": {
+
+				},
+				"spatial_feature_kind": ""
+			},
+			{
+				"level": 0,
+				"node": "node_03",
+				"origin_cell": [
+					24,
+					0
+				],
+				"piece": "grated_platform",
+				"rotation": 0,
+				"size": [
+					5,
+					5
+				],
+				"spatial_affordance": {
+					"emergent_inputs": [
+						"flora state",
+						"fauna perception",
+						"party position",
+						"intervention timing",
+						"route topology"
+					],
+					"failure_prediction": "Crossing before changing the signal leaves ordinary fauna perception intact.",
+					"feature_kind": "grated_platform",
+					"feature_variant": "signal_roost",
+					"feedback": [
+						"the flora state changes at the signal socket",
+						"the fauna response remains visible from the approach"
+					],
+					"id": "grated_signal_roost",
+					"leverage": "Tend the flora before committing the party to the fauna side.",
+					"primary_insight": "The plant on one exposed deck changes how fauna use the connected route.",
+					"priority": 100.0,
+					"socket_policy": "separate_leverage_from_response",
+					"variants": [
+						"flure_iron_decoy",
+						"hushbloom_stun"
+					]
+				},
+				"spatial_feature_kind": "grated_platform"
+			},
+			{
+				"level": 0,
+				"node": "node_04",
+				"origin_cell": [
+					32,
+					0
+				],
+				"piece": "junction_x",
+				"rotation": 90,
+				"size": [
+					3,
+					3
+				],
+				"spatial_affordance": {
+
+				},
+				"spatial_feature_kind": ""
+			},
+			{
+				"level": 0,
+				"node": "exit_shelter",
+				"origin_cell": [
+					40,
+					0
+				],
+				"piece": "arena",
+				"rotation": 270,
+				"size": [
+					5,
+					5
+				],
+				"spatial_affordance": {
+
+				},
+				"spatial_feature_kind": ""
+			}
+		],
+		"slot_cells": {
+			"entry": {
+				"connection_cell": [
+					2,
+					2
+				],
+				"connection_points": {
+					"e": [
+						4,
+						2
+					],
+					"n": [
+						2,
+						0
+					],
+					"s": [
+						2,
+						4
+					],
+					"w": [
+						0,
+						2
+					]
+				},
+				"footprint": [
+					5,
+					5
+				],
+				"level": 0,
+				"origin_cell": [
+					0,
+					0
+				],
+				"walkable": [
+					".....",
+					".....",
+					".....",
+					".....",
+					"....."
+				]
+			},
+			"exit_shelter": {
+				"connection_cell": [
+					42,
+					2
+				],
+				"connection_points": {
+					"e": [
+						4,
+						2
+					],
+					"n": [
+						2,
+						0
+					],
+					"s": [
+						2,
+						4
+					],
+					"w": [
+						0,
+						2
+					]
+				},
+				"footprint": [
+					5,
+					5
+				],
+				"level": 0,
+				"origin_cell": [
+					40,
+					0
+				],
+				"walkable": [
+					".....",
+					".....",
+					".....",
+					".....",
+					"....."
+				]
+			},
+			"node_01": {
+				"connection_cell": [
+					10,
+					2
+				],
+				"connection_points": {
+					"e": [
+						4.0,
+						2.0
+					],
+					"n": [
+						2.0,
+						0.0
+					],
+					"s": [
+						2.0,
+						4.0
+					],
+					"w": [
+						0.0,
+						2.0
+					]
+				},
+				"footprint": [
+					5,
+					5
+				],
+				"level": 0,
+				"origin_cell": [
+					8,
+					0
+				],
+				"walkable": [
+					".....",
+					".....",
+					".....",
+					".....",
+					"....."
+				]
+			},
+			"node_02": {
+				"connection_cell": [
+					17,
+					0
+				],
+				"connection_points": {
+					"e": [
+						2.0,
+						0.0
+					],
+					"w": [
+						0.0,
+						0.0
+					]
+				},
+				"footprint": [
+					3,
+					1
+				],
+				"level": 0,
+				"origin_cell": [
+					16,
+					0
+				],
+				"walkable": [
+					"..."
+				]
+			},
+			"node_03": {
+				"connection_cell": [
+					26,
+					2
+				],
+				"connection_points": {
+					"e": [
+						4.0,
+						2.0
+					],
+					"n": [
+						2.0,
+						0.0
+					],
+					"s": [
+						2.0,
+						4.0
+					],
+					"w": [
+						0.0,
+						2.0
+					]
+				},
+				"footprint": [
+					5,
+					5
+				],
+				"level": 0,
+				"origin_cell": [
+					24,
+					0
+				],
+				"walkable": [
+					".....",
+					".....",
+					".....",
+					".....",
+					"....."
+				]
+			},
+			"node_04": {
+				"connection_cell": [
+					33,
+					1
+				],
+				"connection_points": {
+					"e": [
+						2,
+						1
+					],
+					"n": [
+						1,
+						0
+					],
+					"s": [
+						1,
+						2
+					],
+					"w": [
+						0,
+						1
+					]
+				},
+				"footprint": [
+					3,
+					3
+				],
+				"level": 0,
+				"origin_cell": [
+					32,
+					0
+				],
+				"walkable": [
+					"...",
+					"#.#",
+					"..."
+				]
+			}
+		},
+		"tile_size": 1
+	},
 	"routes": [
 		{
 			"cost": 1,
 			"from": "entry",
-			"height_delta": 1.43999999761581,
+			"height_delta": 0.0,
 			"id": "main_00_01",
 			"kind": "safe",
 			"recoverable": true,
 			"risk": "safe",
 			"surface": {
 				"from": [
-					0.0,
+					2.5,
 					0.449999988079071,
-					-3.0
+					2.5
 				],
 				"midpoint": [
-					6.0,
-					1.16999995708466,
-					-1.5
+					6.5,
+					0.449999988079071,
+					2.5
 				],
-				"slope": 1.43999999761581,
+				"slope": 0.0,
 				"supports_click_to_move": true,
 				"to": [
-					12.0,
-					1.88999998569489,
-					0.0
+					10.5,
+					0.449999988079071,
+					2.5
 				],
 				"width": 1.85
 			},
@@ -2102,21 +3986,21 @@
 			"risk": "safe",
 			"surface": {
 				"from": [
-					12.0,
-					1.88999998569489,
-					0.0
+					10.5,
+					0.449999988079071,
+					2.5
 				],
 				"midpoint": [
-					18.0,
-					1.88999998569489,
+					14.0,
+					0.449999988079071,
 					1.5
 				],
 				"slope": 0.0,
 				"supports_click_to_move": true,
 				"to": [
-					24.0,
-					1.88999998569489,
-					3.0
+					17.5,
+					0.449999988079071,
+					0.5
 				],
 				"width": 1.85
 			},
@@ -2126,28 +4010,28 @@
 		{
 			"cost": 1,
 			"from": "node_02",
-			"height_delta": -1.43999999761581,
+			"height_delta": 0.0,
 			"id": "main_02_03",
 			"kind": "safe",
 			"recoverable": true,
 			"risk": "safe",
 			"surface": {
 				"from": [
-					24.0,
-					1.88999998569489,
-					3.0
+					17.5,
+					0.449999988079071,
+					0.5
 				],
 				"midpoint": [
-					30.0,
-					1.16999995708466,
-					0.0
+					22.0,
+					0.449999988079071,
+					1.5
 				],
-				"slope": -1.43999999761581,
+				"slope": 0.0,
 				"supports_click_to_move": true,
 				"to": [
-					36.0,
+					26.5,
 					0.449999988079071,
-					-3.0
+					2.5
 				],
 				"width": 1.85
 			},
@@ -2157,28 +4041,28 @@
 		{
 			"cost": 1,
 			"from": "node_03",
-			"height_delta": 1.43999999761581,
+			"height_delta": 0.0,
 			"id": "main_03_04",
 			"kind": "safe",
 			"recoverable": true,
 			"risk": "safe",
 			"surface": {
 				"from": [
-					36.0,
+					26.5,
 					0.449999988079071,
-					-3.0
+					2.5
 				],
 				"midpoint": [
-					42.0,
-					1.16999995708466,
-					-1.5
+					30.0,
+					0.449999988079071,
+					2.0
 				],
-				"slope": 1.43999999761581,
+				"slope": 0.0,
 				"supports_click_to_move": true,
 				"to": [
-					48.0,
-					1.88999998569489,
-					0.0
+					33.5,
+					0.449999988079071,
+					1.5
 				],
 				"width": 1.85
 			},
@@ -2188,101 +4072,41 @@
 		{
 			"cost": 1,
 			"from": "node_04",
-			"height_delta": -1.43999999761581,
+			"height_delta": 0.0,
 			"id": "main_04_05",
 			"kind": "safe",
 			"recoverable": true,
 			"risk": "safe",
 			"surface": {
 				"from": [
-					48.0,
-					1.88999998569489,
-					0.0
-				],
-				"midpoint": [
-					54.0,
-					1.16999995708466,
+					33.5,
+					0.449999988079071,
 					1.5
 				],
-				"slope": -1.43999999761581,
+				"midpoint": [
+					38.0,
+					0.449999988079071,
+					2.0
+				],
+				"slope": 0.0,
 				"supports_click_to_move": true,
 				"to": [
-					60.0,
+					42.5,
 					0.449999988079071,
-					3.0
+					2.5
 				],
 				"width": 1.85
 			},
 			"to": "exit_shelter",
 			"width": 1.85
-		},
-		{
-			"cost": 0,
-			"damage": 20.0,
-			"from": "entry",
-			"height_delta": 0.0,
-			"id": "risky_direct",
-			"kind": "risky",
-			"recoverable": true,
-			"risk": "risky",
-			"surface": {
-				"from": [
-					0.0,
-					0.449999988079071,
-					-3.0
-				],
-				"midpoint": [
-					30.0,
-					0.449999988079071,
-					0.0
-				],
-				"slope": 0.0,
-				"supports_click_to_move": true,
-				"to": [
-					60.0,
-					0.449999988079071,
-					3.0
-				],
-				"width": 1.15
-			},
-			"to": "exit_shelter",
-			"width": 1.15
-		},
-		{
-			"cost": 0,
-			"from": "node_04",
-			"height_delta": -1.43999999761581,
-			"id": "return_shortcut",
-			"kind": "shortcut",
-			"recoverable": true,
-			"risk": "shortcut",
-			"surface": {
-				"from": [
-					48.0,
-					1.88999998569489,
-					0.0
-				],
-				"midpoint": [
-					24.0,
-					1.16999995708466,
-					-1.5
-				],
-				"slope": -1.43999999761581,
-				"supports_click_to_move": true,
-				"to": [
-					0.0,
-					0.449999988079071,
-					-3.0
-				],
-				"width": 1.25
-			},
-			"to": "entry",
-			"unlocks_shortcut": true,
-			"width": 1.25
 		}
 	],
 	"schema": "trawf_generated_stretch_spec_v1",
 	"settings": {
+		"area_theme": {
+
+		},
+		"biome": "",
 		"budget": {
 			"archetype_depth": 2,
 			"branch_count": 1,
@@ -2292,7 +4116,18 @@
 			"optional_node_count": 0,
 			"pressure_budget": 1,
 			"resource_beats": 1,
-			"shortcut_count": 1,
+			"structures_slots": 3
+		},
+		"budget_overridden_keys": [],
+		"budget_tier_floor": {
+			"archetype_depth": 2,
+			"branch_count": 1,
+			"enemy_slots": 1,
+			"flora_slots": 2,
+			"node_count": 6,
+			"optional_node_count": 0,
+			"pressure_budget": 1,
+			"resource_beats": 1,
 			"structures_slots": 3
 		},
 		"complexity_tier": "teaching",
@@ -2302,6 +4137,8 @@
 			"nested": [],
 			"random_walk": {
 				"allow_revisit": true,
+				"max_archetype_share": 0.5,
+				"max_consecutive_archetype": 2,
 				"prefer_tags": [],
 				"start_archetype": "",
 				"start_step": 0,
@@ -2337,9 +4174,7 @@
 					"flure",
 					"mother_flure",
 					"hushbloom",
-					"doma",
-					"snapbloom",
-					"gasafoetida"
+					"capbage"
 				],
 				"structures": []
 			},
@@ -2361,34 +4196,1603 @@
 				]
 			}
 		},
+		"previous_biome": "",
 		"progression_stage": 2,
 		"roster": [],
 		"seed": 2207,
+		"spatial_profile": {
+			"slot_pitch": 8
+		},
+		"stage_depth_steps": 0,
+		"systems_profile": {
+			"complexity_rank": 2,
+			"information_policy": "full_local_read",
+			"name": "prediction_chain",
+			"perception_degradation": "none",
+			"preferred_dimensions": [
+				"delay",
+				"threshold",
+				"relation"
+			],
+			"reasoning_demand": "predict the effect before intervening",
+			"required_any_dimensions": [
+				"delay",
+				"threshold"
+			],
+			"required_dimensions": [
+				"relation"
+			],
+			"transfer_required": true
+		},
 		"title": "Sample — First Fork (Teaching)",
 		"world_slot": {
 			"entry_shelter_id": "shelter_1",
 			"exit_shelter_id": "shelter_2",
 			"region": "Tutorial Outflow"
+		},
+		"zone_transition": {
+
 		}
 	},
 	"source": {
 		"complexity_tier": "teaching",
-		"generator": "archetype_based_stretch_v1",
+		"generator": "archetype_based_stretch_v2_systems",
 		"progression_stage": 2,
 		"roster": [],
 		"seed": 2207
 	},
+	"spatial_features": [],
+	"spine_navigation_grid": {
+		"cell_size": 1.0,
+		"contract_id": "unified_grid_v1",
+		"elevation_indices": [
+			0
+		],
+		"entry_anchor": "entry",
+		"exit_anchor": "exit_shelter",
+		"height": 12,
+		"level_cells": [],
+		"level_count": 1,
+		"level_height": 0.72,
+		"links": [],
+		"origin": [
+			-3.0,
+			0.449999988079071,
+			-4.0
+		],
+		"risk_cell_list": [],
+		"route_cells": {
+			"main_00_01": {
+				"cells": [
+					[
+						7,
+						6
+					],
+					[
+						8,
+						6
+					],
+					[
+						9,
+						6
+					],
+					[
+						10,
+						6
+					],
+					[
+						11,
+						6
+					]
+				],
+				"kind": "safe"
+			},
+			"main_01_02": {
+				"cells": [
+					[
+						15,
+						6
+					],
+					[
+						16,
+						6
+					],
+					[
+						17,
+						6
+					],
+					[
+						18,
+						6
+					],
+					[
+						19,
+						6
+					],
+					[
+						19,
+						5
+					],
+					[
+						19,
+						4
+					]
+				],
+				"kind": "safe"
+			},
+			"main_02_03": {
+				"cells": [
+					[
+						21,
+						3
+					],
+					[
+						21,
+						4
+					],
+					[
+						21,
+						5
+					],
+					[
+						22,
+						3
+					],
+					[
+						22,
+						4
+					],
+					[
+						22,
+						5
+					],
+					[
+						23,
+						3
+					],
+					[
+						23,
+						4
+					],
+					[
+						23,
+						5
+					],
+					[
+						24,
+						3
+					],
+					[
+						24,
+						4
+					],
+					[
+						24,
+						5
+					],
+					[
+						25,
+						3
+					],
+					[
+						25,
+						4
+					],
+					[
+						25,
+						5
+					],
+					[
+						26,
+						3
+					],
+					[
+						26,
+						4
+					],
+					[
+						26,
+						5
+					],
+					[
+						27,
+						4
+					],
+					[
+						28,
+						4
+					],
+					[
+						27,
+						5
+					],
+					[
+						28,
+						5
+					],
+					[
+						27,
+						3
+					],
+					[
+						28,
+						3
+					],
+					[
+						26,
+						6
+					],
+					[
+						27,
+						6
+					],
+					[
+						28,
+						6
+					],
+					[
+						26,
+						7
+					],
+					[
+						27,
+						7
+					],
+					[
+						28,
+						7
+					]
+				],
+				"kind": "safe"
+			},
+			"main_03_04": {
+				"cells": [
+					[
+						31,
+						5
+					],
+					[
+						31,
+						6
+					],
+					[
+						31,
+						7
+					],
+					[
+						32,
+						5
+					],
+					[
+						32,
+						6
+					],
+					[
+						32,
+						7
+					],
+					[
+						33,
+						5
+					],
+					[
+						33,
+						6
+					],
+					[
+						33,
+						7
+					],
+					[
+						34,
+						5
+					],
+					[
+						34,
+						6
+					],
+					[
+						34,
+						7
+					],
+					[
+						35,
+						6
+					],
+					[
+						36,
+						6
+					],
+					[
+						34,
+						4
+					],
+					[
+						35,
+						4
+					],
+					[
+						35,
+						5
+					],
+					[
+						36,
+						4
+					],
+					[
+						36,
+						5
+					],
+					[
+						35,
+						7
+					],
+					[
+						36,
+						7
+					]
+				],
+				"kind": "safe"
+			},
+			"main_04_05": {
+				"cells": [
+					[
+						37,
+						4
+					],
+					[
+						37,
+						5
+					],
+					[
+						38,
+						4
+					],
+					[
+						38,
+						5
+					],
+					[
+						39,
+						4
+					],
+					[
+						39,
+						5
+					],
+					[
+						40,
+						4
+					],
+					[
+						40,
+						5
+					],
+					[
+						41,
+						4
+					],
+					[
+						41,
+						5
+					],
+					[
+						42,
+						4
+					],
+					[
+						42,
+						5
+					],
+					[
+						43,
+						5
+					],
+					[
+						43,
+						4
+					],
+					[
+						42,
+						6
+					],
+					[
+						43,
+						6
+					]
+				],
+				"kind": "safe"
+			}
+		},
+		"space_id": "generated_sample_teaching_first_fork",
+		"supports_multiple_elevations": false,
+		"walkable_cells": [
+			[
+				21,
+				3
+			],
+			[
+				22,
+				3
+			],
+			[
+				23,
+				3
+			],
+			[
+				24,
+				3
+			],
+			[
+				25,
+				3
+			],
+			[
+				26,
+				3
+			],
+			[
+				27,
+				3
+			],
+			[
+				28,
+				3
+			],
+			[
+				3,
+				4
+			],
+			[
+				4,
+				4
+			],
+			[
+				5,
+				4
+			],
+			[
+				6,
+				4
+			],
+			[
+				7,
+				4
+			],
+			[
+				11,
+				4
+			],
+			[
+				12,
+				4
+			],
+			[
+				13,
+				4
+			],
+			[
+				14,
+				4
+			],
+			[
+				15,
+				4
+			],
+			[
+				19,
+				4
+			],
+			[
+				20,
+				4
+			],
+			[
+				21,
+				4
+			],
+			[
+				22,
+				4
+			],
+			[
+				23,
+				4
+			],
+			[
+				24,
+				4
+			],
+			[
+				25,
+				4
+			],
+			[
+				26,
+				4
+			],
+			[
+				27,
+				4
+			],
+			[
+				28,
+				4
+			],
+			[
+				29,
+				4
+			],
+			[
+				30,
+				4
+			],
+			[
+				31,
+				4
+			],
+			[
+				34,
+				4
+			],
+			[
+				35,
+				4
+			],
+			[
+				36,
+				4
+			],
+			[
+				37,
+				4
+			],
+			[
+				38,
+				4
+			],
+			[
+				39,
+				4
+			],
+			[
+				40,
+				4
+			],
+			[
+				41,
+				4
+			],
+			[
+				42,
+				4
+			],
+			[
+				43,
+				4
+			],
+			[
+				44,
+				4
+			],
+			[
+				45,
+				4
+			],
+			[
+				46,
+				4
+			],
+			[
+				47,
+				4
+			],
+			[
+				3,
+				5
+			],
+			[
+				4,
+				5
+			],
+			[
+				5,
+				5
+			],
+			[
+				6,
+				5
+			],
+			[
+				7,
+				5
+			],
+			[
+				11,
+				5
+			],
+			[
+				12,
+				5
+			],
+			[
+				13,
+				5
+			],
+			[
+				14,
+				5
+			],
+			[
+				15,
+				5
+			],
+			[
+				19,
+				5
+			],
+			[
+				21,
+				5
+			],
+			[
+				22,
+				5
+			],
+			[
+				23,
+				5
+			],
+			[
+				24,
+				5
+			],
+			[
+				25,
+				5
+			],
+			[
+				26,
+				5
+			],
+			[
+				27,
+				5
+			],
+			[
+				28,
+				5
+			],
+			[
+				29,
+				5
+			],
+			[
+				30,
+				5
+			],
+			[
+				31,
+				5
+			],
+			[
+				32,
+				5
+			],
+			[
+				33,
+				5
+			],
+			[
+				34,
+				5
+			],
+			[
+				35,
+				5
+			],
+			[
+				36,
+				5
+			],
+			[
+				37,
+				5
+			],
+			[
+				38,
+				5
+			],
+			[
+				39,
+				5
+			],
+			[
+				40,
+				5
+			],
+			[
+				41,
+				5
+			],
+			[
+				42,
+				5
+			],
+			[
+				43,
+				5
+			],
+			[
+				44,
+				5
+			],
+			[
+				45,
+				5
+			],
+			[
+				46,
+				5
+			],
+			[
+				47,
+				5
+			],
+			[
+				3,
+				6
+			],
+			[
+				4,
+				6
+			],
+			[
+				5,
+				6
+			],
+			[
+				6,
+				6
+			],
+			[
+				7,
+				6
+			],
+			[
+				8,
+				6
+			],
+			[
+				9,
+				6
+			],
+			[
+				10,
+				6
+			],
+			[
+				11,
+				6
+			],
+			[
+				12,
+				6
+			],
+			[
+				13,
+				6
+			],
+			[
+				14,
+				6
+			],
+			[
+				15,
+				6
+			],
+			[
+				16,
+				6
+			],
+			[
+				17,
+				6
+			],
+			[
+				18,
+				6
+			],
+			[
+				19,
+				6
+			],
+			[
+				26,
+				6
+			],
+			[
+				27,
+				6
+			],
+			[
+				28,
+				6
+			],
+			[
+				29,
+				6
+			],
+			[
+				30,
+				6
+			],
+			[
+				31,
+				6
+			],
+			[
+				32,
+				6
+			],
+			[
+				33,
+				6
+			],
+			[
+				34,
+				6
+			],
+			[
+				35,
+				6
+			],
+			[
+				36,
+				6
+			],
+			[
+				37,
+				6
+			],
+			[
+				42,
+				6
+			],
+			[
+				43,
+				6
+			],
+			[
+				44,
+				6
+			],
+			[
+				45,
+				6
+			],
+			[
+				46,
+				6
+			],
+			[
+				47,
+				6
+			],
+			[
+				3,
+				7
+			],
+			[
+				4,
+				7
+			],
+			[
+				5,
+				7
+			],
+			[
+				6,
+				7
+			],
+			[
+				7,
+				7
+			],
+			[
+				11,
+				7
+			],
+			[
+				12,
+				7
+			],
+			[
+				13,
+				7
+			],
+			[
+				14,
+				7
+			],
+			[
+				15,
+				7
+			],
+			[
+				26,
+				7
+			],
+			[
+				27,
+				7
+			],
+			[
+				28,
+				7
+			],
+			[
+				29,
+				7
+			],
+			[
+				30,
+				7
+			],
+			[
+				31,
+				7
+			],
+			[
+				32,
+				7
+			],
+			[
+				33,
+				7
+			],
+			[
+				34,
+				7
+			],
+			[
+				35,
+				7
+			],
+			[
+				36,
+				7
+			],
+			[
+				43,
+				7
+			],
+			[
+				44,
+				7
+			],
+			[
+				45,
+				7
+			],
+			[
+				46,
+				7
+			],
+			[
+				47,
+				7
+			],
+			[
+				3,
+				8
+			],
+			[
+				4,
+				8
+			],
+			[
+				5,
+				8
+			],
+			[
+				6,
+				8
+			],
+			[
+				7,
+				8
+			],
+			[
+				11,
+				8
+			],
+			[
+				12,
+				8
+			],
+			[
+				13,
+				8
+			],
+			[
+				14,
+				8
+			],
+			[
+				15,
+				8
+			],
+			[
+				27,
+				8
+			],
+			[
+				28,
+				8
+			],
+			[
+				29,
+				8
+			],
+			[
+				30,
+				8
+			],
+			[
+				31,
+				8
+			],
+			[
+				43,
+				8
+			],
+			[
+				44,
+				8
+			],
+			[
+				45,
+				8
+			],
+			[
+				46,
+				8
+			],
+			[
+				47,
+				8
+			]
+		],
+		"width": 51
+	},
 	"success": true,
+	"systems_contract": {
+		"actionable_nodes": [
+			"node_01",
+			"exit_shelter"
+		],
+		"boundary": "the generated entry-to-shelter route and the states changed inside it",
+		"causal_links": [
+			{
+				"display": "hover_or_pause",
+				"effect_role": "carrier hand",
+				"from": "node_01:cause",
+				"kind": "intervention_effect",
+				"node": "node_01",
+				"prediction": "Moves one physical lysate into a carrier's hand; ATP changes only after endocytosis",
+				"source_role": "finite lysate cache",
+				"state": "one physical lysate occupies one carrier hand until endocytosed",
+				"state_label": "CACHE FILLS HAND",
+				"to": "node_01:effect",
+				"visibility_policy": "party_visibility_union"
+			}
+		],
+		"causal_models": [
+			{
+				"archetype_id": "2",
+				"archetype_name": "Plant as tool",
+				"cause": "the party clears the cache window and a character with a free hand takes the lysate",
+				"critical_node_ids": [
+					"node_01"
+				],
+				"delay": "pickup and endocytosis are separate decisions",
+				"dimensions": [
+					"relation",
+					"stock",
+					"flow",
+					"delay",
+					"threshold",
+					"local_global",
+					"leverage",
+					"transfer"
+				],
+				"effect": "the cache empties and that hand becomes occupied while ATP remains unchanged",
+				"evidence": "the cache clears, one portrait shows held lysate, and ATP changes only after that carrier endocytoses",
+				"feedback_loop": "none",
+				"flow": "pickup moves lysate from cache to hand; optional endocytosis later moves its value into the carrier's ATP",
+				"id": "runtime_physical_lysate_pickup_v1",
+				"intervention": "compare cache yield, exposure, and hand commitments before taking it",
+				"leverage_point": "which cache is worth the exposure and which hand should carry it",
+				"likely_misconception": "touching a cache immediately or party-wide restores ATP",
+				"local_vs_party_scale": "a local cache and carrier choice changes who can fund a later shelter rest",
+				"node_ids": [
+					"node_01"
+				],
+				"polarity": "mixed",
+				"prediction": "claiming the cache occupies exactly one hand without changing ATP",
+				"relationship": "risked access moves a finite lysate cache into one carrier hand; only a later explicit endocytosis changes that carrier's ATP",
+				"runtime_handler": "physical_lysate_pickup_v1",
+				"stock": "cache contents, free hands, and the carrier's ATP",
+				"teach_node": "",
+				"test_nodes": [],
+				"threshold": "the chosen carrier has a free hand before the threat window closes",
+				"transfer_test": "choose a cache and carrier under different hand and route constraints",
+				"verb": "forage"
+			},
+			{
+				"archetype_id": "11",
+				"archetype_name": "Narrative beat",
+				"cause": "every active party member reaches the registered shelter region",
+				"critical_node_ids": [
+					"exit_shelter"
+				],
+				"delay": "the rest interval",
+				"dimensions": [
+					"relation",
+					"stock",
+					"flow",
+					"delay",
+					"feedback",
+					"local_global",
+					"threshold",
+					"leverage",
+					"transfer"
+				],
+				"effect": "needed recovery starts through command_rest, or an already-full party completes without an ATP charge",
+				"evidence": "presence, recovery need, successful rest starts, and unchanged ATP for already-full members are reported separately",
+				"feedback_loop": "poor recovery reduces future collection capacity, increasing future scarcity",
+				"flow": "rest spends ATP to restore capacity and reduce debt",
+				"id": "runtime_canonical_shelter_arrival_v1",
+				"intervention": "regroup inside the shelter and enter it once the party is ready",
+				"leverage_point": "when and where ATP is banked before rest",
+				"likely_misconception": "rest is free or every cache must be collected",
+				"local_vs_party_scale": "one cache decision changes the whole party's next stretch",
+				"node_ids": [
+					"exit_shelter"
+				],
+				"polarity": "negative",
+				"prediction": "arrival completes only after the party is present and every needed rest command succeeds",
+				"relationship": "a complete conscious party inside a real shelter may finish the stretch; only members who need recovery start canonical ATP-paid rest",
+				"runtime_handler": "canonical_shelter_arrival_v1",
+				"stock": "ATP, health, stamina, and sleep debt",
+				"teach_node": "",
+				"test_nodes": [],
+				"threshold": "enough ATP and safety exist for worthwhile rest",
+				"transfer_test": "distinguish safe arrival from ATP-paid recovery at another shelter",
+				"verb": "recover"
+			}
+		],
+		"difficulty_dimensions": {
+			"camera": "constant",
+			"controls": "constant",
+			"execution_precision": "not used as progression scaling",
+			"geometry_density": "controlled by complexity tier, not campaign stage",
+			"reasoning": "predict the effect before intervening"
+		},
+		"feedback_contract": {
+			"critical_reads": "stable_or_recoverable",
+			"failure_cost": "recoverable state setback or bounded pressure",
+			"input_error_evidence": "show the rejected or mistimed action separately",
+			"model_error_evidence": "show the predicted relationship and the observed result",
+			"visibility_policy": "party_visibility_union"
+		},
+		"focus_model_id": "runtime_physical_lysate_pickup_v1",
+		"goal": "reach the exit shelter; only implemented handlers may change runtime state",
+		"layout_only_nodes": [
+			"entry",
+			"node_02",
+			"node_03",
+			"node_04"
+		],
+		"lesson_spine": [
+			{
+				"archetype_id": "2",
+				"beat": "apply",
+				"changed_condition": "flure iron decoy",
+				"critical": true,
+				"model_id": "runtime_physical_lysate_pickup_v1",
+				"node": "node_01",
+				"prediction_required": false,
+				"runtime_handler": "physical_lysate_pickup_v1",
+				"verb": "forage"
+			},
+			{
+				"archetype_id": "11",
+				"beat": "apply",
+				"changed_condition": "",
+				"critical": true,
+				"model_id": "runtime_canonical_shelter_arrival_v1",
+				"node": "exit_shelter",
+				"prediction_required": false,
+				"runtime_handler": "canonical_shelter_arrival_v1",
+				"verb": "recover"
+			}
+		],
+		"optional_lesson_spine": [],
+		"optional_world_action_policy": {
+
+		},
+		"optional_world_actions": [],
+		"perception_lock": {
+			"hidden_from_each": "none",
+			"when_register": "before commitment and again on state change",
+			"where_register": "world causal tell plus affected target"
+		},
+		"progression_profile": {
+			"complexity_rank": 2,
+			"information_policy": "full_local_read",
+			"name": "prediction_chain",
+			"perception_degradation": "none",
+			"preferred_dimensions": [
+				"delay",
+				"threshold",
+				"relation"
+			],
+			"reasoning_demand": "predict the effect before intervening",
+			"required_any_dimensions": [
+				"delay",
+				"threshold"
+			],
+			"required_dimensions": [
+				"relation"
+			],
+			"transfer_required": true
+		},
+		"reasoning_solved_at": "exit_shelter",
+		"route_count": 5,
+		"runtime_handlers": [
+			"physical_lysate_pickup_v1",
+			"physical_carried_payload_v1",
+			"canonical_shelter_arrival_v1",
+			"authored_hydraulic_spillway_food_v1"
+		],
+		"runtime_profile_coverage": true,
+		"schema": "trawf_generated_systems_contract_v1",
+		"solved_state_execution_tail_nodes": 1,
+		"transfer_sequence_explicit": false,
+		"transfer_test_required": true
+	},
+	"teaching_chain": [],
+	"themed_landmarks": [],
+	"themed_setpieces": [],
 	"title": "Sample — First Fork (Teaching)",
+	"topology_contract": {
+		"branch_roles": [
+			"mandatory_producer",
+			"optional_risk_reward"
+		],
+		"branch_weave_contract_id": "generated_branch_weave_v1",
+		"contract_id": "generated_topology_contract_v1",
+		"invariants": {
+			"always_on_forward_drops_forbidden": true,
+			"branches_have_semantic_roles": true,
+			"forward_routes_cannot_skip_unresolved_nodes": true,
+			"recovery_returns_unlock_from_their_later_endpoint": true
+		},
+		"mandatory_branch_action_count": 1,
+		"navigation_branches": [
+			{
+				"causal_contract": {
+					"activation_policy": "interact_at_producer",
+					"branch_id": "branch_00",
+					"cannot_bypass_unresolved": true,
+					"cell_frame": "unified_grid_v1",
+					"completion_phase": "bridged",
+					"consumer_addressing": "exact_cell",
+					"consumer_cell": [
+						16,
+						6
+					],
+					"consumer_cell_role": "visual_midpoint",
+					"consumer_cells": [
+						[
+							16,
+							6
+						]
+					],
+					"consumer_cells_addressing": "exact_cut_set",
+					"consumer_derivation": "first_later_spine_disconnect_cut",
+					"consumer_policy": "next_unresolved_spine_blocker",
+					"content_policy": "causal_producer",
+					"contract_id": "generated_branch_role_v1",
+					"cut_proof": "entry_exit_disconnected_when_removed",
+					"producer_cell": [
+						12,
+						12
+					],
+					"produces_state": "branch_00_resolved",
+					"role": "mandatory_producer",
+					"runtime_handler": "branch_span_producer",
+					"spine_column": 14,
+					"starts_active": true,
+					"topology_effect": "unlock_next_spine_blocker",
+					"wait_for_completion": true
+				},
+				"cells": [
+					[
+						14,
+						9
+					],
+					[
+						12,
+						10
+					],
+					[
+						13,
+						10
+					],
+					[
+						14,
+						10
+					],
+					[
+						15,
+						10
+					],
+					[
+						12,
+						11
+					],
+					[
+						13,
+						11
+					],
+					[
+						14,
+						11
+					],
+					[
+						15,
+						11
+					],
+					[
+						12,
+						12
+					],
+					[
+						13,
+						12
+					],
+					[
+						14,
+						12
+					],
+					[
+						15,
+						12
+					]
+				],
+				"id": "branch_00",
+				"neck": [
+					14,
+					9
+				],
+				"required_for_progress": true,
+				"role": "mandatory_producer"
+			},
+			{
+				"causal_contract": {
+					"activation_policy": "enter_branch",
+					"branch_id": "branch_01",
+					"cannot_bypass_unresolved": true,
+					"consumer_cells": [],
+					"consumer_policy": "none",
+					"content_policy": "risk_scaled_physical_reward",
+					"contract_id": "generated_branch_role_v1",
+					"produces_state": "",
+					"role": "optional_risk_reward",
+					"spine_column": 34,
+					"starts_active": true,
+					"topology_effect": "none"
+				},
+				"cells": [
+					[
+						34,
+						8
+					],
+					[
+						32,
+						9
+					],
+					[
+						33,
+						9
+					],
+					[
+						34,
+						9
+					],
+					[
+						35,
+						9
+					],
+					[
+						32,
+						10
+					],
+					[
+						33,
+						10
+					],
+					[
+						34,
+						10
+					],
+					[
+						35,
+						10
+					],
+					[
+						32,
+						11
+					],
+					[
+						33,
+						11
+					],
+					[
+						34,
+						11
+					],
+					[
+						35,
+						11
+					],
+					[
+						32,
+						12
+					],
+					[
+						33,
+						12
+					],
+					[
+						34,
+						12
+					],
+					[
+						35,
+						12
+					]
+				],
+				"id": "branch_01",
+				"neck": [
+					34,
+					8
+				],
+				"required_for_progress": false,
+				"role": "optional_risk_reward"
+			}
+		],
+		"navigation_grid_field": "navigation_grid",
+		"return_policy": {
+			"activation_character": "peris",
+			"activation_policy": "tend_upper_anchor",
+			"allow_forward_drop": false,
+			"authority": "runtime_meta_template_climbvine_state",
+			"kind": "gated_climbvine",
+			"role": "recovery_return",
+			"semantic_route_may_unlock": false,
+			"starts_active": false,
+			"topology_effect": "backtrack_only",
+			"traversal_direction": "lower_to_upper"
+		},
+		"semantic_branches": [],
+		"spine_navigation_grid_field": "spine_navigation_grid",
+		"topology_routes": []
+	},
 	"validation": {
+		"area_theme": {
+			"errors": [],
+			"landmark_count": 0,
+			"valid": true
+		},
 		"bare_pair_solvable": true,
-		"multi_solution": true,
+		"mode_independence": {
+			"errors": [],
+			"runtime_paths": [],
+			"valid": true
+		},
+		"multi_solution": false,
 		"multi_solution_ok": true,
 		"multi_solution_required": false,
 		"shadow_solvable": true,
 		"solution_warnings": [],
+		"spatial_features": {
+			"errors": [],
+			"feature_count": 0,
+			"valid": true
+		},
 		"spotlight_within_stage": true,
-		"warnings": []
+		"systems": {
+			"actionable_node_count": 2,
+			"critical_beat_count": 2,
+			"errors": [],
+			"focus_has_teach": false,
+			"focus_has_test": false,
+			"focus_has_transfer": false,
+			"focus_matches_profile": true,
+			"focus_transfer_follows_test": false,
+			"layout_only_node_count": 4,
+			"model_count": 2,
+			"valid": true
+		},
+		"topology": {
+			"errors": [],
+			"mandatory_branch_action_count": 1,
+			"navigation_branch_count": 2,
+			"topology_route_count": 0,
+			"valid": true
+		},
+		"warnings": [
+			{
+				"category": "structures",
+				"id": "junction",
+				"message": "junction is omitted from playable generation because it has no generated runtime binding.",
+				"palette_support": "implemented",
+				"reason": "missing_generated_runtime_binding"
+			},
+			{
+				"category": "flora",
+				"id": "flure",
+				"message": "flure is omitted from playable generation because it has no generated runtime binding.",
+				"palette_support": "implemented",
+				"reason": "missing_generated_runtime_binding"
+			},
+			{
+				"category": "enemies",
+				"id": "naturalizers",
+				"message": "naturalizers is omitted from playable generation because it has no generated runtime binding.",
+				"palette_support": "implemented",
+				"reason": "missing_generated_runtime_binding"
+			},
+			{
+				"category": "structures",
+				"id": "root_slide",
+				"message": "root_slide is omitted from playable generation because it has no generated runtime binding.",
+				"palette_support": "implemented",
+				"reason": "missing_generated_runtime_binding"
+			},
+			{
+				"category": "structures",
+				"id": "carry_gear",
+				"message": "carry_gear is omitted from playable generation because it has no generated runtime binding.",
+				"palette_support": "implemented",
+				"reason": "missing_generated_runtime_binding"
+			},
+			{
+				"category": "structures",
+				"id": "barrier",
+				"message": "barrier is omitted from playable generation because it has no generated runtime binding.",
+				"palette_support": "implemented",
+				"reason": "missing_generated_runtime_binding"
+			},
+			{
+				"category": "flora",
+				"id": "seefern",
+				"message": "seefern is omitted from playable generation because it has no generated runtime binding.",
+				"palette_support": "implemented",
+				"reason": "missing_generated_runtime_binding"
+			},
+			{
+				"category": "structures",
+				"id": "shelter",
+				"message": "shelter is omitted from playable generation because it has no generated runtime binding.",
+				"palette_support": "implemented",
+				"reason": "missing_generated_runtime_binding"
+			}
+		]
 	},
 	"world_slot": {
 		"act": 1,
@@ -2405,5 +5809,8 @@
 		"preview_party_preset": "full_party_full_health",
 		"region": "Tutorial Outflow",
 		"slot_id": "generated_sample_teaching_first_fork"
+	},
+	"zone_transition": {
+
 	}
 }

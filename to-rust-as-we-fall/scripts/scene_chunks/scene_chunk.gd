@@ -6,12 +6,29 @@ const CAUSAL_FEEDBACK_LINK_SCRIPT := preload("res://scripts/game/world/causal_fe
 const INFRASTRUCTURE_OPERATION_SCRIPT := preload("res://scripts/game/objects/infrastructure_operation.gd")
 const INFRASTRUCTURE_SERVICE_FIELD_SCRIPT := preload("res://scripts/game/objects/infrastructure_service_field.gd")
 
+# EventScheduler snapshots preserve their clock, but deliberately cannot serialize Callables. Any
+# base-chunk mechanism that is between its control and consequence therefore needs a portable phase
+# plus an absolute deadline in GameState. Meshes, links, and callback handles are reconstructed views.
+const SCENE_MECHANISM_AUTHORITY_VERSION := 3
+const SCENE_MECHANISM_AUTHORITY_PREFIX := "runtime:scene_chunk_mechanisms:"
+const SUMP_COMMIT_DELAY := 1.2
+const SILO_COMMIT_DELAY := 0.8
+const SCENE_MECHANISM_POSITION_TOLERANCE := 0.25
+const SCENE_MECHANISM_HEIGHT_TOLERANCE := 1.25
+const SILO_PHASE_CLOSED := "closed"
+const SILO_PHASE_OPENING := "opening"
+const SILO_PHASE_VENTED := "vented"
+
 var host: Node = null
 var chunk_name := ""
 var _built := false
 var _interactables: Array = []
 var _causal_feedback_links: Array = []
 var _causal_feedback_wired := false
+var _scene_mechanism_baseline: Dictionary = {}
+var _scene_mechanism_authority_initialized := false
+var _restoring_scene_mechanism_authority := false
+var _party_rest_points: Dictionary = {}
 
 func attach_chunk_host(next_host: Node, next_chunk_name := "") -> void:
 	host = next_host
@@ -19,6 +36,7 @@ func attach_chunk_host(next_host: Node, next_chunk_name := "") -> void:
 		chunk_name = next_chunk_name
 
 func detach_chunk_host() -> void:
+	_cancel_scene_mechanism_callbacks()
 	host = null
 	_interactables.clear()
 	for link in _causal_feedback_links:
@@ -36,6 +54,7 @@ func _ready() -> void:
 		return
 	_built = true
 	_build_chunk()
+	_initialize_scene_mechanism_authority()
 
 func _build_chunk() -> void:
 	pass
@@ -254,6 +273,23 @@ func _get_game_state():
 		return host.call("get_preview_game_state")
 	return null
 
+## Fragment previews render their own non-linear day/night clock, while GameState owns the
+## authoritative shelter-rest gate. Synchronize the two only at a simulation command boundary;
+## continuously writing the displayed clock would manufacture an event-log entry every frame.
+## Campaign hosts do not expose this preview hook because their GameState clock is already live.
+func _sync_host_clock_to_game_state() -> void:
+	if host == null or not host.has_method("get_preview_clock_state"):
+		return
+	var gs = _get_game_state()
+	if gs == null or not gs.has_method("set_game_clock"):
+		return
+	var clock_variant: Variant = host.call("get_preview_clock_state")
+	if not clock_variant is Dictionary:
+		return
+	var clock: Dictionary = clock_variant
+	gs.set_game_clock(maxi(int(clock.get("day", 1)), 1),
+		clampf(float(clock.get("time", 0.0)), 0.0, 1.0))
+
 func _get_scheduler():
 	if host != null and host.has_method("get_preview_scheduler"):
 		return host.call("get_preview_scheduler")
@@ -383,15 +419,579 @@ func _build_district_skirt(grid_data: Dictionary, seed_v: int, margin := 6, fill
 var _silos: Array = []
 ## EXTRACTION BORE SUMPS (SET_PIECES.md #27): reversible wellhead-pump sumps this chunk hosts.
 var _sumps: Array = []
+## DERELICT RESOURCE BELTS (SET_PIECES.md #25): breaker-powered transit lines this chunk hosts.
+var _belts: Array = []
+
+## Stable scope for the reusable mechanisms owned by this particular chunk layout. Generated
+## chunks can reuse the same scene id at different seeds, so the layout fingerprint is part of the
+## key; a save from one generated room must never open machinery in another.
+func scene_mechanism_authority_key() -> String:
+	var owner := chunk_name if chunk_name != "" else str(name)
+	if owner == "":
+		owner = "scene_chunk"
+	var fingerprint_parts: Array[String] = [
+		owner,
+		"s%d" % _sumps.size(),
+		"h%d" % _silos.size(),
+		"b%d" % _belts.size(),
+	]
+	if has_method("get_generation_seed"):
+		fingerprint_parts.append("seed=%d" % int(call("get_generation_seed")))
+	for entry_v in _sumps:
+		var entry := entry_v as Dictionary
+		fingerprint_parts.append("sump:%s:%s:%d" % [
+			str(entry.get("pit_cells", [])), str(entry.get("ledge_cell", [])),
+			int(entry.get("ledge_level", 0)),
+		])
+	for entry_v in _silos:
+		var entry := entry_v as Dictionary
+		fingerprint_parts.append("silo:%s:%d:%s:%s" % [
+			str(entry.get("ramp_cell", [])), int(entry.get("ramp_to_level", 0)),
+			str(entry.get("spill_min", Vector3.ZERO)), str(entry.get("spill_max", Vector3.ZERO)),
+		])
+	for entry_v in _belts:
+		var entry := entry_v as Dictionary
+		fingerprint_parts.append("belt:%s:%s:%s" % [
+			str(entry.get("origin", Vector3.ZERO)),
+			str(entry.get("waypoints", [])),
+			str(entry.get("breaker_position", Vector3.ZERO)),
+		])
+	var fingerprint := "|".join(fingerprint_parts).sha256_text().substr(0, 16)
+	return "%s%s:%s" % [SCENE_MECHANISM_AUTHORITY_PREFIX, owner, fingerprint]
+
+
+func _scene_mechanism_authority_state() -> Dictionary:
+	var sump_states: Array[Dictionary] = []
+	for entry_v in _sumps:
+		var entry := entry_v as Dictionary
+		sump_states.append({
+			"state": clampi(int(entry.get("state", 1)), 0, 2),
+			"pending": int(entry.get("pending", -1)),
+			"deadline": float(entry.get("deadline", -1.0)),
+			"trigger_consumed": maxi(0, int(entry.get("trigger_consumed", 0))),
+		})
+	var silo_states: Array[Dictionary] = []
+	for entry_v in _silos:
+		var entry := entry_v as Dictionary
+		silo_states.append({
+			"phase": str(entry.get("phase", SILO_PHASE_CLOSED)),
+			"deadline": float(entry.get("deadline", -1.0)),
+			"trigger_consumed": maxi(0, int(entry.get("trigger_consumed", 0))),
+		})
+	var belt_states: Array[Dictionary] = []
+	for entry_v in _belts:
+		var entry := entry_v as Dictionary
+		belt_states.append({
+			"powered": bool(entry.get("powered", false)),
+			"trigger_consumed": maxi(0, int(entry.get("trigger_consumed", 0))),
+		})
+	return {
+		"version": SCENE_MECHANISM_AUTHORITY_VERSION,
+		"layout": scene_mechanism_authority_key(),
+		"sumps": sump_states,
+		"silos": silo_states,
+		"belts": belt_states,
+	}
+
+
+func _initialize_scene_mechanism_authority() -> void:
+	if _scene_mechanism_authority_initialized \
+			or (_sumps.is_empty() and _silos.is_empty() and _belts.is_empty()):
+		return
+	_scene_mechanism_authority_initialized = true
+	_ensure_scene_mechanism_control_registry_shapes()
+	_scene_mechanism_baseline = _scene_mechanism_authority_state().duplicate(true)
+	var gs = _get_game_state()
+	var raw: Variant = gs.get_world_state(scene_mechanism_authority_key(), null) \
+		if gs != null and gs.has_method("get_world_state") else null
+	var saved := _normalized_scene_mechanism_authority(raw)
+	if not saved.is_empty():
+		var reconciled := _restore_scene_mechanism_authority(saved)
+		if int((raw as Dictionary).get("version", 0)) \
+				!= SCENE_MECHANISM_AUTHORITY_VERSION or reconciled:
+			_publish_scene_mechanism_authority()
+	else:
+		_publish_scene_mechanism_authority()
+
+
+func _valid_scene_mechanism_authority(raw: Variant) -> bool:
+	return not _normalized_scene_mechanism_authority(raw).is_empty()
+
+
+## Version 2 already carried truthful physical phases/deadlines. Version 3 adds only the exact
+## source-receipt identity that authorized each phase. Migration therefore preserves every old
+## physical value and consumes the registry count visible at that same saved tick; it never infers
+## a missing pump, vent, or breaker consequence.
+func _normalized_scene_mechanism_authority(raw: Variant) -> Dictionary:
+	if not raw is Dictionary:
+		return {}
+	var saved := (raw as Dictionary).duplicate(true)
+	var saved_version := int(saved.get("version", 0))
+	if saved_version == 2:
+		var migrated_sumps: Array = saved.get("sumps", []) as Array
+		for idx in range(mini(migrated_sumps.size(), _sumps.size())):
+			if migrated_sumps[idx] is Dictionary:
+				(migrated_sumps[idx] as Dictionary)["trigger_consumed"] = maxi(
+					0, _scene_mechanism_source_trigger_count(
+						(_sumps[idx] as Dictionary).get("pump")))
+		var migrated_silos: Array = saved.get("silos", []) as Array
+		for idx in range(mini(migrated_silos.size(), _silos.size())):
+			if migrated_silos[idx] is Dictionary:
+				(migrated_silos[idx] as Dictionary)["trigger_consumed"] = maxi(
+					0, _scene_mechanism_source_trigger_count(
+						(_silos[idx] as Dictionary).get("lever")))
+		var migrated_belts: Array = saved.get("belts", []) as Array
+		for idx in range(mini(migrated_belts.size(), _belts.size())):
+			if migrated_belts[idx] is Dictionary:
+				(migrated_belts[idx] as Dictionary)["trigger_consumed"] = maxi(
+					0, _scene_mechanism_source_trigger_count(
+						(_belts[idx] as Dictionary).get("breaker")))
+		saved["version"] = SCENE_MECHANISM_AUTHORITY_VERSION
+	if int(saved.get("version", 0)) != SCENE_MECHANISM_AUTHORITY_VERSION \
+			or str(saved.get("layout", "")) != scene_mechanism_authority_key():
+		return {}
+	var saved_sumps: Array = saved.get("sumps", []) as Array
+	var saved_silos: Array = saved.get("silos", []) as Array
+	var saved_belts: Array = saved.get("belts", []) as Array
+	if saved_sumps.size() != _sumps.size() or saved_silos.size() != _silos.size() \
+			or saved_belts.size() != _belts.size():
+		return {}
+	for idx in range(saved_sumps.size()):
+		var state_v: Variant = saved_sumps[idx]
+		if not state_v is Dictionary:
+			return {}
+		var state := state_v as Dictionary
+		var pending := int(state.get("pending", -1))
+		var state_value := int(state.get("state", -1))
+		var deadline := float(state.get("deadline", -1.0))
+		var consumed := int(state.get("trigger_consumed", -1))
+		if state_value < 0 or state_value > 2 or pending < -1 or pending > 2 \
+				or (pending >= 0 and (not is_finite(deadline) or deadline < 0.0)) \
+				or (pending < 0 and deadline < -1.0) \
+				or not _scene_mechanism_saved_receipt_count_valid(
+					(_sumps[idx] as Dictionary).get("pump"), consumed):
+			return {}
+	for idx in range(saved_silos.size()):
+		var state_v: Variant = saved_silos[idx]
+		if not state_v is Dictionary:
+			return {}
+		var state := state_v as Dictionary
+		var phase := str(state.get("phase", ""))
+		if phase not in [SILO_PHASE_CLOSED, SILO_PHASE_OPENING, SILO_PHASE_VENTED]:
+			return {}
+		var deadline := float(state.get("deadline", -1.0))
+		if (phase == SILO_PHASE_OPENING and (not is_finite(deadline) or deadline < 0.0)) \
+				or (phase != SILO_PHASE_OPENING and deadline < -1.0) \
+				or not _scene_mechanism_saved_receipt_count_valid(
+					(_silos[idx] as Dictionary).get("lever"),
+					int(state.get("trigger_consumed", -1))):
+			return {}
+	for idx in range(saved_belts.size()):
+		var state_v: Variant = saved_belts[idx]
+		if not state_v is Dictionary:
+			return {}
+		var state := state_v as Dictionary
+		if not state.has("powered") \
+				or not _scene_mechanism_saved_receipt_count_valid(
+					(_belts[idx] as Dictionary).get("breaker"),
+					int(state.get("trigger_consumed", -1))):
+			return {}
+	return saved
+
+
+func _publish_scene_mechanism_authority() -> void:
+	if _restoring_scene_mechanism_authority \
+			or (_sumps.is_empty() and _silos.is_empty() and _belts.is_empty()):
+		return
+	var gs = _get_game_state()
+	if gs != null and gs.has_method("set_world_state"):
+		gs.set_world_state(scene_mechanism_authority_key(), _scene_mechanism_authority_state())
+
+
+## TutorialSequence calls this after it clears opaque scheduler Callables and installs GameState.
+## Absence is authoritative: it means the save predates every interaction with these mechanisms,
+## not that the current presenter's later phase should be copied back into the past.
+func on_game_state_snapshot_restored() -> void:
+	if _sumps.is_empty() and _silos.is_empty() and _belts.is_empty():
+		return
+	_cancel_scene_mechanism_callbacks()
+	_scene_mechanism_authority_initialized = true
+	_ensure_scene_mechanism_control_registry_shapes()
+	if _scene_mechanism_baseline.is_empty():
+		_scene_mechanism_baseline = _scene_mechanism_authority_state().duplicate(true)
+	var gs = _get_game_state()
+	var raw: Variant = gs.get_world_state(scene_mechanism_authority_key(), null) \
+		if gs != null and gs.has_method("get_world_state") else null
+	var saved := _normalized_scene_mechanism_authority(raw)
+	if saved.is_empty():
+		var baseline := _scene_mechanism_baseline.duplicate(true)
+		if gs != null and gs.has_method("set_world_state"):
+			gs.set_world_state(scene_mechanism_authority_key(), baseline)
+		if _restore_scene_mechanism_authority(baseline):
+			_publish_scene_mechanism_authority()
+		return
+	var reconciled := _restore_scene_mechanism_authority(saved)
+	if int((raw as Dictionary).get("version", 0)) \
+			!= SCENE_MECHANISM_AUTHORITY_VERSION or reconciled:
+		_publish_scene_mechanism_authority()
+
+
+func _restore_scene_mechanism_authority(saved: Dictionary) -> bool:
+	_restoring_scene_mechanism_authority = true
+	_cancel_scene_mechanism_callbacks()
+	var saved_sumps: Array = saved.get("sumps", []) as Array
+	for idx in range(_sumps.size()):
+		var entry := _sumps[idx] as Dictionary
+		var state := saved_sumps[idx] as Dictionary
+		entry["state"] = clampi(int(state.get("state", 1)), 0, 2)
+		entry["pending"] = int(state.get("pending", -1))
+		entry["deadline"] = float(state.get("deadline", -1.0)) \
+			if int(entry["pending"]) >= 0 else -1.0
+		entry["trigger_consumed"] = maxi(
+			0, int(state.get("trigger_consumed", 0)))
+		_apply_sump(idx)
+	var saved_silos: Array = saved.get("silos", []) as Array
+	for idx in range(_silos.size()):
+		var entry := _silos[idx] as Dictionary
+		var state := saved_silos[idx] as Dictionary
+		entry["phase"] = str(state.get("phase", SILO_PHASE_CLOSED))
+		entry["vented"] = str(entry["phase"]) == SILO_PHASE_VENTED
+		entry["deadline"] = float(state.get("deadline", -1.0)) \
+			if str(entry["phase"]) == SILO_PHASE_OPENING else -1.0
+		entry["trigger_consumed"] = maxi(
+			0, int(state.get("trigger_consumed", 0)))
+		_apply_silo(idx)
+	var saved_belts: Array = saved.get("belts", []) as Array
+	for idx in range(_belts.size()):
+		var entry := _belts[idx] as Dictionary
+		var state := saved_belts[idx] as Dictionary
+		entry["powered"] = bool(state.get("powered", false))
+		entry["trigger_consumed"] = maxi(
+			0, int(state.get("trigger_consumed", 0)))
+		_apply_belt(idx)
+	var reconciled := _reconcile_scene_mechanism_control_receipts()
+	for idx in range(_sumps.size()):
+		if int((_sumps[idx] as Dictionary).get("pending", -1)) >= 0:
+			_rearm_sump_commit(idx)
+	for idx in range(_silos.size()):
+		if str((_silos[idx] as Dictionary).get(
+				"phase", SILO_PHASE_CLOSED)) == SILO_PHASE_OPENING:
+			_rearm_silo_commit(idx)
+	_restoring_scene_mechanism_authority = false
+	return reconciled
+
+
+## All three mechanism controls use the same physical contract. Interactable owns the accepted
+## one-shot edge; this owner consumes the next exact registry count and owns the resulting phase.
+## Repeatable mechanisms explicitly reset that one-shot only when their physical phase allows a
+## new intervention.
+func _configure_scene_mechanism_control(
+		source: Node, kind: String, idx: int, callback: Callable) -> void:
+	if not is_instance_valid(source):
+		return
+	source.set_pre_trigger_validator(
+		_validate_scene_mechanism_control_trigger.bind(kind, idx, source))
+	source.interacted.connect(callback.bind(idx, source))
+
+
+func _validate_scene_mechanism_control_trigger(
+		source: Node, actor: String, kind: String, idx: int,
+		expected_source: Node) -> bool:
+	return is_instance_valid(source) and source == expected_source \
+		and source == _scene_mechanism_control_for(kind, idx) \
+		and _scene_mechanism_control_action_ready(kind, idx) \
+		and _scene_mechanism_actor_ready_at_source(source, actor)
+
+
+func _scene_mechanism_control_receipt_pending(
+		source: Node, kind: String, idx: int) -> bool:
+	if not is_instance_valid(source) or source != _scene_mechanism_control_for(kind, idx):
+		return false
+	var entry := _scene_mechanism_entry_for(kind, idx)
+	if entry.is_empty():
+		return false
+	var actor := str(source.get("active_character"))
+	if not _validate_scene_mechanism_control_trigger(
+			source, actor, kind, idx, source) \
+			or not bool(source.get("one_shot")) \
+			or not bool(source.get("_used")) \
+			or bool(source.get("interaction_enabled")):
+		return false
+	var gs = _get_game_state()
+	var data_id := str(source.get("data_id"))
+	if gs == null or data_id == "" or not gs.has_interactable(data_id):
+		return false
+	var receipt: Dictionary = gs.get_interactable(data_id)
+	return int(receipt.get("trigger_count", -1)) \
+			== int(entry.get("trigger_consumed", 0)) + 1 \
+		and str(receipt.get("last_trigger_character", "")) == actor \
+		and bool(receipt.get("one_shot", false)) \
+		and bool(receipt.get("triggered", false)) \
+		and not bool(receipt.get("enabled", true))
+
+
+func _scene_mechanism_actor_ready_at_source(source: Node, actor: String) -> bool:
+	var gs = _get_game_state()
+	if gs == null or not is_instance_valid(source) or not source is Node3D \
+			or actor == "" or not gs.characters.has(actor) \
+			or not gs.get_party().has(actor) \
+			or not gs.is_narratively_available(actor) or gs.is_downed(actor) \
+			or gs.is_knocked_down(actor) or gs.is_moving(actor) \
+			or gs.is_resting(actor) or gs.is_dodging(actor) \
+			or gs.is_endocytosing(actor) or gs.is_external_traversal_active(actor) \
+			or gs.is_dragging(actor) or gs.is_field_restoring(actor) \
+			or gs.is_pushing(actor):
+		return false
+	var required_actor := str(source.get("required_character"))
+	if required_actor != "" and actor != required_actor:
+		return false
+	var source_position := _scene_mechanism_source_data_position(source)
+	if not source_position.is_finite():
+		return false
+	if gs.grid != null and gs.grid.level_count > 1 \
+			and int(gs.get_character_level(actor)) \
+				!= int(gs.grid.level_for_y(source_position.y)):
+		return false
+	var actor_position: Vector3 = gs.get_position(actor)
+	return Vector2(actor_position.x, actor_position.z).distance_to(
+		Vector2(source_position.x, source_position.z)
+	) <= float(source.get("interaction_radius")) \
+			+ SCENE_MECHANISM_POSITION_TOLERANCE \
+		and absf(actor_position.y - source_position.y) \
+			<= SCENE_MECHANISM_HEIGHT_TOLERANCE
+
+
+## The registry position is the exact data-space authority. Falling back to a render transform here
+## would let a warped presenter or stale scene node define gameplay proximity.
+func _scene_mechanism_source_data_position(source: Node) -> Vector3:
+	var gs = _get_game_state()
+	var data_id := str(source.get("data_id")) if is_instance_valid(source) else ""
+	if gs != null and data_id != "" and gs.has_interactable(data_id):
+		var saved_position: Variant = gs.get_interactable(data_id).get(
+			"position", Vector3.INF)
+		if saved_position is Vector3:
+			return saved_position
+	return Vector3.INF
+
+
+func _scene_mechanism_source_trigger_count(source: Variant) -> int:
+	if not is_instance_valid(source):
+		# A belt authored without a breaker has no source history by construction.
+		return 0
+	var gs = _get_game_state()
+	var data_id := str((source as Node).get("data_id"))
+	if gs == null or data_id == "" or not gs.has_interactable(data_id):
+		return -1
+	return int(gs.get_interactable(data_id).get("trigger_count", -1))
+
+
+func _scene_mechanism_saved_receipt_count_valid(
+		source: Variant, consumed: int) -> bool:
+	if consumed < 0:
+		return false
+	var source_count := _scene_mechanism_source_trigger_count(source)
+	return source_count >= 0 and consumed <= source_count
+
+
+func _scene_mechanism_entry_for(kind: String, idx: int) -> Dictionary:
+	match kind:
+		"sump":
+			return _sumps[idx] as Dictionary if idx >= 0 and idx < _sumps.size() else {}
+		"silo":
+			return _silos[idx] as Dictionary if idx >= 0 and idx < _silos.size() else {}
+		"belt":
+			return _belts[idx] as Dictionary if idx >= 0 and idx < _belts.size() else {}
+	return {}
+
+
+func _scene_mechanism_control_for(kind: String, idx: int) -> Node:
+	var entry := _scene_mechanism_entry_for(kind, idx)
+	if entry.is_empty():
+		return null
+	match kind:
+		"sump":
+			return entry.get("pump") as Node
+		"silo":
+			return entry.get("lever") as Node
+		"belt":
+			return entry.get("breaker") as Node
+	return null
+
+
+func _scene_mechanism_control_action_ready(kind: String, idx: int) -> bool:
+	if _get_scheduler() == null:
+		return false
+	var entry := _scene_mechanism_entry_for(kind, idx)
+	if entry.is_empty():
+		return false
+	match kind:
+		"sump":
+			return int(entry.get("pending", -1)) < 0
+		"silo":
+			return str(entry.get("phase", SILO_PHASE_CLOSED)) == SILO_PHASE_CLOSED
+		"belt":
+			return not bool(entry.get("powered", false))
+	return false
+
+
+func _scene_mechanism_control_owner_spent(kind: String, idx: int) -> bool:
+	var entry := _scene_mechanism_entry_for(kind, idx)
+	if entry.is_empty():
+		return false
+	match kind:
+		"sump":
+			return int(entry.get("pending", -1)) >= 0
+		"silo":
+			return str(entry.get("phase", SILO_PHASE_CLOSED)) != SILO_PHASE_CLOSED
+		"belt":
+			return bool(entry.get("powered", false))
+	return false
+
+
+func _ensure_scene_mechanism_control_registry_shapes() -> void:
+	for idx in range(_sumps.size()):
+		_ensure_scene_mechanism_control_registry_shape(
+			_scene_mechanism_control_for("sump", idx))
+	for idx in range(_silos.size()):
+		_ensure_scene_mechanism_control_registry_shape(
+			_scene_mechanism_control_for("silo", idx))
+	for idx in range(_belts.size()):
+		_ensure_scene_mechanism_control_registry_shape(
+			_scene_mechanism_control_for("belt", idx))
+
+
+## Version 2 authored sump/belt controls as repeatable registry entries. Convert the same stable
+## source to a receipt-producing one-shot while preserving its monotonic count and actor history;
+## the mechanism owner below still decides whether that source is presently ready or spent.
+func _ensure_scene_mechanism_control_registry_shape(source: Node) -> void:
+	if not is_instance_valid(source):
+		return
+	source.set("one_shot", true)
+	var gs = _get_game_state()
+	var data_id := str(source.get("data_id"))
+	if gs == null or data_id == "" or not gs.has_interactable(data_id):
+		return
+	var spec: Dictionary = gs.get_interactable(data_id)
+	if bool(spec.get("one_shot", false)):
+		return
+	spec["id"] = data_id
+	spec["one_shot"] = true
+	gs.register_interactable(spec)
+
+
+func _scene_mechanism_registry_source_is_spent(source: Node) -> bool:
+	if not is_instance_valid(source):
+		return false
+	var gs = _get_game_state()
+	var data_id := str(source.get("data_id"))
+	var receipt: Dictionary = gs.get_interactable(data_id) \
+		if gs != null and data_id != "" and gs.has_interactable(data_id) else {}
+	return bool(receipt.get("triggered", false)) \
+		or not bool(receipt.get("enabled", true)) \
+		or bool(source.get("_used")) \
+		or not bool(source.get("interaction_enabled"))
+
+
+func _project_scene_mechanism_control(kind: String, idx: int) -> void:
+	var source := _scene_mechanism_control_for(kind, idx)
+	if not is_instance_valid(source):
+		return
+	var spent := _scene_mechanism_control_owner_spent(kind, idx)
+	if source.has_method("restore_one_shot_presenter"):
+		source.restore_one_shot_presenter(spent, not spent)
+	else:
+		source.set("_used", spent)
+		source.set_interaction_enabled(not spent)
+
+
+func _rearm_scene_mechanism_control(source: Node) -> void:
+	if is_instance_valid(source) and source.has_method("reset"):
+		source.reset()
+
+
+## GameState emits `interactable_triggered` before the owner's signal callback runs. If a snapshot
+## catches that synchronous seam, its newer source count has no mechanism phase that owns it. Consume
+## the orphan identity and re-arm the same source; never infer a pump cycle, avalanche, or belt power.
+func _reconcile_scene_mechanism_control_receipts() -> bool:
+	var changed := false
+	for kind in ["sump", "silo", "belt"]:
+		var entries: Array = _sumps if kind == "sump" else (
+			_silos if kind == "silo" else _belts)
+		for idx in range(entries.size()):
+			var entry := _scene_mechanism_entry_for(kind, idx)
+			var source := _scene_mechanism_control_for(kind, idx)
+			if not is_instance_valid(source):
+				continue
+			var source_count := maxi(
+				0, _scene_mechanism_source_trigger_count(source))
+			if source_count > int(entry.get("trigger_consumed", 0)):
+				entry["trigger_consumed"] = source_count
+				changed = true
+			if not _scene_mechanism_control_owner_spent(kind, idx) \
+					and _scene_mechanism_registry_source_is_spent(source):
+				_rearm_scene_mechanism_control(source)
+				entry["trigger_consumed"] = maxi(
+					int(entry.get("trigger_consumed", 0)),
+					maxi(0, _scene_mechanism_source_trigger_count(source)))
+				changed = true
+			_project_scene_mechanism_control(kind, idx)
+	return changed
+
+
+func _scene_mechanism_tag(kind: String, idx: int) -> String:
+	return "scene_mechanism_%s_%s_%d" % [
+		scene_mechanism_authority_key().sha256_text().substr(0, 12), kind, idx,
+	]
+
+
+func _cancel_scene_mechanism_callbacks() -> void:
+	var sched = _get_scheduler()
+	if sched == null:
+		return
+	for idx in range(_sumps.size()):
+		sched.cancel_tag(_scene_mechanism_tag("sump", idx))
+		# Retract callbacks created by saves/runtimes predating the namespaced authority contract.
+		sched.cancel_tag("sump_%d" % idx)
+	for idx in range(_silos.size()):
+		sched.cancel_tag(_scene_mechanism_tag("silo", idx))
+		sched.cancel_tag("silo_%d" % idx)
+
+
+func _rearm_sump_commit(idx: int) -> void:
+	if idx < 0 or idx >= _sumps.size():
+		return
+	var sched = _get_scheduler()
+	var entry := _sumps[idx] as Dictionary
+	if sched == null or int(entry.get("pending", -1)) < 0:
+		return
+	var deadline := float(entry.get("deadline", -1.0))
+	sched.cancel_tag(_scene_mechanism_tag("sump", idx))
+	sched.schedule_at(deadline, _commit_sump.bind(idx, deadline),
+		_scene_mechanism_tag("sump", idx))
+
+
+func _rearm_silo_commit(idx: int) -> void:
+	if idx < 0 or idx >= _silos.size():
+		return
+	var sched = _get_scheduler()
+	var entry := _silos[idx] as Dictionary
+	if sched == null or str(entry.get("phase", SILO_PHASE_CLOSED)) != SILO_PHASE_OPENING:
+		return
+	var deadline := float(entry.get("deadline", -1.0))
+	sched.cancel_tag(_scene_mechanism_tag("silo", idx))
+	sched.schedule_at(deadline, _commit_silo.bind(idx, deadline),
+		_scene_mechanism_tag("silo", idx))
 
 ## An EXTRACTION BORE SUMP (SET_PIECES.md #27): the decommissioned siphon well as a REVERSIBLE
 ## water-height set piece (the water family, extraction-reflavored). CONTROL: the wellhead pump
 ## lever, placed apart. EFFECT cycles DRAINED -> MID -> FLOODED on a scheduled beat: DRAINED opens
-## the pit floor so you can climb down for the salvage under the wall; FLOODED seals the pit,
+## the pit floor and exposes the decommissioned service housing; FLOODED seals the pit,
 ## raises the float platform into a LEDGE link (a climb to a vantage), and DROWNS whatever is
 ## penned in the pit; MID is neither. Fully reversible — flood then drain and the ledge is gone,
 ## the pit open again (unlike the one-shot silo/belt). Owns its penned scrap, so it drowns in any
-## host. Two-read: a resource bore AND a CSF siphon site.
+## host. SET_PIECES #27 assigns no canonical cache payload, so this kit exposes only its physical
+## water/topology outcome until an authored host names a real item. Two-read: a resource bore AND
+## a CSF siphon site.
 func _spawn_sump(spec: Dictionary) -> void:
 	var idx := _sumps.size()
 	var pos: Vector3 = spec.get("pos", Vector3.ZERO)
@@ -410,13 +1010,11 @@ func _spawn_sump(spec: Dictionary) -> void:
 		Vector3(pit_max.x - pit_min.x + 0.4, 0.5, pit_max.z - pit_min.z + 0.4), Color(0.08, 0.09, 0.1))
 	_add_label(self, str(spec.get("label_text", "BORE %d — SIPHON DECOMMISSIONED" % (idx + 1))),
 		pos + Vector3(0, 3.0, 0), Color(0.5, 0.62, 0.6))
-	# the salvage under the wall (reachable ONLY when drained — an INSPECTION reward in the pit)
-	var salvage := _add_interactable(self, "SumpSalvage%d" % idx, "Lift the wellhead cache",
-		Vector3(pit_c.x, 0.1, pit_c.z), "SALVAGE", "", 1.0, true, 1.4,
-		Interactable.InteractableType.INSPECTION, false)
-	var salv_m := _add_box(salvage, Vector3(0, 0.2, 0), Vector3(0.5, 0.4, 0.5),
-		Color(0.24, 0.2, 0.12), Color(0.85, 0.6, 0.25), 0.6)
-	_outline_interactable_child(salvage, salv_m, "SumpSalvage%d" % idx, 1.4)
+	# Maintenance housing under the wall: visible when drained, but not a fake reward interactable.
+	var housing := _add_box(self, Vector3(pit_c.x, 0.3, pit_c.z),
+		Vector3(0.6, 0.5, 0.6), Color(0.16, 0.17, 0.16), Color.BLACK, 0.0,
+		"SumpServiceHousing%d" % idx)
+	housing.visible = false
 	# the water plane (cosmetic; the logical water is the state) + the float platform
 	var water := _add_box(self, Vector3(pit_c.x, -0.05, pit_c.z),
 		Vector3(pit_max.x - pit_min.x, 0.12, pit_max.z - pit_min.z),
@@ -451,32 +1049,47 @@ func _spawn_sump(spec: Dictionary) -> void:
 				gs0.set_coop_exempt(pen.char_id)
 			pen.activate()
 			pen.set_roam(Vector3(pit_c.x, 0.0, pit_c.z), 1.0)
-	var entry := {"state": 1, "pending": -1, "pit_cells": pit_cells, "ledge_cell": ledge_cell,
+	var entry := {"state": 1, "pending": -1, "deadline": -1.0,
+		"trigger_consumed": 0, "pump": pump,
+		"pit_cells": pit_cells, "ledge_cell": ledge_cell,
 		"ledge_level": ledge_level, "water": water, "plat": plat, "pit_c": pit_c,
-		"pen": pen, "salvage": salvage, "idx": idx}
+		"pen": pen, "housing": housing, "idx": idx}
 	_sumps.append(entry)
-	pump.interacted.connect(func() -> void: _on_sump_pumped(idx))
+	_configure_scene_mechanism_control(
+		pump, "sump", idx, Callable(self, "_on_sump_pumped"))
 	# the live grid is assigned by the host AFTER _build_chunk, so apply the initial MID state
 	# deferred (by which point _game_state.grid exists); the visual apply is idempotent
 	call_deferred("_apply_sump", idx)
 
-func _on_sump_pumped(idx: int) -> void:
+func _on_sump_pumped(idx: int, source: Node = null) -> bool:
 	var sched = _get_scheduler()
-	if sched == null or idx >= _sumps.size():
-		return
+	if sched == null or idx < 0 or idx >= _sumps.size() \
+			or not _scene_mechanism_control_receipt_pending(
+				source, "sump", idx):
+		return false
 	var entry := _sumps[idx] as Dictionary
 	if int(entry["pending"]) >= 0:
-		return
+		return false
+	entry["trigger_consumed"] = _scene_mechanism_source_trigger_count(source)
 	entry["pending"] = (int(entry["state"]) + 1) % 3
+	entry["deadline"] = float(sched.get_current_tick()) + SUMP_COMMIT_DELAY
 	_show_note(["The pump draws the bore down—", "The level settles—", "The bore floods back up—"][int(entry["pending"])], 1.4)
-	sched.schedule_after(1.2, func() -> void: _commit_sump(idx), "sump_%d" % idx)
+	_publish_scene_mechanism_authority()
+	_rearm_sump_commit(idx)
+	return true
 
-func _commit_sump(idx: int) -> void:
+func _commit_sump(idx: int, expected_deadline := -1.0) -> void:
+	if idx < 0 or idx >= _sumps.size():
+		return
 	var entry := _sumps[idx] as Dictionary
 	if int(entry["pending"]) < 0:
 		return
+	if expected_deadline >= 0.0 \
+			and not is_equal_approx(float(entry.get("deadline", -1.0)), expected_deadline):
+		return
 	entry["state"] = int(entry["pending"])
 	entry["pending"] = -1
+	entry["deadline"] = -1.0
 	_apply_sump(idx)
 	# the DROWN: flooding takes whatever is penned in the pit (analytic, at the commit tick)
 	if int(entry["state"]) == 2:
@@ -486,9 +1099,13 @@ func _commit_sump(idx: int) -> void:
 			if gs != null:
 				gs.command_stop(pen.char_id)
 			pen.take_damage(float(pen.max_hp))
+	# This pump is physically reusable, but only after the previous level transition has committed.
+	# `reset()` preserves GameState's monotonic trigger_count while clearing the one-shot spent bit.
+	_rearm_scene_mechanism_control(entry.get("pump") as Node)
+	_publish_scene_mechanism_authority()
 
-## DRAINED(0): pit floor walkable (climb down for the salvage), ledge down. MID(1): sealed, neither.
-## FLOODED(2): pit sealed (water), the ledge LINK up, salvage locked. Reversible each commit.
+## DRAINED(0): pit floor walkable and service housing exposed, ledge down. MID(1): sealed, neither.
+## FLOODED(2): pit sealed (water), the ledge LINK up, housing submerged. Reversible each commit.
 func _apply_sump(idx: int) -> void:
 	var entry := _sumps[idx] as Dictionary
 	var st := int(entry["state"])
@@ -517,10 +1134,10 @@ func _apply_sump(idx: int) -> void:
 				gs.grid.add_inter_level_link(lcell, 0, lvl, "ramp")
 			elif gs.grid.has_method("remove_inter_level_link"):
 				gs.grid.remove_inter_level_link(lcell, 0, lvl)
-	# the salvage is grabbable only when the pit is drained and open
-	var salv = entry["salvage"]
-	if salv != null and is_instance_valid(salv) and gs != null:
-		gs.set_interactable_enabled(_interactable_data_id(str(salv.name)), drained)
+	# The housing is evidence of the opened pit, not an inventory promise.
+	var housing = entry.get("housing", null)
+	if housing != null and is_instance_valid(housing):
+		(housing as Node3D).visible = drained
 	# cosmetic: water shows when not drained, rises at flood; the platform lifts to the ledge
 	var water = entry["water"]
 	if water != null and is_instance_valid(water):
@@ -530,8 +1147,6 @@ func _apply_sump(idx: int) -> void:
 	var plat = entry["plat"]
 	if plat != null and is_instance_valid(plat):
 		plat.position.y = 1.4 if flooded else (0.05 if not drained else -0.35)
-
-## A DERELICT RESOURCE BELT (SET_PIECES.md #25
 
 ## A SILO DROP CHUTE (SET_PIECES.md #26): the between-zone stockpile as a set piece. CONTROL: a
 ## vent-hatch lever placed apart. EFFECT (one scheduled beat after the pull, the weak-wall law —
@@ -583,10 +1198,16 @@ func _spawn_silo(spec: Dictionary) -> void:
 	var lever_m := _add_box(lever, Vector3(0, 0.55, 0), Vector3(0.3, 1.1, 0.3),
 		Color(0.34, 0.28, 0.2), Color(0.85, 0.55, 0.2), 0.4)
 	_outline_interactable_child(lever, lever_m, "SiloVent%d" % idx, 1.6)
-	_silos.append({"vented": false, "spill_min": spill_min, "spill_max": spill_max,
+	_silos.append({"phase": SILO_PHASE_CLOSED, "vented": false, "deadline": -1.0,
+		"trigger_consumed": 0,
+		"spill_min": spill_min, "spill_max": spill_max,
 		"ramp_cell": spec.get("ramp_cell", []), "ramp_to_level": int(spec.get("ramp_to_level", 0)),
-		"scree": ramp_root})
-	lever.interacted.connect(func() -> void: _on_silo_vented(idx))
+		"scree": ramp_root, "lever": lever})
+	_configure_scene_mechanism_control(
+		lever, "silo", idx, Callable(self, "_on_silo_vented"))
+	# The host installs/replaces its GridWorld after the chunk scene enters the tree. Re-apply on the
+	# deferred seam so a previously vented authoritative silo also restores its ramp on ordinary loads.
+	call_deferred("_apply_silo", idx)
 
 func _scree_box(at: Vector3, height: float, side: float) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
@@ -599,18 +1220,36 @@ func _scree_box(at: Vector3, height: float, side: float) -> MeshInstance3D:
 	mi.position = at + Vector3(0, height * 0.5, 0)
 	return mi
 
-func _on_silo_vented(idx: int) -> void:
+func _on_silo_vented(idx: int, source: Node = null) -> bool:
 	var sched = _get_scheduler()
-	if sched == null or idx >= _silos.size() or bool((_silos[idx] as Dictionary)["vented"]):
-		return
-	_show_note("The hatch grinds open. The whole hoard shifts—", 1.4)
-	sched.schedule_after(0.8, func() -> void: _commit_silo(idx), "silo_%d" % idx)
-
-func _commit_silo(idx: int) -> void:
+	if sched == null or idx < 0 or idx >= _silos.size() \
+			or not _scene_mechanism_control_receipt_pending(
+				source, "silo", idx):
+		return false
 	var entry := _silos[idx] as Dictionary
-	if bool(entry["vented"]):
+	if str(entry.get("phase", SILO_PHASE_CLOSED)) != SILO_PHASE_CLOSED:
+		return false
+	entry["trigger_consumed"] = _scene_mechanism_source_trigger_count(source)
+	entry["phase"] = SILO_PHASE_OPENING
+	entry["vented"] = false
+	entry["deadline"] = float(sched.get_current_tick()) + SILO_COMMIT_DELAY
+	_show_note("The hatch grinds open. The whole hoard shifts—", 1.4)
+	_publish_scene_mechanism_authority()
+	_rearm_silo_commit(idx)
+	return true
+
+func _commit_silo(idx: int, expected_deadline := -1.0) -> void:
+	if idx < 0 or idx >= _silos.size():
 		return
+	var entry := _silos[idx] as Dictionary
+	if str(entry.get("phase", SILO_PHASE_CLOSED)) != SILO_PHASE_OPENING:
+		return
+	if expected_deadline >= 0.0 \
+			and not is_equal_approx(float(entry.get("deadline", -1.0)), expected_deadline):
+		return
+	entry["phase"] = SILO_PHASE_VENTED
 	entry["vented"] = true
+	entry["deadline"] = -1.0
 	var gs = _get_game_state()
 	var kmin := entry["spill_min"] as Vector3
 	var kmax := entry["spill_max"] as Vector3
@@ -637,6 +1276,31 @@ func _commit_silo(idx: int) -> void:
 	var scree := entry["scree"] as Node3D
 	if scree != null and is_instance_valid(scree):
 		scree.visible = true
+	_publish_scene_mechanism_authority()
+
+
+## Restore-only presentation/topology seam. Consequences stay in `_commit_silo`: loading an already
+## vented silo may reveal its scree and rebuild its ramp, but can never bury or damage anyone twice.
+func _apply_silo(idx: int) -> void:
+	if idx < 0 or idx >= _silos.size():
+		return
+	var entry := _silos[idx] as Dictionary
+	var vented := str(entry.get("phase", SILO_PHASE_CLOSED)) == SILO_PHASE_VENTED
+	entry["vented"] = vented
+	var gs = _get_game_state()
+	var rc: Array = entry.get("ramp_cell", []) as Array
+	var lvl := int(entry.get("ramp_to_level", 0))
+	if rc.size() == 2 and lvl >= 1 and gs != null and gs.grid != null:
+		var cell := Vector2i(int(rc[0]), int(rc[1]))
+		if vented and gs.grid.has_method("add_inter_level_link"):
+			if gs.grid.has_method("set_level_count"):
+				gs.grid.set_level_count(maxi(gs.grid.level_count, lvl + 1))
+			gs.grid.add_inter_level_link(cell, 0, lvl, "ramp")
+		elif not vented and gs.grid.has_method("remove_inter_level_link"):
+			gs.grid.remove_inter_level_link(cell, 0, lvl)
+	var scree = entry.get("scree", null)
+	if scree != null and is_instance_valid(scree):
+		(scree as Node3D).visible = vented
 
 ## A DERELICT RESOURCE BELT (SET_PIECES.md #25; canon: the powered resource belt element rides
 ## a standing character at belt speed). The EFFECT is a fast EXPOSED transit down the old supply
@@ -644,6 +1308,9 @@ func _commit_silo(idx: int) -> void:
 ## control and effect separated). Dead until the breaker is reset. Emits simple trough + post
 ## visuals for the level middle segment of the run.
 func _spawn_belt(spec: Dictionary) -> BeltLine:
+	var idx := _belts.size()
+	var origin: Vector3 = spec.get("pos", Vector3.ZERO)
+	var initially_powered := bool(spec.get("powered", false))
 	var bl := BeltLine.new()
 	bl.name = str(spec.get("name", "BeltLine"))
 	bl.description = str(spec.get("desc", "Ride the old resource belt"))
@@ -652,10 +1319,10 @@ func _spawn_belt(spec: Dictionary) -> BeltLine:
 	for wv in (spec.get("waypoints", []) as Array):
 		if wv is Vector3:
 			wps.append(wv)
-	bl.configure(_get_game_state(), spec.get("pos", Vector3.ZERO), wps,
+	bl.configure(_get_game_state(), origin, wps,
 		float(spec.get("radius", 1.4)), float(spec.get("speed", 4.2)))
 	bl.exit_level = int(spec.get("exit_level", -1))
-	bl.powered = bool(spec.get("powered", false))
+	bl.set_powered(initially_powered)
 	if has_method("_selected_party_ids"):
 		bl.set_group_provider(Callable(self, "_selected_party_ids"))
 	add_child(bl)
@@ -665,7 +1332,7 @@ func _spawn_belt(spec: Dictionary) -> BeltLine:
 	bl.refused.connect(func() -> void:
 		_show_note("Dead line. The substation breaker is cut somewhere nearby.", 2.6))
 	# trough + posts along each LEVEL (constant-y) run of the line
-	var prev: Vector3 = spec.get("pos", Vector3.ZERO)
+	var prev := origin
 	for wv2 in wps:
 		var seg: Vector3 = wv2
 		if absf(seg.y - prev.y) < 0.05 and prev.distance_to(seg) > 1.5:
@@ -681,17 +1348,63 @@ func _spawn_belt(spec: Dictionary) -> BeltLine:
 					_add_box(self, Vector3(pp.x, pp.y * 0.5 - 0.1, pp.z),
 						Vector3(0.22, pp.y - 0.2, 0.22), Color(0.12, 0.12, 0.14))
 		prev = seg
+	var brk: Interactable = null
+	var breaker_position: Vector3 = spec.get("breaker_pos", Vector3.ZERO)
 	if spec.has("breaker_pos"):
-		var brk := _add_interactable(self, str(spec.get("name", "BeltLine")) + "Breaker",
+		brk = _add_interactable(self, str(spec.get("name", "BeltLine")) + "Breaker",
 			"Reset the substation breaker", spec.get("breaker_pos", Vector3.ZERO), "RESET BREAKER",
-			"", 1.2, true, 1.6, Interactable.InteractableType.TIMED_ACTION, false)
+			# Functionally one-shot, but not Interactable-local one-shot state: enabled/disabled is
+			# derived from the belt's portable powered truth in `_apply_belt`.
+			"", 1.2, false, 1.6, Interactable.InteractableType.TIMED_ACTION, false) as Interactable
 		var brk_mesh := _add_box(brk, Vector3(0.0, 0.45, 0.0), Vector3(0.45, 0.9, 0.45),
 			Color(0.18, 0.24, 0.26), Color(0.32, 0.72, 0.82), 0.45)
 		_outline_interactable_child(brk, brk_mesh, str(spec.get("name", "BeltLine")) + "Breaker", 1.6)
-		brk.interacted.connect(func() -> void:
-			bl.set_powered(true)
-			_show_note("The breaker bites. Down the line, the old belt shudders and starts to move.", 3.0))
+	_belts.append({
+		"powered": initially_powered,
+		"trigger_consumed": 0,
+		"belt": bl,
+		"breaker": brk,
+		"origin": origin,
+		"waypoints": wps.duplicate(),
+		"breaker_position": breaker_position,
+	})
+	if brk != null:
+		_configure_scene_mechanism_control(
+			brk, "belt", idx, Callable(self, "_on_belt_breaker"))
+	_apply_belt(idx)
 	return bl
+
+
+func _on_belt_breaker(idx: int, source: Node = null) -> bool:
+	if idx < 0 or idx >= _belts.size() \
+			or not _scene_mechanism_control_receipt_pending(
+				source, "belt", idx):
+		return false
+	var entry := _belts[idx] as Dictionary
+	if bool(entry.get("powered", false)):
+		return false
+	entry["trigger_consumed"] = _scene_mechanism_source_trigger_count(source)
+	entry["powered"] = true
+	_apply_belt(idx)
+	_publish_scene_mechanism_authority()
+	_show_note("The breaker bites. Down the line, the old belt shudders and starts to move.", 3.0)
+	return true
+
+
+## BeltLine and its breaker are presenters of one portable bit. In particular the breaker does
+## not retain a parallel `_used` latch: a restored unpowered belt always has an operable breaker,
+## while a restored powered belt always has a spent one.
+func _apply_belt(idx: int) -> void:
+	if idx < 0 or idx >= _belts.size():
+		return
+	var entry := _belts[idx] as Dictionary
+	var powered := bool(entry.get("powered", false))
+	var belt = entry.get("belt", null)
+	if belt != null and is_instance_valid(belt):
+		belt.call("set_powered", powered)
+	var breaker = entry.get("breaker", null)
+	if breaker != null and is_instance_valid(breaker):
+		breaker.call("set_interaction_enabled", not powered)
 
 ## Loft one of the skirt's revolve-tower plans (the reference silhouettes).
 func _skirt_lathe(lp: Dictionary) -> void:
@@ -822,27 +1535,198 @@ func _add_label(
 	parent.add_child(label)
 	return label
 
-## A SHELTER REST POINT: registers the data-layer shelter region, lays a warm pad, and wires a
-## REST interactable that beds the ACTIVE character down (GameState.command_rest — heals on the
-## scheduler, costs ATP pips, night-skips when everyone conscious is asleep). One call per shelter;
-## every chunk with a shelter should use this instead of bespoke wiring.
-func _add_rest_point(parent: Node3D, center: Vector3, size: Vector2 = Vector2(5.0, 5.0)) -> Area3D:
+## A SHELTER REST POINT: registers one exact authored region and wires canonical atomic party rest.
+## Required members are explicit; selected/active-character state can never substitute for presence.
+## Set auto_commit=false when the chunk owns a wider saved transaction around the same rest command.
+func _add_authored_shelter_region(
+	parent: Node3D,
+	center: Vector3,
+	size: Vector2
+) -> MeshInstance3D:
 	var gs = _get_game_state()
 	if gs != null:
 		gs.add_shelter_region(
 			Vector2(center.x - size.x * 0.5, center.z - size.y * 0.5),
 			Vector2(center.x + size.x * 0.5, center.z + size.y * 0.5))
-	_add_floor(parent, center + Vector3(0.0, 0.03, 0.0), Vector3(size.x, 0.08, size.y), Color(0.16, 0.14, 0.1))
+	return _add_floor(
+		parent,
+		center + Vector3(0.0, 0.03, 0.0),
+		Vector3(size.x, 0.08, size.y),
+		Color(0.16, 0.14, 0.1))
+
+
+func _add_rest_point(
+	parent: Node3D,
+	center: Vector3,
+	size: Vector2,
+	required_members: Array,
+	auto_commit := true
+) -> Area3D:
+	var members := _normalize_authored_party_members(required_members)
+	if members.is_empty():
+		push_error("SceneChunk._add_rest_point requires a non-empty, duplicate-free authored party")
+		return null
+	var shelter_pad := _add_authored_shelter_region(parent, center, size)
 	# Rest is the ONE justified proximity action ("bed down where you stand"), so opt into HOLD_ACTION
 	# explicitly — the click-gated default must not silently turn resting into a click.
 	var rest = _add_interactable(
-		parent, "RestInteractable", "Rest", center, "REST", "", 1.2, false, 2.5,
+		parent, "RestInteractable", "Rest with the party", center, "REST PARTY", "", 1.2, false, 2.5,
 		Interactable.InteractableType.HOLD_ACTION)
-	rest.interacted.connect(func():
-		var inner_gs = _get_game_state()
-		if inner_gs != null and str(rest.active_character) != "":
-			inner_gs.command_rest(str(rest.active_character)))
+	rest.set_meta("authored_shelter_pad", shelter_pad)
+	_party_rest_points[rest.get_instance_id()] = {
+		"center": center,
+		"size": size,
+		"members": members,
+		"last_outcome": {},
+	}
+	if auto_commit:
+		rest.interacted.connect(_on_authored_party_rest_interacted.bind(rest))
 	return rest
+
+
+func _normalize_authored_party_members(required_members: Array) -> Array[String]:
+	var members: Array[String] = []
+	for member_v in required_members:
+		var member_id := str(member_v).strip_edges()
+		if member_id.is_empty() or members.has(member_id):
+			return []
+		members.append(member_id)
+	return members
+
+
+## Pure shelter preflight. In addition to GameState's canonical rest guards, check the exact
+## rectangle authored by this object. `is_at_shelter()` alone is insufficient when two registered
+## shelter regions overlap or a different shelter happens to contain a straggler.
+func _preflight_authored_party_rest(
+	center: Vector3,
+	size: Vector2,
+	required_members: Array
+) -> Dictionary:
+	var members := _normalize_authored_party_members(required_members)
+	var outcome := {
+		"complete": false,
+		"members": members.duplicate(),
+		"blocked": [],
+		"before_atp": {},
+	}
+	var blocked := outcome["blocked"] as Array
+	var gs = _get_game_state()
+	if members.is_empty():
+		blocked.append("the shelter has no valid authored party")
+		return outcome
+	if gs == null or gs.scheduler == null \
+			or not gs.has_method("can_party_rest") or not gs.has_method("command_party_rest"):
+		blocked.append("shelter authority is unavailable")
+		return outcome
+
+	var half := size * 0.5
+	for char_id in members:
+		if not gs.characters.has(char_id):
+			blocked.append("%s is not present" % char_id.capitalize())
+			continue
+		if gs.is_downed(char_id) or gs.is_knocked_down(char_id):
+			blocked.append("%s must be conscious" % char_id.capitalize())
+			continue
+		var position: Vector3 = gs.get_position(char_id)
+		if position.x < center.x - half.x or position.x > center.x + half.x \
+				or position.z < center.z - half.y or position.z > center.z + half.y:
+			blocked.append("%s is outside this shelter" % char_id.capitalize())
+			continue
+		if gs.is_moving(char_id):
+			blocked.append("%s must finish moving" % char_id.capitalize())
+			continue
+		if gs.is_resting(char_id):
+			blocked.append("%s is already resting" % char_id.capitalize())
+			continue
+		if gs.is_dodging(char_id) or gs.is_endocytosing(char_id) \
+				or gs.is_external_traversal_active(char_id) or gs.is_dragging(char_id) \
+				or gs.is_field_restoring(char_id):
+			blocked.append("%s is committed to another action" % char_id.capitalize())
+			continue
+		(outcome["before_atp"] as Dictionary)[char_id] = gs.get_stat(char_id, "atp")
+	if not blocked.is_empty():
+		return outcome
+	if not bool(gs.can_party_rest(members)):
+		for char_id in members:
+			if gs.get_stat(char_id, "atp") < 1.0:
+				blocked.append("%s cannot pay one ATP" % char_id.capitalize())
+				continue
+			var hp_full: bool = gs.get_stat(char_id, "hp") >= gs.get_stat_cap(char_id, "hp")
+			var stamina_full: bool = gs.get_stat(char_id, "stamina") \
+				>= gs.get_stat_cap(char_id, "stamina")
+			if hp_full and stamina_full and gs.get_time_of_day() < GameState.NIGHT_START:
+				blocked.append("%s does not need daytime recovery" % char_id.capitalize())
+		if blocked.is_empty():
+			blocked.append("the authored party cannot settle yet")
+	return outcome
+
+
+func _commit_authored_party_rest(
+	center: Vector3,
+	size: Vector2,
+	required_members: Array
+) -> Dictionary:
+	var outcome := _preflight_authored_party_rest(center, size, required_members)
+	if not (outcome["blocked"] as Array).is_empty():
+		return outcome
+	var gs = _get_game_state()
+	if gs == null or not bool(gs.command_party_rest(outcome["members"] as Array)):
+		(outcome["blocked"] as Array).append("the atomic party rest was rejected")
+		return outcome
+	outcome["complete"] = true
+	return outcome
+
+
+## Reconcile the only save seam between an enclosing owner's COMMITTING record and the canonical
+## batch command's feedback signals. GameState installs every ATP/rest mutation before those signals;
+## a night skip may immediately consume the rest records, in which case the advanced day is proof.
+func _authored_party_rest_effect_matches(
+	required_members: Array,
+	before_atp: Dictionary,
+	commit_day: int
+) -> bool:
+	var gs = _get_game_state()
+	var members := _normalize_authored_party_members(required_members)
+	if gs == null or members.is_empty():
+		return false
+	for char_id in members:
+		if not before_atp.has(char_id) or not gs.characters.has(char_id):
+			return false
+		var expected_atp: float = float(gs.quantize_atp(float(before_atp[char_id]) - 1.0))
+		if not is_equal_approx(gs.get_stat(char_id, "atp"), expected_atp):
+			return false
+	if gs.get_game_day() > commit_day:
+		return true
+	for char_id in members:
+		if not gs.is_resting(char_id):
+			return false
+	return true
+
+
+func _on_authored_party_rest_interacted(rest: Node) -> void:
+	if rest == null or not is_instance_valid(rest):
+		return
+	var entry: Dictionary = _party_rest_points.get(rest.get_instance_id(), {})
+	if entry.is_empty():
+		return
+	var outcome := _commit_authored_party_rest(
+		entry["center"] as Vector3,
+		entry["size"] as Vector2,
+		entry["members"] as Array)
+	entry["last_outcome"] = outcome.duplicate(true)
+	_party_rest_points[rest.get_instance_id()] = entry
+	if not bool(outcome.get("complete", false)):
+		var blocked := outcome.get("blocked", []) as Array
+		_show_message(
+			str(blocked[0]) if not blocked.is_empty() else "The party cannot settle yet.",
+			1.8)
+
+
+func _get_authored_party_rest_outcome(rest: Node) -> Dictionary:
+	if rest == null or not is_instance_valid(rest):
+		return {}
+	var entry: Dictionary = _party_rest_points.get(rest.get_instance_id(), {})
+	return (entry.get("last_outcome", {}) as Dictionary).duplicate(true)
 
 ## Create a chunk interactable. ACTIVATION DEFAULTS TO CLICK-GATED (INSPECTION): the player clicks it, the
 ## character walks over, it fires on arrival. Pass TIMED_ACTION for an action with a work/hold beat (salvage,
@@ -868,6 +1752,7 @@ func _add_interactable(
 		"position": position,
 		"description": description,
 		"requires_hold": interactable_type == Interactable.InteractableType.HOLD_ACTION,
+		"interactable_type": interactable_type,
 		"hold_time": dwell_time,
 		"one_shot": one_shot,
 		"required_character": required_character,
@@ -1184,13 +2069,15 @@ func _add_infrastructure_operation(spec: Dictionary) -> Dictionary:
 	var source_control := _add_object_interactable(
 		operation, "InfrastructureSource_%s" % operation_id, "%s service control" % source_name,
 		source_pos, str(spec.get("source_action", "ROUTE SERVICE")), [source_mesh],
-		"", 0.7, true, 1.65, Interactable.InteractableType.TIMED_ACTION
+		str(spec.get("source_required_character", "")), 0.7, true, 1.65,
+		Interactable.InteractableType.TIMED_ACTION
 	)
 	source_control.set("consequence_preview", str(spec.get("source_preview", "Routes service to the receiver.")))
 	var receiver_control := _add_object_interactable(
 		operation, "InfrastructureReceiver_%s" % operation_id, "%s receiving control" % receiver_name,
 		receiver_pos, str(spec.get("receiver_action", "COMMISSION RECEIVER")), [receiver_mesh],
-		"", 0.9, true, 1.65, Interactable.InteractableType.TIMED_ACTION
+		str(spec.get("receiver_required_character", "")), 0.9, true, 1.65,
+		Interactable.InteractableType.TIMED_ACTION
 	)
 	receiver_control.set("consequence_preview", str(spec.get("receiver_preview", "Resolves the marked service fault.")))
 
@@ -1222,6 +2109,7 @@ func _add_infrastructure_operation(spec: Dictionary) -> Dictionary:
 	})
 	operation.bind_runtime(source_control, receiver_control, field, source_status, receiver_status,
 		service_link, effect_link)
+	operation.bind_authority(_get_game_state(), _get_scheduler())
 	return {"operation": operation, "field": field, "source_control": source_control,
 		"receiver_control": receiver_control, "service_link": service_link, "effect_link": effect_link}
 

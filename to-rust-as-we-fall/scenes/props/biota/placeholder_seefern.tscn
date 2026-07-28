@@ -1,0 +1,37 @@
+[gd_scene load_steps=7 format=3]
+
+[ext_resource type="Mesh" path="res://resources/models/shared/biota_placeholders/seefern/seefern_body.obj" id="1_body_mesh"]
+[ext_resource type="Texture2D" path="res://resources/models/shared/biota_placeholders/seefern/seefern_body.png" id="2_body_texture"]
+[ext_resource type="Mesh" path="res://resources/models/shared/biota_placeholders/seefern/seefern_signal.obj" id="3_signal_mesh"]
+[ext_resource type="Texture2D" path="res://resources/models/shared/biota_placeholders/seefern/seefern_signal.png" id="4_signal_texture"]
+
+[sub_resource type="StandardMaterial3D" id="BodyMaterial"]
+albedo_texture = ExtResource("2_body_texture")
+roughness = 0.78
+texture_filter = 0
+
+[sub_resource type="StandardMaterial3D" id="SignalMaterial"]
+albedo_texture = ExtResource("4_signal_texture")
+roughness = 0.5
+emission_enabled = true
+emission = Color(0.18, 0.67, 0.76, 1)
+emission_energy_multiplier = 0.58
+emission_texture = ExtResource("4_signal_texture")
+texture_filter = 0
+
+[node name="PlaceholderSeefern" type="Node3D"]
+metadata/asset_contract = "editable_3d_v1"
+metadata/editable_asset_root = "res://resources/models/shared/biota_placeholders/seefern"
+metadata/visual_identity = "placeholder_seefern_v1"
+metadata/biota_category = "flora"
+metadata/species = "seefern"
+metadata/placeholder = true
+
+[node name="Body" type="MeshInstance3D" parent="."]
+material_override = SubResource("BodyMaterial")
+mesh = ExtResource("1_body_mesh")
+
+[node name="Signal" type="MeshInstance3D" parent="."]
+material_override = SubResource("SignalMaterial")
+mesh = ExtResource("3_signal_mesh")
+metadata/signal_role = "vision_extension"

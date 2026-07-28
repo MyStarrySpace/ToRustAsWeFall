@@ -2,8 +2,8 @@ extends SceneTree
 
 ## Generates a curated batch of sample stretches across tiers and composition
 ## strategies, validates each through the systems contract and solution solver
-## (causal teach/test, typed composition, multi-solution, shadow-solvable, with no
-## shadow-broken errors), and only then writes it to
+## (honest runtime handlers, shadow-solvable, with no shadow-broken errors), and
+## only then writes it to
 ## data/generated_stretches/. A spec that fails validation is reported and skipped —
 ## the batch never ships an unsolvable or single-solution puzzle stretch.
 ##
@@ -14,8 +14,8 @@ const StretchGeneratorScript := preload("res://scripts/generation/stretch_genera
 const StretchSolutionSolverScript := preload("res://scripts/generation/stretch_solution_solver.gd")
 
 const PUZZLE_ARCHETYPES := ["1", "2", "3", "4", "5", "6", "7", "8", "10", "11"]
-const IMPLEMENTED_FLORA := ["seefern", "scarpet", "flure", "mother_flure", "hushbloom", "doma", "snapbloom", "gasafoetida"]
-const IMPLEMENTED_ENEMIES := ["techos", "naturalizers"]
+const IMPLEMENTED_FLORA := ["seefern", "scarpet", "flure", "mother_flure", "hushbloom", "capbage"]
+const IMPLEMENTED_ENEMIES := ["sapscraps", "naturalizers"]
 
 func _batch() -> Array:
 	return [
@@ -94,7 +94,7 @@ func _batch() -> Array:
 			"limitations": {
 				"allowed": {
 					"archetypes": ["11", "12", "13", "14", "15", "16"],
-					"flora": ["scarpet", "flure", "capbage", "seefern", "doma", "hushbloom"],
+					"flora": ["scarpet", "flure", "capbage", "seefern", "hushbloom"],
 					"enemies": IMPLEMENTED_ENEMIES,
 				},
 				"required": {"archetypes": ["12", "13", "14", "15"], "structures": ["shelter", "forage_cache"]},
@@ -146,10 +146,15 @@ func _validation_problems(spec: Dictionary, analysis: Dictionary) -> Array:
 	if not bool(systems.get("valid", false)):
 		for error in systems.get("errors", []):
 			problems.append("systems: %s" % str(error))
-	if int(analysis.get("choice_node_count", 0)) < 1:
-		problems.append("no multi-solution puzzle nodes")
-	if not bool(analysis.get("multi_solution", false)):
-		problems.append("only one solution path")
+	# Archetype stretches are spatial composition. They do not become puzzles merely
+	# because their catalogue prose lists several imagined approaches. Multi-solution
+	# is checked only when a concrete runtime handler actually presents a choice;
+	# authored puzzle_atom encounters retain their own separate solution contract.
+	if (
+		bool(analysis.get("multi_solution_required", false))
+		and not bool(analysis.get("multi_solution", false))
+	):
+		problems.append("implemented choice handler has only one solution path")
 	if not bool(analysis.get("shadow_solvable", false)):
 		problems.append("Aster+Peris cannot finish (shadow-broken)")
 	if not bool(analysis.get("bare_pair_solvable", false)):

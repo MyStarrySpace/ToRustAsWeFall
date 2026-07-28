@@ -156,17 +156,17 @@ Applied puzzles:
 
 - Beacon Hill shadow solution
 
-### Peris's Doma In Tight-Corridor Pursuit Breaks
+### Peris's Capbage In Tight-Corridor Pursuit Breaks
 
 `status`: planned
 
 Technique:
 
-Peris's Doma flora can provide hide-only pursuit-break cover in tight corridors, replacing Oli's barrier more slowly but functionally.
+Peris's Capbage flora can provide hide-only pursuit-break cover in tight corridors, replacing Oli's barrier more slowly but functionally.
 
 Teaching beat:
 
-An Act 1 shelter conversation or low-pressure encounter where Peris uses Doma in a tight passage.
+An Act 1 shelter conversation or low-pressure encounter where Peris uses Capbage in a tight passage.
 
 Applied puzzles:
 

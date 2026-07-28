@@ -36,6 +36,16 @@ func _run() -> void:
 	var contract: Dictionary = sequence.get_playtime_contract()
 	var anchors: Dictionary = sequence.headless_get_anchor_positions()
 	var state: Dictionary = sequence.headless_get_state()
+	_check(not bool(state.get("endo_registered", true))
+		and not bool(state.get("endo_visible", true))
+		and not sequence._sector_route_interactables[0][0].is_interaction_enabled(),
+		"Endo and full-party route work are absent before the authored join")
+	sequence._scheduler.clear()
+	sequence._begin_endo_join_wait()
+	sequence._scheduler.advance_ticks(sequence.ENDO_JOIN_DELAY + 0.001)
+	state = sequence.headless_get_state()
+	_check(bool(state.get("endo_present", false)) and bool(state.get("endo_in_party", false)),
+		"the authored join admits Endo before full-party route testing")
 	_check(float(contract.get("critical_route_meters", 0.0)) >= 160.0,
 		"critical route is at least 160 authored meters")
 	_check(float(contract.get("critical_route_meters", 999.0)) <= 220.0,
@@ -89,6 +99,13 @@ func _run() -> void:
 	var route_labels := route_station.find_children("*", "Label3D", true, false) if route_station != null else []
 	_check(not route_labels.is_empty() and (route_labels[0] as Label3D).outline_size >= 8,
 		"SAFE and DIRECT station labels have a high-contrast world-space outline")
+	_check(route_station != null and route_station.is_interaction_enabled(),
+		"the first reachable route seal is immediately available")
+	_check(not sequence._sector_route_interactables[1][0].is_interaction_enabled()
+		and not sequence._sector_route_interactables[2][0].is_interaction_enabled(),
+		"later seal labels stay dormant until their geometry is reachable")
+	_check(sequence.find_children("Sector*Protocol*", "Interactable", true, false).is_empty(),
+		"no mandatory field-checklist interactables remain")
 
 	var grid: GridWorld = sequence._grid
 	_check(grid != null and grid.risk_cells.size() > 400,
@@ -107,7 +124,14 @@ func _run() -> void:
 		sequence.set_preview_character_position("aster", station_pos)
 		sequence.set_preview_character_position("peris", station_pos + Vector3(-1.0, 0, 1.0))
 		sequence.set_preview_character_position("endo", station_pos + Vector3(-1.0, 0, -1.0))
-		sequence._on_sector_route_committed(sector_index, "direct")
+		_check(_trigger_route_source(sequence, sector_index, "direct", "aster"),
+			"sector %d accepts its exact nearby DIRECT station receipt" % (sector_index + 1))
+		sequence._scheduler.advance_ticks(sequence.SECTOR_GATE_OPEN_DURATION + 0.001)
+		sequence._update_sector_gate_visuals()
+		if sector_index + 1 < 3:
+			_check(sequence._sector_route_interactables[sector_index + 1][0].is_interaction_enabled()
+				and sequence._sector_route_interactables[sector_index + 1][1].is_interaction_enabled(),
+				"opening sector %d exposes the next SAFE/DIRECT decision" % (sector_index + 1))
 	state = sequence.headless_get_state()
 	_check((state["sector_gates_open"] as Array).count(true) == 3,
 		"working the three route stations opens all three data-layer seals")
@@ -124,29 +148,66 @@ func _run() -> void:
 		"safe routing takes a material detour (%.1f m vs %.1f m)" % [safe_meters, direct_meters])
 	var hp_before_iron: float = sequence._game_state.get_stat("aster", "hp")
 	sequence.set_preview_character_position("aster", anchors["sector_1_iron"])
-	sequence._check_iron_damage(1.0)
+	sequence._current_step = "first_corridor"
+	sequence._start_iron_hazard_cadence()
+	sequence._scheduler.advance_ticks(sequence.IRON_DAMAGE_INTERVAL + 0.001)
 	_check(sequence._game_state.get_stat("aster", "hp") < hp_before_iron,
-		"direct iron exposure changes authoritative party HP")
+		"direct iron exposure changes authoritative party HP on the fixed scheduler cadence")
 
+	state = sequence.headless_get_state()
+	var source_cache_item_id := str(state.get("cache_item_id", ""))
+	_check(not bool(state.get("cache_collected", true))
+		and str(state.get("cache_phase", "")) == sequence.CACHE_PHASE_AVAILABLE
+		and bool(state.get("cache_item_at_source", false))
+		and source_cache_item_id != "",
+		"side cache exposes one real source-tagged lysate before interaction")
 	sequence.set_preview_character_position("aster", sequence.CACHE_POS)
-	sequence._on_cache_collected()
+	sequence._cache_interactable.active_character = "aster"
+	var hp_before_cache: float = sequence._game_state.get_stat("aster", "hp")
+	var stamina_before_cache: float = sequence._game_state.get_stat("aster", "stamina")
+	_check(_trigger_source(sequence._cache_interactable, "aster"),
+		"the exact nearby cache source accepts Aster's receipt")
 	state = sequence.headless_get_state()
-	_check(bool(state.get("cache_collected", false)) and str(state.get("cache_item_id", "")) != "",
-		"side cache creates and hands Aster a real GameState item")
-	sequence._game_state.adjust_stat("aster", "hp", -40.0)
-	var damaged_hp: float = sequence._game_state.get_stat("aster", "hp")
-	sequence.set_preview_character_position("aster", sequence.RESOURCE_MANIFOLD_POS)
-	sequence._resolve_resource_decision("recover")
-	state = sequence.headless_get_state()
-	_check(str(state.get("resource_decision", "")) == "recover",
-		"lysate can be committed to the immediate-recovery choice")
-	_check(sequence._game_state.get_stat("aster", "hp") > damaged_hp,
-		"the recovery choice changes the authoritative HP stat")
+	var cache_item_id := str(state.get("cache_item_id", ""))
+	_check(bool(state.get("cache_collected", false)) and cache_item_id == source_cache_item_id,
+		"side cache transfers the pre-existing lysate instead of creating one on success")
+	_check(sequence._game_state.items.has(cache_item_id)
+		and str((sequence._game_state.items[cache_item_id] as Dictionary).get("holder", "")) == "aster",
+		"the exact lysate remains carried for later endocytosis or shelter use")
+	_check(is_equal_approx(sequence._game_state.get_stat("aster", "hp"), hp_before_cache)
+		and is_equal_approx(sequence._game_state.get_stat("aster", "stamina"), stamina_before_cache),
+		"salvaging lysate does not directly heal HP or stamina")
+	_check(sequence.find_child("LysateRecoverStation", true, false) == null
+		and sequence.find_child("LysateShieldStation", true, false) == null,
+		"the invented lysate recovery/shield manifold is absent")
 
+	# Information changes the player's model, not the hazard's physical output. Compare the same
+	# body in the same third-sector position for one exact cadence tick on either side of the survey.
+	sequence.set_preview_character_position("aster", anchors["sector_3_iron"])
+	sequence._game_state.set_stat("aster", "hp", 100.0)
+	var hp_before_unsurveyed: float = sequence._game_state.get_stat("aster", "hp")
+	sequence._apply_iron_damage_tick()
+	var unsurveyed_damage: float = hp_before_unsurveyed - sequence._game_state.get_stat("aster", "hp")
+	sequence._game_state.set_stat("aster", "hp", 100.0)
+	_check(not sequence._on_lookout_surveyed(),
+		"a direct lookout owner callback has no exact-source receipt")
+	sequence._lookout_interactable.set("active_character", "aster")
+	sequence._lookout_interactable.emit_signal("interacted")
+	_check(not bool(sequence.headless_get_state().get("lookout_surveyed", false)),
+		"a manually emitted lookout signal cannot counterfeit acceptance")
+	_check(not bool(sequence._lookout_interactable.call("_trigger", false)),
+		"a remote selected portrait cannot survey the exact lookout source")
 	sequence.set_preview_character_position("aster", sequence.LOOKOUT_POS)
-	sequence._on_lookout_surveyed()
+	_check(_trigger_source(sequence._lookout_interactable, "aster"),
+		"the exact nearby lookout source accepts Aster's receipt")
 	_check(bool(sequence.headless_get_state().get("lookout_surveyed", false)),
-		"lookout survey records its route benefit")
+		"lookout survey records the revealed cadence")
+	sequence.set_preview_character_position("aster", anchors["sector_3_iron"])
+	var hp_before_surveyed: float = sequence._game_state.get_stat("aster", "hp")
+	sequence._apply_iron_damage_tick()
+	var surveyed_damage: float = hp_before_surveyed - sequence._game_state.get_stat("aster", "hp")
+	_check(is_equal_approx(surveyed_damage, unsurveyed_damage) and surveyed_damage > 0.0,
+		"surveying information does not magically reduce identical iron exposure")
 
 	sequence.queue_free()
 	await process_frame
@@ -156,3 +217,19 @@ func _run() -> void:
 	else:
 		print("Leaving Facility extension verification: %d FAILED" % _failures.size())
 		quit(1)
+
+
+func _trigger_route_source(
+		sequence: Node,
+		sector_index: int,
+		route_choice: String,
+		actor: String
+	) -> bool:
+	var source: Node = sequence._sector_route_interactables[sector_index][
+		0 if route_choice == "safe" else 1]
+	return _trigger_source(source, actor)
+
+
+func _trigger_source(source: Node, actor: String) -> bool:
+	source.set("active_character", actor)
+	return bool(source.call("_trigger", false))

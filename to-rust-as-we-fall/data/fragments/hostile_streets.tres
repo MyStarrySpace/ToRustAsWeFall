@@ -6,7 +6,7 @@
 script = ExtResource("1_hstrt")
 id = "hostile_streets"
 title = "Hostile Streets (decor + studs)"
-help = "A beautified street: ornamental invasives (no highlight — Y: Peris reads them yellow, then CLEAR) and anti-loiter studs. Lure the pack across the studs to bleed it."
+help = "A beautified street: ornamental invasives are scenery, while the anti-loiter studs are the actual hazard. Lure the pack across the studs to bleed it."
 default_character = "peris"
 party_ids = PackedStringArray("aster", "peris", "endo")
 spawns = {
@@ -133,7 +133,7 @@ objects = Array[Dictionary]([{
 "type": "exit_shelter"
 }])
 time_state = {
-"note_default": "Ornamentals everywhere, studs across the walk. Y: Peris reads what's worth taking.",
+"note_default": "Ornamentals line the street as scenery. The anti-loiter studs across the walk are the causal tool: lure the pack over them.",
 "routing_mode": "safe"
 }
 params = {
