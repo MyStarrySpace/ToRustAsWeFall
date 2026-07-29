@@ -106,6 +106,7 @@ var _section_water: Array = []      # [{node, s0, kind}] — helical water bands
 var _channel_span := Vector2.ZERO   # flat s range the trough actually covers
 var _channel_base_energy: Dictionary = {}
 var _flures: Array = []
+var _hide_spots_cache: Array = []
 
 var _channels: Array = []           # the composed Channel kit objects, one per section
 var _fauna: Dictionary = {}         # char_id -> Enemy (canonical Sapscraps; placeholder bodies)
@@ -1127,11 +1128,11 @@ func _tick_concealment() -> void:
 	var gs = _get_game_state()
 	if gs == null or not gs.has_method("set_character_concealment"):
 		return
-	var hide_spots: Array = []
-	for hide_name in ["HideCapbage", "HideCapbageUpper"]:
-		var marker := _props_root.find_child(hide_name, true, false) if _props_root else null
-		if marker is Node3D:
-			hide_spots.append((marker as Node3D).position)
+	if _hide_spots_cache.is_empty() and _props_root != null:
+		for marker in _find_meta_nodes(_props_root, "piece"):
+			if str(marker.get_meta("piece")) == "capbage":
+				_hide_spots_cache.append((marker as Node3D).position)
+	var hide_spots: Array = _hide_spots_cache
 	if hide_spots.is_empty():
 		return
 	for char_id in PARTY_IDS:
