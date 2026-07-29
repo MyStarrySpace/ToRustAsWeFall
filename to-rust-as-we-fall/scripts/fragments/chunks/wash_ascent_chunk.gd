@@ -949,6 +949,12 @@ func _build_interactables() -> void:
 	# the valve is ELECTRONIC: Aster's EMP overloads it from range for the same
 	# hold — the canonical anti-tech cast gets a real job in this level (fauna
 	# never opt in; mechanisms do)
+	var terminal := _add_interactable(self, "CadenceTerminal",
+		"Log the surge cadence", Vector3(10.2, DECK_TOP, 6.8),
+		"LOG THE SURGE", "aster", 1.1, false, 1.6,
+		Interactable.InteractableType.INSPECTION)
+	terminal.consequence_preview = "Aster reads the channel's rhythm — the next surge becomes a number, not a guess."
+	_wire_trigger(terminal, _on_terminal)
 	var valve_rx := EmpReceiver.new()
 	valve_rx.name = "ValveEmpReceiver"
 	valve_rx.on_pulse = func(_duration: float) -> bool:
@@ -1077,6 +1083,23 @@ func _wire_trigger(interactable: Area3D, cb: Callable) -> void:
 ## The valve speaks the kit's verb: Channel.hold() ends any in-flight flood and
 ## skips swallowed onsets to the next analytic beat. The view reacts through the
 ## kit's own signals; this handler adds only the note and the held display.
+## The terminal names the section AHEAD of it — never an aggregate min() that
+## quotes a surge BEHIND the reader (the wash_relay FlowTerminal pattern:
+## Aster's timing job is a diegetic world target, positional truth).
+func _on_terminal(_args = null) -> void:
+	var terminal_s := 10.2
+	var ahead := -1
+	for i in range(WASH_SECTIONS.size()):
+		if float(WASH_SECTIONS[i]["s0"]) > terminal_s:
+			ahead = i
+			break
+	if ahead >= 0 and ahead < _channels.size():
+		var onset := maxf(0.0, float((_channels[ahead] as Channel).get_state().get("next_onset_in", 0.0)))
+		_show_note("// CADENCE LOGGED // the stretch ahead surges in %.0fs" % onset, 2.6)
+	else:
+		_show_note("// CADENCE LOGGED // open water ahead", 2.6)
+	_set_preview_step("wash_ascent_cadence_logged")
+
 func _get_scheduler_tick_safe() -> float:
 	var sched = _get_scheduler()
 	return float(sched.get_current_tick()) if sched != null else 0.0
