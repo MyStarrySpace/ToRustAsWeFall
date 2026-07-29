@@ -27,6 +27,10 @@ extends Node
 ## logical counters below still advance, which is what the tests assert.
 
 const VISION_RADIUS := 14.0          # matches perception_stack's fully-clear fog radius
+## The red outline LINGERS through brief LOS breaks (director): it drops only
+## after the enemy has been outside every visual range for this long. Measured
+## on the gameplay scheduler tick, so replay/FF see identical drop timing.
+const SPOT_LINGER_SECONDS := 2.0
 const SPOT_POLL_INTERVAL := 0.25
 const SPOT_POLL_TAG := "combat_feedback_spot"
 const SPOT_OUTLINE_COLOR := Color(0.92, 0.16, 0.10)
@@ -42,7 +46,7 @@ var search_root: Node = null
 var _flash_layer: CanvasLayer = null
 var _flash_rect: ColorRect = null
 var _flash_tween: Tween = null
-var _spotted: Dictionary = {}        # enemy instance id -> Enemy node
+var _spotted: Dictionary = {}        # enemy instance id -> {node, last_seen_tick}
 var _char_nodes: Dictionary = {}     # char_id -> Node3D (cached tree scan)
 var _cache_frame := -1000
 
@@ -77,7 +81,7 @@ func spotted_count() -> int:
 func spotted_enemy_ids() -> Array:
 	var out: Array = []
 	for eid in _spotted:
-		var e = _spotted[eid]
+		var e = (_spotted[eid] as Dictionary).get("node")
 		if is_instance_valid(e) and "char_id" in e:
 			out.append(str(e.char_id))
 	return out
@@ -168,21 +172,31 @@ func _schedule_spot_poll() -> void:
 func _spot_poll() -> void:
 	if game_state == null:
 		return
-	var still: Dictionary = {}
+	var now := 0.0
+	if game_state.scheduler != null:
+		now = float(game_state.scheduler.get_current_tick())
+	var alive: Dictionary = {}
 	var newly: Array = []
 	for e in _live_enemies():
 		var eid: int = e.get_instance_id()
+		alive[eid] = true
 		var spotter := _spotter_for(e)
 		if spotter != "":
-			still[eid] = true
-			if not _spotted.has(eid):
+			if _spotted.has(eid):
+				(_spotted[eid] as Dictionary)["last_seen_tick"] = now
+			else:
 				newly.append([e, spotter])
+	# out-of-sight entries LINGER for the grace window, then drop; dead or
+	# freed enemies drop immediately
 	for eid in _spotted.keys():
-		if not still.has(int(eid)):
+		var entry: Dictionary = _spotted[eid]
+		if not alive.has(int(eid)):
+			_unspot(int(eid))
+		elif now - float(entry.get("last_seen_tick", now)) >= SPOT_LINGER_SECONDS:
 			_unspot(int(eid))
 	var was_empty := _spotted.is_empty()
 	for pair in newly:
-		_spot(pair[0])
+		_spot(pair[0], now)
 	if was_empty and not newly.is_empty():
 		var spotter_id: String = str(newly[0][1])
 		var node := _char_node(spotter_id)
@@ -193,7 +207,7 @@ func _spot_poll() -> void:
 	_schedule_spot_poll()
 
 
-func _spot(enemy: Node) -> void:
+func _spot(enemy: Node, seen_tick: float) -> void:
 	var meshes: Array = []
 	var stack: Array = [enemy]
 	while not stack.is_empty():
@@ -202,7 +216,7 @@ func _spot(enemy: Node) -> void:
 			meshes.append(n)
 		for c in n.get_children():
 			stack.append(c)
-	_spotted[enemy.get_instance_id()] = enemy
+	_spotted[enemy.get_instance_id()] = {"node": enemy, "last_seen_tick": seen_tick}
 	var mask := OutlineMaskManager.find_for(self)
 	if mask != null and not meshes.is_empty():
 		mask.register(enemy.get_instance_id(), meshes, SPOT_OUTLINE_COLOR, false)

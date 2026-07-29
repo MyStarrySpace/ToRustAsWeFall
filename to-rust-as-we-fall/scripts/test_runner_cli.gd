@@ -28322,7 +28322,8 @@ func _test_combat_feedback() -> void:
 	for pid2 in ["aster", "peris", "endo"]:
 		inst.call("headless_set_character_position", pid2,
 			Vector3(0.8, 0.1, 2.0 + 1.2 * float(["aster", "peris", "endo"].find(pid2))))
-	inst.call("headless_advance", 0.6)
+	# drain the combat scenario's LINGER before asserting a clean slate
+	inst.call("headless_advance", 2.8)
 	_assert_true(int(fb.call("spotted_count")) == 0,
 		"no enemy inside any visual range -> nothing spotted")
 	var bubbles_before := int(fb.get("head_bubbles_fired")) + int(fb.get("portrait_bubbles_fired"))
@@ -28337,10 +28338,15 @@ func _test_combat_feedback() -> void:
 	var bubbles_later := int(fb.get("head_bubbles_fired")) + int(fb.get("portrait_bubbles_fired"))
 	_assert_true(bubbles_later == bubbles_after_first,
 		"an already-spotted enemy never re-alerts")
+	# LOS LINGER (director): a brief break keeps the outline; it drops only
+	# after the enemy stays unseen for SPOT_LINGER_SECONDS (2.0)
 	inst.call("headless_set_character_position", "aster", Vector3(0.8, 0.1, 2.0))
-	inst.call("headless_advance", 0.6)
+	inst.call("headless_advance", 0.8)
+	_assert_true(int(fb.call("spotted_count")) >= 1,
+		"a brief LOS break (<2s) keeps the red outline lingering")
+	inst.call("headless_advance", 2.0)
 	_assert_true(int(fb.call("spotted_count")) == 0,
-		"leaving the visual range UNSPOTS (outline unregistered)")
+		"unseen for 2+ seconds -> the outline drops")
 	inst.queue_free()
 	await get_tree().process_frame
 
