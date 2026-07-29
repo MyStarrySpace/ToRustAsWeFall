@@ -335,6 +335,7 @@ transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 25.34, 1.5, 8.05)
 metadata/piece = "channel_collar"
 metadata/mount = "wall"
 metadata/cluster = "landing"
+metadata/emission_scale = 0.2
 
 [node name="DroppedPack" type="Marker3D" parent="DeadPump"]
 transform = Transform3D(0.85, 0, 0.527, 0, 1, 0, -0.527, 0, 0.85, 24.9, 0.1, 5.6)
@@ -347,18 +348,21 @@ transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 26.2, 0.1, 8.05)
 metadata/piece = "door_ironband"
 metadata/mount = "wall"
 metadata/cluster = "landing"
+metadata/emission_scale = 0.15
 
 [node name="SealedSign" type="Marker3D" parent="DeadPump"]
 transform = Transform3D(-0.99, -0.139, 0, -0.139, 0.99, 0, 0, 0, -1, 26.2, 2.0, 8.08)
 metadata/piece = "gate_sign"
 metadata/mount = "wall"
 metadata/cluster = "landing"
+metadata/emission_scale = 0.01
 
 [node name="DeadDoorLamp" type="Marker3D" parent="DeadPump"]
 transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 26.2, 2.45, 8.05)
 metadata/piece = "red_bar_lamp"
 metadata/mount = "wall"
 metadata/cluster = "landing"
+metadata/emission_scale = 0.01
 
 [node name="UpperStory" type="Node3D" parent="."]
 
@@ -367,6 +371,7 @@ transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 29.5, 2.45, 8.05)
 metadata/piece = "red_bar_lamp"
 metadata/mount = "wall"
 metadata/cluster = "long_wash"
+metadata/emission_scale = 0.08
 
 [node name="SeepScarpet" type="Marker3D" parent="UpperStory"]
 transform = Transform3D(0.921, 0, 0.389, 0, 1, 0, -0.389, 0, 0.921, 37.6, 0.1, 7.2)
@@ -409,6 +414,7 @@ transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 41.0, 0.1, 8.05)
 metadata/piece = "door_ironband"
 metadata/mount = "wall"
 metadata/cluster = "patrol_band"
+metadata/emission_scale = 0.15
 
 [node name="ExitCapbage" type="Marker3D" parent="UpperStory"]
 transform = Transform3D(0.921, 0, 0.389, 0, 1, 0, -0.389, 0, 0.921, 44.4, 0.1, 6.6)

@@ -63,6 +63,17 @@ func _initialize() -> void:
 			"fov": 52.0, "wash": [0, "telegraph"]},
 		{"name": "puzzle_rail_gap", "cam": [0.6, 6.4, 1.7], "at": [3.2, 3.0, 0.3],
 			"fov": 52.0},
+		# ACT TWO — the extension's story beats:
+		{"name": "act2_landing", "cam": [21.5, 6.5, 3.0], "at": [25.5, 2.0, 1.2],
+			"fov": 55.0},
+		{"name": "act2_keyed_span", "cam": [25.0, 8.5, 3.6], "at": [31.0, 2.0, 0.8],
+			"fov": 56.0, "wash": [3, "flood"]},
+		{"name": "act2_gap_watch", "cam": [34.5, 7.0, 2.6], "at": [39.0, 2.5, 0.9],
+			"fov": 54.0},
+		{"name": "act2_drum_head", "cam": [43.5, 9.0, 4.0], "at": [49.0, 2.0, 1.5],
+			"fov": 58.0},
+		{"name": "act2_overview", "cam": [26.0, 24.0, 11.0], "at": [26.0, 0.0, 2.5],
+			"fov": 62.0},
 	]
 	var chunk: Node = scene.find_child("Chunk_wash_ascent", true, false)
 	if chunk != null:
@@ -74,7 +85,7 @@ func _initialize() -> void:
 		if chunk != null:
 			# stage the declared wash state for the still (state setter only — no
 			# scheduler), then wait out the rise/sink tweens before framing
-			for i in range(3):
+			for i in range(5):
 				chunk.call("_set_wash_state", i, "idle")
 			if shot.has("wash"):
 				chunk.call("_set_wash_state", int(shot["wash"][0]), str(shot["wash"][1]))
