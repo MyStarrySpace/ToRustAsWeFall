@@ -637,6 +637,62 @@ func _find_meta_nodes(root: Node, meta_key: String) -> Array:
 ## Each channel segment carries its trough glow materials (duplicated so each
 ## stretch brightens independently) AND its surge-water sheet. The wash drives
 ## both from scheduled callbacks — nothing per-frame.
+## Every visible WATER surface wears the one wash_water shader (translucent +
+## flowing); non-water emissives (rust glints etc.) keep their standard dup.
+## The blue-dominance test is the same one the appearance prober uses.
+var _water_shader: Shader = null
+
+func _water_shader_res() -> Shader:
+	if _water_shader == null:
+		_water_shader = load("res://resources/wash_water.gdshader")
+	return _water_shader
+
+func _is_water_mat(sm: StandardMaterial3D) -> bool:
+	return sm.emission_enabled and sm.emission.b > sm.emission.r * 1.4
+
+func _to_water_shader_mat(sm: StandardMaterial3D) -> ShaderMaterial:
+	var mat := ShaderMaterial.new()
+	mat.shader = _water_shader_res()
+	mat.set_shader_parameter("water_color", sm.albedo_color)
+	if sm.albedo_texture != null:
+		mat.set_shader_parameter("albedo_tex", sm.albedo_texture)
+		mat.set_shader_parameter("has_tex", true)
+	mat.set_shader_parameter("emission_color", sm.emission)
+	mat.set_shader_parameter("emission_energy", sm.emission_energy_multiplier)
+	return mat
+
+func _convert_water_surfaces(root: Node3D) -> Array:
+	var out: Array = []
+	var stack: Array = [root]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		if n is MeshInstance3D and (n as MeshInstance3D).mesh != null:
+			var mi := n as MeshInstance3D
+			for si in range(mi.mesh.get_surface_count()):
+				var mat := mi.get_active_material(si)
+				if mat is StandardMaterial3D and _is_water_mat(mat):
+					var wmat := _to_water_shader_mat(mat)
+					mi.set_surface_override_material(si, wmat)
+					out.append(wmat)
+		for c in n.get_children():
+			stack.append(c)
+	return out
+
+func _mat_energy(m) -> float:
+	if m is ShaderMaterial:
+		return float((m as ShaderMaterial).get_shader_parameter("emission_energy"))
+	return (m as StandardMaterial3D).emission_energy_multiplier
+
+func _set_mat_energy(m, e: float) -> void:
+	if m is ShaderMaterial:
+		(m as ShaderMaterial).set_shader_parameter("emission_energy", e)
+	else:
+		(m as StandardMaterial3D).emission_energy_multiplier = e
+
+func _set_mat_flow(m, boost: float) -> void:
+	if m is ShaderMaterial:
+		(m as ShaderMaterial).set_shader_parameter("flow_boost", boost)
+
 func _register_channel_segment(piece: Node3D, flat_s: float) -> void:
 	var mats: Array = []
 	var stack: Array = [piece]
@@ -647,18 +703,39 @@ func _register_channel_segment(piece: Node3D, flat_s: float) -> void:
 			for si in range(mi.mesh.get_surface_count()):
 				var mat := mi.get_active_material(si)
 				if mat is StandardMaterial3D and (mat as StandardMaterial3D).emission_enabled:
-					var dup := (mat as StandardMaterial3D).duplicate() as StandardMaterial3D
-					mi.set_surface_override_material(si, dup)
-					mats.append(dup)
+					var sm := mat as StandardMaterial3D
+					if _is_water_mat(sm):
+						var wm := _to_water_shader_mat(sm)
+						mi.set_surface_override_material(si, wm)
+						mats.append(wm)
+					else:
+						var dup := sm.duplicate() as StandardMaterial3D
+						mi.set_surface_override_material(si, dup)
+						mats.append(dup)
 		for c in n.get_children():
 			stack.append(c)
 	for m in mats:
-		_channel_base_energy[m] = (m as StandardMaterial3D).emission_energy_multiplier
+		_channel_base_energy[m] = _mat_energy(m)
 	_channel_segments.append({"node": piece, "s": flat_s, "mats": mats})
 
 ## Every helical water band is registered against the flat s it STARTS at, so a
 ## section state change raises exactly the bands inside its span.
+## Push a wash state's flow boost onto a band's converted water surfaces.
+func _apply_band_flow(root: Node3D, boost: float) -> void:
+	var stack: Array = [root]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		if n is MeshInstance3D and (n as MeshInstance3D).mesh != null:
+			var mi := n as MeshInstance3D
+			for si in range(mi.mesh.get_surface_count()):
+				var mat := mi.get_active_material(si)
+				if mat is ShaderMaterial and (mat as ShaderMaterial).shader == _water_shader_res():
+					(mat as ShaderMaterial).set_shader_parameter("flow_boost", boost)
+		for c in n.get_children():
+			stack.append(c)
+
 func _register_water_band(band: Node3D, s0: float, kind: String) -> void:
+	_convert_water_surfaces(band)
 	_section_water.append({"node": band, "s0": s0, "kind": kind})
 
 ## The one wash-state display: "idle" (baked trickle only), "telegraph" (glow
@@ -674,23 +751,30 @@ func _set_wash_state(section: int, state: String) -> void:
 	var s0 := float(WASH_SECTIONS[section]["s0"])
 	var s1 := float(WASH_SECTIONS[section]["s1"])
 	var band := 1.0
+	var flow := 1.0
 	var trough_on := false
 	var deck_on := false
 	var trough_lift := 0.0
 	match state:
 		"telegraph":
-			band = 2.4; trough_on = true; trough_lift = 0.14
+			band = 2.4; flow = 2.0; trough_on = true; trough_lift = 0.14
 		"flood":
-			band = 4.5; trough_on = true; deck_on = true; trough_lift = 0.24
+			band = 4.5; flow = 3.2; trough_on = true; deck_on = true; trough_lift = 0.24
 		"held":
-			band = 0.5
+			band = 0.5; flow = 0.25
 	for seg in _channel_segments:
 		var mid := float(seg["s"]) + _piece_aabb("water_channel").size.x * 0.5
 		if mid < s0 or mid > s1:
 			continue
 		for m in seg["mats"]:
-			(m as StandardMaterial3D).emission_energy_multiplier = \
-				float(_channel_base_energy.get(m, 1.0)) * band
+			_set_mat_energy(m, float(_channel_base_energy.get(m, 1.0)) * band)
+			_set_mat_flow(m, flow)
+	for entry_f in _section_water:
+		var mid_f := float(entry_f["s0"]) + 0.5
+		if mid_f < s0 or mid_f > s1:
+			continue
+		if entry_f["node"] is Node3D and is_instance_valid(entry_f["node"]):
+			_apply_band_flow(entry_f["node"] as Node3D, flow)
 	for entry in _section_water:
 		var mid_s := float(entry["s0"]) + 0.5
 		if mid_s < s0 or mid_s > s1:
@@ -792,13 +876,25 @@ func measure_water_bands() -> Dictionary:
 				var mi := n as MeshInstance3D
 				for si in range(mi.mesh.get_surface_count()):
 					var mat := mi.get_active_material(si)
-					if mat is StandardMaterial3D \
+					# converted water wears the ONE shader — its authored
+					# appearance is the emission_color x energy uniforms
+					if mat is ShaderMaterial \
+							and (mat as ShaderMaterial).shader == _water_shader_res():
+						var col: Color = (mat as ShaderMaterial).get_shader_parameter("emission_color")
+						var en := float((mat as ShaderMaterial).get_shader_parameter("emission_energy"))
+						if col.b > col.r * 1.4:
+							var wv := Vector3(col.r, col.g, col.b) * en
+							w_min = w_min.min(wv)
+							w_max = w_max.max(wv)
+					elif mat is StandardMaterial3D \
 							and (mat as StandardMaterial3D).emission_enabled:
 						var sm := mat as StandardMaterial3D
 						# WATER is blue-dominant; foam emits near-gray. The
 						# comparable quantity is color x energy — a <=1.0
 						# authored strength bakes into the color on export,
-						# so raw energy alone measures nothing.
+						# so raw energy alone measures nothing. A blue-dominant
+						# STANDARD material here means a water surface escaped
+						# the shader conversion — it will split the spread.
 						if sm.emission.b > sm.emission.r * 1.4:
 							var w := Vector3(sm.emission.r, sm.emission.g,
 								sm.emission.b) * sm.emission_energy_multiplier
