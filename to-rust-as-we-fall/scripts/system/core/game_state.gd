@@ -1303,6 +1303,11 @@ func clear_damage_shield(char_id: String) -> void:
 			scheduler.cancel(handle)
 	damage_shield_changed.emit(char_id, 0.0, str(shield.get("source_id", "")))
 
+## The live shield's source id ("" when none) — lets a weaker ambient shield
+## (a presence brace) refresh itself without ever downgrading a cast one.
+func get_damage_shield_source(char_id: String) -> String:
+	return str((_damage_shields.get(char_id, {}) as Dictionary).get("source_id", ""))
+
 func get_damage_shield(char_id: String) -> float:
 	return float((_damage_shields.get(char_id, {}) as Dictionary).get("amount", 0.0))
 

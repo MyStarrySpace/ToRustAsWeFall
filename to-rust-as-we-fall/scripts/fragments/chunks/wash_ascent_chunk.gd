@@ -79,6 +79,8 @@ const WASH_Z_CENTER := 3.6         # THE GATE: the surge floods the FULL walkway
 const WASH_Z_HALF := 4.4           # (z -0.8 .. 8.0) — sections cross only on the dry beat;
 const DANGER_Z := 2.0              # legacy band const kept for anchors/notes
 const VALVE_HOLD_WINDOW := 14.0    # how long the bay valve quiets section 0
+const BRACE_RADIUS := 2.6          # Endo's presence: stand this close to brace
+const BRACE_ABSORB := 3.0          # the brace shallows the sweep bite by this
 const SWEEP_HP_BITE := 6.0         # the kit-owned fail-forward price per sweep
 const PARTY_IDS := ["aster", "peris", "endo"]
 
@@ -97,7 +99,8 @@ var _channels: Array = []           # the composed Channel kit objects, one per 
 var _fauna: Dictionary = {}         # char_id -> Enemy (canonical Sapscraps; placeholder bodies)
 var _ring_exit: ExitShelter = null
 var _swept_count := 0
-var _terminal_logged := false
+var _peris_overlay_on := false
+var _brace_noted := false
 var _phase := "ready"
 
 func _build_chunk() -> void:
@@ -490,9 +493,21 @@ const DECK_WEAR_CLUSTERS := [Vector2i(1, 2), Vector2i(2, 2), Vector2i(2, 3), Vec
 func _deck_tile_id(surface: String, i: int, j: int) -> String:
 	if j == 0:
 		return "deck_grate" if i % 2 == 0 else "deck_grate_b"
+	# drainage bands mark every section MOUTH across the full walkway width —
+	# the deck itself tells you where the wash's claims begin and end
+	if _is_mouth_column(i):
+		return "deck_grate_b" if j % 2 == 0 else "deck_grate"
 	if surface == "worn" and Vector2i(i, j) in DECK_WEAR_CLUSTERS:
 		return "deck_grate_b"
 	return ["deck_planks", "deck_planks_b", "deck_planks_c"][(i + j) % 3]
+
+func _is_mouth_column(i: int) -> bool:
+	var pitch := _piece_aabb("deck_planks").size.x
+	for sec in WASH_SECTIONS:
+		for m in [float(sec["s0"]), float(sec["s1"])]:
+			if int(floor(m / pitch)) == i:
+				return true
+	return false
 
 func _wall_variant_ids() -> Array:
 	return ["wall_panel_tile", "wall_panel_tile_b", "wall_panel_tile", "wall_panel_tile_c"]
@@ -681,8 +696,22 @@ func _set_wash_state(section: int, state: String) -> void:
 			w.visible = trough_on
 			w.transform = _water_band_transform(float(entry["s0"]), trough_lift)
 		else:
-			w.visible = deck_on
-			w.transform = _water_band_transform(float(entry["s0"]), 0.20)
+			# cosmetic rise/sink (node-bound tweens, wall-clock by design —
+			# the kill predicate is the Channel's; this is only the look)
+			var target := _water_band_transform(float(entry["s0"]), 0.20)
+			if deck_on and not w.visible:
+				w.visible = true
+				w.transform = _water_band_transform(float(entry["s0"]), -0.06)
+				var rise := w.create_tween()
+				rise.tween_property(w, "transform", target, 0.35) \
+					.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+			elif deck_on:
+				w.transform = target
+			elif w.visible:
+				var sink := w.create_tween()
+				sink.tween_property(w, "transform",
+					_water_band_transform(float(entry["s0"]), -0.06), 0.3)
+				sink.tween_callback(func(): w.visible = false)
 
 ## One display truth: repaint every section from the kit's ACTUAL state. The
 ## bands are signal-driven, and two seams bypass signals — Channel.reset()
@@ -824,7 +853,7 @@ func _build_wash_channels() -> void:
 			float(sec["period"]), float(sec["dur"]), WASH_GRACE + float(sec["phase"]),
 			"wash_ascent_ch%d" % i, WASH_Z_CENTER)  # the FULL walkway width
 		ch.telegraphed.connect(_on_channel_telegraph.bind(i))
-		ch.flood_started.connect(_set_wash_state.bind(i, "flood"))
+		ch.flood_started.connect(_on_channel_flood_started.bind(i))
 		ch.flood_ended.connect(_on_channel_flood_ended.bind(i))
 		add_child(ch)
 		_channels.append(ch)
@@ -853,7 +882,7 @@ func _build_wash_channels() -> void:
 func reset_preview_state() -> void:
 	_phase = "active"
 	_swept_count = 0
-	_terminal_logged = false
+	_brace_noted = false
 	var gs = _get_game_state()
 	var sched = _get_scheduler()
 	for i in range(_channels.size()):
@@ -898,6 +927,108 @@ func _on_swept(_id: String, _i: int) -> void:
 func _on_channel_telegraph(i: int) -> void:
 	if _phase == "active":
 		_set_wash_state(i, "telegraph")
+		_apply_endo_brace(i)
+
+## Endo's SURVIVAL register, built into PRESENCE (never a verb): when a surge
+## calls, anyone standing beside Endo — himself included — braces: a small
+## damage shield against the sweep bite, lasting through the flood. Formation
+## IS the mechanic: cross in a tight line with Endo and the bite shallows;
+## scatter and it doesn't. Derived from the telegraph (scheduler-driven, so
+## deterministic and FF-invariant), auto-expiring via the shield's own timer.
+## A zero-shield guard keeps a live Wrap the stronger truth (apply clears an
+## existing shield, and Peris's cast must never be downgraded by proximity).
+func _apply_endo_brace(i: int) -> void:
+	var gs = _get_game_state()
+	if gs == null or not gs.characters.has("endo"):
+		return
+	if gs.has_method("is_downed") and bool(gs.is_downed("endo")):
+		return
+	var endo_pos: Vector3 = gs.get_position("endo")
+	var hold := TELEGRAPH_LEAD + float(WASH_SECTIONS[i]["dur"]) + 0.6
+	var braced := false
+	for id_v in PARTY_IDS:
+		var id := str(id_v)
+		if not gs.characters.has(id):
+			continue
+		if gs.get_position(id).distance_to(endo_pos) > BRACE_RADIUS:
+			continue
+		# refresh a stale brace (an earlier section's telegraph may have left
+		# one about to lapse); only a CAST shield (Wrap) outranks presence
+		if float(gs.get_damage_shield(id)) > 0.0 				and str(gs.get_damage_shield_source(id)) != "endo_brace":
+			continue
+		if bool(gs.apply_damage_shield(id, BRACE_ABSORB, hold, "endo_brace")):
+			braced = true
+	if braced and not _brace_noted:
+		_brace_noted = true
+		_show_note("Endo plants his feet. The line holds harder beside him.", 2.6)
+
+## Peris's WHERE register, built into her PERCEPTION: while her overlay is on,
+## every span the wash claims shows its water bands at a shallow dim lift —
+## the danger ground read from safety, before any crossing. Live floods keep
+## their full truth (flooding sections are skipped; _set_wash_state repaints
+## win). Purely display-layer.
+func update_preview_overlay_states(overlay_states: Dictionary, _current_tick: float, _delta: float) -> void:
+	var want := bool(overlay_states.get("peris", false))
+	if want == _peris_overlay_on:
+		if want:
+			_apply_peris_span_view()
+		return
+	_peris_overlay_on = want
+	if want:
+		_apply_peris_span_view()
+	else:
+		_sync_wash_display()
+
+func _apply_peris_span_view() -> void:
+	for i in range(WASH_SECTIONS.size()):
+		if i < _channels.size() and _channels[i] != null \
+				and bool((_channels[i] as Node).call("is_flooding")):
+			continue
+		var s0 := float(WASH_SECTIONS[i]["s0"])
+		var s1 := float(WASH_SECTIONS[i]["s1"])
+		for entry in _section_water:
+			if str(entry["kind"]) != "deck":
+				continue
+			var mid := float(entry["s0"]) + 0.5
+			if mid < s0 or mid > s1:
+				continue
+			var w = entry["node"]
+			if w is Node3D and is_instance_valid(w) and not (w as Node3D).visible:
+				(w as Node3D).visible = true
+				(w as Node3D).transform = _water_band_transform(float(entry["s0"]), 0.02)
+
+## Aster's WHEN register, built into his PERCEPTION: his overlay carries the
+## live cadence — every section's next onset as a number, straight from the
+## kit's analytic state. No terminal click; the read is who he is.
+func get_preview_overlay_status(overlay_id: String, _current_tick: float) -> Array:
+	match overlay_id:
+		"aster":
+			if _channels.size() < 3:
+				return ["DATA: cadence not armed."]
+			var words := ["NEAR", "MID", "FAR"]
+			var parts := PackedStringArray()
+			for i in range(3):
+				var st: Dictionary = (_channels[i] as Channel).get_state()
+				if bool((_channels[i] as Node).call("is_flooding")):
+					parts.append("%s running" % words[i])
+				else:
+					parts.append("%s %.0fs" % [words[i], maxf(0.0, float(st.get("next_onset_in", 0.0)))])
+			return ["SURGE: %s" % " / ".join(parts),
+				"The spans never share a beat. The gaps never flood."]
+		"peris":
+			return ["FLOW: the lit spans are the wash's whole claim.",
+				"Dark deck between them stays dry on every beat."]
+		"endo":
+			return ["BRACE: shoulders take the surge better beside Endo.",
+				"Tight line when the channel calls; the bite shallows."]
+	return []
+
+
+## Guarded like telegraph/ended — a live flood must never repaint a display a
+## non-active phase owns (completion, capture stills, teardown).
+func _on_channel_flood_started(i: int) -> void:
+	if _phase == "active":
+		_set_wash_state(i, "flood")
 
 func _on_channel_flood_ended(i: int) -> void:
 	if _phase == "active":
@@ -916,12 +1047,28 @@ func _build_interactables() -> void:
 		Interactable.InteractableType.INSPECTION)
 	valve.consequence_preview = "The near stretch runs quiet for a while — cross the band without the surge."
 	_wire_trigger(valve, _on_valve)
-	var terminal := _add_interactable(self, "CadenceTerminal",
-		"Log the surge cadence", Vector3(10.2, DECK_TOP, 6.8),
-		"LOG THE SURGE", "aster", 1.1, false, 1.6,
-		Interactable.InteractableType.INSPECTION)
-	terminal.consequence_preview = "Aster reads the channel's rhythm — the next surge becomes a number, not a guess."
-	_wire_trigger(terminal, _on_terminal)
+	# the valve is ELECTRONIC: Aster's EMP overloads it from range for the same
+	# hold — the canonical anti-tech cast gets a real job in this level (fauna
+	# never opt in; mechanisms do)
+	var valve_rx := EmpReceiver.new()
+	valve_rx.name = "ValveEmpReceiver"
+	valve_rx.on_pulse = func(_duration: float) -> bool:
+		if _phase != "active" or _channels.is_empty():
+			return false
+		if (_channels[0] as Channel).held_until() > _get_scheduler_tick_safe():
+			return false
+		_on_valve()
+		return true
+	valve.add_child(valve_rx)
+	# PUSH-YOUR-LUCK: a salvage dwell INSIDE section 1's span. No character
+	# gate — the CADENCE is the gate: the work beat only fits if you read the
+	# beat first. One-shot, pays the party in ATP.
+	var stash := _add_interactable(self, "SunkenStash",
+		"Pry the sunken stash loose", Vector3(14.2, DECK_TOP, 6.4),
+		"SALVAGE THE STASH", "", 2.2, true, 1.5,
+		Interactable.InteractableType.TIMED_ACTION)
+	stash.consequence_preview = "The crews left supplies mid-stretch. The water decides how long you get."
+	_wire_trigger(stash, _on_sunken_stash)
 	# the start bookend: downed members can be dragged back to the approach and
 	# revived on safe ground — a swept-down member never soft-locks the run
 	var gs_shelter = _get_game_state()
@@ -1031,6 +1178,10 @@ func _wire_trigger(interactable: Area3D, cb: Callable) -> void:
 ## The valve speaks the kit's verb: Channel.hold() ends any in-flight flood and
 ## skips swallowed onsets to the next analytic beat. The view reacts through the
 ## kit's own signals; this handler adds only the note and the held display.
+func _get_scheduler_tick_safe() -> float:
+	var sched = _get_scheduler()
+	return float(sched.get_current_tick()) if sched != null else 0.0
+
 func _on_valve(_args = null) -> void:
 	if _phase != "active" or _channels.is_empty():
 		return
@@ -1039,25 +1190,20 @@ func _on_valve(_args = null) -> void:
 	_show_note("// VALVE HELD // the near channel runs quiet", 2.2)
 	_set_preview_step("wash_ascent_valve_held")
 
-## The terminal names the section AHEAD of it — never an aggregate min() that
-## quotes a surge BEHIND the reader (truthful-but-misleading data was the bug:
-## stand at the terminal, read "3s" from a passed section, step into the next
-## one on it). Positional truth: the first section whose mouth lies past the
-## terminal is the one the number describes.
-func _on_terminal(_args = null) -> void:
-	_terminal_logged = true
-	var terminal_s := 10.2
-	var ahead := -1
-	for i in range(WASH_SECTIONS.size()):
-		if float(WASH_SECTIONS[i]["s0"]) > terminal_s:
-			ahead = i
-			break
-	if ahead >= 0 and ahead < _channels.size():
-		var onset := maxf(0.0, float((_channels[ahead] as Channel).get_state().get("next_onset_in", 0.0)))
-		_show_note("// CADENCE LOGGED // the stretch ahead surges in %.0fs" % onset, 2.6)
-	else:
-		_show_note("// CADENCE LOGGED // open water ahead", 2.6)
-	_set_preview_step("wash_ascent_cadence_logged")
+## The mid-span stash pays the party in the survival currencies this level
+## actually spends — hp and stamina (crew rations) — if the cadence lets the
+## pry finish. The work dwell rides the gameplay scheduler, and a surge
+## mid-work sweeps the worker like anything else standing there: the price IS
+## the read you should have taken first.
+func _on_sunken_stash(_args = null) -> void:
+	var gs = _get_game_state()
+	if gs != null:
+		for id_v in PARTY_IDS:
+			if gs.characters.has(str(id_v)):
+				gs.adjust_stat(str(id_v), "hp", 10.0)
+				gs.adjust_stat(str(id_v), "stamina", 20.0)
+	_show_note("The stash comes loose — crew rations, still sealed. Everyone breathes easier.", 2.8)
+	_set_preview_step("wash_ascent_stash_salvaged")
 
 func _on_ring_rest_completed(_members: Array) -> void:
 	_phase = "complete"
@@ -1180,6 +1326,5 @@ func get_preview_state() -> Dictionary:
 		"next_onsets_in": onsets,
 		"swept_count": _swept_count,
 		"valve_hold_until": (_channels[0] as Channel).held_until() if not _channels.is_empty() else -1.0,
-		"terminal_logged": _terminal_logged,
 		"fauna": _fauna.size(),
 	}

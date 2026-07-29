@@ -65,14 +65,21 @@ func _initialize() -> void:
 			"fov": 52.0},
 	]
 	var chunk: Node = scene.find_child("Chunk_wash_ascent", true, false)
+	if chunk != null:
+		# stills own the wash DISPLAY: a non-"active" phase makes the live
+		# cadence's repaint handlers no-op, so the staged state can't be
+		# overwritten by a real flood mid-shot
+		chunk.set("_phase", "capture")
 	for shot in shots:
 		if chunk != null:
 			# stage the declared wash state for the still (state setter only — no
-			# scheduler), and clear it again so no state leaks into later shots
+			# scheduler), then wait out the rise/sink tweens before framing
 			for i in range(3):
 				chunk.call("_set_wash_state", i, "idle")
 			if shot.has("wash"):
 				chunk.call("_set_wash_state", int(shot["wash"][0]), str(shot["wash"][1]))
+			for _t in range(26):
+				await process_frame
 		cam.fov = float(shot["fov"])
 		var c: Array = shot["cam"]
 		var a: Array = shot["at"]

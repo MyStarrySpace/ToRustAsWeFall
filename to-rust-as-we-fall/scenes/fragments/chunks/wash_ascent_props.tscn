@@ -213,6 +213,12 @@ metadata/piece = "red_bar_lamp"
 metadata/mount = "wall"
 metadata/cluster = "manifold"
 
+[node name="SunkenStashCache" type="Marker3D" parent="ManifoldRun"]
+transform = Transform3D(0.94, 0, 0.34, 0, 1, 0, -0.34, 0, 0.94, 14.2, 0.1, 6.4)
+metadata/piece = "forage_cache"
+metadata/mount = "floor"
+metadata/cluster = "manifold"
+
 [node name="ManifoldLampSpill" type="OmniLight3D" parent="ManifoldRun"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20.3, 2.05, 7.2)
 light_color = Color(0.95, 0.3, 0.18, 1)
