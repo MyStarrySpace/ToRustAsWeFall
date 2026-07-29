@@ -865,6 +865,9 @@ func _ready() -> void:
 			"--test-wash-ascent":
 				ran_test = true
 				await _test_wash_ascent()
+			"--test-canon-mechanics":
+				ran_test = true
+				_test_canon_mechanics()
 			"--test-wash-ascent-playthrough":
 				ran_test = true
 				await _test_wash_ascent_playthrough()
@@ -1560,6 +1563,7 @@ func _run_all_tests() -> void:
 	await _test_wash_relay_prop_survey()
 	await _test_wash_ascent()
 	await _test_wash_ascent_playthrough()
+	_test_canon_mechanics()
 	_test_pipe_grid()
 	await _test_overlay_facility_gating()
 	await _test_leaving_facility()
@@ -27776,13 +27780,21 @@ func _test_wash_ascent() -> void:
 	var during_hold: Dictionary = chunk.call("get_preview_state")
 	_assert_true(int(during_hold.get("swept_count", 0)) == pre_hold_swept,
 		"no surge fires in the held section during the valve window")
-	# 4.5) THE FUN LAYER — the registers are BUILT IN, never labeled verbs:
-	# canonical casts matter here (EMP stuns a sentry; Wrap absorbs the sweep
-	# bite), Endo's presence braces the line, Peris's overlay lights the spans,
-	# Aster's overlay carries the live cadence, the deck's drain columns mark
-	# every mouth, and the mid-span stash pays if the cadence lets you work.
-	# Each sub-leg is ISOLATED: fresh cadence, healed party, everyone parked on
-	# safe ground — earlier legs leave pending sweep transactions otherwise.
+	# 4.5) SYSTEMS, NOT INVENTIONS (director, 2026-07-29): the level composes
+	# EXISTING systems — the canonical casts matter here through their own
+	# documented contracts, salvage rides the ordinary Interactable + stats,
+	# and the deck's drain columns are authored tiles. The once-invented
+	# mechanisms (Peris-overlay wash bands, the Endo presence-brace, Aster's
+	# overlay countdown) are PINNED REMOVED: Peris's WHERE belongs to the
+	# flora network read when it is built (ECOLOGY_COMBOS Card 7 /
+	# Build-next #1), the WHEN is the telegraph, protection is Wrap.
+	var wa_src := FileAccess.get_file_as_string(
+		"res://scripts/fragments/chunks/wash_ascent_chunk.gd")
+	_assert_true(not wa_src.contains("func update_preview_overlay_states") \
+			and not wa_src.contains("func get_preview_overlay_status") \
+			and not wa_src.contains("_apply_endo_brace") \
+			and not wa_src.contains("_apply_peris_span_view"),
+		"no invented register mechanisms: overlay hacks + presence-brace stay removed")
 	var gs_w = inst.get("_game_state")
 	chunk.call("reset_preview_state")
 	for iso_id in ["aster", "peris", "endo"]:
@@ -27798,8 +27810,8 @@ func _test_wash_ascent() -> void:
 		"the canonical two-cast roster is live in this fragment (%s)" % str(cast_ids))
 	inst.call("headless_set_selected_characters", ["aster", "peris", "endo"])
 	# EMP is ANTI-TECH: from range, Aster overloads the ELECTRONIC valve for
-	# the same hold the click gives — the pulse targets WORLD space (the
-	# ability converts through the coord map), so aim via to_world
+	# the same hold the click gives — the cast's own opt-in contract
+	# (EmpReceiver), composed with an existing mechanism, never a new rule
 	inst.call("headless_set_character_position", "aster", Vector3(10.6, 0.1, 1.6))
 	for _e in range(2):
 		await get_tree().process_frame
@@ -27808,11 +27820,13 @@ func _test_wash_ascent() -> void:
 		wmap.to_world(Vector3(9.6, 0.1, 0.9)), "")), "EMP casts in this fragment")
 	var emp_hold: Dictionary = chunk.call("get_preview_state")
 	_assert_true(float(emp_hold.get("valve_hold_until", -1.0)) > 0.0,
-		"the EMP overloads the valve from range — the near channel holds (until %.1f)" % 			float(emp_hold.get("valve_hold_until", -1.0)))
+		"the EMP overloads the valve from range — the near channel holds (until %.1f)" % \
+			float(emp_hold.get("valve_hold_until", -1.0)))
 	inst.call("headless_set_character_position", "aster", Vector3(0.8, 0.1, 2.0))
 	inst.call("headless_advance", 15.0)   # let the EMP'd hold lapse fully
-	# Wrap absorbs the sweep bite: a shielded crossing pays position, not blood.
-	# Wait for a wide pre-onset window so the 5s shield provably spans the impact.
+	# Wrap absorbs the sweep bite (the kit already consults the shield — a
+	# shielded crossing pays position, not blood). Wait for a wide pre-onset
+	# window so the 5s shield provably spans the impact.
 	var wrap_wait := 0.0
 	while wrap_wait < 14.0:
 		var on_w: Array = (chunk.call("get_preview_state") as Dictionary).get("next_onsets_in", [])
@@ -27834,66 +27848,22 @@ func _test_wash_ascent() -> void:
 			and float(gs_w.get_damage_shield("aster")) < 25.0,
 		"the Wrapped member paid POSITION, not blood — the shield ate the bite (hp %.0f, shield %.1f)" % [
 			float(gs_w.get_stat("aster", "hp")), float(gs_w.get_damage_shield("aster"))])
-	# Endo's brace: formation shallows the bite for whoever stands beside him
 	inst.call("headless_set_character_position", "aster", Vector3(0.8, 0.1, 2.0))
 	gs_w.clear_damage_shield("aster")
-	var brace_wait := 0.0
-	while brace_wait < 12.0:
-		var on_b: Array = (chunk.call("get_preview_state") as Dictionary).get("next_onsets_in", [])
-		if float(on_b[0]) > 2.5 and float(on_b[0]) < 6.0:
-			break
-		inst.call("headless_advance", 0.2)
-		brace_wait += 0.2
-	inst.call("headless_set_character_position", "endo", Vector3(5.0, 0.1, 5.0))
-	inst.call("headless_set_character_position", "peris", Vector3(5.6, 0.1, 5.0))
-	var on_b2: Array = (chunk.call("get_preview_state") as Dictionary).get("next_onsets_in", [])
-	var hp_before_brace := float(gs_w.get_stat("peris", "hp"))
-	inst.call("headless_advance", maxf(0.1, float(on_b2[0]) - 1.05))
-	_assert_true(float(gs_w.get_damage_shield("peris")) > 0.0,
-		"the telegraph braces whoever stands beside Endo (shield %.1f)" % float(gs_w.get_damage_shield("peris")))
-	inst.call("headless_advance", 2.4)
-	var brace_drop := hp_before_brace - float(gs_w.get_stat("peris", "hp"))
-	_assert_true(absf(brace_drop - 3.0) < 0.05,
-		"the braced bite is SHALLOWED, not free (dropped %.1f of the 6.0 bite)" % brace_drop)
-	inst.call("headless_set_character_position", "endo", Vector3(0.8, 0.1, 5.2))
-	inst.call("headless_set_character_position", "peris", Vector3(0.8, 0.1, 3.6))
-	# Peris's overlay lights every idle span; off restores the live truth
-	chunk.call("update_preview_overlay_states", {"peris": true}, 0.0, 0.0)
-	var lit := 0
-	for entry_w in (chunk.get("_section_water") as Array):
-		if str((entry_w as Dictionary).get("kind", "")) == "deck" \
-				and (entry_w as Dictionary).get("node") is Node3D \
-				and ((entry_w as Dictionary).get("node") as Node3D).visible:
-			lit += 1
-	_assert_true(lit >= 12, "Peris's overlay lights the wash's claims (%d spans lit)" % lit)
-	chunk.call("update_preview_overlay_states", {"peris": false}, 0.0, 0.0)
-	for _sink in range(40):
-		await get_tree().process_frame
-	var visible_after := 0
-	for entry_w2 in (chunk.get("_section_water") as Array):
-		if str((entry_w2 as Dictionary).get("kind", "")) == "deck" \
-				and (entry_w2 as Dictionary).get("node") is Node3D \
-				and ((entry_w2 as Dictionary).get("node") as Node3D).visible:
-			visible_after += 1
-	_assert_true(visible_after < lit,
-		"overlay off restores the live display (%d lit -> %d)" % [lit, visible_after])
-	# Aster's overlay carries the live cadence as numbers
-	var aster_lines: Array = chunk.call("get_preview_overlay_status", "aster", 0.0)
-	_assert_true(aster_lines.size() >= 1 and str(aster_lines[0]).begins_with("SURGE:"),
-		"Aster's overlay reads the live cadence (%s)" % str(aster_lines))
 	# the deck's drain columns mark every mouth (data-driven from the sections)
 	_assert_true(bool(chunk.call("_is_mouth_column", 4)) and bool(chunk.call("_is_mouth_column", 12)) \
 			and not bool(chunk.call("_is_mouth_column", 6)),
 		"drain-grate columns mark the section mouths in the deck itself")
 	# the mid-span stash pays the party — and stands INSIDE the kill span; its
-	# TIMED_ACTION work beat rides the scheduler, so the reward lands after it
+	# TIMED_ACTION work beat rides the scheduler, so the reward lands after it.
+	# Damage a member first so the rations MEASURE.
 	var stash_node = chunk.find_child("SunkenStash", true, false)
 	_assert_true(stash_node != null, "the sunken stash offers the push-your-luck salvage")
 	if stash_node != null:
 		var stash_flat := Vector3(14.2, 0.1, 6.4)
 		_assert_true(stash_flat.x > 11.0 and stash_flat.x < 17.0,
 			"the stash stands INSIDE section 1's span — the cadence prices the work")
-		# peris carries the brace leg's 3-hp bite here, so the rations MEASURE
+		gs_w.adjust_stat("peris", "hp", -8.0)
 		var hp_pre_stash := float(gs_w.get_stat("peris", "hp"))
 		inst.call("headless_set_character_position", "endo", stash_flat + Vector3(-0.6, 0.0, 0.0))
 		stash_node.set("active_character", "endo")
@@ -28232,6 +28202,33 @@ func _test_wash_relay_queued_glow() -> void:
 ##     cross each section on its analytic dry window, park in the safe gaps, and commit
 ##     the ring rest — zero sweeps on the timed route.
 ## (4) A wall-time ceiling — the whole solve fits a sane sim budget.
+## SYSTEMS THINKING, NOT INVENTED MECHANICS (director, 2026-07-29; the CLAUDE.md
+## Critical Rule) — the enforceable slice as a source lint: level/chunk code
+## COMPOSES canon systems and never hand-rolls mechanisms that belong to
+## canonical services. Today's teeth: damage shields come from the canonical
+## cast service (Wrap) ONLY — a chunk applying its own shield is an invented
+## protection mechanic (the Endo presence-brace lesson). Extend this lint when
+## a new invented-mechanism class is caught in review; every mechanism in a
+## chunk should cite its doc (DESIGN_PRINCIPLES / SYSTEMS_THINKING_PUZZLE_
+## STANDARD / ECOLOGY_COMBOS / the taxonomies).
+func _test_canon_mechanics() -> void:
+	_test_name = "Canon Mechanics"
+	var offenders: Array = []
+	for dir_path in ["res://scripts/fragments/chunks", "res://scripts/scene_chunks",
+			"res://scripts/tutorial"]:
+		var dir := DirAccess.open(dir_path)
+		if dir == null:
+			continue
+		for f in dir.get_files():
+			if not f.ends_with(".gd"):
+				continue
+			var text := FileAccess.get_file_as_string(dir_path + "/" + f)
+			if text.contains("apply_damage_shield("):
+				offenders.append("%s (apply_damage_shield)" % f)
+	_assert_true(offenders.is_empty(),
+		"chunk/level code never hand-rolls canonical-service mechanisms (%s)" % \
+			(", ".join(PackedStringArray(offenders)) if not offenders.is_empty() else "clean"))
+
 func _test_wash_ascent_playthrough() -> void:
 	_test_name = "Wash Ascent Playthrough"
 	var inst = await _instantiate_preview_chunk_and_wait("wash_ascent", 8)

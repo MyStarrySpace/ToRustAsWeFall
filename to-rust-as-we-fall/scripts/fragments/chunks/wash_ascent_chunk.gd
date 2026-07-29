@@ -79,8 +79,6 @@ const WASH_Z_CENTER := 3.6         # THE GATE: the surge floods the FULL walkway
 const WASH_Z_HALF := 4.4           # (z -0.8 .. 8.0) — sections cross only on the dry beat;
 const DANGER_Z := 2.0              # legacy band const kept for anchors/notes
 const VALVE_HOLD_WINDOW := 14.0    # how long the bay valve quiets section 0
-const BRACE_RADIUS := 2.6          # Endo's presence: stand this close to brace
-const BRACE_ABSORB := 3.0          # the brace shallows the sweep bite by this
 const SWEEP_HP_BITE := 6.0         # the kit-owned fail-forward price per sweep
 const PARTY_IDS := ["aster", "peris", "endo"]
 
@@ -99,8 +97,6 @@ var _channels: Array = []           # the composed Channel kit objects, one per 
 var _fauna: Dictionary = {}         # char_id -> Enemy (canonical Sapscraps; placeholder bodies)
 var _ring_exit: ExitShelter = null
 var _swept_count := 0
-var _peris_overlay_on := false
-var _brace_noted := false
 var _phase := "ready"
 
 func _build_chunk() -> void:
@@ -882,7 +878,6 @@ func _build_wash_channels() -> void:
 func reset_preview_state() -> void:
 	_phase = "active"
 	_swept_count = 0
-	_brace_noted = false
 	var gs = _get_game_state()
 	var sched = _get_scheduler()
 	for i in range(_channels.size()):
@@ -927,102 +922,6 @@ func _on_swept(_id: String, _i: int) -> void:
 func _on_channel_telegraph(i: int) -> void:
 	if _phase == "active":
 		_set_wash_state(i, "telegraph")
-		_apply_endo_brace(i)
-
-## Endo's SURVIVAL register, built into PRESENCE (never a verb): when a surge
-## calls, anyone standing beside Endo — himself included — braces: a small
-## damage shield against the sweep bite, lasting through the flood. Formation
-## IS the mechanic: cross in a tight line with Endo and the bite shallows;
-## scatter and it doesn't. Derived from the telegraph (scheduler-driven, so
-## deterministic and FF-invariant), auto-expiring via the shield's own timer.
-## A zero-shield guard keeps a live Wrap the stronger truth (apply clears an
-## existing shield, and Peris's cast must never be downgraded by proximity).
-func _apply_endo_brace(i: int) -> void:
-	var gs = _get_game_state()
-	if gs == null or not gs.characters.has("endo"):
-		return
-	if gs.has_method("is_downed") and bool(gs.is_downed("endo")):
-		return
-	var endo_pos: Vector3 = gs.get_position("endo")
-	var hold := TELEGRAPH_LEAD + float(WASH_SECTIONS[i]["dur"]) + 0.6
-	var braced := false
-	for id_v in PARTY_IDS:
-		var id := str(id_v)
-		if not gs.characters.has(id):
-			continue
-		if gs.get_position(id).distance_to(endo_pos) > BRACE_RADIUS:
-			continue
-		# refresh a stale brace (an earlier section's telegraph may have left
-		# one about to lapse); only a CAST shield (Wrap) outranks presence
-		if float(gs.get_damage_shield(id)) > 0.0 				and str(gs.get_damage_shield_source(id)) != "endo_brace":
-			continue
-		if bool(gs.apply_damage_shield(id, BRACE_ABSORB, hold, "endo_brace")):
-			braced = true
-	if braced and not _brace_noted:
-		_brace_noted = true
-		_show_note("Endo plants his feet. The line holds harder beside him.", 2.6)
-
-## Peris's WHERE register, built into her PERCEPTION: while her overlay is on,
-## every span the wash claims shows its water bands at a shallow dim lift —
-## the danger ground read from safety, before any crossing. Live floods keep
-## their full truth (flooding sections are skipped; _set_wash_state repaints
-## win). Purely display-layer.
-func update_preview_overlay_states(overlay_states: Dictionary, _current_tick: float, _delta: float) -> void:
-	var want := bool(overlay_states.get("peris", false))
-	if want == _peris_overlay_on:
-		if want:
-			_apply_peris_span_view()
-		return
-	_peris_overlay_on = want
-	if want:
-		_apply_peris_span_view()
-	else:
-		_sync_wash_display()
-
-func _apply_peris_span_view() -> void:
-	for i in range(WASH_SECTIONS.size()):
-		if i < _channels.size() and _channels[i] != null \
-				and bool((_channels[i] as Node).call("is_flooding")):
-			continue
-		var s0 := float(WASH_SECTIONS[i]["s0"])
-		var s1 := float(WASH_SECTIONS[i]["s1"])
-		for entry in _section_water:
-			if str(entry["kind"]) != "deck":
-				continue
-			var mid := float(entry["s0"]) + 0.5
-			if mid < s0 or mid > s1:
-				continue
-			var w = entry["node"]
-			if w is Node3D and is_instance_valid(w) and not (w as Node3D).visible:
-				(w as Node3D).visible = true
-				(w as Node3D).transform = _water_band_transform(float(entry["s0"]), 0.02)
-
-## Aster's WHEN register, built into his PERCEPTION: his overlay carries the
-## live cadence — every section's next onset as a number, straight from the
-## kit's analytic state. No terminal click; the read is who he is.
-func get_preview_overlay_status(overlay_id: String, _current_tick: float) -> Array:
-	match overlay_id:
-		"aster":
-			if _channels.size() < 3:
-				return ["DATA: cadence not armed."]
-			var words := ["NEAR", "MID", "FAR"]
-			var parts := PackedStringArray()
-			for i in range(3):
-				var st: Dictionary = (_channels[i] as Channel).get_state()
-				if bool((_channels[i] as Node).call("is_flooding")):
-					parts.append("%s running" % words[i])
-				else:
-					parts.append("%s %.0fs" % [words[i], maxf(0.0, float(st.get("next_onset_in", 0.0)))])
-			return ["SURGE: %s" % " / ".join(parts),
-				"The spans never share a beat. The gaps never flood."]
-		"peris":
-			return ["FLOW: the lit spans are the wash's whole claim.",
-				"Dark deck between them stays dry on every beat."]
-		"endo":
-			return ["BRACE: shoulders take the surge better beside Endo.",
-				"Tight line when the channel calls; the bite shallows."]
-	return []
-
 
 ## Guarded like telegraph/ended — a live flood must never repaint a display a
 ## non-active phase owns (completion, capture stills, teardown).
