@@ -52,7 +52,7 @@ const ACCENTS := {
 ## Pieces whose footprint blocks the walk grid. Flora and thin wall-hangers don't.
 const BLOCKING_PIECES := ["shelter", "workbench", "forage_cache", "terminal",
 	"junction", "portal_console", "portal_ring_ornate", "vein_trunk",
-	"water_control", "pipe_rack", "barrier"]
+	"water_control", "pipe_rack", "barrier", "class_gate"]
 
 ## The wash cadence — pure data, one section per stretch of the channel. Onsets are
 ## computed analytically from these numbers; nothing samples per-frame.

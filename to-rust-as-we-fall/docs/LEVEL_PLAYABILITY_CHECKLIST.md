@@ -120,6 +120,16 @@ should encode the same grammar wherever feasible.
 - **Procedural:** generators should attach purpose metadata to what they
   place (what each cluster is FOR) so dressing passes can honor it; a
   generated space with unexplainable furniture fails the same audit.
+- **Political economy is part of civic purpose.** Who ran the project, how
+  the workers were priced, tracked, and blamed, what the institution still
+  services versus what it let rot — shown in props, never text (the
+  wordless-signage law). Canon sources: reference-docs/oli_worldbuilding.md
+  (the maintenance class: prevention defunded into triage, blame flows
+  down, hidden above-classification craft), civic_engine_economy_example.md
+  (the labor-economics register), GDD 4.4/4.8 (districts as branded civic
+  projects; the depopulation cascade). The wash_ascent PoliticalEconomy
+  props group is the worked example — every placement's rationale lives in
+  the commit that added it.
 
 ## 8. The one-shot flow (assemble in this order)
 

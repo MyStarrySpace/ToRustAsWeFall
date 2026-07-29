@@ -261,7 +261,7 @@ metadata/mount = "wall"
 metadata/cluster = "manifold"
 
 [node name="SunkenStashCache" type="Marker3D" parent="ManifoldRun"]
-transform = Transform3D(0.94, 0, 0.34, 0, 1, 0, -0.34, 0, 0.94, 14.2, 0.1, 6.4)
+transform = Transform3D(0.94, 0, 0.34, 0, 1, 0, -0.34, 0, 0.94, 13.9, 0.1, 6.55)
 metadata/piece = "forage_cache"
 metadata/mount = "floor"
 metadata/cluster = "salvage"
@@ -308,6 +308,7 @@ transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 27.4, 0.1, 7.3)
 metadata/piece = "terminal"
 metadata/mount = "floor"
 metadata/cluster = "landing"
+metadata/emission_scale = 0.3
 
 [node name="LandingRack" type="Marker3D" parent="PumpLanding"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 25.2, 0.1, 7.5)
@@ -527,6 +528,96 @@ metadata/piece = "deck_grate"
 metadata/mount = "structure"
 metadata/cluster = "structure_waterworks"
 metadata/embed_ok = true
+
+[node name="PoliticalEconomy" type="Node3D" parent="."]
+
+[node name="ClockGate" type="Marker3D" parent="PoliticalEconomy"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6.6, 0.1, 5.4)
+metadata/piece = "class_gate"
+metadata/mount = "floor"
+metadata/cluster = "bay"
+metadata/emission_scale = 0.12
+
+[node name="CrewRail" type="Marker3D" parent="PoliticalEconomy"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 11.2, 0.12, 0.24)
+metadata/piece = "railing_run"
+metadata/mount = "floor"
+metadata/cluster = "bay"
+
+[node name="ClaimsKiosk" type="Marker3D" parent="PoliticalEconomy"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 19.2, 0.1, 7.15)
+metadata/piece = "terminal"
+metadata/mount = "floor"
+metadata/cluster = "manifold"
+metadata/emission_scale = 0.08
+
+[node name="LeakOverKiosk" type="Marker3D" parent="PoliticalEconomy"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 19.2, 2.0, 8.05)
+metadata/piece = "channel_collar"
+metadata/mount = "wall"
+metadata/cluster = "manifold"
+
+[node name="GhostPanel" type="Marker3D" parent="PoliticalEconomy"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 18.3, 1.4, 7.98)
+metadata/piece = "wall_panel_tile_b"
+metadata/mount = "wall"
+metadata/cluster = "manifold"
+metadata/embed_ok = true
+
+[node name="ProjectSealPlacard" type="Marker3D" parent="PoliticalEconomy"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 23.6, 2.1, 8.08)
+metadata/piece = "gate_sign"
+metadata/mount = "wall"
+metadata/cluster = "landing"
+
+[node name="SealGlow" type="OmniLight3D" parent="PoliticalEconomy"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 23.6, 2.2, 7.5)
+light_color = Color(0.72, 0.9, 0.95, 1)
+light_energy = 0.6
+omni_range = 3.0
+shadow_enabled = false
+
+[node name="RewrapPlainA" type="Marker3D" parent="PoliticalEconomy"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 27.7, 1.7, 7.95)
+metadata/piece = "pipe_straight"
+metadata/mount = "wall"
+metadata/cluster = "long_wash"
+
+[node name="RewrapBanded" type="Marker3D" parent="PoliticalEconomy"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 29.2, 1.7, 7.95)
+metadata/piece = "pipe_straight_banded"
+metadata/mount = "wall"
+metadata/cluster = "long_wash"
+
+[node name="RewrapPlainB" type="Marker3D" parent="PoliticalEconomy"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 30.7, 1.7, 7.95)
+metadata/piece = "pipe_straight"
+metadata/mount = "wall"
+metadata/cluster = "long_wash"
+
+[node name="SeizedValveA" type="Marker3D" parent="PoliticalEconomy"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 30.5, 0.1, 0.7)
+metadata/piece = "pipe_straight_valve"
+metadata/mount = "floor"
+metadata/cluster = "long_wash"
+
+[node name="SeizedValveB" type="Marker3D" parent="PoliticalEconomy"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 33.8, 0.1, 0.7)
+metadata/piece = "pipe_straight_valve"
+metadata/mount = "floor"
+metadata/cluster = "long_wash"
+
+[node name="SeizedValveC" type="Marker3D" parent="PoliticalEconomy"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 42.6, 0.1, 0.7)
+metadata/piece = "pipe_straight_valve"
+metadata/mount = "floor"
+metadata/cluster = "patrol_band"
+
+[node name="StarvedRack" type="Marker3D" parent="PoliticalEconomy"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 42.3, 0.1, 7.35)
+metadata/piece = "pipe_rack"
+metadata/mount = "floor"
+metadata/cluster = "patrol_band"
 
 [node name="Overgrowth" type="Node3D" parent="."]
 
