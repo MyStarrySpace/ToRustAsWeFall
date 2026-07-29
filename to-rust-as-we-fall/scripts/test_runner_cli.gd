@@ -27693,7 +27693,7 @@ func _test_wash_ascent() -> void:
 	_assert_true(seam_err < 0.05,
 		"deck tiles meet the helix at their seams (worst %.3f m)" % seam_err)
 	var wb: Dictionary = chunk.call("measure_water_bands")
-	_assert_true(int(wb.get("deck", 0)) == 14 and int(wb.get("trough", 0)) >= 20,
+	_assert_true(int(wb.get("deck", 0)) == 26 and int(wb.get("trough", 0)) >= 44,
 		"helical water bands cover the sections + trough (deck %d, trough %d)" % [
 			int(wb.get("deck", 0)), int(wb.get("trough", 0))])
 	var canon_slope: float = ChannelsArc.KCLIMB / ChannelsArc.KTHETA
@@ -27783,7 +27783,7 @@ func _test_wash_ascent() -> void:
 	var wstate: Dictionary = chunk.call("get_preview_state")
 	_assert_true(str(wstate.get("phase", "")) == "active", "the wash cadence is armed after reset")
 	var onsets: Array = wstate.get("next_onsets_in", [])
-	_assert_true(onsets.size() == 3 and float(onsets[0]) > 0.0,
+	_assert_true(onsets.size() == 5 and float(onsets[0]) > 0.0,
 		"next onsets are analytic numbers, not sampled guesses: %s" % [onsets])
 	inst.call("headless_set_character_position", "aster", Vector3(6.0, 0.1, 1.0))
 	# the kit sweep is a real CARRY traversal, not a snap: advance past the onset,
@@ -27881,9 +27881,13 @@ func _test_wash_ascent() -> void:
 	_assert_true(str(chunk.call("_deck_tile_id", "", 1, 1)) == "deck_sluice" \
 			and str(chunk.call("_deck_tile_id", "", 6, 1)) == "deck_sluice" \
 			and str(chunk.call("_deck_tile_id", "", 10, 1)) == "deck_sluice" \
+			and str(chunk.call("_deck_tile_id", "", 15, 1)) == "deck_sluice" \
+			and str(chunk.call("_deck_tile_id", "", 21, 1)) == "deck_sluice" \
 			and str(chunk.call("_deck_tile_id", "", 4, 1)).begins_with("deck_planks") \
 			and str(chunk.call("_deck_tile_id", "", 9, 1)).begins_with("deck_planks") \
-			and str(chunk.call("_deck_tile_id", "", 12, 1)).begins_with("deck_planks"),
+			and str(chunk.call("_deck_tile_id", "", 12, 1)).begins_with("deck_planks") \
+			and str(chunk.call("_deck_tile_id", "", 18, 1)).begins_with("deck_planks") \
+			and str(chunk.call("_deck_tile_id", "", 24, 1)).begins_with("deck_planks"),
 		"the floor is the danger read: sluice beds inside every wash span, planks on all safe ground")
 	# the mid-span stash pays the party — and stands INSIDE the kill span; its
 	# TIMED_ACTION work beat rides the scheduler, so the reward lands after it.
@@ -27935,13 +27939,13 @@ func _test_wash_ascent() -> void:
 	_assert_true(ring is ExitShelter, "the ring exit IS the kit win object (ExitShelter)")
 	var refusals: Array = []
 	ring.connect("rest_refused", func(reason, missing): refusals.append([reason, missing]))
-	inst.call("headless_set_character_position", "aster", Vector3(22.5, 0.1, 3.0))
+	inst.call("headless_set_character_position", "aster", Vector3(49.0, 0.1, 3.0))
 	inst.call("headless_set_character_position", "peris", Vector3(2.0, 0.1, 3.0))
-	inst.call("headless_set_character_position", "endo", Vector3(22.0, 0.1, 3.6))
+	inst.call("headless_set_character_position", "endo", Vector3(48.5, 0.1, 3.6))
 	ring.call("_on_rest_requested")
 	_assert_true(not bool(ring.call("is_completed")),
 		"the ring REFUSES while the party is scattered")
-	inst.call("headless_set_character_position", "peris", Vector3(21.8, 0.1, 2.6))
+	inst.call("headless_set_character_position", "peris", Vector3(48.2, 0.1, 2.6))
 	ring.call("_on_rest_requested")
 	_assert_true(bool(ring.call("is_completed")), "everyone on the pad -> the win commits (refusals: %s)" % [refusals])
 	var final_state: Dictionary = chunk.call("get_preview_state")
@@ -28317,11 +28321,19 @@ func _test_combat_feedback() -> void:
 			"the opacity blink still carries the information with shake/flash off")
 		settings.set("screen_shake_enabled", true)
 		settings.set("damage_flash_enabled", true)
-	# SPOTTING (fresh scenario): reset re-homes the watcher (reset_to_home)
+	# SPOTTING (fresh scenario): reset re-homes the watcher (reset_to_home).
+	# First let the last strike's knockback carry land — an in-flight external
+	# traversal completes by writing its destination, stomping teleports.
+	inst.call("headless_advance", 1.2)
 	chunk.call("reset_preview_state")
 	for pid2 in ["aster", "peris", "endo"]:
 		inst.call("headless_set_character_position", pid2,
 			Vector3(0.8, 0.1, 2.0 + 1.2 * float(["aster", "peris", "endo"].find(pid2))))
+	# sync the party NODES to the teleport before draining — the spot poll
+	# reads rendered bodies, and a stale node at the fight spot sits within
+	# VISION_RADIUS of the upper-act patroller
+	for _fsync in range(4):
+		await get_tree().process_frame
 	# drain the combat scenario's LINGER before asserting a clean slate
 	inst.call("headless_advance", 2.8)
 	_assert_true(int(fb.call("spotted_count")) == 0,
@@ -28391,8 +28403,18 @@ func _test_wash_ascent_playthrough() -> void:
 		var sec: Dictionary = sections[i]
 		var dry := float(sec["period"]) - float(sec["dur"])
 		var need := (float(sec["s1"]) - float(sec["s0"]) + 2.5) / slow_walk
-		_assert_true(dry >= need * 1.2,
-			"section %d dry window affords the slowest walker (dry %.1fs vs need %.1fs)" % [i, dry, need])
+		if bool(sec.get("keyed", false)):
+			# a KEYED span fits NO gait — even a runner camped at the mouth
+			# can't beat the dry beat — so the valve hold IS the crossing,
+			# and the hold window covers the slowest walker with margin
+			var run_need := (float(sec["s1"]) - float(sec["s0"])) / 6.4
+			_assert_true(dry < run_need,
+				"KEYED section %d admits no gait (dry %.1fs vs a mouth-camped runner's %.1fs)" % [i, dry, run_need])
+			_assert_true(float(consts["VALVE_HOLD_WINDOW"]) >= need * 1.2,
+				"KEYED section %d: the hold covers the slowest walker (hold %.1fs vs need %.1fs)" % [i, float(consts["VALVE_HOLD_WINDOW"]), need])
+		else:
+			_assert_true(dry >= need * 1.2,
+				"section %d dry window affords the slowest walker (dry %.1fs vs need %.1fs)" % [i, dry, need])
 		if i > 0:
 			_assert_true(float(sec["s0"]) - float(sections[i - 1]["s1"]) >= 1.5,
 				"a safe gap separates sections %d-%d" % [i - 1, i])
@@ -28454,7 +28476,7 @@ func _test_wash_ascent_playthrough() -> void:
 		sim_t += waited
 		for idx2 in range(ids.size()):
 			gs.command_move_to_pos(str(ids[idx2]),
-				Vector3(float(leg_targets[leg]), 0.1, 1.6 + 0.7 * float(idx2)))
+				Vector3(float(leg_targets[leg]), 0.1, 0.9 + 0.6 * float(idx2)))
 		var travel := 0.0
 		while travel < 25.0:
 			inst.call("headless_advance", 0.1)
@@ -28472,12 +28494,14 @@ func _test_wash_ascent_playthrough() -> void:
 				str([gs.get_position("aster"), gs.get_position("peris"), gs.get_position("endo")])])
 			break
 	_assert_true(leg_ok, "the party crosses sections 0 and 1 on their dry beats")
-	# THE LURE PLAY at the last gap — the composed finale beat: fire the flure;
-	# the pad sentry's slow lure crawl CANNOT fit any dry window (its crossing
-	# takes longer than period - dur, an arithmetic certainty), so the surge
-	# takes it in full view — the P18 demonstration — and THAT wash is the
+	# THE LURE PLAY at the last gap — the composed finale beat, and it is
+	# PLAYER-TIMED: the channel telegraphs 1.2s before each onset, so the
+	# player fires the flure ON the telegraph and the sentry's doomed crawl
+	# meets the surge mid-span — the P18 demonstration — and THAT wash is the
 	# party's crossing signal: the dry window that just opened is the longest
 	# guaranteed one, and the stunned sentry can't contest the pad during it.
+	# (Fired blind, the sentry may cross clean and park off the pad — the
+	# route still opens, the lesson is just missed; both outcomes playable.)
 	var flure = chunk.find_child("LonelyFlureObject", true, false)
 	_assert_true(flure != null, "the flure stands at the last gap for the lure play")
 	if flure != null and leg_ok:
@@ -28490,6 +28514,18 @@ func _test_wash_ascent_playthrough() -> void:
 					and gs.get_position("aster").distance_to(Vector3(17.6, 0.1, 1.4)) < 1.2:
 				break
 		sim_t += 4.0
+		# fire ON the telegraph: wait for section 2's onset to be imminent so
+		# the sentry (0.3-0.5s from the mouth at lure-crawl pace) is mid-span
+		# when the flood lands — the read a real player makes off the tell
+		var tele_wait := 0.0
+		while tele_wait < 16.0:
+			var on_t: Array = (chunk.call("get_preview_state") as Dictionary).get("next_onsets_in", [])
+			if not bool((channels[2] as Node).call("is_flooding")) \
+					and on_t.size() > 2 and float(on_t[2]) > 0.4 and float(on_t[2]) < 1.1:
+				break
+			inst.call("headless_advance", 0.1)
+			tele_wait += 0.1
+		sim_t += tele_wait
 		flure.set("active_character", "aster")
 		await get_tree().process_frame
 		var fire_ok: bool = bool(flure.call("_trigger"))
@@ -28505,9 +28541,9 @@ func _test_wash_ascent_playthrough() -> void:
 					pulled += 1
 		_assert_true(pulled >= 1,
 			"the flure pulls the pad watcher off its watch (%d; %s)" % [pulled, str(sentry_states)])
-		# wait for the DEMONSTRATION: the sentry's doomed crossing meets a surge
-		# (arithmetic certainty — its crawl outlasts every dry window). The wash
-		# bite is the signal the finale keys on.
+		# wait for the DEMONSTRATION: fired on the telegraph, the sentry's
+		# crossing meets the surge mid-span. The wash bite is the signal the
+		# finale keys on.
 		var pad_foe = chunk.call("_fauna_by_id", "sapscrap_0")
 		var cross_wait := 0.0
 		while cross_wait < 30.0:
@@ -28519,24 +28555,189 @@ func _test_wash_ascent_playthrough() -> void:
 		var pf_hp := float(pad_foe.get("_hp")) if pad_foe != null else -1.0
 		var pf_max := float(pad_foe.get("max_hp")) if pad_foe != null else -1.0
 		_assert_true(pad_foe != null and pf_hp < pf_max,
-			"the surge takes the lured sentry in view — the DEMONSTRATION lands (hp %.0f/%.0f)" % [pf_hp, pf_max])
+			"the surge takes the lured sentry in view — the DEMONSTRATION lands (hp %.0f/%.0f; state=%s pos=%s moving=%s)" % [pf_hp, pf_max,
+			str(pad_foe.call("get_state")) if pad_foe != null else "?",
+			str(gs.get_position("sapscrap_0")), str(gs.is_moving("sapscrap_0"))])
+	# the washed sentry is beaten, not dead — it gets back up. The flure is
+	# not one-shot BY DESIGN: the player's answer is to SING IT AGAIN, and the
+	# recovered sentry (back in an accepting state) takes the bait and parks
+	# at the high-z settle, off the party's lane, before anyone walks on.
+	if flure != null and leg_ok:
+		var relure_wait := 0.0
+		var re_state := ""
+		while relure_wait < 16.0:
+			inst.call("headless_advance", 0.25)
+			relure_wait += 0.25
+			var rfoe = chunk.call("_fauna_by_id", "sapscrap_0")
+			re_state = str(rfoe.call("get_state")) if rfoe != null else "?"
+			if re_state == "lured":
+				break
+			if re_state in ["idle", "roam", "return", "search"]:
+				flure.set("active_character", "aster")
+				flure.call("_trigger")
+		sim_t += relure_wait
+		_assert_true(re_state == "lured",
+			"the re-sung flure re-captures the recovered sentry (state=%s)" % re_state)
+		# let the captured sentry FINISH its crawl to the high-z settle before
+		# anyone marches — its crawl crosses the walking lane, and a player
+		# visibly waits for the beaten thing to sit down by the song
+		var park_wait := 0.0
+		while park_wait < 14.0:
+			inst.call("headless_advance", 0.25)
+			park_wait += 0.25
+			var spos: Vector3 = gs.get_position("sapscrap_0")
+			if not bool(gs.is_moving("sapscrap_0")) and spos.z > 5.2:
+				break
+		sim_t += park_wait
 	var solve_swept := int((chunk.call("get_preview_state") as Dictionary).get("swept_count", 0))
 	_assert_true(solve_swept == solve_baseline,
 		"the timed route takes ZERO sweeps (%d -> %d)" % [solve_baseline, solve_swept])
-	# the win: the wash that took the sentry just opened section 2's longest
-	# dry window — cross NOW onto the pad (strictly inside the span; the finale
-	# is committed IN the wash's ground) and rest while the sentry is stunned
+	# ACT TWO. Leg C: the wash that took the sentry opened section 2's longest
+	# dry window — cross NOW to the pump landing while the sentry is stunned.
+	if leg_ok:
+		var wait_c := 0.0
+		while wait_c < 16.0:
+			var on_c: Array = (chunk.call("get_preview_state") as Dictionary).get("next_onsets_in", [])
+			if not bool((channels[2] as Node).call("is_flooding")) \
+					and on_c.size() > 2 and float(on_c[2]) > 3.2:
+				break
+			inst.call("headless_advance", 0.1)
+			wait_c += 0.1
+		sim_t += wait_c
+		for idx_c in range(ids.size()):
+			gs.command_move_to_pos(str(ids[idx_c]), Vector3(25.6, 0.1, 3.4 + 0.8 * float(idx_c)))
+		var travel_c := 0.0
+		while travel_c < 20.0:
+			inst.call("headless_advance", 0.1)
+			travel_c += 0.1
+			var landed := true
+			for id_c in ids:
+				if gs.get_position(str(id_c)).x < 24.7:
+					landed = false
+			if landed:
+				break
+		sim_t += travel_c
+		_assert_true(travel_c < 20.0, "the party reaches the pump landing (positions: %s)" % [
+			str([gs.get_position("aster"), gs.get_position("peris"), gs.get_position("endo")])])
+	# Leg D: the KEYED span. Section 3's dry beat fits no gait — the landing
+	# valve's hold is the only crossing (the verb from section 0, asked back).
+	var lvalve = chunk.find_child("LandingValve", true, false)
+	_assert_true(lvalve != null, "the landing valve stands on the pump landing")
+	if lvalve != null and leg_ok:
+		# stage the runners at the span mouth's back-wall side FIRST — the
+		# hold window prices only aster's rejoin plus the crossing
+		gs.command_move_to_pos("peris", Vector3(26.6, 0.1, 5.6))
+		gs.command_move_to_pos("endo", Vector3(27.2, 0.1, 6.4))
+		var stage_pe := 0.0
+		while stage_pe < 10.0:
+			inst.call("headless_advance", 0.1)
+			stage_pe += 0.1
+			if not bool(gs.is_moving("peris")) and not bool(gs.is_moving("endo")) \
+					and gs.get_position("peris").x > 26.0 and gs.get_position("endo").x > 26.0:
+				break
+		sim_t += stage_pe
+		inst.call("headless_set_character_position", "aster", Vector3(26.4, 0.1, 1.2))
+		for _lv in range(20):
+			inst.call("headless_advance", 0.1)
+			if not bool(gs.is_moving("aster")):
+				break
+		sim_t += 2.0
+		lvalve.set("active_character", "aster")
+		lvalve.call("_trigger")
+		var held_until := float((channels[3] as Node).call("held_until"))
+		var tick_now := float(chunk.call("_get_scheduler_tick_safe"))
+		_assert_true(held_until > tick_now,
+			"the landing valve holds section 3 quiet (until %.1f, now %.1f)" % [held_until, tick_now])
+		# cross the whole keyed bed under the hold, on the BACK-WALL lane —
+		# the patroller's watch prices the mid lane, lane discipline beats it.
+		# Aster stages back to the wall first so no member's path shape ever
+		# dips toward the watch on the way across.
+		gs.command_move_to_pos("aster", Vector3(26.4, 0.1, 4.8))
+		var stage_d := 0.0
+		while stage_d < 5.0:
+			inst.call("headless_advance", 0.1)
+			stage_d += 0.1
+			var ap: Vector3 = gs.get_position("aster")
+			if not bool(gs.is_moving("aster")) and ap.z > 4.2:
+				break
+		sim_t += stage_d
+		for idx_d in range(ids.size()):
+			gs.command_move_to_pos(str(ids[idx_d]), Vector3(37.2, 0.1, 6.2 + 0.4 * float(idx_d)))
+		var travel_d := 0.0
+		while travel_d < 14.0:
+			inst.call("headless_advance", 0.1)
+			travel_d += 0.1
+			var crossed := true
+			for id_d in ids:
+				if gs.get_position(str(id_d)).x < 36.3:
+					crossed = false
+			if crossed:
+				break
+		sim_t += travel_d
+		_assert_true(travel_d < 14.0,
+			"the party crosses the keyed span under the hold (positions: %s)" % [
+			str([gs.get_position("aster"), gs.get_position("peris"), gs.get_position("endo")])])
+		_assert_true(int((chunk.call("get_preview_state") as Dictionary).get("swept_count", 0)) == solve_baseline,
+			"the keyed crossing takes zero sweeps")
+	# Leg E: the high flure — the taught relay verb at finale scale. It pulls
+	# BOTH upper watchers off the player's lane; the drum watcher's descent
+	# crosses section 4, where the impartial wash prices it.
+	var hflure = chunk.find_child("HighFlureObject", true, false)
+	_assert_true(hflure != null, "the high flure stands at the back wall")
+	if hflure != null and leg_ok:
+		gs.command_move_to_pos("aster", Vector3(38.0, 0.1, 6.8))
+		for _hf in range(60):
+			inst.call("headless_advance", 0.1)
+			if not bool(gs.is_moving("aster")) \
+					and gs.get_position("aster").distance_to(Vector3(38.0, 0.1, 6.8)) < 1.2:
+				break
+		sim_t += 4.0
+		hflure.set("active_character", "aster")
+		await get_tree().process_frame
+		_assert_true(bool(hflure.call("_trigger")), "the high flure fires with Aster at it")
+		var lured_hi := 0
+		var hi_states: Array = []
+		var wait_e := 0.0
+		while wait_e < 6.0:
+			inst.call("headless_advance", 0.2)
+			wait_e += 0.2
+			lured_hi = 0
+			hi_states.clear()
+			for hid in ["sapscrap_1", "sapscrap_2"]:
+				var hfoe = chunk.call("_fauna_by_id", hid)
+				if hfoe != null:
+					hi_states.append("%s=%s" % [hid, str(hfoe.call("get_state"))])
+					if str(hfoe.call("get_state")) == "lured":
+						lured_hi += 1
+			if lured_hi >= 2:
+				break
+		sim_t += wait_e
+		_assert_true(lured_hi >= 2,
+			"the high flure pulls the patroller AND the drum watcher (%s)" % [hi_states])
+		# the pad clears: the watcher leaves the drum head for the low park
+		var clear_wait := 0.0
+		while clear_wait < 40.0:
+			inst.call("headless_advance", 0.2)
+			clear_wait += 0.2
+			if gs.get_position("sapscrap_2").x < 46.5:
+				break
+		sim_t += clear_wait
+		_assert_true(gs.get_position("sapscrap_2").x < 46.5,
+			"the drum watcher leaves the pad's sightline (at %s)" % [gs.get_position("sapscrap_2")])
+	# Leg F: cross section 4 on its dry beat and rest at the drum-head ring.
 	var ring = chunk.find_child("AscentPortal", true, false)
 	_assert_true(ring != null, "the ring exit is present")
 	if ring != null and leg_ok:
 		var waited_w := 0.0
-		while waited_w < 8.0:
-			if not bool((channels[2] as Node).call("is_flooding")):
+		while waited_w < 14.0:
+			var on_f: Array = (chunk.call("get_preview_state") as Dictionary).get("next_onsets_in", [])
+			if not bool((channels[4] as Node).call("is_flooding")) \
+					and on_f.size() > 4 and float(on_f[4]) > 3.2:
 				break
 			inst.call("headless_advance", 0.1)
 			waited_w += 0.1
 		sim_t += waited_w
-		var pad_x := [21.3, 22.0, 22.7]
+		var pad_x := [47.8, 48.5, 49.2]
 		var pad_z := [2.2, 2.8, 3.8]
 		for idx3 in range(ids.size()):
 			gs.command_move_to_pos(str(ids[idx3]),
@@ -28578,7 +28779,7 @@ func _test_wash_ascent_playthrough() -> void:
 		_assert_true(int((chunk.call("get_preview_state") as Dictionary).get("swept_count", 0)) == solve_baseline,
 			"the WHOLE timed route, pad crossing included, takes zero sweeps")
 	# (4) the whole solve fits a sane budget
-	_assert_true(sim_t < 120.0, "the solve fits the sim budget (%.1fs)" % sim_t)
+	_assert_true(sim_t < 220.0, "the solve fits the sim budget (%.1fs)" % sim_t)
 	inst.queue_free()
 	await get_tree().process_frame
 

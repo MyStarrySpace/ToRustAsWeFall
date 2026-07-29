@@ -39,9 +39,24 @@ transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 26, 0.1, 8.2)
 metadata/wall_run = 13
 metadata/skip_spans = "13.5-15.8"
 
+[node name="DeckUpper" type="Marker3D" parent="Structure"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 26, 0, 0)
+metadata/deck_run = Vector2i(13, 4)
+metadata/surface = "planks"
+
+[node name="WallBackUpper" type="Marker3D" parent="Structure"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 52, 0.1, 8.2)
+metadata/wall_run = 13
+metadata/skip_spans = "15.0-17.3"
+
+[node name="RailFrontUpper" type="Marker3D" parent="Structure"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 26, 0.1, 0.06)
+metadata/rail_run = 13
+metadata/skip_spans = "12.0-14.2 21.5-23.6"
+
 [node name="ChannelFront" type="Marker3D" parent="Structure"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -0.6)
-metadata/channel_run = 10
+metadata/channel_run = 21
 
 [node name="RailFront" type="Marker3D" parent="Structure"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.1, 0.06)
@@ -66,6 +81,19 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 17.6, 0.1, 1.4)
 metadata/piece = "flure"
 metadata/mount = "floor"
 metadata/cluster = "gap_watch"
+
+[node name="HighFlure" type="Marker3D" parent="Approach"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 38.0, 0.1, 6.8)
+metadata/piece = "flure"
+metadata/mount = "floor"
+metadata/cluster = "gap_watch"
+
+[node name="HighFlureGlow" type="OmniLight3D" parent="Approach"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 38.0, 1.0, 6.8)
+light_color = Color(1, 0.68, 0.3, 1)
+light_energy = 0.9
+omni_range = 3.5
+shadow_enabled = false
 
 [node name="FlureGlow" type="OmniLight3D" parent="Approach"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 17.6, 1.0, 1.4)
@@ -229,58 +257,98 @@ shadow_enabled = false
 [node name="PortalLedge" type="Node3D" parent="."]
 
 [node name="PadRings" type="Marker3D" parent="PortalLedge"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 22.5, 0.1, 3.0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 48.5, 0.1, 3.0)
 metadata/piece = "portal_pad_rings"
 metadata/mount = "floor"
 metadata/cluster = "portal"
 
 [node name="RingGate" type="Marker3D" parent="PortalLedge"]
-transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 24.3, 0.1, 3.0)
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 50.3, 0.1, 3.0)
 metadata/piece = "portal_ring_ornate"
 metadata/mount = "floor"
 metadata/cluster = "portal"
 
 [node name="Console" type="Marker3D" parent="PortalLedge"]
-transform = Transform3D(-0.857, 0, -0.516, 0, 1, 0, 0.516, 0, -0.857, 21.6, 0.1, 1.4)
+transform = Transform3D(-0.857, 0, -0.516, 0, 1, 0, 0.516, 0, -0.857, 47.6, 0.1, 1.4)
 metadata/piece = "portal_console"
 metadata/mount = "floor"
 metadata/cluster = "portal"
 
 [node name="PortalGlow" type="OmniLight3D" parent="PortalLedge"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 23.5, 2.0, 3.0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 49.5, 2.0, 3.0)
 light_color = Color(0.62, 0.36, 0.92, 1)
 light_energy = 1.1
 omni_range = 6.0
 shadow_enabled = false
 
+[node name="PumpLanding" type="Node3D" parent="."]
+
+[node name="LandingValveBody" type="Marker3D" parent="PumpLanding"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 26.6, 0.1, 0.9)
+metadata/piece = "water_control"
+metadata/mount = "floor"
+metadata/cluster = "landing"
+metadata/accent = "work"
+
+[node name="LandingGauge" type="Marker3D" parent="PumpLanding"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 27.4, 0.1, 7.3)
+metadata/piece = "terminal"
+metadata/mount = "floor"
+metadata/cluster = "landing"
+
+[node name="LandingRack" type="Marker3D" parent="PumpLanding"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 25.2, 0.1, 7.5)
+metadata/piece = "pipe_rack"
+metadata/mount = "floor"
+metadata/cluster = "landing"
+
+[node name="LandingFeed" type="Marker3D" parent="PumpLanding"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 28.2, 0, 7.55)
+metadata/pipe_route = "0,0,0 0,1,0 3,1,0 3,0,0"
+metadata/pipe_ports = "0,0,0:-1,0,0 3,0,0:1,0,0"
+metadata/cluster = "landing"
+
+[node name="LandingLamp" type="Marker3D" parent="PumpLanding"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 26.2, 1.82, 7.6)
+metadata/piece = "cage_lamp"
+metadata/mount = "attached"
+metadata/cluster = "landing"
+
+[node name="LandingLampSpill" type="OmniLight3D" parent="PumpLanding"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 26.2, 1.6, 7.2)
+light_color = Color(1, 0.72, 0.42, 1)
+light_energy = 0.8
+omni_range = 3.6
+shadow_enabled = false
+
 [node name="Overgrowth" type="Node3D" parent="."]
 
 [node name="VeinTrunk" type="Marker3D" parent="Overgrowth"]
-transform = Transform3D(-0.921, 0, -0.389, 0, 1, 0, 0.389, 0, -0.921, 25.5, 0.1, 5.6)
+transform = Transform3D(-0.921, 0, -0.389, 0, 1, 0, 0.389, 0, -0.921, 49.2, 0.1, 7.4)
 metadata/piece = "vein_trunk"
 metadata/mount = "floor"
 metadata/cluster = "overgrowth"
 
 [node name="WallWeb" type="Marker3D" parent="Overgrowth"]
-transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 23.6, 1.3, 7.95)
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 47.8, 1.3, 7.95)
 metadata/piece = "wall_tracery"
 metadata/mount = "wall"
 metadata/cluster = "overgrowth"
 
 [node name="Biolume1" type="Marker3D" parent="Overgrowth"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 25.0, 0.1, 6.2)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 50.0, 0.1, 6.2)
 metadata/piece = "biolume_cluster"
 metadata/mount = "floor"
 metadata/cluster = "overgrowth"
 
 [node name="Biolume2" type="Marker3D" parent="Overgrowth"]
-transform = Transform3D(0.921, 0, 0.389, 0, 1, 0, -0.389, 0, 0.921, 24.4, 0.1, 5.4)
+transform = Transform3D(0.921, 0, 0.389, 0, 1, 0, -0.389, 0, 0.921, 48.2, 0.1, 5.8)
 metadata/piece = "biolume_cluster"
 metadata/mount = "floor"
 metadata/cluster = "overgrowth"
 
 [node name="Seefern" type="Marker3D" parent="Overgrowth"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 25.3, 0.1, 4.6)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 51.0, 0.1, 4.8)
 metadata/piece = "seefern"
 metadata/mount = "floor"
 metadata/cluster = "overgrowth"
@@ -291,8 +359,14 @@ metadata/piece = "capbage"
 metadata/mount = "floor"
 metadata/cluster = "overgrowth"
 
+[node name="HideCapbageUpper" type="Marker3D" parent="Overgrowth"]
+transform = Transform3D(0.921, 0, -0.389, 0, 1, 0, 0.389, 0, 0.921, 46.6, 0.1, 6.8)
+metadata/piece = "capbage"
+metadata/mount = "floor"
+metadata/cluster = "overgrowth"
+
 [node name="BiolumeGlow" type="OmniLight3D" parent="Overgrowth"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 24.9, 0.7, 5.9)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 49.6, 0.7, 6.1)
 light_color = Color(0.35, 0.55, 0.95, 1)
 light_energy = 0.8
 omni_range = 3.5
@@ -304,6 +378,18 @@ shadow_enabled = false
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 25.2, 0.1, 6.9)
 metadata/enemy = "sapscrap"
 metadata/roam_radius = 0.7
+metadata/detect = 4.0
+
+[node name="SapscrapPatrol" type="Marker3D" parent="Fauna"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 38.0, 0.1, 1.2)
+metadata/enemy = "sapscrap"
+metadata/patrol_route = "36.8,1.2 39.2,1.2"
+metadata/detect = 3.0
+
+[node name="SapscrapDrum" type="Marker3D" parent="Fauna"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 50.6, 0.1, 6.6)
+metadata/enemy = "sapscrap"
+metadata/roam_radius = 0.8
 metadata/detect = 4.0
 
 [node name="WorldArchitecture" type="Node3D" parent="."]
@@ -325,6 +411,23 @@ metadata/angle = 90.0
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 9.16, 0)
 metadata/world_piece = "drum_crown"
 metadata/angle = 180.0
+
+[node name="DrumCrownC" type="Marker3D" parent="WorldArchitecture"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 9.16, 0)
+metadata/world_piece = "drum_crown"
+metadata/angle = 247.0
+
+[node name="DrumPortholeC" type="Marker3D" parent="WorldArchitecture"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 6.4, 0)
+metadata/world_piece = "porthole"
+metadata/angle = 210.0
+metadata/radius = 6.55
+
+[node name="DrumPortholeD" type="Marker3D" parent="WorldArchitecture"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 7.6, 0)
+metadata/world_piece = "porthole"
+metadata/angle = 245.0
+metadata/radius = 6.55
 
 [node name="DrumPortholeA" type="Marker3D" parent="WorldArchitecture"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.1, 0)

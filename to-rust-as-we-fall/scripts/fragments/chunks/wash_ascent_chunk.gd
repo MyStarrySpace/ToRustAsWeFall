@@ -37,7 +37,7 @@ extends "res://scripts/scene_chunks/scene_chunk.gd"
 
 const PROPS_SCENE := preload("res://scenes/fragments/chunks/wash_ascent_props.tscn")
 
-const DECK_W := 26.0
+const DECK_W := 52.0
 const DECK_D := 8.0
 const DECK_TOP := 0.1
 const LANE_CENTER := 4.0    # authoring z that sits on the helix centreline (lane 0)
@@ -77,6 +77,14 @@ const WASH_SECTIONS := [
 	{"s0": 2.0, "s1": 8.0, "period": 9.0, "dur": 2.4, "phase": 0.5},
 	{"s0": 12.0, "s1": 16.0, "period": 11.0, "dur": 2.6, "phase": 3.5},
 	{"s0": 20.0, "s1": 24.0, "period": 13.0, "dur": 2.8, "phase": 1.5},
+	# Act two, past the pump landing. Section 3 is KEYED: its dry beat (1.0s)
+	# fits NO gait — not even a runner waiting at the mouth (8u at 6.4 needs
+	# 1.25s) — so the landing valve's hold is the only crossing. The verb was
+	# taught at section 0; here the level asks for it back under pressure.
+	{"s0": 28.0, "s1": 36.0, "period": 10.0, "dur": 9.0, "phase": 2.0, "keyed": true},
+	# Section 4 is generous water but WATCHED ground — the patroller in the
+	# 36-40 gap prices the mid lane, and the wash prices anything lured across.
+	{"s0": 40.0, "s1": 44.0, "period": 12.0, "dur": 2.6, "phase": 5.0},
 ]
 const WASH_GRACE := 1.0            # quiet second after reset before the ladder starts
 const TELEGRAPH_LEAD := 1.2        # channel brightens this long before the water arrives
@@ -97,6 +105,7 @@ var _channel_segments: Array = []   # [{node, s, mats: [StandardMaterial3D]}]
 var _section_water: Array = []      # [{node, s0, kind}] — helical water bands
 var _channel_span := Vector2.ZERO   # flat s range the trough actually covers
 var _channel_base_energy: Dictionary = {}
+var _flures: Array = []
 
 var _channels: Array = []           # the composed Channel kit objects, one per section
 var _fauna: Dictionary = {}         # char_id -> Enemy (canonical Sapscraps; placeholder bodies)
@@ -911,8 +920,13 @@ func reset_preview_state() -> void:
 ## at the section's mouth, spread by identity so a party never stacks one cell.
 func _sweep_landing(id: String, _origin: Vector3, i: int) -> Vector3:
 	var s0 := float(WASH_SECTIONS[i]["s0"])
-	return Vector3(maxf(s0 - 1.5, 1.0), DECK_TOP,
-		3.0 + 0.9 * float(absi(hash(id)) % 3))
+	var x := maxf(s0 - 1.5, 1.0)
+	# a washed ENEMY is spat out on the HIGH channel side, off the walking
+	# lane — the beaten thing drags itself out by the trough, never into the
+	# party's waiting spot (the settle_pos lesson, applied to the sweep too)
+	if not PARTY_IDS.has(id):
+		return Vector3(x, DECK_TOP, 6.6 + 0.3 * float(absi(hash(id)) % 2))
+	return Vector3(x, DECK_TOP, 3.0 + 0.9 * float(absi(hash(id)) % 3))
 
 func _on_swept(_id: String, _i: int) -> void:
 	_swept_count += 1
@@ -948,6 +962,26 @@ func _build_interactables() -> void:
 	# the valve is ELECTRONIC: Aster's EMP overloads it from range for the same
 	# hold — the canonical anti-tech cast gets a real job in this level (fauna
 	# never opt in; mechanisms do)
+	# The LANDING VALVE is section 3's key — the same kit verb as the bay
+	# valve, re-asked at the pump landing where the crews regulated the upper
+	# run. It stands in the 24-28 gap; section 3's dry beat fits no gait, so
+	# holding this valve IS the crossing.
+	var landing_valve := _add_interactable(self, "LandingValve",
+		"Hold the transfer channel closed", Vector3(26.6, DECK_TOP, 0.9),
+		"HOLD THE VALVE", "", 1.1, false, 1.6,
+		Interactable.InteractableType.INSPECTION)
+	landing_valve.consequence_preview = "The transfer stretch never runs dry on its own. Hold it closed and walk the bed."
+	_wire_trigger(landing_valve, _on_landing_valve)
+	var landing_rx := EmpReceiver.new()
+	landing_rx.name = "LandingValveEmpReceiver"
+	landing_rx.on_pulse = func(_duration: float) -> bool:
+		if _phase != "active" or _channels.size() <= 3:
+			return false
+		if (_channels[3] as Channel).held_until() > _get_scheduler_tick_safe():
+			return false
+		_on_landing_valve()
+		return true
+	landing_valve.add_child(landing_rx)
 	var terminal := _add_interactable(self, "CadenceTerminal",
 		"Log the surge cadence", Vector3(10.2, DECK_TOP, 6.8),
 		"LOG THE SURGE", "aster", 1.1, false, 1.6,
@@ -980,12 +1014,14 @@ func _build_interactables() -> void:
 		gs_shelter.add_shelter_region(Vector2(0.0, 0.0), Vector2(1.8, DECK_D))
 	# THE WIN goes through the kit's win object — click-gated, downed-guarded,
 	# everyone on the pad, ONE atomic party rest (see ExitShelter's header).
-	# The pad sits STRICTLY inside section 2's span: committing the rest means
-	# standing in the wash's ground on its dry beat — the gather-under-the-
-	# surge finale can't be cheesed from a wash-proof sliver past the edge.
+	# The pad rides the drum-head ledge PAST the last span, but its ground is
+	# not free: the drum watcher's roam ring reaches the pad's sightline, so
+	# an unanswered watcher interrupts the rest — the pressure that survives
+	# the set-piece. The answers are all composed ones: the high flure's pull
+	# (the wash prices the watcher's descent), or the upper capbage's hide.
 	var ring_exit := ExitShelter.new()
 	ring_exit.name = "AscentPortal"
-	ring_exit.configure_shelter(_get_game_state(), Vector3(22.0, DECK_TOP, 3.0),
+	ring_exit.configure_shelter(_get_game_state(), Vector3(48.5, DECK_TOP, 3.0),
 		Vector2(1.5, 1.5), PARTY_IDS, "ENTER THE RING", 1.3)
 	ring_exit.consequence_preview = "The ring hums. Gather everyone on the pad and step through together."
 	ring_exit.rest_completed.connect(_on_ring_rest_completed)
@@ -994,6 +1030,7 @@ func _build_interactables() -> void:
 	_register_interactable(ring_exit)
 	_ring_exit = ring_exit
 	_build_lonely_flure()
+	_build_high_flure()
 	var map = get_coord_map()
 	warp_interactables_onto_coord_map(map)
 	call_deferred("_wire_warped_outlines")
@@ -1030,7 +1067,12 @@ func _build_lonely_flure() -> void:
 	var flure: Flure = Flure.new()
 	flure.name = "LonelyFlureObject"
 	flure.authority_id = "wash_ascent_lonely_flure"
-	flure.configure(gs, (marker as Node3D).global_position, _fauna.keys(), 32.0, 1.4,
+	# an iron song carries 32u — an unfiltered roster would drag the UPPER
+	# watch down through the lower spans during this mid-level beat, deleting
+	# act two's encounter before it's met; the authored target list is the
+	# kit's own contract, so each flure sings to its own act
+	flure.configure(gs, (marker as Node3D).global_position,
+		_fauna_ids_in_band(0.0, 28.0), 32.0, 1.4,
 		Color(0.95, 0.62, 0.14))
 	# lured sentries PARK high-z in the gap, not on the flure itself — the low-z
 	# lane past the song stays walkable (a park on the source pulled the gap
@@ -1043,8 +1085,36 @@ func _build_lonely_flure() -> void:
 	flure.flure_activated.connect(_on_lonely_flure_lit)
 	add_child(flure)
 	_register_interactable(flure)
+	_flures.append(flure)
 	# the library piece at the marker is the flure's BODY; the kit's own glow
 	# bulb stays off so no self-drawn primitive reaches the visible scene
+	var glow := flure.find_child("Glow", true, false)
+	if glow is Node3D:
+		(glow as Node3D).visible = false
+
+func _build_high_flure() -> void:
+	var gs = _get_game_state()
+	var marker := _props_root.find_child("HighFlure", true, false) if _props_root else null
+	if gs == null or not (marker is Node3D):
+		return
+	var flure: Flure = Flure.new()
+	flure.name = "HighFlureObject"
+	flure.authority_id = "wash_ascent_high_flure"
+	flure.configure(gs, (marker as Node3D).global_position,
+		_fauna_ids_in_band(28.0, DECK_W), 32.0, 1.4,
+		Color(0.95, 0.62, 0.14))
+	# answerers park LOW-z by the patrol line — the player's crossing lane is
+	# the high-z back wall, so the pull drags every threat AWAY from it; the
+	# drum watcher's descent crosses section 4 and pays the wash on the way
+	flure.settle_pos = Vector3(36.6, DECK_TOP, 1.0)
+	flure.set_enemy_resolver(_fauna_by_id)
+	flure.one_shot = false
+	flure.description = "Light the high flure"
+	flure.tutorial_label = "LIGHT THE FLURE"
+	flure.flure_activated.connect(_on_lonely_flure_lit)
+	add_child(flure)
+	_register_interactable(flure)
+	_flures.append(flure)
 	var glow := flure.find_child("Glow", true, false)
 	if glow is Node3D:
 		(glow as Node3D).visible = false
@@ -1057,23 +1127,40 @@ func _tick_concealment() -> void:
 	var gs = _get_game_state()
 	if gs == null or not gs.has_method("set_character_concealment"):
 		return
-	var marker := _props_root.find_child("HideCapbage", true, false) if _props_root else null
-	if not (marker is Node3D):
+	var hide_spots: Array = []
+	for hide_name in ["HideCapbage", "HideCapbageUpper"]:
+		var marker := _props_root.find_child(hide_name, true, false) if _props_root else null
+		if marker is Node3D:
+			hide_spots.append((marker as Node3D).position)
+	if hide_spots.is_empty():
 		return
-	var hide_pos: Vector3 = (marker as Node3D).position
 	for char_id in PARTY_IDS:
 		if not gs.characters.has(char_id):
 			continue
 		var p: Vector3 = gs.get_position(char_id)
-		var near := Vector2(p.x - hide_pos.x, p.z - hide_pos.z).length() < 1.1
+		var near := false
+		for hide_pos in hide_spots:
+			if Vector2(p.x - (hide_pos as Vector3).x, p.z - (hide_pos as Vector3).z).length() < 1.1:
+				near = true
+				break
 		gs.set_character_concealment(char_id,
 			gs.CONCEAL_FULL if near else gs.CONCEAL_NONE)
 
+## A song whose target was physically broken (washed, stunned, struck) must
+## RE-ARM so the player can sing again — the kit's reconcile verb is inert
+## while every applied target is still bound; the world state decides.
+func _tick_flures() -> void:
+	for f in _flures:
+		if is_instance_valid(f):
+			f.reconcile_interrupted_targets()
+
 func _process(_delta: float) -> void:
 	_tick_concealment()
+	_tick_flures()
 
 func headless_process(_delta: float) -> void:
 	_tick_concealment()
+	_tick_flures()
 
 func _wire_trigger(interactable: Area3D, cb: Callable) -> void:
 	if interactable != null and interactable.has_signal("interacted"):
@@ -1108,6 +1195,12 @@ func _on_valve(_args = null) -> void:
 		return
 	(_channels[0] as Channel).hold(VALVE_HOLD_WINDOW)
 	_set_wash_state(0, "held")
+
+func _on_landing_valve(_args = null) -> void:
+	if _phase != "active" or _channels.size() <= 3:
+		return
+	(_channels[3] as Channel).hold(VALVE_HOLD_WINDOW)
+	_set_wash_state(3, "held")
 	_show_note("// VALVE HELD // the near channel runs quiet", 2.2)
 	_set_preview_step("wash_ascent_valve_held")
 
@@ -1171,12 +1264,34 @@ func _spawn_fauna(marker: Node3D) -> void:
 				(c as Light3D).visible = false
 		enemy.add_child(body)
 	enemy.set_meta("roam_anchor", marker.position)
-	enemy.set_meta("roam_radius", float(marker.get_meta("roam_radius", 3.0)))
-	enemy.set_roam(marker.position, float(marker.get_meta("roam_radius", 3.0)))
+	if marker.has_meta("patrol_route"):
+		var waypoints: Array[Vector3] = []
+		for pair in str(marker.get_meta("patrol_route")).split(" ", false):
+			var xz := str(pair).split(",", false)
+			if xz.size() == 2:
+				waypoints.append(Vector3(float(xz[0]), DECK_TOP, float(xz[1])))
+		if waypoints.size() >= 2:
+			enemy.set_patrol(waypoints)
+		else:
+			push_error("wash_ascent: patrol_route on %s needs >= 2 waypoints" % marker.name)
+	else:
+		enemy.set_meta("roam_radius", float(marker.get_meta("roam_radius", 3.0)))
+		enemy.set_roam(marker.position, float(marker.get_meta("roam_radius", 3.0)))
 	_fauna[enemy.char_id] = enemy
 
 func _fauna_by_id(id: String):
 	return _fauna.get(id)
+
+## The fauna roster of one ACT: enemies whose home anchor lies in [x0, x1).
+func _fauna_ids_in_band(x0: float, x1: float) -> Array:
+	var out: Array = []
+	for id_v in _fauna.keys():
+		var e = _fauna[id_v]
+		if is_instance_valid(e):
+			var ax := float((e.get_meta("roam_anchor", Vector3.ZERO) as Vector3).x)
+			if ax >= x0 and ax < x1:
+				out.append(id_v)
+	return out
 
 func _on_lonely_flure_lit(pulled: int) -> void:
 	_show_note("The flure sings. Nothing answers." if pulled == 0
@@ -1188,7 +1303,7 @@ func get_scene_title() -> String:
 	return "Wash Ascent"
 
 func get_scene_help() -> String:
-	return "Reach the ring at the coil's end. // The wash floods whole stretches of the walkway — cross each on its dry beat; the gaps between sections are safe ground."
+	return "Reach the ring at the drum head. // The wash floods whole stretches of the walkway — cross each on its dry beat; valves can hold a stretch quiet; the gaps between sections are safe ground."
 
 func get_grid_data() -> Dictionary:
 	return {
