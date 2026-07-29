@@ -58,12 +58,22 @@ const BLOCKING_PIECES := ["shelter", "workbench", "forage_cache", "terminal",
 ## computed analytically from these numbers; nothing samples per-frame.
 ## Section spans are INTEGER s so the 1-s helical water bands cover each span
 ## EXACTLY — the visible flood edge IS the kill-predicate edge, never a lie.
+## PHASE LADDER LAW: the first onsets (grace + phase = 1.5 / 4.5 / 2.5) sit ON
+## the naive routes' arrival windows — section 0's catches a WALKING bolter
+## (in the span 0.3..2.8s at walk speeds), section 2's catches a RUN-rusher
+## (in its span ~2.8..3.6s at run speed) — so the gate cannot be outrun at any
+## speed; the beat must be read. Spawn ground (s < 2) is safe: standing and
+## reading is never punished, and section 2's early far surge doubles as the
+## first-sight DEMONSTRATION (the sapscraps roam inside that band). Dry
+## windows (period - dur >= 6.6s) stay generous enough to cross every span
+## walking. `--test-wash-ascent-playthrough` asserts all of it (walk-sprint
+## fails, run-rush fails, timed crossing completes) — retune only with it green.
 const WASH_SECTIONS := [
-	{"s0": 2.0, "s1": 9.0, "period": 9.0, "dur": 2.4, "phase": 0.0},
-	{"s0": 11.0, "s1": 17.0, "period": 11.0, "dur": 2.6, "phase": 4.0},
-	{"s0": 19.0, "s1": 24.0, "period": 13.0, "dur": 2.8, "phase": 8.0},
+	{"s0": 2.0, "s1": 9.0, "period": 9.0, "dur": 2.4, "phase": 0.5},
+	{"s0": 11.0, "s1": 17.0, "period": 11.0, "dur": 2.6, "phase": 3.5},
+	{"s0": 19.0, "s1": 24.0, "period": 13.0, "dur": 2.8, "phase": 1.5},
 ]
-const WASH_GRACE := 4.0            # quiet seconds after reset before the first surge
+const WASH_GRACE := 1.0            # quiet second after reset before the ladder starts
 const TELEGRAPH_LEAD := 1.2        # channel brightens this long before the water arrives
 const WASH_Z_CENTER := 3.6         # THE GATE: the surge floods the FULL walkway width
 const WASH_Z_HALF := 4.4           # (z -0.8 .. 8.0) — sections cross only on the dry beat;
@@ -853,7 +863,7 @@ func reset_preview_state() -> void:
 		if gs != null:
 			ch.set_sweep(gs, PARTY_IDS, _sweep_landing.bind(i), {
 				"party_hp": SWEEP_HP_BITE,
-				"refractory": 4.0,
+				"refractory": 1.0,
 				"travel_speed": 7.0,
 				"on_swept": _on_swept.bind(i),
 				"enemy_resolver": _fauna_by_id,
@@ -870,7 +880,9 @@ func reset_preview_state() -> void:
 		if is_instance_valid(enemy) and gs != null and gs.characters.has(str(id_v)):
 			var anchor: Vector3 = enemy.get_meta("roam_anchor", gs.get_position(str(id_v)))
 			gs.snap_character_to(str(id_v), anchor)
-			enemy.set_roam(anchor, float(enemy.get_meta("roam_radius", 3.0)))
+			# a HARD home reset — a polite set_roam leaves a mid-pursuit sentry
+			# chasing ghosts with old damage across scenario re-arms
+			enemy.reset_to_home()
 
 ## The one spatial policy this chunk supplies the kit: a swept member lands MOBILE
 ## at the section's mouth, spread by identity so a party never stacks one cell.
@@ -894,24 +906,36 @@ func _on_channel_flood_ended(i: int) -> void:
 # --- Interactables: the valve, the terminal, the portal ---
 
 func _build_interactables() -> void:
+	# Every control stands on DRY ground (the audit's law: the operator of a
+	# tool never pays the hazard the tool addresses just for clicking it).
+	# The valve sits in the 9-11 gap just past section 0's inclusive mouth;
+	# the terminal in the same gap informs the section AHEAD of it.
 	var valve := _add_interactable(self, "ChannelValve",
-		"Hold the near channel closed", Vector3(9.0, DECK_TOP, 0.9),
+		"Hold the near channel closed", Vector3(9.6, DECK_TOP, 0.9),
 		"HOLD THE VALVE", "", 1.1, false, 1.6,
 		Interactable.InteractableType.INSPECTION)
 	valve.consequence_preview = "The near stretch runs quiet for a while — cross the band without the surge."
 	_wire_trigger(valve, _on_valve)
 	var terminal := _add_interactable(self, "CadenceTerminal",
-		"Log the surge cadence", Vector3(16.4, DECK_TOP, 6.6),
+		"Log the surge cadence", Vector3(10.2, DECK_TOP, 6.8),
 		"LOG THE SURGE", "aster", 1.1, false, 1.6,
 		Interactable.InteractableType.INSPECTION)
 	terminal.consequence_preview = "Aster reads the channel's rhythm — the next surge becomes a number, not a guess."
 	_wire_trigger(terminal, _on_terminal)
+	# the start bookend: downed members can be dragged back to the approach and
+	# revived on safe ground — a swept-down member never soft-locks the run
+	var gs_shelter = _get_game_state()
+	if gs_shelter != null and gs_shelter.has_method("add_shelter_region"):
+		gs_shelter.add_shelter_region(Vector2(0.0, 0.0), Vector2(1.8, DECK_D))
 	# THE WIN goes through the kit's win object — click-gated, downed-guarded,
 	# everyone on the pad, ONE atomic party rest (see ExitShelter's header).
+	# The pad sits STRICTLY inside section 2's span: committing the rest means
+	# standing in the wash's ground on its dry beat — the gather-under-the-
+	# surge finale can't be cheesed from a wash-proof sliver past the edge.
 	var ring_exit := ExitShelter.new()
 	ring_exit.name = "AscentPortal"
-	ring_exit.configure_shelter(_get_game_state(), Vector3(22.5, DECK_TOP, 3.0),
-		Vector2(2.2, 2.2), PARTY_IDS, "ENTER THE RING", 1.9)
+	ring_exit.configure_shelter(_get_game_state(), Vector3(22.0, DECK_TOP, 3.0),
+		Vector2(1.5, 1.5), PARTY_IDS, "ENTER THE RING", 1.3)
 	ring_exit.consequence_preview = "The ring hums. Gather everyone on the pad and step through together."
 	ring_exit.rest_completed.connect(_on_ring_rest_completed)
 	ring_exit.rest_refused.connect(_on_ring_rest_refused)
@@ -921,6 +945,28 @@ func _build_interactables() -> void:
 	_build_lonely_flure()
 	var map = get_coord_map()
 	warp_interactables_onto_coord_map(map)
+	call_deferred("_wire_warped_outlines")
+
+## Auto-outline collects meshes at the interactable's AUTHORED coordinates, but
+## every visible piece here is WARPED onto the helix — a flat collect either
+## finds nothing (the flat point lies outside the bowl entirely) or silently
+## wraps whatever random piece occupies those numbers as world coordinates
+## (the valve once outlined a deck tile at the coil's start). Once the warp
+## has landed, re-wire every interactable against its WARPED position so the
+## outline grammar highlights the REAL object.
+func _wire_warped_outlines() -> void:
+	for it in _interactables:
+		if not (is_instance_valid(it) and it is Node3D):
+			continue
+		if not ("_outline_target" in it):
+			continue
+		var stale = it.get("_outline_target")
+		if stale != null and is_instance_valid(stale) \
+				and not (it as Node).is_ancestor_of(stale):
+			(stale as Node).queue_free()
+		it.call("set_outline_target", null)
+		_auto_outline_interactable(it, self, (it as Node3D).global_position,
+			maxf(1.2, float(it.get("interaction_radius"))))
 
 ## The lonely flure is the REAL kit object (the lure_relay composition shape) —
 ## an iron decoy with an empty target list: it fires, and nothing answers. The
@@ -935,6 +981,10 @@ func _build_lonely_flure() -> void:
 	flure.authority_id = "wash_ascent_lonely_flure"
 	flure.configure(gs, (marker as Node3D).global_position, _fauna.keys(), 32.0, 1.4,
 		Color(0.95, 0.62, 0.14))
+	# lured sentries PARK high-z in the gap, not on the flure itself — the low-z
+	# lane past the song stays walkable (a park on the source pulled the gap
+	# sentry point-blank into the waiting party, where distraction can't help)
+	flure.settle_pos = Vector3(18.0, DECK_TOP, 7.2)
 	flure.set_enemy_resolver(_fauna_by_id)
 	flure.one_shot = false
 	flure.description = "Light the lonely flure"
@@ -989,12 +1039,24 @@ func _on_valve(_args = null) -> void:
 	_show_note("// VALVE HELD // the near channel runs quiet", 2.2)
 	_set_preview_step("wash_ascent_valve_held")
 
+## The terminal names the section AHEAD of it — never an aggregate min() that
+## quotes a surge BEHIND the reader (truthful-but-misleading data was the bug:
+## stand at the terminal, read "3s" from a passed section, step into the next
+## one on it). Positional truth: the first section whose mouth lies past the
+## terminal is the one the number describes.
 func _on_terminal(_args = null) -> void:
 	_terminal_logged = true
-	var soonest := INF
-	for ch in _channels:
-		soonest = minf(soonest, maxf(0.0, float((ch as Channel).get_state().get("next_onset_in", INF))))
-	_show_note("// CADENCE LOGGED // next surge in %.0fs" % soonest, 2.6)
+	var terminal_s := 10.2
+	var ahead := -1
+	for i in range(WASH_SECTIONS.size()):
+		if float(WASH_SECTIONS[i]["s0"]) > terminal_s:
+			ahead = i
+			break
+	if ahead >= 0 and ahead < _channels.size():
+		var onset := maxf(0.0, float((_channels[ahead] as Channel).get_state().get("next_onset_in", 0.0)))
+		_show_note("// CADENCE LOGGED // the stretch ahead surges in %.0fs" % onset, 2.6)
+	else:
+		_show_note("// CADENCE LOGGED // open water ahead", 2.6)
 	_set_preview_step("wash_ascent_cadence_logged")
 
 func _on_ring_rest_completed(_members: Array) -> void:
@@ -1023,6 +1085,7 @@ func _spawn_fauna(marker: Node3D) -> void:
 	enemy.char_id = "%s_%d" % [str(marker.get_meta("enemy")), _fauna.size()]
 	enemy.name = "Enemy_%s" % enemy.char_id
 	enemy.position = marker.position
+	enemy.detection_range = float(marker.get_meta("detect", enemy.detection_range))
 	enemy._detection_targets.assign(PARTY_IDS)
 	_realized_root.add_child(enemy)
 	enemy.game_state = gs

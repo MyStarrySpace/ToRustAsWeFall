@@ -257,6 +257,37 @@ func set_roam(anchor: Vector3, radius: float) -> void:
 		_fsm.transition_to("roam")
 	_publish_enemy_authority()
 
+## Hard home reset for scenario re-arms (previews, replays, chunk resets): heal,
+## drop any engagement, and stand the sentry back in its HOME mode. The FSM is
+## FORCED (a pursuit refuses a polite transition_to, which left "reset" enemies
+## mid-chase with old damage), pending timers cancel with it, the move speed a
+## charge may have raised is restored, and detection stays LIVE — this is a
+## fresh sentry, not the save-restore seam (which owns its own machinery).
+func reset_to_home() -> void:
+	if _fsm != null:
+		_fsm.cancel_pending()
+	_state_deadlines.clear()
+	_remove_alert_label()
+	_kill_enemy_presentation_tweens()
+	_hp = max_hp
+	_current_target_id = ""
+	_last_known_target_pos = Vector3.ZERO
+	_charge_target_pos = Vector3.ZERO
+	_charging = false
+	_charge_hit = false
+	if game_state != null and game_state.characters.has(char_id):
+		game_state.set_character_distracted(char_id, false)
+		game_state.change_move_speed(char_id, move_speed)
+	if _fsm != null:
+		_fsm.force_current("idle")
+	match _home_mode:
+		"roam":
+			set_roam(_roam_anchor, _roam_radius)
+		"patrol":
+			if _fsm != null:
+				_fsm.transition_to("patrol")
+	_restore_enemy_presentation(get_state())
+
 const LURE_ACCEPTING_STATES := ["idle", "roam", "patrol", "search", "return"]
 const LURE_COMMITTED_STATES := ["alert", "pursuit", "windup", "charge", "impact"]
 

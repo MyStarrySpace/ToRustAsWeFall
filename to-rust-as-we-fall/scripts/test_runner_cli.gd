@@ -865,6 +865,9 @@ func _ready() -> void:
 			"--test-wash-ascent":
 				ran_test = true
 				await _test_wash_ascent()
+			"--test-wash-ascent-playthrough":
+				ran_test = true
+				await _test_wash_ascent_playthrough()
 			"--test-pipe-grid":
 				ran_test = true
 				_test_pipe_grid()
@@ -1556,6 +1559,7 @@ func _run_all_tests() -> void:
 	_test_canon_fauna_names()
 	await _test_wash_relay_prop_survey()
 	await _test_wash_ascent()
+	await _test_wash_ascent_playthrough()
 	_test_pipe_grid()
 	await _test_overlay_facility_gating()
 	await _test_leaving_facility()
@@ -27783,7 +27787,7 @@ func _test_wash_ascent() -> void:
 	_assert_true(flure_node != null, "the lonely flure is the REAL kit object")
 	if flure_node != null:
 		# the kit demands the actor physically AT the source (no remote firing)
-		inst.call("headless_set_character_position", "aster", Vector3(2.2, 0.1, 4.8))
+		inst.call("headless_set_character_position", "aster", Vector3(17.6, 0.1, 3.2))
 		for _f in range(3):
 			await get_tree().process_frame
 		flure_node.call("_trigger")
@@ -28084,6 +28088,232 @@ func _test_wash_relay_queued_glow() -> void:
 	if tgt.has_method("is_selected_feedback_active"):
 		_assert_true(bool(tgt.call("is_selected_feedback_active")),
 			"the queued energy glow is lit on the interactable while the servicer walks to it")
+	inst.queue_free()
+	await get_tree().process_frame
+
+## THE GAMEPLAY GUARD (director: "make sure the gameplay is restored"): proves the
+## wash gate is a REAL gate by playing the level through the data layer. Four claims:
+## (1) PRICING is arithmetic on the cadence numbers — every dry window affords the
+##     slowest walker its span, and safe gaps separate the sections.
+## (2) THE NAIVE ROUTES FAIL: a straight walk from spawn at boot is caught by section
+##     0's first onset; a RUN-rush (~2x speed) outruns sections 0/1 but section 2's
+##     early onset sits on its arrival window — the ladder closes both. The same first
+##     far surge WASHES a roaming sapscrap: the P18 demonstration is scheduled, not hoped.
+## (3) THE READ-THE-BEAT SOLVE COMPLETES: fire the flure (pulls the exit guards), then
+##     cross each section on its analytic dry window, park in the safe gaps, and commit
+##     the ring rest — zero sweeps on the timed route.
+## (4) A wall-time ceiling — the whole solve fits a sane sim budget.
+func _test_wash_ascent_playthrough() -> void:
+	_test_name = "Wash Ascent Playthrough"
+	var inst = await _instantiate_preview_chunk_and_wait("wash_ascent", 8)
+	if inst == null:
+		_assert_true(false, "wash_ascent instantiates")
+		return
+	for _i in range(6):
+		await get_tree().process_frame
+	var chunk = inst.find_child("Chunk_wash_ascent", true, false)
+	var gs = inst.get("_game_state")
+	if chunk == null or gs == null:
+		_assert_true(false, "chunk + game state present")
+		inst.queue_free(); await get_tree().process_frame; return
+	inst.call("headless_advance", 0.05)
+	var ids := ["aster", "peris", "endo"]
+	var consts: Dictionary = (chunk.get_script() as Script).get_script_constant_map()
+	var sections: Array = consts["WASH_SECTIONS"]
+	var slow_walk := 2.8
+	# (1) pricing: arithmetic on the cadence numbers, not a sampling loop
+	for i in range(sections.size()):
+		var sec: Dictionary = sections[i]
+		var dry := float(sec["period"]) - float(sec["dur"])
+		var need := (float(sec["s1"]) - float(sec["s0"]) + 2.5) / slow_walk
+		_assert_true(dry >= need * 1.2,
+			"section %d dry window affords the slowest walker (dry %.1fs vs need %.1fs)" % [i, dry, need])
+		if i > 0:
+			_assert_true(float(sec["s0"]) - float(sections[i - 1]["s1"]) >= 1.5,
+				"a safe gap separates sections %d-%d" % [i - 1, i])
+	var spawns: Dictionary = chunk.call("get_spawn_positions")
+	_assert_true(float((spawns["aster"] as Vector3).x) < float(sections[0]["s0"]) - 0.5,
+		"the whole party spawns on safe ground before the first mouth")
+	# (2a) the WALK bolter: everyone marches for the ring at boot — section 0 bites
+	for idx in range(ids.size()):
+		gs.command_move_to_pos(str(ids[idx]), Vector3(22.5, 0.1, 2.4 + 0.6 * float(idx)))
+	for _w in range(120):
+		inst.call("headless_advance", 0.1)
+	var walk_swept := int((chunk.call("get_preview_state") as Dictionary).get("swept_count", 0))
+	_assert_true(walk_swept >= 1,
+		"a straight WALK from spawn is caught by the ladder (swept=%d)" % walk_swept)
+	# (2b) the RUN-rusher: fresh cadence, double speed — section 2's onset catches him
+	chunk.call("reset_preview_state")
+	for id_v in ids:
+		inst.call("headless_set_character_position", str(id_v), spawns[str(id_v)])
+	inst.call("headless_advance", 0.05)
+	gs.change_move_speed("aster", 6.4)
+	gs.command_move_to_pos("aster", Vector3(22.5, 0.1, 3.0))
+	for _w2 in range(80):
+		inst.call("headless_advance", 0.1)
+	var rush_state: Dictionary = chunk.call("get_preview_state")
+	_assert_true(int(rush_state.get("swept_count", 0)) >= 1,
+		"a RUN-rush cannot outrun the ladder either (swept=%d)" % int(rush_state.get("swept_count", 0)))
+	_assert_true(str(rush_state.get("phase", "")) != "complete", "no naive route completes the level")
+	gs.change_move_speed("aster", 3.2)
+	# (3) the read-the-beat solve — a FRESH run: the naive legs above were their
+	# own scenarios, so their sweep bites are healed (scenario isolation, the
+	# same reason the party is re-teleported to the spawns)
+	chunk.call("reset_preview_state")
+	for id_v2 in ids:
+		inst.call("headless_set_character_position", str(id_v2), spawns[str(id_v2)])
+		for stat_name in ["hp", "stamina"]:
+			gs.adjust_stat(str(id_v2), stat_name,
+				float(gs.get_stat_cap(str(id_v2), stat_name)) - float(gs.get_stat(str(id_v2), stat_name)))
+	inst.call("headless_advance", 0.05)
+	var sim_t := 0.0
+	var channels: Array = chunk.get("_channels")
+	var solve_baseline := int((chunk.call("get_preview_state") as Dictionary).get("swept_count", 0))
+	# legs cross sections 0 and 1 on their dry beats, hugging the LOW-z lane
+	# (the gap sentry's shortened watch covers mid-deck, not the channel rail);
+	# distinct z cells per member so cooperative parking never shoves anyone
+	# back into a live span
+	var leg_targets := [10.2, 18.3]
+	var leg_ok := true
+	for leg in range(2):
+		var sec_l: Dictionary = sections[leg]
+		var need_l := (float(leg_targets[leg]) - float(sec_l["s0"]) + 1.5) / slow_walk
+		var waited := 0.0
+		while waited < 30.0:
+			var onsets_l: Array = (chunk.call("get_preview_state") as Dictionary).get("next_onsets_in", [])
+			var flooding: bool = bool((channels[leg] as Node).call("is_flooding"))
+			if not flooding and onsets_l.size() > leg and float(onsets_l[leg]) > need_l + 0.8:
+				break
+			inst.call("headless_advance", 0.1)
+			waited += 0.1
+		sim_t += waited
+		for idx2 in range(ids.size()):
+			gs.command_move_to_pos(str(ids[idx2]),
+				Vector3(float(leg_targets[leg]), 0.1, 1.6 + 0.7 * float(idx2)))
+		var travel := 0.0
+		while travel < 25.0:
+			inst.call("headless_advance", 0.1)
+			travel += 0.1
+			var arrived := true
+			for id_v3 in ids:
+				if gs.get_position(str(id_v3)).x < float(leg_targets[leg]) - 0.9:
+					arrived = false
+			if arrived:
+				break
+		sim_t += travel
+		if travel >= 25.0:
+			leg_ok = false
+			print("  [playthrough] leg %d stalled (positions: %s)" % [leg,
+				str([gs.get_position("aster"), gs.get_position("peris"), gs.get_position("endo")])])
+			break
+	_assert_true(leg_ok, "the party crosses sections 0 and 1 on their dry beats")
+	# THE LURE PLAY at the last gap — the composed finale beat: fire the flure;
+	# the pad sentry's slow lure crawl CANNOT fit any dry window (its crossing
+	# takes longer than period - dur, an arithmetic certainty), so the surge
+	# takes it in full view — the P18 demonstration — and THAT wash is the
+	# party's crossing signal: the dry window that just opened is the longest
+	# guaranteed one, and the stunned sentry can't contest the pad during it.
+	var flure = chunk.find_child("LonelyFlureObject", true, false)
+	_assert_true(flure != null, "the flure stands at the last gap for the lure play")
+	if flure != null and leg_ok:
+		gs.command_move_to_pos("aster", Vector3(17.6, 0.1, 3.2))
+		# the kit's busy-guard refuses a MOVING actor — wait for the walk AND
+		# the cooperative settle to finish, exactly like a real click-to-fire
+		for _fa in range(60):
+			inst.call("headless_advance", 0.1)
+			if not bool(gs.is_moving("aster")) \
+					and gs.get_position("aster").distance_to(Vector3(17.6, 0.1, 3.2)) < 1.2:
+				break
+		sim_t += 4.0
+		flure.set("active_character", "aster")
+		await get_tree().process_frame
+		var fire_ok: bool = bool(flure.call("_trigger"))
+		_assert_true(fire_ok, "the flure fires with Aster standing at it")
+		var pulled := 0
+		var sentry_states: Array = []
+		for foe_id in ["sapscrap_0", "sapscrap_1"]:
+			var foe = chunk.call("_fauna_by_id", foe_id)
+			if foe != null:
+				sentry_states.append("%s=%s@%s" % [foe_id, str(foe.call("get_state")),
+					str(gs.get_position(foe_id))])
+				if str(foe.call("get_state")) == "lured":
+					pulled += 1
+		_assert_true(pulled >= 2,
+			"the flure pulls BOTH sentries off their watches (%d; %s)" % [pulled, str(sentry_states)])
+		# wait for the DEMONSTRATION: the sentry's doomed crossing meets a surge
+		# (arithmetic certainty — its crawl outlasts every dry window). The wash
+		# bite is the signal the finale keys on.
+		var pad_foe = chunk.call("_fauna_by_id", "sapscrap_1")
+		var cross_wait := 0.0
+		while cross_wait < 30.0:
+			inst.call("headless_advance", 0.2)
+			cross_wait += 0.2
+			if pad_foe != null and float(pad_foe.get("_hp")) < float(pad_foe.get("max_hp")):
+				break
+		sim_t += cross_wait
+		var pf_hp := float(pad_foe.get("_hp")) if pad_foe != null else -1.0
+		var pf_max := float(pad_foe.get("max_hp")) if pad_foe != null else -1.0
+		_assert_true(pad_foe != null and pf_hp < pf_max,
+			"the surge takes the lured sentry in view — the DEMONSTRATION lands (hp %.0f/%.0f)" % [pf_hp, pf_max])
+	var solve_swept := int((chunk.call("get_preview_state") as Dictionary).get("swept_count", 0))
+	_assert_true(solve_swept == solve_baseline,
+		"the timed route takes ZERO sweeps (%d -> %d)" % [solve_baseline, solve_swept])
+	# the win: the wash that took the sentry just opened section 2's longest
+	# dry window — cross NOW onto the pad (strictly inside the span; the finale
+	# is committed IN the wash's ground) and rest while the sentry is stunned
+	var ring = chunk.find_child("AscentPortal", true, false)
+	_assert_true(ring != null, "the ring exit is present")
+	if ring != null and leg_ok:
+		var waited_w := 0.0
+		while waited_w < 8.0:
+			if not bool((channels[2] as Node).call("is_flooding")):
+				break
+			inst.call("headless_advance", 0.1)
+			waited_w += 0.1
+		sim_t += waited_w
+		var pad_x := [21.3, 22.0, 22.7]
+		var pad_z := [2.2, 2.8, 3.8]
+		for idx3 in range(ids.size()):
+			gs.command_move_to_pos(str(ids[idx3]),
+				Vector3(float(pad_x[idx3]), 0.1, float(pad_z[idx3])))
+		var travel_w := 0.0
+		while travel_w < 20.0:
+			inst.call("headless_advance", 0.1)
+			travel_w += 0.1
+			var on_pad := true
+			for idx4 in range(ids.size()):
+				if gs.get_position(str(ids[idx4])).distance_to(
+						Vector3(float(pad_x[idx4]), 0.1, float(pad_z[idx4]))) > 1.0:
+					on_pad = false
+			if on_pad:
+				break
+		sim_t += travel_w
+		# rest refuses moving members — wait for every cooperative settle to end
+		for _st in range(40):
+			inst.call("headless_advance", 0.1)
+			var all_still := true
+			for id_v5 in ids:
+				if bool(gs.is_moving(str(id_v5))):
+					all_still = false
+			if all_still:
+				break
+		sim_t += 2.0
+		var refusals: Array = []
+		ring.connect("rest_refused", func(reason, missing): refusals.append([reason, missing]))
+		ring.call("_on_rest_requested")
+		if not bool(ring.call("is_completed")):
+			inst.call("headless_advance", 1.0)
+			sim_t += 1.0
+			ring.call("_on_rest_requested")
+		_assert_true(bool(ring.call("is_completed")),
+			"the ring rest commits with everyone on the pad (refusals: %s; positions: %s)" % [str(refusals),
+			str([gs.get_position("aster"), gs.get_position("peris"), gs.get_position("endo")])])
+		_assert_true(str((chunk.call("get_preview_state") as Dictionary).get("phase", "")) == "complete",
+			"the level completes through the read-the-beat route")
+		_assert_true(int((chunk.call("get_preview_state") as Dictionary).get("swept_count", 0)) == solve_baseline,
+			"the WHOLE timed route, pad crossing included, takes zero sweeps")
+	# (4) the whole solve fits a sane budget
+	_assert_true(sim_t < 120.0, "the solve fits the sim budget (%.1fs)" % sim_t)
 	inst.queue_free()
 	await get_tree().process_frame
 
