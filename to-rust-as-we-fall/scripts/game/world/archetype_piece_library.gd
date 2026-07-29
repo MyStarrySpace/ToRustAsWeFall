@@ -59,7 +59,10 @@ const DRESSING_MANIFEST := {
 	"pipe_bracket": "PipeBracket", "cage_lamp": "CageLamp",
 	"water_channel_b": "WaterChannelB", "water_channel_c": "WaterChannelC",
 	"water_band_deck": "WaterBandDeck", "water_band_trough": "WaterBandTrough",
+	"water_band_deck_b": "WaterBandDeckB", "water_band_deck_c": "WaterBandDeckC",
+	"water_band_trough_b": "WaterBandTroughB", "water_band_trough_c": "WaterBandTroughC",
 	"deck_sluice": "DeckSluice",
+	"deck_sluice_b": "DeckSluiceB", "deck_sluice_c": "DeckSluiceC",
 }
 
 ## HAND-MODELED overrides — pieces whose geometry is MODELED through a

@@ -27878,11 +27878,11 @@ func _test_wash_ascent() -> void:
 	inst.call("headless_set_character_position", "aster", Vector3(0.8, 0.1, 2.0))
 	gs_w.clear_damage_shield("aster")
 	# THE FLOOR IS THE READ: iron sluice inside every span, wood planks outside
-	_assert_true(str(chunk.call("_deck_tile_id", "", 1, 1)) == "deck_sluice" \
-			and str(chunk.call("_deck_tile_id", "", 6, 1)) == "deck_sluice" \
-			and str(chunk.call("_deck_tile_id", "", 10, 1)) == "deck_sluice" \
-			and str(chunk.call("_deck_tile_id", "", 15, 1)) == "deck_sluice" \
-			and str(chunk.call("_deck_tile_id", "", 21, 1)) == "deck_sluice" \
+	_assert_true(str(chunk.call("_deck_tile_id", "", 1, 1)).begins_with("deck_sluice") \
+			and str(chunk.call("_deck_tile_id", "", 6, 1)).begins_with("deck_sluice") \
+			and str(chunk.call("_deck_tile_id", "", 10, 1)).begins_with("deck_sluice") \
+			and str(chunk.call("_deck_tile_id", "", 15, 1)).begins_with("deck_sluice") \
+			and str(chunk.call("_deck_tile_id", "", 21, 1)).begins_with("deck_sluice") \
 			and str(chunk.call("_deck_tile_id", "", 4, 1)).begins_with("deck_planks") \
 			and str(chunk.call("_deck_tile_id", "", 9, 1)).begins_with("deck_planks") \
 			and str(chunk.call("_deck_tile_id", "", 12, 1)).begins_with("deck_planks") \

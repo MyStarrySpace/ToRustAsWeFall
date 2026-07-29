@@ -51,6 +51,12 @@ something walked to garbage:
   the read (integer spans alone weren't enough; grid-ALIGNED spans were).
 - **The visible effect covers exactly the danger** (water bands = integer arc
   pieces = the flood edge IS the kill edge).
+- **Tiling variation is anti-lockstep.** Tile variants hash on BOTH grid axes
+  (a per-column cycle reads as zebra banding); edge-symmetric tiles alternate a
+  180° spin; and any piece carrying a painted/baked "constellation" (the water
+  bands' foam flecks) ships ≥3 seeded layouts cycled at spawn — one hardcoded
+  scatter repeats verbatim across every instance and the eye finds it in one
+  glance at a money shot (the tiling audit's top finding).
 
 ## 4. Encounters must be answerable as played, not as scripted
 
@@ -91,7 +97,31 @@ behavior is missing, the canon system that owns it either exists (use it), is
 planned (wait or ask the director), or the need is imaginary. Never bridge with an
 invented mechanism; `--test-canon-mechanics` lints the enforceable slice.
 
-## 7. The one-shot flow (assemble in this order)
+## 7. The architecture is BUILT, not arranged (director, 2026-07-29)
+
+Every hand-authored level must read as constructed by a real society for real
+purposes, with environmental storytelling — and procedural generation chunks
+should encode the same grammar wherever feasible.
+
+- **Civic purpose:** every area answers "who built this, for what, and what
+  flows through it" — a channel has a source and a destination, a bay has work
+  in evidence, rails guard something, a walkway leads somewhere people needed
+  to go. An element whose purpose cannot be read is dressing debt.
+- **Environmental storytelling:** the props ARE the story (no lore text): the
+  state of the place tells what happened — maintenance vs abandonment vs
+  reclamation as a legible gradient, personal traces (a left tool, a kept lamp
+  vs a dead one), flora placed by canon meaning, light temperature arcs.
+- **Physical sense:** structure holds itself up (trusses/legs under spans),
+  fluids and power route visibly (the PipeGrid router exists — use it), scale
+  and adjacency follow from function.
+- **Audit method:** run the three lenses (civic purpose / storytelling /
+  structure) over the props scene + fresh captures before calling a level's
+  dressing done; the wash_ascent architecture audit workflow is the template.
+- **Procedural:** generators should attach purpose metadata to what they
+  place (what each cluster is FOR) so dressing passes can honor it; a
+  generated space with unexplainable furniture fails the same audit.
+
+## 8. The one-shot flow (assemble in this order)
 
 1. Pick the composition from ECOLOGY_COMBOS / ENVIRONMENT_ELEMENTS; read the
    canon cards for every species/flora involved.

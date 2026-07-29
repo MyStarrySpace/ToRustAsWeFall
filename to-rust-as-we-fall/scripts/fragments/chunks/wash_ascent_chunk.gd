@@ -431,7 +431,11 @@ func _realize_deck_run(marker: Node3D) -> void:
 	for i in range(dims.x):
 		for j in range(dims.y):
 			var pid := _deck_tile_id(surface, i0 + i, j0 + j)
-			var flat := Transform3D(Basis.IDENTITY, Vector3(
+			# half the tiles spin 180° about their center — the tile module is
+			# edge-symmetric, so the painted scuffs/slots double their variety
+			# for free and no two neighbours read as the same stamp
+			var spin := Basis(Vector3.UP, PI) 				if absi((i0 + i) * 7 + (j0 + j) * 13) % 2 == 1 else Basis.IDENTITY
+			var flat := Transform3D(spin, Vector3(
 				(float(i0 + i) + 0.5) * pitch,
 				marker.global_transform.origin.y,
 				(float(j0 + j) + 0.5) * pitch))
@@ -499,12 +503,12 @@ func _warp_lights(root: Node) -> void:
 ## plank = safe ground. One binary material truth — no decorative mixing of
 ## wood and grate, no per-tile noise. Sections sit on the tile grid, so the
 ## boundary is exact.
-func _deck_tile_id(_surface: String, i: int, _j: int) -> String:
+func _deck_tile_id(_surface: String, i: int, j: int) -> String:
 	var pitch := _piece_aabb("deck_planks").size.x
 	var mid := (float(i) + 0.5) * pitch
 	if _s_in_wash_span(mid):
-		return "deck_sluice"
-	return ["deck_planks", "deck_planks_b", "deck_planks_c"][i % 3]
+		return ["deck_sluice", "deck_sluice_b", "deck_sluice_c"][absi(i * 31 + j * 17 + 2) % 3]
+	return ["deck_planks", "deck_planks_b", "deck_planks_c"][absi(i * 13 + j * 7) % 3]
 
 func _s_in_wash_span(s: float) -> bool:
 	for sec in WASH_SECTIONS:
@@ -864,7 +868,9 @@ func _build_wash_channels() -> void:
 		# s, spanning the whole walkway width, hidden at idle. Integer section
 		# spans mean the bands cover the kill zone EXACTLY, mouth-to-mouth.
 		for k in range(int(s1 - s0)):
-			var band := _spawn_water_band("water_band_deck", s0 + float(k))
+			var band := _spawn_water_band(
+				["water_band_deck", "water_band_deck_b", "water_band_deck_c"][
+					absi(hash(int(round(s0)) + k)) % 3], s0 + float(k))
 			if band != null:
 				_stamp(band, "floor", "structure_channel", true)
 				band.visible = false
@@ -873,7 +879,9 @@ func _build_wash_channels() -> void:
 	# covering exactly the span the trough run measured out.
 	var t0 := _channel_span.x
 	while t0 + 1.0 <= _channel_span.y + 0.001:
-		var trough := _spawn_water_band("water_band_trough", t0)
+		var trough := _spawn_water_band(
+			["water_band_trough", "water_band_trough_b", "water_band_trough_c"][
+				absi(hash(int(round(t0 * 2.0)))) % 3], t0)
 		if trough != null:
 			_stamp(trough, "floor", "structure_channel", true)
 			trough.visible = false
