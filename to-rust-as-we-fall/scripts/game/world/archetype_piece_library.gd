@@ -62,10 +62,26 @@ const DRESSING_MANIFEST := {
 	"deck_sluice": "DeckSluice",
 }
 
+## HAND-MODELED overrides — pieces whose geometry is MODELED through a
+## dedicated Blender area script (the model-in-Blender rule), sourced from
+## their OWN committed gltf: the archetype batch regen can never clobber them
+## again (the portal family wore a rejected batch read for weeks because the
+## chain owned their ids). id -> {path, node}. An override id must still be a
+## known manifest id (the coverage law is unchanged); only the SOURCE moves.
+const MODELED_OVERRIDES := {
+	"portal_ring_ornate": {
+		"path": "res://resources/models/channels/portal_fixtures.gltf",
+		"node": "PortalArch"},
+	"portal_pad_rings": {
+		"path": "res://resources/models/channels/portal_fixtures.gltf",
+		"node": "PortalPadRing"},
+}
+
 # Only the PackedScene is cached; each call instantiates, clones the named
 # piece, and frees the scratch instance — a live never-in-tree template Node
 # would leak 19 nodes at every process exit.
 static var _packed: PackedScene = null
+static var _override_packed: Dictionary = {}   # path -> PackedScene
 
 static func _ensure_packed() -> PackedScene:
 	if _packed != null:
@@ -100,7 +116,19 @@ static func instantiate(content_id: String) -> Node3D:
 	if node_name.is_empty():
 		push_warning("ArchetypePieceLibrary: no piece for content id '%s'" % content_id)
 		return null
-	var packed := _ensure_packed()
+	var packed: PackedScene = null
+	if MODELED_OVERRIDES.has(content_id):
+		var ov: Dictionary = MODELED_OVERRIDES[content_id]
+		node_name = str(ov["node"])
+		var ov_path := str(ov["path"])
+		if not _override_packed.has(ov_path):
+			var loaded = load(ov_path)
+			_override_packed[ov_path] = loaded if loaded is PackedScene else null
+		packed = _override_packed[ov_path]
+		if packed == null:
+			push_warning("ArchetypePieceLibrary: modeled override missing: %s" % ov_path)
+	if packed == null:
+		packed = _ensure_packed()
 	if packed == null:
 		return null
 	var scratch := packed.instantiate()
