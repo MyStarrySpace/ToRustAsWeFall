@@ -188,6 +188,14 @@ func _ready() -> void:
 	_outline_mask_manager = OutlineMaskManager.new()
 	_outline_mask_manager.name = "OutlineMaskManager"
 	add_child(_outline_mask_manager)
+	# One scene-level hit & spotting feedback layer (director's spec): shake /
+	# red flash / opacity blink / offscreen portrait bubbles on a strike, and
+	# the red tracking outline + first-spot alert when an enemy enters the
+	# party's visual range. Presentation-only consumer of GameState signals.
+	var combat_feedback := CombatFeedbackManager.new()
+	combat_feedback.name = "CombatFeedbackManager"
+	add_child(combat_feedback)
+	combat_feedback.setup(_game_state, self)
 	var interactables_started := PerformanceTrace.begin()
 	_inject_scheduler_into_interactables(self)
 	PerformanceTrace.end(&"update", &"sequence.ready.interactables", interactables_started, name, 1)

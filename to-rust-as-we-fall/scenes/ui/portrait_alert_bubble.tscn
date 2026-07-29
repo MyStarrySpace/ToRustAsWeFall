@@ -1,0 +1,7 @@
+[gd_scene format=3 uid="uid://cfb1dmbubble0"]
+
+[node name="AlertBubble" type="Label"]
+text = "!"
+theme_override_font_sizes/font_size = 22
+theme_override_colors/font_outline_color = Color(0.05, 0.04, 0.04, 0.9)
+theme_override_constants/outline_size = 6

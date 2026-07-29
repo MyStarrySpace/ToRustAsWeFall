@@ -865,6 +865,9 @@ func _ready() -> void:
 			"--test-wash-ascent":
 				ran_test = true
 				await _test_wash_ascent()
+			"--test-combat-feedback":
+				ran_test = true
+				await _test_combat_feedback()
 			"--test-canon-mechanics":
 				ran_test = true
 				_test_canon_mechanics()
@@ -1564,6 +1567,7 @@ func _run_all_tests() -> void:
 	await _test_wash_ascent()
 	await _test_wash_ascent_playthrough()
 	_test_canon_mechanics()
+	await _test_combat_feedback()
 	_test_pipe_grid()
 	await _test_overlay_facility_gating()
 	await _test_leaving_facility()
@@ -28238,6 +28242,108 @@ func _test_wash_relay_queued_glow() -> void:
 ## a new invented-mechanism class is caught in review; every mechanism in a
 ## chunk should cite its doc (DESIGN_PRINCIPLES / SYSTEMS_THINKING_PUZZLE_
 ## STANDARD / ECOLOGY_COMBOS / the taxonomies).
+## THE HIT & SPOTTING FEEDBACK LAYER (director's spec): a strike shakes,
+## flashes, blinks, and — offscreen — raises the red portrait bubble, with the
+## shake/flash individually gated by accessibility Settings; an enemy entering
+## the party's visual range wears the red tracking outline and the FIRST spot
+## raises exactly one alert bubble. Driven end-to-end on wash_ascent: the pad
+## watcher really detects, charges, and strikes; the logical counters are the
+## headless-assertable truth (pixel truth belongs to windowed captures).
+func _test_combat_feedback() -> void:
+	_test_name = "Combat Feedback"
+	var inst = await _instantiate_preview_chunk_and_wait("wash_ascent", 8)
+	if inst == null:
+		_assert_true(false, "wash_ascent instantiates")
+		return
+	for _i in range(6):
+		await get_tree().process_frame
+	var chunk = inst.find_child("Chunk_wash_ascent", true, false)
+	var gs = inst.get("_game_state")
+	var fb = inst.find_child("CombatFeedbackManager", true, false)
+	_assert_true(fb != null, "the scene carries ONE CombatFeedbackManager (the managers pattern)")
+	if chunk == null or gs == null or fb == null:
+		inst.queue_free(); await get_tree().process_frame; return
+	inst.call("headless_advance", 0.05)
+	# park everyone on safe ground far from the watcher
+	for pid in ["aster", "peris", "endo"]:
+		inst.call("headless_set_character_position", pid,
+			Vector3(0.8, 0.1, 2.0 + 1.2 * float(["aster", "peris", "endo"].find(pid))))
+	inst.call("headless_advance", 0.3)
+	# STRUCK (fresh watcher): stand in its ring until it charges and lands
+	var settings = inst.get_node_or_null("/root/Settings")
+	var shakes0 := int(fb.get("shakes_fired"))
+	var flashes0 := int(fb.get("flashes_fired"))
+	var blinks0 := int(fb.get("blinks_fired"))
+	inst.call("headless_set_character_position", "aster", Vector3(24.6, 0.1, 5.2))
+	var hp0 := float(gs.get_stat("aster", "hp"))
+	var struck := false
+	for _t in range(160):
+		inst.call("headless_advance", 0.1)
+		if _t % 4 == 0:
+			await get_tree().process_frame
+		if float(gs.get_stat("aster", "hp")) < hp0:
+			struck = true
+			break
+	await get_tree().process_frame
+	_assert_true(struck, "the watcher really charges and strikes (hp %.0f -> %.0f)" % [
+		hp0, float(gs.get_stat("aster", "hp"))])
+	_assert_true(int(fb.get("blinks_fired")) > blinks0, "the struck body's opacity BLINKS")
+	_assert_true(int(fb.get("shakes_fired")) > shakes0, "the screen SHAKES on a strike")
+	_assert_true(int(fb.get("flashes_fired")) > flashes0, "the screen FLASHES red on a strike")
+	# ACCESSIBILITY GATES: disable both (direct field writes — the setters would
+	# persist to the player's real user://settings.cfg from a test)
+	if settings != null:
+		settings.set("screen_shake_enabled", false)
+		settings.set("damage_flash_enabled", false)
+		var shakes1 := int(fb.get("shakes_fired"))
+		var flashes1 := int(fb.get("flashes_fired"))
+		var blinks1 := int(fb.get("blinks_fired"))
+		var hp1 := float(gs.get_stat("aster", "hp"))
+		var struck2 := false
+		for _t2 in range(200):
+			inst.call("headless_advance", 0.1)
+			if _t2 % 4 == 0:
+				await get_tree().process_frame
+			if float(gs.get_stat("aster", "hp")) < hp1:
+				struck2 = true
+				break
+		await get_tree().process_frame
+		_assert_true(struck2, "a second strike lands for the gate check")
+		_assert_true(int(fb.get("shakes_fired")) == shakes1,
+			"accessibility OFF: no shake fired")
+		_assert_true(int(fb.get("flashes_fired")) == flashes1,
+			"accessibility OFF: no flash fired")
+		_assert_true(int(fb.get("blinks_fired")) > blinks1,
+			"the opacity blink still carries the information with shake/flash off")
+		settings.set("screen_shake_enabled", true)
+		settings.set("damage_flash_enabled", true)
+	# SPOTTING (fresh scenario): reset re-homes the watcher (reset_to_home)
+	chunk.call("reset_preview_state")
+	for pid2 in ["aster", "peris", "endo"]:
+		inst.call("headless_set_character_position", pid2,
+			Vector3(0.8, 0.1, 2.0 + 1.2 * float(["aster", "peris", "endo"].find(pid2))))
+	inst.call("headless_advance", 0.6)
+	_assert_true(int(fb.call("spotted_count")) == 0,
+		"no enemy inside any visual range -> nothing spotted")
+	var bubbles_before := int(fb.get("head_bubbles_fired")) + int(fb.get("portrait_bubbles_fired"))
+	inst.call("headless_set_character_position", "aster", Vector3(22.0, 0.1, 5.0))
+	inst.call("headless_advance", 0.6)
+	_assert_true(int(fb.call("spotted_count")) >= 1,
+		"an enemy inside the visual range is SPOTTED (red tracking outline registered)")
+	var bubbles_after_first := int(fb.get("head_bubbles_fired")) + int(fb.get("portrait_bubbles_fired"))
+	_assert_true(bubbles_after_first == bubbles_before + 1,
+		"the FIRST spot raises exactly one alert bubble (%d -> %d)" % [bubbles_before, bubbles_after_first])
+	inst.call("headless_advance", 1.0)
+	var bubbles_later := int(fb.get("head_bubbles_fired")) + int(fb.get("portrait_bubbles_fired"))
+	_assert_true(bubbles_later == bubbles_after_first,
+		"an already-spotted enemy never re-alerts")
+	inst.call("headless_set_character_position", "aster", Vector3(0.8, 0.1, 2.0))
+	inst.call("headless_advance", 0.6)
+	_assert_true(int(fb.call("spotted_count")) == 0,
+		"leaving the visual range UNSPOTS (outline unregistered)")
+	inst.queue_free()
+	await get_tree().process_frame
+
 func _test_canon_mechanics() -> void:
 	_test_name = "Canon Mechanics"
 	var offenders: Array = []

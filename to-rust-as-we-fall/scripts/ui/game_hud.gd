@@ -456,6 +456,29 @@ func set_portrait_alert(id: String, alert: bool) -> void:
 	_update_portrait_name(id)
 	_style_portrait(id)
 
+## A transient "!" bubble above a portrait — the OFFSCREEN alert surface (a
+## struck member you can't see = red; the first enemy spotted while your view
+## is elsewhere = yellow). Pop, hold, fade, free — never persistent state.
+func show_portrait_alert_bubble(id: String, color: Color) -> void:
+	if not _portraits.has(id):
+		return
+	var card: Control = _portraits[id].card
+	var old := card.get_node_or_null("AlertBubble")
+	if old != null:
+		old.queue_free()
+	var bubble := preload("res://scenes/ui/portrait_alert_bubble.tscn").instantiate() as Label
+	bubble.add_theme_color_override("font_color", color)
+	bubble.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	bubble.position = Vector2(card.size.x * 0.5 - 6.0, -26.0)
+	bubble.scale = Vector2.ONE * 0.2
+	bubble.pivot_offset = Vector2(6.0, 24.0)
+	card.add_child(bubble)
+	var tw := bubble.create_tween()
+	tw.tween_property(bubble, "scale", Vector2.ONE, 0.14) 		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_interval(1.4)
+	tw.tween_property(bubble, "modulate:a", 0.0, 0.35)
+	tw.tween_callback(bubble.queue_free)
+
 ## Brief, source-agnostic damage acknowledgement. The world owns WHAT hurt; the HUD only makes the affected
 ## portrait unmistakable, then restores the exact selection/status styling that preceded the pulse.
 func pulse_portrait_damage(id: String) -> void:
