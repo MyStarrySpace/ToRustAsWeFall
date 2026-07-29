@@ -32,6 +32,10 @@ signal dodge_finished(char_id: String)
 signal stat_changed(char_id: String, stat: String, value: float)
 signal damage_absorbed(char_id: String, amount: float, shield_remaining: float, source_id: String)
 signal damage_shield_changed(char_id: String, amount: float, source_id: String)
+## A party body took an enemy strike (emitted by the shared Enemy._resolve_strike
+## path AFTER damage + knockback commit). Presentation-only consumers (screen
+## shake, flash, blink, offscreen alerts) — never gameplay logic.
+signal character_struck(char_id: String, attacker_id: String)
 signal running_changed(char_id: String, running: bool)
 signal interactable_registered(id: String)
 signal interactable_triggered(id: String, character: String)
@@ -878,12 +882,14 @@ func _prepare_explicit_move(id: String) -> void:
 
 ## A* pathfind to a grid cell on the character's current floor. Returns true if a path was found.
 func command_move_to_cell(id: String, cell: Vector2i) -> bool:
+	_warn_if_off_frame("command_move_to_cell(%s)" % id, grid.grid_to_world(cell) if grid != null else Vector3(float(cell.x), 0.0, float(cell.y)))
 	_prepare_explicit_move(id)
 	_emit(GameEvent.KIND_MOVE_TO_CELL, {"id": id, "cell": GameEvent.v2i_to_arr(cell)})
 	return _do_move_to_cell(id, cell)
 
 ## Straight-line move to a world position.
 func command_move_to_pos(id: String, pos: Vector3) -> bool:
+	_warn_if_off_frame("command_move_to_pos(%s)" % id, pos)
 	_prepare_explicit_move(id)
 	_emit(GameEvent.KIND_MOVE_TO_POS, {"id": id, "pos": GameEvent.v3_to_arr(pos)})
 	return _do_move_to_pos(id, pos)
@@ -1030,6 +1036,7 @@ func _do_stop(id: String) -> void:
 ## the position (keeping the character's own Y/level) + grid cell, re-parks, recomputes detection.
 ## Commits an enemy's attack-lunge end-point so its next move doesn't snap back to where it began.
 func snap_character_to(id: String, pos: Vector3) -> void:
+	_warn_if_off_frame("snap_character_to(%s)" % id, pos)
 	if not characters.has(id) or is_external_traversal_active(id):
 		return
 	_emit(GameEvent.KIND_SNAP_POSITION, {"id": id, "pos": GameEvent.v3_to_arr(pos)})
@@ -1140,6 +1147,22 @@ func compute_preview_party_paths(target_pos: Vector3) -> Array:
 ## e.g. ChannelsCoordMap wraps the flat wash gauntlet onto the channels helix. Never serialized, never
 ## logged: it's a pure presentation transform a scene installs, so gameplay/replay are unaffected.
 var coord_map = null
+## Optional authoring-frame bounds for the DATA layer (a warped scene's flat
+## frame, e.g. the wash coil's 26x8). Never gameplay-enforced — purely a LOUD
+## frame-mixing tripwire: a data-layer move command far outside the authored
+## frame almost always means a RENDER position leaked into a data API (the bug
+## class a coord_map scene makes possible; a player-contract flake teleported a
+## member to the render frame's coordinates once and the cause outran four
+## instrumentation passes — this warning is the permanent net). Scenes with a
+## coord_map should set it.
+var data_frame_bounds := Rect2()
+
+func _warn_if_off_frame(what: String, p: Vector3) -> void:
+	if data_frame_bounds.size == Vector2.ZERO:
+		return
+	if not data_frame_bounds.grow(2.0).has_point(Vector2(p.x, p.z)):
+		push_warning("GameState: %s targets (%.1f, %.1f) OUTSIDE the data frame %s — render/data frame mixing?" % [
+			what, p.x, p.z, data_frame_bounds])
 
 ## The position a character's NODE should render at: the flat data position warped through coord_map
 ## (identity when no map is installed, so every flat scene is unchanged).
@@ -6178,6 +6201,7 @@ func _main_group() -> Array[String]:
 	return result
 
 func party_move_to_cell(cell: Vector2i) -> int:
+	_warn_if_off_frame("party_move_to_cell", grid.grid_to_world(cell) if grid != null else Vector3(float(cell.x), 0.0, float(cell.y)))
 	_emit(GameEvent.KIND_PARTY_MOVE_TO_CELL, {"cell": GameEvent.v2i_to_arr(cell)})
 	var members := _main_group()
 	for char_id in members:

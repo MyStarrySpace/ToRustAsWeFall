@@ -194,7 +194,55 @@ func _trigger(play_feedback := true) -> bool:
 		_pending_source_receipt.clear()
 		_clear_pending_source_authority()
 	_flure_trigger_open = false
+	if accepted:
+		_settle_retries = 0
+		if _gs != null and _gs.scheduler != null:
+			_gs.scheduler.cancel_tag(_settle_retry_tag())
+	else:
+		_maybe_schedule_settle_retry()
 	return accepted
+
+## A real right-click walks the actor to the source and fires ON ARRIVAL —
+## often a tick before the cooperative settle finishes, while is_moving still
+## reads true, so the physical validation truthfully refuses. That refusal is
+## a TIMING artifact, not a plan failure (the player did everything right):
+## when the actor stands within reach and only MOTION blocked the fire, retry
+## on the scheduler until the settle ends, bounded. Caught live by the
+## wash_ascent player-contract sweep: the clicked flure walked, refused, and
+## never sang — "why aren't the enemies attracted to the active flure?"
+const SOURCE_ARRIVAL_SLACK := 0.85
+const _SETTLE_RETRY_STEP := 0.25
+const _SETTLE_RETRY_MAX := 6
+var _settle_retries := 0
+
+func _settle_retry_tag() -> String:
+	return "flure_settle_retry_%d" % get_instance_id()
+
+func _maybe_schedule_settle_retry() -> void:
+	if _gs == null or _gs.scheduler == null:
+		return
+	var actor := str(active_character)
+	if actor.is_empty() or not _gs.characters.has(actor):
+		return
+	var actor_pos: Vector3 = _gs.get_position(actor)
+	var source_pos: Vector3 = _source_data_position()
+	var planar := Vector2(actor_pos.x, actor_pos.z).distance_to(
+		Vector2(source_pos.x, source_pos.z))
+	if planar > interaction_radius + SOURCE_ARRIVAL_SLACK + 0.4:
+		return
+	if not _actor_busy(actor):
+		return
+	if _settle_retries >= _SETTLE_RETRY_MAX:
+		_settle_retries = 0
+		return
+	_settle_retries += 1
+	_gs.scheduler.cancel_tag(_settle_retry_tag())
+	_gs.scheduler.schedule_after(_SETTLE_RETRY_STEP, _settle_retry_fire,
+		_settle_retry_tag())
+
+func _settle_retry_fire() -> void:
+	if _trigger(false):
+		_settle_retries = 0
 
 
 ## Scenario policy may narrow eligibility, but it can never replace this reusable object's physical
@@ -975,7 +1023,12 @@ func _actor_ready_at_source(actor: String) -> bool:
 	var source_position: Vector3 = _source_data_position()
 	var planar: float = Vector2(actor_position.x, actor_position.z).distance_to(
 		Vector2(source_position.x, source_position.z))
-	return planar <= interaction_radius + SOURCE_POSITION_EPSILON \
+	# The interaction walk stops at the target's RING EDGE and parks on a grid
+	# cell, so a legitimate click-arrival lands up to ~a cell diagonal beyond
+	# interaction_radius. The anti-remote-firing law survives (the actor still
+	# stands AT the flure); demanding the radius exactly refused every real
+	# click-walk arrival (the wash_ascent player-contract catch).
+	return planar <= interaction_radius + SOURCE_ARRIVAL_SLACK + SOURCE_POSITION_EPSILON \
 		and absf(actor_position.y - source_position.y) \
 			<= maxf(1.5, interaction_radius + SOURCE_POSITION_EPSILON)
 

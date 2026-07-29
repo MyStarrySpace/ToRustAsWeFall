@@ -1109,6 +1109,9 @@ func _resolve_strike(tid: String) -> bool:
 		var damage_started := PerformanceTrace.begin()
 		game_state.adjust_stat(tid, "hp", -charge_damage)
 		PerformanceTrace.end(&"update", &"enemy.impact.damage", damage_started, tid, 1)
+	_apply_strike_knockback(tid)
+	if game_state.has_signal("character_struck"):
+		game_state.character_struck.emit(tid, char_id)
 	var flinch_started := PerformanceTrace.begin()
 	_flash_target(tid)
 	PerformanceTrace.end(&"draw", &"enemy.impact.flinch", flinch_started, tid, 1)
@@ -1117,6 +1120,40 @@ func _resolve_strike(tid: String) -> bool:
 	PerformanceTrace.end(&"draw", &"enemy.impact.feedback_signal", feedback_started, tid, 1)
 	_publish_enemy_authority()
 	return true
+
+## The struck body GIVES GROUND: a short locked shove away from the striker, as a
+## real data-layer traversal — the same logged verb the sweep carry and cargo
+## ride use (command_external_traversal), so replay and fast-forward reproduce
+## it exactly and the movement system owns the whole displacement. Clamped to
+## walkable ground (no room = the shove is absorbed); a body already riding a
+## carry/traversal is never double-moved.
+const STRIKE_KNOCKBACK_DIST := 0.7
+const STRIKE_KNOCKBACK_DURATION := 0.24
+
+func _apply_strike_knockback(tid: String) -> void:
+	if game_state == null or not game_state.has_method("command_external_traversal"):
+		return
+	if game_state.has_method("is_external_traversal_active") 			and bool(game_state.is_external_traversal_active(tid)):
+		return
+	var from: Vector3 = game_state.get_position(tid)
+	var dir: Vector3 = from - game_state.get_position(char_id)
+	dir.y = 0.0
+	if dir.length() < 0.01:
+		dir = Vector3(1.0, 0.0, 0.0)
+	var dest: Vector3 = from + dir.normalized() * STRIKE_KNOCKBACK_DIST
+	dest.y = from.y
+	if game_state.grid != null:
+		var cell: Vector2i = game_state.grid.world_to_grid(dest)
+		var lvl: int = int(game_state.get_character_level(tid)) 			if game_state.has_method("get_character_level") else 0
+		if not game_state.grid.is_walkable(cell.x, cell.y, {}, {}, lvl):
+			return
+	var render_from: Vector3 = game_state.get_render_position(tid) 		if game_state.has_method("get_render_position") else from
+	var render_dest: Vector3 = dest
+	if "coord_map" in game_state and game_state.coord_map != null:
+		render_dest = game_state.coord_map.to_world(dest)
+	game_state.command_external_traversal(tid,
+		StringName("strike_knockback:%s" % tid), dest,
+		render_from, render_dest, STRIKE_KNOCKBACK_DURATION, &"locked")
 
 ## The strike resolves at impact (standard enemy). ChainEnemy routes its segment contact through the same
 ## _resolve_strike so the two paths can't diverge.

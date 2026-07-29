@@ -23079,10 +23079,17 @@ func _contract_probe_fragment(eid: String) -> void:
 		var ia3 := interactables[idx] as Node3D
 		if not is_instance_valid(ia3) or not bool(ia3.get("interaction_enabled")):
 			continue
-		# park the active character beside it (setup, not the act under test) + frame the camera
+		# park the active character beside it (setup, not the act under test) + frame the camera.
+		# The park must be a DATA-space point: on a warped scene (coord_map) the
+		# interactable's global_position is RENDER space, and feeding it to the
+		# data-space teleport stranded the character in an off-frame grid pocket
+		# (the wash_ascent flure-commit flake — the walk back had no path).
 		if inst.has_method("headless_set_character_position"):
 			var park := ia3.global_position + Vector3(1.6, 0, 1.6)
 			var gs0 = inst.get("_game_state")
+			if gs0 != null and gs0.coord_map != null:
+				park = (gs0.coord_map.to_data(ia3.global_position) as Vector3) \
+					+ Vector3(1.2, 0.0, 0.0)
 			if gs0 != null and gs0.grid != null and gs0.grid.has_method("nearest_walkable_world"):
 				park = gs0.grid.nearest_walkable_world(park)
 			inst.call("headless_set_character_position", active_id, park)
@@ -23148,9 +23155,25 @@ func _contract_probe_fragment(eid: String) -> void:
 			if inst.has_method("headless_advance"):
 				inst.call("headless_advance", 0.5, 0.1)
 			spent += 0.5
+			var gs_w2 = inst.get("_game_state")
+			if gs_w2 != null and gs_w2.characters.has("aster"):
+				var ap: Vector3 = gs_w2.get_position("aster")
+				if ap.z > 8.5 or ap.x < -0.5:
+					print("    [contract-dbg] OFF-FRAME during %s at spent=%.1f aster=%s" % [ia3.name, spent, ap])
 			for _w in range(3):
 				await get_tree().process_frame
 		_assert_true(fired[0], "[%s] right-clicking '%s' commits: walk + trigger fired within %.0fs" % [eid, ia3.name, CONTRACT_WALK_BUDGET])
+		if not fired[0]:
+			# a commit red is a PLAYABILITY failure — dump the party's data-layer
+			# truth so the cause (stranded member, frame mixing, dead pathing)
+			# reads straight from the log instead of another instrumentation pass
+			var gs_fail = inst.get("_game_state")
+			if gs_fail != null:
+				for pid_dbg in ["aster", "peris", "endo"]:
+					if gs_fail.characters.has(pid_dbg):
+						print("    [contract-dbg] %s at %s moving=%s carry=%s" % [pid_dbg,
+							gs_fail.get_position(pid_dbg), gs_fail.is_moving(pid_dbg),
+							gs_fail.is_external_traversal_active(pid_dbg)])
 		probed += 1
 		# drop the hover (mirror of the ray-delivered enter) + park the mouse at the viewport CENTRE
 		# (an edge park reads as camera edge-scroll — the input-playthrough lesson)
@@ -27666,7 +27689,7 @@ func _test_wash_ascent() -> void:
 	_assert_true(seam_err < 0.05,
 		"deck tiles meet the helix at their seams (worst %.3f m)" % seam_err)
 	var wb: Dictionary = chunk.call("measure_water_bands")
-	_assert_true(int(wb.get("deck", 0)) == 18 and int(wb.get("trough", 0)) >= 20,
+	_assert_true(int(wb.get("deck", 0)) == 14 and int(wb.get("trough", 0)) >= 20,
 		"helical water bands cover the sections + trough (deck %d, trough %d)" % [
 			int(wb.get("deck", 0)), int(wb.get("trough", 0))])
 	var canon_slope: float = ChannelsArc.KCLIMB / ChannelsArc.KTHETA
@@ -27850,10 +27873,14 @@ func _test_wash_ascent() -> void:
 			float(gs_w.get_stat("aster", "hp")), float(gs_w.get_damage_shield("aster"))])
 	inst.call("headless_set_character_position", "aster", Vector3(0.8, 0.1, 2.0))
 	gs_w.clear_damage_shield("aster")
-	# the deck's drain columns mark every mouth (data-driven from the sections)
-	_assert_true(bool(chunk.call("_is_mouth_column", 4)) and bool(chunk.call("_is_mouth_column", 12)) \
-			and not bool(chunk.call("_is_mouth_column", 6)),
-		"drain-grate columns mark the section mouths in the deck itself")
+	# THE FLOOR IS THE READ: iron sluice inside every span, wood planks outside
+	_assert_true(str(chunk.call("_deck_tile_id", "", 1, 1)) == "deck_sluice" \
+			and str(chunk.call("_deck_tile_id", "", 6, 1)) == "deck_sluice" \
+			and str(chunk.call("_deck_tile_id", "", 10, 1)) == "deck_sluice" \
+			and str(chunk.call("_deck_tile_id", "", 4, 1)).begins_with("deck_planks") \
+			and str(chunk.call("_deck_tile_id", "", 9, 1)).begins_with("deck_planks") \
+			and str(chunk.call("_deck_tile_id", "", 12, 1)).begins_with("deck_planks"),
+		"the floor is the danger read: sluice beds inside every wash span, planks on all safe ground")
 	# the mid-span stash pays the party — and stands INSIDE the kill span; its
 	# TIMED_ACTION work beat rides the scheduler, so the reward lands after it.
 	# Damage a member first so the rations MEASURE.
@@ -27861,7 +27888,7 @@ func _test_wash_ascent() -> void:
 	_assert_true(stash_node != null, "the sunken stash offers the push-your-luck salvage")
 	if stash_node != null:
 		var stash_flat := Vector3(14.2, 0.1, 6.4)
-		_assert_true(stash_flat.x > 11.0 and stash_flat.x < 17.0,
+		_assert_true(stash_flat.x > 12.0 and stash_flat.x < 16.0,
 			"the stash stands INSIDE section 1's span — the cadence prices the work")
 		gs_w.adjust_stat("peris", "hp", -8.0)
 		var hp_pre_stash := float(gs_w.get_stat("peris", "hp"))
@@ -27880,26 +27907,26 @@ func _test_wash_ascent() -> void:
 	# the kit win object — refusing while the party is scattered, committing when
 	# everyone stands on the pad.
 	var wstate2: Dictionary = chunk.call("get_preview_state")
-	_assert_true(int(wstate2.get("fauna", 0)) >= 2,
-		"canonical fauna roam the slice (%d)" % int(wstate2.get("fauna", 0)))
+	_assert_true(int(wstate2.get("fauna", 0)) >= 1,
+		"the canonical pad watcher roams the reclaimed end (%d)" % int(wstate2.get("fauna", 0)))
 	var flure_node = chunk.find_child("LonelyFlureObject", true, false)
 	_assert_true(flure_node != null, "the lonely flure is the REAL kit object")
 	if flure_node != null:
 		# the kit demands the actor physically AT the source (no remote firing)
-		inst.call("headless_set_character_position", "aster", Vector3(17.6, 0.1, 3.2))
+		inst.call("headless_set_character_position", "aster", Vector3(17.6, 0.1, 1.4))
 		for _f in range(3):
 			await get_tree().process_frame
 		flure_node.call("_trigger")
 		inst.call("headless_advance", 1.5)
 		var lured := 0
 		var foe_states: Array = []
-		for foe_id in ["sapscrap_0", "sapscrap_1"]:
+		for foe_id in ["sapscrap_0"]:
 			var foe = chunk.call("_fauna_by_id", foe_id)
 			if foe != null:
 				foe_states.append(str(foe.call("get_state")))
 				if str(foe.call("get_state")) == "lured":
 					lured += 1
-		_assert_true(lured >= 1, "the flure pulls a sapscrap (%d lured; states %s)" % [lured, foe_states])
+		_assert_true(lured >= 1, "the flure pulls the pad watcher (%d lured; states %s)" % [lured, foe_states])
 	var ring = chunk.find_child("AscentPortal", true, false)
 	_assert_true(ring is ExitShelter, "the ring exit IS the kit win object (ExitShelter)")
 	var refusals: Array = []
@@ -28342,13 +28369,13 @@ func _test_wash_ascent_playthrough() -> void:
 	var flure = chunk.find_child("LonelyFlureObject", true, false)
 	_assert_true(flure != null, "the flure stands at the last gap for the lure play")
 	if flure != null and leg_ok:
-		gs.command_move_to_pos("aster", Vector3(17.6, 0.1, 3.2))
+		gs.command_move_to_pos("aster", Vector3(17.6, 0.1, 1.4))
 		# the kit's busy-guard refuses a MOVING actor — wait for the walk AND
 		# the cooperative settle to finish, exactly like a real click-to-fire
 		for _fa in range(60):
 			inst.call("headless_advance", 0.1)
 			if not bool(gs.is_moving("aster")) \
-					and gs.get_position("aster").distance_to(Vector3(17.6, 0.1, 3.2)) < 1.2:
+					and gs.get_position("aster").distance_to(Vector3(17.6, 0.1, 1.4)) < 1.2:
 				break
 		sim_t += 4.0
 		flure.set("active_character", "aster")
@@ -28357,19 +28384,19 @@ func _test_wash_ascent_playthrough() -> void:
 		_assert_true(fire_ok, "the flure fires with Aster standing at it")
 		var pulled := 0
 		var sentry_states: Array = []
-		for foe_id in ["sapscrap_0", "sapscrap_1"]:
+		for foe_id in ["sapscrap_0"]:
 			var foe = chunk.call("_fauna_by_id", foe_id)
 			if foe != null:
 				sentry_states.append("%s=%s@%s" % [foe_id, str(foe.call("get_state")),
 					str(gs.get_position(foe_id))])
 				if str(foe.call("get_state")) == "lured":
 					pulled += 1
-		_assert_true(pulled >= 2,
-			"the flure pulls BOTH sentries off their watches (%d; %s)" % [pulled, str(sentry_states)])
+		_assert_true(pulled >= 1,
+			"the flure pulls the pad watcher off its watch (%d; %s)" % [pulled, str(sentry_states)])
 		# wait for the DEMONSTRATION: the sentry's doomed crossing meets a surge
 		# (arithmetic certainty — its crawl outlasts every dry window). The wash
 		# bite is the signal the finale keys on.
-		var pad_foe = chunk.call("_fauna_by_id", "sapscrap_1")
+		var pad_foe = chunk.call("_fauna_by_id", "sapscrap_0")
 		var cross_wait := 0.0
 		while cross_wait < 30.0:
 			inst.call("headless_advance", 0.2)

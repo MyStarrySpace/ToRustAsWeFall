@@ -13,6 +13,13 @@ var active_target_position := Vector3.ZERO
 var _interactor_id := ""   # who is actually servicing active_target (may be a party member, not `character`)
 var _bound_roots: Array[Node] = []
 var _arrival_game_state: Object
+# The committed walk's data-space destination + how close counts as ARRIVED
+# (the target's interaction radius, padded). A superseding carry (wash sweep,
+# knockback, ride) stops the walk WITHOUT arriving — see _complete_active_target.
+var _flat_target := Vector3.INF
+var _arrival_reach := 1.0
+var _redrive_count := 0
+const _MAX_REDRIVES := 3
 
 signal target_reached(target: Node)
 signal target_cancelled(target: Node)
@@ -115,6 +122,14 @@ func _on_interaction_requested(target: Node, requested_position: Vector3 = Vecto
 	# Pick WHO services this interaction: a required character if the object names one, else the nearest
 	# party member (preferring a free hand for a pickup). May be a party member other than the leader.
 	_interactor_id = _pick_interactor_for(target, flat_target)
+	_flat_target = flat_target
+	_redrive_count = 0
+	_arrival_reach = 1.0
+	var reach_probe := target
+	if target != null and not ("interaction_radius" in target) and target.has_method("get_interaction_delegate"):
+		reach_probe = target.call("get_interaction_delegate")
+	if reach_probe != null and "interaction_radius" in reach_probe:
+		_arrival_reach = maxf(1.0, float(reach_probe.interaction_radius) + 0.5)
 	_set_target_active_character(target, _interactor_id)
 	if not _target_feedback_is_managed(target) and target.has_method("begin_queued_feedback"):
 		target.call("begin_queued_feedback", active_target_position, _interactor_color())
@@ -243,6 +258,22 @@ func _complete_active_target() -> void:
 		active_target = null
 		_interactor_id = ""
 		return
+	# THE CLICK KEEPS ITS PROMISE: "stopped moving" is not "arrived". A wash
+	# sweep / knockback / ride SUPERSEDES the committed walk and dumps the
+	# servicer elsewhere — mid-carry we wait, and a landing outside the
+	# target's reach RE-DRIVES the same commitment (bounded) instead of
+	# completing at the wrong spot, where a strict validator truthfully
+	# refuses and the player's click dies silently (the wash_ascent flure
+	# contract catch).
+	var gs_arr = _character_game_state()
+	if _interactor_id != "" and gs_arr != null and gs_arr.characters.has(_interactor_id) 			and _flat_target != Vector3.INF:
+		if gs_arr.has_method("is_external_traversal_active") 				and bool(gs_arr.is_external_traversal_active(_interactor_id)):
+			return
+		var at: Vector3 = gs_arr.get_position(_interactor_id)
+		if Vector2(at.x, at.z).distance_to(Vector2(_flat_target.x, _flat_target.z)) 				> _arrival_reach and _redrive_count < _MAX_REDRIVES:
+			_redrive_count += 1
+			gs_arr.command_move_to_pos(_interactor_id, _flat_target)
+			return
 	var completed := active_target
 	# Selection can change while a character is walking. Reassert the servicing body at arrival so
 	# a global portrait update cannot make a required-character action complete as somebody else.

@@ -98,6 +98,22 @@ var auto_advance_dialogue: bool = false
 ## How long COMMAND must be held before it becomes a whole-party rally instead of a normal click.
 ## The deliberately broad range supports both twitchy mouse players and touch/accessibility use.
 var rally_hold_duration: float = RALLY_HOLD_DEFAULT
+## Accessibility: hit feedback intensity. Screen shake and the red damage flash
+## can each be disabled without losing the rest of the hit language (opacity
+## blink, portrait pulse, offscreen alert bubbles stay on — they carry the
+## information; shake/flash carry only the punch).
+var screen_shake_enabled: bool = true
+var damage_flash_enabled: bool = true
+
+func set_screen_shake_enabled(on: bool) -> void:
+	screen_shake_enabled = on
+	save_settings()
+	changed.emit()
+
+func set_damage_flash_enabled(on: bool) -> void:
+	damage_flash_enabled = on
+	save_settings()
+	changed.emit()
 ## The selected gameplay configuration. It is applied when entering/restarting a
 ## generated stretch rather than hot-swapping the economy underneath a live run.
 var game_mode: String = GAME_MODE_NEUTRAL
@@ -305,6 +321,8 @@ func save_settings() -> void:
 		cfg.load(_config_path)
 	cfg.set_value("accessibility", "text_speed", text_speed)
 	cfg.set_value("accessibility", "auto_advance_dialogue", auto_advance_dialogue)
+	cfg.set_value("accessibility", "screen_shake", screen_shake_enabled)
+	cfg.set_value("accessibility", "damage_flash", damage_flash_enabled)
 	cfg.set_value("gameplay", "mode", game_mode)
 	cfg.set_value("controls", "rally_hold_duration", rally_hold_duration)
 	for action in _input_binding_overrides:
@@ -322,6 +340,12 @@ func load_settings() -> void:
 	)
 	auto_advance_dialogue = bool(
 		_config_value(cfg, "accessibility", "auto_advance_dialogue", false)
+	)
+	screen_shake_enabled = bool(
+		_config_value(cfg, "accessibility", "screen_shake", true)
+	)
+	damage_flash_enabled = bool(
+		_config_value(cfg, "accessibility", "damage_flash", true)
 	)
 	game_mode = canonical_game_mode(str(
 		_config_value(cfg, "gameplay", "mode", GAME_MODE_NEUTRAL)

@@ -68,10 +68,15 @@ const BLOCKING_PIECES := ["shelter", "workbench", "forage_cache", "terminal",
 ## windows (period - dur >= 6.6s) stay generous enough to cross every span
 ## walking. `--test-wash-ascent-playthrough` asserts all of it (walk-sprint
 ## fails, run-rush fails, timed crossing completes) — retune only with it green.
+## Spans sit ON the 2.0 m deck-tile grid so the FLOOR is an exact binary read:
+## every tile inside a span is an iron SLUICE BED (the wash's own ground —
+## "pipe bottom", the director's ask), every tile outside is wood plank. Wood
+## NEVER floods; metal always can. The gaps (8-12, 16-20) are two full plank
+## columns wide.
 const WASH_SECTIONS := [
-	{"s0": 2.0, "s1": 9.0, "period": 9.0, "dur": 2.4, "phase": 0.5},
-	{"s0": 11.0, "s1": 17.0, "period": 11.0, "dur": 2.6, "phase": 3.5},
-	{"s0": 19.0, "s1": 24.0, "period": 13.0, "dur": 2.8, "phase": 1.5},
+	{"s0": 2.0, "s1": 8.0, "period": 9.0, "dur": 2.4, "phase": 0.5},
+	{"s0": 12.0, "s1": 16.0, "period": 11.0, "dur": 2.6, "phase": 3.5},
+	{"s0": 20.0, "s1": 24.0, "period": 13.0, "dur": 2.8, "phase": 1.5},
 ]
 const WASH_GRACE := 1.0            # quiet second after reset before the ladder starts
 const TELEGRAPH_LEAD := 1.2        # channel brightens this long before the water arrives
@@ -480,29 +485,21 @@ func _warp_lights(root: Node) -> void:
 			clone.transform = _warp_transform((n as OmniLight3D).global_transform)
 			_realized_root.add_child(clone)
 
-## Deck tiling is INTENTIONAL, never per-tile noise (director): row j=0 (the
-## channel edge) is a continuous GRATE drainage band the whole stretch long;
-## the walk surface is planks in a steady A/B/C rhythm; the worn approach adds
-## AUTHORED contiguous wear clusters — decay happens in patches, not confetti.
-const DECK_WEAR_CLUSTERS := [Vector2i(1, 2), Vector2i(2, 2), Vector2i(2, 3), Vector2i(3, 1)]
-
-func _deck_tile_id(surface: String, i: int, j: int) -> String:
-	if j == 0:
-		return "deck_grate" if i % 2 == 0 else "deck_grate_b"
-	# drainage bands mark every section MOUTH across the full walkway width —
-	# the deck itself tells you where the wash's claims begin and end
-	if _is_mouth_column(i):
-		return "deck_grate_b" if j % 2 == 0 else "deck_grate"
-	if surface == "worn" and Vector2i(i, j) in DECK_WEAR_CLUSTERS:
-		return "deck_grate_b"
-	return ["deck_planks", "deck_planks_b", "deck_planks_c"][(i + j) % 3]
-
-func _is_mouth_column(i: int) -> bool:
+## THE FLOOR IS THE READ (director): iron sluice bed = wash ground, wood
+## plank = safe ground. One binary material truth — no decorative mixing of
+## wood and grate, no per-tile noise. Sections sit on the tile grid, so the
+## boundary is exact.
+func _deck_tile_id(_surface: String, i: int, _j: int) -> String:
 	var pitch := _piece_aabb("deck_planks").size.x
+	var mid := (float(i) + 0.5) * pitch
+	if _s_in_wash_span(mid):
+		return "deck_sluice"
+	return ["deck_planks", "deck_planks_b", "deck_planks_c"][i % 3]
+
+func _s_in_wash_span(s: float) -> bool:
 	for sec in WASH_SECTIONS:
-		for m in [float(sec["s0"]), float(sec["s1"])]:
-			if int(floor(m / pitch)) == i:
-				return true
+		if s >= float(sec["s0"]) and s <= float(sec["s1"]):
+			return true
 	return false
 
 func _wall_variant_ids() -> Array:
@@ -880,6 +877,8 @@ func reset_preview_state() -> void:
 	_swept_count = 0
 	var gs = _get_game_state()
 	var sched = _get_scheduler()
+	if gs != null and "data_frame_bounds" in gs:
+		gs.data_frame_bounds = Rect2(0.0, 0.0, DECK_W, DECK_D)
 	for i in range(_channels.size()):
 		var ch: Channel = _channels[i]
 		ch.reset()
@@ -1036,7 +1035,7 @@ func _build_lonely_flure() -> void:
 	# lured sentries PARK high-z in the gap, not on the flure itself — the low-z
 	# lane past the song stays walkable (a park on the source pulled the gap
 	# sentry point-blank into the waiting party, where distraction can't help)
-	flure.settle_pos = Vector3(18.0, DECK_TOP, 7.2)
+	flure.settle_pos = Vector3(17.8, DECK_TOP, 6.8)
 	flure.set_enemy_resolver(_fauna_by_id)
 	flure.one_shot = false
 	flure.description = "Light the lonely flure"
