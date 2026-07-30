@@ -256,7 +256,9 @@ func _realize_piece(marker: Node3D) -> void:
 	if emission_scale < 1.0:
 		_scale_emission(piece, emission_scale)
 	if str(marker.get_meta("portal_class", "")) == "route":
-		_tint_portal_neon(piece, Color(0.3, 0.55, 1.0))
+		# the modulator leans hard off red because the baked neon texture is
+		# purple — the PRODUCT is what the player sees, and it must read BLUE
+		_tint_portal_neon(piece, Color(0.12, 0.72, 1.0))
 
 ## A measured row: pieces laid along the marker's local +X, pitch = the piece's
 ## real AABB x-length, each piece offset so its AABB START sits at k*pitch.
@@ -608,7 +610,15 @@ func _tint_portal_neon(piece: Node3D, color: Color) -> void:
 				if mat is StandardMaterial3D:
 					var sm := mat as StandardMaterial3D
 					var mname := str(sm.resource_name)
-					if sm.emission_enabled and (mname.findn("neon") >= 0 \
+					# The painted pieces bake their glow into an emission
+					# TEXTURE under a white emission color — the color is a
+					# free modulator, so the class recolors the baked neon
+					# without touching the albedo the body is painted with.
+					if sm.emission_enabled and sm.emission_texture != null:
+						var dup_t := sm.duplicate() as StandardMaterial3D
+						dup_t.emission = color
+						mi.set_surface_override_material(si, dup_t)
+					elif sm.emission_enabled and (mname.findn("neon") >= 0 \
 							or sm.emission.b > sm.emission.r * 1.1):
 						var dup := sm.duplicate() as StandardMaterial3D
 						dup.emission = color
