@@ -317,6 +317,15 @@ func _begin_sweep_traversal(id: String, origin: Vector3, target_kind: String, no
 		render_destination = _sweep_gs.coord_map.to_world(destination)
 	var traversal_id := _sweep_traversal_id(id)
 	var refractory_tick := now + _sweep_refractory_secs
+	# A damage shield is consulted AT THE CATCH — the wave hits the body the
+	# moment the water takes it, and a Wrap that was live THEN protects the
+	# whole ride, however far downstream the landing is (sweep-to-start made
+	# rides longer than any shield window). The shield spends now; only the
+	# unabsorbed REMAINDER travels to the arrival impact, which stays the
+	# one boundary where hp/stun bookkeeping happens.
+	var catch_hp := _sweep_party_hp
+	if target_kind == "party" and _sweep_gs != null 			and _sweep_gs.has_method("_resolve_incoming_damage"):
+		catch_hp = float(_sweep_gs.call("_resolve_incoming_damage", id, _sweep_party_hp))
 	var pending := {
 		"traversal_id": String(traversal_id),
 		"phase": SWEEP_PHASE_RESERVED,
@@ -327,7 +336,7 @@ func _begin_sweep_traversal(id: String, origin: Vector3, target_kind: String, no
 		"data_destination": _v3_to_portable(destination),
 		"render_origin": _v3_to_portable(render_origin),
 		"render_destination": _v3_to_portable(render_destination),
-		"party_hp": _sweep_party_hp,
+		"party_hp": catch_hp,
 		"enemy_damage": _sweep_enemy_damage,
 		"enemy_stun": _sweep_enemy_stun,
 		"refractory_tick": refractory_tick,

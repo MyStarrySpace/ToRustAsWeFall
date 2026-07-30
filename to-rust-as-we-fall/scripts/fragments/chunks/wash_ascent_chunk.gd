@@ -1006,7 +1006,7 @@ func reset_preview_state() -> void:
 				"travel_speed": 7.0,
 				"on_swept": _on_swept.bind(i),
 				"enemy_resolver": _fauna_by_id,
-				"enemy_damage": 10.0,
+				"enemy_damage": 50.0,
 				"enemy_stun": 2.5,
 			})
 		if sched != null:
@@ -1136,6 +1136,12 @@ func _build_interactables() -> void:
 	# PUSH-YOUR-LUCK: a salvage dwell INSIDE section 1's span. No character
 	# gate — the CADENCE is the gate: the work beat only fits if you read the
 	# beat first. One-shot, pays the party in ATP.
+	var transfer_cache := _add_interactable(self, "TransferCache",
+		"Pry the transfer crew's tool drop loose", Vector3(32.0, DECK_TOP, 6.8),
+		"SALVAGE THE DROP", "", 2.2, true, 1.5,
+		Interactable.InteractableType.TIMED_ACTION)
+	transfer_cache.consequence_preview = "The transfer crew left their kit mid-stretch. Only a held channel gives you long enough."
+	_wire_trigger(transfer_cache, _on_transfer_cache)
 	var stash := _add_interactable(self, "SunkenStash",
 		"Pry the sunken stash loose", Vector3(14.2, DECK_TOP, 6.4),
 		"SALVAGE THE STASH", "", 2.2, true, 1.5,
@@ -1419,6 +1425,19 @@ func _on_terminal(_args = null) -> void:
 		_show_note("// CADENCE LOGGED // open water ahead", 2.6)
 	_set_preview_step("wash_ascent_cadence_logged")
 
+## Same rations grammar as the sunken stash — the reward feeds the CLOSED
+## stamina field, so the detour is a budget decision, not a trinket.
+func _on_transfer_cache(_args = null) -> void:
+	var gs = _get_game_state()
+	if gs == null:
+		return
+	for id_v in PARTY_IDS:
+		if gs.characters.has(str(id_v)):
+			gs.adjust_stat(str(id_v), "hp", 8.0)
+			gs.adjust_stat(str(id_v), "stamina", 25.0)
+	_show_note("The crew's kit, still packed. Rations for everyone.", 2.4)
+	_set_preview_step("wash_ascent_transfer_cache")
+
 func _get_scheduler_tick_safe() -> float:
 	var sched = _get_scheduler()
 	return float(sched.get_current_tick()) if sched != null else 0.0
@@ -1545,6 +1564,9 @@ func _on_lonely_flure_lit(pulled: int) -> void:
 
 func get_scene_title() -> String:
 	return "Wash Ascent"
+
+func preview_field_stamina_regen() -> bool:
+	return false
 
 func get_scene_help() -> String:
 	return "Reach the ring at the drum head. // The wash sweeps the careless all the way to the bottom of the climb. // Valves can hold a stretch quiet; dropped sloperopes are the short way back."

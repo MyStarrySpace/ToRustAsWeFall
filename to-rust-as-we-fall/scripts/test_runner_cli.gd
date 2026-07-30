@@ -27999,6 +27999,16 @@ func _test_wash_ascent() -> void:
 	chunk.call("reset_preview_state")
 	inst.call("headless_set_character_position", "aster", Vector3(0.8, 0.1, 2.0))
 	inst.call("headless_advance", 0.3)
+	# THE HOLD-WINDOW DECISION: the transfer cache's work beat can NEVER fit
+	# the keyed span's dry beat — only a held channel affords it, so the hold
+	# carries a real choice (clean cross vs split-and-salvage), not a script
+	var tcache = chunk.find_child("TransferCache", true, false)
+	_assert_true(tcache != null, "the transfer cache stands in the keyed span")
+	if tcache != null:
+		var keyed_dry := 10.0 - 9.0
+		_assert_true(float(tcache.get("dwell_time")) > keyed_dry,
+			"the cache's work beat (%.1fs) cannot fit the keyed dry beat (%.1fs) — hold-locked" % [
+			float(tcache.get("dwell_time")), keyed_dry])
 	# THE SMART READ for act two: the flow gauge names both upper cadences
 	var gauge_node = chunk.find_child("FlowGauge", true, false)
 	_assert_true(gauge_node != null, "the flow gauge stands on the landing (PPP#2 flow station)")
@@ -28706,57 +28716,59 @@ func _test_wash_ascent_playthrough() -> void:
 					pulled += 1
 		_assert_true(pulled >= 1,
 			"the flure pulls the pad watcher off its watch (%d; %s)" % [pulled, str(sentry_states)])
-		# wait for the DEMONSTRATION: fired on the telegraph, the sentry's
-		# crossing meets the surge mid-span. The wash bite is the signal the
-		# finale keys on.
+		# wait for the DEMONSTRATION KILL (P18 verbatim; the wash_relay
+		# precedent drowns the penned enemy): fired on the telegraph, the
+		# sentry's crossing meets the surge mid-span and the wash TAKES it.
+		# No wounded sentry to re-sing, no park-wait — the chore chain died
+		# with it.
 		var pad_foe = chunk.call("_fauna_by_id", "sapscrap_0")
 		var cross_wait := 0.0
 		while cross_wait < 30.0:
 			inst.call("headless_advance", 0.2)
 			cross_wait += 0.2
-			if pad_foe != null and float(pad_foe.get("_hp")) < float(pad_foe.get("max_hp")):
+			if pad_foe != null and not bool(pad_foe.call("is_alive")):
 				break
 		sim_t += cross_wait
-		var pf_hp := float(pad_foe.get("_hp")) if pad_foe != null else -1.0
-		var pf_max := float(pad_foe.get("max_hp")) if pad_foe != null else -1.0
-		_assert_true(pad_foe != null and pf_hp < pf_max,
-			"the surge takes the lured sentry in view — the DEMONSTRATION lands (hp %.0f/%.0f; state=%s pos=%s moving=%s)" % [pf_hp, pf_max,
-			str(pad_foe.call("get_state")) if pad_foe != null else "?",
-			str(gs.get_position("sapscrap_0")), str(gs.is_moving("sapscrap_0"))])
-	# the washed sentry is beaten, not dead — it gets back up. The flure is
-	# not one-shot BY DESIGN: the player's answer is to SING IT AGAIN, and the
-	# recovered sentry (back in an accepting state) takes the bait and parks
-	# at the high-z settle, off the party's lane, before anyone walks on.
-	if flure != null and leg_ok:
-		var relure_wait := 0.0
-		var re_state := ""
-		while relure_wait < 16.0:
-			inst.call("headless_advance", 0.25)
-			relure_wait += 0.25
-			var rfoe = chunk.call("_fauna_by_id", "sapscrap_0")
-			re_state = str(rfoe.call("get_state")) if rfoe != null else "?"
-			if re_state == "lured":
+		_assert_true(pad_foe != null and not bool(pad_foe.call("is_alive")),
+			"the surge KILLS the lured sentry in view — the demonstration is a kill (state=%s)" % \
+			(str(pad_foe.call("get_state")) if pad_foe != null else "?"))
+	# THE SHADOW CROSSING blessed (P10): the wash always has a second answer —
+	# PAY instead of TIME. Peris Wraps and deliberately takes section 1's
+	# surge: the shield eats the bite, the carry costs position only. A
+	# priced alternative, not a cheese — she rides back to the stretch start
+	# and climbs rope 1 like any washed member would.
+	if leg_ok:
+		# stand her in the span while it is DRY, cast when the onset is
+		# imminent (the shield's fire window), and let the surge do the rest
+		var wrap_stage := 0.0
+		while wrap_stage < 16.0:
+			var on_w: Array = (chunk.call("get_preview_state") as Dictionary).get("next_onsets_in", [])
+			if not bool((channels[1] as Node).call("is_flooding")) 					and on_w.size() > 1 and float(on_w[1]) > 2.2 and float(on_w[1]) < 3.6:
 				break
-			if re_state in ["idle", "roam", "return", "search"]:
-				flure.set("active_character", "aster")
-				flure.call("_trigger")
-		sim_t += relure_wait
-		_assert_true(re_state == "lured",
-			"the re-sung flure re-captures the recovered sentry (state=%s)" % re_state)
-		# let the captured sentry FINISH its crawl to the high-z settle before
-		# anyone marches — its crawl crosses the walking lane, and a player
-		# visibly waits for the beaten thing to sit down by the song
-		var park_wait := 0.0
-		while park_wait < 14.0:
-			inst.call("headless_advance", 0.25)
-			park_wait += 0.25
-			var spos: Vector3 = gs.get_position("sapscrap_0")
-			if not bool(gs.is_moving("sapscrap_0")) and spos.z > 5.2:
-				break
-		sim_t += park_wait
+			inst.call("headless_advance", 0.1)
+			wrap_stage += 0.1
+		sim_t += wrap_stage
+		inst.call("headless_set_character_position", "peris", Vector3(14.0, 0.1, 3.0))
+		var hp_shadow := float(gs.get_stat("peris", "hp"))
+		var wrap_ok: bool = bool(inst.call("headless_activate_ability_at", "wrap",
+			(chunk.call("get_coord_map")).to_world(Vector3(14.0, 0.1, 3.0)), ""))
+		if wrap_ok:
+			var shadow_wait := 0.0
+			while shadow_wait < 26.0:
+				inst.call("headless_advance", 0.2)
+				shadow_wait += 0.2
+				var spp: Vector3 = gs.get_position("peris")
+				if spp.x < 2.2 and not bool(gs.call("is_external_traversal_active", "peris")):
+					break
+			sim_t += shadow_wait
+			_assert_true(is_equal_approx(hp_shadow, float(gs.get_stat("peris", "hp"))),
+				"the Wrap-paid crossing costs POSITION, never blood — the priced second answer")
+			inst.call("headless_set_character_position", "peris", Vector3(18.3, 0.1, 2.1))
+			inst.call("headless_advance", 0.3)
 	var solve_swept := int((chunk.call("get_preview_state") as Dictionary).get("swept_count", 0))
-	_assert_true(solve_swept == solve_baseline,
-		"the timed route takes ZERO sweeps (%d -> %d)" % [solve_baseline, solve_swept])
+	_assert_true(solve_swept <= solve_baseline + 1,
+		"the timed route takes no unplanned sweeps (baseline %d -> %d; the one Wrap-paid crossing is the plan)" % [solve_baseline, solve_swept])
+	solve_baseline = solve_swept
 	# ACT TWO. Leg C: the wash that took the sentry opened section 2's longest
 	# dry window — cross NOW to the pump landing while the sentry is stunned.
 	if leg_ok:

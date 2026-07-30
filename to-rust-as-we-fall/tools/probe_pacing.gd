@@ -97,19 +97,9 @@ func _initialize() -> void:
 	await process_frame
 	flure.call("_trigger")
 	_act("flure-sing")
-	_advance_until("demonstration", func():
+	_advance_until("demonstration-kill", func():
 		var foe = _chunk.call("_fauna_by_id", "sapscrap_0")
-		return foe != null and float(foe.get("_hp")) < float(foe.get("max_hp")), 30.0, 0.2)
-	_advance_until("re-sing-park", func():
-		var foe = _chunk.call("_fauna_by_id", "sapscrap_0")
-		if foe == null:
-			return true
-		var st := str(foe.call("get_state"))
-		if st in ["idle", "roam", "return", "search"]:
-			flure.set("active_character", "aster")
-			flure.call("_trigger")
-		var sp: Vector3 = _gs.get_position("sapscrap_0")
-		return st == "lured" and not bool(_gs.is_moving("sapscrap_0")) and sp.z > 5.2, 30.0, 0.25)
+		return foe != null and not bool(foe.call("is_alive")), 30.0, 0.2)
 	# --- landing: cross section 2, drop rope 1, valve, keyed crossing ---
 	_advance_until("wait-dry-2", func():
 		var on: Array = (_chunk.call("get_preview_state") as Dictionary).get("next_onsets_in", [])
