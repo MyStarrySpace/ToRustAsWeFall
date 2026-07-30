@@ -21,7 +21,7 @@ const A0 := 0.0            # start angle (s = 0)
 const KTHETA := 0.0907     # radians of sweep per unit s  (~1.3 turns over S_MAX)
 const Y0 := 1.0            # world height at s = 0
 const KCLIMB := 0.1333     # world height climbed per unit s
-const S_MAX := 90.0        # gauntlet length in s (the gameplay x range + margin)
+const S_MAX := 185.0       # 2.5 spiral turns + the entry bridge (one turn = 2*PI/KTHETA ~= 69.3 s)
 
 ## Linear (s, lane) -> world point on the helix.
 static func arc_pos(s: float, lane: float = 0.0) -> Vector3:

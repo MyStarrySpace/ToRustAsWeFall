@@ -33,8 +33,8 @@ func _initialize() -> void:
 	# SHOT 1: the overlook — from just behind the bridge spawns, looking down
 	# the whole coil (the read Peris keeps)
 	cam.fov = 66.0
-	var cam_pos: Vector3 = ChannelsArc.arc_pos(57.0, 3.5) + Vector3(0, 3.4, 0)
-	var at_pos: Vector3 = ChannelsArc.arc_pos(40.0, 2.0) + Vector3(0, -2.2, 0)
+	var cam_pos: Vector3 = ChannelsArc.arc_pos(179.0, 3.5) + Vector3(0, 3.6, 0)
+	var at_pos: Vector3 = ChannelsArc.arc_pos(152.0, 2.0) + Vector3(0, -3.0, 0)
 	cam.look_at_from_position(cam_pos, at_pos, Vector3.UP)
 	scene.call("headless_advance", 2.2)   # mid-overlook: channels alive below
 	_hide_labels(get_root())
@@ -45,7 +45,7 @@ func _initialize() -> void:
 	get_root().get_texture().get_image().save_png(out_dir.path_join("overlook.png"))
 	# SHOT 2: after the drop — PERIS'S OVERLAY on (her register look), the
 	# memory marks lighting the flora she read from above
-	scene.call("headless_advance", 11.0)
+	scene.call("headless_advance", 19.0)
 	if st is Dictionary:
 		st["peris"] = true
 		if scene.has_method("_refresh_active_overlay"):

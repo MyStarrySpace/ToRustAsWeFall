@@ -63,30 +63,39 @@ func _initialize() -> void:
 			"fov": 52.0, "wash": [0, "telegraph"]},
 		{"name": "puzzle_rail_gap", "cam": [0.6, 6.4, 1.7], "at": [3.2, 3.0, 0.3],
 			"fov": 52.0},
-		# ACT TWO — the extension's story beats:
-		{"name": "act2_landing", "cam": [21.5, 6.5, 3.0], "at": [25.5, 2.0, 1.2],
+		# TURN 1, past the pump landing — the teach lap's story beats:
+		{"name": "turn1_landing", "cam": [21.5, 6.5, 3.0], "at": [25.5, 2.0, 1.2],
 			"fov": 55.0},
-		{"name": "act2_keyed_span", "cam": [25.0, 8.5, 3.6], "at": [31.0, 2.0, 0.8],
+		{"name": "turn1_keyed_span", "cam": [25.0, 8.5, 3.6], "at": [31.0, 2.0, 0.8],
 			"fov": 56.0, "wash": [3, "flood"]},
-		{"name": "act2_gap_watch", "cam": [34.5, 7.0, 2.6], "at": [39.0, 2.5, 0.9],
+		{"name": "turn1_gap_watch", "cam": [34.5, 7.0, 2.6], "at": [39.0, 2.5, 0.9],
 			"fov": 54.0},
-		{"name": "act2_drum_head", "cam": [43.5, 9.0, 4.0], "at": [49.0, 2.0, 1.5],
+		# TURN 2, the transfer lap — the queue span and the run-only span:
+		{"name": "turn2_queue_crawl", "cam": [64.5, 9.0, 3.4], "at": [70.5, 4.5, 0.6],
+			"fov": 56.0, "wash": [6, "flood"]},
+		{"name": "turn2_run_span", "cam": [80.5, 8.5, 3.2], "at": [88.0, 2.0, 0.8],
+			"fov": 56.0, "wash": [7, "telegraph"]},
+		# TURN 3, the exam lap and the summit:
+		{"name": "turn3_exam_span", "cam": [136.0, 8.0, 3.0], "at": [143.0, 2.0, 0.9],
+			"fov": 56.0, "wash": [10, "flood"]},
+		{"name": "summit_pad", "cam": [160.5, 9.0, 4.2], "at": [167.5, 2.0, 1.5],
 			"fov": 58.0},
-		{"name": "act2_overview", "cam": [26.0, 24.0, 11.0], "at": [26.0, 0.0, 2.5],
-			"fov": 62.0},
+		# THE MONEY SHOT — the whole 2.5-turn coil from outside and above:
+		{"name": "spiral_full", "cam": [90.0, 34.0, 20.0], "at": [90.0, 0.0, 4.5],
+			"fov": 64.0},
 	]
 	var chunk: Node = scene.find_child("Chunk_wash_ascent", true, false)
 	if chunk != null:
 		# stills own the wash DISPLAY: a non-"active" phase makes the live
 		# cadence's repaint handlers no-op, so the staged state can't be
 		# overwritten by a real flood mid-shot
-		scene.call("headless_advance", 12.0)   # ride out the overlook intro
+		scene.call("headless_advance", 20.0)   # ride out the overlook intro
 	chunk.set("_phase", "capture")
 	for shot in shots:
 		if chunk != null:
 			# stage the declared wash state for the still (state setter only — no
 			# scheduler), then wait out the rise/sink tweens before framing
-			for i in range(5):
+			for i in range(11):
 				chunk.call("_set_wash_state", i, "idle")
 			if shot.has("wash"):
 				chunk.call("_set_wash_state", int(shot["wash"][0]), str(shot["wash"][1]))

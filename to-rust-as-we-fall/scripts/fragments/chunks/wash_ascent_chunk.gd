@@ -37,7 +37,7 @@ extends "res://scripts/scene_chunks/scene_chunk.gd"
 
 const PROPS_SCENE := preload("res://scenes/fragments/chunks/wash_ascent_props.tscn")
 
-const DECK_W := 52.0
+const DECK_W := 173.0
 const DECK_D := 8.0
 const DECK_TOP := 0.1
 const LANE_CENTER := 4.0    # authoring z that sits on the helix centreline (lane 0)
@@ -77,7 +77,7 @@ const WASH_SECTIONS := [
 	{"s0": 2.0, "s1": 8.0, "period": 9.0, "dur": 2.4, "phase": 0.5},
 	{"s0": 12.0, "s1": 16.0, "period": 11.0, "dur": 2.6, "phase": 3.5},
 	{"s0": 20.0, "s1": 24.0, "period": 13.0, "dur": 2.8, "phase": 1.5},
-	# Act two, past the pump landing. Section 3 is KEYED: its dry beat (1.0s)
+	# TURN 1, past the pump landing. Section 3 is KEYED: its dry beat (1.0s)
 	# fits NO gait — not even a runner waiting at the mouth (8u at 6.4 needs
 	# 1.25s) — so the landing valve's hold is the only crossing. The verb was
 	# taught at section 0; here the level asks for it back under pressure.
@@ -85,6 +85,28 @@ const WASH_SECTIONS := [
 	# Section 4 is generous water but WATCHED ground — the patroller in the
 	# 36-40 gap prices the mid lane, and the wash prices anything lured across.
 	{"s0": 40.0, "s1": 44.0, "period": 12.0, "dur": 2.6, "phase": 5.0},
+	# --- TURN 2, the TRANSFER lap. The instruments ended at the landing (the
+	# --- political economy IS the pedagogy): every read up here is unassisted.
+	# Section 5: the first naked read — watch a full cycle, then cross.
+	{"s0": 58.0, "s1": 64.0, "period": 9.0, "dur": 3.4, "phase": 2.6},
+	# Section 6: the QUEUE-BEAT span — the crawl bypass exits inside its tail,
+	# and the portal rule spaces the party one-at-a-time: crossing is a
+	# multi-beat PLAN, not a dash. Walking the bed stays legal but razor.
+	{"s0": 70.0, "s1": 76.0, "period": 10.0, "dur": 6.0, "phase": 4.2},
+	# Section 7: RUN-ONLY — the dry beat fits no walk (12.5u needs 4.5s) but a
+	# committed sprint fits with margin. The ladder taught that running FAILS;
+	# this teaches when running is the answer — priced by the closed stamina
+	# field, so the salvage you banked is the crossing you can afford.
+	{"s0": 84.0, "s1": 94.0, "period": 8.0, "dur": 5.4, "phase": 1.8, "run": true},
+	# Section 8: altitude composition-lite — a generous beat on WATCHED ground
+	# (the turn-2 roamer prices the far gap's high side).
+	{"s0": 104.0, "s1": 112.0, "period": 11.0, "dur": 3.4, "phase": 5.0},
+	# --- TURN 3, the EXAM lap. Dark, tell-less, everything asked back.
+	# Section 9: the unassisted read again, faster, with the drop behind you.
+	{"s0": 126.0, "s1": 134.0, "period": 10.0, "dur": 4.2, "phase": 3.1},
+	# Section 10: KEYED again — a second valve, a second site, no gauge, the
+	# inversion re-asked from memory (key-before-lock: the valve at s 137.5).
+	{"s0": 140.0, "s1": 148.0, "period": 10.0, "dur": 9.2, "phase": 2.4, "keyed": true},
 ]
 const WASH_GRACE := 1.0            # quiet second after reset before the ladder starts
 const TELEGRAPH_LEAD := 1.2        # channel brightens this long before the water arrives
@@ -107,7 +129,7 @@ var _channel_span := Vector2.ZERO   # flat s range the trough actually covers
 var _channel_base_energy: Dictionary = {}
 var _flures: Array = []
 var _checkpoint_vines: Array = []   # [{drop, up, down}] per checkpoint
-var _ropes_dropped: Array = [false, false]
+var _ropes_dropped: Array = [false, false, false, false]
 var _hide_spots_cache: Array = []
 var _intro_done := false
 
@@ -233,6 +255,8 @@ func _realize_piece(marker: Node3D) -> void:
 	var emission_scale := float(marker.get_meta("emission_scale", 1.0))
 	if emission_scale < 1.0:
 		_scale_emission(piece, emission_scale)
+	if str(marker.get_meta("portal_class", "")) == "route":
+		_tint_portal_neon(piece, Color(0.3, 0.55, 1.0))
 
 ## A measured row: pieces laid along the marker's local +X, pitch = the piece's
 ## real AABB x-length, each piece offset so its AABB START sits at k*pitch.
@@ -570,6 +594,30 @@ func _combined_aabb(node: Node, xf: Transform3D) -> AABB:
 
 ## A marker's `emission_scale` calms a piece's BAKED glow (a sign band, a screen)
 ## without touching its albedo — the grunge law's answer to a too-hot fixture.
+## PORTALS.md class law: purple = local pair, BLUE = route/story exit. The
+## shared modeled fixture bakes a neutral neon; the CLASS recolors it per
+## placement (emission + the neon albedo), so one model serves every class.
+func _tint_portal_neon(piece: Node3D, color: Color) -> void:
+	var stack: Array = [piece]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		if n is MeshInstance3D and (n as MeshInstance3D).mesh != null:
+			var mi := n as MeshInstance3D
+			for si in range(mi.mesh.get_surface_count()):
+				var mat := mi.get_active_material(si)
+				if mat is StandardMaterial3D:
+					var sm := mat as StandardMaterial3D
+					var mname := str(sm.resource_name)
+					if sm.emission_enabled and (mname.findn("neon") >= 0 \
+							or sm.emission.b > sm.emission.r * 1.1):
+						var dup := sm.duplicate() as StandardMaterial3D
+						dup.emission = color
+						dup.albedo_color = Color(color.r * 0.45, color.g * 0.45,
+							color.b * 0.6, 1.0)
+						mi.set_surface_override_material(si, dup)
+		for c in n.get_children():
+			stack.append(c)
+
 func _scale_emission(piece: Node3D, scale: float) -> void:
 	var stack: Array = [piece]
 	while not stack.is_empty():
@@ -998,7 +1046,7 @@ func _build_wash_channels() -> void:
 ## the intro cinematic, the sweep taught before it ever punishes.
 const INTRO_CREAK_AT := 2.0
 const INTRO_COLLAPSE_AT := 3.4
-const INTRO_RIDE_SPEED := 9.0
+const INTRO_RIDE_SPEED := 14.0
 
 ## The one cadence arm both phases share: reset + sweep-wire + start every
 ## channel. The overlook uses it so the coil SURGES below the entry bridge;
@@ -1029,7 +1077,7 @@ func _arm_overlook_intro() -> void:
 	_swept_count = 0
 	var gs = _get_game_state()
 	if gs != null and "data_frame_bounds" in gs:
-		gs.data_frame_bounds = Rect2(0.0, 0.0, DECK_W + 6.0, DECK_D)
+		gs.data_frame_bounds = Rect2(0.0, 0.0, DECK_W + 8.0, DECK_D)
 	# the coil SURGES below the overlook — the spectacle IS the read; the
 	# catch can't touch the riders (their drop is a locked traversal)
 	_arm_channels()
@@ -1043,9 +1091,9 @@ func _arm_overlook_intro() -> void:
 
 func _bridge_spawn_positions() -> Dictionary:
 	return {
-		"aster": Vector3(54.6, DECK_TOP, 2.2),
-		"peris": Vector3(55.4, DECK_TOP, 1.8),
-		"endo": Vector3(55.8, DECK_TOP, 2.8),
+		"aster": Vector3(176.6, DECK_TOP, 2.2),
+		"peris": Vector3(177.4, DECK_TOP, 1.8),
+		"endo": Vector3(177.8, DECK_TOP, 2.8),
 	}
 
 ## The collapse: cosmetic tumble on the span pieces (node-bound tweens), and
@@ -1071,8 +1119,10 @@ func _collapse_bridge() -> void:
 			var from: Vector3 = gs.get_position(id)
 			var landing: Vector3 = landings.get(id, Vector3(1.2, DECK_TOP, 3.0))
 			var data_path: Array = [from,
-				Vector3(50.0, DECK_TOP, -0.5), Vector3(38.0, DECK_TOP, -0.6),
-				Vector3(24.0, DECK_TOP, -0.6), Vector3(10.0, DECK_TOP, -0.6),
+				Vector3(172.0, DECK_TOP, -0.5), Vector3(150.0, DECK_TOP, -0.6),
+				Vector3(124.0, DECK_TOP, -0.6), Vector3(96.0, DECK_TOP, -0.6),
+				Vector3(68.0, DECK_TOP, -0.6), Vector3(40.0, DECK_TOP, -0.6),
+				Vector3(14.0, DECK_TOP, -0.6),
 				Vector3(2.6, DECK_TOP, -0.4), landing]
 			var render_path: Array = []
 			for p in data_path:
@@ -1232,6 +1282,22 @@ func _build_interactables() -> void:
 		Interactable.InteractableType.INSPECTION)
 	landing_valve.consequence_preview = "The transfer stretch never runs dry on its own. Hold it closed and walk the bed."
 	_wire_trigger(landing_valve, _on_landing_valve)
+	var exam_valve := _add_interactable(self, "ExamValve",
+		"Hold the high transfer closed", Vector3(137.5, DECK_TOP, 0.9),
+		"HOLD THE VALVE", "", 1.1, false, 1.6,
+		Interactable.InteractableType.INSPECTION)
+	exam_valve.consequence_preview = "The last locked stretch. You know what this wheel does by now."
+	_wire_trigger(exam_valve, _on_exam_valve)
+	var exam_rx := EmpReceiver.new()
+	exam_rx.name = "ExamValveEmpReceiver"
+	exam_rx.on_pulse = func(_duration: float) -> bool:
+		if _phase != "active" or _channels.size() <= 10:
+			return false
+		if (_channels[10] as Channel).held_until() > _get_scheduler_tick_safe():
+			return false
+		_on_exam_valve()
+		return true
+	exam_valve.add_child(exam_rx)
 	var landing_rx := EmpReceiver.new()
 	landing_rx.name = "LandingValveEmpReceiver"
 	landing_rx.on_pulse = func(_duration: float) -> bool:
@@ -1250,9 +1316,9 @@ func _build_interactables() -> void:
 	_wire_trigger(terminal, _on_terminal)
 	# THE FLOW GAUGE (ENVIRONMENT_ELEMENTS PPP#2, the flow station — a passive
 	# readout of already-computed onsets, no new class): the landing's
-	# throughput gauge finally ticks FOR someone. Aster reads ACT TWO's
-	# cadences from dry ground before anyone stands in a bed — the smart
-	# route is a read, the guess route is a swim.
+	# throughput gauge finally ticks FOR someone. Aster reads the landing
+	# spans' cadences from dry ground before anyone stands in a bed — the
+	# smart route is a read, the guess route is a swim.
 	var gauge := _add_interactable(self, "FlowGauge",
 		"Read the flow gauge", Vector3(27.4, DECK_TOP, 6.9),
 		"READ THE GAUGE", "aster", 1.1, false, 1.6,
@@ -1298,7 +1364,7 @@ func _build_interactables() -> void:
 	# (the wash prices the watcher's descent), or the upper capbage's hide.
 	var ring_exit := ExitShelter.new()
 	ring_exit.name = "AscentPortal"
-	ring_exit.configure_shelter(_get_game_state(), Vector3(48.5, DECK_TOP, 3.0),
+	ring_exit.configure_shelter(_get_game_state(), Vector3(167.5, DECK_TOP, 3.0),
 		Vector2(1.5, 1.5), PARTY_IDS, "ENTER THE RING", 1.3)
 	ring_exit.consequence_preview = "The ring hums. Gather everyone on the pad and step through together."
 	ring_exit.rest_completed.connect(_on_ring_rest_completed)
@@ -1309,6 +1375,7 @@ func _build_interactables() -> void:
 	_build_lonely_flure()
 	_build_high_flure()
 	_build_checkpoint_vines()
+	_build_queue_crawl()
 	var map = get_coord_map()
 	warp_interactables_onto_coord_map(map)
 	call_deferred("_wire_warped_outlines")
@@ -1347,8 +1414,8 @@ func _build_lonely_flure() -> void:
 	flure.authority_id = "wash_ascent_lonely_flure"
 	# an iron song carries 32u — an unfiltered roster would drag the UPPER
 	# watch down through the lower spans during this mid-level beat, deleting
-	# act two's encounter before it's met; the authored target list is the
-	# kit's own contract, so each flure sings to its own act
+	# the higher turns' encounters before they're met; the authored target
+	# list is the kit's own contract, so each flure sings to its own turn
 	flure.configure(gs, (marker as Node3D).global_position,
 		_fauna_ids_in_band(0.0, 28.0), 32.0, 1.4,
 		Color(0.95, 0.62, 0.14))
@@ -1397,6 +1464,35 @@ func _build_high_flure() -> void:
 	if glow is Node3D:
 		(glow as Node3D).visible = false
 
+## THE QUEUE-BEAT CRAWL (turn 2's transfer rung): beat-reading, re-asked as
+## SCHEDULING. The crawl mouth sits on safe ground before section 6; the
+## authored path runs the wall line (grid-forbidden, the crawl law) and its
+## exit opens INSIDE the span's tail. The portal rule queues riders one at a
+## time, so three bodies cannot share one dry window — the learned solve is
+## two waves across two beats. Conceal stays ON (a real crawl) but the EXIT
+## step is in the wash's ground: the impartial predicate prices a bad plan.
+func _build_queue_crawl() -> void:
+	var gs = _get_game_state()
+	if gs == null:
+		return
+	var crawl := CrawlTunnel.new()
+	crawl.name = "QueueCrawl"
+	crawl.description = "Crawl the old feed conduit"
+	crawl.tutorial_label = "CRAWL THE CONDUIT"
+	crawl.configure_data(gs, Vector3(68.0, 0.1, 7.2), [
+		Vector3(69.0, 0.1, 8.6), Vector3(72.0, 0.1, 8.7),
+		Vector3(74.5, 0.1, 8.6), Vector3(75.2, 0.1, 6.4)], 1.3, 1.1)
+	crawl.set_group_provider(Callable(self, "_selected_party_ids"))
+	add_child(crawl)
+	_register_interactable(crawl)
+	var sched = _get_scheduler()
+	if sched != null:
+		crawl.set_scheduler(sched)
+	var coil := ArchetypePieceLibrary.instantiate("channel_collar")
+	if coil != null:
+		coil.scale = Vector3(0.85, 0.85, 0.85)
+		crawl.add_child(coil)
+
 ## THE CHECKPOINT SLOPEROPES (CHANNELS_DESIGN: the chunk's checkpoint IS the
 ## sloperope that connects it back to the stretch start; ENVIRONMENT_ELEMENTS
 ## Plumbing #3). Each checkpoint is a DROP interactable at the chunk end — the
@@ -1417,6 +1513,16 @@ const VINE_SPECS := [
 		"face": [Vector3(44.5, 0.1, -0.9), Vector3(36.0, 0.1, -0.95),
 			Vector3(28.0, 0.1, -0.95), Vector3(20.0, 0.1, -0.95),
 			Vector3(12.0, 0.1, -0.95), Vector3(3.4, 0.1, -0.9)]},
+	{"name": "3", "top": Vector3(98.4, 0.1, 0.9), "drop": Vector3(99.0, 0.1, 1.4),
+		"bottom": Vector3(3.6, 0.1, 4.4),
+		"face": [Vector3(97.5, 0.1, -0.9), Vector3(80.0, 0.1, -0.95),
+			Vector3(60.0, 0.1, -0.95), Vector3(40.0, 0.1, -0.95),
+			Vector3(20.0, 0.1, -0.95), Vector3(4.2, 0.1, -0.9)]},
+	{"name": "4", "top": Vector3(136.4, 0.1, 0.9), "drop": Vector3(137.0, 0.1, 1.4),
+		"bottom": Vector3(4.4, 0.1, 5.2),
+		"face": [Vector3(135.5, 0.1, -0.9), Vector3(110.0, 0.1, -0.95),
+			Vector3(84.0, 0.1, -0.95), Vector3(56.0, 0.1, -0.95),
+			Vector3(28.0, 0.1, -0.95), Vector3(5.0, 0.1, -0.9)]},
 ]
 
 func _selected_party_ids() -> Array:
@@ -1600,6 +1706,12 @@ func _on_landing_valve(_args = null) -> void:
 		return
 	(_channels[3] as Channel).hold(VALVE_HOLD_WINDOW)
 	_set_wash_state(3, "held")
+
+func _on_exam_valve(_args = null) -> void:
+	if _phase != "active" or _channels.size() <= 10:
+		return
+	(_channels[10] as Channel).hold(VALVE_HOLD_WINDOW)
+	_set_wash_state(10, "held")
 	_show_note("// VALVE HELD // the near channel runs quiet", 2.2)
 	_set_preview_step("wash_ascent_valve_held")
 
@@ -1705,7 +1817,7 @@ func preview_field_stamina_regen() -> bool:
 	return false
 
 func get_scene_help() -> String:
-	return "Reach the ring at the drum head. // The wash sweeps the careless all the way to the bottom of the climb. // Valves can hold a stretch quiet; dropped sloperopes are the short way back."
+	return "Climb the spiral to the shelter at its top. // The wash sweeps the careless all the way back to the bottom. // Valves can hold a stretch quiet; dropped sloperopes are the short way back."
 
 func get_grid_data() -> Dictionary:
 	return {

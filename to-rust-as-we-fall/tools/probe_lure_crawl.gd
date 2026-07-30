@@ -23,7 +23,7 @@ func _initialize() -> void:
 		quit(1)
 		return
 	scene.call("headless_advance", 0.05)
-	scene.call("headless_advance", 12.0)
+	scene.call("headless_advance", 20.0)
 	var walls: Array = chunk.get("_wall_cells")
 	var corridor: Array = []
 	for c in walls:

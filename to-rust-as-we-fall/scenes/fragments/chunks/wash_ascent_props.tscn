@@ -54,9 +54,44 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 26, 0.1, 0.06)
 metadata/rail_run = 13
 metadata/skip_spans = "12.0-14.2 21.5-23.6"
 
+[node name="DeckTurn2" type="Marker3D" parent="Structure"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 52, 0, 0)
+metadata/deck_run = Vector2i(35, 4)
+metadata/surface = "planks"
+
+[node name="DeckTurn3" type="Marker3D" parent="Structure"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 122, 0, 0)
+metadata/deck_run = Vector2i(26, 4)
+metadata/surface = "planks"
+
+[node name="WallBackTurn2A" type="Marker3D" parent="Structure"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 87, 0.1, 8.2)
+metadata/wall_run = 18
+metadata/skip_spans = "12.5-14.6"
+
+[node name="WallBackTurn2B" type="Marker3D" parent="Structure"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 122, 0.1, 8.2)
+metadata/wall_run = 18
+metadata/skip_spans = "8.0-9.8 26.4-28.0"
+
+[node name="WallBackTurn3" type="Marker3D" parent="Structure"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 173, 0.1, 8.2)
+metadata/wall_run = 26
+metadata/skip_spans = "14.2-16.4 33.0-35.2"
+
+[node name="RailTurn2" type="Marker3D" parent="Structure"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 52, 0.1, 0.06)
+metadata/rail_run = 35
+metadata/skip_spans = "18.0-20.4 33.5-35.8 46.0-48.2"
+
+[node name="RailTurn3" type="Marker3D" parent="Structure"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 122, 0.1, 0.06)
+metadata/rail_run = 26
+metadata/skip_spans = "9.5-11.8 27.0-29.6 41.0-43.4"
+
 [node name="ChannelFront" type="Marker3D" parent="Structure"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -0.6)
-metadata/channel_run = 21
+metadata/channel_run = 71
 
 [node name="RailFront" type="Marker3D" parent="Structure"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.1, 0.06)
@@ -64,7 +99,7 @@ metadata/rail_run = 12
 metadata/skip_spans = "2.0-4.2 8.2-10.4"
 
 [node name="RailEndCap" type="Marker3D" parent="Structure"]
-transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 51.94, 0.1, 0.4)
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 172.94, 0.1, 0.4)
 metadata/rail_run = 3
 metadata/radial = true
 
@@ -83,13 +118,13 @@ metadata/mount = "floor"
 metadata/cluster = "gap_watch"
 
 [node name="HighFlure" type="Marker3D" parent="Approach"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 38.0, 0.1, 6.8)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 158.0, 0.1, 6.8)
 metadata/piece = "flure"
 metadata/mount = "floor"
 metadata/cluster = "gap_watch"
 
 [node name="HighFlureGlow" type="OmniLight3D" parent="Approach"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 38.0, 1.0, 6.8)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 158.0, 1.0, 6.8)
 light_color = Color(1, 0.68, 0.3, 1)
 light_energy = 0.9
 omni_range = 3.5
@@ -270,25 +305,27 @@ metadata/cluster = "salvage"
 [node name="PortalLedge" type="Node3D" parent="."]
 
 [node name="PadRings" type="Marker3D" parent="PortalLedge"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 48.5, 0.1, 3.0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 167.5, 0.1, 3.0)
 metadata/piece = "portal_pad_rings"
+metadata/portal_class = "route"
 metadata/mount = "floor"
 metadata/cluster = "portal"
 
 [node name="RingGate" type="Marker3D" parent="PortalLedge"]
-transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 50.3, 0.1, 3.0)
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 169.3, 0.1, 3.0)
 metadata/piece = "portal_ring_ornate"
+metadata/portal_class = "route"
 metadata/mount = "floor"
 metadata/cluster = "portal"
 
 [node name="Console" type="Marker3D" parent="PortalLedge"]
-transform = Transform3D(-0.857, 0, -0.516, 0, 1, 0, 0.516, 0, -0.857, 47.6, 0.1, 1.4)
+transform = Transform3D(-0.857, 0, -0.516, 0, 1, 0, 0.516, 0, -0.857, 166.6, 0.1, 1.4)
 metadata/piece = "portal_console"
 metadata/mount = "floor"
 metadata/cluster = "portal"
 
 [node name="PortalGlow" type="OmniLight3D" parent="PortalLedge"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 49.5, 2.0, 3.0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 168.5, 2.0, 3.0)
 light_color = Color(0.3, 0.55, 1, 1)
 light_energy = 1.1
 omni_range = 6.0
@@ -418,7 +455,7 @@ metadata/cluster = "patrol_band"
 metadata/emission_scale = 0.15
 
 [node name="ExitCapbage" type="Marker3D" parent="UpperStory"]
-transform = Transform3D(0.921, 0, 0.389, 0, 1, 0, -0.389, 0, 0.921, 44.4, 0.1, 6.6)
+transform = Transform3D(0.921, 0, 0.389, 0, 1, 0, -0.389, 0, 0.921, 154.4, 0.1, 6.6)
 metadata/piece = "capbage"
 metadata/mount = "floor"
 metadata/cluster = "patrol_band"
@@ -430,7 +467,7 @@ metadata/mount = "floor"
 metadata/cluster = "return_devices"
 
 [node name="ClimbvineChannelB" type="Marker3D" parent="UpperStory"]
-transform = Transform3D(1, 0, 0, 0, 0.877, 0.479, 0, -0.479, 0.877, 45.4, 0, -0.35)
+transform = Transform3D(1, 0, 0, 0, 0.877, 0.479, 0, -0.479, 0.877, 135.8, 0, -0.35)
 metadata/piece = "climbvine"
 metadata/mount = "floor"
 metadata/cluster = "return_devices"
@@ -448,7 +485,7 @@ metadata/mount = "floor"
 metadata/cluster = "return_devices"
 
 [node name="RootSlide" type="Marker3D" parent="UpperStory"]
-transform = Transform3D(0.921, 0, -0.389, 0, 1, 0, 0.389, 0, 0.921, 51.2, 0.1, 0.5)
+transform = Transform3D(0.921, 0, -0.389, 0, 1, 0, 0.389, 0, 0.921, 170.6, 0.1, 0.5)
 metadata/piece = "root_slide"
 metadata/mount = "floor"
 metadata/cluster = "return_devices"
@@ -634,31 +671,31 @@ metadata/cluster = "patrol_band"
 [node name="Overgrowth" type="Node3D" parent="."]
 
 [node name="VeinTrunk" type="Marker3D" parent="Overgrowth"]
-transform = Transform3D(-0.921, 0, -0.389, 0, 1, 0, 0.389, 0, -0.921, 49.2, 0.1, 7.4)
+transform = Transform3D(-0.921, 0, -0.389, 0, 1, 0, 0.389, 0, -0.921, 168.2, 0.1, 7.4)
 metadata/piece = "vein_trunk"
 metadata/mount = "floor"
 metadata/cluster = "overgrowth"
 
 [node name="WallWeb" type="Marker3D" parent="Overgrowth"]
-transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 47.8, 1.3, 7.95)
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 166.8, 1.3, 7.95)
 metadata/piece = "wall_tracery"
 metadata/mount = "wall"
 metadata/cluster = "overgrowth"
 
 [node name="Biolume1" type="Marker3D" parent="Overgrowth"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 50.0, 0.1, 6.2)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 169.0, 0.1, 6.2)
 metadata/piece = "biolume_cluster"
 metadata/mount = "floor"
 metadata/cluster = "overgrowth"
 
 [node name="Biolume2" type="Marker3D" parent="Overgrowth"]
-transform = Transform3D(0.921, 0, 0.389, 0, 1, 0, -0.389, 0, 0.921, 48.2, 0.1, 5.8)
+transform = Transform3D(0.921, 0, 0.389, 0, 1, 0, -0.389, 0, 0.921, 167.2, 0.1, 5.8)
 metadata/piece = "biolume_cluster"
 metadata/mount = "floor"
 metadata/cluster = "overgrowth"
 
 [node name="Seefern" type="Marker3D" parent="Overgrowth"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 51.0, 0.1, 4.8)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 170.0, 0.1, 4.8)
 metadata/piece = "seefern"
 metadata/mount = "floor"
 metadata/cluster = "overgrowth"
@@ -670,37 +707,37 @@ metadata/mount = "floor"
 metadata/cluster = "overgrowth"
 
 [node name="HideCapbageUpper" type="Marker3D" parent="Overgrowth"]
-transform = Transform3D(0.921, 0, -0.389, 0, 1, 0, 0.389, 0, 0.921, 46.6, 0.1, 6.8)
+transform = Transform3D(0.921, 0, -0.389, 0, 1, 0, 0.389, 0, 0.921, 160.6, 0.1, 6.8)
 metadata/piece = "capbage"
 metadata/mount = "floor"
 metadata/cluster = "overgrowth"
 
 [node name="RootFlare" type="Marker3D" parent="Overgrowth"]
-transform = Transform3D(0.85, 0, 0.527, 0, 1, 0, -0.527, 0, 0.85, 48.8, 0.1, 0.7)
+transform = Transform3D(0.85, 0, 0.527, 0, 1, 0, -0.527, 0, 0.85, 165.8, 0.1, 0.7)
 metadata/piece = "vein_trunk"
 metadata/mount = "floor"
 metadata/cluster = "overgrowth"
 
 [node name="KnitRoots" type="Marker3D" parent="Overgrowth"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 50.0, 0.1, 7.6)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 169.4, 0.1, 7.6)
 metadata/piece = "resolution_roots"
 metadata/mount = "floor"
 metadata/cluster = "overgrowth"
 
 [node name="PadFlowers" type="Marker3D" parent="Overgrowth"]
-transform = Transform3D(0.921, 0, 0.389, 0, 1, 0, -0.389, 0, 0.921, 47.2, 0.1, 7.2)
+transform = Transform3D(0.921, 0, 0.389, 0, 1, 0, -0.389, 0, 0.921, 164.2, 0.1, 7.2)
 metadata/piece = "forget_me_nots"
 metadata/mount = "floor"
 metadata/cluster = "overgrowth"
 
 [node name="ViewPlinth" type="Marker3D" parent="Overgrowth"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 51.5, 0.1, 6.2)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 171.0, 0.1, 6.2)
 metadata/piece = "reservoir_platform"
 metadata/mount = "floor"
 metadata/cluster = "overgrowth"
 
 [node name="BiolumeGlow" type="OmniLight3D" parent="Overgrowth"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 49.6, 0.7, 6.1)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 168.6, 0.7, 6.1)
 light_color = Color(0.35, 0.55, 0.95, 1)
 light_energy = 0.8
 omni_range = 3.5
@@ -721,10 +758,118 @@ metadata/patrol_route = "36.8,1.2 39.2,1.2"
 metadata/detect = 3.0
 
 [node name="SapscrapDrum" type="Marker3D" parent="Fauna"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 50.6, 0.1, 6.6)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 166.0, 0.1, 6.6)
 metadata/enemy = "sapscrap"
 metadata/roam_radius = 0.8
 metadata/detect = 4.0
+
+[node name="UpperSpiral" type="Node3D" parent="."]
+
+[node name="RoamerTurn2" type="Marker3D" parent="UpperSpiral"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 114.5, 0.1, 6.8)
+metadata/enemy = "sapscrap"
+metadata/roam_radius = 0.8
+metadata/detect = 4.0
+
+[node name="WayBiolumeA" type="Marker3D" parent="UpperSpiral"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 66.5, 0.1, 7.2)
+metadata/piece = "biolume_cluster"
+metadata/mount = "floor"
+metadata/cluster = "overgrowth"
+
+[node name="WayGlowA" type="OmniLight3D" parent="UpperSpiral"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 66.5, 0.7, 7.0)
+light_color = Color(0.35, 0.55, 0.95, 1)
+light_energy = 0.7
+omni_range = 4.0
+shadow_enabled = false
+
+[node name="WayBiolumeB" type="Marker3D" parent="UpperSpiral"]
+transform = Transform3D(0.921, 0, 0.389, 0, 1, 0, -0.389, 0, 0.921, 99.5, 0.1, 6.6)
+metadata/piece = "biolume_cluster"
+metadata/mount = "floor"
+metadata/cluster = "overgrowth"
+
+[node name="WayGlowB" type="OmniLight3D" parent="UpperSpiral"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 99.5, 0.7, 6.4)
+light_color = Color(0.35, 0.55, 0.95, 1)
+light_energy = 0.7
+omni_range = 4.0
+shadow_enabled = false
+
+[node name="WayBiolumeC" type="Marker3D" parent="UpperSpiral"]
+transform = Transform3D(-0.921, 0, 0.389, 0, 1, 0, -0.389, 0, -0.921, 137.8, 0.1, 7.0)
+metadata/piece = "biolume_cluster"
+metadata/mount = "floor"
+metadata/cluster = "overgrowth"
+
+[node name="WayGlowC" type="OmniLight3D" parent="UpperSpiral"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 137.8, 0.7, 6.8)
+light_color = Color(0.35, 0.55, 0.95, 1)
+light_energy = 0.7
+omni_range = 4.0
+shadow_enabled = false
+
+[node name="StaminaCache" type="Marker3D" parent="UpperSpiral"]
+transform = Transform3D(0.94, 0, 0.34, 0, 1, 0, -0.34, 0, 0.94, 80.4, 0.1, 6.7)
+metadata/piece = "forage_cache"
+metadata/mount = "floor"
+metadata/cluster = "salvage"
+
+[node name="SeepScarpetT2" type="Marker3D" parent="UpperSpiral"]
+transform = Transform3D(0.921, 0, 0.389, 0, 1, 0, -0.389, 0, 0.921, 68.4, 0.1, 6.4)
+metadata/piece = "scarpet"
+metadata/mount = "floor"
+metadata/cluster = "return_devices"
+
+[node name="TrussLapA" type="Marker3D" parent="UpperSpiral"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 62.0, -0.75, -0.75)
+metadata/piece = "scaffold_truss"
+metadata/mount = "structure"
+metadata/cluster = "structure_supports"
+metadata/embed_ok = true
+
+[node name="TrussLapB" type="Marker3D" parent="UpperSpiral"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 78.0, -0.75, -0.75)
+metadata/piece = "scaffold_truss"
+metadata/mount = "structure"
+metadata/cluster = "structure_supports"
+metadata/embed_ok = true
+
+[node name="TrussLapC" type="Marker3D" parent="UpperSpiral"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 96.0, -0.75, -0.75)
+metadata/piece = "scaffold_truss"
+metadata/mount = "structure"
+metadata/cluster = "structure_supports"
+metadata/embed_ok = true
+
+[node name="TrussLapD" type="Marker3D" parent="UpperSpiral"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 114.0, -0.75, -0.75)
+metadata/piece = "scaffold_truss"
+metadata/mount = "structure"
+metadata/cluster = "structure_supports"
+metadata/embed_ok = true
+
+[node name="TrussLapE" type="Marker3D" parent="UpperSpiral"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 132.0, -0.75, -0.75)
+metadata/piece = "scaffold_truss"
+metadata/mount = "structure"
+metadata/cluster = "structure_supports"
+metadata/embed_ok = true
+
+[node name="TrussLapF" type="Marker3D" parent="UpperSpiral"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 150.0, -0.75, -0.75)
+metadata/piece = "scaffold_truss"
+metadata/mount = "structure"
+metadata/cluster = "structure_supports"
+metadata/embed_ok = true
+
+[node name="TrussLapG" type="Marker3D" parent="UpperSpiral"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 168.0, -0.75, -0.75)
+metadata/piece = "scaffold_truss"
+metadata/mount = "structure"
+metadata/cluster = "structure_supports"
+metadata/embed_ok = true
 
 [node name="WorldArchitecture" type="Node3D" parent="."]
 
@@ -794,42 +939,42 @@ metadata/radius = 6.55
 [node name="EntryBridge" type="Node3D" parent="."]
 
 [node name="BridgeStub" type="Marker3D" parent="EntryBridge"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 52.6, 0, 2.4)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 174.6, 0, 2.4)
 metadata/piece = "broken_pier"
 metadata/mount = "floor"
 metadata/cluster = "structure_bridge"
 metadata/embed_ok = true
 
 [node name="BridgeDeckA" type="Marker3D" parent="EntryBridge"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 54.2, 0, 2.2)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 176.2, 0, 2.2)
 metadata/piece = "deck_planks_c"
 metadata/mount = "floor"
 metadata/cluster = "structure_bridge"
 metadata/embed_ok = true
 
 [node name="BridgeDeckB" type="Marker3D" parent="EntryBridge"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 56.2, 0, 2.2)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 178.2, 0, 2.2)
 metadata/piece = "deck_planks_b"
 metadata/mount = "floor"
 metadata/cluster = "structure_bridge"
 metadata/embed_ok = true
 
 [node name="BridgeRailA" type="Marker3D" parent="EntryBridge"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 54.2, 0.1, 1.1)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 176.2, 0.1, 1.1)
 metadata/piece = "railing_run"
 metadata/mount = "floor"
 metadata/cluster = "structure_bridge"
 metadata/embed_ok = true
 
 [node name="BridgeRailB" type="Marker3D" parent="EntryBridge"]
-transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 55.4, 0.1, 3.3)
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 177.4, 0.1, 3.3)
 metadata/piece = "railing_run"
 metadata/mount = "floor"
 metadata/cluster = "structure_bridge"
 metadata/embed_ok = true
 
 [node name="BridgeTruss" type="Marker3D" parent="EntryBridge"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 55.2, -0.85, 2.2)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 177.2, -0.85, 2.2)
 metadata/piece = "scaffold_truss"
 metadata/mount = "structure"
 metadata/cluster = "structure_bridge"

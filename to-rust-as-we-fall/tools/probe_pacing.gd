@@ -59,6 +59,40 @@ func _move_all(phase: String, targets: Dictionary, cap := 25.0) -> void:
 func _act(phase: String) -> void:
 	_bucket(phase, "act", 0.4)
 
+## One ladder leg, the playthrough's two-stage plan: stage the party at the
+## span's MOUTH (full-cell 1.2 row spacing so nobody trails head-to-tail),
+## then launch on the flood->dry TRANSITION once the window covers the need.
+func _cross_section(phase_id: String, idx: int, mouth_x: float, dest_x: float,
+		need: float, mouth_z := 0.9, speed := -1.0, dest_z := 0.9, row_pitch := 1.2) -> void:
+	var channels: Array = _chunk.get("_channels")
+	var ids := ["aster", "peris", "endo"]
+	var tm: Dictionary = {}
+	for k in range(3):
+		tm[ids[k]] = Vector3(mouth_x, 0.1, mouth_z + row_pitch * float(k))
+	_move_all("stage-%s" % phase_id, tm)
+	var st := {"saw": false}
+	var ch = channels[idx]
+	_advance_until("window-%s" % phase_id, func():
+		var flooding: bool = bool(ch.call("is_flooding"))
+		if flooding:
+			st["saw"] = true
+			return false
+		if not bool(st["saw"]):
+			return false
+		var on: Array = (_chunk.call("get_preview_state") as Dictionary).get("next_onsets_in", [])
+		return on.size() > idx and float(on[idx]) > need, 26.0)
+	if speed > 0.0:
+		for id_s in ids:
+			_gs.change_move_speed(str(id_s), speed)
+	var td: Dictionary = {}
+	for k2 in range(3):
+		td[ids[k2]] = Vector3(dest_x, 0.1, dest_z + row_pitch * float(k2))
+	_move_all("cross-%s" % phase_id, td)
+	if speed > 0.0:
+		_gs.change_move_speed("aster", 3.2)
+		_gs.change_move_speed("peris", 2.8)
+		_gs.change_move_speed("endo", 2.8)
+
 func _initialize() -> void:
 	var packed = load("res://scenes/fragments/fragment_preview.tscn")
 	_scene = packed.instantiate()
@@ -70,7 +104,7 @@ func _initialize() -> void:
 	_chunk = _scene.find_child("Chunk_wash_ascent", true, false)
 	_gs = _scene.get("_game_state")
 	_scene.call("headless_advance", 0.05)
-	_advance_tagged("intro-overlook-drop", 12.0, 0.2)
+	_advance_tagged("intro-overlook-drop", 20.0, 0.2)
 	var channels: Array = _chunk.get("_channels")
 	var ids := ["aster", "peris", "endo"]
 
@@ -128,23 +162,49 @@ func _initialize() -> void:
 	for k3 in range(3):
 		t3[ids[k3]] = Vector3(37.2, 0.1, 6.2 + 0.4 * float(k3))
 	_move_all("cross-keyed", t3, 14.0)
-	# --- gap watch: high flure, pad clear, final crossing, rest ---
+	# --- the climb: S4 and the turn-2/3 ladder (the playthrough's plan: stage
+	# --- at each mouth, launch on the flood->dry transition) ---
+	_cross_section("s4", 4, 38.5, 46.5, 3.0, 5.6, -1.0, 5.0, 0.6)
+	_cross_section("s5", 5, 56.5, 66.0, 3.7)
+	_cross_section("s6", 6, 68.5, 78.0, 3.7)
+	_cross_section("s7-sprint", 7, 82.5, 96.5, 2.43, 0.9, 6.4)
+	var drop3 = _chunk.find_child("DropRope3", true, false)
+	_gs.command_move_to_pos("aster", Vector3(99.0, 0.1, 1.4))
+	_advance_until("walk-to-drop3", func(): return not bool(_gs.is_moving("aster")), 8.0)
+	drop3.set("active_character", "aster")
+	drop3.call("_trigger")
+	_act("drop-rope-3")
+	_cross_section("s8", 8, 102.5, 116.0, 4.44, 0.2, -1.0, 0.2, 0.8)
+	_cross_section("s9", 9, 124.5, 136.5, 4.44, 0.2, -1.0, 0.2, 0.8)
+	var drop4 = _chunk.find_child("DropRope4", true, false)
+	_gs.command_move_to_pos("aster", Vector3(137.0, 0.1, 1.4))
+	_advance_until("walk-to-drop4", func(): return not bool(_gs.is_moving("aster")), 8.0)
+	drop4.set("active_character", "aster")
+	drop4.call("_trigger")
+	_act("drop-rope-4")
+	var evalve = _chunk.find_child("ExamValve", true, false)
+	_gs.command_move_to_pos("aster", Vector3(137.5, 0.1, 1.2))
+	_advance_until("walk-to-exam-valve", func(): return not bool(_gs.is_moving("aster")), 6.0)
+	evalve.set("active_character", "aster")
+	evalve.call("_trigger")
+	_act("hold-exam-valve")
+	var te: Dictionary = {}
+	for ke in range(3):
+		te[ids[ke]] = Vector3(150.5, 0.1, 0.9 + 0.6 * float(ke))
+	_move_all("cross-exam", te, 16.0)
+	# --- the summit: high flure pulls the watcher, the pad takes the rest ---
 	var hflure = _chunk.find_child("HighFlureObject", true, false)
-	_gs.command_move_to_pos("aster", Vector3(38.0, 0.1, 6.8))
-	_advance_until("walk-to-hflure", func(): return not bool(_gs.is_moving("aster")), 8.0)
+	_gs.command_move_to_pos("aster", Vector3(158.0, 0.1, 6.8))
+	_advance_until("walk-to-hflure", func(): return not bool(_gs.is_moving("aster")), 10.0)
 	hflure.set("active_character", "aster")
 	await process_frame
 	hflure.call("_trigger")
 	_act("hflure-sing")
 	_advance_until("pad-clear", func():
-		return _gs.get_position("sapscrap_2").x < 46.5, 40.0, 0.25)
-	_advance_until("wait-dry-4", func():
-		var on: Array = (_chunk.call("get_preview_state") as Dictionary).get("next_onsets_in", [])
-		return not bool((channels[4] as Node).call("is_flooding")) \
-			and on.size() > 4 and float(on[4]) > 3.2, 16.0)
-	var t4 := {"aster": Vector3(47.8, 0.1, 2.2), "peris": Vector3(48.5, 0.1, 2.8),
-		"endo": Vector3(49.2, 0.1, 3.8)}
-	_move_all("cross-4-to-pad", t4, 22.0)
+		return _gs.get_position("sapscrap_2").x < 162.0, 40.0, 0.25)
+	var t4 := {"aster": Vector3(167.2, 0.1, 2.4), "peris": Vector3(167.8, 0.1, 3.0),
+		"endo": Vector3(166.9, 0.1, 3.6)}
+	_move_all("cross-to-pad", t4, 26.0)
 	_act("ring-rest")
 
 	# --- the failure loop: wash + runback + climb (the checkpoint price) ---
