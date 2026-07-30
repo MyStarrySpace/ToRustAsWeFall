@@ -136,6 +136,7 @@ var _intro_done := false
 var _channels: Array = []           # the composed Channel kit objects, one per section
 var _fauna: Dictionary = {}         # char_id -> Enemy (canonical Sapscraps; placeholder bodies)
 var _ring_exit: ExitShelter = null
+var _base_shelter: ExitShelter = null
 var _swept_count := 0
 var _phase := "ready"
 
@@ -1210,6 +1211,8 @@ func reset_preview_state() -> void:
 	_arm_channels()
 	if _ring_exit != null:
 		_ring_exit.reset_shelter()
+	if _base_shelter != null:
+		_base_shelter.reset_shelter()
 	for i in range(_checkpoint_vines.size()):
 		_ropes_dropped[i] = false
 		var vine: Dictionary = _checkpoint_vines[i]
@@ -1360,11 +1363,26 @@ func _build_interactables() -> void:
 		Interactable.InteractableType.TIMED_ACTION)
 	stash.consequence_preview = "The crews left supplies mid-stretch. The water decides how long you get."
 	_wire_trigger(stash, _on_sunken_stash)
-	# the start bookend: downed members can be dragged back to the approach and
-	# revived on safe ground — a swept-down member never soft-locks the run
-	var gs_shelter = _get_game_state()
-	if gs_shelter != null and gs_shelter.has_method("add_shelter_region"):
-		gs_shelter.add_shelter_region(Vector2(0.0, 0.0), Vector2(1.8, DECK_D))
+	# THE FIRST SHELTER (director: a stretch is bookended by TWO shelters —
+	# one at the base, one at the summit connecting to the next stretch).
+	# The base camp's dwelling sits just past the deck edge over the outfall
+	# on its own legs; its REST is the same kit object as the win ring, wired
+	# to RE-ARM instead of complete — the wash->start recovery loop gets its
+	# recovery verb. The region doubles as the no-soft-lock sanctuary: downed
+	# members dragged back here can be revived on safe ground.
+	var base_shelter := ExitShelter.new()
+	base_shelter.name = "BaseShelterRest"
+	base_shelter.configure_shelter(_get_game_state(), Vector3(0.9, DECK_TOP, 3.5),
+		Vector2(0.9, 3.5), PARTY_IDS, "REST AT THE SHELTER", 1.5)
+	# the click zone belongs at the dwelling's porch, not mid-landing — the
+	# rest REGION keeps its own center (is_inside math is _center-based)
+	base_shelter.position = Vector3(0.3, DECK_TOP, 5.2)
+	base_shelter.consequence_preview = "The first shelter holds. Rest before the climb."
+	base_shelter.rest_completed.connect(_on_base_rest_completed)
+	base_shelter.rest_refused.connect(_on_base_rest_refused)
+	add_child(base_shelter)
+	_register_interactable(base_shelter)
+	_base_shelter = base_shelter
 	# THE WIN goes through the kit's win object — click-gated, downed-guarded,
 	# everyone on the pad, ONE atomic party rest (see ExitShelter's header).
 	# The pad rides the drum-head ledge PAST the last span, but its ground is
@@ -1753,6 +1771,19 @@ func _on_ring_rest_refused(reason: String, _missing: Array) -> void:
 		_show_note("// THE RING WAITS // no one gets left on the deck", 2.4)
 	else:
 		_show_note("// THE RING WAITS // gather everyone on the pad", 2.4)
+
+## The base camp's rest recovers and RE-ARMS — the first shelter is the home
+## the runback ends at, never a win. Completion belongs to the ring alone.
+func _on_base_rest_completed(_members: Array) -> void:
+	if _base_shelter != null:
+		_base_shelter.reset_shelter()
+	_show_note("The shelter holds. The climb is still there.", 2.6)
+
+func _on_base_rest_refused(reason: String, _missing: Array) -> void:
+	if reason == "downed":
+		_show_note("// THE SHELTER WAITS // bring the downed inside first", 2.4)
+	else:
+		_show_note("// THE SHELTER WAITS // gather everyone at the camp", 2.4)
 
 ## Canonical fauna from a scene-node marker (roster: Sapscraps — scavengers, the
 ## species an iron decoy CAN pull). The body is the Enemy base's placeholder

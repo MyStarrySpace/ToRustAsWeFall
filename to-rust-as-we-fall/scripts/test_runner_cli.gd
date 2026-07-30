@@ -28056,6 +28056,17 @@ func _test_wash_ascent() -> void:
 	_assert_true(rope_up != null and not bool(rope_up.get("interaction_enabled")),
 		"reset re-coils the rope (scenario isolation)")
 	inst.call("headless_set_character_position", "aster", Vector3(0.8, 0.1, 2.0))
+	# TWO SHELTERS bookend the stretch (director): the base camp near s 0 and
+	# the summit ring that connects to the next stretch. The base is the same
+	# kit object wired to re-arm, its dwelling realized past the deck edge on
+	# its own legs.
+	var base_sh = chunk.find_child("BaseShelterRest", true, false)
+	_assert_true(base_sh is ExitShelter, "the FIRST shelter stands at the base (kit object)")
+	var camp_piece = chunk.find_child("Shelter", true, false)
+	_assert_true(camp_piece is Node3D, "the base camp's dwelling piece is realized")
+	if camp_piece is Node3D:
+		_assert_true((camp_piece as Node3D).position.length() < 12.0,
+			"the dwelling sits at the stretch's mouth (world %s)" % [(camp_piece as Node3D).position])
 	var ring = chunk.find_child("AscentPortal", true, false)
 	_assert_true(ring is ExitShelter, "the ring exit IS the kit win object (ExitShelter)")
 	var refusals: Array = []
@@ -28571,6 +28582,36 @@ func _test_wash_ascent_playthrough() -> void:
 		_assert_true((foe as Node3D).global_position.distance_to(warped) < 1.5,
 			"%s's body renders ON the helix (node %s vs warped %s)" % [f_id,
 			(foe as Node3D).global_position, warped])
+	# THE FIRST SHELTER (director: TWO shelters bookend a stretch — the base
+	# camp and the summit ring that connects onward). The base rest heals and
+	# revives, RE-ARMS for the next runback, and completes NOTHING.
+	var base_rest = chunk.find_child("BaseShelterRest", true, false)
+	_assert_true(base_rest is ExitShelter, "the first shelter stands at the base")
+	if base_rest is ExitShelter:
+		# the rest is a RATE heal (the engine's recovery, ~1 hp/s), so each
+		# leg waits for the FULL restore before judging — and before the
+		# re-arm leg re-requests (a request mid-commit is ignored by design)
+		var hp_cap := float(gs.get_stat_cap("peris", "hp"))
+		gs.adjust_stat("peris", "hp", -20.0)
+		var hp_hurt := float(gs.get_stat("peris", "hp"))
+		base_rest.call("_on_rest_requested")
+		var heal_wait := 0.0
+		while heal_wait < 40.0 and float(gs.get_stat("peris", "hp")) < hp_cap - 0.1:
+			inst.call("headless_advance", 0.5)
+			heal_wait += 0.5
+		_assert_true(float(gs.get_stat("peris", "hp")) >= hp_cap - 0.1,
+			"the base rest HEALS to full (peris hp %.0f -> %.0f)" % [hp_hurt, float(gs.get_stat("peris", "hp"))])
+		_assert_true(str((chunk.call("get_preview_state") as Dictionary).get("phase", "")) == "active",
+			"the base rest completes NOTHING — the ring alone ends the stretch")
+		inst.call("headless_advance", 1.0)
+		gs.adjust_stat("peris", "hp", -12.0)
+		base_rest.call("_on_rest_requested")
+		var heal_wait2 := 0.0
+		while heal_wait2 < 30.0 and float(gs.get_stat("peris", "hp")) < hp_cap - 0.1:
+			inst.call("headless_advance", 0.5)
+			heal_wait2 += 0.5
+		_assert_true(float(gs.get_stat("peris", "hp")) >= hp_cap - 0.1,
+			"the base rest RE-ARMS — the camp is the home every runback ends at")
 	var consts: Dictionary = (chunk.get_script() as Script).get_script_constant_map()
 	var sections: Array = consts["WASH_SECTIONS"]
 	var slow_walk := 2.8

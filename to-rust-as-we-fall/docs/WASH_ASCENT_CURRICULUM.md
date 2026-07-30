@@ -52,16 +52,26 @@ basin below the final laps.
 Checkpoint: CP4 at s ~136. The split-station trio beat (CHANNELS_DESIGN
 co-op fulcrum) is deliberately RESERVED for the next stretch.
 
+## The two shelters (director)
+
+A stretch is bookended by TWO shelters: the FIRST SHELTER at the base — the
+camp the party arrives at, rests at, and every runback ends at (its dwelling
+sits past the deck edge over the outfall, on its own legs; its rest heals,
+revives, and RE-ARMS, completing nothing) — and the SECOND SHELTER at the
+summit, the blue route ring that connects the stretch to the next one.
+Completion belongs to the ring alone.
+
 ## The failure economy
 
-Sweeps carry to the stretch bottom (canon). Four sloperope checkpoints — the
-landing, the gap watch, the turn-2 landing, the pre-exam gap — keep the
-runback fair as the price of altitude climbs. Reunion restores nothing.
+Sweeps carry to the stretch bottom (canon) — into the first shelter's ground,
+where the rest verb is waiting. Four sloperope checkpoints — the landing, the
+gap watch, the turn-2 landing, the pre-exam gap — keep the runback fair as
+the price of altitude climbs. Reunion restores nothing.
 
 ## Laws in force
 
 Floor-is-the-read (sluice in spans), pricing by arithmetic (three section
 classes: normal / keyed / run — all asserted), the wordless-signage rule,
 the light-temperature ledger, the pacing law (probe before done), and the
-one-shelter law (start region + the summit ring). See
+two-shelter bookends (base camp + summit ring). See
 LEVEL_PLAYABILITY_CHECKLIST.md for the failure ledger behind each.
