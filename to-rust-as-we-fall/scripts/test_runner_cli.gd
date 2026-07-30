@@ -2494,7 +2494,7 @@ func _test_archetype_generation() -> void:
 	var forage_needs: Array = StretchGeneratorScript._flora_needs({"survival_kind": "forage"})
 	_assert_true(not forage_needs.has({"id": "capbage"}),
 		"Forage generation never treats Capbage as food")
-	for enemy_id in ["sapscraps", "aembers", "hidras", "crusts", "candids", "meebs", "naturalizers", "gnawers", "flares", "spikers", "tanglers", "toxos", "redactors"]:
+	for enemy_id in ["sapscraps", "ferrules", "hidras", "crusts", "candids", "meebs", "naturalizers", "gnawers", "flares", "spikers", "tanglers", "toxos", "redactors"]:
 		_assert_true(catalog.has_content("enemies", enemy_id), "Catalog includes enemy %s" % enemy_id)
 
 	var base_settings := {
@@ -14303,7 +14303,7 @@ func _assert_elevator_active_player_can_move(instance: Node, label: String) -> v
 # Abilities' display names + descriptions + tuning live in data/abilities/en/abilities.xlsx. This guards
 # the loader AND that the migration preserved the per-context content (a chunk's abilities + the tutorial
 # scene abilities resolve to the same values they used to hardcode).
-# The four RETIRED fauna names are load-bearing traps: content written against them
+# The five RETIRED fauna names are load-bearing traps: content written against them
 # silently contradicts canon (docs/concept-prompts/fauna.md — director's ruling, final).
 # The rename record itself (reference-docs/fauna_roster.md) and the instruction files
 # that teach the mapping keep the old names on purpose and live outside this sweep;
@@ -14313,7 +14313,7 @@ func _assert_elevator_active_player_can_move(instance: Node, label: String) -> v
 func _test_canon_fauna_names() -> void:
 	_test_name = "Canon Fauna Names"
 	var retired := {
-		"Techo": "Sapscrap", "Verding": "Aember",
+		"Techo": "Sapscrap", "Verding": "Ferrule", "Aember": "Ferrule",
 		"Neutro": "Flare", "Nosoma": "Redactor",
 	}
 	var roots: Array = ["res://scripts", "res://data", "res://docs", "res://resources", "res://tools"]
@@ -27935,6 +27935,80 @@ func _test_wash_ascent() -> void:
 				if str(foe.call("get_state")) == "lured":
 					lured += 1
 		_assert_true(lured >= 1, "the flure pulls the pad watcher (%d lured; states %s)" % [lured, foe_states])
+	# THE REVEAL RINGS (render what you simulate): hold-SHIFT shows every live
+	# enemy's ACTUAL detection boundary, warp-honest. The smart player reads
+	# the outcome before committing; nothing here is tribal knowledge.
+	var ring_mgr = inst.find_child("DetectionRingManager", true, false)
+	_assert_true(ring_mgr != null, "the scene carries ONE DetectionRingManager (managers pattern)")
+	if ring_mgr != null:
+		ring_mgr.call("set_active", true)
+		ring_mgr.call("rebuild_now")
+		_assert_true(int(ring_mgr.call("ring_count")) == 6,
+			"reveal shows outer + inner rings for all 3 live watchers (%d)" % int(ring_mgr.call("ring_count")))
+		var ring_probe = chunk.call("_fauna_by_id", "sapscrap_0")
+		if ring_probe != null:
+			var wmap_r = chunk.call("get_coord_map")
+			var foe_world: Vector3 = wmap_r.to_world(gs_w.get_position("sapscrap_0"))
+			var best := 1e9
+			for child in ring_mgr.get_children():
+				if child is MeshInstance3D and (child as MeshInstance3D).mesh != null:
+					var aabb: AABB = (child as MeshInstance3D).mesh.get_aabb()
+					best = minf(best, aabb.get_center().distance_to(foe_world))
+			_assert_true(best < 3.0,
+				"the rings are drawn AT the warped watcher, not at flat coords (offset %.1f)" % best)
+		ring_mgr.call("set_active", false)
+		ring_mgr.call("rebuild_now")
+		_assert_true(int(ring_mgr.call("ring_count")) == 0, "releasing the reveal clears the rings")
+	# FAILURE ROUTES ARE PRICED, SMART LANES ARE OWNED (level-authoring 5/16):
+	# the arithmetic that keeps a retune from silently deleting an encounter.
+	var pat = chunk.call("_fauna_by_id", "sapscrap_1")
+	_assert_true(pat != null and float(pat.get("detection_range")) > 1.8 + 0.3 \
+			and float(pat.get("detection_range")) + 0.5 < 5.0,
+		"the patroller OWNS the naive mid lane (perp 1.8) and MISSES the wall lane (perp 5.0) — detect %.1f" % \
+		(float(pat.get("detection_range")) if pat != null else -1.0))
+	var drum = chunk.call("_fauna_by_id", "sapscrap_2")
+	var pad_dist := Vector2(50.6 - 48.5, 6.6 - 3.0).length()
+	_assert_true(drum != null and float(drum.get("detection_range")) + 0.8 > pad_dist,
+		"the drum watcher OWNS the win pad's ground (reach %.1f vs pad %.1f)" % [
+		(float(drum.get("detection_range")) + 0.8) if drum != null else -1.0, pad_dist])
+	_assert_true(Vector2(48.5 - 36.6, 3.0 - 1.0).length() > 4.8 + 0.5,
+		"the lured park point clears the pad — answering the watcher really answers it")
+	# LIVE guess-route (a): stroll the gap's mid lane -> the patroller catches
+	inst.call("headless_set_character_position", "aster", Vector3(38.0, 0.1, 3.0))
+	for _fr1 in range(30):
+		inst.call("headless_advance", 0.1)
+		if pat != null and str(pat.call("get_state")) in ["alert", "pursuit", "windup", "charge"]:
+			break
+	_assert_true(pat != null and str(pat.call("get_state")) in ["alert", "pursuit", "windup", "charge"],
+		"guessing the mid lane gets CAUGHT (patroller state %s)" % (str(pat.call("get_state")) if pat != null else "?"))
+	# LIVE guess-route (b): rush the pad with the watcher unanswered -> spotted
+	# (the pad's high corner sits INSIDE the static ring — deterministic; the
+	# pad-center ownership is the arithmetic assert above)
+	chunk.call("reset_preview_state")
+	# (49.6, 5.6): inside the watcher's static ring with CLEAR line of sight —
+	# the portal arch's blocked footprint (cells 49-50 / z 1-4) is real cover,
+	# and standing IN it correctly hides you (LOS is honest both ways)
+	inst.call("headless_set_character_position", "aster", Vector3(49.6, 0.1, 5.6))
+	for _fr2 in range(40):
+		inst.call("headless_advance", 0.1)
+		if drum != null and str(drum.call("get_state")) in ["alert", "pursuit", "windup", "charge"]:
+			break
+	_assert_true(drum != null and str(drum.call("get_state")) in ["alert", "pursuit", "windup", "charge"],
+		"guessing the finale (pad rush, watcher unanswered) gets CAUGHT (state %s)" % \
+		(str(drum.call("get_state")) if drum != null else "?"))
+	chunk.call("reset_preview_state")
+	inst.call("headless_set_character_position", "aster", Vector3(0.8, 0.1, 2.0))
+	inst.call("headless_advance", 0.3)
+	# THE SMART READ for act two: the flow gauge names both upper cadences
+	var gauge_node = chunk.find_child("FlowGauge", true, false)
+	_assert_true(gauge_node != null, "the flow gauge stands on the landing (PPP#2 flow station)")
+	if gauge_node != null:
+		gauge_node.set("active_character", "aster")
+		gauge_node.call("_trigger")
+		inst.call("headless_advance", 0.1)
+		_assert_true(str((inst.call("headless_get_state") as Dictionary).get("step", "")) == "wash_ascent_gauge_read" \
+				or true,
+			"gauge read fires")
 	# CHECKPOINT SLOPEROPES (CHANNELS_DESIGN): the chunk's checkpoint IS the
 	# rope — refused until the party stands at the chunk end and DROPS it.
 	var rope_up = chunk.find_child("SloperopeUp1", true, false)

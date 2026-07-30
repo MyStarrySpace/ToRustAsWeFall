@@ -47,6 +47,7 @@ var _game_state: GameState
 ## callback is both unnecessary and especially costly in Web builds.
 var _game_state_character_nodes: Dictionary = {}
 var _path_render_manager                # PathRenderManager: movement paths for all characters
+var _detection_ring_manager: DetectionRingManager = null
 var _downed_body_manager                # DownedBodyManager: fallen members become clickable carry targets
 var _outline_mask_manager               # OutlineMaskManager: screen-space object outlines for all targets
 var _selection_controller               # SelectionController: RTS left-click / marquee character select
@@ -196,6 +197,14 @@ func _ready() -> void:
 	combat_feedback.name = "CombatFeedbackManager"
 	add_child(combat_feedback)
 	combat_feedback.setup(_game_state, self)
+	# One scene-level reveal-ring layer: hold-SHIFT shows every live enemy's
+	# ACTUAL detection boundary (outer + the conceal-medium inner band),
+	# warped through the scene's coord map — render what you simulate; the
+	# player knows the outcome before committing.
+	_detection_ring_manager = DetectionRingManager.new()
+	_detection_ring_manager.name = "DetectionRingManager"
+	add_child(_detection_ring_manager)
+	_detection_ring_manager.setup(_game_state, self)
 	var interactables_started := PerformanceTrace.begin()
 	_inject_scheduler_into_interactables(self)
 	PerformanceTrace.end(&"update", &"sequence.ready.interactables", interactables_started, name, 1)
@@ -1604,6 +1613,8 @@ func _apply_party_control(nodes: Dictionary, selected_ids: Array, active_id: Str
 ## key → HUD signal → here (no raw key polling in the sequence — keeps input discipline green).
 func _on_highlight_held(active: bool) -> void:
 	_set_all_interactables_highlighted(self, active)
+	if _detection_ring_manager != null and is_instance_valid(_detection_ring_manager):
+		_detection_ring_manager.set_active(active)
 
 func _set_all_interactables_highlighted(node: Node, active: bool) -> void:
 	# Both Interactable (footprint-particle highlight) and OutlineSurfaceTarget (mesh outline

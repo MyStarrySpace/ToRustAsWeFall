@@ -1112,6 +1112,17 @@ func _build_interactables() -> void:
 		Interactable.InteractableType.INSPECTION)
 	terminal.consequence_preview = "Aster reads the channel's rhythm — the next surge becomes a number, not a guess."
 	_wire_trigger(terminal, _on_terminal)
+	# THE FLOW GAUGE (ENVIRONMENT_ELEMENTS PPP#2, the flow station — a passive
+	# readout of already-computed onsets, no new class): the landing's
+	# throughput gauge finally ticks FOR someone. Aster reads ACT TWO's
+	# cadences from dry ground before anyone stands in a bed — the smart
+	# route is a read, the guess route is a swim.
+	var gauge := _add_interactable(self, "FlowGauge",
+		"Read the flow gauge", Vector3(27.4, DECK_TOP, 6.9),
+		"READ THE GAUGE", "aster", 1.1, false, 1.6,
+		Interactable.InteractableType.INSPECTION)
+	gauge.consequence_preview = "The transfer stretch's rhythm, in numbers — before you stand in its bed."
+	_wire_trigger(gauge, _on_flow_gauge)
 	var valve_rx := EmpReceiver.new()
 	valve_rx.name = "ValveEmpReceiver"
 	valve_rx.on_pulse = func(_duration: float) -> bool:
@@ -1417,6 +1428,17 @@ func _on_valve(_args = null) -> void:
 		return
 	(_channels[0] as Channel).hold(VALVE_HOLD_WINDOW)
 	_set_wash_state(0, "held")
+
+## The gauge names BOTH upper sections' next onsets — facts, never the verb
+## chain (help-text law). The keyed stretch's number is the tell that no dry
+## beat will ever fit a crossing: the read IS the "find the valve" moment.
+func _on_flow_gauge(_args = null) -> void:
+	if _channels.size() <= 4:
+		return
+	var s3 := maxf(0.0, float((_channels[3] as Channel).get_state().get("next_onset_in", 0.0)))
+	var s4 := maxf(0.0, float((_channels[4] as Channel).get_state().get("next_onset_in", 0.0)))
+	_show_note("// FLOW GAUGE // transfer stretch surges in %.0fs // the high stretch in %.0fs" % [s3, s4], 2.8)
+	_set_preview_step("wash_ascent_gauge_read")
 
 func _on_landing_valve(_args = null) -> void:
 	if _phase != "active" or _channels.size() <= 3:
