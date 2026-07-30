@@ -146,4 +146,10 @@ should encode the same grammar wherever feasible.
    FF invariance enrollment for timing puzzles.
 6. Contract sweep + real-click probe of the key verb + captures (stage stills via
    the `_phase` sentinel; honest audit = hunt what shouldn't be there).
+   PRICE THE PACING with a probe (`tools/probe_pacing.gd` pattern): bucket the
+   canonical solve into wait/walk/ride/act seconds. Targets: longest continuous
+   passive stretch < ~15 s at 1x, no single passive traversal (climb, carry)
+   > ~20 s, and waits player-compressible (F). The wash_ascent lesson: the
+   first sloperope cut rode 58 s — a walking simulator hides in any traversal
+   whose speed was never priced.
 7. Only then: captures for the artifact, commit, picker row to the top.

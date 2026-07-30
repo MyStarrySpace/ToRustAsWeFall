@@ -1293,7 +1293,10 @@ func _build_checkpoint_vines() -> void:
 		up.description = "Climb the sloperope"
 		up.tutorial_label = "CLIMB THE ROPE"
 		up.conceal_riders = false
-		up.configure_data(gs, spec["bottom"] as Vector3, up_path, 1.3, 0.5)
+		# slow-but-alive: slower than a walk (2.8), far from a coma — the
+		# 0.5 first cut made checkpoint 1's climb a 58-second passive ride
+		# (the pacing probe's walking-simulator number)
+		up.configure_data(gs, spec["bottom"] as Vector3, up_path, 1.3, 2.2)
 		up.set_group_provider(Callable(self, "_selected_party_ids"))
 		add_child(up)
 		_register_interactable(up)
@@ -1304,7 +1307,7 @@ func _build_checkpoint_vines() -> void:
 		down.description = "Climb back down the sloperope"
 		down.tutorial_label = "CLIMB DOWN"
 		down.conceal_riders = false
-		down.configure_data(gs, spec["top"] as Vector3, down_path, 1.3, 0.62)
+		down.configure_data(gs, spec["top"] as Vector3, down_path, 1.3, 2.8)
 		down.set_group_provider(Callable(self, "_selected_party_ids"))
 		add_child(down)
 		_register_interactable(down)
