@@ -28553,6 +28553,24 @@ func _test_wash_ascent_playthrough() -> void:
 	var mark_count := (chunk.call("get_peris_flora_marks") as Array).size()
 	_assert_true(mark_count >= 8,
 		"Peris's overlay MEMORY holds the flora she read from above (%d marks)" % mark_count)
+	# The ride-down is a LOCKED CARRY: no sentry may aggro the passing party
+	# (a lured chase ends in open water — the S4 patroller used to drown in
+	# section 3 before the level began), and every body must RENDER on the
+	# helix (a parked enemy once kept its flat spawn coords and floated in
+	# the void beside the coil — the money-shot floater).
+	for _fp in range(3):
+		await get_tree().process_frame
+	var fauna_post: Dictionary = chunk.get("_fauna")
+	for f_id in fauna_post.keys():
+		var foe = fauna_post[f_id]
+		if not is_instance_valid(foe):
+			continue
+		_assert_true(bool(foe.call("is_alive")),
+			"%s survives the intro ride-down (state %s)" % [f_id, str(foe.call("get_state"))])
+		var warped: Vector3 = gs.get_render_position(str(f_id))
+		_assert_true((foe as Node3D).global_position.distance_to(warped) < 1.5,
+			"%s's body renders ON the helix (node %s vs warped %s)" % [f_id,
+			(foe as Node3D).global_position, warped])
 	var consts: Dictionary = (chunk.get_script() as Script).get_script_constant_map()
 	var sections: Array = consts["WASH_SECTIONS"]
 	var slow_walk := 2.8

@@ -3367,6 +3367,12 @@ func _recompute_all_detection_predictions(only_id: String = "") -> void:
 			# same level. Recomputed on every move/level change, so detection resumes after a fall.
 			if absf(get_position(detector_id).y - get_position(target_id).y) > DETECTION_VERTICAL_BAND:
 				continue
+			# A body under a LOCKED carry (a sweep, a crawl, a scripted ride) neither sees nor is
+			# seen: it isn't walking the deck, and a sentry that aggros a body the current is
+			# carrying past will chase it into open water and drown before the level even starts.
+			# _finish_external_traversal recomputes at the landing, so sight resumes exactly there.
+			if is_external_traversal_active(detector_id) or is_external_traversal_active(target_id):
+				continue
 			var effective_range := _effective_detection_range(
 				outer_range, get_character_concealment(target_id))
 			if effective_range <= 0.0:

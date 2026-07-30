@@ -1656,11 +1656,13 @@ func _process(_delta: float) -> void:
 	_update_threat_marker()
 	# The body is a pure mirror of the data layer — including the charge, which is now a real
 	# data-layer move at charge_speed (so the lunge is smooth and never teleport-snaps at impact).
-	if game_state and char_id != "" and game_state.is_moving(char_id):
-		var pos := game_state.get_render_position(char_id)
+	# On a WARPED scene the mirror holds every frame, moving or parked: a body gated on
+	# is_moving keeps its flat spawn coordinates until its first hop and floats off the coil.
+	if game_state and char_id != "":
 		if game_state.coord_map != null or game_state.is_external_traversal_active(char_id):
-			global_position = pos          # warped onto the helix (y meaningful)
-		else:
+			global_position = game_state.get_render_position(char_id)
+		elif game_state.is_moving(char_id):
+			var pos := game_state.get_render_position(char_id)
 			global_position = Vector3(pos.x, global_position.y, pos.z)
 	PerformanceTrace.end(&"update", &"enemy.process", perf_started, char_id, 1)
 
