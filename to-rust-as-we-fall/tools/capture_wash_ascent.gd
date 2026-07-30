@@ -11,6 +11,8 @@ func _init() -> void:
 	pass
 
 func _initialize() -> void:
+	get_root().unfocusable = true
+	OffscreenWindow.park(get_root())
 	var out_dir := OS.get_environment("OUT_DIR")
 	if out_dir == "":
 		push_error("OUT_DIR not set — captures go to the scratchpad, never the project")

@@ -9,6 +9,8 @@ extends SceneTree
 ##       --position 20000,20000 --resolution 1600x900 --script tools/capture_water_motion.gd
 
 func _initialize() -> void:
+	get_root().unfocusable = true
+	OffscreenWindow.park(get_root())
 	var out_dir := OS.get_environment("OUT_DIR")
 	if out_dir == "":
 		push_error("OUT_DIR not set")

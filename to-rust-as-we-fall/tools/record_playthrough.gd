@@ -173,8 +173,11 @@ func _initialize() -> void:
 	# The recording window must NEVER take keyboard focus: it parks off-screen
 	# but still grabs focus on open, and anything typed at the desktop while
 	# the movie renders lands in the game (a spacebar = the pause action —
-	# one recording froze at its spawn for nine minutes this way).
+	# one recording froze at its spawn for nine minutes this way). And it
+	# must be parked at runtime — the --position flag is clamped against
+	# wide/multi-monitor desktops and leaves a sliver visible.
 	get_root().unfocusable = true
+	OffscreenWindow.park(get_root())
 	var packed = load("res://scenes/fragments/fragment_preview.tscn")
 	_scene = packed.instantiate()
 	_scene.set("preview_menu", false)
