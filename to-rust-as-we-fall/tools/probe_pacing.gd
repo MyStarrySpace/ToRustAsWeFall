@@ -70,6 +70,7 @@ func _initialize() -> void:
 	_chunk = _scene.find_child("Chunk_wash_ascent", true, false)
 	_gs = _scene.get("_game_state")
 	_scene.call("headless_advance", 0.05)
+	_advance_tagged("intro-overlook-drop", 12.0, 0.2)
 	var channels: Array = _chunk.get("_channels")
 	var ids := ["aster", "peris", "endo"]
 

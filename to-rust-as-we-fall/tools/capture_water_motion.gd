@@ -29,6 +29,7 @@ func _initialize() -> void:
 	for layer in get_root().find_children("*", "CanvasLayer", true, false):
 		(layer as CanvasLayer).visible = false
 	var chunk: Node = scene.find_child("Chunk_wash_ascent", true, false)
+	scene.call("headless_advance", 12.0)   # ride out the overlook intro
 	chunk.set("_phase", "capture")
 	for i in range(5):
 		chunk.call("_set_wash_state", i, "idle")

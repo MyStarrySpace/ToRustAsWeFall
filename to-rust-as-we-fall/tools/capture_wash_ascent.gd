@@ -80,7 +80,8 @@ func _initialize() -> void:
 		# stills own the wash DISPLAY: a non-"active" phase makes the live
 		# cadence's repaint handlers no-op, so the staged state can't be
 		# overwritten by a real flood mid-shot
-		chunk.set("_phase", "capture")
+		scene.call("headless_advance", 12.0)   # ride out the overlook intro
+	chunk.set("_phase", "capture")
 	for shot in shots:
 		if chunk != null:
 			# stage the declared wash state for the still (state setter only — no

@@ -27780,6 +27780,9 @@ func _test_wash_ascent() -> void:
 	# 4) THE SPIRAL + THE WASH (restored): the helix coord map is installed, the
 	# cadence is analytic data, the surge really sweeps, and the valve really holds.
 	_assert_true(chunk.call("get_coord_map") != null, "the chunk exposes the helix coord map")
+	# ride out the overlook intro (creak, collapse, the water ride down) so
+	# every mechanical scenario below starts from the canonical bottom state
+	inst.call("headless_advance", 12.0)
 	var wstate: Dictionary = chunk.call("get_preview_state")
 	_assert_true(str(wstate.get("phase", "")) == "active", "the wash cadence is armed after reset")
 	var onsets: Array = wstate.get("next_onsets_in", [])
@@ -28376,6 +28379,7 @@ func _test_combat_feedback() -> void:
 	if chunk == null or gs == null or fb == null:
 		inst.queue_free(); await get_tree().process_frame; return
 	inst.call("headless_advance", 0.05)
+	inst.call("headless_advance", 12.0)   # ride out the overlook intro
 	# park everyone on safe ground far from the watcher
 	for pid in ["aster", "peris", "endo"]:
 		inst.call("headless_set_character_position", pid,
@@ -28510,6 +28514,35 @@ func _test_wash_ascent_playthrough() -> void:
 		inst.queue_free(); await get_tree().process_frame; return
 	inst.call("headless_advance", 0.05)
 	var ids := ["aster", "peris", "endo"]
+	# (0) THE OVERLOOK INTRO (CHANNELS_DESIGN): the party enters on the span
+	# ABOVE the drum head — the whole climb below them — the bridge gives,
+	# and the water rides them down the coil to the start shelter. Peris's
+	# overlay memory is EMPTY before the overlook and full after it.
+	_assert_true(str((chunk.call("get_preview_state") as Dictionary).get("phase", "")) == "overlook",
+		"the level opens on the OVERLOOK, not the deck")
+	_assert_true(float(((chunk.call("get_spawn_positions") as Dictionary)["aster"] as Vector3).x) > 52.0,
+		"the party enters on the bridge past the drum head")
+	_assert_true((chunk.call("get_peris_flora_marks") as Array).is_empty(),
+		"Peris has no overlay memory before the overlook")
+	var intro_wait := 0.0
+	while intro_wait < 16.0:
+		inst.call("headless_advance", 0.2)
+		intro_wait += 0.2
+		var landed_all := true
+		for id_i in ids:
+			var ip: Vector3 = gs.get_position(str(id_i))
+			if ip.x > 2.5 or bool(gs.call("is_external_traversal_active", str(id_i))):
+				landed_all = false
+		if landed_all:
+			break
+	for id_i2 in ids:
+		_assert_true(gs.get_position(str(id_i2)).x < 2.5,
+			"the fall's water ride lands %s at the stretch start (%s)" % [id_i2, gs.get_position(str(id_i2))])
+	_assert_true(bool((chunk.call("get_preview_state") as Dictionary).get("intro_done", false)),
+		"the overlook is one-time — scenario resets skip it")
+	var mark_count := (chunk.call("get_peris_flora_marks") as Array).size()
+	_assert_true(mark_count >= 8,
+		"Peris's overlay MEMORY holds the flora she read from above (%d marks)" % mark_count)
 	var consts: Dictionary = (chunk.get_script() as Script).get_script_constant_map()
 	var sections: Array = consts["WASH_SECTIONS"]
 	var slow_walk := 2.8

@@ -640,10 +640,10 @@ metadata/mount = "floor"
 metadata/cluster = "overgrowth"
 
 [node name="WallWeb" type="Marker3D" parent="Overgrowth"]
-transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 22.7, 1.3, 7.95)
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 47.8, 1.3, 7.95)
 metadata/piece = "wall_tracery"
 metadata/mount = "wall"
-metadata/cluster = "landing"
+metadata/cluster = "overgrowth"
 
 [node name="Biolume1" type="Marker3D" parent="Overgrowth"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 50.0, 0.1, 6.2)
@@ -709,7 +709,7 @@ shadow_enabled = false
 [node name="Fauna" type="Node3D" parent="."]
 
 [node name="SapscrapB" type="Marker3D" parent="Fauna"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 25.2, 0.1, 6.9)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 26.2, 0.1, 6.7)
 metadata/enemy = "sapscrap"
 metadata/roam_radius = 0.7
 metadata/detect = 4.0
@@ -790,6 +790,50 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 5.6, 0)
 metadata/world_piece = "porthole"
 metadata/angle = 152.0
 metadata/radius = 6.55
+
+[node name="EntryBridge" type="Node3D" parent="."]
+
+[node name="BridgeStub" type="Marker3D" parent="EntryBridge"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 52.6, 0, 2.4)
+metadata/piece = "broken_pier"
+metadata/mount = "floor"
+metadata/cluster = "structure_bridge"
+metadata/embed_ok = true
+
+[node name="BridgeDeckA" type="Marker3D" parent="EntryBridge"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 54.2, 0, 2.2)
+metadata/piece = "deck_planks_c"
+metadata/mount = "floor"
+metadata/cluster = "structure_bridge"
+metadata/embed_ok = true
+
+[node name="BridgeDeckB" type="Marker3D" parent="EntryBridge"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 56.2, 0, 2.2)
+metadata/piece = "deck_planks_b"
+metadata/mount = "floor"
+metadata/cluster = "structure_bridge"
+metadata/embed_ok = true
+
+[node name="BridgeRailA" type="Marker3D" parent="EntryBridge"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 54.2, 0.1, 1.1)
+metadata/piece = "railing_run"
+metadata/mount = "floor"
+metadata/cluster = "structure_bridge"
+metadata/embed_ok = true
+
+[node name="BridgeRailB" type="Marker3D" parent="EntryBridge"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 55.4, 0.1, 3.3)
+metadata/piece = "railing_run"
+metadata/mount = "floor"
+metadata/cluster = "structure_bridge"
+metadata/embed_ok = true
+
+[node name="BridgeTruss" type="Marker3D" parent="EntryBridge"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 55.2, -0.85, 2.2)
+metadata/piece = "scaffold_truss"
+metadata/mount = "structure"
+metadata/cluster = "structure_bridge"
+metadata/embed_ok = true
 
 [node name="SpawnPlayer" type="Marker3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.2, 0.1, 3.0)

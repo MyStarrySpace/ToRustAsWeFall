@@ -2613,8 +2613,18 @@ func _refresh_active_overlay() -> void:
 func _update_survival_overlay() -> void:
 	pass
 
+var _flora_marks_mgr: FloraMemoryMarks = null
+
 func _update_overlay_runtime(delta: float) -> void:
 	_sync_overlay_stack()
+	# Peris's overlook memory rides her overlay toggle: the marks manager
+	# renders whatever the chunk remembers (empty until the overlook beat).
+	if _flora_marks_mgr == null or not is_instance_valid(_flora_marks_mgr):
+		_flora_marks_mgr = FloraMemoryMarks.new()
+		_flora_marks_mgr.name = "FloraMemoryMarks"
+		add_child(_flora_marks_mgr)
+		_flora_marks_mgr.setup(_game_state, func(): return _active_chunk)
+	_flora_marks_mgr.set_active(bool(_overlay_states.get("peris", false)))
 	if _active_chunk != null and _active_chunk.has_method("update_preview_overlay_states"):
 		_active_chunk.call("update_preview_overlay_states", _overlay_states, get_preview_scheduler_tick(), delta)
 	_refresh_preview_items()

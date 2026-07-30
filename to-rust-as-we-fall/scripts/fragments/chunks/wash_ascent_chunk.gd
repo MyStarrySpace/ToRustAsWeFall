@@ -109,6 +109,7 @@ var _flures: Array = []
 var _checkpoint_vines: Array = []   # [{drop, up, down}] per checkpoint
 var _ropes_dropped: Array = [false, false]
 var _hide_spots_cache: Array = []
+var _intro_done := false
 
 var _channels: Array = []           # the composed Channel kit objects, one per section
 var _fauna: Dictionary = {}         # char_id -> Enemy (canonical Sapscraps; placeholder bodies)
@@ -986,15 +987,25 @@ func _build_wash_channels() -> void:
 			_register_water_band(trough, t0, "trough")
 		t0 += 1.0
 
-## Arm (or re-arm) the kit cadences. Called from reset_preview_state — the host
-## invokes that after build and on every reload, so play and headless match.
-func reset_preview_state() -> void:
-	_phase = "active"
-	_swept_count = 0
+## THE OVERLOOK INTRO (CHANNELS_DESIGN: you enter across the bridge at the
+## top with the whole climb laid out below, then you drop in and begin from
+## the bottom — and THAT overlook is the in-fiction reason Peris's flora
+## overlay keeps positions marked where the party can't see). The bridge is
+## the helix's own continuation past the drum head (s > DECK_W renders on
+## the same arc, higher); its collapse — the level's deferred-maintenance
+## thesis, experienced — tips the party into the channel, and the WATER
+## rides them down the whole coil to the start shelter: the kit's carry as
+## the intro cinematic, the sweep taught before it ever punishes.
+const INTRO_CREAK_AT := 2.0
+const INTRO_COLLAPSE_AT := 3.4
+const INTRO_RIDE_SPEED := 9.0
+
+## The one cadence arm both phases share: reset + sweep-wire + start every
+## channel. The overlook uses it so the coil SURGES below the entry bridge;
+## every scenario re-arm uses it for the identical bottom state.
+func _arm_channels() -> void:
 	var gs = _get_game_state()
 	var sched = _get_scheduler()
-	if gs != null and "data_frame_bounds" in gs:
-		gs.data_frame_bounds = Rect2(0.0, 0.0, DECK_W, DECK_D)
 	for i in range(_channels.size()):
 		var ch: Channel = _channels[i]
 		ch.reset()
@@ -1012,6 +1023,131 @@ func reset_preview_state() -> void:
 		if sched != null:
 			ch.start(sched, gs)
 		_set_wash_state(i, "idle")
+
+func _arm_overlook_intro() -> void:
+	_phase = "overlook"
+	_swept_count = 0
+	var gs = _get_game_state()
+	if gs != null and "data_frame_bounds" in gs:
+		gs.data_frame_bounds = Rect2(0.0, 0.0, DECK_W + 6.0, DECK_D)
+	# the coil SURGES below the overlook — the spectacle IS the read; the
+	# catch can't touch the riders (their drop is a locked traversal)
+	_arm_channels()
+	var sched = _get_scheduler()
+	if sched != null:
+		sched.cancel_tag("wash_ascent_intro")
+		sched.schedule_after(INTRO_CREAK_AT, func():
+			if _phase == "overlook":
+				_show_note("The span groans. Below: every channel, every green thing, the whole climb at a glance.", 2.6), "wash_ascent_intro")
+		sched.schedule_after(INTRO_COLLAPSE_AT, _collapse_bridge, "wash_ascent_intro")
+
+func _bridge_spawn_positions() -> Dictionary:
+	return {
+		"aster": Vector3(54.6, DECK_TOP, 2.2),
+		"peris": Vector3(55.4, DECK_TOP, 1.8),
+		"endo": Vector3(55.8, DECK_TOP, 2.8),
+	}
+
+## The collapse: cosmetic tumble on the span pieces (node-bound tweens), and
+## the REAL drop — each member rides the channel line down the entire coil to
+## the start shelter as a logged external traversal. One-time; replay re-runs
+## the same scheduled callback and the same logged carries.
+func _collapse_bridge() -> void:
+	if _phase != "overlook":
+		return
+	_intro_done = true
+	var gs = _get_game_state()
+	var map = get_coord_map()
+	if gs != null:
+		var landings := {
+			"aster": Vector3(1.2, DECK_TOP, 3.0),
+			"peris": Vector3(0.8, DECK_TOP, 2.2),
+			"endo": Vector3(0.9, DECK_TOP, 3.8),
+		}
+		var order := 0
+		for id in PARTY_IDS:
+			if not gs.characters.has(id):
+				continue
+			var from: Vector3 = gs.get_position(id)
+			var landing: Vector3 = landings.get(id, Vector3(1.2, DECK_TOP, 3.0))
+			var data_path: Array = [from,
+				Vector3(50.0, DECK_TOP, -0.5), Vector3(38.0, DECK_TOP, -0.6),
+				Vector3(24.0, DECK_TOP, -0.6), Vector3(10.0, DECK_TOP, -0.6),
+				Vector3(2.6, DECK_TOP, -0.4), landing]
+			var render_path: Array = []
+			for p in data_path:
+				render_path.append(map.to_world(p) if map != null else p)
+			var length := 0.0
+			for k in range(1, data_path.size()):
+				length += (data_path[k] as Vector3).distance_to(data_path[k - 1])
+			gs.command_external_path_traversal(id, StringName("bridge_drop_%s_%d" % [id, order]),
+				data_path, render_path, length / INTRO_RIDE_SPEED)
+			order += 1
+	_tumble_bridge_pieces()
+	_show_note("The bridge gives way. The water takes all three — down past everything they just saw.", 3.0)
+	_scheduler_note_after(6.4, "Peris holds the picture. The green stays with her.")
+	reset_preview_state()
+	_set_preview_step("wash_ascent_dropped")
+
+func _scheduler_note_after(delay: float, text: String) -> void:
+	var sched = _get_scheduler()
+	if sched != null:
+		sched.schedule_after(delay, func(): _show_note(text, 2.8), "wash_ascent_intro_note")
+
+## Cosmetic only: the span's pieces hinge and drop into the dark. Node-bound
+## tweens (they die with the scene); the stub pier stays as the story scar.
+func _tumble_bridge_pieces() -> void:
+	if _realized_root == null:
+		return
+	for piece in _realized_root.get_children():
+		if not (piece is Node3D):
+			continue
+		if str((piece as Node3D).get_meta("cluster", "")) != "structure_bridge":
+			continue
+		var p3 := piece as Node3D
+		if p3.global_position.y < -3.0:
+			continue
+		var is_stub := str(p3.get_meta("piece_id", "")) == "broken_pier" \
+			or p3.name.begins_with("BrokenPier")
+		if is_stub:
+			continue
+		var tw := p3.create_tween()
+		tw.set_parallel(true)
+		tw.tween_property(p3, "global_position",
+			p3.global_position + Vector3(0.6, -9.0, 0.4), 1.1) \
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		tw.tween_property(p3, "rotation",
+			p3.rotation + Vector3(0.9, 0.3, -0.5), 1.1)
+		tw.chain().tween_callback(func(): p3.visible = false)
+
+## PERIS'S MEMORY OF THE OVERLOOK (her WHERE register, canon-justified): the
+## flora positions she read from the bridge — and on the long ride down —
+## stay marked in her overlay for the rest of the stretch. Data getter only;
+## the render layer is the scene-level marks manager.
+const _FLORA_PIECES := ["flure", "capbage", "seefern", "biolume_cluster",
+	"scarpet", "hushbloom", "forget_me_nots", "vein_trunk", "resolution_roots"]
+
+func get_peris_flora_marks() -> Array:
+	if not _intro_done or _props_root == null:
+		return []
+	var out: Array = []
+	for marker in _find_meta_nodes(_props_root, "piece"):
+		if str(marker.get_meta("piece")) in _FLORA_PIECES:
+			out.append((marker as Node3D).position)
+	return out
+
+## Arm (or re-arm) the kit cadences. Called from reset_preview_state — the host
+## invokes that after build and on every reload, so play and headless match.
+func reset_preview_state() -> void:
+	if not _intro_done:
+		_arm_overlook_intro()
+		return
+	_phase = "active"
+	_swept_count = 0
+	var gs = _get_game_state()
+	if gs != null and "data_frame_bounds" in gs:
+		gs.data_frame_bounds = Rect2(0.0, 0.0, DECK_W, DECK_D)
+	_arm_channels()
 	if _ring_exit != null:
 		_ring_exit.reset_shelter()
 	for i in range(_checkpoint_vines.size()):
@@ -1586,6 +1722,8 @@ func get_grid_data() -> Dictionary:
 ## Channel catch is boundary-inclusive) — nobody boots standing on the visible
 ## kill edge, and every offset stays on the deck (x > 0).
 func get_spawn_positions() -> Dictionary:
+	if not _intro_done:
+		return _bridge_spawn_positions()
 	var anchor := Vector3(1.2, DECK_TOP, 3.0)
 	var marker := _props_root.find_child("SpawnPlayer", true, false) if _props_root else null
 	if marker is Node3D:
@@ -1630,4 +1768,5 @@ func get_preview_state() -> Dictionary:
 		"valve_hold_until": (_channels[0] as Channel).held_until() if not _channels.is_empty() else -1.0,
 		"fauna": _fauna.size(),
 		"ropes_dropped": _ropes_dropped.duplicate(),
+		"intro_done": _intro_done,
 	}
