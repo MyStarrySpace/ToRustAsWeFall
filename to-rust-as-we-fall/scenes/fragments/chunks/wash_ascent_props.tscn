@@ -424,13 +424,25 @@ metadata/mount = "floor"
 metadata/cluster = "patrol_band"
 
 [node name="ClimbvineChannelA" type="Marker3D" parent="UpperStory"]
-transform = Transform3D(1, 0, 0, 0, 0.877, 0.479, 0, -0.479, 0.877, 37.0, 0, -0.45)
+transform = Transform3D(1, 0, 0, 0, 0.877, 0.479, 0, -0.479, 0.877, 26.3, 0, -0.45)
 metadata/piece = "climbvine"
 metadata/mount = "floor"
 metadata/cluster = "return_devices"
 
 [node name="ClimbvineChannelB" type="Marker3D" parent="UpperStory"]
 transform = Transform3D(1, 0, 0, 0, 0.877, 0.479, 0, -0.479, 0.877, 45.4, 0, -0.35)
+metadata/piece = "climbvine"
+metadata/mount = "floor"
+metadata/cluster = "return_devices"
+
+[node name="VineFootA" type="Marker3D" parent="UpperStory"]
+transform = Transform3D(1, 0, 0, 0, 0.877, 0.479, 0, -0.479, 0.877, 1.5, 0, -0.4)
+metadata/piece = "climbvine"
+metadata/mount = "floor"
+metadata/cluster = "return_devices"
+
+[node name="VineFootB" type="Marker3D" parent="UpperStory"]
+transform = Transform3D(1, 0, 0, 0, 0.877, 0.479, 0, -0.479, 0.877, 2.7, 0, -0.4)
 metadata/piece = "climbvine"
 metadata/mount = "floor"
 metadata/cluster = "return_devices"

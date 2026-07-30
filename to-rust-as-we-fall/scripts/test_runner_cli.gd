@@ -27935,6 +27935,30 @@ func _test_wash_ascent() -> void:
 				if str(foe.call("get_state")) == "lured":
 					lured += 1
 		_assert_true(lured >= 1, "the flure pulls the pad watcher (%d lured; states %s)" % [lured, foe_states])
+	# CHECKPOINT SLOPEROPES (CHANNELS_DESIGN): the chunk's checkpoint IS the
+	# rope — refused until the party stands at the chunk end and DROPS it.
+	var rope_up = chunk.find_child("SloperopeUp1", true, false)
+	var rope_down = chunk.find_child("SloperopeDown1", true, false)
+	var rope_drop = chunk.find_child("DropRope1", true, false)
+	_assert_true(rope_up is CrawlTunnel and rope_down is CrawlTunnel and rope_drop != null,
+		"checkpoint 1 has a drop + an up mouth + a down mouth")
+	_assert_true(rope_up != null and not bool(rope_up.get("interaction_enabled")),
+		"the sloperope is NOT climbable before the party drops it")
+	if rope_drop != null:
+		inst.call("headless_set_character_position", "aster", Vector3(26.8, 0.1, 1.4))
+		inst.call("headless_advance", 0.4)
+		rope_drop.set("active_character", "aster")
+		rope_drop.call("_trigger")
+		inst.call("headless_advance", 0.2)
+	_assert_true(rope_up != null and bool(rope_up.get("interaction_enabled")) \
+			and rope_down != null and bool(rope_down.get("interaction_enabled")),
+		"dropping the sloperope arms BOTH mouths")
+	_assert_true(bool(((chunk.call("get_preview_state") as Dictionary).get("ropes_dropped", []) as Array)[0]),
+		"the drop is preview-visible state")
+	chunk.call("reset_preview_state")
+	_assert_true(rope_up != null and not bool(rope_up.get("interaction_enabled")),
+		"reset re-coils the rope (scenario isolation)")
+	inst.call("headless_set_character_position", "aster", Vector3(0.8, 0.1, 2.0))
 	var ring = chunk.find_child("AscentPortal", true, false)
 	_assert_true(ring is ExitShelter, "the ring exit IS the kit win object (ExitShelter)")
 	var refusals: Array = []
@@ -28339,7 +28363,9 @@ func _test_combat_feedback() -> void:
 	_assert_true(int(fb.call("spotted_count")) == 0,
 		"no enemy inside any visual range -> nothing spotted")
 	var bubbles_before := int(fb.get("head_bubbles_fired")) + int(fb.get("portrait_bubbles_fired"))
-	inst.call("headless_set_character_position", "aster", Vector3(22.0, 0.1, 5.0))
+	inst.call("headless_set_character_position", "aster", Vector3(18.5, 0.1, 5.5))
+	for _fsp in range(3):
+		await get_tree().process_frame
 	inst.call("headless_advance", 0.6)
 	_assert_true(int(fb.call("spotted_count")) >= 1,
 		"an enemy inside the visual range is SPOTTED (red tracking outline registered)")
@@ -28353,10 +28379,15 @@ func _test_combat_feedback() -> void:
 	# LOS LINGER (director): a brief break keeps the outline; it drops only
 	# after the enemy stays unseen for SPOT_LINGER_SECONDS (2.0)
 	inst.call("headless_set_character_position", "aster", Vector3(0.8, 0.1, 2.0))
+	for _flg in range(3):
+		await get_tree().process_frame
 	inst.call("headless_advance", 0.8)
 	_assert_true(int(fb.call("spotted_count")) >= 1,
 		"a brief LOS break (<2s) keeps the red outline lingering")
-	inst.call("headless_advance", 2.0)
+	inst.call("headless_advance", 1.2)
+	for _flg2 in range(3):
+		await get_tree().process_frame
+	inst.call("headless_advance", 0.8)
 	_assert_true(int(fb.call("spotted_count")) == 0,
 		"unseen for 2+ seconds -> the outline drops")
 	inst.queue_free()
@@ -28443,6 +28474,66 @@ func _test_wash_ascent_playthrough() -> void:
 		"a RUN-rush cannot outrun the ladder either (swept=%d)" % int(rush_state.get("swept_count", 0)))
 	_assert_true(str(rush_state.get("phase", "")) != "complete", "no naive route completes the level")
 	gs.change_move_speed("aster", 3.2)
+	# (2c) THE CHECKPOINT LOOP (CHANNELS_DESIGN core loop): a washed member is
+	# carried the whole flow DOWN to the stretch start, stranded but MOBILE;
+	# the party drops the sloperope at the chunk end; the stranded member
+	# climbs it and rejoins at the checkpoint — no healing, reunion only.
+	chunk.call("reset_preview_state")
+	for id_cp in ids:
+		inst.call("headless_set_character_position", str(id_cp), spawns[str(id_cp)])
+	inst.call("headless_advance", 0.05)
+	var cp_drop = chunk.find_child("DropRope1", true, false)
+	var cp_up = chunk.find_child("SloperopeUp1", true, false)
+	_assert_true(cp_drop != null and cp_up != null, "checkpoint 1 objects present")
+	if cp_drop != null and cp_up != null:
+		inst.call("headless_set_character_position", "aster", Vector3(26.8, 0.1, 1.4))
+		for _cs in range(10):
+			inst.call("headless_advance", 0.1)
+			if not bool(gs.is_moving("aster")):
+				break
+		cp_drop.set("active_character", "aster")
+		cp_drop.call("_trigger")
+		inst.call("headless_advance", 0.2)
+		# peris wades into section 1's live span and waits for the wash
+		inst.call("headless_set_character_position", "peris", Vector3(14.0, 0.1, 3.0))
+		var cp_wait := 0.0
+		var cp_swept := false
+		while cp_wait < 30.0:
+			inst.call("headless_advance", 0.2)
+			cp_wait += 0.2
+			var pp: Vector3 = gs.get_position("peris")
+			if pp.x < 2.2 and not bool(gs.is_moving("peris")) \
+					and not bool(gs.call("is_external_traversal_active", "peris")):
+				cp_swept = true
+				break
+		_assert_true(cp_swept,
+			"a washed member rides the flow to the STRETCH START (at %s)" % [gs.get_position("peris")])
+		_assert_true(float(gs.get_stat("peris", "hp")) > 0.0,
+			"the stranded member is MOBILE, not downed")
+		# the stranded member walks to the rope foot and climbs — alone (the
+		# selection is just peris, so the group queue carries one rider)
+		inst.call("headless_set_selected_characters", ["peris"])
+		gs.command_move_to_pos("peris", Vector3(1.6, 0.1, 2.4))
+		for _cw in range(60):
+			inst.call("headless_advance", 0.1)
+			if not bool(gs.is_moving("peris")) \
+					and gs.get_position("peris").distance_to(Vector3(1.6, 0.1, 2.4)) < 1.1:
+				break
+		cp_up.set("active_character", "peris")
+		await get_tree().process_frame
+		var climb_ok: bool = bool(cp_up.call("_trigger"))
+		_assert_true(climb_ok, "the armed sloperope accepts the stranded climber")
+		var climb_wait := 0.0
+		while climb_wait < 80.0:
+			inst.call("headless_advance", 0.2)
+			climb_wait += 0.2
+			var cpp: Vector3 = gs.get_position("peris")
+			if cpp.x > 25.0 and not bool(gs.call("is_external_traversal_active", "peris")):
+				break
+		var rejoin: Vector3 = gs.get_position("peris")
+		_assert_true(rejoin.x > 25.0 and rejoin.x < 28.5,
+			"the climber REJOINS at the checkpoint anchor, skipping nothing solved (at %s)" % [rejoin])
+		inst.call("headless_set_selected_characters", ["aster", "peris", "endo"])
 	# (3) the read-the-beat solve — a FRESH run: the naive legs above were their
 	# own scenarios, so their sweep bites are healed (scenario isolation, the
 	# same reason the party is re-teleported to the spawns)

@@ -106,6 +106,8 @@ var _section_water: Array = []      # [{node, s0, kind}] — helical water bands
 var _channel_span := Vector2.ZERO   # flat s range the trough actually covers
 var _channel_base_energy: Dictionary = {}
 var _flures: Array = []
+var _checkpoint_vines: Array = []   # [{drop, up, down}] per checkpoint
+var _ropes_dropped: Array = [false, false]
 var _hide_spots_cache: Array = []
 
 var _channels: Array = []           # the composed Channel kit objects, one per section
@@ -1012,6 +1014,18 @@ func reset_preview_state() -> void:
 		_set_wash_state(i, "idle")
 	if _ring_exit != null:
 		_ring_exit.reset_shelter()
+	for i in range(_checkpoint_vines.size()):
+		_ropes_dropped[i] = false
+		var vine: Dictionary = _checkpoint_vines[i]
+		if is_instance_valid(vine["up"]):
+			(vine["up"] as CrawlTunnel).set_interaction_enabled(false)
+		if is_instance_valid(vine["down"]):
+			(vine["down"] as CrawlTunnel).set_interaction_enabled(false)
+		var drop = vine["drop"]
+		if is_instance_valid(drop) and gs != null \
+				and str(drop.get("data_id")) != "" \
+				and gs.has_interactable(str(drop.get("data_id"))):
+			gs.reset_interactable(str(drop.get("data_id")))
 	for id_v in _fauna.keys():
 		var enemy = _fauna[id_v]
 		if is_instance_valid(enemy) and gs != null and gs.characters.has(str(id_v)):
@@ -1026,12 +1040,17 @@ func reset_preview_state() -> void:
 func _sweep_landing(id: String, _origin: Vector3, i: int) -> Vector3:
 	var s0 := float(WASH_SECTIONS[i]["s0"])
 	var x := maxf(s0 - 1.5, 1.0)
-	# a washed ENEMY is spat out on the HIGH channel side, off the walking
-	# lane — the beaten thing drags itself out by the trough, never into the
-	# party's waiting spot (the settle_pos lesson, applied to the sweep too)
+	# a washed ENEMY is spat out on the HIGH channel side at its section's
+	# mouth, off the walking lane — the beaten thing drags itself out by the
+	# trough, never into the party's waiting spot
 	if not PARTY_IDS.has(id):
 		return Vector3(x, DECK_TOP, 6.6 + 0.3 * float(absi(hash(id)) % 2))
-	return Vector3(x, DECK_TOP, 3.0 + 0.9 * float(absi(hash(id)) % 3))
+	# a washed PARTY member rides the whole flow DOWN to the stretch start
+	# (CHANNELS_DESIGN, the core loop): stranded but MOBILE at the bottom,
+	# spread by identity off section 0's inclusive mouth. The way back is a
+	# runback — or the sloperope the party drops at a checkpoint.
+	return Vector3(0.9 + 0.25 * float(absi(hash(id)) % 3), DECK_TOP,
+		2.2 + 0.8 * float(absi(hash(id)) % 3))
 
 func _on_swept(_id: String, _i: int) -> void:
 	_swept_count += 1
@@ -1136,6 +1155,7 @@ func _build_interactables() -> void:
 	_ring_exit = ring_exit
 	_build_lonely_flure()
 	_build_high_flure()
+	_build_checkpoint_vines()
 	var map = get_coord_map()
 	warp_interactables_onto_coord_map(map)
 	call_deferred("_wire_warped_outlines")
@@ -1223,6 +1243,100 @@ func _build_high_flure() -> void:
 	var glow := flure.find_child("Glow", true, false)
 	if glow is Node3D:
 		(glow as Node3D).visible = false
+
+## THE CHECKPOINT SLOPEROPES (CHANNELS_DESIGN: the chunk's checkpoint IS the
+## sloperope that connects it back to the stretch start; ENVIRONMENT_ELEMENTS
+## Plumbing #3). Each checkpoint is a DROP interactable at the chunk end — the
+## party must STAND there to drop the rope — and a pair of CrawlTunnel mouths
+## (up from the stretch start, down from the anchor) that stay REFUSED until
+## the drop. The climb is the kit's authored-path traversal: slow, exposed
+## (conceal_riders off), one at a time (the portal rule), routed down the
+## channel face OUTSIDE the flood band (z -0.9 < the -0.8 wash edge — the
+## rope hangs under the lip, so a live surge never plucks a climber). Reunion
+## restores nothing: recovery belongs to a shelter rest.
+const VINE_SPECS := [
+	{"name": "1", "top": Vector3(26.3, 0.1, 0.9), "drop": Vector3(26.8, 0.1, 1.4),
+		"bottom": Vector3(1.6, 0.1, 2.4),
+		"face": [Vector3(25.6, 0.1, -0.9), Vector3(20.0, 0.1, -0.95),
+			Vector3(14.0, 0.1, -0.95), Vector3(8.0, 0.1, -0.95), Vector3(2.2, 0.1, -0.9)]},
+	{"name": "2", "top": Vector3(45.2, 0.1, 0.9), "drop": Vector3(45.8, 0.1, 1.4),
+		"bottom": Vector3(2.8, 0.1, 3.4),
+		"face": [Vector3(44.5, 0.1, -0.9), Vector3(36.0, 0.1, -0.95),
+			Vector3(28.0, 0.1, -0.95), Vector3(20.0, 0.1, -0.95),
+			Vector3(12.0, 0.1, -0.95), Vector3(3.4, 0.1, -0.9)]},
+]
+
+func _selected_party_ids() -> Array:
+	if host != null and host.has_method("get_preview_selected_characters"):
+		return host.call("get_preview_selected_characters")
+	return []
+
+func _build_checkpoint_vines() -> void:
+	var gs = _get_game_state()
+	if gs == null:
+		return
+	_checkpoint_vines.clear()
+	var sched = _get_scheduler()
+	for i in range(VINE_SPECS.size()):
+		var spec: Dictionary = VINE_SPECS[i]
+		var drop := _add_interactable(self, "DropRope%s" % spec["name"],
+			"Drop the sloperope", spec["drop"] as Vector3,
+			"DROP THE SLOPEROPE", "", 0.9, true, 1.6,
+			Interactable.InteractableType.INSPECTION)
+		drop.consequence_preview = "The vine uncoils to the stretch bottom — a washed member can climb back to HERE."
+		_wire_trigger(drop, _on_rope_dropped.bind(i))
+		var up_path: Array = (spec["face"] as Array).duplicate()
+		up_path.reverse()
+		up_path.append(spec["top"])
+		var up := CrawlTunnel.new()
+		up.name = "SloperopeUp%s" % spec["name"]
+		up.description = "Climb the sloperope"
+		up.tutorial_label = "CLIMB THE ROPE"
+		up.conceal_riders = false
+		up.configure_data(gs, spec["bottom"] as Vector3, up_path, 1.3, 0.5)
+		up.set_group_provider(Callable(self, "_selected_party_ids"))
+		add_child(up)
+		_register_interactable(up)
+		var down_path: Array = (spec["face"] as Array).duplicate()
+		down_path.append(spec["bottom"])
+		var down := CrawlTunnel.new()
+		down.name = "SloperopeDown%s" % spec["name"]
+		down.description = "Climb back down the sloperope"
+		down.tutorial_label = "CLIMB DOWN"
+		down.conceal_riders = false
+		down.configure_data(gs, spec["top"] as Vector3, down_path, 1.3, 0.62)
+		down.set_group_provider(Callable(self, "_selected_party_ids"))
+		add_child(down)
+		_register_interactable(down)
+		if sched != null:
+			up.set_scheduler(sched)
+			down.set_scheduler(sched)
+		up.set_interaction_enabled(false)
+		down.set_interaction_enabled(false)
+		# each top-anchor interactable carries its own small vine-coil BODY (a
+		# library piece, never a primitive) so the outline auto-wire always has
+		# real geometry at the mouth — the dressing vine sits on the channel
+		# face, outside the collection radius
+		for coil_host in [drop, down]:
+			var coil := ArchetypePieceLibrary.instantiate("climbvine")
+			if coil != null:
+				coil.scale = Vector3(0.5, 0.5, 0.5)
+				coil.rotation.x = -0.55
+				(coil_host as Node3D).add_child(coil)
+		_checkpoint_vines.append({"drop": drop, "up": up, "down": down})
+
+## The drop is the checkpoint commitment: the party stood at the chunk end and
+## released the rope. Both mouths arm; the state is DERIVED from the logged
+## drop trigger, so replay re-arms them identically.
+func _on_rope_dropped(i: int) -> void:
+	if i < 0 or i >= _checkpoint_vines.size():
+		return
+	_ropes_dropped[i] = true
+	var vine: Dictionary = _checkpoint_vines[i]
+	(vine["up"] as CrawlTunnel).set_interaction_enabled(true)
+	(vine["down"] as CrawlTunnel).set_interaction_enabled(true)
+	_show_note("The sloperope drops. The way back up is yours now.", 2.6)
+	_set_preview_step("wash_ascent_rope_%d" % (i + 1))
 
 ## Concealment is DERIVED state ticked from hide-zone proximity (the engine
 ## rebuilds it on replay from logged movement): crouching into the capbage's
@@ -1408,7 +1522,7 @@ func get_scene_title() -> String:
 	return "Wash Ascent"
 
 func get_scene_help() -> String:
-	return "Reach the ring at the drum head. // The wash floods whole stretches of the walkway — cross each on its dry beat; valves can hold a stretch quiet; the gaps between sections are safe ground."
+	return "Reach the ring at the drum head. // The wash sweeps the careless all the way to the bottom of the climb. // Valves can hold a stretch quiet; dropped sloperopes are the short way back."
 
 func get_grid_data() -> Dictionary:
 	return {
@@ -1468,4 +1582,5 @@ func get_preview_state() -> Dictionary:
 		"swept_count": _swept_count,
 		"valve_hold_until": (_channels[0] as Channel).held_until() if not _channels.is_empty() else -1.0,
 		"fauna": _fauna.size(),
+		"ropes_dropped": _ropes_dropped.duplicate(),
 	}
