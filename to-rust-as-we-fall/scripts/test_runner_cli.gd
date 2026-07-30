@@ -862,6 +862,9 @@ func _ready() -> void:
 			"--test-wash-relay-prop-survey":
 				ran_test = true
 				await _test_wash_relay_prop_survey()
+			"--test-locomotion-juice":
+				ran_test = true
+				await _test_locomotion_juice()
 			"--test-wash-ascent":
 				ran_test = true
 				await _test_wash_ascent()
@@ -1564,6 +1567,7 @@ func _run_all_tests() -> void:
 	_test_ability_data()
 	_test_canon_fauna_names()
 	await _test_wash_relay_prop_survey()
+	await _test_locomotion_juice()
 	await _test_wash_ascent()
 	await _test_wash_ascent_playthrough()
 	_test_canon_mechanics()
@@ -14358,6 +14362,48 @@ func _test_canon_fauna_names() -> void:
 	_assert_true(offenders.is_empty(),
 		"no retired fauna names survive in the shipped project (%d): %s"
 			% [offenders.size(), ", ".join(offenders.slice(0, 5))])
+
+# The grounded-gait layer (LocomotionJuice): while the body glides, the MESH
+# bobs/leans/faces; at rest it returns to the EXACT authored transform (the
+# restore law); and the juice never touches the body node itself — the body
+# stays a pure data mirror.
+func _test_locomotion_juice() -> void:
+	_test_name = "Locomotion Juice"
+	var body = preload("res://scenes/game/player_character.tscn").instantiate()
+	get_tree().root.add_child(body)
+	await get_tree().process_frame
+	var juice: LocomotionJuice = null
+	for c in body.get_children():
+		if c is LocomotionJuice:
+			juice = c
+	_assert_true(juice != null, "the player body carries the gait layer")
+	var mesh: Node3D = body.get_node("Mesh")
+	var base: Transform3D = mesh.transform
+	_assert_true(juice != null and bool(juice.call("is_settled")),
+		"at rest the mesh sits exactly on its authored transform")
+	# glide the BODY like the data mirror does and let _process read it
+	var moved := false
+	var body_pos_drift := false
+	for i in range(24):
+		body.global_position += Vector3(0.09, 0.0, 0.03)
+		var before: Vector3 = body.global_position
+		await get_tree().process_frame
+		if not body.global_position.is_equal_approx(before):
+			body_pos_drift = true
+		if not mesh.transform.is_equal_approx(base):
+			moved = true
+	_assert_true(moved, "a gliding body gives the mesh a gait (bob/lean/facing applied)")
+	_assert_true(not body_pos_drift, "the juice never touches the body node (pure data mirror)")
+	# stop: everything converges back to the authored transform exactly
+	var settled := false
+	for _j in range(90):
+		await get_tree().process_frame
+		if bool(juice.call("is_settled")):
+			settled = true
+			break
+	_assert_true(settled, "stopping restores the EXACT authored mesh transform")
+	body.queue_free()
+	await get_tree().process_frame
 
 func _test_ability_data() -> void:
 	_test_name = "Ability Data"

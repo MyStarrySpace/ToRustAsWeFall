@@ -26,6 +26,78 @@ var _cam: Camera3D
 ## the helix axis, eased per frame.
 var _label_sweep := 0
 
+# --- NARRATION (director: the automated system announces its decision
+# --- making). Each beat gets one caption: burned into the frame live, and
+# --- collected with video timestamps so an .srt subtitle file is written
+# --- next to the movie (CAPTIONS_OUT env) for post-editing or re-burning.
+var _caption_label: Label
+var _caption_panel: PanelContainer
+var _captions: Array = []
+var _caption_hide_frame := -1
+
+func _build_caption_ui() -> void:
+	var layer := CanvasLayer.new()
+	layer.layer = 90
+	get_root().add_child(layer)
+	_caption_panel = PanelContainer.new()
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.02, 0.03, 0.05, 0.72)
+	style.corner_radius_top_left = 6
+	style.corner_radius_top_right = 6
+	style.corner_radius_bottom_left = 6
+	style.corner_radius_bottom_right = 6
+	style.content_margin_left = 14.0
+	style.content_margin_right = 14.0
+	style.content_margin_top = 7.0
+	style.content_margin_bottom = 7.0
+	_caption_panel.add_theme_stylebox_override("panel", style)
+	_caption_panel.anchor_left = 0.5
+	_caption_panel.anchor_right = 0.5
+	_caption_panel.anchor_top = 1.0
+	_caption_panel.anchor_bottom = 1.0
+	_caption_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_caption_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	_caption_panel.offset_bottom = -132.0
+	_caption_label = Label.new()
+	_caption_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_caption_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_caption_label.custom_minimum_size = Vector2(0, 0)
+	_caption_label.add_theme_color_override("font_color", Color(0.94, 0.96, 0.92))
+	_caption_label.add_theme_font_size_override("font_size", 19)
+	_caption_panel.add_child(_caption_label)
+	_caption_panel.visible = false
+	layer.add_child(_caption_panel)
+
+func _narrate(text: String) -> void:
+	if _caption_label != null:
+		_caption_label.text = text
+		_caption_label.custom_minimum_size = Vector2(minf(880.0, 24.0 + text.length() * 9.2), 0)
+		_caption_panel.visible = true
+	_caption_hide_frame = _label_sweep + int(maxf(3.4, 0.055 * float(text.length())) * FPS)
+	_captions.append({"t": float(_label_sweep) / FPS, "text": text})
+	print("[REC] NARRATE %s" % text)
+
+func _write_captions_srt() -> void:
+	var out := OS.get_environment("CAPTIONS_OUT")
+	if out == "" or _captions.is_empty():
+		return
+	var srt := ""
+	for i in range(_captions.size()):
+		var t0 := float(_captions[i]["t"])
+		var t1 := t0 + maxf(3.4, 0.055 * float(str(_captions[i]["text"]).length()))
+		if i + 1 < _captions.size():
+			t1 = minf(t1, float(_captions[i + 1]["t"]) - 0.05)
+		srt += "%d\n%s --> %s\n%s\n\n" % [i + 1, _srt_time(t0), _srt_time(t1),
+			str(_captions[i]["text"])]
+	var f := FileAccess.open(out, FileAccess.WRITE)
+	if f != null:
+		f.store_string(srt)
+		print("[REC] captions -> %s" % out)
+
+func _srt_time(t: float) -> String:
+	var ms := int(round(t * 1000.0))
+	return "%02d:%02d:%02d,%03d" % [ms / 3600000, (ms / 60000) % 60, (ms / 1000) % 60, ms % 1000]
+
 ## Telemetry: the movie renders blind in the background, so the run narrates
 ## itself — a line per stage plus a 10-second heartbeat. Diagnosis reads the
 ## log next to the footage instead of spelunking stills.
@@ -60,6 +132,9 @@ func _cam_update() -> void:
 	_label_sweep += 1
 	if _label_sweep % 90 == 1:
 		_hide_verb_labels(get_root())
+	if _caption_panel != null and _caption_hide_frame >= 0 and _label_sweep > _caption_hide_frame:
+		_caption_panel.visible = false
+		_caption_hide_frame = -1
 	if _label_sweep % 300 == 5:
 		_log("heartbeat")
 	if _gs != null and _label_sweep % 60 == 3:
@@ -132,7 +207,9 @@ func _click(node_name: String, walker := "aster", walk_to := Vector3.INF) -> voi
 ## One ladder leg: stage at the mouth, launch on the flood->dry transition.
 func _cross_section(idx: int, mouth_x: float, dest_x: float, need: float,
 		mouth_z := 0.9, speed := -1.0, dest_z := 0.9, row_pitch := 1.2,
-		stage := true) -> void:
+		stage := true, note := "") -> void:
+	if note != "":
+		_narrate(note)
 	var channels: Array = _chunk.get("_channels")
 	var ids := ["aster", "peris", "endo"]
 	# staging spreads on X as well as Z: three targets in one x-column share
@@ -211,6 +288,8 @@ func _initialize() -> void:
 	_cam.global_position = boot_pos + Vector3(boot_pos.x, 0, boot_pos.z).normalized() * 9.5 \
 		+ Vector3(0, 4.6, 0)
 	_cam_update()
+	_build_caption_ui()
+	_narrate("Automated canonical solve. The party enters on the span above the summit — then the bridge gives way.")
 	# tuck the diagnostic chrome a viewer doesn't need (H/F4, the showcase
 	# presentation contract's own switches)
 	var im = _scene.get("_instructions_margin")
@@ -236,6 +315,7 @@ func _initialize() -> void:
 		return true, 45.0)
 	await _wait_s(1.5)
 	_log("landed")
+	_narrate("The water carries the party down the whole coil to the stretch start — the first shelter is right here.")
 
 	# --- the first shelter: rest at the camp before the climb ---
 	var base_rest = _chunk.find_child("BaseShelterRest", true, false)
@@ -243,6 +323,7 @@ func _initialize() -> void:
 		base_rest.call("_on_rest_requested")
 	await _wait_s(3.5)
 	_log("base-rest")
+	_narrate("Camp rest taken. Turn one: read each channel beat and cross when the next surge is far enough out.")
 
 	# --- turn 1: S0 and S1 on their beats ---
 	for leg in [[0, 10.2], [1, 18.3]]:
@@ -265,6 +346,7 @@ func _initialize() -> void:
 	# --- its home ground.
 	var flure = _chunk.find_child("LonelyFlureObject", true, false)
 	var foe0 = _chunk.call("_fauna_by_id", "sapscrap_0")
+	_narrate("A sentry holds the landing. Plan: sing the flure on the telegraph and FALL BACK — whatever answers arrives at the song, not at us.")
 	var _foe_dead := func() -> bool:
 		return foe0 != null and not bool(foe0.call("is_alive"))
 	await _move_all({"peris": Vector3(11.0, 0.1, 2.0), "endo": Vector3(11.6, 0.1, 3.0)}, 12.0)
@@ -292,6 +374,7 @@ func _initialize() -> void:
 		_log("song-watch-done")
 	await _wait_s(1.0)
 	_log("flure-resolved")
+	_narrate("The wash takes the sentry mid-crossing — the demonstration, and a clear landing.")
 
 	# --- the landing: cross S2, drop the rope, hold the valve, keyed span ---
 	await _wait_cond(func():
@@ -304,9 +387,11 @@ func _initialize() -> void:
 	await _move_all(t2)
 	_log("s2-crossed")
 	await _click("DropRope1", "aster", Vector3(26.8, 0.1, 1.4))
+	_narrate("Dropping a sloperope: the checkpoint that makes the next failure cost a runback, not the run.")
 	await _wait_s(1.0)
 	await _move_all({"peris": Vector3(26.6, 0.1, 5.6), "endo": Vector3(27.2, 0.1, 6.4)}, 12.0)
 	await _click("LandingValve", "aster", Vector3(26.4, 0.1, 1.2))
+	_narrate("The keyed span fits NO gait — its dry beat is one second. Holding the valve IS the crossing.")
 	await _wait_s(0.8)
 	await _move_all({"aster": Vector3(26.4, 0.1, 4.8)}, 8.0)
 	# distinct cells by X AND Z: stacked targets get reparked by the
@@ -319,10 +404,13 @@ func _initialize() -> void:
 	_log("keyed-crossed")
 
 	# --- the climb: S4 high shelf, then the transfer and exam laps ---
-	await _cross_section(4, 38.5, 46.5, 3.0, 4.6, -1.0, 5.0, 0.6, false)
-	await _cross_section(5, 56.5, 66.0, 3.7)
+	await _cross_section(4, 38.5, 46.5, 3.0, 4.6, -1.0, 5.0, 0.6, false,
+		"Section 4 is watched ground: the whole leg stays on the high shelf, out of the patrol reach.")
+	await _cross_section(5, 56.5, 66.0, 3.7, 0.9, -1.0, 0.9, 1.2, true,
+		"Turn two: no gauges reach this high. The first naked read — watch a full cycle, then cross.")
 	# S6, the intended plan: Aster rides the queue crawl entered WHILE the
 	# water runs; the others cross the bed on the window his ride spans.
+	_narrate("The queue crawl exits inside the span tail. Entering WHILE the water runs — the tube spends the flood, so the exit lands on the dry beat.")
 	var qcrawl = _chunk.find_child("QueueCrawl", true, false)
 	await _move_all({"aster": Vector3(68.0, 0.1, 7.0),
 		"peris": Vector3(67.2, 0.1, 1.0), "endo": Vector3(67.2, 0.1, 2.0)}, 14.0)
@@ -345,13 +433,17 @@ func _initialize() -> void:
 				return false
 		return _gs.get_position("aster").x > 76.8, 20.0)
 	_scene.call("headless_set_selected_characters", ["aster", "peris", "endo"])
-	await _cross_section(7, 82.5, 96.5, 2.43, 0.9, 6.4)
+	await _cross_section(7, 82.5, 96.5, 2.43, 0.9, 6.4, 0.9, 1.2, true,
+		"Run-only: the dry beat fits no walk. Sprinting, paid from the stamina banked below.")
 	await _click("DropRope3", "aster", Vector3(99.0, 0.1, 1.4))
 	await _wait_s(1.0)
-	await _cross_section(8, 102.5, 116.0, 4.44, 0.2, -1.0, 0.2, 0.45)
-	await _cross_section(9, 124.5, 136.5, 4.44, 0.2, -1.0, 0.2, 0.45)
+	await _cross_section(8, 102.5, 116.0, 4.44, 0.2, -1.0, 0.2, 0.45, true,
+		"Watched altitude: the roamer prices the high side, so the party holds the low lane the whole way.")
+	await _cross_section(9, 124.5, 136.5, 4.44, 0.2, -1.0, 0.2, 0.45, true,
+		"Turn three, the exam lap: the same read, faster and darker.")
 	await _click("DropRope4", "aster", Vector3(137.0, 0.1, 1.4))
 	await _wait_s(1.0)
+	_narrate("The exam: keyed again, no gauge — and the valve stands BEFORE the span it keys. The inversion, answered from memory.")
 	await _click("ExamValve", "aster", Vector3(137.5, 0.1, 1.2))
 	await _wait_s(0.8)
 	# the exam-cross parks in the LOW lane with x-spread: the summit flure's
@@ -364,6 +456,7 @@ func _initialize() -> void:
 	_log("exam-crossed")
 
 	# --- the summit: the flure pulls the watcher, the ring takes the rest ---
+	_narrate("The summit watcher owns the pad. Singing the high flure and falling back — pulling it off its ground.")
 	_gs.command_move_to_pos("aster", Vector3(158.0, 0.1, 6.8))
 	await _wait_cond(func(): return not bool(_gs.is_moving("aster")), 12.0)
 	var hflure = _chunk.find_child("HighFlureObject", true, false)
@@ -383,6 +476,7 @@ func _initialize() -> void:
 		var wp: Vector3 = _gs.get_position("sapscrap_2")
 		return wp.x < 161.0 and wp.z > 4.0, 30.0)
 	_log("pad-clear")
+	_narrate("The watcher is at the song, west of the pad. Crossing NOW — low lane, inside the fresh lure window.")
 	await _move_all({"aster": Vector3(166.8, 0.1, 2.2), "peris": Vector3(167.5, 0.1, 2.8),
 		"endo": Vector3(168.2, 0.1, 2.4)}, 22.0)
 	_log("on-pad")
@@ -392,7 +486,9 @@ func _initialize() -> void:
 		await _wait_cond(func(): return bool(ring.call("is_completed")), 8.0)
 		if not bool(ring.call("is_completed")):
 			ring.call("_on_rest_requested")
+	_narrate("Everyone on the pad. The ring takes the party — stretch complete, zero damage taken.")
 	await _wait_cond(func():
 		return str((_chunk.call("get_preview_state") as Dictionary).get("phase", "")) == "complete", 10.0)
 	await _wait_s(4.0)
+	_write_captions_srt()
 	quit(0)

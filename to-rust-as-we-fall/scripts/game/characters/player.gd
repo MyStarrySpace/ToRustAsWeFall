@@ -127,6 +127,11 @@ func _ready() -> void:
 	_mesh.material_override = mat
 	_mesh.layers = NO_GRID_DECAL_LAYER   # the hover-grid Decal skips this layer, so the grid passes through the body
 
+	# The grounded-gait layer: the mesh faces travel, leans in, and step-bobs
+	# from real displacement — the body itself stays a pure data mirror.
+	if not Engine.is_editor_hint():
+		add_child(LocomotionJuice.new())
+
 	_build_hover_grid()
 
 	# Path PREVIEW renderer: bound to no char (char_id "") so it draws ONLY its explicit path (the
