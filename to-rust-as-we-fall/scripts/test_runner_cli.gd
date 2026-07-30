@@ -28717,6 +28717,43 @@ func _test_wash_ascent_playthrough() -> void:
 				break
 		_assert_true(int((chunk.call("get_preview_state") as Dictionary).get("swept_count", 0)) > pre_swept,
 			"a MIS-TIMED crawl exit is washed — the bypass obeys the beat (peris at %s)" % [gs.get_position("peris")])
+		# THE GOOD PLAN: enter WHILE the water runs — the tube spends the
+		# flood, the exit lands on the dry beat, and the pre-queued walk-off
+		# clears the tail before the next onset. This leg prices the exit
+		# slack: a cadence retune that makes the timed exit unwalkable goes
+		# red here, not in a playtest.
+		chunk.call("reset_preview_state")
+		inst.call("headless_set_character_position", "peris", Vector3(68.0, 0.1, 7.2))
+		inst.call("headless_set_selected_characters", ["peris"])
+		inst.call("headless_advance", 0.05)
+		var g_wait := 0.0
+		while g_wait < 22.0:
+			if bool((channels[6] as Node).call("is_flooding")):
+				break
+			inst.call("headless_advance", 0.1)
+			g_wait += 0.1
+		qcrawl.set("active_character", "peris")
+		await get_tree().process_frame
+		_assert_true(bool(qcrawl.call("_trigger")), "the crawl accepts the timed rider")
+		var g_pre := int((chunk.call("get_preview_state") as Dictionary).get("swept_count", 0))
+		var g_ride := 0.0
+		while g_ride < 16.0:
+			inst.call("headless_advance", 0.1)
+			g_ride += 0.1
+			if not bool(gs.call("is_external_traversal_active", "peris")):
+				break
+		gs.command_move_to_pos("peris", Vector3(78.0, 0.1, 3.2))
+		var g_off := 0.0
+		while g_off < 8.0:
+			inst.call("headless_advance", 0.1)
+			g_off += 0.1
+			if gs.get_position("peris").x > 76.8 and not bool(gs.is_moving("peris")):
+				break
+		_assert_true(int((chunk.call("get_preview_state") as Dictionary).get("swept_count", 0)) == g_pre \
+				and gs.get_position("peris").x > 76.5,
+			"the TIMED crawl exit walks away clean (peris at %s, swept %d->%d)" % [
+				gs.get_position("peris"), g_pre,
+				int((chunk.call("get_preview_state") as Dictionary).get("swept_count", 0))])
 		inst.call("headless_set_selected_characters", ["aster", "peris", "endo"])
 	# (3) the read-the-beat solve — a FRESH run: the naive legs above were their
 	# own scenarios, so their sweep bites are healed (scenario isolation, the
@@ -29114,20 +29151,26 @@ func _test_wash_ascent_playthrough() -> void:
 		hflure.set("active_character", "aster")
 		await get_tree().process_frame
 		_assert_true(bool(hflure.call("_trigger")), "the high flure fires with Aster at it")
+		# the smart player waits for the watcher to be PARKED at the song —
+		# high side, settled — not merely mid-walk past a line: a watcher
+		# caught mid-detour can still cross the approach lane
 		var clear_wait := 0.0
 		while clear_wait < 40.0:
 			inst.call("headless_advance", 0.2)
 			clear_wait += 0.2
-			if gs.get_position("sapscrap_2").x < 162.0:
+			var wp: Vector3 = gs.get_position("sapscrap_2")
+			if wp.x < 160.5 and wp.z > 5.0 and not bool(gs.is_moving("sapscrap_2")):
 				break
 		sim_t += clear_wait
-		_assert_true(gs.get_position("sapscrap_2").x < 162.0,
+		_assert_true(gs.get_position("sapscrap_2").x < 160.5,
 			"the summit watcher leaves the pad's sightline (at %s)" % [gs.get_position("sapscrap_2")])
 	var ring = chunk.find_child("AscentPortal", true, false)
 	_assert_true(ring != null, "the ring exit is present")
 	if ring != null and leg_ok:
+		# pad slots stay on the pad's LOW half — the approach and the slots
+		# both keep distance from the watcher's roam ground on the high side
 		var pad_x := [166.8, 167.5, 168.2]
-		var pad_z := [2.2, 2.8, 3.8]
+		var pad_z := [2.2, 2.8, 2.4]
 		for idx3 in range(ids.size()):
 			gs.command_move_to_pos(str(ids[idx3]),
 				Vector3(float(pad_x[idx3]), 0.1, float(pad_z[idx3])))

@@ -166,7 +166,34 @@ func _initialize() -> void:
 	# --- at each mouth, launch on the flood->dry transition) ---
 	_cross_section("s4", 4, 38.5, 46.5, 3.0, 5.6, -1.0, 5.0, 0.6)
 	_cross_section("s5", 5, 56.5, 66.0, 3.7)
-	_cross_section("s6", 6, 68.5, 78.0, 3.7)
+	# S6, the intended MULTI-BEAT plan: Aster rides the queue crawl entered
+	# WHILE the water runs (the tube spends the flood, the exit lands dry);
+	# the others cross the bed on the same dry window his ride spans.
+	var qcrawl = _chunk.find_child("QueueCrawl", true, false)
+	_move_all("stage-s6", {"aster": Vector3(68.0, 0.1, 7.0),
+		"peris": Vector3(67.2, 0.1, 1.0), "endo": Vector3(67.2, 0.1, 2.0)}, 12.0)
+	var ch6 = (_chunk.get("_channels") as Array)[6]
+	_advance_until("wait-s6-flood", func(): return bool(ch6.call("is_flooding")), 14.0)
+	_scene.call("headless_set_selected_characters", ["aster"])
+	qcrawl.set("active_character", "aster")
+	await process_frame
+	qcrawl.call("_trigger")
+	_act("queue-crawl")
+	_advance_until("s6-beat", func(): return not bool(ch6.call("is_flooding")), 10.0)
+	_gs.command_move_to_pos("peris", Vector3(78.0, 0.1, 1.0))
+	_gs.command_move_to_pos("endo", Vector3(78.0, 0.1, 2.2))
+	# the exit lands inside the span's TAIL — the plan's last beat is walking
+	# straight off it (the pre-clicked move a real rider queues before landing)
+	_advance_until("crawl-ride", func():
+		return not bool(_gs.call("is_external_traversal_active", "aster")), 16.0, 0.1)
+	_gs.command_move_to_pos("aster", Vector3(78.0, 0.1, 3.2))
+	_advance_until("crawl-and-bed", func():
+		for id_q in ["aster", "peris", "endo"]:
+			if bool(_gs.is_moving(str(id_q))):
+				return false
+		return _gs.get_position("peris").x > 76.8 \
+			and _gs.get_position("aster").x > 76.8, 20.0, 0.2)
+	_scene.call("headless_set_selected_characters", ["aster", "peris", "endo"])
 	_cross_section("s7-sprint", 7, 82.5, 96.5, 2.43, 0.9, 6.4)
 	var drop3 = _chunk.find_child("DropRope3", true, false)
 	_gs.command_move_to_pos("aster", Vector3(99.0, 0.1, 1.4))
@@ -202,9 +229,9 @@ func _initialize() -> void:
 	_act("hflure-sing")
 	_advance_until("pad-clear", func():
 		return _gs.get_position("sapscrap_2").x < 162.0, 40.0, 0.25)
-	var t4 := {"aster": Vector3(167.2, 0.1, 2.4), "peris": Vector3(167.8, 0.1, 3.0),
-		"endo": Vector3(166.9, 0.1, 3.6)}
-	_move_all("cross-to-pad", t4, 26.0)
+	var t4 := {"aster": Vector3(166.8, 0.1, 2.2), "peris": Vector3(167.5, 0.1, 2.8),
+		"endo": Vector3(168.2, 0.1, 2.4)}
+	_move_all("cross-to-pad", t4, 16.0)
 	_act("ring-rest")
 
 	# --- the failure loop: wash + runback + climb (the checkpoint price) ---
