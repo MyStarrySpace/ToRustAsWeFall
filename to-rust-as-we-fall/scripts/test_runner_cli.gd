@@ -28002,8 +28002,8 @@ func _test_wash_ascent() -> void:
 	if ring_mgr != null:
 		ring_mgr.call("set_active", true)
 		ring_mgr.call("rebuild_now")
-		_assert_true(int(ring_mgr.call("ring_count")) == 8,
-			"reveal shows outer + inner rings for all 4 live watchers (%d)" % int(ring_mgr.call("ring_count")))
+		_assert_true(int(ring_mgr.call("ring_count")) == 12,
+			"reveal shows outer + inner rings for all 6 live watchers (%d)" % int(ring_mgr.call("ring_count")))
 		var ring_probe = chunk.call("_fauna_by_id", "sapscrap_0")
 		if ring_probe != null:
 			var wmap_r = chunk.call("get_coord_map")
@@ -28873,6 +28873,39 @@ func _test_wash_ascent_playthrough() -> void:
 				gs.get_position("peris"), g_pre,
 				int((chunk.call("get_preview_state") as Dictionary).get("swept_count", 0))])
 		inst.call("headless_set_selected_characters", ["aster", "peris", "endo"])
+	# (2e) THE DEN AMBUSH (director: enemies come OUT of the offshoots, the
+	# shocked player dives into the tight hide by the mouth). The z-8 wall row
+	# sight-blocks the den, so the spot lands only when the dweller EMERGES.
+	chunk.call("reset_preview_state")
+	for id_amb in ids:
+		inst.call("headless_set_character_position", str(id_amb), spawns[str(id_amb)])
+	inst.call("headless_advance", 0.05)
+	inst.call("headless_set_character_position", "aster", Vector3(96.7, 0.1, 5.4))
+	var dweller = chunk.call("_fauna_by_id", "sapscrap_4")
+	_assert_true(dweller != null, "den B houses a dweller")
+	var spotted := false
+	var amb_wait := 0.0
+	while amb_wait < 40.0:
+		inst.call("headless_advance", 0.2)
+		amb_wait += 0.2
+		if dweller != null and str(dweller.call("get_state")) in ["alert", "pursuit", "windup"]:
+			spotted = true
+			break
+	_assert_true(spotted, "the dweller EMERGES and spots the deck-walker (state %s)" % [
+		str(dweller.call("get_state")) if dweller != null else "?"])
+	gs.command_move_to_pos("aster", Vector3(97.9, 0.1, 6.8))
+	var hidden_lost := false
+	var hide_wait := 0.0
+	while hide_wait < 24.0:
+		inst.call("headless_advance", 0.2)
+		hide_wait += 0.2
+		if int(gs.get_character_concealment("aster")) >= int(gs.CONCEAL_FULL) 				and str(dweller.call("get_state")) in ["search", "return", "patrol", "roam"]:
+			hidden_lost = true
+			break
+	_assert_true(hidden_lost,
+		"the mouth capbage is a TRUE hide — the dweller loses the dive (conceal %d, state %s)" % [
+		int(gs.get_character_concealment("aster")), str(dweller.call("get_state"))])
+	_assert_true(float(gs.get_stat("aster", "hp")) > 0.0, "the shocked runner survives the dive")
 	# (3) the read-the-beat solve — a FRESH run: the naive legs above were their
 	# own scenarios, so their sweep bites are healed (scenario isolation, the
 	# same reason the party is re-teleported to the spawns)
@@ -29200,7 +29233,7 @@ func _test_wash_ascent_playthrough() -> void:
 			"TURN 2 S5: the first unassisted read crossed (%s)" % [leg_diag.get("last", "")])
 		_assert_true(bool(_cross_leg.call(6, 78.0)),
 			"S6: the queue span walked on its beat (%s)" % [leg_diag.get("last", "")])
-		_assert_true(bool(_cross_leg.call(7, 96.5, 20.0, 6.4)),
+		_assert_true(bool(_cross_leg.call(7, 96.5, 20.0, 6.4, 0.9, 0.9, 0.8)),
 			"S7: the RUN-ONLY span sprinted (%s)" % [leg_diag.get("last", "")])
 		var cp3 = chunk.find_child("DropRope3", true, false)
 		_assert_true(cp3 != null, "checkpoint 3 stands at the turn-2 landing")

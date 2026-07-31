@@ -168,13 +168,35 @@ func _cam_update() -> void:
 	# during the CENTER FALL the party rides the drum's axis — a 9.5 offset
 	# would put the camera through the shell wall, so it tightens into the
 	# core and looks down the shaft with them
-	var reach := 9.5 if centroid_radius > 3.0 else 4.2
-	var lift := 4.6 if centroid_radius > 3.0 else 2.2
+	var acting := false
+	for id_a in ids:
+		if _gs.characters.has(id_a) and (bool(_gs.is_moving(id_a)) 				or bool(_gs.call("is_external_traversal_active", id_a))):
+			acting = true
+			break
+	# action rides close and low; idle pulls wide so the coil and its
+	# cycling water are the show while fast-forward compresses the wait
+	var reach := (7.6 if acting else 11.5) if centroid_radius > 3.0 else 4.2
+	var lift := (3.2 if acting else 6.2) if centroid_radius > 3.0 else 2.2
 	var want: Vector3 = centroid + out * reach + Vector3(0, lift, 0)
 	_cam.global_position = _cam.global_position.lerp(want, 0.06)
 	var look: Vector3 = centroid + Vector3(0, 0.6, 0)
 	if _cam.global_position.distance_to(look) > 0.5:
 		_cam.look_at(look, Vector3.UP)
+
+## The game's own pacing verb: hold F. The recording fast-forwards through
+## cadence waits so the film shows surges whipping past instead of a party
+## staring at water — and releases F the moment anything acts.
+func _set_ff(on: bool) -> void:
+	var ev := InputEventKey.new()
+	ev.keycode = KEY_F
+	ev.physical_keycode = KEY_F
+	ev.pressed = on
+	Input.parse_input_event(ev)
+
+func _wait_ff(cond: Callable, cap_s: float) -> void:
+	_set_ff(true)
+	await _wait_cond(cond, cap_s)
+	_set_ff(false)
 
 func _wait_s(secs: float) -> void:
 	for _i in range(int(secs * FPS)):
@@ -231,7 +253,7 @@ func _cross_section(idx: int, mouth_x: float, dest_x: float, need: float,
 		await _move_all(tm, 26.0)
 	var st := {"saw": false}
 	var ch = channels[idx]
-	await _wait_cond(func():
+	await _wait_ff(func():
 		if bool(ch.call("is_flooding")):
 			st["saw"] = true
 			return false
@@ -376,7 +398,7 @@ func _initialize() -> void:
 			flure.call("_trigger")
 		_gs.command_move_to_pos("aster", Vector3(11.5, 0.1, 1.0))
 		_log("sang")
-		await _wait_cond(_foe_dead, 34.0)
+		await _wait_ff(_foe_dead, 34.0)
 		_log("song-watch-done")
 	await _wait_s(1.0)
 	_log("flure-resolved")
@@ -439,8 +461,23 @@ func _initialize() -> void:
 				return false
 		return _gs.get_position("aster").x > 76.8, 20.0)
 	_scene.call("headless_set_selected_characters", ["aster", "peris", "endo"])
-	await _cross_section(7, 82.5, 96.5, 2.43, 0.9, 6.4, 0.9, 1.2, true,
+	await _cross_section(7, 82.5, 96.5, 2.43, 0.9, 6.4, 0.9, 0.8, true,
 		"Run-only: the dry beat fits no walk. Sprinting, paid from the stamina banked below.")
+	# --- the den beat: the offshoot's dweller EMERGES; the dive teaches ---
+	_narrate("An offshoot den ahead — something lives in these. Baiting its patrol out.")
+	_gs.command_move_to_pos("aster", Vector3(96.7, 0.1, 5.4))
+	await _wait_cond(func(): return not bool(_gs.is_moving("aster")), 10.0)
+	var dweller = _chunk.call("_fauna_by_id", "sapscrap_4")
+	await _wait_ff(func():
+		return dweller != null and str(dweller.call("get_state")) in ["alert", "pursuit", "windup"], 40.0)
+	_narrate("There it is — out of nowhere. Into the capbage, NOW.")
+	_gs.command_move_to_pos("aster", Vector3(97.9, 0.1, 6.8))
+	await _wait_cond(func():
+		return str(dweller.call("get_state")) in ["search", "return", "patrol", "roam"], 24.0)
+	_narrate("The tight hide holds — it gives up and goes home. The dens pay, if you respect them.")
+	await _wait_s(1.2)
+	_gs.command_move_to_pos("aster", Vector3(96.5, 0.1, 2.1))
+	await _wait_cond(func(): return not bool(_gs.is_moving("aster")), 10.0)
 	await _click("DropRope3", "aster", Vector3(99.0, 0.1, 1.4))
 	await _wait_s(1.0)
 	await _cross_section(8, 102.5, 116.0, 4.44, 0.2, -1.0, 0.2, 0.45, true,
@@ -478,7 +515,7 @@ func _initialize() -> void:
 	# gate ONLY on "the watcher is west of the pad, up at the song's side" —
 	# then GO: the lure window is short, and lingering inside the wander
 	# disc waiting for a settle that never comes is how the last run died
-	await _wait_cond(func():
+	await _wait_ff(func():
 		var wp: Vector3 = _gs.get_position("sapscrap_2")
 		return wp.x < 161.0 and wp.z > 4.0, 30.0)
 	_log("pad-clear")

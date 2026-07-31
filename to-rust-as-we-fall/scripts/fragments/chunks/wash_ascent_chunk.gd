@@ -711,7 +711,7 @@ func _derive_wall_cells() -> void:
 		var flat: AABB = (marker as Node3D).global_transform * aabb
 		for cx in range(int(floor(flat.position.x)), int(ceil(flat.end.x))):
 			for cz in range(int(floor(flat.position.z)), int(ceil(flat.end.z))):
-				if cx < 0 or cz < 0 or cx >= int(DECK_W) or cz >= int(DECK_D):
+				if cx < 0 or cz < 0 or cx >= int(DECK_W) or cz >= int(GRID_D):
 					continue
 				var key := "%d_%d" % [cx, cz]
 				if not seen.has(key):
@@ -1096,6 +1096,24 @@ const INTRO_FALL_DURATION := 7.5   # the whole center fall, splash to landing
 const SUMP_BASIN_Y := -2.0         # the circular pool at the drum's bottom
 const INTRO_SPAN_Y := 23.5         # the entry span's deck height over the crown
 const INTRO_SPAN_FROM_S := 173.0   # the span launches from the summit rim's azimuth
+const GRID_D := 12.0               # grid depth incl. the alcove pockets past the back wall
+
+## THE OFFSHOOTS (director): dens burrowed into the drum face off the main
+## deck — walls obscure what lives inside, the dweller's patrol EMERGES from
+## the mouth onto the deck, and the tight hide (capbage) waits by each mouth
+## for the shocked. Curriculum-graded: A teaches the shape empty, B and C
+## house emergers. Each is an L — a hall plus a deep pocket around the bend.
+## Cell-aligned (the hazard-boundary law): z 8 is the WALL BAND, holed only
+## by each mouth's two doorway cells; the hall runs row 9, the deep pocket
+## row 10 around the L-bend; row 11 is the den's back wall.
+const ALCOVES: Array = [
+	{"name": "A", "mouth": Rect2(49.0, 8.0, 2.0, 1.0),
+		"hall": Rect2(49.0, 9.0, 4.0, 1.0), "deep": Rect2(51.0, 10.0, 2.0, 1.0)},
+	{"name": "B", "mouth": Rect2(99.0, 8.0, 2.0, 1.0),
+		"hall": Rect2(99.0, 9.0, 4.0, 1.0), "deep": Rect2(101.0, 10.0, 2.0, 1.0)},
+	{"name": "C", "mouth": Rect2(135.0, 8.0, 2.0, 1.0),
+		"hall": Rect2(135.0, 9.0, 4.0, 1.0), "deep": Rect2(137.0, 10.0, 2.0, 1.0)},
+]
 
 ## The one cadence arm both phases share: reset + sweep-wire + start every
 ## channel. The overlook uses it so the coil SURGES below the entry bridge;
@@ -1126,7 +1144,7 @@ func _arm_overlook_intro() -> void:
 	_swept_count = 0
 	var gs = _get_game_state()
 	if gs != null and "data_frame_bounds" in gs:
-		gs.data_frame_bounds = Rect2(0.0, 0.0, DECK_W + 8.0, DECK_D)
+		gs.data_frame_bounds = Rect2(0.0, 0.0, DECK_W + 8.0, GRID_D)
 	# the coil SURGES below the overlook — the spectacle IS the read; the
 	# catch can't touch the riders (their drop is a locked traversal)
 	_arm_channels()
@@ -1293,7 +1311,7 @@ func reset_preview_state() -> void:
 	_swept_count = 0
 	var gs = _get_game_state()
 	if gs != null and "data_frame_bounds" in gs:
-		gs.data_frame_bounds = Rect2(0.0, 0.0, DECK_W, DECK_D)
+		gs.data_frame_bounds = Rect2(0.0, 0.0, DECK_W, GRID_D)
 	_arm_channels()
 	if _ring_exit != null:
 		_ring_exit.reset_shelter()
@@ -1443,6 +1461,19 @@ func _build_interactables() -> void:
 		Interactable.InteractableType.TIMED_ACTION)
 	transfer_cache.consequence_preview = "The transfer crew left their kit mid-stretch. Only a held channel gives you long enough."
 	_wire_trigger(transfer_cache, _on_transfer_cache)
+	# THE DEN STASHES: each offshoot's deep pocket pays — and standing in a
+	# den is standing in something's home. Same push-your-luck grammar as the
+	# span stashes; the price here is the dweller, not the water.
+	var den_names := {"A": "DenStashA", "B": "DenStashB", "C": "DenStashC"}
+	for alc in ALCOVES:
+		var deep: Rect2 = alc["deep"]
+		var den_stash := _add_interactable(self, str(den_names[alc["name"]]),
+			"Pry the den cache loose", Vector3(deep.position.x + deep.size.x * 0.5,
+				DECK_TOP, deep.position.y + 0.5),
+			"SALVAGE THE CACHE", "", 2.2, true, 1.4,
+			Interactable.InteractableType.TIMED_ACTION)
+		den_stash.consequence_preview = "Something drags salvage in here. The work takes as long as it takes."
+		_wire_trigger(den_stash, _on_den_stash)
 	var stash := _add_interactable(self, "SunkenStash",
 		"Pry the sunken stash loose", Vector3(14.2, DECK_TOP, 6.4),
 		"SALVAGE THE STASH", "", 2.2, true, 1.5,
@@ -1767,6 +1798,15 @@ func _wire_trigger(interactable: Area3D, cb: Callable) -> void:
 ## The terminal names the section AHEAD of it — never an aggregate min() that
 ## quotes a surge BEHIND the reader (the wash_relay FlowTerminal pattern:
 ## Aster's timing job is a diegetic world target, positional truth).
+func _on_den_stash(_args = null) -> void:
+	var gs = _get_game_state()
+	if gs != null:
+		for id in PARTY_IDS:
+			if gs.characters.has(id) and gs.has_method("adjust_stat"):
+				gs.adjust_stat(id, "atp", 1.0)
+	_show_note("The den cache comes loose. Whatever hoarded it will notice.", 2.4)
+	_set_preview_step("wash_ascent_den_salvaged")
+
 func _on_terminal(_args = null) -> void:
 	var terminal_s := 10.2
 	var ahead := -1
@@ -1946,14 +1986,48 @@ func preview_field_stamina_regen() -> bool:
 func get_scene_help() -> String:
 	return "Climb the spiral to the shelter at its top. // The wash sweeps the careless all the way back to the bottom. // Valves can hold a stretch quiet; dropped sloperopes are the short way back."
 
+## Gameplay LOS reads REGISTERED grid opaque cells (the fog visual already
+## depth-marches real meshes) — so the dens must register their walls or
+## detection and the perception twin see straight through them. The z-8 row
+## is the deck's back-wall band, holed only at the mouths; each den's
+## perimeter and L-bend notch block sight around the pocket.
+func on_game_state_grid_ready() -> void:
+	var gs = _get_game_state()
+	if gs == null or gs.grid == null or not gs.grid.has_method("add_sight_blocker"):
+		return
+	var mouth_cols := {}
+	for alc in ALCOVES:
+		var m: Rect2 = alc["mouth"]
+		for mx in range(int(m.position.x), int(m.end.x)):
+			mouth_cols[mx] = true
+	for cx in range(0, int(DECK_W)):
+		if not mouth_cols.has(cx):
+			gs.grid.add_sight_blocker(Vector2i(cx, 8))
+	for alc in ALCOVES:
+		var hall: Rect2 = alc["hall"]
+		var deep: Rect2 = alc["deep"]
+		var box := hall.merge(deep).grow(1.0)
+		for cz in range(9, int(GRID_D)):
+			for cx in range(int(box.position.x), int(box.end.x)):
+				var center := Vector2(float(cx) + 0.5, float(cz) + 0.5)
+				if hall.has_point(center) or deep.has_point(center):
+					continue
+				gs.grid.add_sight_blocker(Vector2i(cx, cz))
+
 func get_grid_data() -> Dictionary:
+	var regions: Array = [{"min": [0.0, 0.0], "max": [DECK_W, DECK_D]}]
+	for alc in ALCOVES:
+		for key in ["mouth", "hall", "deep"]:
+			var rc: Rect2 = alc[key]
+			regions.append({"min": [rc.position.x, rc.position.y],
+				"max": [rc.end.x, rc.end.y]})
 	return {
 		"origin": [0.0, DECK_TOP, 0.0],
 		"cell_size": 1.0,
 		"width": int(DECK_W),
-		"height": int(DECK_D),
+		"height": int(GRID_D),
 		"default_walkable": false,
-		"walkable_regions": [{"min": [0.0, 0.0], "max": [DECK_W, DECK_D]}],
+		"walkable_regions": regions,
 		"wall_cells": _wall_cells,
 	}
 
