@@ -198,13 +198,23 @@ func _wait_ff(cond: Callable, cap_s: float) -> void:
 	await _wait_cond(cond, cap_s)
 	_set_ff(false)
 
+## Caps are GAME seconds read off the scheduler — a frame-counted cap under
+## fast-forward silently multiplies by the FF factor (a 40s wait became 400
+## game-seconds and a full day passed at a den mouth).
+func _now() -> float:
+	if _gs != null and _gs.scheduler != null:
+		return float(_gs.scheduler.get_current_tick())
+	return float(_label_sweep) / FPS
+
 func _wait_s(secs: float) -> void:
-	for _i in range(int(secs * FPS)):
+	var t0 := _now()
+	while _now() - t0 < secs:
 		_cam_update()
 		await process_frame
 
 func _wait_cond(cond: Callable, cap_s: float) -> void:
-	for _i in range(int(cap_s * FPS)):
+	var t0 := _now()
+	while _now() - t0 < cap_s:
 		if bool(cond.call()):
 			return
 		_cam_update()
@@ -468,12 +478,19 @@ func _initialize() -> void:
 	_gs.command_move_to_pos("aster", Vector3(96.7, 0.1, 5.4))
 	await _wait_cond(func(): return not bool(_gs.is_moving("aster")), 10.0)
 	var dweller = _chunk.call("_fauna_by_id", "sapscrap_4")
-	await _wait_ff(func():
-		return dweller != null and str(dweller.call("get_state")) in ["alert", "pursuit", "windup"], 40.0)
+	# the emergence plays at 1x — the shock IS the shot — and the condition
+	# covers the whole aggro cycle so a fast sample can't slip past it
+	await _wait_cond(func():
+		return dweller != null and str(dweller.call("get_state")) in [
+			"alert", "pursuit", "windup", "charge", "impact", "recover"], 40.0)
 	_narrate("There it is — out of nowhere. Into the capbage, NOW.")
 	_gs.command_move_to_pos("aster", Vector3(97.9, 0.1, 6.8))
+	# leaving cover while the searcher stands on the hide is how you die —
+	# the all-clear is literal: it has GONE HOME, state settled and body
+	# back inside the den
 	await _wait_cond(func():
-		return str(dweller.call("get_state")) in ["search", "return", "patrol", "roam"], 24.0)
+		var dwp: Vector3 = _gs.get_position("sapscrap_4")
+		return dwp.z > 8.2 and str(dweller.call("get_state")) in ["patrol", "return", "idle"], 45.0)
 	_narrate("The tight hide holds — it gives up and goes home. The dens pay, if you respect them.")
 	await _wait_s(1.2)
 	_gs.command_move_to_pos("aster", Vector3(96.5, 0.1, 2.1))
@@ -529,7 +546,12 @@ func _initialize() -> void:
 		await _wait_cond(func(): return bool(ring.call("is_completed")), 8.0)
 		if not bool(ring.call("is_completed")):
 			ring.call("_on_rest_requested")
-	_narrate("Everyone on the pad. The ring takes the party — stretch complete, zero damage taken.")
+	var min_hp := 100.0
+	for id_f in ids:
+		if _gs.characters.has(id_f):
+			min_hp = minf(min_hp, float(_gs.get_stat(id_f, "hp")))
+	_narrate("Everyone on the pad. The ring takes the party — stretch complete%s." % (
+		", untouched" if min_hp >= 99.5 else ", the den's graze the whole bill"))
 	await _wait_cond(func():
 		return str((_chunk.call("get_preview_state") as Dictionary).get("phase", "")) == "complete", 10.0)
 	await _wait_s(4.0)
