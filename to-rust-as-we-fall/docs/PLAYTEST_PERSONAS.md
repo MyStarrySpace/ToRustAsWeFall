@@ -129,6 +129,43 @@ hunter).
   level allows (moving/carried bodies exempt until they land).
 - Time flows: the gameplay scheduler tick strictly advances.
 
+## The seed sweep
+`--test-persona-seed-sweep` (NOT in --test-all — run before touching
+generation): the exploit/wreckage/edges triad (SpiffingBrit, TwitchPlays,
+Shesez) plays a FRESH generated stretch per seed (5 seeds, ~20s). The main
+probe's seed 431 is the canary; generation bugs hide in the seeds nobody
+booted.
+
+## Sufficiency: headless personas vs a real browser playthrough
+Calibrated 2026-07-31 by driving the basin in Chrome (wasm export,
+Playwright, the `scripts/serve_web.py` recipe) alongside the headless probe.
+
+WHERE THEY AGREE (and did): the wasm build runs the identical data layer —
+the browser session reproduced exactly what the personas assert headless
+(walking into a grazer's range → spotted → pursuit → mauled; the fill on
+the rota clock; the float road rising at MID; fail-forward leaving the
+party alive), at 60fps with zero console errors.
+
+ONLY THE PERSONAS COVER: scale (80+ runs across personas/fragments/seeds
+in ~90s vs one 72s browser session), assertable internals (stat books,
+cooldown math, cell legality, soft-locks, FF/replay invariance), and
+adversarial breadth.
+
+ONLY THE BROWSER COVERS: rendering truth (the compat/sRGB bug class is
+invisible headless — the fog-veil bug proved it; this pass verified the
+SHIFT-reveal outlines composite correctly in Chrome), the real OS→browser→
+canvas input path (RMB move + held SHIFT both landed), platform truth
+(~14s local boot for a 141 MB pck — a shipping concern; audio worklets;
+the main menu swallows `--preview` args, so a patched page must click
+Fragments to route), and unscripted emergence.
+
+THE VERDICT: sufficient AS LAYERS, none alone. The probe is the bug net;
+the windowed player-contract sweep is the pixel/input net on desktop; the
+scripted browser drive is the platform net — run it per flagship fragment
+before anything ships to web. Web polish items on file: pck size/boot,
+water-surface legibility at MID under compat (emissives clip flat on web),
+menu vs `--preview` arg routing.
+
 ## Adding a persona / an enrollment
 One row in the PROBE_PERSONAS table (reflex callable + assert callable) or
 one row in PROBE_FRAGMENTS (fragment id + per-fragment price facts the

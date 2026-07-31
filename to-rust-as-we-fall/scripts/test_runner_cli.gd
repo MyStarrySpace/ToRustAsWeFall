@@ -522,6 +522,9 @@ func _ready() -> void:
 			"--test-persona-probe":
 				ran_test = true
 				await _test_persona_probe()
+			"--test-persona-seed-sweep":
+				ran_test = true
+				await _test_persona_seed_sweep()
 			"--test-sprint-gap":
 				ran_test = true
 				await _test_sprint_gap()
@@ -32446,6 +32449,26 @@ func _test_persona_probe() -> void:
 			await _persona_probe_run(str(frag), str(persona))
 	print("  [wall] _test_persona_probe: %d ms" % (Time.get_ticks_msec() - wall0))
 
+## THE SEED SWEEP (not in --test-all — run before touching generation): the exploit/wreckage/
+## edges triad plays a FRESH generated stretch per seed. The main probe's seed 431 is the
+## canary; this widens the net — generation bugs hide in the seeds nobody booted.
+const PERSONA_SWEEP_SEEDS := [7, 101, 202, 909, 1337]
+const PERSONA_SWEEP_ROSTER := ["spiffing_brit", "twitch_plays", "shesez"]
+
+func _test_persona_seed_sweep() -> void:
+	_test_name = "Persona Seed Sweep"
+	var wall0 := Time.get_ticks_msec()
+	var base_entry: Dictionary = FragmentPreviewScript.get_preview_entry("zone_transition_lab")
+	for seed_v in PERSONA_SWEEP_SEEDS:
+		var cfg: Dictionary = (base_entry.get("config", {}) as Dictionary).duplicate(true)
+		var sweep_settings: Dictionary = cfg.get("settings", {}) as Dictionary
+		sweep_settings["seed"] = int(seed_v)
+		cfg["settings"] = sweep_settings
+		for persona in PERSONA_SWEEP_ROSTER:
+			await _persona_probe_run("zone_transition_lab", str(persona), cfg,
+				"(seed %d)" % int(seed_v))
+	print("  [wall] _test_persona_seed_sweep: %d ms" % (Time.get_ticks_msec() - wall0))
+
 ## Completion across chunk contracts: data fragments publish `complete`, coded chunks a phase,
 ## generated stretches a rested shelter at the end of a complete route.
 func _persona_is_complete(chunk) -> bool:
@@ -32501,10 +32524,10 @@ func _persona_crates_legal(gs, grid, crates: Array, notes: Array) -> bool:
 		seen[cell] = oid
 	return true
 
-func _persona_probe_run(frag_id: String, persona: String) -> void:
-	var inst = await _instantiate_preview_chunk_and_wait(frag_id, 5)
+func _persona_probe_run(frag_id: String, persona: String, config := {}, label_suffix := "") -> void:
+	var inst = await _instantiate_preview_chunk_and_wait(frag_id, 5, config)
 	if inst == null:
-		_assert_true(false, "%s boots for %s" % [frag_id, persona])
+		_assert_true(false, "%s%s boots for %s" % [frag_id, label_suffix, persona])
 		return
 	var gs = inst._game_state
 	var chunk = inst._active_chunk
@@ -32551,9 +32574,9 @@ func _persona_probe_run(frag_id: String, persona: String) -> void:
 	if not _persona_beat_ok(gs, grid, party, notes):
 		invariants_held = false
 	_assert_true(float(sched.get_current_tick()) > tick0 + 20.0,
-		"%s/%s: the simulation kept ticking" % [frag_id, persona])
-	_assert_true(invariants_held, "%s/%s: invariants held (%s)"
-		% [frag_id, persona, "clean" if notes.is_empty() else str(notes)])
+		"%s%s/%s: the simulation kept ticking" % [frag_id, label_suffix, persona])
+	_assert_true(invariants_held, "%s%s/%s: invariants held (%s)"
+		% [frag_id, label_suffix, persona, "clean" if notes.is_empty() else str(notes)])
 	inst.queue_free()
 	await get_tree().process_frame
 
