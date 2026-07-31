@@ -71,10 +71,53 @@ perimeter of everything.
   out of bounds or on a cell its floor does not allow; refused commands
   refuse cleanly (no partial state).
 
+### Skumnut — the souls challenge runner
+Incredible reflexes, pattern memorization, deep fluency in affordances and
+tropes — and no head for overall puzzles or strategy. Watches the hazard
+until he KNOWS its rhythm (empirically — he never reads a chart or logs a
+console), positions before the window, and reacts to the state flip within
+a beat.
+- **Reflexes:** observe safely through full cycles, recording the pattern;
+  stage at the crossing mouth; launch on REACTION the instant the window
+  opens; never touch an instrument.
+- **The assert:** reflex play is FAIR and sufficient. The observed pattern
+  repeats exactly (a telegraphed rhythm never drifts — determinism as
+  fairness), a reaction-timed crossing fits the window, and the level is
+  BEATEN with zero instrument uses — the free branch genuinely wins
+  (instruments sharpen, never gate, proven by play).
+
+### PirateSoftware — the negative control
+Stands in one place with the party and does absolutely nothing, forever.
+Every experiment needs one.
+- **The assert:** inaction never wins, and the world is honest about time.
+  Doing nothing never completes a fragment; where pressure is authored, it
+  LANDS on the idlers (the fill bites them); where nothing is authored to
+  move, NOTHING moves (idle crates hold their exact cells — the world never
+  drifts on its own). The full form — night falls and the idle party dies —
+  enrolls when a night-threat fragment joins the roster.
+
+### Prod — the variety streamer
+Average skill everywhere, community first: he tries whatever looks
+exciting, cool, or reaction-worthy, strategic or not — and never repeats a
+mistake, because repeats bore chat.
+- **Reflexes:** a novelty queue over every action the fragment offers
+  (touch it, swim it, cross it, push it); anything that hurt or refused is
+  blacklisted and never tried again.
+- **The assert:** novelty-seeking play is safe coverage. He touches most of
+  what the fragment offers without ever repeating a bad action, and the
+  world holds through the tour.
+
+### EazySpeezy — the speedrunner
+Hunts leverage points: anything that shortens the run is tech — the assist
+console's auto-launch, sprint on the crossing, the tightest legal line to
+the win. Skips everything optional.
+- **The assert:** the pacing floor holds. The fastest legal clear still
+  cannot beat the authored minimum (no completion before the earliest legal
+  window), and his time is LEDGERED as the fragment's empirical floor.
+
 **Future candidates (real personalities, not yet built):** Jirard the
 Completionist (touches and re-touches EVERYTHING — the re-arm/double-count
-hunter), DarkViperAU (the speedrunner — routes around content, spends hp as
-currency; asserts the pacing floor holds).
+hunter).
 
 ## Invariants checked for EVERY persona, every beat
 - Stats sane: hp/stamina/ATP finite and within [0, max].

@@ -940,7 +940,14 @@ func _do_move_cross_level(id: String, end_cell: Vector2i, end_level: int) -> boo
 		character_arrived.connect(_on_cross_level_arrival)
 	# Walk the first segment to its last cell (the ladder, or the destination if single-floor-after-all).
 	var seg0_cells: Array = segments[0]["cells"]
-	return _do_move_to_cell(id, seg0_cells[seg0_cells.size() - 1])
+	var seg0_last: Vector2i = seg0_cells[seg0_cells.size() - 1]
+	if seg0_last == cur_cell:
+		# Already standing on the ladder cell: a zero-length walk fires no arrival, so waiting
+		# on one would strand the character (a body parked ON a ladder could never climb —
+		# every re-command computed the same dead first segment). Advance the plan NOW.
+		_on_cross_level_arrival(id)
+		return true
+	return _do_move_to_cell(id, seg0_last)
 
 ## On arrival, advance the cross-level plan: drop the finished segment, and if more remain,
 ## transition to the next floor (no separate log entry) and walk that segment. The final
@@ -956,7 +963,13 @@ func _on_cross_level_arrival(id: String) -> void:
 	var next_seg: Dictionary = segments[0]
 	_apply_set_level(id, int(next_seg["level"]))  # floor change at the shared ladder cell
 	var cells: Array = next_seg["cells"]
-	_do_move_to_cell(id, cells[cells.size() - 1])
+	var seg_last: Vector2i = cells[cells.size() - 1]
+	# A chained link can make the NEXT segment zero-length too (the ladder IS its destination):
+	# same rule — no walk means no arrival, so the plan advances inline.
+	if grid != null and grid.world_to_grid(get_position(id)) == seg_last:
+		_on_cross_level_arrival(id)
+		return
+	_do_move_to_cell(id, seg_last)
 
 # Internal move without its own log entry.
 func _do_move_to_pos(

@@ -87,9 +87,9 @@ labels = Array[Dictionary]([{
 }])
 objects = Array[Dictionary]([{
 "dwellers": [{
-"home": Vector3(3, 0, 5.25),
+"home": Vector3(6, 0, 6.75),
 "id": "dweller_a",
-"radius": 1.5,
+"radius": 1.0,
 "refuge": Vector3(-0.75, 0, 3.75)
 }, {
 "home": Vector3(12.75, 0, 6.75),
@@ -136,15 +136,15 @@ objects = Array[Dictionary]([{
 "travel_speed": 7.0
 },
 "tag": "bf",
-"telegraph_lead": 3.5,
+"telegraph_lead": 4.0,
 "type": "basin",
 "water_y": [-0.5, 2.45, 3.05]
 }, {
 "detect": 2.5,
 "id": "dweller_a",
-"pos": Vector3(3, 0, 5.25),
+"pos": Vector3(6, 0, 6.75),
 "roam": {
-"radius": 1.5
+"radius": 1
 },
 "speed": 2.4,
 "targets": ["aster", "peris", "endo"],

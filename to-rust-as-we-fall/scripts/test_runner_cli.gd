@@ -32378,6 +32378,28 @@ func _test_basin_fill_proof() -> void:
 	_assert_true(float(basin.get_state()["next_change_in"]) > 0.4,
 		"the launched crossing finishes before the window closes")
 
+	# (13b) ARRIVAL SAFETY (the persona-probe find): every party spawn sits at least 1.5x the
+	# detect radius from every dweller's grazing ground — nobody spawns incidentally inside a
+	# sense range (endo used to spawn 1.68wu from a 2.5-detect grazer and die on the climb).
+	for spawn_v in [Vector3(2.25, 0.5, 2.25), Vector3(3.75, 0.5, 2.25), Vector3(2.25, 0.5, 3.75)]:
+		for e in chunk.enemies():
+			if not is_instance_valid(e):
+				continue
+			var post: Vector3 = chunk.get("_enemy_posts").get(str(e.char_id), gs.get_position(str(e.char_id)))
+			var margin: float = Vector2((spawn_v as Vector3).x - post.x, (spawn_v as Vector3).z - post.z).length()
+			_assert_true(margin >= 1.5 * float(e.detection_range),
+				"spawn %s clears %s's sense range (%.1f >= %.1f)"
+				% [str(spawn_v), str(e.char_id), margin, 1.5 * float(e.detection_range)])
+	# (13c) A body standing ON the ladder cell can still climb: the zero-length first segment
+	# transitions inline instead of waiting for an arrival that can never fire.
+	gs.set_character_level("endo", 0)
+	gs.snap_character_to("endo", Vector3(0.75, 0.0, -0.75))
+	_assert_true(bool(gs.command_move_cross_level("endo", Vector2i(4, 0), 1)),
+		"a climb commanded FROM the ladder cell is accepted")
+	inst.headless_advance(2.0)
+	_assert_equals(int(gs.get_character_level("endo")), 1,
+		"the zero-length first segment still changes floors")
+
 	# (14) FAST-FORWARD INVARIANCE: the rota's state-at-second sequence is identical at a
 	# fine and a coarse tick step (predicted boundaries, never sampled coincidences).
 	var sequences: Array = []
@@ -32404,13 +32426,23 @@ func _test_basin_fill_proof() -> void:
 ## TwitchPlays (a thousand conflicting inputs — the storm leaves no wreckage), Shesez
 ## (Boundary Break — the world's edges hold). Every choice is tick-hashed: a found bug
 ## replays identically. Enrolled fragments: basin_fill_proof, push_lab.
-const PERSONA_ROSTER := ["spiffing_brit", "dean_takahashi", "twitch_plays", "shesez"]
+const PERSONA_ROSTER := ["spiffing_brit", "dean_takahashi", "twitch_plays", "shesez",
+	"skumnut", "pirate_software", "prod", "eazy_speezy"]
+## Personas whose reflexes only make sense on certain fragments (a souls runner needs a
+## rhythm to memorize; a speedrunner needs a win to race). Absent = runs everywhere.
+const PERSONA_FRAGMENTS := {
+	"skumnut": ["basin_fill_proof"],
+	"eazy_speezy": ["basin_fill_proof"],
+}
 
 func _test_persona_probe() -> void:
 	_test_name = "Persona Probe"
 	var wall0 := Time.get_ticks_msec()
 	for frag in ["basin_fill_proof", "push_lab"]:
 		for persona in PERSONA_ROSTER:
+			if PERSONA_FRAGMENTS.has(persona) \
+					and not (PERSONA_FRAGMENTS[persona] as Array).has(str(frag)):
+				continue
 			await _persona_probe_run(str(frag), str(persona))
 	print("  [wall] _test_persona_probe: %d ms" % (Time.get_ticks_msec() - wall0))
 
@@ -32495,6 +32527,14 @@ func _persona_probe_run(frag_id: String, persona: String) -> void:
 			invariants_held = await _persona_twitch(inst, gs, chunk, grid, party, interactables, crates, pseed, notes)
 		"shesez":
 			invariants_held = await _persona_shesez(inst, gs, chunk, grid, party, pseed, notes)
+		"skumnut":
+			invariants_held = await _persona_skumnut(inst, gs, chunk, grid, party, notes)
+		"pirate_software":
+			invariants_held = await _persona_pirate(inst, gs, chunk, grid, party, crates, notes)
+		"prod":
+			invariants_held = await _persona_prod(inst, gs, chunk, grid, party, interactables, crates, pseed, notes)
+		"eazy_speezy":
+			invariants_held = await _persona_eazy(inst, gs, chunk, grid, party, notes)
 
 	# Soak past every persona: the world must still tick and hold AFTER the abuse stops.
 	var elapsed := float(sched.get_current_tick()) - tick0
@@ -32711,6 +32751,280 @@ func _persona_twitch(inst, gs, chunk, grid, party: Array, interactables: Array, 
 			ok = false
 	if not crates.is_empty() and not _persona_crates_legal(gs, grid, crates, notes):
 		ok = false
+	return ok and _persona_beat_ok(gs, grid, party, notes)
+
+## Skumnut: the souls challenge runner — observe the rhythm from safety, memorize it, stage at
+## the mouth, launch on pure reaction the instant the window flips. Never touches an
+## instrument; his clean clear IS the proof the free branch wins (instruments sharpen, never
+## gate — proven by play, not by assertion).
+func _persona_skumnut(inst, gs, chunk, grid, party: Array, notes: Array) -> bool:
+	var ok := true
+	if not chunk.has_method("basins") or (chunk.basins() as Array).is_empty():
+		return _persona_beat_ok(gs, grid, party, notes)
+	var basin = chunk.basins()[0]
+	var sched = inst.get("_scheduler")
+	# A souls player does not read the boss from inside the arena: climb to the catwalk first.
+	for i in range(party.size()):
+		gs.command_move_cross_level(str(party[i]), Vector2i(3 + i, 0), 1)
+	inst.headless_advance(6.0)
+	# OBSERVE two full cycles, recording every state flip he can see.
+	var transitions: Array = []
+	var last_state := int(basin.get_water_state())
+	var t_obs := 0.0
+	var endo_was_down := false
+	while t_obs < 110.0 and transitions.size() < 15:
+		inst.headless_advance(0.25, 0.1)
+		t_obs += 0.25
+		var s := int(basin.get_water_state())
+		if s != last_state:
+			transitions.append({"state": s, "tick": float(sched.get_current_tick())})
+			last_state = s
+		if not endo_was_down and gs.is_downed("endo"):
+			endo_was_down = true
+			notes.append("a member was downed during safe observation — the spawn or the " +
+				"observation deck sits inside a dweller's reach")
+			ok = false
+	if transitions.size() < 14:
+		notes.append("only observed %d flips in two cycles" % transitions.size())
+		ok = false
+	else:
+		# Pattern memorization must be POSSIBLE: the rhythm repeats exactly, cycle over cycle.
+		var period := float((transitions[7] as Dictionary)["tick"]) \
+			- float((transitions[0] as Dictionary)["tick"])
+		for k in range(6):
+			var gap := float((transitions[k + 7] as Dictionary)["tick"]) \
+				- float((transitions[k] as Dictionary)["tick"])
+			if absf(gap - period) > 0.6:
+				notes.append("the rhythm drifted (flip %d: %.2f vs period %.2f)" % [k, gap, period])
+				ok = false
+	# STAGE at the float mouth (always-safe deck), let any already-open window PASS — a souls
+	# player launches at the FLIP, never mid-window — then react to the flip itself.
+	var mouth := Vector3(8.25, 2.7, -0.75)
+	var slots: Array = [Vector3.ZERO, Vector3(1.5, 0.0, 0.0), Vector3(0.0, 0.0, -1.5)]
+	for i in range(party.size()):
+		gs.command_move_to_pos(str(party[i]), mouth + (slots[i % slots.size()] as Vector3))
+	inst.headless_advance(4.0)
+	var waited := 0.0
+	while waited < 20.0 and int(basin.get_water_state()) == 1:
+		inst.headless_advance(0.5)
+		waited += 0.5
+	var swept_before := int(basin.get_state()["swept_party"])
+	waited = 0.0
+	while waited < 35.0 and int(basin.get_water_state()) != 1:
+		inst.headless_advance(0.1, 0.1)   # fine polling — this is the reflex
+		waited += 0.1
+	var balcony := Vector3(9.0, 2.7, 12.75)
+	var dest_slots: Array = [Vector3(-0.8, 0.0, -0.15), Vector3(0.8, 0.0, -0.15), Vector3(0.0, 0.0, 0.6)]
+	for i in range(party.size()):
+		gs.command_move_to_pos(str(party[i]), balcony + (dest_slots[i % dest_slots.size()] as Vector3))
+	var crossed := 0.0
+	var all_over := false
+	while crossed < 6.5 and not all_over:
+		inst.headless_advance(0.25)
+		crossed += 0.25
+		all_over = true
+		for cid_v in party:
+			if gs.get_position(str(cid_v)).distance_to(balcony) > 2.4:
+				all_over = false
+	if not all_over:
+		notes.append("the reaction-timed crossing missed the window")
+		ok = false
+	if int(basin.get_state()["swept_party"]) != swept_before:
+		notes.append("someone was swept during the reflex crossing")
+		ok = false
+	# The clean clear: settle on the pad (a mid-stride body cannot bed down), rest, complete —
+	# with ZERO instrument uses.
+	inst.headless_advance(2.0)
+	var shelter = chunk.find_child("BasinExitShelter", true, false)
+	_persona_poke(shelter, "aster")
+	inst.headless_advance(0.6, 0.1)
+	if not bool(chunk.get_preview_state()["complete"]):
+		notes.append("the reflex run did not complete")
+		ok = false
+	var chart = chunk.find_child("BasinRotaChart", true, false)
+	if chart != null and int(chart.read_count()) != 0:
+		notes.append("the souls runner read the chart")
+		ok = false
+	var console = chunk.find_child("FlowReadConsole", true, false)
+	if console != null and (bool(console.is_read_armed()) or float(console.cooldown_remaining()) > 0.0):
+		notes.append("the souls runner used the console")
+		ok = false
+	return ok and _persona_beat_ok(gs, grid, party, notes)
+
+## PirateSoftware: the negative control — stands with the party and does nothing, forever.
+func _persona_pirate(inst, gs, chunk, grid, party: Array, crates: Array, notes: Array) -> bool:
+	var ok := true
+	var hp0 := {}
+	for cid_v in party:
+		hp0[str(cid_v)] = float(gs.get_stat(str(cid_v), "hp"))
+	var crate0 := {}
+	for oid_v in crates:
+		crate0[str(oid_v)] = grid.world_to_grid(gs.get_physics_position(str(oid_v)))
+	var idled := 0.0
+	while idled < 60.0:
+		inst.headless_advance(2.0)
+		idled += 2.0
+		if not _persona_beat_ok(gs, grid, party, notes):
+			ok = false
+			break
+	if bool(chunk.get_preview_state().get("complete", false)):
+		notes.append("doing nothing completed the fragment")
+		ok = false
+	if chunk.has_method("basins") and not (chunk.basins() as Array).is_empty():
+		# Authored pressure must LAND on the idlers: the fill bites the party that ignored it.
+		var bitten := false
+		for cid_v in party:
+			if float(gs.get_stat(str(cid_v), "hp")) < float(hp0[str(cid_v)]) - 0.01 \
+					or gs.is_downed(str(cid_v)):
+				bitten = true
+		if not bitten:
+			notes.append("an hour of nothing went entirely unpunished")
+			ok = false
+	for oid_v in crates:
+		# Where nothing is authored to move, NOTHING moves: idle crates hold their exact cells.
+		var oid := str(oid_v)
+		if grid.world_to_grid(gs.get_physics_position(oid)) != (crate0[oid] as Vector2i):
+			notes.append("crate %s moved with nobody touching it" % oid)
+			ok = false
+	return ok
+
+## Prod: the variety streamer — tries whatever gets a reaction, never repeats a mistake
+## (repeats bore chat). A novelty queue with a blacklist.
+func _persona_prod(inst, gs, chunk, grid, party: Array, interactables: Array, crates: Array, pseed: int, notes: Array) -> bool:
+	var ok := true
+	var outcomes := {}   # signature -> "ok" | "bad" | "refused"
+	var tried_order: Array = []
+	for beat in range(70):
+		var now := float(inst.get("_scheduler").get_current_tick())
+		var cid := str(party[_persona_hash(now, pseed, beat) % party.size()])
+		if gs.is_downed(cid):
+			inst.headless_advance(0.6)
+			continue
+		# Build the menu: everything the fragment offers, freshest first.
+		var menu: Array = []
+		for it in interactables:
+			if is_instance_valid(it):
+				menu.append("poke:%s" % str(it.name))
+		if chunk.has_method("basins") and not (chunk.basins() as Array).is_empty():
+			menu.append_array(["swim:center", "climb:up", "climb:down", "visit:shelf"])
+		for oid_v in crates:
+			for d in ["e", "w", "n", "s"]:
+				menu.append("push:%s:%s" % [str(oid_v), d])
+		var fresh: Array = []
+		var reruns: Array = []
+		for sig_v in menu:
+			var sig := str(sig_v)
+			if not outcomes.has(sig):
+				fresh.append(sig)
+			elif str(outcomes[sig]) == "ok":
+				reruns.append(sig)
+		var pool: Array = fresh if not fresh.is_empty() else reruns
+		if pool.is_empty():
+			break
+		var sig2 := str(pool[_persona_hash(now, pseed, beat * 5) % pool.size()])
+		var hp_before := float(gs.get_stat(cid, "hp"))
+		var refused := false
+		var parts := sig2.split(":")
+		match str(parts[0]):
+			"poke":
+				for it2 in interactables:
+					if is_instance_valid(it2) and str(it2.name) == str(parts[1]):
+						_persona_poke(it2, cid)
+			"swim":
+				gs.set_character_level(cid, 0)
+				gs.snap_character_to(cid, Vector3(9.0, 0.0, 4.5))
+			"climb":
+				refused = not gs.command_move_cross_level(cid,
+					Vector2i(3, 0) if str(parts[1]) == "up" else Vector2i(5, 4),
+					1 if str(parts[1]) == "up" else 0)
+			"visit":
+				refused = not gs.command_move_to_pos(cid, Vector3(18.75, 0.0, 4.5))
+			"push":
+				var oc: Vector2i = grid.world_to_grid(gs.get_physics_position(str(parts[1])))
+				var dir := {"e": Vector2i(1, 0), "w": Vector2i(-1, 0),
+					"n": Vector2i(0, -1), "s": Vector2i(0, 1)}[str(parts[2])] as Vector2i
+				refused = not gs.command_push_object(cid, str(parts[1]), oc + dir)
+		inst.headless_advance(2.2)
+		var outcome := "ok"
+		if refused:
+			outcome = "refused"
+		elif float(gs.get_stat(cid, "hp")) < hp_before - 0.01 or gs.is_downed(cid):
+			outcome = "bad"
+		if not outcomes.has(sig2):
+			tried_order.append(sig2)
+		# A mistake never upgrades back to ok — chat remembers.
+		if not (outcomes.has(sig2) and str(outcomes[sig2]) != "ok"):
+			outcomes[sig2] = outcome
+		if not _persona_beat_ok(gs, grid, party, notes):
+			ok = false
+			break
+	if tried_order.size() < 5:
+		notes.append("the variety tour only found %d things to try" % tried_order.size())
+		ok = false
+	if not crates.is_empty() and not _persona_crates_legal(gs, grid, crates, notes):
+		ok = false
+	for cid_v in party:
+		gs.command_stop(str(cid_v))
+	inst.headless_advance(6.0)
+	return ok and _persona_beat_ok(gs, grid, party, notes)
+
+## EazySpeezy: the speedrunner — every leverage point in service of the clock; the pacing
+## floor must survive him, and his time is the fragment's empirical floor.
+func _persona_eazy(inst, gs, chunk, grid, party: Array, notes: Array) -> bool:
+	var ok := true
+	if not chunk.has_method("basins") or (chunk.basins() as Array).is_empty():
+		return _persona_beat_ok(gs, grid, party, notes)
+	var basin = chunk.basins()[0]
+	var sched = inst.get("_scheduler")
+	var t0 := float(sched.get_current_tick())
+	var first_mid: float = basin.next_state_tick(1)
+	# Leverage: the read console IS movement tech — the auto-launch is the fastest legal cross.
+	for i in range(party.size()):
+		gs.command_move_cross_level(str(party[i]), Vector2i(4 + i, 1), 1)
+	var climb := 0.0
+	while climb < 12.0 and int(gs.get_character_level("aster")) != 1:
+		inst.headless_advance(0.4)
+		climb += 0.4
+	gs.command_move_to_pos("aster", Vector3(6.75, 2.7, -2.0))
+	inst.headless_advance(1.6)
+	var console = chunk.find_child("FlowReadConsole", true, false)
+	_persona_poke(console, "aster")
+	if console == null or not bool(console.is_read_armed()):
+		notes.append("the speed route's console cast failed")
+		ok = false
+	# The assist carries the SELECTED party (aster); a speedrunner micro-manages the rest:
+	# stage them at the mouth, send them the beat the window opens.
+	var mouth := Vector3(8.25, 2.7, -0.75)
+	gs.command_move_to_pos("peris", mouth + Vector3(1.5, 0.0, 0.0))
+	gs.command_move_to_pos("endo", mouth + Vector3(0.0, 0.0, -1.5))
+	# Sprint the launched crossing — stamina spent as pure velocity.
+	for cid_v in party:
+		gs.set_running(str(cid_v), true)
+	var others_sent := false
+	var run_cap := 0.0
+	while run_cap < 45.0 and not bool(chunk.get_preview_state()["complete"]):
+		inst.headless_advance(0.5)
+		run_cap += 0.5
+		if not others_sent and int(basin.get_water_state()) == 1:
+			others_sent = true
+			gs.command_move_to_pos("peris", Vector3(9.9, 2.7, 12.6))
+			gs.command_move_to_pos("endo", Vector3(8.1, 2.7, 12.6))
+		var near := 0
+		for cid_v in party:
+			if gs.get_position(str(cid_v)).distance_to(Vector3(9.0, 2.7, 12.75)) < 2.6:
+				near += 1
+		if near == party.size():
+			_persona_poke(chunk.find_child("BasinExitShelter", true, false), "aster")
+	var clear_tick := float(sched.get_current_tick())
+	if not bool(chunk.get_preview_state()["complete"]):
+		notes.append("the speedrun never finished")
+		ok = false
+	elif clear_tick < first_mid:
+		notes.append("the speedrun beat the design floor (%.1f < %.1f)" % [clear_tick, first_mid])
+		ok = false
+	else:
+		print("  [persona] eazy_speezy: basin cleared in %.1fs (floor %.1fs)"
+			% [clear_tick - t0, first_mid - t0])
 	return ok and _persona_beat_ok(gs, grid, party, notes)
 
 ## Shesez: probes every edge the world has; the edges must hold.
