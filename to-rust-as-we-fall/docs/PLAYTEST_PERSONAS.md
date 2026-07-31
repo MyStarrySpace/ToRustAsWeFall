@@ -24,7 +24,8 @@ wall clock) so a found bug replays identically.
   original streamer roster (panic_sprint, curious_clicker, door_camper,
   offshoot_stumbler, tyreg_accepter, competent_runner, dean_takahashi).
 - `--test-persona-probe` — the SYSTEMS pass (fragments with real
-  economies; enrolled: basin_fill_proof, push_lab, channels_wash_intro).
+  economies; enrolled: basin_fill_proof, push_lab, channels_wash_intro,
+  zone_transition_lab — a LIVE seeded generated stretch, seed 431).
   The roster below runs here. New fragments with prices enroll by adding a
   row. Where a fragment carries KNOWN ledger items awaiting the director's
   pick (the wash intro's exit gating), the probe asserts only undisputed

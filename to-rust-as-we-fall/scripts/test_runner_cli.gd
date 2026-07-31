@@ -32438,7 +32438,7 @@ const PERSONA_FRAGMENTS := {
 func _test_persona_probe() -> void:
 	_test_name = "Persona Probe"
 	var wall0 := Time.get_ticks_msec()
-	for frag in ["basin_fill_proof", "push_lab", "channels_wash_intro"]:
+	for frag in ["basin_fill_proof", "push_lab", "channels_wash_intro", "zone_transition_lab"]:
 		for persona in PERSONA_ROSTER:
 			if PERSONA_FRAGMENTS.has(persona) \
 					and not (PERSONA_FRAGMENTS[persona] as Array).has(str(frag)):
@@ -32446,10 +32446,13 @@ func _test_persona_probe() -> void:
 			await _persona_probe_run(str(frag), str(persona))
 	print("  [wall] _test_persona_probe: %d ms" % (Time.get_ticks_msec() - wall0))
 
-## Completion across chunk contracts: data fragments publish `complete`, coded chunks a phase.
+## Completion across chunk contracts: data fragments publish `complete`, coded chunks a phase,
+## generated stretches a rested shelter at the end of a complete route.
 func _persona_is_complete(chunk) -> bool:
 	var st: Dictionary = chunk.get_preview_state()
-	return bool(st.get("complete", false)) or str(st.get("phase", "")) == "complete"
+	if bool(st.get("complete", false)) or str(st.get("phase", "")) == "complete":
+		return true
+	return str(st.get("route_phase", "")) == "complete" and bool(st.get("shelter_rested", false))
 
 func _persona_hash(tick: float, seed_v: int, salt: int) -> int:
 	return absi((int(floor(tick * 37.0)) + salt * 101) * 2654435761 + seed_v * 40503)
@@ -32559,6 +32562,31 @@ func _persona_spiffing_brit(inst, gs, chunk, grid, party: Array, crates: Array, 
 	var ok := true
 	if frag_id == "channels_wash_intro":
 		ok = await _persona_spiffing_wash_intro(inst, gs, chunk, party, notes)
+	elif frag_id == "zone_transition_lab":
+		# Generated content is built from reusable one-shots: the DOUBLE-DIP sweep pokes every
+		# interactable twice and demands the second poke never pays a second time (the synchronous
+		# stat books around each poke; authored sanctuary/rest surfaces are canon free and skipped).
+		var its_raw: Variant = chunk.get("_interactables")
+		var sweep: Array = (its_raw as Array).slice(0, 12) if its_raw is Array else []
+		for it in sweep:
+			if not is_instance_valid(it):
+				continue
+			var it_name := str(it.get("name"))
+			if it_name.containsn("shelter") or it_name.containsn("rest"):
+				continue
+			_persona_poke(it, "aster")
+			inst.headless_advance(0.5)
+			var books := {}
+			for cid_v in party:
+				for stat_name in ["hp", "atp", "stamina"]:
+					books["%s/%s" % [str(cid_v), stat_name]] = float(gs.get_stat(str(cid_v), stat_name))
+			_persona_poke(it, "aster")   # the dip: synchronous re-trigger, no time passes
+			for cid_v in party:
+				for stat_name in ["hp", "atp"]:
+					var key := "%s/%s" % [str(cid_v), stat_name]
+					if float(gs.get_stat(str(cid_v), stat_name)) > float(books[key]) + 0.01:
+						notes.append("double-dip: %s paid %s twice" % [it_name, key])
+						ok = false
 	if chunk.has_method("basins") and not (chunk.basins() as Array).is_empty():
 		var basin = chunk.basins()[0]
 		var first_mid: float = basin.next_state_tick(1)
