@@ -1583,6 +1583,22 @@ func _inject_scheduler_into_interactables(node: Node) -> void:
 func _on_push_queue_requested(obj_id: String) -> void:
 	if _player != null and _player.has_method("queue_push"):
 		_player.call("queue_push", obj_id)
+		_show_push_queue_prompt(_player)
+
+## The queued-push hint: tell the player how to finish what they started. Shown for as long as
+## the queue is live (duration 0 = persistent), hidden the moment the queue commits or cancels.
+func _show_push_queue_prompt(push_player: Node) -> void:
+	if push_player != null and push_player.has_signal("push_queue_state_changed") \
+			and not push_player.is_connected("push_queue_state_changed", _on_push_queue_state_changed):
+		push_player.connect("push_queue_state_changed", _on_push_queue_state_changed)
+	if _tutorial_prompt != null and _tutorial_prompt.has_method("show_prompt"):
+		_tutorial_prompt.show_prompt("Shift-click to select push location", 0.0)
+
+func _on_push_queue_state_changed(active: bool) -> void:
+	if active or _tutorial_prompt == null:
+		return
+	if _tutorial_prompt.has_method("hide_prompt"):
+		_tutorial_prompt.hide_prompt()
 
 ## The ONE party-control invariant, shared by every scene that lets the player select characters:
 ## the current selection is always the GameState party, while the ACTIVE character's node is the

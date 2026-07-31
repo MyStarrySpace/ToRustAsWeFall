@@ -1374,6 +1374,7 @@ func _connect_push_targets(root: Node) -> void:
 func _on_push_queue_requested(obj_id: String) -> void:
 	if _player != null and _player.has_method("queue_push"):
 		_player.queue_push(obj_id)
+		_show_push_queue_prompt(_player)
 
 func _apply_chunk_navigation_graph() -> void:
 	if _game_state == null:

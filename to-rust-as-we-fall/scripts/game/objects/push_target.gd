@@ -1,9 +1,10 @@
 class_name PushTarget
 extends StaticBody3D
 
-## Pickable wrapper over a PUSHABLE physics object's mesh: a `command` (right) click on it asks the
-## scene to QUEUE a push for that object (the BG3-style plan-then-commit flow). The wrapper only
-## reports intent; the player/preview owns the queue, the ghosts, and the commit.
+## Pickable wrapper over a PUSHABLE physics object's mesh: ANY click on it (select or command)
+## asks the scene to QUEUE a push for that object — then the player SHIFT-clicks the crate's
+## destination to commit (the BG3-style plan-then-commit flow). The wrapper only reports intent;
+## the player/preview owns the queue, the ghosts, and the commit.
 ##
 ## The crate speaks the shared hover grammar: it emits outline_hovered/outline_unhovered (so the
 ## scene's OutlineFeedbackManager binds it like any interactable), carries the "PUSH" cursor verb,
@@ -75,7 +76,9 @@ func _on_mouse_exited() -> void:
 	outline_unhovered.emit(self)
 
 func _on_input_event(_camera: Node, event: InputEvent, _pos: Vector3, _normal: Vector3, _shape: int) -> void:
-	if event is InputEventMouseButton and event.is_action_pressed("command"):
+	if not (event is InputEventMouseButton):
+		return
+	if event.is_action_pressed("command") or event.is_action_pressed("select"):
 		var viewport := get_viewport()
 		if viewport != null:
 			viewport.set_input_as_handled()

@@ -91,6 +91,9 @@ var _push_plan_cell := Vector2i(0x7fffffff, 0x7fffffff)
 var _push_ghost_char: MeshInstance3D
 var _push_ghost_obj: MeshInstance3D
 var _blocked_cursor_on := false
+var _push_ghost_char_mat: StandardMaterial3D = null
+var _push_ghost_obj_mat: StandardMaterial3D = null
+var _push_ghost_red_mat: StandardMaterial3D = null
 var _preview_last_cell := Vector2i(0x7fffffff, 0x7fffffff)
 ## The FLAT hovered move target while planning (Vector3.INF when not hovering). The scene's PathRenderManager
 ## reads this to draw a BG3-style destination ghost at the cursor BEFORE a move is committed.
@@ -111,6 +114,7 @@ signal auto_path_complete()
 ## Emitted on every left-click that hits the ground, with the world position.
 ## Sequences listen to this instead of running their own ground raycast.
 signal ground_clicked(world_pos: Vector3)
+signal push_queue_state_changed(active: bool)
 
 func _ready() -> void:
 	_target_pos = global_position
@@ -237,10 +241,12 @@ func _unhandled_input(event: InputEvent) -> void:
 	# consumed by that object first (it interacts instead), so it only reaches here for plain ground.
 	if mb.is_action_pressed("command"):
 		if _push_obj_id != "":
-			var push_hit := _raycast_ground(mb.position)
-			if push_hit != Vector3.INF:
-				_commit_push(push_hit)
-			return
+			# SHIFT-click commits the queued push at the crate's destination; a plain click
+			# abandons the queue and falls through to the ordinary move.
+			if mb.shift_pressed:
+				_handle_queued_push_click(_raycast_ground(mb.position), true)
+				return
+			cancel_push_queue()
 		if _click_mode != "move" or not _move_enabled:
 			return
 		if _auto_path.size() > 0 and not (game_state and char_id != ""):
@@ -258,9 +264,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	# `select` (left mouse) during a sequence's "click the world target" beat only reports the ground
 	# position; the sequence interprets it. The SelectionController yields `select` to us here
 	# (is_pick_mode). In normal "move" mode `select` belongs to the SelectionController (character pick).
-	# `select` while a push is queued = cancel the queue.
+	# While a push is queued: SHIFT-select commits at the crate's destination; plain select cancels.
 	if mb.is_action_pressed("select") and _push_obj_id != "":
-		cancel_push_queue()
+		_handle_queued_push_click(_raycast_ground(mb.position), mb.shift_pressed)
 		return
 
 	if mb.is_action_pressed("select") and _click_mode == "select":
@@ -669,22 +675,48 @@ func _clear_party_preview() -> void:
 		if mnode != null and "preview_move_target" in mnode:
 			mnode.preview_move_target = Vector3.INF
 
-## Enter queued-push mode for a pushable object (a command-click on its PushTarget got us here).
+## Enter queued-push mode for a pushable object (a click on its PushTarget got us here). The
+## destination the player then SHIFT-clicks is the CRATE's target cell, never the pusher's.
 func queue_push(obj_id: String) -> void:
 	_push_obj_id = obj_id
 	_push_plan = {}
 	_push_plan_cell = Vector2i(0x7fffffff, 0x7fffffff)
 	_hover_last_mouse = Vector2(-1e9, -1e9)  # force a preview refresh
+	# Truly unpushable AS IS (boxed in — no one-step push exists in any direction): say so
+	# immediately with the blocked cursor, before any destination is even hovered.
+	_set_blocked_cursor(not _any_push_possible(obj_id))
+	push_queue_state_changed.emit(true)
+
+## Whether at least one adjacent one-cell push of this object is currently legal.
+func _any_push_possible(obj_id: String) -> bool:
+	if game_state == null or game_state.grid == null or char_id == "":
+		return true
+	var obj_cell: Vector2i = game_state.grid.world_to_grid(game_state.get_physics_position(obj_id))
+	for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+		if not game_state.plan_push_for(char_id, obj_id, obj_cell + d).is_empty():
+			return true
+	return false
 
 func is_push_queued() -> bool:
 	return _push_obj_id != ""
 
 func cancel_push_queue() -> void:
+	var was_queued := _push_obj_id != ""
 	_push_obj_id = ""
 	_push_plan = {}
 	_set_blocked_cursor(false)
 	_clear_push_ghosts()
 	_clear_path_preview()
+	if was_queued:
+		push_queue_state_changed.emit(false)
+
+## The one decision point for a click while a push is queued: SHIFT commits the crate to the
+## clicked cell; anything else abandons the queue.
+func _handle_queued_push_click(hit: Vector3, shift_held: bool) -> void:
+	if shift_held and hit != Vector3.INF:
+		_commit_push(hit)
+		return
+	cancel_push_queue()
 
 ## Hover while a push is queued: plan to the hovered cell; ghosts + the object's route when possible,
 ## the blocked (X) cursor when "there is not enough space".
@@ -700,9 +732,11 @@ func _update_push_preview(hit: Vector3) -> void:
 	_push_plan_cell = cell
 	_push_plan = game_state.plan_push_for(char_id, _push_obj_id, cell)
 	if _push_plan.is_empty():
+		# Blocked destination: the X cursor AND the ghost pair in RED at the pointed cell —
+		# the refusal is shown where the player is looking, not by the preview vanishing.
 		_set_blocked_cursor(true)
-		_clear_push_ghosts()
 		_clear_path_preview()
+		_show_blocked_push_ghosts(cell)
 		PerformanceTrace.end(&"nav", &"player.push_preview", perf_started, "blocked", 0)
 		return
 	_set_blocked_cursor(false)
@@ -716,6 +750,8 @@ func _update_push_preview(hit: Vector3) -> void:
 	# Ghosts at the END state: the object on the target cell, the character on its final push cell.
 	# The object ghost is the CRATE ITSELF, translucent — its real mesh, not a placeholder box.
 	_ensure_push_ghosts()
+	_push_ghost_obj.material_override = _push_ghost_obj_mat
+	_push_ghost_char.material_override = _push_ghost_char_mat
 	var src_mesh := _push_object_mesh(_push_obj_id)
 	if src_mesh != null and _push_ghost_obj.mesh != src_mesh:
 		_push_ghost_obj.mesh = src_mesh
@@ -741,12 +777,15 @@ func _commit_push(hit: Vector3) -> void:
 func _ensure_push_ghosts() -> void:
 	if _push_ghost_char != null:
 		return
+	_push_ghost_char_mat = _ghost_material(_character_color())
+	_push_ghost_obj_mat = _ghost_material(Color(0.8, 0.65, 0.4))
+	_push_ghost_red_mat = _ghost_material(Color(0.9, 0.15, 0.12))
 	_push_ghost_char = MeshInstance3D.new()
 	var cap := CapsuleMesh.new()
 	cap.radius = 0.25
 	cap.height = 1.0
 	_push_ghost_char.mesh = cap
-	_push_ghost_char.material_override = _ghost_material(_character_color())
+	_push_ghost_char.material_override = _push_ghost_char_mat
 	_push_ghost_char.top_level = true
 	_push_ghost_char.visible = false
 	add_child(_push_ghost_char)
@@ -754,10 +793,34 @@ func _ensure_push_ghosts() -> void:
 	var box := BoxMesh.new()
 	box.size = Vector3(0.85, 0.9, 0.85)
 	_push_ghost_obj.mesh = box
-	_push_ghost_obj.material_override = _ghost_material(Color(0.8, 0.65, 0.4))
+	_push_ghost_obj.material_override = _push_ghost_obj_mat
 	_push_ghost_obj.top_level = true
 	_push_ghost_obj.visible = false
 	add_child(_push_ghost_obj)
+
+## A blocked destination still SHOWS the plan the player asked for — the crate ghost on the
+## pointed cell and the pusher capsule behind it along the naive push direction — both RED.
+func _show_blocked_push_ghosts(cell: Vector2i) -> void:
+	if game_state == null or game_state.grid == null:
+		return
+	_ensure_push_ghosts()
+	var src_mesh := _push_object_mesh(_push_obj_id)
+	if src_mesh != null and _push_ghost_obj.mesh != src_mesh:
+		_push_ghost_obj.mesh = src_mesh
+	_push_ghost_obj.material_override = _push_ghost_red_mat
+	_push_ghost_char.material_override = _push_ghost_red_mat
+	var level: int = game_state.get_character_level(char_id) if char_id != "" else 0
+	var obj_cell: Vector2i = game_state.grid.world_to_grid(
+		game_state.get_physics_position(_push_obj_id))
+	var delta: Vector2i = cell - obj_cell
+	var dir := Vector2i(signi(delta.x), 0) if absi(delta.x) >= absi(delta.y) \
+		else Vector2i(0, signi(delta.y))
+	if dir == Vector2i.ZERO:
+		dir = Vector2i(1, 0)
+	_push_ghost_obj.global_position = game_state.grid.grid_to_world(cell, level) + Vector3(0, 0.45, 0)
+	_push_ghost_char.global_position = game_state.grid.grid_to_world(cell - dir, level) + Vector3(0, 0.5, 0)
+	_push_ghost_obj.visible = true
+	_push_ghost_char.visible = true
 
 ## The wrapped mesh of a pushable object, found via its PushTarget (group "push_targets").
 ## Null when no wrapper exists — the ghost keeps its default box.

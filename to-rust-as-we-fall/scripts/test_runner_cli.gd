@@ -41255,6 +41255,73 @@ func _test_push_lab() -> void:
 		"Ghost: the push ghost shows the crate's own mesh")
 	player.cancel_push_queue()
 
+	# (J) THE CLICK GRAMMAR: clicking the crate queues (host handler + hint prompt);
+	# SHIFT-click commits at the CRATE's destination; a plain click abandons the queue.
+	instance._on_push_queue_requested("crate_open")
+	_assert_true(bool(player.is_push_queued()), "Grammar: clicking the crate starts the push")
+	var tui = instance.get("_tutorial_prompt")
+	_assert_true(tui != null and str(tui.get("_label").text).contains("Shift-click"),
+		"Grammar: the hint reads 'Shift-click to select push location' (got: %s)"
+		% (str(tui.get("_label").text) if tui != null else "<no prompt facade>"))
+	_assert_true(player.push_queue_state_changed.is_connected(instance._on_push_queue_state_changed),
+		"Grammar: the host hides the hint off the queue-state signal")
+	var open_now: Vector2i = grid.world_to_grid(gs.get_physics_position("crate_open"))
+	var grammar_target := open_now + Vector2i(0, 2)
+	gs.snap_character_to("aster", anchors["crate_open"] + Vector3(0.0, 0.0, -2.0))
+	player._handle_queued_push_click(grid.grid_to_world(grammar_target, 0), true)
+	_assert_true(not bool(player.is_push_queued()) and bool(gs.is_pushing("aster")),
+		"Grammar: SHIFT-click commits the push")
+	safety = 0
+	while safety < 1200 and gs.is_pushing("aster"):
+		safety += 1
+		instance.headless_advance(0.1, 0.05)
+		await get_tree().process_frame
+	_assert_equals(str(grid.world_to_grid(gs.get_physics_position("crate_open"))), str(grammar_target),
+		"Grammar: the pointed cell is the CRATE's destination")
+	_assert_true(grid.world_to_grid(gs.get_position("aster")) != grammar_target,
+		"Grammar: the pusher does not end on the crate's destination")
+	instance._on_push_queue_requested("crate_open")
+	player._handle_queued_push_click(anchors["crate_open"], false)
+	_assert_true(not bool(player.is_push_queued()) and not bool(gs.is_pushing("aster")),
+		"Grammar: a plain click abandons the queue")
+
+	# (K) RED BLOCKED PREVIEW: a blocked destination keeps the ghost pair VISIBLE, turns both
+	# red at the pointed cell alongside the X cursor; a valid hover restores the tints.
+	gs.snap_character_to("aster", Vector3(11.5, 0.0, 8.5))  # into the bend island, behind the crate
+	player.queue_push("crate_bend")
+	player._update_push_preview(anchors["bend_impossible"])
+	_assert_true(bool(player._blocked_cursor_on), "Red preview: the X cursor shows")
+	_assert_true(player._push_ghost_obj.visible and player._push_ghost_char.visible,
+		"Red preview: the ghosts stay visible on a blocked destination")
+	_assert_true(player._push_ghost_obj.material_override == player._push_ghost_red_mat
+		and player._push_ghost_char.material_override == player._push_ghost_red_mat,
+		"Red preview: both ghosts turn red")
+	_assert_true(player._push_ghost_obj.global_position.distance_to(anchors["bend_impossible"]) < 1.2,
+		"Red preview: the crate ghost sits on the pointed cell")
+	player._update_push_preview(anchors["crate_bend"] + Vector3(2.0, 0.0, 0.0))
+	_assert_true(not bool(player._blocked_cursor_on)
+		and player._push_ghost_obj.material_override == player._push_ghost_obj_mat,
+		"Red preview: a valid hover restores the normal tints")
+	player.cancel_push_queue()
+
+	# (L) TRULY UNPUSHABLE AS-IS: drive the bend crate INTO the dead corner, then click it —
+	# no one-step push exists in any direction, so the X shows before any hover.
+	gs.snap_character_to("aster", Vector3(11.5, 0.0, 8.5))
+	var corner_cell := Vector2i(15, 8)
+	_assert_true(gs.command_push_object("aster", "crate_bend", corner_cell),
+		"Unpushable: the crate can be driven into the corner")
+	safety = 0
+	while safety < 1200 and gs.is_pushing("aster"):
+		safety += 1
+		instance.headless_advance(0.1, 0.05)
+		await get_tree().process_frame
+	_assert_equals(str(grid.world_to_grid(gs.get_physics_position("crate_bend"))), str(corner_cell),
+		"Unpushable: the crate reaches the dead corner")
+	player.queue_push("crate_bend")
+	_assert_true(bool(player._blocked_cursor_on),
+		"Unpushable: clicking a boxed crate shows the X immediately")
+	player.cancel_push_queue()
+
 	instance.queue_free()
 	await get_tree().process_frame
 
