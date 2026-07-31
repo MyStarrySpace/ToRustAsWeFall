@@ -528,6 +528,9 @@ func _ready() -> void:
 			"--test-persona-fragment-sweep":
 				ran_test = true
 				await _test_persona_fragment_sweep()
+			"--ai-playthrough":
+				ran_test = true
+				await _run_ai_playthrough()
 			"--test-sprint-gap":
 				ran_test = true
 				await _test_sprint_gap()
@@ -32494,6 +32497,141 @@ func _test_persona_fragment_sweep() -> void:
 	print("  [persona] fragment sweep covered %d registry fragments" % swept)
 	_assert_true(swept >= 5, "the registry sweep found the data-fragment roster (%d)" % swept)
 	print("  [wall] _test_persona_fragment_sweep: %d ms" % (Time.get_ticks_msec() - wall0))
+
+## AI PLAYTHROUGH (docs/PLAYTEST_PERSONAS.md — the decision-harvest loop): executes a decision
+## file (JSON: [{say, do}...]) against a fragment and records the TRACE — each decision with its
+## rationale and the observed state after it — to a JSONL. The AI plays by GROWING the file:
+## run, read the final observation, decide, append, rerun (deterministic prefix). Harvested
+## traces distill into persona decision nodes. Flags (env): AI_PLAY_FRAGMENT, AI_PLAY_DECISIONS,
+## AI_PLAY_TRACE.
+func _run_ai_playthrough() -> void:
+	_test_name = "AI Playthrough"
+	var frag_id := OS.get_environment("AI_PLAY_FRAGMENT")
+	var decisions_path := OS.get_environment("AI_PLAY_DECISIONS")
+	var trace_path := OS.get_environment("AI_PLAY_TRACE")
+	if frag_id == "" or decisions_path == "":
+		_assert_true(false, "AI_PLAY_FRAGMENT and AI_PLAY_DECISIONS are required")
+		return
+	var raw := FileAccess.get_file_as_string(decisions_path)
+	var parsed: Variant = JSON.parse_string(raw if raw != "" else "[]")
+	var decisions: Array = parsed if parsed is Array else []
+	var inst = await _instantiate_preview_chunk_and_wait(frag_id, 6)
+	if inst == null:
+		_assert_true(false, "%s boots for the AI playthrough" % frag_id)
+		return
+	var gs = inst._game_state
+	var chunk = inst._active_chunk
+	inst.headless_advance(0.2)
+	var trace: Array = []
+	for i in range(decisions.size()):
+		var d := decisions[i] as Dictionary
+		var act := d.get("do", {}) as Dictionary
+		match str(act.get("type", "")):
+			"move":
+				gs.command_move_to_pos(str(act.get("id", "aster")), _ai_v3(act.get("to", [0, 0, 0])))
+			"move_all":
+				var slot := 0
+				for cid_v in ["aster", "peris", "endo"]:
+					if gs.characters.has(str(cid_v)) and not gs.is_downed(str(cid_v)):
+						gs.command_move_to_pos(str(cid_v),
+							_ai_v3(act.get("to", [0, 0, 0])) + Vector3(1.2 * float(slot % 2), 0.0, -1.2 * float(slot / 2)))
+						slot += 1
+			"run":
+				gs.set_running(str(act.get("id", "aster")), bool(act.get("on", true)))
+			"poke":
+				var target = chunk.find_child(str(act.get("name", "")), true, false)
+				if target == null:
+					var its: Variant = chunk.get("_interactables")
+					if its is Array:
+						for it in (its as Array):
+							if is_instance_valid(it) and str(it.name) == str(act.get("name", "")):
+								target = it
+				_persona_poke(target, str(act.get("actor", "aster")))
+			"stop":
+				gs.command_stop(str(act.get("id", "aster")))
+			"wait":
+				pass
+		inst.headless_advance(maxf(0.1, float(d.get("wait", act.get("secs", 1.0)))))
+		trace.append({
+			"i": i, "tick": float(inst.get("_scheduler").get_current_tick()),
+			"say": str(d.get("say", "")), "do": act,
+			"observed": _ai_observe(gs, chunk, false),
+		})
+	# The FINAL observation is rich — it is what the AI reads to decide the next append.
+	var final_obs := _ai_observe(gs, chunk, true)
+	print("AI_OBSERVE_BEGIN")
+	print(JSON.stringify(final_obs, "  "))
+	print("AI_OBSERVE_END")
+	if trace_path != "":
+		var f := FileAccess.open(trace_path, FileAccess.WRITE)
+		if f != null:
+			for entry in trace:
+				f.store_line(JSON.stringify(entry))
+			f.close()
+	_assert_true(true, "AI playthrough executed %d decisions on %s" % [decisions.size(), frag_id])
+	inst.queue_free()
+	await get_tree().process_frame
+
+func _ai_v3(raw: Variant) -> Vector3:
+	var a := raw as Array
+	return Vector3(float(a[0]), float(a[1]), float(a[2])) if a != null and a.size() == 3 else Vector3.ZERO
+
+func _ai_observe(gs, chunk, rich: bool) -> Dictionary:
+	var obs := {"party": {}, "enemies": {}, "state": {}}
+	for cid_v in ["aster", "peris", "endo"]:
+		var cid := str(cid_v)
+		if not gs.characters.has(cid):
+			continue
+		var p: Vector3 = gs.get_position(cid)
+		obs["party"][cid] = {
+			"pos": [snappedf(p.x, 0.1), snappedf(p.z, 0.1)],
+			"hp": snappedf(float(gs.get_stat(cid, "hp")), 0.1),
+			"stamina": snappedf(float(gs.get_stat(cid, "stamina")), 0.1),
+			"downed": gs.is_downed(cid), "conceal": int(gs.get_character_concealment(cid)),
+		}
+	if chunk.has_method("enemies"):
+		for e in chunk.enemies():
+			if is_instance_valid(e):
+				var ep: Vector3 = gs.get_position(str(e.char_id))
+				obs["enemies"][str(e.char_id)] = {
+					"pos": [snappedf(ep.x, 0.1), snappedf(ep.z, 0.1)],
+					"state": str(e.get_state()), "alive": e.is_alive(),
+					"detect": float(e.detection_range),
+				}
+	var st: Dictionary = chunk.get_preview_state()
+	for key in ["phase", "complete", "exit_rest_phase", "spotted_count", "wipe_count",
+			"lure_active", "drowned", "enemies_alive"]:
+		if st.has(key):
+			obs["state"][key] = st[key]
+	for cid_v in obs["party"].keys():
+		if gs.has_method("is_at_shelter"):
+			obs["party"][cid_v]["at_shelter"] = bool(gs.is_at_shelter(str(cid_v)))
+	if rich:
+		var shelters_v: Variant = chunk.get("_exit_shelters")
+		if shelters_v is Array and not (shelters_v as Array).is_empty():
+			var sh = (shelters_v as Array)[0]
+			if is_instance_valid(sh) and chunk.has_method("_preflight_canonical_exit_shelter_rest"):
+				var pf: Dictionary = chunk._preflight_canonical_exit_shelter_rest(sh)
+				obs["exit_rest_preflight"] = {"complete": pf.get("complete"),
+					"blocked": pf.get("blocked"), "rest_members": pf.get("rest_members")}
+				obs["exit_trigger_gate"] = {
+					"validator": bool(chunk._validate_exit_shelter_trigger(sh, "aster", sh)),
+					"actor_ready": bool(chunk._fragment_actor_ready_at_source(sh, "aster")),
+					"party": gs.get_party() if gs.has_method("get_party") else [],
+					"used": bool(sh.get("_used")), "enabled": bool(sh.get("interaction_enabled")),
+				}
+		obs["anchors"] = chunk.get_preview_anchors() if chunk.has_method("get_preview_anchors") else {}
+		var names: Array = []
+		var its: Variant = chunk.get("_interactables")
+		if its is Array:
+			for it in (its as Array):
+				if is_instance_valid(it):
+					names.append({"name": str(it.name), "verb": str(it.get("tutorial_label")),
+						"pos": [snappedf((it as Node3D).global_position.x, 0.1),
+							snappedf((it as Node3D).global_position.z, 0.1)]})
+		obs["interactables"] = names
+		obs["help"] = str(chunk.get_scene_help()) if chunk.has_method("get_scene_help") else ""
+	return obs
 
 ## The first standing party member — the generic poker/rider for registry-derived probes.
 func _persona_first_up(gs, party: Array) -> String:

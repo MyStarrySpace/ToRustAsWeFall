@@ -1,0 +1,279 @@
+[
+{
+"say": "Three watchers, all posted SOUTH; the far waypoints run NORTH at z~6. Openings first: walk the party to the first scarpet hold on the north side and watch the amber walks before committing to a route.",
+"do": {
+"type": "move_all",
+"to": [
+11.25,
+0.5,
+5.25
+]
+},
+"wait": 4.0
+},
+{
+"say": "Hold on the scarpet. Sample the patrols: where do the sentries turn, and does any walk reach the north lane?",
+"do": {
+"type": "wait"
+},
+"wait": 3.0
+},
+{
+"say": "Second sample beat for patrol amplitude.",
+"do": {
+"type": "wait"
+},
+"wait": 3.0
+},
+{
+"say": "sentry_0 was heading north at last look; one more beat so it turns and walks AWAY before we break cover. Never dash into an approaching walk.",
+"do": {
+"type": "wait"
+},
+"wait": 3.5
+},
+{
+"say": "Break: sprint the party deep north-east to the gallery landing (26.25, 11.25) \u2014 north of sentry_1's observed reach (z~5-7). Run ON: exposure time beats stamina here; the walks cross the lane we're leaving.",
+"do": {
+"type": "run",
+"id": "aster",
+"on": true
+},
+"wait": 0.2
+},
+{
+"say": "(run toggles for the other two as well)",
+"do": {
+"type": "run",
+"id": "peris",
+"on": true
+},
+"wait": 0.1
+},
+{
+"say": "",
+"do": {
+"type": "run",
+"id": "endo",
+"on": true
+},
+"wait": 0.1
+},
+{
+"say": "The dash itself.",
+"do": {
+"type": "move_all",
+"to": [
+26.25,
+0.5,
+11.25
+]
+},
+"wait": 7.0
+},
+{
+"say": "Walk again \u2014 stamina is a closed bar and room 3 still needs a crossing.",
+"do": {
+"type": "run",
+"id": "aster",
+"on": false
+},
+"wait": 0.2
+},
+{
+"say": "",
+"do": {
+"type": "run",
+"id": "peris",
+"on": false
+},
+"wait": 0.1
+},
+{
+"say": "",
+"do": {
+"type": "run",
+"id": "endo",
+"on": false
+},
+"wait": 0.1
+},
+{
+"say": "Observe from the landing: where is sentry_2's walk, and did anyone get spotted on the dash?",
+"do": {
+"type": "wait"
+},
+"wait": 2.0
+},
+{
+"say": "MISTAKE LOGGED: I extrapolated sentry_1's reach from two samples; its walk + detect + pursuit reached the landing. Spotted x2, struck. LESSON: observe a FULL loop before crossing a room, or buy the window instead of guessing.",
+"do": {
+"type": "wait"
+},
+"wait": 0.3
+},
+{
+"say": "It's in recover \u2014 the disengage window. Break EAST to the Capbage full-hide before it re-acquires. Aster and Peris run; Endo (stamina 37) walks \u2014 a burned bar is a corpse in room 3.",
+"do": {
+"type": "run",
+"id": "aster",
+"on": true
+},
+"wait": 0.1
+},
+{
+"say": "",
+"do": {
+"type": "run",
+"id": "peris",
+"on": true
+},
+"wait": 0.1
+},
+{
+"say": "",
+"do": {
+"type": "move_all",
+"to": [
+45.75,
+0.5,
+9.75
+]
+},
+"wait": 8.0
+},
+{
+"say": "Everyone into the leaf. Walk mode again.",
+"do": {
+"type": "run",
+"id": "aster",
+"on": false
+},
+"wait": 0.1
+},
+{
+"say": "",
+"do": {
+"type": "run",
+"id": "peris",
+"on": false
+},
+"wait": 0.1
+},
+{
+"say": "Hold hidden: let the chase shed and the walks go home.",
+"do": {
+"type": "wait"
+},
+"wait": 5.0
+},
+{
+"say": "LESSON LOGGED: only Aster reads FULL conceal \u2014 the Capbage is a ONE-BODY hide and my slot spread parked the others outside the leaf. A party needs one leaf each, or staggered turns.",
+"do": {
+"type": "wait"
+},
+"wait": 0.3
+},
+{
+"say": "sentry_2 sits at its far WEST post \u2014 the widest window room 3 will offer. The exit shelter is sanctuary: run everyone the 11wu south NOW; at 25hp Aster survives nothing, so exposure time is the only currency that matters.",
+"do": {
+"type": "run",
+"id": "aster",
+"on": true
+},
+"wait": 0.1
+},
+{
+"say": "",
+"do": {
+"type": "run",
+"id": "peris",
+"on": true
+},
+"wait": 0.1
+},
+{
+"say": "",
+"do": {
+"type": "run",
+"id": "endo",
+"on": true
+},
+"wait": 0.1
+},
+{
+"say": "The sprint to sanctuary.",
+"do": {
+"type": "move_all",
+"to": [
+45.75,
+0.5,
+-0.75
+]
+},
+"wait": 5.0
+},
+{
+"say": "Bed down \u2014 the win runs through the shelter rest.",
+"do": {
+"type": "poke",
+"name": "PumpExitShelter",
+"actor": "aster"
+},
+"wait": 1.5
+},
+{
+"say": "LESSON RE-LEARNED (Skumnut already paid for this one): a mid-stride body cannot bed down. Settle a beat, then rest.",
+"do": {
+"type": "wait"
+},
+"wait": 2.5
+},
+{
+"say": "Rest, properly settled this time.",
+"do": {
+"type": "poke",
+"name": "PumpExitShelter",
+"actor": "aster"
+},
+"wait": 2.0
+},
+{
+"say": "LESSON LOGGED: the rest must be committed by a SELECTED character \u2014 this is Peris's fragment and only she is in the active party. My aster pokes were the wrong-actor mistake Dean makes on purpose. Bed down as Peris.",
+"do": {
+"type": "poke",
+"name": "PumpExitShelter",
+"actor": "peris"
+},
+"wait": 2.0
+},
+{
+"say": "Second half of the same lesson: the ACTOR must stand AT the pad (a real click walks you there before firing). Peris steps onto the pad.",
+"do": {
+"type": "move",
+"id": "peris",
+"to": [
+45.75,
+0.5,
+-0.75
+]
+},
+"wait": 2.5
+},
+{
+"say": "Settle, then rest.",
+"do": {
+"type": "wait"
+},
+"wait": 1.5
+},
+{
+"say": "Bed down.",
+"do": {
+"type": "poke",
+"name": "PumpExitShelter",
+"actor": "peris"
+},
+"wait": 2.0
+}
+]

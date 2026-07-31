@@ -195,6 +195,45 @@ before anything ships to web. Web polish items on file: pck size/boot,
 water-surface legibility at MID under compat (emissives clip flat on web),
 menu vs `--preview` arg routing.
 
+## The decision harvest (AI play → persona decision space)
+The third leg beside the solver (optimal) and the personas (biased): the AI
+plays a fragment FOR REAL and every decision is recorded with its rationale
+and the observed state. Harness: `--ai-playthrough` (env: AI_PLAY_FRAGMENT /
+AI_PLAY_DECISIONS / AI_PLAY_TRACE) executes a decision file and dumps a
+rich final observation; the AI plays by GROWING the file — run, read,
+decide, append, rerun (the deterministic prefix makes this honest). Traces
+live in `data/playthroughs/decision_traces/` and distill into DECISION
+NODES that slowly build out the personas' decision space.
+
+First harvest (pump_hall, 2026-07-31 — cleared in 31 decisions, two real
+mistakes, both priced):
+1. **Observe from cover first** — hold at a MEDIUM hide and sample the
+   walks before committing to any route. (Seeds: Skumnut.)
+2. **Two samples are not a loop** — I extrapolated a patrol's reach from
+   two observations and dashed through its detect envelope: spotted twice,
+   75 hp. Patrol reach = walk line + detect + PURSUIT; observe a full loop
+   or buy the window. (Seeds: Skumnut's observation discipline; also the
+   exact failure a chart/read branch exists to sell past.)
+3. **Break on recover** — a striking enemy's recover beat is the disengage
+   window; run THEN. (Seeds: a future tactical node.)
+4. **Exposure beats stamina on watched ground** — run the crossing, walk
+   elsewhere; never burn a member's bar below the next crossing's cost.
+   (Seeds: EazySpeezy/Skumnut pacing.)
+5. **A Capbage hides ONE body** — my slot spread parked two members beside
+   the leaf. A party needs a leaf each or staggered turns. (Also a
+   level-design lint candidate: party fragments want party-sized hides.)
+6. **The far post IS the window** — when a room's owner stands at its far
+   post, go immediately; waiting for "better" spends the window.
+7. **A commit needs a settled, SELECTED body AT the console** — three
+   refusals taught this one rest: mid-stride bodies cannot bed down, the
+   actor must be in the active party, and must stand within the
+   interaction radius. (Already encoded: Skumnut settles; Dean mashes the
+   wrong actor on purpose.)
+
+Next cycle: wire harvested nodes into a LIBRARY-DRIVEN strategist (persona
+policies assembled from decision nodes instead of per-fragment scripts),
+growing the library one AI playthrough at a time.
+
 ## Adding a persona / an enrollment
 One row in the PROBE_PERSONAS table (reflex callable + assert callable) or
 one row in PROBE_FRAGMENTS (fragment id + per-fragment price facts the
