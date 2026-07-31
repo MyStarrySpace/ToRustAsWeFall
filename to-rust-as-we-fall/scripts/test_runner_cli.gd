@@ -525,6 +525,9 @@ func _ready() -> void:
 			"--test-persona-seed-sweep":
 				ran_test = true
 				await _test_persona_seed_sweep()
+			"--test-persona-fragment-sweep":
+				ran_test = true
+				await _test_persona_fragment_sweep()
 			"--test-sprint-gap":
 				ran_test = true
 				await _test_sprint_gap()
@@ -32430,7 +32433,7 @@ func _test_basin_fill_proof() -> void:
 ## (Boundary Break — the world's edges hold). Every choice is tick-hashed: a found bug
 ## replays identically. Enrolled fragments: basin_fill_proof, push_lab.
 const PERSONA_ROSTER := ["spiffing_brit", "dean_takahashi", "twitch_plays", "shesez",
-	"skumnut", "pirate_software", "prod", "eazy_speezy"]
+	"skumnut", "pirate_software", "prod", "eazy_speezy", "dsp"]
 ## Personas whose reflexes only make sense on certain fragments (a souls runner needs a
 ## rhythm to memorize; a speedrunner needs a win to race). Absent = runs everywhere.
 const PERSONA_FRAGMENTS := {
@@ -32453,7 +32456,7 @@ func _test_persona_probe() -> void:
 ## edges triad plays a FRESH generated stretch per seed. The main probe's seed 431 is the
 ## canary; this widens the net — generation bugs hide in the seeds nobody booted.
 const PERSONA_SWEEP_SEEDS := [7, 101, 202, 909, 1337]
-const PERSONA_SWEEP_ROSTER := ["spiffing_brit", "twitch_plays", "shesez"]
+const PERSONA_SWEEP_ROSTER := ["spiffing_brit", "twitch_plays", "shesez", "dsp"]
 
 func _test_persona_seed_sweep() -> void:
 	_test_name = "Persona Seed Sweep"
@@ -32468,6 +32471,36 @@ func _test_persona_seed_sweep() -> void:
 			await _persona_probe_run("zone_transition_lab", str(persona), cfg,
 				"(seed %d)" % int(seed_v))
 	print("  [wall] _test_persona_seed_sweep: %d ms" % (Time.get_ticks_msec() - wall0))
+
+## THE REGISTRY SWEEP (not in --test-all — the breadth net): every data fragment in
+## PREVIEW_ENTRIES is probed by the exploit/wreckage/edges triad with ZERO per-fragment code —
+## the exploit pass derives its probes from the fragment's own registries (interactables,
+## assists, channels), so REGISTERING a fragment is what enrolls it.
+func _test_persona_fragment_sweep() -> void:
+	_test_name = "Persona Fragment Sweep"
+	var wall0 := Time.get_ticks_msec()
+	var deep_covered := ["basin_fill_proof", "push_lab", "channels_wash_intro", "zone_transition_lab"]
+	var swept := 0
+	for entry_v in FragmentPreviewScript.PREVIEW_ENTRIES:
+		var entry := entry_v as Dictionary
+		if str(entry.get("chunk", "")) != "data_fragment":
+			continue
+		var eid := str(entry.get("id", ""))
+		if eid == "" or deep_covered.has(eid):
+			continue
+		swept += 1
+		for persona in PERSONA_SWEEP_ROSTER:
+			await _persona_probe_run(eid, str(persona))
+	print("  [persona] fragment sweep covered %d registry fragments" % swept)
+	_assert_true(swept >= 5, "the registry sweep found the data-fragment roster (%d)" % swept)
+	print("  [wall] _test_persona_fragment_sweep: %d ms" % (Time.get_ticks_msec() - wall0))
+
+## The first standing party member — the generic poker/rider for registry-derived probes.
+func _persona_first_up(gs, party: Array) -> String:
+	for cid_v in party:
+		if gs.characters.has(str(cid_v)) and not gs.is_downed(str(cid_v)):
+			return str(cid_v)
+	return str(party[0]) if not party.is_empty() else "aster"
 
 ## Completion across chunk contracts: data fragments publish `complete`, coded chunks a phase,
 ## generated stretches a rested shelter at the end of a complete route.
@@ -32566,6 +32599,8 @@ func _persona_probe_run(frag_id: String, persona: String, config := {}, label_su
 			invariants_held = await _persona_prod(inst, gs, chunk, grid, party, interactables, crates, pseed, notes)
 		"eazy_speezy":
 			invariants_held = await _persona_eazy(inst, gs, chunk, grid, party, notes)
+		"dsp":
+			invariants_held = await _persona_dsp(inst, gs, chunk, grid, party, pseed, notes)
 
 	# Soak past every persona: the world must still tick and hold AFTER the abuse stops.
 	var elapsed := float(sched.get_current_tick()) - tick0
@@ -32585,10 +32620,11 @@ func _persona_spiffing_brit(inst, gs, chunk, grid, party: Array, crates: Array, 
 	var ok := true
 	if frag_id == "channels_wash_intro":
 		ok = await _persona_spiffing_wash_intro(inst, gs, chunk, party, notes)
-	elif frag_id == "zone_transition_lab":
-		# Generated content is built from reusable one-shots: the DOUBLE-DIP sweep pokes every
-		# interactable twice and demands the second poke never pays a second time (the synchronous
-		# stat books around each poke; authored sanctuary/rest surfaces are canon free and skipped).
+	else:
+		# THE GENERIC EXPLOIT PASS — derived from the fragment's own registries, so every
+		# registered fragment is probed with ZERO per-fragment code:
+		# (a) DOUBLE-DIP: poke every interactable twice; the second synchronous poke may never
+		#     pay again (authored sanctuary/rest surfaces are canon free and skipped).
 		var its_raw: Variant = chunk.get("_interactables")
 		var sweep: Array = (its_raw as Array).slice(0, 12) if its_raw is Array else []
 		for it in sweep:
@@ -32609,6 +32645,46 @@ func _persona_spiffing_brit(inst, gs, chunk, grid, party: Array, crates: Array, 
 					var key := "%s/%s" % [str(cid_v), stat_name]
 					if float(gs.get_stat(str(cid_v), stat_name)) > float(books[key]) + 0.01:
 						notes.append("double-dip: %s paid %s twice" % [it_name, key])
+						ok = false
+		# (b) COOLDOWN RATE: every registered read console refuses a rapid second arm.
+		if chunk.has_method("assists"):
+			for assist in (chunk.assists() as Array):
+				if not is_instance_valid(assist):
+					continue
+				var arms2: Array = []
+				assist.read_logged.connect(func(t: float): arms2.append(t))
+				for _s in range(4):
+					_persona_poke(assist, str(assist.get("required_character")))
+					inst.headless_advance(0.25)
+				if arms2.size() > 1:
+					notes.append("%s armed %d times inside one cooldown" % [str(assist.get("name")), arms2.size()])
+					ok = false
+				assist.reset_assist()
+		# (c) THE WASH IS NEVER A GIFT: stand in every registered channel's footprint; the
+		# catch must DISPLACE the body and never enrich it — twice (no refractory free pass).
+		if chunk.has_method("channels"):
+			for ch in (chunk.channels() as Array).slice(0, 2):
+				if not is_instance_valid(ch):
+					continue
+				for round_i in range(2):
+					var ride_pos := Vector3(float(ch.get("_x")), 0.5, float(ch.get("_z_center")))
+					gs.snap_character_to("aster", ride_pos)
+					var hp_ride := float(gs.get_stat("aster", "hp"))
+					var caught2 := 0.0
+					while caught2 < 8.0 and not gs.is_external_traversal_active("aster"):
+						inst.headless_advance(0.25)
+						caught2 += 0.25
+					if not gs.is_external_traversal_active("aster"):
+						continue   # the cadence never flooded this footprint inside the window
+					var landed2 := 0.0
+					while landed2 < 10.0 and gs.is_external_traversal_active("aster"):
+						inst.headless_advance(0.25)
+						landed2 += 0.25
+					if gs.get_position("aster").distance_to(ride_pos) < 1.0:
+						notes.append("%s round %d: the wash caught a body and put it back" % [str(ch.get("_tag")), round_i])
+						ok = false
+					if float(gs.get_stat("aster", "hp")) > hp_ride + 0.01:
+						notes.append("%s round %d: riding the wash PAID hp" % [str(ch.get("_tag")), round_i])
 						ok = false
 	if chunk.has_method("basins") and not (chunk.basins() as Array).is_empty():
 		var basin = chunk.basins()[0]
@@ -33183,6 +33259,132 @@ func _persona_eazy(inst, gs, chunk, grid, party: Array, notes: Array) -> bool:
 			% [clear_tick - t0, first_mid - t0])
 	return ok and _persona_beat_ok(gs, grid, party, notes)
 
+## DSP: the SCREEN-SPACE chaos player — never the happy path. Unlike every other persona he
+## plays the INPUT layer, not the data layer: raw synthetic mouse/keyboard through the real
+## event pipeline (hover churn, left/right/shift/double clicks and drags on the HUD band, panel
+## edges, exact corners, the world), plus paired ESC pause-menu chaos. The bugs he hunts live
+## in odd clicks and UI seams, where commands never go. The assert: the UI layer cannot wedge
+## the game — the world keeps ticking, the tree is never left paused, bodies and stats stay
+## legal, and a settle leaves no stuck state.
+func _persona_dsp(inst, gs, chunk, grid, party: Array, pseed: int, notes: Array) -> bool:
+	var ok := true
+	var vs: Vector2 = inst.get_viewport().get_visible_rect().size \
+		if inst.get_viewport() != null else Vector2(1152, 648)
+	# The odd-click palette: HUD band, help panel, overlay stack, dialogue band, exact corners,
+	# screen edges, and honest mid-world — everywhere a real mouse wanders.
+	var spots: Array = [
+		Vector2(vs.x * 0.5, vs.y * 0.93), Vector2(vs.x * 0.08, vs.y * 0.95),
+		Vector2(vs.x * 0.9, vs.y * 0.93), Vector2(vs.x * 0.12, vs.y * 0.1),
+		Vector2(vs.x * 0.92, vs.y * 0.12), Vector2(vs.x * 0.5, vs.y * 0.82),
+		Vector2(0, 0), Vector2(vs.x - 1, vs.y - 1), Vector2(vs.x - 1, 0), Vector2(0, vs.y - 1),
+		Vector2(vs.x * 0.3, vs.y * 0.5), Vector2(vs.x * 0.7, vs.y * 0.45),
+		Vector2(vs.x * 0.55, vs.y * 0.6), Vector2(vs.x * 0.5, 1),
+	]
+	var keys: Array = [KEY_SPACE, KEY_TAB, KEY_R, KEY_SHIFT, KEY_C, KEY_G, KEY_HOME]
+	for beat in range(48):
+		var now := float(inst.get("_scheduler").get_current_tick())
+		var h := _persona_hash(now, pseed, beat)
+		match h % 5:
+			0, 1:
+				# hover churn then a click (left / right / shift-click / double)
+				var pos: Vector2 = spots[h % spots.size()]
+				var mm := InputEventMouseMotion.new()
+				mm.position = pos
+				mm.global_position = pos
+				Input.parse_input_event(mm)
+				await get_tree().process_frame
+				var mb := InputEventMouseButton.new()
+				mb.button_index = MOUSE_BUTTON_LEFT if (h / 7) % 2 == 0 else MOUSE_BUTTON_RIGHT
+				mb.shift_pressed = (h / 13) % 3 == 0
+				mb.double_click = (h / 17) % 5 == 0
+				mb.position = pos
+				mb.global_position = pos
+				mb.pressed = true
+				Input.parse_input_event(mb)
+				await get_tree().process_frame
+				var up := mb.duplicate() as InputEventMouseButton
+				up.pressed = false
+				up.double_click = false
+				Input.parse_input_event(up)
+				await get_tree().process_frame
+			2:
+				# a drag: press, wander across two spots, release (marquee / pan chaos)
+				var from: Vector2 = spots[h % spots.size()]
+				var to: Vector2 = spots[(h / 3) % spots.size()]
+				var down := InputEventMouseButton.new()
+				down.button_index = MOUSE_BUTTON_LEFT
+				down.position = from
+				down.global_position = from
+				down.pressed = true
+				Input.parse_input_event(down)
+				await get_tree().process_frame
+				var drag := InputEventMouseMotion.new()
+				drag.position = (from + to) * 0.5
+				drag.global_position = drag.position
+				drag.button_mask = MOUSE_BUTTON_MASK_LEFT
+				Input.parse_input_event(drag)
+				await get_tree().process_frame
+				var rel := InputEventMouseButton.new()
+				rel.button_index = MOUSE_BUTTON_LEFT
+				rel.position = to
+				rel.global_position = to
+				rel.pressed = false
+				Input.parse_input_event(rel)
+				await get_tree().process_frame
+			3:
+				# key mash: a game action key. SPACE (pause) is mashed as a PAIR — both toggle
+				# directions get exercised without stranding the run frozen.
+				var key := int(keys[h % keys.size()])
+				for _rep in range(2 if key == KEY_SPACE else 1):
+					var kd := InputEventKey.new()
+					kd.physical_keycode = key as Key
+					kd.pressed = true
+					Input.parse_input_event(kd)
+					await get_tree().process_frame
+					var ku := InputEventKey.new()
+					ku.physical_keycode = key as Key
+					ku.pressed = false
+					Input.parse_input_event(ku)
+					await get_tree().process_frame
+			4:
+				# the pause menu, opened and closed in one beat (no stranded pause)
+				for _press in range(2):
+					var ed := InputEventKey.new()
+					ed.physical_keycode = KEY_ESCAPE
+					ed.pressed = true
+					Input.parse_input_event(ed)
+					await get_tree().process_frame
+					var eu := InputEventKey.new()
+					eu.physical_keycode = KEY_ESCAPE
+					eu.pressed = false
+					Input.parse_input_event(eu)
+					await get_tree().process_frame
+		inst.headless_advance(0.35)
+		if beat % 8 == 7 and not _persona_beat_ok(gs, grid, party, notes):
+			ok = false
+			break
+	# The storm ends like a real session: hands off the keyboard, game resumed. A click that
+	# landed on the HUD's PAUSE button is legitimate play, so resume through the same HUD lever
+	# rather than calling a stranded toggle a failure.
+	if get_tree().paused:
+		notes.append("the UI storm left the TREE paused (pause menu leak)")
+		get_tree().paused = false
+		ok = false
+	var hud: Variant = inst.get("_hud")
+	if hud != null and is_instance_valid(hud) and hud.has_method("set_paused"):
+		hud.set_paused(false)
+	# A SPACE that landed as a gameplay-lane pause must resume too — the tree/HUD levers do not
+	# own the EventScheduler. A run that ends with the gameplay clock paused reads as "the sim
+	# stopped ticking"; a real player pressing SPACE again resumes, so mirror that.
+	var sched2: Variant = inst.get("_scheduler")
+	if sched2 != null and sched2.has_method("is_paused") and bool(sched2.call("is_paused")):
+		if sched2.has_method("resume"):
+			sched2.call("resume")
+	for cid_v in party:
+		gs.command_stop(str(cid_v))
+	inst.headless_advance(5.0)
+	return ok and _persona_beat_ok(gs, grid, party, notes)
+
 ## Shesez: probes every edge the world has; the edges must hold.
 func _persona_shesez(inst, gs, chunk, grid, party: Array, pseed: int, notes: Array) -> bool:
 	var ok := true
@@ -33200,10 +33402,15 @@ func _persona_shesez(inst, gs, chunk, grid, party: Array, pseed: int, notes: Arr
 			0:
 				gs.command_move_to_pos(cid, probes[_persona_hash(now, pseed, 41) % probes.size()])
 			1:
-				gs.command_move_cross_level(cid, Vector2i(
-					_persona_hash(now, pseed, 43) % (grid.width + 8) - 4,
-					_persona_hash(now, pseed, 47) % (grid.height + 8) - 4),
-					_persona_hash(now, pseed, 53) % 3)
+				# Cross-level probing only means anything on a grid; a gridless fragment gets a
+				# second world-space edge poke instead (Shesez still exercises the move path).
+				if grid != null:
+					gs.command_move_cross_level(cid, Vector2i(
+						_persona_hash(now, pseed, 43) % (grid.width + 8) - 4,
+						_persona_hash(now, pseed, 47) % (grid.height + 8) - 4),
+						_persona_hash(now, pseed, 53) % 3)
+				else:
+					gs.command_move_to_pos(cid, probes[_persona_hash(now, pseed, 43) % probes.size()])
 			2:
 				var edge := Vector3(
 					float(_persona_hash(now, pseed, 59) % 40) - 10.0, 0.0,

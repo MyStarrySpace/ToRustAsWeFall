@@ -46,6 +46,28 @@ any exploit that pays until it stops paying.
   immunity across windows); knowledge surfaces never mutate stats;
   completion cannot occur before the earliest legal window. (Sanctuary rest
   heals are CANON free — the exploit scan never flags authored sanctuary.)
+- **Scales by registry, not by hand:** his generic pass DERIVES its probes
+  from the fragment's own registries — DOUBLE-DIP every interactable (second
+  synchronous poke must never re-pay), COOLDOWN-rate every `assists()` read
+  console, RIDE every `channels()` footprint twice (the wash must displace,
+  never enrich). Registering a fragment enrolls it; no per-fragment code.
+  (The wash intro keeps a hand-authored pass for its ledger-pending items.)
+
+### DSP — the screen-space chaos player
+Named for the streamer legendary for blaming the game — and for triggering
+bugs by doing everything except the intended thing. Alone among the roster
+he plays the INPUT layer, not the data layer: raw synthetic mouse and
+keyboard through the REAL event pipeline. Odd clicks (left/right/shift/
+double), drags across the HUD band and panel seams, exact screen corners
+and edges, key mashing, and ESC pause-menu spam. This is the persona for
+the director's law: *a lot of bugs come from clicking in odd places,
+dialogue, UI — not the happy path.*
+- **The assert:** the UI layer cannot WEDGE the game. The tree is never left
+  paused (a pause-menu leak is a bug; a player-chosen SPACE pause is not —
+  resume it and continue), bodies and stats stay legal through the storm,
+  and a settle leaves no stuck state. Complements the windowed
+  `--test-player-contract` sweep (which pixel-verifies hover/click on
+  desktop); DSP runs headless so it rides in the bulk probe.
 
 ### DeanTakahashi — the fumbler
 No strategy, pure reaction (ported from the chase roster to the systems
@@ -129,12 +151,19 @@ hunter).
   level allows (moving/carried bodies exempt until they land).
 - Time flows: the gameplay scheduler tick strictly advances.
 
-## The seed sweep
-`--test-persona-seed-sweep` (NOT in --test-all — run before touching
-generation): the exploit/wreckage/edges triad (SpiffingBrit, TwitchPlays,
-Shesez) plays a FRESH generated stretch per seed (5 seeds, ~20s). The main
-probe's seed 431 is the canary; generation bugs hide in the seeds nobody
-booted.
+## The two breadth sweeps (scale without per-fragment code)
+Both are OUTSIDE --test-all (they're the wide net, not the fast feedback
+loop) and both reuse the generic registry-derived probes, so neither needs
+authoring per target:
+- `--test-persona-seed-sweep` — the triad+DSP play a FRESH generated stretch
+  per seed (5 seeds, ~20s). Run before touching generation; the main probe's
+  seed 431 is the canary, and generation bugs hide in the seeds nobody
+  booted.
+- `--test-persona-fragment-sweep` — enumerates EVERY `data_fragment` entry
+  in `PREVIEW_ENTRIES` and probes each with the triad+DSP. Because the
+  exploit pass reads the fragment's registries, a newly registered data
+  fragment is swept with zero new test code. This is the scalability
+  guarantee: coverage grows with the content, not with the test file.
 
 ## Sufficiency: headless personas vs a real browser playthrough
 Calibrated 2026-07-31 by driving the basin in Chrome (wasm export,
