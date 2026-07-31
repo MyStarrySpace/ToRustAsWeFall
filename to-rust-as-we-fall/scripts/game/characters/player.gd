@@ -714,7 +714,11 @@ func _update_push_preview(hit: Vector3) -> void:
 	if _path_preview != null and route.size() >= 2:
 		_path_preview.set_explicit_path(route, 0)
 	# Ghosts at the END state: the object on the target cell, the character on its final push cell.
+	# The object ghost is the CRATE ITSELF, translucent — its real mesh, not a placeholder box.
 	_ensure_push_ghosts()
+	var src_mesh := _push_object_mesh(_push_obj_id)
+	if src_mesh != null and _push_ghost_obj.mesh != src_mesh:
+		_push_ghost_obj.mesh = src_mesh
 	_push_ghost_obj.global_position = route[route.size() - 1] + Vector3(0, 0.45, 0)
 	var char_end: Vector3 = game_state.grid.grid_to_world(
 		(steps[steps.size() - 1] as Dictionary)["obj_from"] if not steps.is_empty() else game_state.grid.world_to_grid(global_position),
@@ -754,6 +758,19 @@ func _ensure_push_ghosts() -> void:
 	_push_ghost_obj.top_level = true
 	_push_ghost_obj.visible = false
 	add_child(_push_ghost_obj)
+
+## The wrapped mesh of a pushable object, found via its PushTarget (group "push_targets").
+## Null when no wrapper exists — the ghost keeps its default box.
+func _push_object_mesh(target_obj_id: String) -> Mesh:
+	if not is_inside_tree():
+		return null
+	for t in get_tree().get_nodes_in_group("push_targets"):
+		if str(t.get("obj_id")) != target_obj_id:
+			continue
+		var wrapped := t.get_parent() as MeshInstance3D
+		if wrapped != null and wrapped.mesh != null:
+			return wrapped.mesh
+	return null
 
 func _ghost_material(tint: Color) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()

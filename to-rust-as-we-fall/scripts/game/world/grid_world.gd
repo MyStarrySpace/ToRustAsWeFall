@@ -1354,8 +1354,11 @@ const _PUSH_DIRS: Array[Vector2i] = [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0
 ## Plan pushing the object from obj_cell to target_cell with the character starting at char_cell.
 ## Returns {"steps": [{"dir", "obj_from", "obj_to", "char_push_cell"}...]} — steps in order, where
 ## char_push_cell is where the character stands to make that push — or {} when impossible.
-func plan_push(obj_cell: Vector2i, char_cell: Vector2i, target_cell: Vector2i, level := 0) -> Dictionary:
-	if not is_walkable(target_cell.x, target_cell.y, {}, {}, level):
+## `blocked` is an extra Vector2i->bool obstacle set (other pushable objects' cells — a crate is an
+## obstacle to a crate): the object may not enter those cells and the character may not stand there.
+func plan_push(obj_cell: Vector2i, char_cell: Vector2i, target_cell: Vector2i, level := 0,
+		blocked: Dictionary = {}) -> Dictionary:
+	if not is_walkable(target_cell.x, target_cell.y, {}, {}, level) or blocked.has(target_cell):
 		return {}
 	if obj_cell == target_cell:
 		return {"steps": []}
@@ -1374,11 +1377,11 @@ func plan_push(obj_cell: Vector2i, char_cell: Vector2i, target_cell: Vector2i, l
 		for d in _PUSH_DIRS:
 			var obj_to: Vector2i = obj + d
 			var push_cell: Vector2i = obj - d
-			if not is_walkable(obj_to.x, obj_to.y, {}, {}, level):
+			if not is_walkable(obj_to.x, obj_to.y, {}, {}, level) or blocked.has(obj_to):
 				continue
-			if not is_walkable(push_cell.x, push_cell.y, {}, {}, level):
+			if not is_walkable(push_cell.x, push_cell.y, {}, {}, level) or blocked.has(push_cell):
 				continue
-			if not _char_can_reach(chr, push_cell, obj, level):
+			if not _char_can_reach(chr, push_cell, obj, level, blocked):
 				continue
 			var nkey := "%d,%d|%d,%d" % [obj_to.x, obj_to.y, d.x, d.y]
 			if came.has(nkey):
@@ -1391,10 +1394,12 @@ func plan_push(obj_cell: Vector2i, char_cell: Vector2i, target_cell: Vector2i, l
 	return {}
 
 ## Can the character walk from `from` to `to` with the object's cell treated as a wall?
-func _char_can_reach(from: Vector2i, to: Vector2i, obj_cell: Vector2i, level: int) -> bool:
+## `blocked` extends the walls (other pushable objects — you cannot walk through a crate).
+func _char_can_reach(from: Vector2i, to: Vector2i, obj_cell: Vector2i, level: int,
+		blocked: Dictionary = {}) -> bool:
 	if from == to:
 		return true
-	if to == obj_cell:
+	if to == obj_cell or blocked.has(to):
 		return false
 	var frontier: Array[Vector2i] = [from]
 	var seen := {from: true}
@@ -1404,7 +1409,7 @@ func _char_can_reach(from: Vector2i, to: Vector2i, obj_cell: Vector2i, level: in
 			var n: Vector2i = c + d
 			if n == to:
 				return true
-			if seen.has(n) or n == obj_cell:
+			if seen.has(n) or n == obj_cell or blocked.has(n):
 				continue
 			if not is_walkable(n.x, n.y, {}, {}, level):
 				continue

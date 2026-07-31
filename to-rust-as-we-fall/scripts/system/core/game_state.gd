@@ -1013,9 +1013,11 @@ func command_walk_path(id: String, path: Array[Vector3]) -> void:
 	full_path.append_array(path)
 	_start_movement(id, full_path)
 
-## Halt movement at current interpolated position.
+## Halt movement at current interpolated position. Stopping also abandons an in-flight push plan
+## (the crate stays wherever its last completed shove left it).
 func command_stop(id: String) -> void:
 	_cross_level_plan.erase(id)
+	_push_plans.erase(id)
 	_emit(GameEvent.KIND_STOP, {"id": id})
 	_do_stop(id)
 
@@ -5422,9 +5424,26 @@ func plan_push_for(char_id: String, obj_id: String, target_cell: Vector2i) -> Di
 	var plan := grid.plan_push(
 		grid.world_to_grid(get_physics_position(obj_id)),
 		grid.world_to_grid(get_position(char_id)),
-		target_cell, get_character_level(char_id))
+		target_cell, get_character_level(char_id),
+		_pushable_cells_excluding(obj_id))
 	PerformanceTrace.end(&"nav", &"game_state.plan_push", perf_started, char_id, (plan.get("steps", []) as Array).size())
 	return plan
+
+## Cells occupied by every OTHER pushable object. Pushables carry no standing grid blocker (that
+## would make routing detour around them), so the push planner receives them as an explicit
+## obstacle set: a crate is an obstacle to a crate — the plan routes around it or refuses.
+func _pushable_cells_excluding(obj_id: String) -> Dictionary:
+	var blocked := {}
+	if not grid:
+		return blocked
+	for other_id_v in physics_objects.keys():
+		var other_id := str(other_id_v)
+		if other_id == obj_id:
+			continue
+		if not bool((physics_objects[other_id_v] as Dictionary).get("pushable", false)):
+			continue
+		blocked[grid.world_to_grid(get_physics_position(other_id))] = true
+	return blocked
 
 ## Push the object to target_cell: the character walks behind it and shoves one cardinal cell at a
 ## time (re-positioning between direction changes), exactly the planner's step list. ONE logged
@@ -5493,6 +5512,11 @@ func _push_shove(char_id: String) -> void:
 		return
 	var step: Dictionary = (plan["steps"] as Array)[plan["index"]]
 	var obj_id: String = plan["obj_id"]
+	# The plan was drawn against plan-time crate positions; if another crate has since arrived on
+	# this step's destination, the shove is physically impossible — the push stops here.
+	if _pushable_cells_excluding(obj_id).has(step["obj_to"] as Vector2i):
+		_push_plans.erase(char_id)
+		return
 	var obj: Dictionary = physics_objects[obj_id]
 	var from: Vector3 = get_physics_position(obj_id)
 	var to: Vector3 = grid.grid_to_world(step["obj_to"], get_character_level(char_id))

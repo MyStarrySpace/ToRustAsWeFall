@@ -7,6 +7,8 @@ extends "res://scripts/scene_chunks/scene_chunk.gd"
 ##      corridor (the character stays behind it the whole way).
 ##   C) a hallway with a BEND — pushing around the corner is IMPOSSIBLE: there is no cell for the
 ##      character to stand on to shove in the new direction (classic Sokoban dead corner).
+##   D) a CRATE PAIR — a second crate is an OBSTACLE: the plan must route around it (never through
+##      its cell, never standing in it), and its own cell is a refused destination.
 
 const PARTY_IDS := ["aster", "peris", "endo"]
 
@@ -24,6 +26,11 @@ const HALL_TARGET_CELL := Vector2i(21, 2)
 # Zone C: corridor z=8 x 11..15, then a 1-wide vertical leg x=15 z 9..12 (the bend at 15,8).
 const CRATE_BEND_CELL := Vector2i(13, 8)
 const BEND_IMPOSSIBLE_CELL := Vector2i(15, 11)
+# Zone D: a 6x5 room (x 1..6, z 9..13) with TWO crates in line — b sits directly east of a, so the
+# straight push a->east must route around b (or refuse b's own cell as a destination).
+const CRATE_PAIR_A_CELL := Vector2i(3, 11)
+const CRATE_PAIR_B_CELL := Vector2i(4, 11)
+const PAIR_TARGET_CELL := Vector2i(5, 11)
 
 var _crate_meshes := {}  # obj_id -> MeshInstance3D (visual synced from the data layer)
 
@@ -35,16 +42,20 @@ func _build_chunk() -> void:
 	_add_floor(self, Vector3(22.5, -0.05, 3.0), Vector3(5.0, 0.1, 4.0), Color(0.09, 0.12, 0.11))    # B far room
 	_add_floor(self, Vector3(13.5, -0.05, 8.5), Vector3(5.0, 0.1, 1.0), Color(0.1, 0.1, 0.12))      # C horizontal leg
 	_add_floor(self, Vector3(15.5, -0.05, 11.0), Vector3(1.0, 0.1, 4.0), Color(0.1, 0.1, 0.12))     # C vertical leg
+	_add_floor(self, Vector3(4.0, -0.05, 11.5), Vector3(6.0, 0.1, 5.0), Color(0.09, 0.11, 0.13))    # D pair room
 	_add_label(self, "OPEN ROOM", Vector3(5.0, 1.6, 5.0), Color(0.6, 0.8, 0.7))
 	_add_label(self, "HALLWAY PUSH", Vector3(17.0, 1.6, 2.5), Color(0.6, 0.8, 0.7))
 	_add_label(self, "DEAD BEND", Vector3(14.0, 1.6, 9.0), Color(0.8, 0.6, 0.6))
+	_add_label(self, "CRATE PAIR", Vector3(4.0, 1.6, 11.5), Color(0.6, 0.8, 0.7))
 	_build_crates()
 
 func _build_crates() -> void:
 	var gs = _get_game_state()
 	if gs == null:
 		return
-	for entry in [["crate_open", CRATE_OPEN_CELL], ["crate_hall", CRATE_HALL_CELL], ["crate_bend", CRATE_BEND_CELL]]:
+	for entry in [["crate_open", CRATE_OPEN_CELL], ["crate_hall", CRATE_HALL_CELL],
+			["crate_bend", CRATE_BEND_CELL], ["crate_pair_a", CRATE_PAIR_A_CELL],
+			["crate_pair_b", CRATE_PAIR_B_CELL]]:
 		var obj_id: String = entry[0]
 		var cell: Vector2i = entry[1]
 		var world := Vector3(float(cell.x) + 0.5, 0.0, float(cell.y) + 0.5)
@@ -87,6 +98,7 @@ func get_grid_data() -> Dictionary:
 			{"min": [20.0, 1.0], "max": [24.9, 5.9]},   # B: far room
 			{"min": [11.0, 8.0], "max": [15.9, 8.9]},   # C: horizontal leg (z=8)
 			{"min": [15.0, 9.0], "max": [15.9, 12.9]},  # C: vertical leg (x=15)
+			{"min": [1.0, 9.0], "max": [6.9, 13.9]},    # D: crate-pair room
 		],
 	}
 
@@ -109,13 +121,16 @@ func get_preview_anchors() -> Dictionary:
 		"crate_bend": Vector3(float(CRATE_BEND_CELL.x) + 0.5, 0.0, float(CRATE_BEND_CELL.y) + 0.5),
 		"hall_target": Vector3(float(HALL_TARGET_CELL.x) + 0.5, 0.0, float(HALL_TARGET_CELL.y) + 0.5),
 		"bend_impossible": Vector3(float(BEND_IMPOSSIBLE_CELL.x) + 0.5, 0.0, float(BEND_IMPOSSIBLE_CELL.y) + 0.5),
+		"crate_pair_a": Vector3(float(CRATE_PAIR_A_CELL.x) + 0.5, 0.0, float(CRATE_PAIR_A_CELL.y) + 0.5),
+		"crate_pair_b": Vector3(float(CRATE_PAIR_B_CELL.x) + 0.5, 0.0, float(CRATE_PAIR_B_CELL.y) + 0.5),
+		"pair_target": Vector3(float(PAIR_TARGET_CELL.x) + 0.5, 0.0, float(PAIR_TARGET_CELL.y) + 0.5),
 	}
 
 func get_preview_state() -> Dictionary:
 	var gs = _get_game_state()
 	var crates := {}
 	if gs != null:
-		for obj_id in ["crate_open", "crate_hall", "crate_bend"]:
+		for obj_id in ["crate_open", "crate_hall", "crate_bend", "crate_pair_a", "crate_pair_b"]:
 			if gs.physics_objects.has(obj_id):
 				var p: Vector3 = gs.get_physics_position(obj_id)
 				crates[obj_id] = [p.x, p.z]

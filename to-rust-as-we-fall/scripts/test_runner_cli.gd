@@ -516,6 +516,9 @@ func _ready() -> void:
 			"--test-capbage-retrieve":
 				ran_test = true
 				await _test_capbage_retrieve()
+			"--test-basin-fill-proof":
+				ran_test = true
+				await _test_basin_fill_proof()
 			"--test-sprint-gap":
 				ran_test = true
 				await _test_sprint_gap()
@@ -1400,6 +1403,7 @@ func _run_all_tests() -> void:
 	await _test_blind_floor()
 	await _test_conceal_stops_strikes()
 	await _test_capbage_retrieve()
+	await _test_basin_fill_proof()
 	await _test_sprint_gap()
 	await _test_run_stamina_budget()
 	await _test_charge_whiff()
@@ -32120,6 +32124,193 @@ func _test_conceal_stops_strikes() -> void:
 ## refused while loaded), and hauls him home past a pursuer she cannot outpace loaded — the mid-field
 ## Capbage is the mandatory break (carrier + carried both conceal FULL, the chase sheds). Home ground
 ## revives him (ally near). Negative: hauling the open lane gets the carrier STRUCK.
+## THE BALANCING BASIN — Phase 1 proving fragment (docs/BALANCING_BASIN.md). Proves the
+## BasinWater kit verb: one bowl, three maps (LOW floor / MID float road / HIGH decks-only)
+## driven by a NON-UNIFORM rota (short-short-LONG windows, pure data, analytic boundaries);
+## ONE waterline predicate for party and dweller alike (the Channel sweep transaction is the
+## only consequence path); dweller eviction on the rise telegraph; the first fill's
+## demonstration kill; the raft-settle strand; and the fail-forward sweep to the outfall.
+func _test_basin_fill_proof() -> void:
+	_test_name = "Basin Fill Proof"
+	var wall0 := Time.get_ticks_msec()
+	var inst = await _instantiate_preview_chunk_and_wait("basin_fill_proof", 6)
+	if inst == null:
+		_assert_true(false, "basin_fill_proof instantiates")
+		return
+	var chunk = inst._active_chunk
+	var gs = inst._game_state
+	var a: Dictionary = chunk.get_preview_anchors()
+	var basins: Array = chunk.basins()
+	_assert_equals(basins.size(), 1, "the basin spawned from data")
+	if basins.is_empty():
+		inst.queue_free(); await get_tree().process_frame; return
+	var basin = basins[0]
+	inst.headless_advance(0.15)
+
+	# (1) ROTA ARITHMETIC — window truth computed from the DATA, never sampled.
+	var st: Dictionary = basin.get_state()
+	var rota: Array = st["rota"]
+	var lows: Array = []
+	for e in rota:
+		if int((e as Dictionary)["level"]) == 0:
+			lows.append(float((e as Dictionary)["dwell"]))
+	_assert_true(lows.size() == 3 and lows[0] > lows[1] and lows[2] > lows[0],
+		"the LOW windows are short-short-LONG (%s)" % str(lows))
+	_assert_true(is_equal_approx(float(st["cycle_length"]), 52.0),
+		"the rota cycle is the sum of its dwells (%.1f)" % float(st["cycle_length"]))
+	_assert_equals(int(st["state"]), 0, "the basin opens LOW")
+	var first_fill_in := float(st["next_change_in"])
+	_assert_true(first_fill_in > 6.0 and first_fill_in <= 8.1,
+		"the first fill sits on the analytic clock (%.1fs)" % first_fill_in)
+
+	# (2) THE THREE MAPS as per-level walkability at LOW.
+	var grid = gs.grid
+	_assert_true(grid.is_walkable(5, 4, {}, {}, 0), "LOW: the bowl floor is walkable (level 0)")
+	_assert_true(not grid.is_walkable(7, 4, {}, {}, 1), "LOW: the float road is closed (level 1)")
+	_assert_true(grid.is_walkable(7, 0, {}, {}, 1), "the catwalk deck is always open (level 1)")
+	_assert_true(grid.is_walkable(14, 4, {}, {}, 0), "the outfall shelf is safe ground (level 0)")
+
+	# (3) NAIVE FAILS #1: at LOW there is NO route from the catwalk to the balcony shelter.
+	var from_cell: Vector2i = grid.world_to_grid(a["float_entry"])
+	var to_cell: Vector2i = grid.world_to_grid(a["balcony"])
+	var low_path: Array = grid.find_multi_level_path(from_cell, 1, to_cell, 1)
+	_assert_true(low_path.is_empty(), "LOW: the balcony is unreachable — the floats are down")
+
+	# Park the party safe on the catwalk for the first fill (the data drive skips the opening climb).
+	for cid in ["aster", "peris", "endo"]:
+		gs.set_character_level(cid, 1)
+	gs.snap_character_to("aster", Vector3(3.75, 2.7, -0.75))
+	gs.snap_character_to("peris", Vector3(5.25, 2.7, -0.75))
+	gs.snap_character_to("endo", Vector3(6.75, 2.7, -0.75))
+	var foe_a = null
+	var foe_b = null
+	for e in chunk.enemies():
+		if str(e.char_id) == "dweller_a":
+			foe_a = e
+		elif str(e.char_id) == "dweller_b":
+			foe_b = e
+	_assert_true(foe_a != null and foe_b != null, "both dwellers graze the LOW floor")
+
+	# (4) THE RISE TELEGRAPH EVICTS: at fill-minus-lead the near dweller breaks for its pocket.
+	inst.headless_advance(7.6)   # t ~= 7.75: telegraph fired at 4.5, commit still ahead
+	var a_pos: Vector3 = gs.get_position("dweller_a")
+	_assert_true(a_pos.distance_to(Vector3(-0.75, 0.0, 3.75)) < 2.6,
+		"the near dweller answered the telegraph and made its pocket (%.1fwu out)"
+		% a_pos.distance_to(Vector3(-0.75, 0.0, 3.75)))
+
+	# (5) FILL 1 = THE DEMONSTRATION KILL (P18): the far dweller is caught by the commit,
+	# carried to the outfall by the one Channel transaction, and dies there. The near one lives.
+	inst.headless_advance(0.6)   # commit at t=8
+	var caught_b: bool = bool(gs.is_external_traversal_active("dweller_b")) or not bool(foe_b.is_alive())
+	_assert_true(caught_b, "the far dweller is caught by the fill commit")
+	inst.headless_advance(3.2)   # ride the carry + impact
+	_assert_true(not foe_b.is_alive(), "the fill drowns what it catches — the demonstration kill")
+	_assert_true(foe_a.is_alive(), "the dweller that answered the telegraph survives in its pocket")
+	_assert_equals(int(basin.get_state()["drowned_enemies"]), 1, "exactly one drown is counted")
+
+	# (6) MID: the maps flip — the floor is gone, the float road is the only crossing.
+	_assert_equals(int(basin.get_water_state()), 1, "the basin sits at MID after the fill")
+	_assert_true(not grid.is_walkable(5, 4, {}, {}, 0), "MID: the bowl floor is drowned (level 0)")
+	_assert_true(grid.is_walkable(7, 4, {}, {}, 1), "MID: the float road is open (level 1)")
+	var mid_path: Array = grid.find_multi_level_path(from_cell, 1, to_cell, 1)
+	_assert_true(not mid_path.is_empty(), "MID: the balcony is reachable over the floats")
+
+	# (7) THE RAFT SETTLES: a member still on a float when the basin drains lands on the bed —
+	# stranded mid-bowl at LOW, not teleported, not hurt.
+	gs.snap_character_to("peris", Vector3(9.75, 2.7, 5.25))   # float cell (8,5)
+	var hp_peris := float(gs.get_stat("peris", "hp"))
+	inst.headless_advance(4.0)   # t ~= 15.5: MID(8-15) ended, LOW(15-19)
+	_assert_equals(int(basin.get_water_state()), 0, "the short LOW window opened")
+	_assert_equals(int(gs.get_character_level("peris")), 0,
+		"the drain settles the float rider onto the bowl bed (level 0)")
+	_assert_true(is_equal_approx(float(gs.get_stat("peris", "hp")), hp_peris),
+		"the settle is free — being stranded is the price")
+
+	# Stage the crosser at the float mouth during the short LOW — the catwalk is always open.
+	gs.snap_character_to("aster", a["float_entry"])
+
+	# (8) FAIL-FORWARD: the stranded member is caught by the NEXT fill and swept WITH the
+	# inflow to the outfall shelf — bitten, landed on safe ground, mobile, never downed.
+	inst.headless_advance(3.7)   # t ~= 19.25: MID window 2 committed at 19
+	_assert_true(gs.is_external_traversal_active("peris") or
+		float(gs.get_stat("peris", "hp")) < hp_peris, "the next fill catches the stranded member")
+
+	# (9) THE CROSSING FITS THE WINDOW: from the mouth, right at the window top, the crossing
+	# lands on the balcony with slack — while her sweep carry rides out concurrently.
+	gs.command_move_to_pos("aster", a["balcony"])
+	var crossed := 0.0
+	while crossed < 6.0 and gs.get_position("aster").distance_to(a["balcony"]) > 1.2:
+		inst.headless_advance(0.25)
+		crossed += 0.25
+	_assert_true(gs.get_position("aster").distance_to(a["balcony"]) <= 1.2,
+		"the float crossing lands inside one MID window (%.1fs)" % crossed)
+	_assert_equals(int(gs.get_character_level("aster")), 1, "the crosser stays on the deck plane")
+	_assert_true(float(basin.get_state()["next_change_in"]) > 0.4,
+		"the crossing finished before the window closed")
+	var peris_pos: Vector3 = gs.get_position("peris")
+	_assert_true(peris_pos.distance_to(a["shelf"]) < 2.6,
+		"the sweep travels WITH the inflow to the outfall shelf (%.1fwu out)" % peris_pos.distance_to(a["shelf"]))
+	_assert_true(is_equal_approx(float(gs.get_stat("peris", "hp")), hp_peris - 5.0),
+		"the catch bites exactly the authored hp (%.1f -> %.1f)" % [hp_peris, float(gs.get_stat("peris", "hp"))])
+	_assert_true(not gs.is_downed("peris"), "fail-forward: bitten, never downed")
+	_assert_equals(int(basin.get_state()["swept_party"]), 1, "exactly one party sweep is counted")
+
+	# (10) HIGH strips the maps: the balcony and decks hold; the waterline takes the floats.
+	var hp_aster := float(gs.get_stat("aster", "hp"))
+	var waited := 0.0
+	while waited < 25.0 and int(basin.get_water_state()) != 2:
+		inst.headless_advance(0.5)
+		waited += 0.5
+	_assert_equals(int(basin.get_water_state()), 2, "the HIGH beat arrived on the rota")
+	_assert_true(not grid.is_walkable(7, 4, {}, {}, 1), "HIGH: the float road is pinned (level 1)")
+	_assert_true(is_equal_approx(float(gs.get_stat("aster", "hp")), hp_aster) and
+		not gs.is_external_traversal_active("aster"), "HIGH: the balcony stander is untouched")
+	# a float-stander at the HIGH commit would be swept — prove via the shared predicate.
+	_assert_true(basin.catches_body_at(Vector3(9.75, 2.7, 5.25), 1),
+		"HIGH: the waterline predicate takes a float-stander")
+	_assert_true(not basin.catches_body_at(a["balcony"], 1),
+		"HIGH: the same predicate spares the balcony")
+	_assert_true(not basin.catches_body_at(a["shelf"], 0),
+		"the outfall shelf is never drowned — the landing is honest")
+
+	# (11) THE WIN RUNS THROUGH exit_shelter: gather on the balcony, rest, complete.
+	waited = 0.0
+	while waited < 8.0 and int(basin.get_water_state()) == 2:
+		inst.headless_advance(0.5)
+		waited += 0.5
+	_assert_true(int(basin.get_water_state()) != 2, "the HIGH beat drains on the rota")
+	for cid in ["peris", "endo"]:
+		gs.set_character_level(cid, 1)
+	gs.snap_character_to("peris", Vector3(8.2, 2.7, 12.6))
+	gs.snap_character_to("endo", Vector3(9.8, 2.7, 12.9))
+	var shelter = chunk.find_child("BasinExitShelter", true, false)
+	_assert_true(shelter != null, "the balcony win pad is the canonical ExitShelter")
+	shelter.active_character = "aster"
+	shelter.on_interaction_arrived()
+	inst.headless_advance(0.5, 0.1)
+	_assert_true(bool(chunk.get_preview_state()["complete"]),
+		"resting the gathered party completes the proof")
+
+	# (12) FAST-FORWARD INVARIANCE: the rota's state-at-second sequence is identical at a
+	# fine and a coarse tick step (predicted boundaries, never sampled coincidences).
+	var sequences: Array = []
+	for step in [0.02, 0.25]:
+		chunk.reset_preview_state()
+		inst.headless_advance(0.15, 0.05)
+		var seq: Array = []
+		for _s in range(53):
+			seq.append(int(basin.get_water_state()))
+			inst.headless_advance(1.0, float(step))
+		sequences.append(seq)
+	_assert_true(sequences[0] == sequences[1],
+		"the rota is fast-forward invariant (fine == coarse state sequence)")
+
+	var wall_ms := Time.get_ticks_msec() - wall0
+	print("  [wall] _test_basin_fill_proof: %d ms" % wall_ms)
+	_assert_true(wall_ms < 30000, "the pop-off promise: this playthrough JUMPS time (%d ms)" % wall_ms)
+	inst.queue_free()
+	await get_tree().process_frame
+
 func _test_capbage_retrieve() -> void:
 	_test_name = "Capbage Retrieve"
 	var wall0 := Time.get_ticks_msec()
@@ -40958,6 +41149,111 @@ func _test_push_lab() -> void:
 		await get_tree().process_frame
 	_assert_true(gs.get_physics_position("crate_bend").distance_to(bend_start) > 0.5,
 		"The committed queued push actually moves the crate")
+
+	# (E) CRATE VS CRATE: a second pushable is an OBSTACLE. b sits directly east of a; the
+	# straight route runs through b's cell, so the plan must go AROUND — never placing the
+	# object OR the character in b's cell — and b's own cell is a refused destination.
+	var pair_a_cell: Vector2i = grid.world_to_grid(anchors["crate_pair_a"])
+	var pair_b_cell: Vector2i = grid.world_to_grid(anchors["crate_pair_b"])
+	var pair_target: Vector2i = grid.world_to_grid(anchors["pair_target"])
+	gs.snap_character_to("aster", Vector3(2.5, 0.0, 11.5))  # west of a, in the pair room
+	var pair_plan: Dictionary = gs.plan_push_for("aster", "crate_pair_a", pair_target)
+	_assert_true(not pair_plan.is_empty(), "Crate pair: a route around the blocking crate exists")
+	var routed_through_b := false
+	for step_v in (pair_plan.get("steps", []) as Array):
+		var step: Dictionary = step_v
+		if (step["obj_to"] as Vector2i) == pair_b_cell or (step["char_push_cell"] as Vector2i) == pair_b_cell:
+			routed_through_b = true
+	_assert_true(not routed_through_b,
+		"Crate pair: the plan never routes the object or the pusher through the other crate")
+	_assert_true(gs.plan_push_for("aster", "crate_pair_a", pair_b_cell).is_empty(),
+		"Crate pair: the other crate's own cell is a refused destination")
+	# Execute the around-route and confirm a lands on target while b never moved.
+	var pair_b_before: Vector3 = gs.get_physics_position("crate_pair_b")
+	_assert_true(gs.command_push_object("aster", "crate_pair_a", pair_target),
+		"Crate pair: the around-push commits")
+	safety = 0
+	var entered_blocker_cell := false
+	while safety < 3000 and gs.is_pushing("aster"):
+		safety += 1
+		instance.headless_advance(0.1, 0.05)
+		if grid.world_to_grid(gs.get_physics_position("crate_pair_a")) == pair_b_cell:
+			entered_blocker_cell = true
+		await get_tree().process_frame
+	_assert_true(not entered_blocker_cell,
+		"Crate pair: the pushed crate never occupies the blocker's cell in flight")
+	_assert_equals(str(grid.world_to_grid(gs.get_physics_position("crate_pair_a"))), str(pair_target),
+		"Crate pair: the crate arrives around the blocker")
+	_assert_true(gs.get_physics_position("crate_pair_b").distance_to(pair_b_before) < 0.01,
+		"Crate pair: the blocking crate never moved")
+
+	# (F) PAUSE-AND-DIRECT: a push committed while game time is HELD queues cleanly — nothing
+	# moves until time advances (the scheduler IS the pause), then the whole plan executes.
+	var pair_a_now: Vector2i = grid.world_to_grid(gs.get_physics_position("crate_pair_a"))
+	var paused_target := pair_a_now + Vector2i(0, 1)
+	get_tree().paused = true
+	_assert_true(gs.command_push_object("aster", "crate_pair_a", paused_target),
+		"Paused: the push command is accepted while time is held")
+	var held_pos: Vector3 = gs.get_physics_position("crate_pair_a")
+	for _i in range(6):
+		await get_tree().process_frame   # frames pass, game time does not
+	_assert_true(gs.get_physics_position("crate_pair_a").distance_to(held_pos) < 0.01,
+		"Paused: the crate holds still until time advances")
+	_assert_true(bool(gs.is_pushing("aster")), "Paused: the plan stays queued")
+	get_tree().paused = false
+	safety = 0
+	while safety < 800 and gs.is_pushing("aster"):
+		safety += 1
+		instance.headless_advance(0.1, 0.05)
+		await get_tree().process_frame
+	_assert_equals(str(grid.world_to_grid(gs.get_physics_position("crate_pair_a"))), str(paused_target),
+		"Unpaused: the queued push executes to its planned cell")
+
+	# (G) SUPERSEDE + STOP: a fresh explicit move abandons an in-flight push; so does stop.
+	var pair_a_cell2: Vector2i = grid.world_to_grid(gs.get_physics_position("crate_pair_a"))
+	_assert_true(gs.command_push_object("aster", "crate_pair_a", pair_a_cell2 + Vector2i(-2, 0)),
+		"Supersede: a fresh push commits")
+	instance.headless_advance(0.3, 0.05)
+	_assert_true(bool(gs.is_pushing("aster")), "Supersede: the push is in flight")
+	gs.command_move_to_pos("aster", anchors["crate_open"])
+	_assert_true(not bool(gs.is_pushing("aster")),
+		"Supersede: a fresh explicit move abandons the push plan")
+	_assert_true(gs.command_push_object("aster", "crate_pair_a",
+		grid.world_to_grid(gs.get_physics_position("crate_pair_a")) + Vector2i(0, -1)),
+		"Stop: another push commits")
+	instance.headless_advance(0.3, 0.05)
+	gs.command_stop("aster")
+	_assert_true(not bool(gs.is_pushing("aster")), "Stop: command_stop abandons the push plan")
+
+	# (H) THE HOVER GRAMMAR: the crate speaks the shared outline language — hover signals, the
+	# PUSH cursor verb, and a registered outline surface over the real crate mesh.
+	var push_target: Node = null
+	for t in instance.get_tree().get_nodes_in_group("push_targets"):
+		if str(t.get("obj_id")) == "crate_open":
+			push_target = t
+	_assert_true(push_target != null, "Hover: the crate's PushTarget registers in the group")
+	_assert_true(push_target.has_signal("outline_hovered") and push_target.has_signal("outline_unhovered"),
+		"Hover: the PushTarget emits the shared outline signals")
+	_assert_equals(str(push_target.call("get_action_verb")), "PUSH",
+		"Hover: the crate carries the PUSH cursor verb")
+	var crate_outline: Node = push_target.call("get_outline_target")
+	_assert_true(crate_outline != null and int(crate_outline.call("get_highlight_mesh_count")) >= 1,
+		"Hover: the crate mesh is registered for the screen-space outline")
+	push_target.call("set_hover_feedback", true)
+	_assert_true(bool(crate_outline.call("has_active_mesh_outline")),
+		"Hover: hovering the crate lights the outline")
+	push_target.call("set_hover_feedback", false)
+	_assert_true(not bool(crate_outline.call("has_active_mesh_outline")),
+		"Hover: unhovering clears the outline")
+
+	# (I) THE GHOST IS THE CRATE: a queued preview adopts the crate's real mesh, not a
+	# placeholder box.
+	player.queue_push("crate_open")
+	player._update_push_preview(anchors["crate_open"] + Vector3(2.0, 0.0, 0.0))
+	var crate_mesh: MeshInstance3D = chunk.get("_crate_meshes")["crate_open"]
+	_assert_true(player._push_ghost_obj != null and player._push_ghost_obj.mesh == crate_mesh.mesh,
+		"Ghost: the push ghost shows the crate's own mesh")
+	player.cancel_push_queue()
 
 	instance.queue_free()
 	await get_tree().process_frame
