@@ -103,7 +103,6 @@ const PREVIEW_ENTRIES := [
 	{"id": "showcase_gallery", "chunk": "showcase_gallery", "title": "Showcase Gallery", "stage": 1},
 	{"id": "stacks", "chunk": "stacks", "title": "The Open Files Initiative", "stage": 1},
 	{"id": "rings", "chunk": "rings", "title": "Rings Fragment Lab", "stage": 1},
-	{"id": "push_lab", "chunk": "push_lab", "title": "Push Lab", "stage": 2},
 	{"id": "rest_lab", "chunk": "rest_lab", "title": "Shelter Rest Lab", "stage": 2},
 	# Compatibility id retained for old links; the scene now inherits the one canonical chase.
 	{"id": "lockout", "chunk": "lockout", "title": "The Lockout Chase (legacy alias)", "stage": 4},
@@ -215,6 +214,9 @@ const PREVIEW_ENTRIES := [
 	# (zero primitives, linted), runs measured from real AABBs, storytelling placement
 	# (decaying approach / kept bay / measured manifold / overgrown portal ledge).
 	{"id": "wash_ascent", "chunk": "wash_ascent", "title": "Wash Ascent (Rebuilt)", "stage": 5},
+	# PUSH LAB — the finished queued-push grammar: crate-vs-crate routing (zone D pair),
+	# hover outline + PUSH verb, the real-mesh ghost, pause-queue, supersede/stop.
+	{"id": "push_lab", "chunk": "push_lab", "title": "Push Lab", "stage": 2},
 	# BALANCING BASIN — Phase 1 proving fragment (docs/BALANCING_BASIN.md): the bowl-scale
 	# water ROTA (BasinWater kit object) — LOW floor / MID float road / HIGH decks-only,
 	# non-uniform windows, dweller eviction, sweep-to-outfall via the Channel transaction.
