@@ -230,9 +230,38 @@ mistakes, both priced):
    interaction radius. (Already encoded: Skumnut settles; Dean mashes the
    wrong actor on purpose.)
 
-Next cycle: wire harvested nodes into a LIBRARY-DRIVEN strategist (persona
-policies assembled from decision nodes instead of per-fragment scripts),
-growing the library one AI playthrough at a time.
+THE LIBRARY-DRIVEN STRATEGIST (built): the harvested nodes live in
+`data/playthroughs/decision_library.json` and a policy engine in the runner
+plays them — sense from the fragment's registries (threats/cover/objective),
+act by the nodes (observe-from-cover until walks stop surprising, cross on
+the far-post window, run funded watched legs, break to cover on commitment,
+commit rests settled/selected/adjacent). Skumnut IS this strategist
+everywhere except the basin (which keeps his deep scripted proof); he runs
+in the fragment sweep on every registered fragment with zero per-fragment
+code. Completion is RECORDED, not required — an honest strategist retreats
+where a specialist gate blocks him; each recorded failure names the next
+node to harvest.
+
+SECOND HARVEST (sprint_gap, played IN CHARACTER as EazySpeezy — capturing
+each actor's decision style, not just decisions): five new nodes —
+read_the_heading (the far post is only a window when the walk faces AWAY;
+his launch into the turnaround cost a windup at arm's length),
+caboose_pays_more (the slowest bar sets the party sprint), sacrifice_is_
+not_a_timesave (the downed walker cost a 75hp retrieve round-trip + revive
+wait — always slower than the window skipped), pursuit_defeats_medium_cover
+(a scarpet sheds watchers, not pursuers), wake_before_group_rest (a
+sanctuary revive leaves a solo rest that blocks the group bed-down).
+
+THE HARVEST'S BIGGEST CATCH SO FAR — a determinism leak in the harness
+itself: running one decision file twice produced two different worlds. The
+preview host's _process advances the scheduler by REAL frame delta, so the
+boot-settle frames injected wall-clock jitter that forked knife-edge
+timelines. Fixed for AI playthroughs (the tree pauses before boot; all sim
+time flows through explicit headless_advance; verified identical across 4
+runs). The persona probes' own per-beat frame awaits carry the same jitter
+class — their asserts are threshold-robust by design, but the "replays
+identically" guarantee currently holds for AI playthroughs, and hardening
+the probes the same way (where input frames aren't needed) is on file.
 
 ## Adding a persona / an enrollment
 One row in the PROBE_PERSONAS table (reflex callable + assert callable) or

@@ -1,0 +1,355 @@
+[
+{
+"say": "[EAZY] Watcher's sitting ON its east turn (30.7 of 31.5). That IS the window \u2014 no observation lap, the clock's running. Everyone to launch, walking (free distance).",
+"do": {
+"type": "move_all",
+"to": [
+4.0,
+0.5,
+3.0
+]
+},
+"wait": 1.6
+},
+{
+"say": "[EAZY] Leg 1, full send: 17 units to the pad while its back is east. Run everything \u2014 the bar exists to be spent exactly once.",
+"do": {
+"type": "run",
+"id": "aster",
+"on": true
+},
+"wait": 0.1
+},
+{
+"say": "",
+"do": {
+"type": "run",
+"id": "peris",
+"on": true
+},
+"wait": 0.1
+},
+{
+"say": "",
+"do": {
+"type": "run",
+"id": "endo",
+"on": true
+},
+"wait": 0.1
+},
+{
+"say": "",
+"do": {
+"type": "move_all",
+"to": [
+21.0,
+0.5,
+3.0
+]
+},
+"wait": 4.5
+},
+{
+"say": "[EAZY] Kill the sprint on the scarpet \u2014 the hold is free, the bar regens for leg 2. Breath held through the west pass.",
+"do": {
+"type": "run",
+"id": "aster",
+"on": false
+},
+"wait": 0.1
+},
+{
+"say": "",
+"do": {
+"type": "run",
+"id": "peris",
+"on": false
+},
+"wait": 0.1
+},
+{
+"say": "",
+"do": {
+"type": "run",
+"id": "endo",
+"on": false
+},
+"wait": 0.1
+},
+{
+"say": "[EAZY] Wait out the pass. Two beats, not a full loop \u2014 I know where it turns, that's all I need.",
+"do": {
+"type": "wait"
+},
+"wait": 6.0
+},
+{
+"say": "[EAZY] Observe: where is it and which way is it going?",
+"do": {
+"type": "wait"
+},
+"wait": 2.0
+},
+{
+"say": "[EAZY] MISTAKE LOGGED, twice: (1) far-post is only a window when the heading is AWAY \u2014 I launched into its turnaround; (2) the caboose pays more \u2014 endo's bar hit zero on a leg the leader funded fine. New nodes: read-the-heading, and check EVERY bar before a party sprint.",
+"do": {
+"type": "wait"
+},
+"wait": 0.2
+},
+{
+"say": "[EAZY] It's winding up at arm's length \u2014 someone eats a hit no matter what. Fine: the hit buys its recover, and the recover buys the exit. Healthy two sprint east NOW.",
+"do": {
+"type": "run",
+"id": "aster",
+"on": true
+},
+"wait": 0.1
+},
+{
+"say": "",
+"do": {
+"type": "run",
+"id": "peris",
+"on": true
+},
+"wait": 0.1
+},
+{
+"say": "",
+"do": {
+"type": "move",
+"id": "aster",
+"to": [
+37.5,
+0.5,
+0.8
+]
+},
+"wait": 0.2
+},
+{
+"say": "",
+"do": {
+"type": "move",
+"id": "peris",
+"to": [
+37.5,
+0.5,
+-0.8
+]
+},
+"wait": 0.2
+},
+{
+"say": "[EAZY] Endo walks \u2014 zero bar, and the watcher will be busy recovering off whoever it tags.",
+"do": {
+"type": "move",
+"id": "endo",
+"to": [
+37.5,
+0.5,
+-2.0
+]
+},
+"wait": 6.0
+},
+{
+"say": "[EAZY] Sprint off at the exit; settle for the rest.",
+"do": {
+"type": "run",
+"id": "aster",
+"on": false
+},
+"wait": 0.1
+},
+{
+"say": "",
+"do": {
+"type": "run",
+"id": "peris",
+"on": false
+},
+"wait": 0.1
+},
+{
+"say": "[EAZY] Wait for endo to trail in.",
+"do": {
+"type": "wait"
+},
+"wait": 5.0
+},
+{
+"say": "[EAZY] Rest as Peris \u2014 her fragment, she's the selected one (the pump_hall lesson, pre-paid). Peris steps onto the pad first.",
+"do": {
+"type": "move",
+"id": "peris",
+"to": [
+37.5,
+0.5,
+0.0
+]
+},
+"wait": 2.0
+},
+{
+"say": "",
+"do": {
+"type": "wait"
+},
+"wait": 1.5
+},
+{
+"say": "[EAZY] Bed down.",
+"do": {
+"type": "poke",
+"name": "GapExitShelter",
+"actor": "peris"
+},
+"wait": 1.5
+},
+{
+"say": "[EAZY] LESSON LOGGED, the big one: a sacrificed member is NOT a timesave \u2014 the retrieve leg under watch costs more than the wait ever would. Also my rest poke named a shelter that doesn't exist; the board says SprintExitShelter. Peris goes back for the body \u2014 HER bar is the freshest.",
+"do": {
+"type": "move",
+"id": "peris",
+"to": [
+24.9,
+0.5,
+0.8
+]
+},
+"wait": 5.0
+},
+{
+"say": "[EAZY] Grab him and haul east. The watcher owns this lane \u2014 the drag is the priced leg.",
+"do": {
+"type": "drag",
+"id": "peris",
+"body": "endo"
+},
+"wait": 0.5
+},
+{
+"say": "",
+"do": {
+"type": "move",
+"id": "peris",
+"to": [
+37.5,
+0.5,
+-1.2
+]
+},
+"wait": 8.0
+},
+{
+"say": "[EAZY] Drop him on sanctuary ground and let the shelter do the reviving.",
+"do": {
+"type": "stop_drag",
+"id": "peris"
+},
+"wait": 6.0
+},
+{
+"say": "[EAZY] Settle and bed down \u2014 the REAL shelter name this time, as the selected character.",
+"do": {
+"type": "move",
+"id": "peris",
+"to": [
+37.5,
+0.5,
+0.0
+]
+},
+"wait": 2.2
+},
+{
+"say": "",
+"do": {
+"type": "wait"
+},
+"wait": 1.5
+},
+{
+"say": "[EAZY] Rest.",
+"do": {
+"type": "poke",
+"name": "SprintExitShelter",
+"actor": "peris"
+},
+"wait": 2.0
+},
+{
+"say": "[EAZY] He's up (4hp \u2014 sanctuary did the work). Everyone's on the pad. Rest for real: the run ends when the party sleeps, and this ledger shows what the 'timesave' actually cost: 75hp of Peris, a full retrieve leg, and a revive wait.",
+"do": {
+"type": "wait"
+},
+"wait": 4.0
+},
+{
+"say": "",
+"do": {
+"type": "poke",
+"name": "SprintExitShelter",
+"actor": "peris"
+},
+"wait": 2.0
+},
+{
+"say": "[EAZY] LESSON LOGGED: a sanctuary revive leaves the body in its OWN rest, and a solo rester blocks the group bed-down. Nudge everyone half a unit \u2014 a move order wakes a rester \u2014 then commit the group rest.",
+"do": {
+"type": "move",
+"id": "endo",
+"to": [
+37.0,
+0.5,
+1.2
+]
+},
+"wait": 1.0
+},
+{
+"say": "",
+"do": {
+"type": "move",
+"id": "peris",
+"to": [
+37.5,
+0.5,
+0.3
+]
+},
+"wait": 1.0
+},
+{
+"say": "",
+"do": {
+"type": "move",
+"id": "aster",
+"to": [
+38.0,
+0.5,
+-0.6
+]
+},
+"wait": 1.5
+},
+{
+"say": "",
+"do": {
+"type": "wait"
+},
+"wait": 1.5
+},
+{
+"say": "[EAZY] Group rest, everyone awake and settled.",
+"do": {
+"type": "poke",
+"name": "SprintExitShelter",
+"actor": "peris"
+},
+"wait": 2.0
+}
+]

@@ -1,0 +1,111 @@
+{
+	"schema": "persona_decision_library_v1",
+	"comment": "Decision nodes harvested from recorded AI playthroughs (docs/PLAYTEST_PERSONAS.md, 'The decision harvest'). The policy engine in test_runner_cli.gd implements each node's logic; this file is the registry \u2014 which nodes exist, who uses them, and the trace that taught us each one. Grow it one playthrough at a time.",
+	"nodes": [
+		{
+			"id": "observe_from_cover",
+			"rule": "Before committing to any route, hold at cover and sample every threat's walk until it stops surprising you (its observed extents stop growing).",
+			"personas": [
+				"skumnut"
+			],
+			"source": "pump_hall_ai_2026-07-31 #0-#2"
+		},
+		{
+			"id": "full_loop_before_crossing",
+			"rule": "Patrol reach = walk line + detect + pursuit. Never extrapolate from partial samples; a dash is only legal once the loop is known.",
+			"personas": [
+				"skumnut"
+			],
+			"source": "pump_hall_ai_2026-07-31 #12 (the 75hp landing mistake)"
+		},
+		{
+			"id": "break_on_recover",
+			"rule": "A committed striker (windup/charge/impact/recover) is not tracking you: abort the leg and break for the nearest cover while it is busy.",
+			"personas": [
+				"skumnut",
+				"eazy_speezy"
+			],
+			"source": "pump_hall_ai_2026-07-31 #13"
+		},
+		{
+			"id": "exposure_beats_stamina",
+			"rule": "Run watched ground, walk safe ground; never start a watched leg below the stamina it costs.",
+			"personas": [
+				"skumnut",
+				"eazy_speezy"
+			],
+			"source": "pump_hall_ai_2026-07-31 #14, #20"
+		},
+		{
+			"id": "one_body_per_hide",
+			"rule": "A Capbage conceals one body; route the party across hides one leaf each, or accept exposed escorts.",
+			"personas": [
+				"skumnut"
+			],
+			"source": "pump_hall_ai_2026-07-31 #19 (two members parked beside the leaf)"
+		},
+		{
+			"id": "far_post_is_the_window",
+			"rule": "When a room's owner stands at the far end of its observed walk, the window is open NOW \u2014 go; waiting for better spends it.",
+			"personas": [
+				"skumnut",
+				"eazy_speezy"
+			],
+			"source": "pump_hall_ai_2026-07-31 #21"
+		},
+		{
+			"id": "settled_selected_adjacent_commit",
+			"rule": "A commit needs a settled body, a SELECTED character, standing within the interaction radius. Walk the actor to the console, wait a beat, then fire.",
+			"personas": [
+				"skumnut",
+				"eazy_speezy",
+				"prod"
+			],
+			"source": "pump_hall_ai_2026-07-31 #25-#30 (one rest, three refusals)"
+		},
+		{
+			"id": "read_the_heading",
+			"rule": "The far post is only a window when the walk is heading AWAY - launching into a turnaround meets the sweep head-on. Heading beats distance.",
+			"personas": [
+				"eazy_speezy",
+				"skumnut"
+			],
+			"source": "sprint_gap_eazy_2026-07-31 #0-#10 (launched into the turn; windup at arm's length)"
+		},
+		{
+			"id": "caboose_pays_more",
+			"rule": "Party members drain differently - check EVERY bar before a party sprint; the slowest bar sets the plan.",
+			"personas": [
+				"eazy_speezy"
+			],
+			"source": "sprint_gap_eazy_2026-07-31 (endo's bar hit zero on a leg the leader funded)"
+		},
+		{
+			"id": "sacrifice_is_not_a_timesave",
+			"rule": "A downed member costs the retrieve round-trip under watch plus the revive wait - always slower than the window you tried to skip.",
+			"personas": [
+				"eazy_speezy"
+			],
+			"source": "sprint_gap_eazy_2026-07-31 (the 75hp retrieve leg)"
+		},
+		{
+			"id": "pursuit_defeats_medium_cover",
+			"rule": "A scarpet sheds an outer-range watcher, not a pursuer - once spotted, do not hold cover on the watch line; break instead.",
+			"personas": [
+				"skumnut",
+				"eazy_speezy"
+			],
+			"source": "sprint_gap_eazy_2026-07-31 (the watcher walked over the scarpet in pursuit)"
+		},
+		{
+			"id": "wake_before_group_rest",
+			"rule": "A sanctuary revive leaves the body in its own rest, which blocks the group bed-down - nudge everyone awake, settle, then commit the rest.",
+			"personas": [
+				"skumnut",
+				"eazy_speezy",
+				"prod"
+			],
+			"source": "sprint_gap_eazy_2026-07-31 (Endo is already resting)"
+		}
+	]
+}

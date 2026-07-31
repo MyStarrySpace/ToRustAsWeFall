@@ -32440,7 +32440,6 @@ const PERSONA_ROSTER := ["spiffing_brit", "dean_takahashi", "twitch_plays", "she
 ## Personas whose reflexes only make sense on certain fragments (a souls runner needs a
 ## rhythm to memorize; a speedrunner needs a win to race). Absent = runs everywhere.
 const PERSONA_FRAGMENTS := {
-	"skumnut": ["basin_fill_proof"],
 	"eazy_speezy": ["basin_fill_proof"],
 }
 
@@ -32492,7 +32491,7 @@ func _test_persona_fragment_sweep() -> void:
 		if eid == "" or deep_covered.has(eid):
 			continue
 		swept += 1
-		for persona in PERSONA_SWEEP_ROSTER:
+		for persona in PERSONA_SWEEP_ROSTER + ["skumnut"]:
 			await _persona_probe_run(eid, str(persona))
 	print("  [persona] fragment sweep covered %d registry fragments" % swept)
 	_assert_true(swept >= 5, "the registry sweep found the data-fragment roster (%d)" % swept)
@@ -32515,12 +32514,19 @@ func _run_ai_playthrough() -> void:
 	var raw := FileAccess.get_file_as_string(decisions_path)
 	var parsed: Variant = JSON.parse_string(raw if raw != "" else "[]")
 	var decisions: Array = parsed if parsed is Array else []
+	# Pause BEFORE the boot: the settle frames must pump _ready/deferred queues without letting
+	# the host's real-delta _process advance the sim — the jitter seed lived in the settle window.
+	get_tree().paused = true
 	var inst = await _instantiate_preview_chunk_and_wait(frag_id, 6)
 	if inst == null:
 		_assert_true(false, "%s boots for the AI playthrough" % frag_id)
 		return
 	var gs = inst._game_state
 	var chunk = inst._active_chunk
+	# DETERMINISM: with the tree paused from before boot, every simulated second flows through
+	# explicit headless_advance and the decision prefix replays exactly (found by running one
+	# decision file twice and getting two different worlds — the host's real-delta _process
+	# during the settle frames was forking knife-edge timelines).
 	inst.headless_advance(0.2)
 	var trace: Array = []
 	for i in range(decisions.size()):
@@ -32549,6 +32555,10 @@ func _run_ai_playthrough() -> void:
 				_persona_poke(target, str(act.get("actor", "aster")))
 			"stop":
 				gs.command_stop(str(act.get("id", "aster")))
+			"drag":
+				gs.command_start_drag(str(act.get("id", "aster")), str(act.get("body", "")))
+			"stop_drag":
+				gs.command_stop_drag(str(act.get("id", "aster")))
 			"wait":
 				pass
 		inst.headless_advance(maxf(0.1, float(d.get("wait", act.get("secs", 1.0)))))
@@ -32569,6 +32579,7 @@ func _run_ai_playthrough() -> void:
 				f.store_line(JSON.stringify(entry))
 			f.close()
 	_assert_true(true, "AI playthrough executed %d decisions on %s" % [decisions.size(), frag_id])
+	get_tree().paused = false
 	inst.queue_free()
 	await get_tree().process_frame
 
@@ -32730,7 +32741,13 @@ func _persona_probe_run(frag_id: String, persona: String, config := {}, label_su
 		"shesez":
 			invariants_held = await _persona_shesez(inst, gs, chunk, grid, party, pseed, notes)
 		"skumnut":
-			invariants_held = await _persona_skumnut(inst, gs, chunk, grid, party, notes)
+			# The basin keeps the deep scripted proof (rhythm-drift + zero-instrument clear);
+			# everywhere else Skumnut runs the LIBRARY-DRIVEN strategist — the same player,
+			# assembled from harvested decision nodes instead of a per-fragment script.
+			if frag_id == "basin_fill_proof":
+				invariants_held = await _persona_skumnut(inst, gs, chunk, grid, party, notes)
+			else:
+				invariants_held = await _persona_library_strategist(inst, gs, chunk, grid, party, frag_id, notes)
 		"pirate_software":
 			invariants_held = await _persona_pirate(inst, gs, chunk, grid, party, crates, notes)
 		"prod":
@@ -33216,6 +33233,181 @@ func _persona_skumnut(inst, gs, chunk, grid, party: Array, notes: Array) -> bool
 	if console != null and (bool(console.is_read_armed()) or float(console.cooldown_remaining()) > 0.0):
 		notes.append("the souls runner used the console")
 		ok = false
+	return ok and _persona_beat_ok(gs, grid, party, notes)
+
+## THE LIBRARY-DRIVEN STRATEGIST (data/playthroughs/decision_library.json): a persona policy
+## ASSEMBLED from harvested decision nodes instead of a per-fragment script. Sense: the
+## fragment's own registries (enemies = threats, capbages/scarpets = cover, the exit shelter =
+## the objective). Act, per the library: observe_from_cover + full_loop_before_crossing (hold at
+## cover, sample every threat until its observed extents stop growing), far_post_is_the_window
+## (cross a leg when its dominant threat is at the far end of its known walk),
+## exposure_beats_stamina (run watched legs, funded), break_on_recover (abort to cover while a
+## striker is committed), settled_selected_adjacent_commit (the rest, done right). Completion is
+## RECORDED, not required — an honest strategist retreats where a specialist gate blocks him.
+func _persona_library_strategist(inst, gs, chunk, grid, party: Array, frag_id: String, notes: Array) -> bool:
+	var ok := true
+	var sched = inst.get("_scheduler")
+	var t0 := float(sched.get_current_tick())
+	# --- SENSE: build the world model from registries (null-safe on coded chunks) ---
+	var threats := {}
+	if chunk.has_method("enemies"):
+		for e in chunk.enemies():
+			if is_instance_valid(e) and e.is_alive():
+				threats[str(e.char_id)] = {"node": e, "samples": [], "stable": 0,
+					"min": Vector2(INF, INF), "max": Vector2(-INF, -INF)}
+	var cover: Array = []
+	for reg_name in ["_capbages", "_scarpets"]:
+		var reg: Variant = chunk.get(reg_name)
+		if reg is Array:
+			for c in (reg as Array):
+				if is_instance_valid(c):
+					cover.append((c as Node3D).global_position)
+	var objective := Vector3.INF
+	var shelters_reg: Variant = chunk.get("_exit_shelters")
+	if shelters_reg is Array and not (shelters_reg as Array).is_empty():
+		objective = ((shelters_reg as Array)[0] as Node3D).global_position
+	var leader := _persona_first_up(gs, party)
+	var lp0: Vector3 = gs.get_position(leader)
+	# --- observe_from_cover: hold at the cover nearest spawn (or spawn) and sample the walks ---
+	var watch_pos := lp0
+	var best_d := INF
+	for cpos_v in cover:
+		var d0: float = lp0.distance_to(cpos_v)
+		if d0 < best_d and (objective == Vector3.INF or (cpos_v as Vector3).distance_to(objective) < lp0.distance_to(objective) + 6.0):
+			best_d = d0
+			watch_pos = cpos_v
+	var slot_i := 0
+	for cid_v in party:
+		if gs.characters.has(str(cid_v)) and not gs.is_downed(str(cid_v)):
+			gs.command_move_to_pos(str(cid_v), watch_pos + Vector3(1.2 * float(slot_i % 2), 0.0, -1.2 * float(slot_i / 2)))
+			slot_i += 1
+	var observed := 0.0
+	while observed < 30.0 and not threats.is_empty():
+		inst.headless_advance(0.4)
+		observed += 0.4
+		var all_stable := true
+		for tid in threats:
+			var t: Dictionary = threats[tid]
+			var p: Vector3 = gs.get_position(str(tid))
+			var p2 := Vector2(p.x, p.z)
+			var grew := false
+			if p2.x < (t["min"] as Vector2).x or p2.y < (t["min"] as Vector2).y:
+				t["min"] = Vector2(minf((t["min"] as Vector2).x, p2.x), minf((t["min"] as Vector2).y, p2.y))
+				grew = true
+			if p2.x > (t["max"] as Vector2).x or p2.y > (t["max"] as Vector2).y:
+				t["max"] = Vector2(maxf((t["max"] as Vector2).x, p2.x), maxf((t["max"] as Vector2).y, p2.y))
+				grew = true
+			(t["samples"] as Array).append(p2)
+			t["stable"] = 0 if grew else int(t["stable"]) + 1
+			if int(t["stable"]) < 8:
+				all_stable = false
+			threats[tid] = t
+		if all_stable:
+			break
+	# --- ROUTE: a greedy cover chain toward the objective; each leg waits for its window ---
+	var completed := false
+	if objective != Vector3.INF:
+		var legs: Array = []
+		var here: Vector3 = gs.get_position(leader)
+		var remaining := cover.duplicate()
+		for _hop in range(4):
+			var pick := Vector3.INF
+			var pick_score := INF
+			for cpos_v2 in remaining:
+				var cpos := cpos_v2 as Vector3
+				if cpos.distance_to(objective) >= here.distance_to(objective) - 1.0:
+					continue
+				var score: float = here.distance_to(cpos) + cpos.distance_to(objective)
+				if score < pick_score:
+					pick_score = score
+					pick = cpos
+			if pick == Vector3.INF:
+				break
+			legs.append(pick)
+			remaining.erase(pick)
+			here = pick
+		legs.append(objective)
+		for leg_v in legs:
+			var leg := leg_v as Vector3
+			var from: Vector3 = gs.get_position(leader)
+			var mid := (from + leg) * 0.5
+			# far_post_is_the_window: wait until every threat that can touch this leg stands far
+			# from it (>= 80% of its own known max distance to the leg's midline).
+			var waited := 0.0
+			while waited < 18.0:
+				var open := true
+				for tid2 in threats:
+					var t2: Dictionary = threats[tid2]
+					var tn: Variant = t2["node"]
+					if not is_instance_valid(tn) or not tn.is_alive():
+						continue
+					var tp: Vector3 = gs.get_position(str(tid2))
+					var reach := float(tn.detection_range) + 2.0
+					var span := Vector2((t2["max"] as Vector2).x - (t2["min"] as Vector2).x,
+						(t2["max"] as Vector2).y - (t2["min"] as Vector2).y).length()
+					if Vector2(tp.x - mid.x, tp.z - mid.z).length() > span * 0.5 + reach:
+						continue   # this walk never touches the leg
+					var far_now := Vector2(tp.x - mid.x, tp.z - mid.z).length()
+					var far_best := maxf(span * 0.5, reach)
+					if far_now < far_best * 0.8:
+						open = false
+				if open:
+					break
+				inst.headless_advance(0.5)
+				waited += 0.5
+			# exposure_beats_stamina: run the leg if the bar funds it.
+			var sprint: bool = float(gs.get_stat(leader, "stamina")) > 45.0
+			slot_i = 0
+			for cid_v2 in party:
+				var cid := str(cid_v2)
+				if not gs.characters.has(cid) or gs.is_downed(cid):
+					continue
+				if sprint:
+					gs.set_running(cid, true)
+				gs.command_move_to_pos(cid, leg + Vector3(1.2 * float(slot_i % 2), 0.0, -1.2 * float(slot_i / 2)))
+				slot_i += 1
+			var travelled := 0.0
+			while travelled < 12.0 and gs.get_position(leader).distance_to(leg) > 2.0:
+				inst.headless_advance(0.4)
+				travelled += 0.4
+				# break_on_recover / alert: a threat committed to us aborts the leg to cover.
+				for tid3 in threats:
+					var tn3: Variant = (threats[tid3] as Dictionary)["node"]
+					if is_instance_valid(tn3) and str(tn3.get_state()) in ["alert", "pursuit", "windup", "charge"]:
+						for cid_v3 in party:
+							if gs.characters.has(str(cid_v3)) and not gs.is_downed(str(cid_v3)):
+								gs.command_move_to_pos(str(cid_v3), watch_pos)
+						inst.headless_advance(6.0)
+						travelled = 99.0
+						break
+			for cid_v4 in party:
+				if gs.characters.has(str(cid_v4)):
+					gs.set_running(str(cid_v4), false)
+			if travelled >= 99.0:
+				break   # the run went loud; hold at cover and end the attempt honestly
+		# settled_selected_adjacent_commit: the rest, done the way pump_hall taught.
+		if gs.get_position(leader).distance_to(objective) <= 3.0:
+			inst.headless_advance(2.0)
+			var actor := leader
+			var sel: Variant = gs.get_party() if gs.has_method("get_party") else []
+			if sel is Array and not (sel as Array).is_empty():
+				actor = str((sel as Array)[0])
+			gs.command_move_to_pos(actor, objective)
+			inst.headless_advance(2.2)
+			var pad = (shelters_reg as Array)[0]
+			_persona_poke(pad, actor)
+			inst.headless_advance(1.0, 0.1)
+			completed = _persona_is_complete(chunk)
+	var wiped := true
+	for cid_v5 in party:
+		if gs.characters.has(str(cid_v5)) and not gs.is_downed(str(cid_v5)):
+			wiped = false
+	if wiped:
+		notes.append("the strategist wiped — careful play should never lose everyone")
+		ok = false
+	print("  [persona] skumnut(library) on %s: complete=%s spotted=%d in %.0fs (threats=%d cover=%d)"
+		% [frag_id, str(completed), int(chunk.get_preview_state().get("spotted_count", -1)),
+		float(sched.get_current_tick()) - t0, threats.size(), cover.size()])
 	return ok and _persona_beat_ok(gs, grid, party, notes)
 
 ## PirateSoftware: the negative control — stands with the party and does nothing, forever.
