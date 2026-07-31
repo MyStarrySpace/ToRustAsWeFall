@@ -519,6 +519,9 @@ func _ready() -> void:
 			"--test-basin-fill-proof":
 				ran_test = true
 				await _test_basin_fill_proof()
+			"--test-persona-probe":
+				ran_test = true
+				await _test_persona_probe()
 			"--test-sprint-gap":
 				ran_test = true
 				await _test_sprint_gap()
@@ -1404,6 +1407,7 @@ func _run_all_tests() -> void:
 	await _test_conceal_stops_strikes()
 	await _test_capbage_retrieve()
 	await _test_basin_fill_proof()
+	await _test_persona_probe()
 	await _test_sprint_gap()
 	await _test_run_stamina_budget()
 	await _test_charge_whiff()
@@ -32393,6 +32397,356 @@ func _test_basin_fill_proof() -> void:
 	_assert_true(wall_ms < 30000, "the pop-off promise: this playthrough JUMPS time (%d ms)" % wall_ms)
 	inst.queue_free()
 	await get_tree().process_frame
+
+## PLAYTEST PERSONAS — the systems pass (docs/PLAYTEST_PERSONAS.md). Real personalities as
+## automated players: TheSpiffingBrit (breaks games for profit — no exploit may beat the
+## authored price), DeanTakahashi (the Cuphead tutorial — pure fumbling must never soft-lock),
+## TwitchPlays (a thousand conflicting inputs — the storm leaves no wreckage), Shesez
+## (Boundary Break — the world's edges hold). Every choice is tick-hashed: a found bug
+## replays identically. Enrolled fragments: basin_fill_proof, push_lab.
+const PERSONA_ROSTER := ["spiffing_brit", "dean_takahashi", "twitch_plays", "shesez"]
+
+func _test_persona_probe() -> void:
+	_test_name = "Persona Probe"
+	var wall0 := Time.get_ticks_msec()
+	for frag in ["basin_fill_proof", "push_lab"]:
+		for persona in PERSONA_ROSTER:
+			await _persona_probe_run(str(frag), str(persona))
+	print("  [wall] _test_persona_probe: %d ms" % (Time.get_ticks_msec() - wall0))
+
+func _persona_hash(tick: float, seed_v: int, salt: int) -> int:
+	return absi((int(floor(tick * 37.0)) + salt * 101) * 2654435761 + seed_v * 40503)
+
+func _persona_poke(it, actor: String) -> void:
+	if it == null or not is_instance_valid(it):
+		return
+	it.set("active_character", actor)
+	if it.has_method("on_interaction_arrived"):
+		it.on_interaction_arrived()
+
+## Per-beat invariants for EVERY persona: finite non-negative stats, in-bounds bodies, and a
+## strictly advancing clock. Records a failure ONCE (no assert spam); the run's closing assert
+## reports it.
+func _persona_beat_ok(gs, grid, party: Array, notes: Array) -> bool:
+	for cid_v in party:
+		var cid := str(cid_v)
+		if not gs.characters.has(cid):
+			continue
+		for stat_name in ["hp", "stamina"]:
+			var v := float(gs.get_stat(cid, stat_name))
+			if not is_finite(v) or v < -0.01:
+				notes.append("%s %s insane (%.2f)" % [cid, stat_name, v])
+				return false
+		if grid == null or gs.is_external_traversal_active(cid):
+			continue
+		var cell: Vector2i = grid.world_to_grid(gs.get_position(cid))
+		if cell.x < 0 or cell.y < 0 or cell.x >= grid.width or cell.y >= grid.height:
+			notes.append("%s out of bounds (%s)" % [cid, str(cell)])
+			return false
+	return true
+
+func _persona_crates_legal(gs, grid, crates: Array, notes: Array) -> bool:
+	var seen := {}
+	for oid_v in crates:
+		var oid := str(oid_v)
+		if not gs.physics_objects.has(oid):
+			continue
+		var cell: Vector2i = grid.world_to_grid(gs.get_physics_position(oid))
+		if cell.x < 0 or cell.y < 0 or cell.x >= grid.width or cell.y >= grid.height:
+			notes.append("crate %s off-grid (%s)" % [oid, str(cell)])
+			return false
+		if seen.has(cell):
+			notes.append("crates %s and %s share cell %s" % [oid, seen[cell], str(cell)])
+			return false
+		seen[cell] = oid
+	return true
+
+func _persona_probe_run(frag_id: String, persona: String) -> void:
+	var inst = await _instantiate_preview_chunk_and_wait(frag_id, 5)
+	if inst == null:
+		_assert_true(false, "%s boots for %s" % [frag_id, persona])
+		return
+	var gs = inst._game_state
+	var chunk = inst._active_chunk
+	var grid = gs.grid
+	var sched = inst.get("_scheduler")
+	var party: Array = ["aster", "peris", "endo"]
+	var pseed: int = abs(persona.hash()) % 100000
+	var notes: Array = []
+	var interactables: Array = []
+	var raw_its: Variant = chunk.get("_interactables")
+	if raw_its is Array:
+		for it in (raw_its as Array):
+			if is_instance_valid(it):
+				interactables.append(it)
+	var crates: Array = []
+	if frag_id == "push_lab":
+		crates = ["crate_open", "crate_hall", "crate_bend", "crate_pair_a", "crate_pair_b"]
+	inst.headless_advance(0.2)
+	var tick0 := float(sched.get_current_tick())
+	var invariants_held := true
+
+	match persona:
+		"spiffing_brit":
+			invariants_held = await _persona_spiffing_brit(inst, gs, chunk, grid, party, crates, notes)
+		"dean_takahashi":
+			invariants_held = await _persona_dean(inst, gs, chunk, grid, party, interactables, pseed, notes)
+		"twitch_plays":
+			invariants_held = await _persona_twitch(inst, gs, chunk, grid, party, interactables, crates, pseed, notes)
+		"shesez":
+			invariants_held = await _persona_shesez(inst, gs, chunk, grid, party, pseed, notes)
+
+	# Soak past every persona: the world must still tick and hold AFTER the abuse stops.
+	var elapsed := float(sched.get_current_tick()) - tick0
+	if elapsed < 25.0:
+		inst.headless_advance(25.0 - elapsed)
+	if not _persona_beat_ok(gs, grid, party, notes):
+		invariants_held = false
+	_assert_true(float(sched.get_current_tick()) > tick0 + 20.0,
+		"%s/%s: the simulation kept ticking" % [frag_id, persona])
+	_assert_true(invariants_held, "%s/%s: invariants held (%s)"
+		% [frag_id, persona, "clean" if notes.is_empty() else str(notes)])
+	inst.queue_free()
+	await get_tree().process_frame
+
+## TheSpiffingBrit: scripted exploit attempts against the fragment's PRICES.
+func _persona_spiffing_brit(inst, gs, chunk, grid, party: Array, crates: Array, notes: Array) -> bool:
+	var ok := true
+	if chunk.has_method("basins") and not (chunk.basins() as Array).is_empty():
+		var basin = chunk.basins()[0]
+		var first_mid: float = basin.next_state_tick(1)
+		# (1) Knowledge surfaces never mutate stats — read the chart repeatedly, watch the books.
+		var chart = chunk.find_child("BasinRotaChart", true, false)
+		for _r in range(4):
+			var sta := float(gs.get_stat("peris", "stamina"))
+			var hp := float(gs.get_stat("peris", "hp"))
+			_persona_poke(chart, "peris")
+			if not (is_equal_approx(float(gs.get_stat("peris", "stamina")), sta)
+					and is_equal_approx(float(gs.get_stat("peris", "hp")), hp)):
+				notes.append("chart read mutated stats")
+				ok = false
+		# (2) The read cooldown cannot be spammed past its rate.
+		var console = chunk.find_child("FlowReadConsole", true, false)
+		var arms: Array = []
+		if console != null:
+			console.read_logged.connect(func(t: float): arms.append(t))
+			for _s in range(6):
+				_persona_poke(console, "aster")
+				inst.headless_advance(0.3)
+			if arms.size() > 1:
+				notes.append("console armed %d times inside one cooldown" % arms.size())
+				ok = false
+		gs.command_stop("aster")
+		# (3) The hazard is never a free ride: every deliberate swim is paid in hp.
+		for round_i in range(2):
+			var waited := 0.0
+			while waited < 20.0 and int(basin.get_water_state()) != 0:
+				inst.headless_advance(0.5)
+				waited += 0.5
+			gs.set_character_level("peris", 0)
+			gs.snap_character_to("peris", Vector3(9.0, 0.0, 4.5))
+			var hp_before := float(gs.get_stat("peris", "hp"))
+			waited = 0.0
+			while waited < 25.0 and float(gs.get_stat("peris", "hp")) >= hp_before \
+					and not gs.is_downed("peris"):
+				inst.headless_advance(0.5)
+				waited += 0.5
+			if float(gs.get_stat("peris", "hp")) >= hp_before and not gs.is_downed("peris"):
+				notes.append("swim round %d went unpaid" % round_i)
+				ok = false
+		# (4) The win cannot be rushed: spam the shelter from anywhere — never complete early.
+		var shelter = chunk.find_child("BasinExitShelter", true, false)
+		_persona_poke(shelter, "aster")
+		if bool(chunk.get_preview_state()["complete"]) \
+				and float(inst.get("_scheduler").get_current_tick()) < first_mid:
+			notes.append("completed before the first MID window")
+			ok = false
+		# (5) The legit min-route still pays the design floor: climb, cross at MID, rest.
+		for cid_v in party:
+			gs.command_move_cross_level(str(cid_v), Vector2i(7, 1), 1)
+		inst.headless_advance(10.0)
+		var cross_wait := 0.0
+		while cross_wait < 40.0 and int(basin.get_water_state()) != 1:
+			inst.headless_advance(0.5)
+			cross_wait += 0.5
+		for cid_v in party:
+			gs.set_character_level(str(cid_v), 1)
+			gs.snap_character_to(str(cid_v), Vector3(8.25 + 1.5 * float(party.find(cid_v) % 2), 2.7, -0.75))
+			gs.command_move_to_pos(str(cid_v), Vector3(8.2 + 0.8 * float(party.find(cid_v)), 2.7, 12.6))
+		inst.headless_advance(6.0)
+		_persona_poke(shelter, "aster")
+		inst.headless_advance(0.6, 0.1)
+		if bool(chunk.get_preview_state()["complete"]):
+			if float(inst.get("_scheduler").get_current_tick()) < first_mid:
+				notes.append("the win undercut the design floor")
+				ok = false
+	if not crates.is_empty():
+		# Two hands on one crate: conflicting pushes must resolve to ONE legal resting cell.
+		var open_cell: Vector2i = grid.world_to_grid(gs.get_physics_position("crate_open"))
+		gs.snap_character_to("aster", Vector3(float(open_cell.x) - 1.5, 0.0, float(open_cell.y) + 0.5))
+		gs.snap_character_to("peris", Vector3(float(open_cell.x) + 2.5, 0.0, float(open_cell.y) + 0.5))
+		gs.command_push_object("aster", "crate_open", open_cell + Vector2i(2, 0))
+		gs.command_push_object("peris", "crate_open", open_cell + Vector2i(-2, 0))
+		var settle := 0.0
+		while settle < 25.0 and (gs.is_pushing("aster") or gs.is_pushing("peris")):
+			inst.headless_advance(0.4)
+			settle += 0.4
+		if gs.is_pushing("aster") or gs.is_pushing("peris"):
+			notes.append("conflicting pushes never resolved")
+			ok = false
+		if not _persona_crates_legal(gs, grid, crates, notes):
+			ok = false
+		var final_cell: Vector2i = grid.world_to_grid(gs.get_physics_position("crate_open"))
+		if not grid.is_walkable(final_cell.x, final_cell.y, {}, {}, 0):
+			notes.append("crate ended on unwalkable %s" % str(final_cell))
+			ok = false
+	return ok and _persona_beat_ok(gs, grid, party, notes)
+
+## DeanTakahashi: pure reaction — wrong-way flight, mashing, repetition; never adapts.
+func _persona_dean(inst, gs, chunk, grid, party: Array, interactables: Array, pseed: int, notes: Array) -> bool:
+	var ok := true
+	var last_cmd := {}
+	var enemy_ids: Array = []
+	if chunk.has_method("enemies"):
+		for e in chunk.enemies():
+			if is_instance_valid(e):
+				enemy_ids.append(str(e.char_id))
+	for beat in range(80):
+		var now := float(inst.get("_scheduler").get_current_tick())
+		var cid := str(party[_persona_hash(now, pseed, beat) % party.size()])
+		if gs.is_downed(cid):
+			inst.headless_advance(0.7)
+			continue
+		var p: Vector3 = gs.get_position(cid)
+		var fled := false
+		for eid_v in enemy_ids:
+			var eid := str(eid_v)
+			if not gs.characters.has(eid):
+				continue
+			var ep: Vector3 = gs.get_position(eid)
+			if p.distance_to(ep) < 6.0:
+				var away := (p - ep).normalized()
+				var wrong := away.rotated(Vector3.UP,
+					deg_to_rad(float(_persona_hash(now, pseed, 7) % 240) - 120.0))
+				gs.command_move_to_pos(cid, p + wrong * 3.0)
+				fled = true
+				break
+		if not fled:
+			match _persona_hash(now, pseed, beat) % 3:
+				0:
+					if last_cmd.has(cid):
+						gs.command_move_to_pos(cid, last_cmd[cid])
+				1:
+					if not interactables.is_empty():
+						var it = interactables[_persona_hash(now, pseed, 3) % interactables.size()]
+						_persona_poke(it, str(party[_persona_hash(now, pseed, 5) % party.size()]))
+				2:
+					var target := p + Vector3(
+						float(_persona_hash(now, pseed, 11) % 7) - 3.0, 0.0,
+						float(_persona_hash(now, pseed, 13) % 7) - 3.0)
+					last_cmd[cid] = target
+					gs.command_move_to_pos(cid, target)
+		inst.headless_advance(0.7)
+		if not _persona_beat_ok(gs, grid, party, notes):
+			ok = false
+			break
+	# The fumbler's law: the world never soft-locks. Either someone still stands, or the wipe
+	# restarted the fragment clean (everyone restored where the data respawned them).
+	inst.headless_advance(5.0)
+	var all_down := true
+	for cid_v in party:
+		if not gs.is_downed(str(cid_v)):
+			all_down = false
+	if all_down:
+		notes.append("all downed with no restart — soft-locked")
+		ok = false
+	return ok
+
+## TwitchPlays: conflicting inputs every beat; the storm must leave no wreckage.
+func _persona_twitch(inst, gs, chunk, grid, party: Array, interactables: Array, crates: Array, pseed: int, notes: Array) -> bool:
+	var ok := true
+	for beat in range(90):
+		var now := float(inst.get("_scheduler").get_current_tick())
+		var cid := str(party[_persona_hash(now, pseed, beat) % party.size()])
+		if gs.is_downed(cid):
+			inst.headless_advance(0.5)
+			continue
+		match _persona_hash(now, pseed, beat * 3) % 5:
+			0:
+				var p: Vector3 = gs.get_position(cid)
+				gs.command_move_to_pos(cid, p + Vector3(
+					float(_persona_hash(now, pseed, 17) % 9) - 4.0, 0.0,
+					float(_persona_hash(now, pseed, 19) % 9) - 4.0))
+			1:
+				gs.command_stop(cid)
+			2:
+				if not interactables.is_empty():
+					_persona_poke(interactables[_persona_hash(now, pseed, 23) % interactables.size()], cid)
+			3:
+				if not crates.is_empty():
+					var oid := str(crates[_persona_hash(now, pseed, 29) % crates.size()])
+					var oc: Vector2i = grid.world_to_grid(gs.get_physics_position(oid))
+					gs.command_push_object(cid, oid, oc + Vector2i(
+						_persona_hash(now, pseed, 31) % 3 - 1, _persona_hash(now, pseed, 37) % 3 - 1))
+				else:
+					gs.command_stop(cid)
+			4:
+				var p2: Vector3 = gs.get_position(cid)
+				gs.command_move_to_pos(cid, p2)
+		inst.headless_advance(0.5)
+		if not _persona_beat_ok(gs, grid, party, notes):
+			ok = false
+			break
+	# Settle, then audit the wreckage.
+	for cid_v in party:
+		gs.command_stop(str(cid_v))
+	inst.headless_advance(8.0)
+	for cid_v in party:
+		var cid2 := str(cid_v)
+		if gs.is_external_traversal_active(cid2):
+			notes.append("%s stuck in an external traversal after the storm" % cid2)
+			ok = false
+		if gs.is_pushing(cid2):
+			notes.append("%s left an orphaned push plan" % cid2)
+			ok = false
+	if not crates.is_empty() and not _persona_crates_legal(gs, grid, crates, notes):
+		ok = false
+	return ok and _persona_beat_ok(gs, grid, party, notes)
+
+## Shesez: probes every edge the world has; the edges must hold.
+func _persona_shesez(inst, gs, chunk, grid, party: Array, pseed: int, notes: Array) -> bool:
+	var ok := true
+	var probes: Array = [
+		Vector3(-60.0, 0.0, 0.0), Vector3(120.0, 0.0, 4.0), Vector3(9.0, 0.0, -80.0),
+		Vector3(9.0, 0.0, 200.0), Vector3(-3.2, 0.0, -3.2), Vector3(1000.0, 0.0, 1000.0),
+	]
+	for beat in range(60):
+		var now := float(inst.get("_scheduler").get_current_tick())
+		var cid := str(party[_persona_hash(now, pseed, beat) % party.size()])
+		if gs.is_downed(cid):
+			inst.headless_advance(0.5)
+			continue
+		match _persona_hash(now, pseed, beat * 7) % 3:
+			0:
+				gs.command_move_to_pos(cid, probes[_persona_hash(now, pseed, 41) % probes.size()])
+			1:
+				gs.command_move_cross_level(cid, Vector2i(
+					_persona_hash(now, pseed, 43) % (grid.width + 8) - 4,
+					_persona_hash(now, pseed, 47) % (grid.height + 8) - 4),
+					_persona_hash(now, pseed, 53) % 3)
+			2:
+				var edge := Vector3(
+					float(_persona_hash(now, pseed, 59) % 40) - 10.0, 0.0,
+					float(_persona_hash(now, pseed, 61) % 40) - 10.0)
+				gs.command_move_to_pos(cid, edge)
+		inst.headless_advance(0.5)
+		if not _persona_beat_ok(gs, grid, party, notes):
+			ok = false
+			break
+	for cid_v in party:
+		gs.command_stop(str(cid_v))
+	inst.headless_advance(6.0)
+	return ok and _persona_beat_ok(gs, grid, party, notes)
 
 func _test_capbage_retrieve() -> void:
 	_test_name = "Capbage Retrieve"
