@@ -1591,7 +1591,12 @@ func _show_push_queue_prompt(push_player: Node) -> void:
 	if push_player != null and push_player.has_signal("push_queue_state_changed") \
 			and not push_player.is_connected("push_queue_state_changed", _on_push_queue_state_changed):
 		push_player.connect("push_queue_state_changed", _on_push_queue_state_changed)
-	if _tutorial_prompt != null and _tutorial_prompt.has_method("show_prompt"):
+	# The glyph renders the live `highlight` binding (Shift keycap / gamepad shoulder), so the
+	# hint stays honest on every device and through rebinds.
+	if _tutorial_prompt != null and _tutorial_prompt.has_method("show_action_prompt"):
+		_tutorial_prompt.show_action_prompt(
+			&"highlight", "click to select push location", 0.0, "Shift")
+	elif _tutorial_prompt != null and _tutorial_prompt.has_method("show_prompt"):
 		_tutorial_prompt.show_prompt("Shift-click to select push location", 0.0)
 
 func _on_push_queue_state_changed(active: bool) -> void:

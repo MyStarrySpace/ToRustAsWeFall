@@ -243,7 +243,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		if _push_obj_id != "":
 			# SHIFT-click commits the queued push at the crate's destination; a plain click
 			# abandons the queue and falls through to the ordinary move.
-			if mb.shift_pressed:
+			if _queue_modifier_held(mb):
 				_handle_queued_push_click(_raycast_ground(mb.position), true)
 				return
 			cancel_push_queue()
@@ -266,7 +266,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	# (is_pick_mode). In normal "move" mode `select` belongs to the SelectionController (character pick).
 	# While a push is queued: SHIFT-select commits at the crate's destination; plain select cancels.
 	if mb.is_action_pressed("select") and _push_obj_id != "":
-		_handle_queued_push_click(_raycast_ground(mb.position), mb.shift_pressed)
+		_handle_queued_push_click(_raycast_ground(mb.position), _queue_modifier_held(mb))
 		return
 
 	if mb.is_action_pressed("select") and _click_mode == "select":
@@ -709,6 +709,12 @@ func cancel_push_queue() -> void:
 	_clear_path_preview()
 	if was_queued:
 		push_queue_state_changed.emit(false)
+
+## The SHIFT modifier on EVERY device: the raw keyboard modifier, or the `highlight` InputMap
+## action held any other way — a gamepad shoulder button, or the touch cluster's latched SHIFT
+## (which presses the same action). One modifier, one read, every input device.
+func _queue_modifier_held(mb: InputEventMouseButton) -> bool:
+	return mb.shift_pressed or Input.is_action_pressed("highlight")
 
 ## The one decision point for a click while a push is queued: SHIFT commits the crate to the
 ## clicked cell; anything else abandons the queue.

@@ -41260,9 +41260,12 @@ func _test_push_lab() -> void:
 	instance._on_push_queue_requested("crate_open")
 	_assert_true(bool(player.is_push_queued()), "Grammar: clicking the crate starts the push")
 	var tui = instance.get("_tutorial_prompt")
-	_assert_true(tui != null and str(tui.get("_label").text).contains("Shift-click"),
-		"Grammar: the hint reads 'Shift-click to select push location' (got: %s)"
+	_assert_true(tui != null and str(tui.get("_label").text).contains("click to select push location"),
+		"Grammar: the hint reads 'click to select push location' beside the modifier glyph (got: %s)"
 		% (str(tui.get("_label").text) if tui != null else "<no prompt facade>"))
+	_assert_true(tui != null and tui.get("_prompt_glyph") != null
+		and bool((tui.get("_prompt_glyph") as Control).visible),
+		"Grammar: the hint carries the device glyph for the SHIFT modifier")
 	_assert_true(player.push_queue_state_changed.is_connected(instance._on_push_queue_state_changed),
 		"Grammar: the host hides the hint off the queue-state signal")
 	var open_now: Vector2i = grid.world_to_grid(gs.get_physics_position("crate_open"))
@@ -41321,6 +41324,47 @@ func _test_push_lab() -> void:
 	_assert_true(bool(player._blocked_cursor_on),
 		"Unpushable: clicking a boxed crate shows the X immediately")
 	player.cancel_push_queue()
+
+	# (M) THE MODIFIER ON EVERY DEVICE: the push commit reads raw SHIFT or the `highlight`
+	# ACTION — so a gamepad shoulder or the touch SHIFT button is the same modifier.
+	var plain_click := InputEventMouseButton.new()
+	plain_click.button_index = MOUSE_BUTTON_RIGHT
+	_assert_true(not bool(player._queue_modifier_held(plain_click)),
+		"Modifier: a bare click carries no modifier")
+	plain_click.shift_pressed = true
+	_assert_true(bool(player._queue_modifier_held(plain_click)),
+		"Modifier: the raw keyboard SHIFT counts")
+	plain_click.shift_pressed = false
+	Input.action_press("highlight")
+	_assert_true(bool(player._queue_modifier_held(plain_click)),
+		"Modifier: holding the highlight ACTION counts (gamepad shoulder / touch latch)")
+	Input.action_release("highlight")
+	_assert_true(not bool(player._queue_modifier_held(plain_click)),
+		"Modifier: releasing the action clears it")
+	var pad_bound := false
+	for ev in InputMap.action_get_events("highlight"):
+		if ev is InputEventJoypadButton and (ev as InputEventJoypadButton).button_index == JOY_BUTTON_LEFT_SHOULDER:
+			pad_bound = true
+	_assert_true(pad_bound, "Modifier: a gamepad shoulder button is bound to the highlight action")
+
+	# (N) THE TOUCH SHIFT: a sticky latch on the cluster — pressed = the action held; the next
+	# completed ACTION tap consumes it; hiding the cluster never leaves the modifier stuck.
+	var touch = instance.get("_touch_modes")
+	_assert_true(touch != null and touch.has_method("set_shift_latch"),
+		"Touch: the mode cluster carries the SHIFT latch")
+	touch.set_forced(true)
+	touch.set_shift_latch(true)
+	_assert_true(bool(touch.is_shift_latched()) and Input.is_action_pressed("highlight"),
+		"Touch: latching SHIFT holds the highlight action")
+	touch._begin_action_command_proxy(Vector2(8.0, 8.0))
+	touch._release_action_command_proxy(Vector2(8.0, 8.0))
+	_assert_true(not bool(touch.is_shift_latched()) and not Input.is_action_pressed("highlight"),
+		"Touch: a completed ACTION tap consumes the latch (one-shot)")
+	touch.set_shift_latch(true)
+	touch.set_forced(false)
+	_assert_true(not bool(touch.is_shift_latched()) and not Input.is_action_pressed("highlight"),
+		"Touch: hiding the cluster releases the latch — the modifier can never stick")
+	gs.command_stop("aster")
 
 	instance.queue_free()
 	await get_tree().process_frame

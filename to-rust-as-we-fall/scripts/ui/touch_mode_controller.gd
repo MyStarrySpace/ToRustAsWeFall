@@ -35,6 +35,8 @@ var _cam_dragging := false
 var _press_pos := Vector2.ZERO
 var _pressed := false
 var _action_command_proxy_active := false
+var _shift_latched := false
+var _shift_button: Button = null
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
@@ -74,11 +76,35 @@ func _refresh_visibility() -> void:
 	if not visible:
 		_cancel_action_command_proxy()
 		_reset_pointer_state()
+		set_shift_latch(false)
 
 func _on_visibility_changed() -> void:
 	if not visible:
 		_cancel_action_command_proxy()
 		_reset_pointer_state()
+		set_shift_latch(false)
+
+# --- The touch SHIFT: the modifier button (the `highlight` action) for one-finger play ----------
+
+## Latch/unlatch the game's SHIFT modifier (the `highlight` InputMap action — the reveal AND the
+## push-destination commit). A latch is STICKY: the next ACTION tap consumes it, or tapping the
+## button again releases it. Pressing the ACTION rather than faking a key keeps every consumer
+## (player push grammar, HUD) reading one truth.
+func set_shift_latch(on: bool) -> void:
+	if on == _shift_latched:
+		return
+	_shift_latched = on
+	if on:
+		Input.action_press("highlight")
+	else:
+		Input.action_release("highlight")
+	_style_shift_button()
+
+func is_shift_latched() -> bool:
+	return _shift_latched
+
+func _toggle_shift_latch() -> void:
+	set_shift_latch(not _shift_latched)
 
 func _process(_delta: float) -> void:
 	if _action_command_proxy_active and _must_cancel_action_proxy():
@@ -90,6 +116,7 @@ func _process(_delta: float) -> void:
 func _exit_tree() -> void:
 	_cancel_action_command_proxy()
 	_reset_pointer_state()
+	set_shift_latch(false)
 
 # --- Input routing (runs before gui/physics/unhandled; steps aside when the tap is theirs) -----
 
@@ -179,6 +206,10 @@ func _release_action_command_proxy(pos: Vector2) -> void:
 		return
 	_action_command_proxy_active = false
 	_dispatch_command_edge(pos, false)
+	# A latched SHIFT is one-shot: the completed ACTION tap consumed it (the press edge above ran
+	# with the modifier held), so it releases here rather than silently sticking on.
+	if _shift_latched:
+		set_shift_latch(false)
 
 func _cancel_action_command_proxy(pos := Vector2.INF) -> void:
 	if not _action_command_proxy_active:
@@ -232,7 +263,25 @@ func _bind_ui() -> void:
 		var b := _panel.get_node("TouchMode_%s" % m) as Button
 		b.pressed.connect(set_mode.bind(str(m)))
 		_buttons[m] = b
+	_shift_button = _panel.get_node_or_null("TouchShift") as Button
+	if _shift_button != null and not _shift_button.pressed.is_connected(_toggle_shift_latch):
+		_shift_button.pressed.connect(_toggle_shift_latch)
 	_style_buttons()
+	_style_shift_button()
+
+func _style_shift_button() -> void:
+	if _shift_button == null or not is_instance_valid(_shift_button):
+		return
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.32, 0.24, 0.12, 0.92) if _shift_latched else Color(0.10, 0.11, 0.12, 0.72)
+	sb.border_color = Color(0.95, 0.78, 0.30) if _shift_latched else Color(0.30, 0.33, 0.34)
+	sb.set_border_width_all(2 if _shift_latched else 1)
+	sb.set_corner_radius_all(6)
+	_shift_button.add_theme_stylebox_override("normal", sb)
+	_shift_button.add_theme_stylebox_override("hover", sb)
+	_shift_button.add_theme_stylebox_override("pressed", sb)
+	_shift_button.add_theme_color_override("font_color",
+		Color(1.0, 0.92, 0.72) if _shift_latched else Color(0.72, 0.74, 0.72))
 
 func _style_buttons() -> void:
 	for m in _buttons:

@@ -34,3 +34,8 @@ text = "SELECT"
 custom_minimum_size = Vector2(96, 44)
 focus_mode = 0
 text = "ACTION"
+
+[node name="TouchShift" type="Button" parent="TouchModeCluster"]
+custom_minimum_size = Vector2(96, 44)
+focus_mode = 0
+text = "SHIFT"
