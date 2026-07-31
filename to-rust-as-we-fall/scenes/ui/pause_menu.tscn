@@ -225,6 +225,32 @@ layout_mode = 2
 theme_override_colors/font_color = Color(0.7, 0.76, 0.84, 1)
 vertical_alignment = 1
 
+[node name="TouchShiftLabel" type="Label" parent="SettingsView/Panel/Content"]
+layout_mode = 2
+tooltip_text = "How the on-screen SHIFT button behaves on touch devices: tap it to arm the next tap, or hold it like a real key."
+theme_override_colors/font_color = Color(0.8, 0.82, 0.88, 1)
+theme_override_font_sizes/font_size = 14
+text = "Touch SHIFT Button"
+
+[node name="TouchShiftButtons" type="HBoxContainer" parent="SettingsView/Panel/Content"]
+layout_mode = 2
+theme_override_constants/separation = 6
+alignment = 1
+
+[node name="Toggle" type="Button" parent="SettingsView/Panel/Content/TouchShiftButtons"]
+custom_minimum_size = Vector2(120, 0)
+layout_mode = 2
+tooltip_text = "Tap to arm SHIFT; the next action tap uses and releases it."
+theme_override_font_sizes/font_size = 14
+text = "Tap to Toggle"
+
+[node name="Hold" type="Button" parent="SettingsView/Panel/Content/TouchShiftButtons"]
+custom_minimum_size = Vector2(120, 0)
+layout_mode = 2
+tooltip_text = "SHIFT is held only while your finger is on the button."
+theme_override_font_sizes/font_size = 14
+text = "Hold"
+
 [node name="AbilityLabel" type="Label" parent="SettingsView/Panel/Content"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.8, 0.82, 0.88, 1)

@@ -17,6 +17,7 @@ const MAIN_MENU_SCENE := "res://scenes/ui/main_menu.tscn"
 @onready var _settings_view: Control = $SettingsView
 var _speed_buttons: Array[Button] = []
 var _game_mode_buttons: Dictionary = {}
+var _touch_shift_buttons: Dictionary = {}
 @onready var _rally_hold_slider: HSlider = $SettingsView/Panel/Content/RallyRow/Slider
 @onready var _rally_hold_value: Label = $SettingsView/Panel/Content/RallyRow/Value
 var _refreshing_controls := false
@@ -47,6 +48,13 @@ func _ready() -> void:
 	_rally_hold_slider.min_value = GameSettings.RALLY_HOLD_MIN
 	_rally_hold_slider.max_value = GameSettings.RALLY_HOLD_MAX
 	_rally_hold_slider.value_changed.connect(_on_rally_hold_duration_changed)
+	_touch_shift_buttons = {
+		false: $SettingsView/Panel/Content/TouchShiftButtons/Toggle,
+		true: $SettingsView/Panel/Content/TouchShiftButtons/Hold,
+	}
+	for hold_mode in _touch_shift_buttons:
+		(_touch_shift_buttons[hold_mode] as Button).pressed.connect(
+			_on_touch_shift_mode_pressed.bind(bool(hold_mode)))
 	for party_slot in range(GameSettings.PARTY_ABILITY_ACTIONS.size()):
 		var actions: Array = GameSettings.PARTY_ABILITY_ACTIONS[party_slot]
 		for ability_slot in range(actions.size()):
@@ -127,6 +135,7 @@ func _show_settings() -> void:
 	_refresh_speed_buttons()
 	_refresh_game_mode_buttons()
 	_refresh_rally_hold_control()
+	_refresh_touch_shift_buttons()
 	_refresh_ability_binding_buttons()
 	_pause_view.visible = false
 	_settings_view.visible = true
@@ -159,6 +168,20 @@ func _refresh_game_mode_buttons() -> void:
 	for raw_mode_id in _game_mode_buttons:
 		var mode_id := str(raw_mode_id)
 		_style_button(_game_mode_buttons[mode_id], mode_id == active)
+
+func _on_touch_shift_mode_pressed(hold_mode: bool) -> void:
+	var settings := _settings()
+	if settings != null and settings.has_method("set_touch_shift_hold"):
+		settings.call("set_touch_shift_hold", hold_mode)
+	_refresh_touch_shift_buttons()
+
+func _refresh_touch_shift_buttons() -> void:
+	var hold_active := false
+	var settings := _settings()
+	if settings != null and settings.has_method("is_touch_shift_hold"):
+		hold_active = bool(settings.call("is_touch_shift_hold"))
+	for hold_mode in _touch_shift_buttons:
+		_style_button(_touch_shift_buttons[hold_mode] as Button, bool(hold_mode) == hold_active)
 
 func _on_rally_hold_duration_changed(seconds: float) -> void:
 	if _refreshing_controls:

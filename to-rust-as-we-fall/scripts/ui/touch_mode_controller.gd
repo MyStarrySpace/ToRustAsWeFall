@@ -87,9 +87,10 @@ func _on_visibility_changed() -> void:
 # --- The touch SHIFT: the modifier button (the `highlight` action) for one-finger play ----------
 
 ## Latch/unlatch the game's SHIFT modifier (the `highlight` InputMap action — the reveal AND the
-## push-destination commit). A latch is STICKY: the next ACTION tap consumes it, or tapping the
-## button again releases it. Pressing the ACTION rather than faking a key keeps every consumer
-## (player push grammar, HUD) reading one truth.
+## push-destination commit). Pressing the ACTION rather than faking a key keeps every consumer
+## (player push grammar, HUD) reading one truth. The button's FEEL is an accessibility setting
+## (`Settings.touch_shift_hold`): tap-to-toggle (default — a sticky latch the next ACTION tap
+## consumes, one-finger play) or a held button (the modifier lasts while the finger is down).
 func set_shift_latch(on: bool) -> void:
 	if on == _shift_latched:
 		return
@@ -103,8 +104,23 @@ func set_shift_latch(on: bool) -> void:
 func is_shift_latched() -> bool:
 	return _shift_latched
 
-func _toggle_shift_latch() -> void:
-	set_shift_latch(not _shift_latched)
+## Whether the SHIFT button is in held-button mode (accessibility setting; toggle otherwise).
+func shift_button_is_hold_mode() -> bool:
+	var settings := get_tree().root.get_node_or_null("Settings") if is_inside_tree() else null
+	return settings != null and settings.has_method("is_touch_shift_hold") \
+		and bool(settings.call("is_touch_shift_hold"))
+
+func _on_shift_button_pressed() -> void:
+	if not shift_button_is_hold_mode():
+		set_shift_latch(not _shift_latched)
+
+func _on_shift_button_down() -> void:
+	if shift_button_is_hold_mode():
+		set_shift_latch(true)
+
+func _on_shift_button_up() -> void:
+	if shift_button_is_hold_mode():
+		set_shift_latch(false)
 
 func _process(_delta: float) -> void:
 	if _action_command_proxy_active and _must_cancel_action_proxy():
@@ -206,9 +222,10 @@ func _release_action_command_proxy(pos: Vector2) -> void:
 		return
 	_action_command_proxy_active = false
 	_dispatch_command_edge(pos, false)
-	# A latched SHIFT is one-shot: the completed ACTION tap consumed it (the press edge above ran
-	# with the modifier held), so it releases here rather than silently sticking on.
-	if _shift_latched:
+	# In TOGGLE mode a latched SHIFT is one-shot: the completed ACTION tap consumed it (the press
+	# edge above ran with the modifier held), so it releases here rather than silently sticking
+	# on. In HOLD mode the finger on the button governs — repeated modified taps are the point.
+	if _shift_latched and not shift_button_is_hold_mode():
 		set_shift_latch(false)
 
 func _cancel_action_command_proxy(pos := Vector2.INF) -> void:
@@ -264,8 +281,13 @@ func _bind_ui() -> void:
 		b.pressed.connect(set_mode.bind(str(m)))
 		_buttons[m] = b
 	_shift_button = _panel.get_node_or_null("TouchShift") as Button
-	if _shift_button != null and not _shift_button.pressed.is_connected(_toggle_shift_latch):
-		_shift_button.pressed.connect(_toggle_shift_latch)
+	if _shift_button != null:
+		if not _shift_button.pressed.is_connected(_on_shift_button_pressed):
+			_shift_button.pressed.connect(_on_shift_button_pressed)
+		if not _shift_button.button_down.is_connected(_on_shift_button_down):
+			_shift_button.button_down.connect(_on_shift_button_down)
+		if not _shift_button.button_up.is_connected(_on_shift_button_up):
+			_shift_button.button_up.connect(_on_shift_button_up)
 	_style_buttons()
 	_style_shift_button()
 

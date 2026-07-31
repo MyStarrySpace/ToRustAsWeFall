@@ -104,6 +104,10 @@ var rally_hold_duration: float = RALLY_HOLD_DEFAULT
 ## information; shake/flash carry only the punch).
 var screen_shake_enabled: bool = true
 var damage_flash_enabled: bool = true
+## Accessibility: how the on-screen touch SHIFT button behaves. False (default) =
+## tap-to-toggle (a sticky latch consumed by the next action tap — one-finger play);
+## true = a held button (the modifier lasts exactly while the finger is down).
+var touch_shift_hold: bool = false
 
 func set_screen_shake_enabled(on: bool) -> void:
 	screen_shake_enabled = on
@@ -114,6 +118,16 @@ func set_damage_flash_enabled(on: bool) -> void:
 	damage_flash_enabled = on
 	save_settings()
 	changed.emit()
+
+func set_touch_shift_hold(hold: bool) -> void:
+	if hold == touch_shift_hold:
+		return
+	touch_shift_hold = hold
+	save_settings()
+	changed.emit()
+
+func is_touch_shift_hold() -> bool:
+	return touch_shift_hold
 ## The selected gameplay configuration. It is applied when entering/restarting a
 ## generated stretch rather than hot-swapping the economy underneath a live run.
 var game_mode: String = GAME_MODE_NEUTRAL
@@ -323,6 +337,7 @@ func save_settings() -> void:
 	cfg.set_value("accessibility", "auto_advance_dialogue", auto_advance_dialogue)
 	cfg.set_value("accessibility", "screen_shake", screen_shake_enabled)
 	cfg.set_value("accessibility", "damage_flash", damage_flash_enabled)
+	cfg.set_value("accessibility", "touch_shift_hold", touch_shift_hold)
 	cfg.set_value("gameplay", "mode", game_mode)
 	cfg.set_value("controls", "rally_hold_duration", rally_hold_duration)
 	for action in _input_binding_overrides:
@@ -346,6 +361,9 @@ func load_settings() -> void:
 	)
 	damage_flash_enabled = bool(
 		_config_value(cfg, "accessibility", "damage_flash", true)
+	)
+	touch_shift_hold = bool(
+		_config_value(cfg, "accessibility", "touch_shift_hold", false)
 	)
 	game_mode = canonical_game_mode(str(
 		_config_value(cfg, "gameplay", "mode", GAME_MODE_NEUTRAL)

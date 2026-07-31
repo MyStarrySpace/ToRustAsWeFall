@@ -41352,6 +41352,9 @@ func _test_push_lab() -> void:
 	var touch = instance.get("_touch_modes")
 	_assert_true(touch != null and touch.has_method("set_shift_latch"),
 		"Touch: the mode cluster carries the SHIFT latch")
+	var acc_settings = instance.get_tree().root.get_node_or_null("Settings")
+	if acc_settings != null and acc_settings.has_method("set_touch_shift_hold"):
+		acc_settings.call("set_touch_shift_hold", false)   # pin the default toggle feel
 	touch.set_forced(true)
 	touch.set_shift_latch(true)
 	_assert_true(bool(touch.is_shift_latched()) and Input.is_action_pressed("highlight"),
@@ -41364,6 +41367,33 @@ func _test_push_lab() -> void:
 	touch.set_forced(false)
 	_assert_true(not bool(touch.is_shift_latched()) and not Input.is_action_pressed("highlight"),
 		"Touch: hiding the cluster releases the latch — the modifier can never stick")
+
+	# (O) THE BUTTON'S FEEL IS AN ACCESSIBILITY SETTING: tap-to-toggle (default) or held.
+	_assert_true(acc_settings != null and acc_settings.has_method("set_touch_shift_hold"),
+		"Settings: the touch SHIFT feel is an accessibility option")
+	touch.set_forced(true)
+	touch._on_shift_button_down()
+	_assert_true(not bool(touch.is_shift_latched()),
+		"Toggle mode: pressing down alone does not arm (the tap does)")
+	touch._on_shift_button_pressed()
+	_assert_true(bool(touch.is_shift_latched()), "Toggle mode: a tap arms the latch")
+	touch._on_shift_button_pressed()
+	_assert_true(not bool(touch.is_shift_latched()), "Toggle mode: a second tap releases it")
+	acc_settings.call("set_touch_shift_hold", true)
+	touch._on_shift_button_pressed()
+	_assert_true(not bool(touch.is_shift_latched()), "Hold mode: a tap alone does not toggle")
+	touch._on_shift_button_down()
+	_assert_true(bool(touch.is_shift_latched()) and Input.is_action_pressed("highlight"),
+		"Hold mode: the modifier is held while the finger is down")
+	touch._begin_action_command_proxy(Vector2(8.0, 8.0))
+	touch._release_action_command_proxy(Vector2(8.0, 8.0))
+	_assert_true(bool(touch.is_shift_latched()),
+		"Hold mode: an ACTION tap does not consume the held modifier (repeat taps are the point)")
+	touch._on_shift_button_up()
+	_assert_true(not bool(touch.is_shift_latched()) and not Input.is_action_pressed("highlight"),
+		"Hold mode: lifting the finger releases the modifier")
+	acc_settings.call("set_touch_shift_hold", false)   # restore the default
+	touch.set_forced(false)
 	gs.command_stop("aster")
 
 	instance.queue_free()
