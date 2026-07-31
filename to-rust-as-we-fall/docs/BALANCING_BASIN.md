@@ -64,11 +64,16 @@ made three ways. No branch gates; each buys on its own axis:
    exists). Reading it pays FORESIGHT: which window is the LONG one, so
    waiting converts into scheduling. Execution stays manual — the chart
    widens your margin, it doesn't hold your hand.
-3. **Aster's read** — no detour. Cast on a crossing, it makes the timing
-   PERFECT: the crossing launches on the beat automatically, exactly as the
-   read behaves on the spiral. Priced as an ability — stamina and cooldown
-   from the same closed bar the sprints and dodges draw on — and scoped to
-   the NEXT onset only: perfection without foresight.
+3. **Aster's read** — no detour. Logged at the crossing, it makes the
+   timing PERFECT: the party is held at the lip and launched on the
+   flood→dry transition automatically — the wash_relay FlowTerminal assist
+   grammar (`_flow_assist_poll` / `_flow_assist_cross`), promoted to a kit
+   verb. (On the spiral the terminals only display the number; the relay's
+   terminal is the auto-perfect mechanic the director cited.) In the relay
+   it is unpriced; here it is priced as RESOURCE — each log debits Aster's
+   stamina from the same closed bar the sprints draw on, with a cooldown on
+   re-log (both via existing grammar: `adjust_stat` + a scheduler tag) —
+   and scoped to the NEXT onset only: perfection without foresight.
 
 Chart + Aster is the deluxe crossing for players who paid on both axes;
 chart + manual is the confident gambler; Aster alone is the impatient
@@ -121,23 +126,42 @@ strictly harder, blessed with its own playthrough test (never latent).
 
 ## Kit inventory (rule 2 — compose; extend only where the verb is missing)
 
-EXISTS (compose as-is): scheduler-committed water level + float bridge +
-drown-at-HIGH (the set-piece showcase valve piece — promote, don't fork);
-channel cadence data with analytic onsets; `exit_shelter`; Capbage/Scarpet;
-Flure; roam/patrol enemies; CrawlTunnel; the closed stamina field; the
-two-lane scheduler.
+EXISTS (compose as-is; provenance per the 2026-07-31 recon):
+- The **`sump`** (`scene_chunk.gd` `_spawn_sump`, data-spawnable) — the
+  portable 3-state water piece: DRAINED/MID/FLOODED pump, float platform,
+  reversible ledge inter-level link, penned enemy drowned at FLOODED. The
+  showcase Bay C valve/float-bridge/drown is its embedded cousin (walkable
+  floats ONLY at MID via dynamic blockers). Their drown is ENEMY-only —
+  players are blocked out of the water cells.
+- The **`Channel` kit** (`channel.gd`) — analytic cadence (period/dur/
+  phase, scheduler-tagged onsets, telegraph), the `hold()` valve verb, and
+  the PLAYER-capable sweep: locked external traversal to a chunk-supplied
+  dest Callable, hp bite committed on arrival. This is where party
+  drown/sweep parity comes from.
+- The **FlowTerminal assist** (wash_relay, inline) — the auto-perfect
+  crossing (hold-at-lip, depart-on-flood→dry), replay/FF-safe.
+- Plus: `exit_shelter`; Capbage/Scarpet; Flure; roam/patrol enemies with
+  cross-level moves; the multi-level grid + inter-level links; CrawlTunnel;
+  the closed stamina field; the two-lane scheduler.
 
 KIT WORK (each proved in its own fragment BEFORE composition):
-1. **Bowl-wide water level as a data-fragment verb** — the showcase's
-   penned water level promoted to a chunk-scale state with a non-uniform
-   rota (the channel model is uniform period/dur/phase; the rota needs a
-   window LIST).
-2. **Aster's auto-perfect crossing** — generalize the spiral's read into a
-   reusable "launch on the next dry beat" verb any crossing can consume.
+1. **Bowl-wide water level as a data-fragment verb** — a `BasinWater`-
+   class kit object marrying the sump's committed level state (float
+   walkability, ledge links) with the Channel's body resolution (party
+   swept + bitten, enemy drowned — one waterline predicate at commit).
+   The non-uniform rota needs NO new cadence code: short-short-LONG is a
+   PHASE LADDER — uniform windows on a shared cycle period, phased so the
+   dry gaps come out short/short/long (channels_wash_intro's trick, aimed
+   the other way) — or, equivalently, a dwell-list with prefix-sum
+   analytic next-onsets.
+2. **Aster's auto-perfect crossing** — extract wash_relay's FlowTerminal
+   assist into a reusable "hold at lip, launch on the next dry beat" verb
+   any crossing can consume, priced (stamina debit + cooldown).
 3. **The rota chart** — an info surface that renders a window schedule
    (existence visible at distance, content readable up close).
 4. **Dweller eviction** — fill-telegraph → break-for-refuge behavior;
-   compose from existing FSM states if possible, one new class max.
+   compose from existing FSM verbs (re-anchor `set_roam` / cross-level
+   move to a chunk-supplied refuge), one new class max.
 
 DEFERRED: the Sokoban-style cart push for gantry access leans on the push
 system still in flight in a parallel session — v1 gantry access composes an
