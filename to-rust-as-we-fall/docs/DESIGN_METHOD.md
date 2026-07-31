@@ -111,6 +111,53 @@ retired names are traps. The canon isn't reference material; it is the
 parts inventory that makes composition (rule 2) possible at all — you can
 only compose what has stable, agreed semantics.
 
+## 11. The hazard is the tool
+
+Rule 3 for FORCES, not just shapes: every force must carry both valences,
+reachable by arrangement. The wash sweeps the player, kills the sentry,
+drowns the lured watcher, carries the debris that becomes the bridge, and
+flushes the dens before a crossing. Design the force, then ask: how does
+the player TURN it?
+
+## 12. The player edits the topology
+
+Not lock-and-key — state variables that reconfigure what connects to what,
+with remote cause and displaced effect (flip a channel, a crossing
+assembles two turns away; raise the water, a bowl becomes three different
+maps). The map itself is operable plumbing the player works from inside.
+
+## 13. Braided, not sequenced
+
+Systems share the same ground at the same time: the stealth tempo and the
+flow puzzle occupy one space, and progress in one is metered by the other
+(the stamina bar as metronome). Never a puzzle room next to a stealth room.
+
+## 14. Round-trip pricing
+
+The body is the token. Costs are paid in return legs under degraded
+conditions — run past, then run BACK; cross at mid-water, return at high;
+spend the bar going in and owe the dash coming out.
+
+## 15. Instruments sharpen, never gate
+
+The player's natural instinct (watch the water, time it yourself) must be
+able to win. Perception reads and charts are amplifiers with real marginal
+value, never keys: requirement lives in the body — position, timing,
+stealth — not in a menu of reads. A read that adds no decision is a chore.
+
+## 16. Branches trade on distinct axes
+
+Every information/preparation branch must buy something with its own
+marginal shape — the Basin's triangle: self-timing is free but priced in
+ERROR; the rota chart costs a detour and pays in FORESIGHT (a wide window,
+still manually executed); Aster's read costs RESOURCE (stamina/cooldown
+from the one closed budget) and pays in PERFECT execution of the next
+window only. No branch dominates; every pairing is a real decision; the
+free path's failures are the advertisement for the paid ones. And the
+tradeoff is legible BEFORE the choice — the chart is visible from the
+whole floor, so "narrow window now vs. go earn the timing" is chosen with
+open eyes, never tripped over.
+
 ---
 
 ## The working loop, condensed
@@ -124,4 +171,7 @@ only compose what has stable, agreed semantics.
 5. Price the information: every threat a tell, every panic an answer.
 6. Prefer loops over lines; re-price ground with state.
 7. Make the world justify every placement.
-8. Watch it back like a stranger; correct the READ, not the numbers.
+8. Give every force both valences; let the player turn the hazard.
+9. Price the branches on distinct axes; advertise the tradeoff up front;
+   let the free path's failures sell the paid ones.
+10. Watch it back like a stranger; correct the READ, not the numbers.
