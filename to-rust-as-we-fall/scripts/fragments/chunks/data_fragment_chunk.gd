@@ -51,6 +51,7 @@ var _spike_strips: Array = []    # SpikeStrip hostile architecture (the shared D
 var _infrastructure_operations: Array = [] # typed source -> receiver -> environmental consequence beats
 var _infrastructure_fields: Array = []     # shared hazard/concealment polling, like Candids/SpikeStrips
 var _hushblooms: Array = []      # Hushbloom stun flora (thigmonastic; pickable for the carried throw)
+var _basins: Array = []          # BasinWater bowls (rota-driven water state; docs/BALANCING_BASIN.md)
 var _fall_pos := Vector3.ZERO    # where the party last wiped (the runback decor pass grows here)
 var _candid_epoch := -1.0        # first absolute tick in the fixed Candid/Spike/service-field cadence
 var _concealment_epoch := -1.0   # first absolute spatial-cover sample in the fixed simulation cadence
@@ -1247,6 +1248,19 @@ func _spawn_object(spec: Dictionary) -> void:
 			var cr_stub := _add_box(cr, Vector3(0.0, 0.3, 0.0), Vector3(0.45, 0.6, 0.45),
 				Color(0.11, 0.12, 0.13))
 			_outline_interactable_child(cr, cr_stub, cr.name, 1.5)
+		"basin":
+			# {tag, pos:Vector3, plane_size:Vector2, floor_min/floor_max:Vector2 (world XZ),
+			#  safe_cells/float_cells:[[x,z]...], float_level, rota:[{level,dwell}...],
+			#  telegraph_lead, water_y/float_y:[3], outfall:Vector3, sweep:{...},
+			#  dwellers:[{id,refuge,home,radius}...]} — the bowl-scale water rota
+			#  (docs/BALANCING_BASIN.md); BasinWater owns states + catches + eviction.
+			var basin := BasinWater.new()
+			basin.name = _name(spec, "Basin")
+			basin.configure(gs, spec)
+			basin.set_party_ids(Array(fragment.party_ids))
+			basin.set_enemy_resolver(_enemy_by_id)
+			add_child(basin)
+			_basins.append(basin)
 		"marker":
 			# {pos:Vector3, size:Vector3, color:Color, energy:float, label:String}
 			var color := _col(spec, "color", Color(0.3, 0.7, 0.55))
@@ -1902,7 +1916,8 @@ func _ensure_scheduled() -> void:
 	if _scheduled:
 		return
 	if _channels.is_empty() and _candid_zones.is_empty() and _spike_strips.is_empty() \
-			and _infrastructure_fields.is_empty() and not _has_shared_concealment_sources():
+			and _infrastructure_fields.is_empty() and _basins.is_empty() \
+			and not _has_shared_concealment_sources():
 		return
 	var sched = _get_scheduler()
 	if sched == null:
@@ -1910,6 +1925,8 @@ func _ensure_scheduled() -> void:
 	_scheduled = true
 	for ch in _channels:
 		ch.start(sched, _get_game_state())
+	for basin in _basins:
+		basin.start(sched, _get_game_state())
 	_arm_candid_tick()
 	_arm_concealment_tick()
 	_publish_fragment_authority()
@@ -2424,6 +2441,10 @@ func get_preview_state() -> Dictionary:
 	for fl in _flures:
 		if is_instance_valid(fl) and fl.is_active():
 			lure_active = true
+	var basin_states: Array = []
+	for basin in _basins:
+		if is_instance_valid(basin):
+			basin_states.append(basin.get_state())
 	return {
 		"phase": _phase,
 		"exit_rest_phase": _exit_rest_phase,
@@ -2432,6 +2453,7 @@ func get_preview_state() -> Dictionary:
 		"spotted_count": _spotted_count,
 		"wipe_count": _wipe_count,
 		"lure_active": lure_active,
+		"basin_states": basin_states,
 	}
 
 func get_preview_abilities() -> Array:
@@ -2475,6 +2497,9 @@ func reset_preview_state() -> void:
 	for ch in _channels:
 		if is_instance_valid(ch):
 			ch.reset()
+	for basin in _basins:
+		if is_instance_valid(basin):
+			basin.reset()
 	_phase = "ready"
 	_exit_rest_phase = "ready"
 	_clear_exit_rest_commit_context()
@@ -2516,6 +2541,7 @@ func flora() -> Array: return _flora
 func enemies() -> Array: return _enemies
 func decoratives() -> Array: return _decoratives
 func hushblooms() -> Array: return _hushblooms
+func basins() -> Array: return _basins
 func spike_strips() -> Array: return _spike_strips
 func infrastructure_operations() -> Array: return _infrastructure_operations
 func infrastructure_fields() -> Array: return _infrastructure_fields

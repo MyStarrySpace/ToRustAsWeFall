@@ -215,6 +215,11 @@ const PREVIEW_ENTRIES := [
 	# (zero primitives, linted), runs measured from real AABBs, storytelling placement
 	# (decaying approach / kept bay / measured manifold / overgrown portal ledge).
 	{"id": "wash_ascent", "chunk": "wash_ascent", "title": "Wash Ascent (Rebuilt)", "stage": 5},
+	# BALANCING BASIN — Phase 1 proving fragment (docs/BALANCING_BASIN.md): the bowl-scale
+	# water ROTA (BasinWater kit object) — LOW floor / MID float road / HIGH decks-only,
+	# non-uniform windows, dweller eviction, sweep-to-outfall via the Channel transaction.
+	{"id": "basin_fill_proof", "chunk": "data_fragment", "title": "Balancing Basin — Fill Proof (water rota)", "stage": 3,
+		"config": {"fragment_path": "res://data/fragments/basin_fill_proof.tres"}},
 ]
 
 ## The menu entry for an id (or {} if none).
