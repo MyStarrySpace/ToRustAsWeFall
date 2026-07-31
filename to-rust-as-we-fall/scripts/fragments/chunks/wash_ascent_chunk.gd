@@ -241,8 +241,42 @@ func _realize_markers(node: Node) -> void:
 			_skip_spans(n3), "floor", "structure_rail", true)
 	elif n3.has_meta("pipe_route"):
 		_realize_pipe_route(n3)
+	elif n3.has_meta("center_span"):
+		_realize_center_span(n3)
 	elif n3.has_meta("enemy"):
 		_spawn_fauna(n3)
+
+## THE ENTRY SPAN (director): a straight bridge OVER THE DRUM'S CENTER, so
+## the collapse drops the party dead-vertical down the core. World-space
+## placement — the flat warp cannot author a line through the axis. Planks
+## pitch along the span line; the broken pier survives the tumble at the
+## summit-rim end as the scar.
+func _realize_center_span(_marker: Node3D) -> void:
+	var a := fposmod(INTRO_SPAN_FROM_S * ChannelsArc.KTHETA, TAU)
+	var dir := Vector3(cos(a), 0.0, sin(a))
+	var yaw := -a
+	var half := 6.5
+	var pitch := 2.0
+	var k := 0
+	var r := half
+	while r > -half - 0.01:
+		var pid := "deck_planks_c" if k % 2 == 0 else "deck_planks_b"
+		var piece := ArchetypePieceLibrary.instantiate(pid)
+		if piece != null:
+			piece.transform = Transform3D(Basis(Vector3.UP, yaw),
+				dir * r + Vector3(0, INTRO_SPAN_Y, 0))
+			_stamp(piece, "floor", "structure_bridge", true)
+			_realized_root.add_child(piece)
+			_placed_count += 1
+		r -= pitch
+		k += 1
+	var stub := ArchetypePieceLibrary.instantiate("broken_pier")
+	if stub != null:
+		stub.transform = Transform3D(Basis(Vector3.UP, yaw),
+			dir * (half + 1.2) + Vector3(0, INTRO_SPAN_Y, 0))
+		_stamp(stub, "floor", "structure_bridge", true)
+		_realized_root.add_child(stub)
+		_placed_count += 1
 
 func _realize_piece(marker: Node3D) -> void:
 	var pid := str(marker.get_meta("piece"))
@@ -1060,6 +1094,8 @@ const INTRO_CREAK_AT := 2.0
 const INTRO_COLLAPSE_AT := 3.4
 const INTRO_FALL_DURATION := 7.5   # the whole center fall, splash to landing
 const SUMP_BASIN_Y := -2.0         # the circular pool at the drum's bottom
+const INTRO_SPAN_Y := 23.5         # the entry span's deck height over the crown
+const INTRO_SPAN_FROM_S := 173.0   # the span launches from the summit rim's azimuth
 
 ## The one cadence arm both phases share: reset + sweep-wire + start every
 ## channel. The overlook uses it so the coil SURGES below the entry bridge;
@@ -1094,6 +1130,23 @@ func _arm_overlook_intro() -> void:
 	# the coil SURGES below the overlook — the spectacle IS the read; the
 	# catch can't touch the riders (their drop is a locked traversal)
 	_arm_channels()
+	# the party STANDS on the center span for the overlook: a locked carry
+	# holds their RENDER over the core (the flat frame cannot address the
+	# axis) while their data waits at the spawn — the collapse then cancels
+	# this carry straight into the fall, no frame of snap-back
+	if gs != null:
+		var order := 0
+		for id in PARTY_IDS:
+			if not gs.characters.has(id):
+				continue
+			var from: Vector3 = gs.get_position(id)
+			var slot := _intro_span_slot(order)
+			gs.command_external_path_traversal(id,
+				StringName("bridge_stand_%s" % id),
+				[from, from + Vector3(0.03, 0, 0)],
+				[slot, slot + Vector3(0.02, 0, 0)],
+				INTRO_COLLAPSE_AT + 2.0)
+			order += 1
 	var sched = _get_scheduler()
 	if sched != null:
 		sched.cancel_tag("wash_ascent_intro")
@@ -1101,6 +1154,16 @@ func _arm_overlook_intro() -> void:
 			if _phase == "overlook":
 				_show_note("The span groans. Below: every channel, every green thing, the whole climb at a glance.", 2.6), "wash_ascent_intro")
 		sched.schedule_after(INTRO_COLLAPSE_AT, _collapse_bridge, "wash_ascent_intro")
+
+## A party member's stance on the CENTER SPAN — spread along the span line,
+## standing directly over the drum's core (the director's opening: the
+## bridge crosses the CENTER, so the collapse drops them dead-vertical).
+func _intro_span_slot(order: int) -> Vector3:
+	var a := fposmod(INTRO_SPAN_FROM_S * ChannelsArc.KTHETA, TAU)
+	var dir := Vector3(cos(a), 0.0, sin(a))
+	var cross := Vector3(-dir.z, 0.0, dir.x)
+	return dir * (0.9 - 1.1 * float(order)) + cross * (0.25 * float(order - 1)) \
+		+ Vector3(0, INTRO_SPAN_Y + 0.1, 0)
 
 func _bridge_spawn_positions() -> Dictionary:
 	return {
@@ -1129,6 +1192,9 @@ func _collapse_bridge() -> void:
 		for id in PARTY_IDS:
 			if not gs.characters.has(id):
 				continue
+			# release the span stance and take over in the same tick — the
+			# fall's render begins exactly where the stand held them
+			gs.cancel_external_traversal(id, &"span_collapse")
 			var from: Vector3 = gs.get_position(id)
 			var landing: Vector3 = landings.get(id, Vector3(1.2, DECK_TOP, 3.0))
 			# The DATA carry is a straight sweep to the stretch start; what the
@@ -1144,25 +1210,23 @@ func _collapse_bridge() -> void:
 			var data_path: Array = [from,
 				from.lerp(knee, 0.25), from.lerp(knee, 0.45), from.lerp(knee, 0.7),
 				from.lerp(knee, 0.92), knee, landing]
-			var start_w: Vector3 = map.to_world(from) if map != null else from
+			# the span crosses the CENTER, so the fall is dead-vertical: each
+			# member drops from their span stance straight down the core
+			var slot := _intro_span_slot(order)
 			var land_w: Vector3 = map.to_world(landing) if map != null else landing
-			# a small per-member offset off the exact axis so the three bodies
-			# fall as a loose cluster, never one line
-			var axis_ang := TAU * float(order) / 3.0
-			var axis_off := Vector3(cos(axis_ang), 0.0, sin(axis_ang)) * 0.9
-			var crown_mouth := axis_off + Vector3(0, start_w.y - 1.6, 0)
+			var shaft := Vector3(slot.x, 0.0, slot.z)
 			var render_path: Array = [
-				start_w,
-				start_w.lerp(crown_mouth, 0.45) + Vector3(0, 0.5, 0),
-				crown_mouth,
-				axis_off + Vector3(0, 9.0, 0),          # the header water: the splash
-				axis_off + Vector3(0, SUMP_BASIN_Y + 0.4, 0),  # the sump at the bottom
-				land_w.lerp(axis_off + Vector3(0, SUMP_BASIN_Y + 0.4, 0), 0.45)
+				slot,
+				slot + Vector3(0, -1.2, 0),
+				shaft + Vector3(0, 16.0, 0),
+				shaft + Vector3(0, 9.0, 0),             # the header water: the splash
+				shaft + Vector3(0, SUMP_BASIN_Y + 0.4, 0),  # the sump at the bottom
+				land_w.lerp(shaft + Vector3(0, SUMP_BASIN_Y + 0.4, 0), 0.45)
 					+ Vector3(0, 0.6, 0),
 				land_w,
 			]
 			_intro_fall_core_radius = maxf(_intro_fall_core_radius,
-				Vector2(axis_off.x, axis_off.z).length())
+				Vector2(slot.x, slot.z).length())
 			gs.command_external_path_traversal(id, StringName("bridge_drop_%s_%d" % [id, order]),
 				data_path, render_path, INTRO_FALL_DURATION)
 			order += 1

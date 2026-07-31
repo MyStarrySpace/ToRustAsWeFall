@@ -35,8 +35,10 @@ func _initialize() -> void:
 	# SHOT 1: the overlook — from just behind the bridge spawns, looking down
 	# the whole coil (the read Peris keeps)
 	cam.fov = 66.0
-	var cam_pos: Vector3 = ChannelsArc.arc_pos(179.0, 3.5) + Vector3(0, 3.6, 0)
-	var at_pos: Vector3 = ChannelsArc.arc_pos(152.0, 2.0) + Vector3(0, -3.0, 0)
+	# the entry span crosses the drum's CENTER: frame the party over the core
+	# with the coil dropping away around them
+	var cam_pos: Vector3 = ChannelsArc.arc_pos(158.0, 8.0) + Vector3(0, 8.5, 0)
+	var at_pos: Vector3 = Vector3(0, 23.2, 0)
 	cam.look_at_from_position(cam_pos, at_pos, Vector3.UP)
 	scene.call("headless_advance", 2.2)   # mid-overlook: channels alive below
 	_hide_labels(get_root())

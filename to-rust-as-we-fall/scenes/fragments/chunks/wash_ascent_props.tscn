@@ -943,47 +943,9 @@ metadata/radius = 6.55
 
 [node name="EntryBridge" type="Node3D" parent="."]
 
-[node name="BridgeStub" type="Marker3D" parent="EntryBridge"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 174.6, 0, 2.4)
-metadata/piece = "broken_pier"
-metadata/mount = "floor"
-metadata/cluster = "structure_bridge"
-metadata/embed_ok = true
-
-[node name="BridgeDeckA" type="Marker3D" parent="EntryBridge"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 176.2, 0, 2.2)
-metadata/piece = "deck_planks_c"
-metadata/mount = "floor"
-metadata/cluster = "structure_bridge"
-metadata/embed_ok = true
-
-[node name="BridgeDeckB" type="Marker3D" parent="EntryBridge"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 178.2, 0, 2.2)
-metadata/piece = "deck_planks_b"
-metadata/mount = "floor"
-metadata/cluster = "structure_bridge"
-metadata/embed_ok = true
-
-[node name="BridgeRailA" type="Marker3D" parent="EntryBridge"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 176.2, 0.1, 1.1)
-metadata/piece = "railing_run"
-metadata/mount = "floor"
-metadata/cluster = "structure_bridge"
-metadata/embed_ok = true
-
-[node name="BridgeRailB" type="Marker3D" parent="EntryBridge"]
-transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 177.4, 0.1, 3.3)
-metadata/piece = "railing_run"
-metadata/mount = "floor"
-metadata/cluster = "structure_bridge"
-metadata/embed_ok = true
-
-[node name="BridgeTruss" type="Marker3D" parent="EntryBridge"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 177.2, -0.85, 2.2)
-metadata/piece = "scaffold_truss"
-metadata/mount = "structure"
-metadata/cluster = "structure_bridge"
-metadata/embed_ok = true
+[node name="CenterSpan" type="Marker3D" parent="EntryBridge"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 23.5, 0)
+metadata/center_span = true
 
 [node name="SpawnPlayer" type="Marker3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.2, 0.1, 3.0)
