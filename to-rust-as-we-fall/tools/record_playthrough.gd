@@ -163,8 +163,14 @@ func _cam_update() -> void:
 		return
 	centroid /= float(n)
 	var out := Vector3(centroid.x, 0.0, centroid.z)
-	out = out.normalized() if out.length() > 0.5 else Vector3.RIGHT
-	var want: Vector3 = centroid + out * 9.5 + Vector3(0, 4.6, 0)
+	var centroid_radius := out.length()
+	out = out.normalized() if centroid_radius > 0.5 else Vector3.RIGHT
+	# during the CENTER FALL the party rides the drum's axis — a 9.5 offset
+	# would put the camera through the shell wall, so it tightens into the
+	# core and looks down the shaft with them
+	var reach := 9.5 if centroid_radius > 3.0 else 4.2
+	var lift := 4.6 if centroid_radius > 3.0 else 2.2
+	var want: Vector3 = centroid + out * reach + Vector3(0, lift, 0)
 	_cam.global_position = _cam.global_position.lerp(want, 0.06)
 	var look: Vector3 = centroid + Vector3(0, 0.6, 0)
 	if _cam.global_position.distance_to(look) > 0.5:
@@ -289,7 +295,7 @@ func _initialize() -> void:
 		+ Vector3(0, 4.6, 0)
 	_cam_update()
 	_build_caption_ui()
-	_narrate("Automated canonical solve. The party enters on the span above the summit — then the bridge gives way.")
+	_narrate("Automated canonical solve. The party enters on the span above the summit — then the bridge gives way, straight down the drum's core.")
 	# tuck the diagnostic chrome a viewer doesn't need (H/F4, the showcase
 	# presentation contract's own switches)
 	var im = _scene.get("_instructions_margin")
@@ -315,7 +321,7 @@ func _initialize() -> void:
 		return true, 45.0)
 	await _wait_s(1.5)
 	_log("landed")
-	_narrate("The water carries the party down the whole coil to the stretch start — the first shelter is right here.")
+	_narrate("Down the throat to the sump basin at the bottom, and out with the outflow — the first shelter is right here.")
 
 	# --- the first shelter: rest at the camp before the climb ---
 	var base_rest = _chunk.find_child("BaseShelterRest", true, false)

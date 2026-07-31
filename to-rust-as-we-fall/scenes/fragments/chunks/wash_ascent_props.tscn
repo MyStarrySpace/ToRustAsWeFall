@@ -873,6 +873,11 @@ metadata/embed_ok = true
 
 [node name="WorldArchitecture" type="Node3D" parent="."]
 
+[node name="SumpBasin" type="Marker3D" parent="WorldArchitecture"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -2.0, 0)
+metadata/world_piece = "water_surface"
+metadata/angle = 0.0
+
 [node name="HeaderBasin" type="Marker3D" parent="WorldArchitecture"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 9.0, 0)
 metadata/world_piece = "water_surface"

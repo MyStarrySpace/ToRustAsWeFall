@@ -61,6 +61,13 @@ revives, and RE-ARMS, completing nothing) — and the SECOND SHELTER at the
 summit, the blue route ring that connects the stretch to the next one.
 Completion belongs to the ring alone.
 
+The opening fall (director): when the entry span gives way, the party falls
+THROUGH THE DRUM'S CENTER — past the crown rim, through the header water,
+straight down the core to the circular SUMP BASIN at the bottom — and out
+with the outflow to the first shelter's ground. Never a zigzag ride down the
+coil. The data carry stays a straight sweep to the start; only the render
+path takes the core (the traversal API owns both, waypoint-paired 1:1).
+
 ## The failure economy
 
 Sweeps carry to the stretch bottom (canon) — into the first shelter's ground,

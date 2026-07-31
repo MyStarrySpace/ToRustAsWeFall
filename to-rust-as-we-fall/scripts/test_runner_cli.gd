@@ -28607,6 +28607,12 @@ func _test_wash_ascent_playthrough() -> void:
 			"the fall's water ride lands %s at the stretch start (%s)" % [id_i2, gs.get_position(str(id_i2))])
 	_assert_true(bool((chunk.call("get_preview_state") as Dictionary).get("intro_done", false)),
 		"the overlook is one-time — scenario resets skip it")
+	# the canonical fall (director): through the drum's CENTER to the circular
+	# sump at the bottom — never zigzagged down the coil. The authored shaft
+	# offsets stay tight on the axis, and the sump pool is realized.
+	var fall_r := float(chunk.get("_intro_fall_core_radius"))
+	_assert_true(fall_r >= 0.0 and fall_r < 2.5,
+		"the fall drops through the drum's CORE (widest shaft offset %.2f)" % fall_r)
 	var mark_count := (chunk.call("get_peris_flora_marks") as Array).size()
 	_assert_true(mark_count >= 8,
 		"Peris's overlay MEMORY holds the flora she read from above (%d marks)" % mark_count)
@@ -28693,7 +28699,14 @@ func _test_wash_ascent_playthrough() -> void:
 	var spawns: Dictionary = chunk.call("get_spawn_positions")
 	_assert_true(float((spawns["aster"] as Vector3).x) < float(sections[0]["s0"]) - 0.5,
 		"the whole party spawns on safe ground before the first mouth")
-	# (2a) the WALK bolter: everyone marches for the ring at boot — section 0 bites
+	# (2a) the WALK bolter: everyone marches for the ring at boot — section 0
+	# bites. Fresh cadence + spawn teleport first (scenario isolation, same as
+	# the run-rush leg): the phase ladder is tuned against a bolter who leaves
+	# AT the epoch, not at wherever the preceding legs left the clock.
+	chunk.call("reset_preview_state")
+	for id_w0 in ids:
+		inst.call("headless_set_character_position", str(id_w0), spawns[str(id_w0)])
+	inst.call("headless_advance", 0.05)
 	for idx in range(ids.size()):
 		gs.command_move_to_pos(str(ids[idx]), Vector3(22.5, 0.1, 2.4 + 0.6 * float(idx)))
 	for _w in range(120):

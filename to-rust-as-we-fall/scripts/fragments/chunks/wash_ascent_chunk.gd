@@ -139,6 +139,7 @@ var _ring_exit: ExitShelter = null
 var _base_shelter: ExitShelter = null
 var _swept_count := 0
 var _phase := "ready"
+var _intro_fall_core_radius := -1.0   # widest authored shaft offset — tests pin the CENTER fall
 
 func _build_chunk() -> void:
 	_props_root = PROPS_SCENE.instantiate()
@@ -1057,7 +1058,8 @@ func _build_wash_channels() -> void:
 ## the intro cinematic, the sweep taught before it ever punishes.
 const INTRO_CREAK_AT := 2.0
 const INTRO_COLLAPSE_AT := 3.4
-const INTRO_RIDE_SPEED := 14.0
+const INTRO_FALL_DURATION := 7.5   # the whole center fall, splash to landing
+const SUMP_BASIN_Y := -2.0         # the circular pool at the drum's bottom
 
 ## The one cadence arm both phases share: reset + sweep-wire + start every
 ## channel. The overlook uses it so the coil SURGES below the entry bridge;
@@ -1129,23 +1131,43 @@ func _collapse_bridge() -> void:
 				continue
 			var from: Vector3 = gs.get_position(id)
 			var landing: Vector3 = landings.get(id, Vector3(1.2, DECK_TOP, 3.0))
+			# The DATA carry is a straight sweep to the stretch start; what the
+			# player SEES is the canonical fall (director): the span tips the
+			# party INWARD past the crown rim, straight down the drum's open
+			# CORE — through the header water — to the circular sump basin at
+			# the bottom, then out with the outflow to the first shelter's
+			# ground. Data and render paths diverge by design; the traversal
+			# API owns both.
+			# the traversal API pairs data/render waypoints 1:1, so the straight
+			# data sweep is sampled at the same seven stations as the visual fall
+			var knee := Vector3(2.6, DECK_TOP, -0.4)
 			var data_path: Array = [from,
-				Vector3(172.0, DECK_TOP, -0.5), Vector3(150.0, DECK_TOP, -0.6),
-				Vector3(124.0, DECK_TOP, -0.6), Vector3(96.0, DECK_TOP, -0.6),
-				Vector3(68.0, DECK_TOP, -0.6), Vector3(40.0, DECK_TOP, -0.6),
-				Vector3(14.0, DECK_TOP, -0.6),
-				Vector3(2.6, DECK_TOP, -0.4), landing]
-			var render_path: Array = []
-			for p in data_path:
-				render_path.append(map.to_world(p) if map != null else p)
-			var length := 0.0
-			for k in range(1, data_path.size()):
-				length += (data_path[k] as Vector3).distance_to(data_path[k - 1])
+				from.lerp(knee, 0.25), from.lerp(knee, 0.45), from.lerp(knee, 0.7),
+				from.lerp(knee, 0.92), knee, landing]
+			var start_w: Vector3 = map.to_world(from) if map != null else from
+			var land_w: Vector3 = map.to_world(landing) if map != null else landing
+			# a small per-member offset off the exact axis so the three bodies
+			# fall as a loose cluster, never one line
+			var axis_ang := TAU * float(order) / 3.0
+			var axis_off := Vector3(cos(axis_ang), 0.0, sin(axis_ang)) * 0.9
+			var crown_mouth := axis_off + Vector3(0, start_w.y - 1.6, 0)
+			var render_path: Array = [
+				start_w,
+				start_w.lerp(crown_mouth, 0.45) + Vector3(0, 0.5, 0),
+				crown_mouth,
+				axis_off + Vector3(0, 9.0, 0),          # the header water: the splash
+				axis_off + Vector3(0, SUMP_BASIN_Y + 0.4, 0),  # the sump at the bottom
+				land_w.lerp(axis_off + Vector3(0, SUMP_BASIN_Y + 0.4, 0), 0.45)
+					+ Vector3(0, 0.6, 0),
+				land_w,
+			]
+			_intro_fall_core_radius = maxf(_intro_fall_core_radius,
+				Vector2(axis_off.x, axis_off.z).length())
 			gs.command_external_path_traversal(id, StringName("bridge_drop_%s_%d" % [id, order]),
-				data_path, render_path, length / INTRO_RIDE_SPEED)
+				data_path, render_path, INTRO_FALL_DURATION)
 			order += 1
 	_tumble_bridge_pieces()
-	_show_note("The bridge gives way. The water takes all three — down past everything they just saw.", 3.0)
+	_show_note("The span gives. Straight down the drum's throat — the whole climb flashing past.", 3.0)
 	_scheduler_note_after(6.4, "Peris holds the picture. The green stays with her.")
 	reset_preview_state()
 	_set_preview_step("wash_ascent_dropped")
