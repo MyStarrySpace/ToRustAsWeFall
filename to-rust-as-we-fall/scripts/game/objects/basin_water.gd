@@ -179,6 +179,22 @@ func catches_body_at(pos: Vector3, level: int) -> bool:
 		return _float_cells.has(cell)
 	return false
 
+## Analytic: the absolute tick of the next COMMIT into `target_state`, walking the rota's dwell
+## prefix sums from the live boundary — pure arithmetic, never sampled. When the basin is IN the
+## target state already this still returns the NEXT entry: a read buys the next FULL window,
+## never the remainder of this one. Returns -1.0 when idle or the state never occurs.
+func next_state_tick(target_state: int) -> float:
+	if not _running or _rota.is_empty() or _next_change_tick < 0.0:
+		return -1.0
+	var tick := _next_change_tick
+	var idx := _rota_index
+	for _hop in range(_rota.size()):
+		idx = (idx + 1) % _rota.size()
+		if int((_rota[idx] as Dictionary)["level"]) == target_state:
+			return tick
+		tick += float((_rota[idx] as Dictionary)["dwell"])
+	return -1.0
+
 ## Portable rota truth — also the substrate the chart / Aster read consume later: the full
 ## repeating schedule plus the analytic next boundary.
 func get_state() -> Dictionary:

@@ -52,6 +52,7 @@ var _infrastructure_operations: Array = [] # typed source -> receiver -> environ
 var _infrastructure_fields: Array = []     # shared hazard/concealment polling, like Candids/SpikeStrips
 var _hushblooms: Array = []      # Hushbloom stun flora (thigmonastic; pickable for the carried throw)
 var _basins: Array = []          # BasinWater bowls (rota-driven water state; docs/BALANCING_BASIN.md)
+var _assists: Array = []         # CrossingAssist consoles (the priced perfect-launch read)
 var _fall_pos := Vector3.ZERO    # where the party last wiped (the runback decor pass grows here)
 var _candid_epoch := -1.0        # first absolute tick in the fixed Candid/Spike/service-field cadence
 var _concealment_epoch := -1.0   # first absolute spatial-cover sample in the fixed simulation cadence
@@ -1261,6 +1262,29 @@ func _spawn_object(spec: Dictionary) -> void:
 			basin.set_enemy_resolver(_enemy_by_id)
 			add_child(basin)
 			_basins.append(basin)
+		"rota_chart":
+			# {pos:Vector3, basin_tag:String, radius?, label?, desc?} — the fill schedule as a
+			# physical info surface (the Basin's FORESIGHT branch); reading it reports the rota
+			# from the basin's authoritative record via a host note.
+			var chart := RotaChart.new()
+			chart.name = _name(spec, "RotaChart")
+			chart.configure(gs, spec)
+			chart.chart_read.connect(func(text: String): _show_note(text, 4.0))
+			add_child(chart)
+			_register_interactable(chart)
+		"crossing_assist":
+			# {pos:Vector3, lip:Vector3, dest:Vector3, basin_tag:String, target_state:int,
+			#  stamina_cost:float, cooldown:float, required_character?, radius?, label?, desc?}
+			# — the priced perfect-launch read (the Basin's RESOURCE branch): hold the group at
+			# the lip, launch on the exact commit of the target water state.
+			var assist := CrossingAssist.new()
+			assist.name = _name(spec, "CrossingAssist")
+			assist.configure(gs, spec)
+			assist.set_group_provider(_selected_party_ids)
+			assist.set_basin_resolver(_basin_by_tag)
+			add_child(assist)
+			_register_interactable(assist)
+			_assists.append(assist)
 		"marker":
 			# {pos:Vector3, size:Vector3, color:Color, energy:float, label:String}
 			var color := _col(spec, "color", Color(0.3, 0.7, 0.55))
@@ -2500,6 +2524,9 @@ func reset_preview_state() -> void:
 	for basin in _basins:
 		if is_instance_valid(basin):
 			basin.reset()
+	for assist in _assists:
+		if is_instance_valid(assist):
+			assist.reset_assist()
 	_phase = "ready"
 	_exit_rest_phase = "ready"
 	_clear_exit_rest_commit_context()
@@ -2542,6 +2569,15 @@ func enemies() -> Array: return _enemies
 func decoratives() -> Array: return _decoratives
 func hushblooms() -> Array: return _hushblooms
 func basins() -> Array: return _basins
+func assists() -> Array: return _assists
+
+## Resolve a spawned basin by its authored tag (the cross-reference id CrossingAssist uses).
+func _basin_by_tag(tag: String) -> Variant:
+	for basin in _basins:
+		if is_instance_valid(basin) and str(basin.get_state().get("tag", "")) == tag:
+			return basin
+	push_warning("DataFragmentChunk: no basin with tag '%s'" % tag)
+	return null
 func spike_strips() -> Array: return _spike_strips
 func infrastructure_operations() -> Array: return _infrastructure_operations
 func infrastructure_fields() -> Array: return _infrastructure_fields

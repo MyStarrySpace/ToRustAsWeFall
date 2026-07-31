@@ -160,6 +160,27 @@ objects = Array[Dictionary]([{
 "targets": ["aster", "peris", "endo"],
 "type": "enemy"
 }, {
+"basin_tag": "bf",
+"label": "READ THE ROTA CHART",
+"name": "BasinRotaChart",
+"pos": Vector3(15.75, 2.7, -1.9),
+"radius": 1.5,
+"type": "rota_chart"
+}, {
+"basin_tag": "bf",
+"cooldown": 10.0,
+"desc": "Log the rota — the party holds at the mouth and crosses on the beat",
+"dest": Vector3(9, 2.7, 12.75),
+"label": "LOG THE ROTA",
+"lip": Vector3(8.25, 2.7, -0.75),
+"name": "FlowReadConsole",
+"pos": Vector3(6.75, 2.7, -0.9),
+"radius": 1.4,
+"required_character": "aster",
+"stamina_cost": 25.0,
+"target_state": 1,
+"type": "crossing_assist"
+}, {
 "color": Color(0.3, 0.7, 0.45, 1),
 "label": "SHELTER",
 "name": "BasinExitShelter",
@@ -226,8 +247,10 @@ params = {
 "anchors": {
 "balcony": Vector3(9, 2.7, 12.75),
 "bowl_center": Vector3(9, 0.5, 4.5),
+"chart": Vector3(15.75, 2.7, -1.9),
 "east_stair": Vector3(17.25, 0.5, -0.75),
 "float_entry": Vector3(8.25, 2.7, -0.75),
+"read_console": Vector3(6.75, 2.7, -0.9),
 "shelf": Vector3(18.75, 0.5, 4.5),
 "west_pocket": Vector3(-0.75, 0.5, 4.5),
 "west_stair": Vector3(0.75, 0.5, -0.75)

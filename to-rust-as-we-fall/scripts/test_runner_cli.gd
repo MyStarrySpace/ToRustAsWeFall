@@ -32162,6 +32162,15 @@ func _test_basin_fill_proof() -> void:
 	var first_fill_in := float(st["next_change_in"])
 	_assert_true(first_fill_in > 6.0 and first_fill_in <= 8.1,
 		"the first fill sits on the analytic clock (%.1fs)" % first_fill_in)
+	# next_state_tick is pure prefix arithmetic on the rota, never sampled: from the opening LOW,
+	# MID commits at the first boundary, LOW re-enters one MID later, HIGH after the whole run-up.
+	var boundary := float(st["next_change_tick"])
+	_assert_true(is_equal_approx(basin.next_state_tick(1), boundary),
+		"next_state_tick(MID) is the first boundary")
+	_assert_true(is_equal_approx(basin.next_state_tick(0), boundary + 7.0),
+		"next_state_tick(LOW) adds MID's dwell")
+	_assert_true(is_equal_approx(basin.next_state_tick(2), boundary + 32.0),
+		"next_state_tick(HIGH) walks the whole run-up (7+4+7+14)")
 
 	# (2) THE THREE MAPS as per-level walkability at LOW.
 	var grid = gs.grid
@@ -32291,7 +32300,81 @@ func _test_basin_fill_proof() -> void:
 	_assert_true(bool(chunk.get_preview_state()["complete"]),
 		"resting the gathered party completes the proof")
 
-	# (12) FAST-FORWARD INVARIANCE: the rota's state-at-second sequence is identical at a
+	# (12) THE FORESIGHT BRANCH: the chart reports the authored rota from the basin's record —
+	# knowledge only, no mechanics.
+	var chart = chunk.find_child("BasinRotaChart", true, false)
+	_assert_true(chart != null and chart is RotaChart, "the rota chart spawned from data")
+	var chart_texts: Array = []
+	chart.chart_read.connect(func(t: String): chart_texts.append(t))
+	chart.active_character = "peris"
+	chart.on_interaction_arrived()
+	_assert_true(chart_texts.size() == 1 and str(chart_texts[0]).contains("LOW 8s")
+		and str(chart_texts[0]).contains("HIGH 5s") and str(chart_texts[0]).contains("NEXT:"),
+		"reading the chart reports the full rota + the next boundary (got: %s)"
+		% (str(chart_texts[0]) if not chart_texts.is_empty() else "<nothing>"))
+	_assert_equals(int(chart.read_count()), 1, "the chart read is counted")
+
+	# (13) THE RESOURCE BRANCH: the read pays stamina from the closed bar, holds the group at
+	# the lip, and launches on the exact commit of the bought window.
+	var console = chunk.find_child("FlowReadConsole", true, false)
+	_assert_true(console != null and console is CrossingAssist, "the read console spawned from data")
+	var refusals: Array = []
+	console.read_refused.connect(func(r: String): refusals.append(r))
+	waited = 0.0
+	while waited < 10.0 and int(basin.get_water_state()) != 0:
+		inst.headless_advance(0.5)
+		waited += 0.5
+	_assert_equals(int(basin.get_water_state()), 0, "a LOW window opened for the read test")
+	for cid in ["aster", "peris", "endo"]:
+		gs.set_character_level(cid, 1)
+	gs.snap_character_to("aster", Vector3(6.75, 2.7, -2.1))
+	gs.snap_character_to("peris", Vector3(5.25, 2.7, -2.1))
+	gs.snap_character_to("endo", Vector3(5.25, 2.7, -0.75))
+	# A read that cannot pay FAILS: no charge, no arm (the dodge-stamina law).
+	gs.set_stat("aster", "stamina", 10.0)
+	console.active_character = "aster"
+	console.on_interaction_arrived()
+	_assert_true(refusals.has("stamina") and not bool(console.is_read_armed()),
+		"a read that cannot pay fails — no charge, no arm")
+	_assert_true(is_equal_approx(float(gs.get_stat("aster", "stamina")), 10.0),
+		"the failed read charged nothing")
+	# The console is Aster-gated regardless of who walks up.
+	console.active_character = "peris"
+	console.on_interaction_arrived()
+	_assert_true(not bool(console.is_read_armed()), "the console is Aster-gated")
+	# The real read: pay, hold, launch on the beat.
+	gs.set_stat("aster", "stamina", 100.0)
+	console.active_character = "aster"
+	console.on_interaction_arrived()
+	_assert_true(bool(console.is_read_armed()), "the paid read arms the launch")
+	_assert_true(is_equal_approx(float(gs.get_stat("aster", "stamina")), 75.0),
+		"the read debits exactly the authored stamina")
+	var expected_launch: float = basin.next_state_tick(1)
+	var lead: float = expected_launch - float(inst.get("_scheduler").get_current_tick())
+	_assert_true(lead > 0.5, "the read waits on a REAL upcoming window (%.1fs out)" % lead)
+	inst.headless_advance(lead - 0.4)
+	_assert_true(gs.get_position("aster").distance_to(a["float_entry"]) < 2.4
+		and gs.get_position("aster").z < 0.6,
+		"the group holds at the lip while the window is still closed")
+	var sta_before_refuse := float(gs.get_stat("aster", "stamina"))
+	console.active_character = "aster"
+	console.on_interaction_arrived()
+	_assert_true(refusals.has("already armed") or refusals.has("cooldown"),
+		"a second read during the hold refuses")
+	_assert_true(is_equal_approx(float(gs.get_stat("aster", "stamina")), sta_before_refuse),
+		"the refused re-read charges nothing")
+	inst.headless_advance(0.8)
+	_assert_equals(int(basin.get_water_state()), 1, "the bought window opened on the beat")
+	var assist_crossed := 0.0
+	while assist_crossed < 6.0 and gs.get_position("aster").distance_to(a["balcony"]) > 2.2:
+		inst.headless_advance(0.25)
+		assist_crossed += 0.25
+	_assert_true(gs.get_position("aster").distance_to(a["balcony"]) <= 2.2,
+		"the perfect launch lands the crossing inside the bought window (%.1fs)" % assist_crossed)
+	_assert_true(float(basin.get_state()["next_change_in"]) > 0.4,
+		"the launched crossing finishes before the window closes")
+
+	# (14) FAST-FORWARD INVARIANCE: the rota's state-at-second sequence is identical at a
 	# fine and a coarse tick step (predicted boundaries, never sampled coincidences).
 	var sequences: Array = []
 	for step in [0.02, 0.25]:
