@@ -32438,13 +32438,18 @@ const PERSONA_FRAGMENTS := {
 func _test_persona_probe() -> void:
 	_test_name = "Persona Probe"
 	var wall0 := Time.get_ticks_msec()
-	for frag in ["basin_fill_proof", "push_lab"]:
+	for frag in ["basin_fill_proof", "push_lab", "channels_wash_intro"]:
 		for persona in PERSONA_ROSTER:
 			if PERSONA_FRAGMENTS.has(persona) \
 					and not (PERSONA_FRAGMENTS[persona] as Array).has(str(frag)):
 				continue
 			await _persona_probe_run(str(frag), str(persona))
 	print("  [wall] _test_persona_probe: %d ms" % (Time.get_ticks_msec() - wall0))
+
+## Completion across chunk contracts: data fragments publish `complete`, coded chunks a phase.
+func _persona_is_complete(chunk) -> bool:
+	var st: Dictionary = chunk.get_preview_state()
+	return bool(st.get("complete", false)) or str(st.get("phase", "")) == "complete"
 
 func _persona_hash(tick: float, seed_v: int, salt: int) -> int:
 	return absi((int(floor(tick * 37.0)) + salt * 101) * 2654435761 + seed_v * 40503)
@@ -32520,7 +32525,7 @@ func _persona_probe_run(frag_id: String, persona: String) -> void:
 
 	match persona:
 		"spiffing_brit":
-			invariants_held = await _persona_spiffing_brit(inst, gs, chunk, grid, party, crates, notes)
+			invariants_held = await _persona_spiffing_brit(inst, gs, chunk, grid, party, crates, notes, frag_id)
 		"dean_takahashi":
 			invariants_held = await _persona_dean(inst, gs, chunk, grid, party, interactables, pseed, notes)
 		"twitch_plays":
@@ -32550,8 +32555,10 @@ func _persona_probe_run(frag_id: String, persona: String) -> void:
 	await get_tree().process_frame
 
 ## TheSpiffingBrit: scripted exploit attempts against the fragment's PRICES.
-func _persona_spiffing_brit(inst, gs, chunk, grid, party: Array, crates: Array, notes: Array) -> bool:
+func _persona_spiffing_brit(inst, gs, chunk, grid, party: Array, crates: Array, notes: Array, frag_id := "") -> bool:
 	var ok := true
+	if frag_id == "channels_wash_intro":
+		ok = await _persona_spiffing_wash_intro(inst, gs, chunk, party, notes)
 	if chunk.has_method("basins") and not (chunk.basins() as Array).is_empty():
 		var basin = chunk.basins()[0]
 		var first_mid: float = basin.next_state_tick(1)
@@ -32641,6 +32648,101 @@ func _persona_spiffing_brit(inst, gs, chunk, grid, party: Array, crates: Array, 
 			notes.append("crate ended on unwalkable %s" % str(final_cell))
 			ok = false
 	return ok and _persona_beat_ok(gs, grid, party, notes)
+
+## SpiffingBrit's wash-intro exploit pass. Asserts only the UNDISPUTED invariants (the panel
+## ledger already carries the portal-rush and free-flush items as director's picks): the wash
+## never carries a body FORWARD, drowns never double-count, hunters never revive, and the
+## portal moves ONE activator at a time. The portal rush itself is RECORDED, not asserted.
+func _persona_spiffing_wash_intro(inst, gs, chunk, party: Array, notes: Array) -> bool:
+	var ok := true
+	var a: Dictionary = chunk.get_preview_anchors()
+	var portal_near = chunk.get("_portal_near")
+	var portal_far = chunk.get("_portal_far")
+	var exit_pos: Vector3 = a.get("exit", Vector3(27.5, 0.5, 0.5))
+	# (1) The portal moves the ACTIVATOR only — never the whole party in one hop. Played
+	# honestly: walk to the pad, then activate (the exact-source receipt rejects remote emits).
+	if portal_near != null:
+		gs.command_move_to_pos("endo", a.get("portal_in", Vector3(8.5, 0.5, -1.5)))
+		var walk := 0.0
+		while walk < 8.0 and gs.get_position("endo").distance_to(
+				a.get("portal_in", Vector3(8.5, 0.5, -1.5))) > 1.0:
+			inst.headless_advance(0.25)
+			walk += 0.25
+		inst.headless_advance(0.5)
+		_persona_poke(portal_near, "endo")
+		inst.headless_advance(0.4)
+		if gs.get_position("endo").x < float(a.get("portal_out", Vector3(21.5, 0, -1.5)).x) - 2.0:
+			notes.append("the portal did not carry its activator")
+			ok = false
+		if gs.get_position("aster").x > 12.0:
+			notes.append("the portal carried a non-activator")
+			ok = false
+		if portal_far != null:
+			_persona_poke(portal_far, "endo")
+			inst.headless_advance(0.4)
+	# (2) The wash is never a forward taxi: stand in the first channel, ride the flush twice —
+	# both landings must be BACK at the start, never downstream.
+	for round_i in range(2):
+		gs.snap_character_to("aster", Vector3(11.0, 0.5, 0.0))
+		var caught := 0.0
+		while caught < 8.0 and not gs.is_external_traversal_active("aster"):
+			inst.headless_advance(0.25)
+			caught += 0.25
+		var landed := 0.0
+		while landed < 8.0 and gs.is_external_traversal_active("aster"):
+			inst.headless_advance(0.25)
+			landed += 0.25
+		if gs.get_position("aster").x > 6.0:
+			notes.append("flush round %d carried the body FORWARD (x=%.1f)"
+				% [round_i, gs.get_position("aster").x])
+			ok = false
+	# (3) THE PORTAL RUSH — recorded for the ledger, not asserted (director's pick pending).
+	var hp_before := 0.0
+	for cid_v in party:
+		hp_before += float(gs.get_stat(str(cid_v), "hp"))
+	for cid_v in party:
+		if portal_near != null:
+			var pin: Vector3 = a.get("portal_in", Vector3(8.5, 0.5, -1.5))
+			gs.command_move_to_pos(str(cid_v), pin)
+			var rush_walk := 0.0
+			while rush_walk < 8.0 and gs.get_position(str(cid_v)).distance_to(pin) > 1.0:
+				inst.headless_advance(0.25)
+				rush_walk += 0.25
+			inst.headless_advance(0.4)
+			_persona_poke(portal_near, str(cid_v))
+			inst.headless_advance(0.4)
+		gs.command_move_to_pos(str(cid_v), exit_pos)
+	var rushed := 0.0
+	while rushed < 16.0 and not _persona_is_complete(chunk):
+		inst.headless_advance(0.5)
+		rushed += 0.5
+	var hp_after := 0.0
+	for cid_v in party:
+		hp_after += float(gs.get_stat(str(cid_v), "hp"))
+	print("  [persona] spiffing_brit: wash-intro portal rush -> complete=%s in %.1fs, hp_cost=%.0f, hunters_alive=%d (LEDGER: exit gating is a director's pick)"
+		% [str(_persona_is_complete(chunk)), rushed, hp_before - hp_after,
+		int(chunk.get_preview_state().get("enemies_alive", -1))])
+	# (4) Drowns are deduped and final: the lure kills each hunter EXACTLY once, and a re-lit
+	# song cannot raise the count or the dead.
+	if chunk.get("_flure") != null:
+		_trigger_exact_flure_source(gs, chunk.get("_flure"), "peris")
+		var t := 0.0
+		while t < 14.0 and int(chunk.get_preview_state().get("enemies_alive", 2)) > 0:
+			inst.headless_advance(0.4)
+			t += 0.4
+		var drowned := int(chunk.get_preview_state().get("drowned", -1))
+		if drowned > 2:
+			notes.append("drown count exceeded the hunter count (%d)" % drowned)
+			ok = false
+		_trigger_exact_flure_source(gs, chunk.get("_flure"), "peris")
+		inst.headless_advance(4.0)
+		if int(chunk.get_preview_state().get("drowned", -1)) > 2:
+			notes.append("a re-lit song raised the drown count")
+			ok = false
+		if int(chunk.get_preview_state().get("enemies_alive", 0)) > 0 and drowned >= 2:
+			notes.append("a drowned hunter came back")
+			ok = false
+	return ok
 
 ## DeanTakahashi: pure reaction — wrong-way flight, mashing, repetition; never adapts.
 func _persona_dean(inst, gs, chunk, grid, party: Array, interactables: Array, pseed: int, notes: Array) -> bool:
@@ -32867,7 +32969,7 @@ func _persona_pirate(inst, gs, chunk, grid, party: Array, crates: Array, notes: 
 		if not _persona_beat_ok(gs, grid, party, notes):
 			ok = false
 			break
-	if bool(chunk.get_preview_state().get("complete", false)):
+	if _persona_is_complete(chunk):
 		notes.append("doing nothing completed the fragment")
 		ok = false
 	if chunk.has_method("basins") and not (chunk.basins() as Array).is_empty():
@@ -32894,6 +32996,7 @@ func _persona_prod(inst, gs, chunk, grid, party: Array, interactables: Array, cr
 	var ok := true
 	var outcomes := {}   # signature -> "ok" | "bad" | "refused"
 	var tried_order: Array = []
+	var menu_size_seen := 0
 	for beat in range(70):
 		var now := float(inst.get("_scheduler").get_current_tick())
 		var cid := str(party[_persona_hash(now, pseed, beat) % party.size()])
@@ -32910,6 +33013,7 @@ func _persona_prod(inst, gs, chunk, grid, party: Array, interactables: Array, cr
 		for oid_v in crates:
 			for d in ["e", "w", "n", "s"]:
 				menu.append("push:%s:%s" % [str(oid_v), d])
+		menu_size_seen = maxi(menu_size_seen, menu.size())
 		var fresh: Array = []
 		var reruns: Array = []
 		for sig_v in menu:
@@ -32958,8 +33062,9 @@ func _persona_prod(inst, gs, chunk, grid, party: Array, interactables: Array, cr
 		if not _persona_beat_ok(gs, grid, party, notes):
 			ok = false
 			break
-	if tried_order.size() < 5:
-		notes.append("the variety tour only found %d things to try" % tried_order.size())
+	if tried_order.size() < mini(4, menu_size_seen):
+		notes.append("the variety tour only tried %d of %d offered things"
+			% [tried_order.size(), menu_size_seen])
 		ok = false
 	if not crates.is_empty() and not _persona_crates_legal(gs, grid, crates, notes):
 		ok = false

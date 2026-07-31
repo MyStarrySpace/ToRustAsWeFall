@@ -23,9 +23,12 @@ wall clock) so a found bug replays identically.
 - `--test-chase-probe` — the scripted-level pass (lockout chase): the
   original streamer roster (panic_sprint, curious_clicker, door_camper,
   offshoot_stumbler, tyreg_accepter, competent_runner, dean_takahashi).
-- `--test-persona-probe` — the SYSTEMS pass (data fragments with real
-  economies; enrolled: basin_fill_proof, push_lab). The roster below runs
-  here. New fragments with prices enroll by adding a row.
+- `--test-persona-probe` — the SYSTEMS pass (fragments with real
+  economies; enrolled: basin_fill_proof, push_lab, channels_wash_intro).
+  The roster below runs here. New fragments with prices enroll by adding a
+  row. Where a fragment carries KNOWN ledger items awaiting the director's
+  pick (the wash intro's exit gating), the probe asserts only undisputed
+  invariants and RECORDS the contested behavior as a ledger line.
 
 ## The systems roster
 
