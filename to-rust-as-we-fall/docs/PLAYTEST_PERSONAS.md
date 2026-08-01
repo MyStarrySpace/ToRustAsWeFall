@@ -249,8 +249,11 @@ his launch into the turnaround cost a windup at arm's length),
 caboose_pays_more (the slowest bar sets the party sprint), sacrifice_is_
 not_a_timesave (the downed walker cost a 75hp retrieve round-trip + revive
 wait — always slower than the window skipped), pursuit_defeats_medium_cover
-(a scarpet sheds watchers, not pursuers), wake_before_group_rest (a
-sanctuary revive leaves a solo rest that blocks the group bed-down).
+(a scarpet sheds watchers, not pursuers), wake_before_group_rest — RETIRED same
+day: the director picked the fix (the party rest now ABSORBS an in-shelter
+solo rester), and the absorb GREENED an inherited suite red (capbage
+retrieve's rest) plus exposed that resets must wake bedded members. A
+harvested wart became a rule change within hours — the loop working.
 
 THE HARVEST'S BIGGEST CATCH SO FAR — a determinism leak in the harness
 itself: running one decision file twice produced two different worlds. The

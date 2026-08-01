@@ -4831,7 +4831,11 @@ func _can_party_rest_members(members: Array[String]) -> bool:
 	if scheduler == null or members.is_empty():
 		return false
 	for char_id in members:
-		if not characters.has(char_id) or is_moving(char_id) or _resting.has(char_id) \
+		# A member already solo-resting is NOT a refusal: every accepted member must be at
+		# shelter anyway, and a solo rest inside the shelter YIELDS to the party rest (the
+		# sanctuary-revive left them recovering — blocking the group bed-down on the very state
+		# the player is asking for read as a contradiction). _do_party_rest absorbs it.
+		if not characters.has(char_id) or is_moving(char_id) \
 				or is_downed(char_id) or is_knocked_down(char_id) or is_dodging(char_id) \
 				or is_endocytosing(char_id) or is_external_traversal_active(char_id) \
 				or is_dragging(char_id) or is_field_restoring(char_id) \
@@ -4851,6 +4855,12 @@ func _do_party_rest(members: Array[String]) -> bool:
 	# Fail closed on a malformed/tampered event instead of charging a prefix.
 	if not _can_party_rest_members(members):
 		return false
+	# THE ABSORB: a solo rest inside the shelter yields to the party rest. Stop it here, inside
+	# the logged command's do-path, so replay reproduces the hand-off and recovery is accounted
+	# once — by the batch.
+	for absorb_id in members:
+		if _resting.has(absorb_id):
+			_stop_rest(absorb_id)
 	var next_atp := {}
 	for char_id in members:
 		next_atp[char_id] = clampf(

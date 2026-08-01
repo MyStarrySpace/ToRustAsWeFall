@@ -1594,9 +1594,9 @@ func _preflight_canonical_exit_shelter_rest(it: Node) -> Dictionary:
 		if not gs.is_at_shelter(char_id):
 			(outcome["blocked"] as Array).append("%s is outside sanctuary ground" % char_id.capitalize())
 			continue
-		if gs.is_resting(char_id):
-			(outcome["blocked"] as Array).append("%s is already resting" % char_id.capitalize())
-			continue
+		# A member already solo-resting here (the sanctuary revive leaves them recovering) is
+		# ABSORBED by the party rest, never a blocker — they fall through to need classification
+		# and command_party_rest hands their recovery to the batch.
 		if gs.is_moving(char_id) or gs.is_dodging(char_id) or gs.is_endocytosing(char_id) \
 				or gs.is_external_traversal_active(char_id) or gs.is_dragging(char_id) \
 				or gs.is_field_restoring(char_id):
@@ -2514,6 +2514,14 @@ func reset_preview_state() -> void:
 	_candid_epoch = -1.0
 	_concealment_epoch = -1.0
 	_weak_wall_deadlines.clear()
+	# A reset re-arms a CLEAN world: members bedded down when it fired must wake, or the stale
+	# engine rest blocks every actor-gated interaction in the fresh scenario (reachable since the
+	# party rest learned to absorb solo resters and so actually commits mid-test).
+	var reset_gs = _get_game_state()
+	if reset_gs != null and fragment != null:
+		for cid_v in fragment.party_ids:
+			if reset_gs.is_resting(str(cid_v)):
+				reset_gs.command_stop_rest(str(cid_v))
 	_apply_downed_at_start()
 	for fl in _flures:
 		if is_instance_valid(fl):
