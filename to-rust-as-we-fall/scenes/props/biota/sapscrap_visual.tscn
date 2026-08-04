@@ -1,0 +1,35 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="PackedScene" path="res://resources/models/fauna/sapscrap/sapscrap.gltf" id="1_sapscrap"]
+
+[node name="SapscrapVisual" type="Node3D"]
+metadata/asset_contract = "editable_3d_v1"
+metadata/editable_asset_root = "res://resources/models/fauna/sapscrap"
+metadata/editable_master = "../blender/fauna/sapscrap/sapscrap.blend"
+metadata/export_helper = "../blender/fauna/sapscrap/export_sapscrap.py"
+metadata/visual_identity = "sapscrap_maw_v1"
+metadata/biota_category = "fauna"
+metadata/species = "sapscrap"
+metadata/motion_model = "windup_lunge_bite"
+metadata/action_roles = {
+"Sapscrap_Idle": "camp_loop",
+"Sapscrap_Windup": "telegraph_crouch_hold",
+"Sapscrap_Lunge": "strike_jump_forward",
+"Sapscrap_Bite": "seize_chew_recover"
+}
+metadata/action_chain = "Windup end pose == Lunge start pose; Lunge end pose == Bite start pose. FSM mapping: windup=Windup, charge/impact=Lunge, recover=Bite."
+metadata/forward_axis = "+Z"
+
+[node name="Model" parent="." instance=ExtResource("1_sapscrap")]
+
+[node name="FacingSocket" type="Marker3D" parent="."]
+position = Vector3(0, 0.41, 0.80)
+metadata/socket_role = "forward"
+
+[node name="ImpactSocket" type="Marker3D" parent="."]
+position = Vector3(0, 0.41, 0.74)
+metadata/socket_role = "mouth_latch"
+
+[node name="RearAnchorSocket" type="Marker3D" parent="."]
+position = Vector3(0, 0.30, -0.15)
+metadata/socket_role = "rear_anchor"

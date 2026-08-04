@@ -1,0 +1,35 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="PackedScene" path="res://resources/models/fauna/ferrule_v3/ferrule.gltf" id="1_ferrule"]
+
+[node name="FerruleVisual" type="Node3D"]
+metadata/asset_contract = "editable_3d_v1"
+metadata/editable_asset_root = "res://resources/models/fauna/ferrule_v3"
+metadata/editable_master = "../blender/fauna/ferrule/ferrule_v3.blend"
+metadata/export_helper = "../blender/fauna/ferrule/export_ferrule_v3.py"
+metadata/visual_identity = "ferrule_slinky_v1"
+metadata/biota_category = "fauna"
+metadata/species = "ferrule"
+metadata/motion_model = "compress_release_latch"
+metadata/action_roles = {
+"Ferrule_Idle": "camp_loop",
+"Ferrule_Compress": "telegraph_perch_hold",
+"Ferrule_Spring": "strike_from_above",
+"Ferrule_Latch": "seize_hold_recover"
+}
+metadata/action_chain = "Compress end pose == Spring start pose; Spring end pose == Latch start pose. FSM mapping: windup=Compress, charge/impact=Spring, recover=Latch."
+metadata/forward_axis = "+Z"
+
+[node name="Model" parent="." instance=ExtResource("1_ferrule")]
+
+[node name="FacingSocket" type="Marker3D" parent="."]
+position = Vector3(0, 0.24, 2.36)
+metadata/socket_role = "forward"
+
+[node name="ImpactSocket" type="Marker3D" parent="."]
+position = Vector3(0, 0.1, 2.22)
+metadata/socket_role = "mouth_latch"
+
+[node name="RearAnchorSocket" type="Marker3D" parent="."]
+position = Vector3(0, 0.25, -1.24)
+metadata/socket_role = "rear_anchor"
