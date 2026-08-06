@@ -2743,10 +2743,25 @@ func _required_unresolved_branch_action_before_node(node_id: String) -> Dictiona
 ## That graph relation is authoritative even for optional nodes absent from the
 ## golden path. `before_nodes` remains only as a compatibility projection for
 ## older persisted specs that predate affected-node coverage.
+## `affected_node_ids` is authoritative only WITHIN ITS DOMAIN. The solver builds it in
+## `_affected_nodes_for_consumer_cut`, which walks the node list and skips every node carrying no
+## `interaction_approach` — so the set enumerates typed interaction regions the cut disconnects, and
+## says nothing whatever about a node that is not one. Reading that silence as "no resolution
+## required" opened the gate on a cut that still blocked physical passage: the caller then reported
+## success having activated nothing, which is a fail-OPEN in a progression gate. For a node outside
+## the domain we fall back to the legacy `before_nodes` projection — the behaviour that gated it
+## before affected-node coverage existed.
+func _node_is_typed_interaction_region(node_id: String) -> bool:
+	for node_v in _spec.get("nodes", []):
+		if node_v is Dictionary and str((node_v as Dictionary).get("id", "")) == node_id:
+			return (node_v as Dictionary).get("interaction_approach", null) is Dictionary
+	return false
+
+
 func _branch_action_requires_resolution_before_node(
 		action: Dictionary, node_id: String, golden_path: Array
 	) -> bool:
-	if action.has("affected_node_ids"):
+	if action.has("affected_node_ids") and _node_is_typed_interaction_region(node_id):
 		var affected_v: Variant = action.get("affected_node_ids", null)
 		if not (affected_v is Array):
 			return false
