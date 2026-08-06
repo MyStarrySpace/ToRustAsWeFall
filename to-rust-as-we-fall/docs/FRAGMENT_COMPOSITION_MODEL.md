@@ -97,6 +97,17 @@ And, on what a depleted group is worth:
 > Though the depleted group might actually be an answer to an OPTIONAL route, and might be used as
 > bait, for example, without being strong enough to overwhelm the other enemy type
 
+And, on carry-swapping and the throw/handoff mechanic it calls for:
+
+> I want to avoid "carry swaping". You know how in Subnautica when you have two vehicles but one
+> person, you have to drive a vehicle, then hop out, drive the other, etc.? It gets frustrating and
+> boring. So let's have it so that if characters are in LOS range of each other, they can throw things
+> to each other by dragging them in the GUI, causing them to throw them in the game once unpaused.
+> Dragging things onto enemies throws things at them (predicting their arrival location to ensure a
+> hit).
+
+*The mechanic gets its own spec doc. Its consequence for THIS model is recorded in §1j.*
+
 And the thesis the whole model serves (also quoted at the head of this document):
 
 > Yeah, and I like to design with these principles, where we can prove the levels solvable yet
@@ -529,6 +540,42 @@ a hazard you can lead things into", and the roster's own counter is to "feed it 
 So leading Gnawers into a Meeb thins the fast type *and* occupies the slow one — the kill and the bait
 are the same act — and then the stretch is sized so the remaining Meeb cannot close before the exit.
 The director's example composes canon end to end; it invents nothing.
+
+---
+
+## 1j. Throwing widens the `carried` reachability class — and cuts both ways
+
+The throw/handoff mechanic exists to kill the Subnautica shuttle-chore: never make the player walk an
+object back and forth because only one body can hold it. Its full spec lives in its own document. What
+belongs *here* is what it does to the economy layer, because it changes a reachability predicate the
+whole check rests on.
+
+**`carried` reachability is no longer just party-walk reachability.** §5.5 defines it as "party
+reachability — a body a member moves". With throwing it becomes the transitive closure of party-walk
+reachability **plus an LOS hop between any two party members**. A supply can now reach a consumer by
+being handed forward across a sightline nobody can walk. That is a genuine widening, and it makes
+compositions balance that previously deadlocked.
+
+**Which is exactly why it needs guarding in three places:**
+
+1. **Carry-cost pricing.** The slow-carry archetype prices a puzzle in *trips* — two carry runs, the
+   second needing a re-lure. If a throw crosses the same distance for free, the price evaporates and
+   the puzzle with it. Where the walk IS the puzzle, the throw must be blocked or priced (weight,
+   stamina, a hand-slot cost, or simply no sightline), and a fragment that relies on carry cost must
+   say so in its signature.
+2. **A new softlock route (§1h).** Throwing an item somewhere no one can reach — across a chasm, onto
+   a ledge, into a hazard band — irreversibly removes a gating supply. This is the *misallocation*
+   failure §1h names, with a longer reach. The mitigation is the one §1h already prefers: reversibility.
+   A thrown item must be retrievable, or the throw must refuse targets outside the party's own
+   reachable set.
+3. **The critical path must not assume it.** Sightlines change as bodies move, so throw-reachability is
+   state-dependent in a way walk-reachability is not. A gating input satisfied *only* via a throw is
+   satisfied only in some configurations of the party. Treat throw-reachability as licensing optional
+   routes freely and critical-path gates only when the sightline is structural.
+
+**One genuinely positive interaction:** throwing is a partial answer to §1h's misallocation problem.
+An item put down in the wrong place can sometimes be thrown back rather than walked back, which is
+reversibility bought cheaply — the same "cost, never exhaustion" shape as a recovering Flare.
 
 ---
 
