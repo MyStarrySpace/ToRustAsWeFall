@@ -211,6 +211,9 @@
 				{
 					"action": "activate",
 					"activation_policy": "interact_at_producer",
+					"affected_node_ids": [
+						"exit_shelter"
+					],
 					"before_node": "node_02",
 					"before_nodes": [
 						"node_02"
@@ -332,6 +335,9 @@
 					"branch_action": {
 						"action": "activate",
 						"activation_policy": "interact_at_producer",
+						"affected_node_ids": [
+							"exit_shelter"
+						],
 						"before_node": "node_02",
 						"before_nodes": [
 							"node_02"
@@ -655,6 +661,9 @@
 				{
 					"action": "activate",
 					"activation_policy": "interact_at_producer",
+					"affected_node_ids": [
+						"exit_shelter"
+					],
 					"before_node": "node_02",
 					"before_nodes": [
 						"node_02"
@@ -744,6 +753,9 @@
 					"branch_action": {
 						"action": "activate",
 						"activation_policy": "interact_at_producer",
+						"affected_node_ids": [
+							"exit_shelter"
+						],
 						"before_node": "node_02",
 						"before_nodes": [
 							"node_02"

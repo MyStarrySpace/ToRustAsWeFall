@@ -1464,6 +1464,9 @@
 				{
 					"action": "activate",
 					"activation_policy": "interact_at_producer",
+					"affected_node_ids": [
+						"exit_shelter"
+					],
 					"before_node": "node_04",
 					"before_nodes": [
 						"node_04"
@@ -1659,6 +1662,9 @@
 					{
 						"action": "activate",
 						"activation_policy": "interact_at_producer",
+						"affected_node_ids": [
+							"exit_shelter"
+						],
 						"before_node": "node_04",
 						"before_nodes": [
 							"node_04"
@@ -1870,6 +1876,9 @@
 					{
 						"action": "activate",
 						"activation_policy": "interact_at_producer",
+						"affected_node_ids": [
+							"exit_shelter"
+						],
 						"before_node": "node_04",
 						"before_nodes": [
 							"node_04"

@@ -208,7 +208,7 @@
 				"barrier",
 				"reroute"
 			],
-			"variant": "kill_enemy"
+			"variant": "reveal_terminal"
 		},
 		{
 			"all_variants": [
@@ -325,7 +325,7 @@
 				"vulnerability",
 				"resource"
 			],
-			"variant": "puzzle_piece"
+			"variant": "injured_party_member"
 		},
 		{
 			"all_variants": [
@@ -453,7 +453,7 @@
 				"coordination",
 				"timing"
 			],
-			"variant": "plant_tending_task"
+			"variant": "iron_signal"
 		},
 		{
 			"all_variants": [
@@ -542,7 +542,7 @@
 				"map",
 				"assembly"
 			],
-			"variant": "hidden_overlay"
+			"variant": "carry_vulnerability"
 		}
 	],
 	"area_theme": {},
@@ -820,6 +820,9 @@
 				{
 					"action": "activate",
 					"activation_policy": "interact_at_producer",
+					"affected_node_ids": [
+						"node_02"
+					],
 					"before_node": "node_01",
 					"before_nodes": [
 						"node_01"
@@ -1047,6 +1050,9 @@
 					{
 						"action": "activate",
 						"activation_policy": "interact_at_producer",
+						"affected_node_ids": [
+							"node_02"
+						],
 						"before_node": "node_01",
 						"before_nodes": [
 							"node_01"
@@ -1290,6 +1296,9 @@
 					{
 						"action": "activate",
 						"activation_policy": "interact_at_producer",
+						"affected_node_ids": [
+							"node_02"
+						],
 						"before_node": "node_01",
 						"before_nodes": [
 							"node_01"
@@ -7400,9 +7409,9 @@
 		},
 		{
 			"ambient_flora": [
-				"capbage",
-				"capbage",
-				"scarpet"
+				"seefern",
+				"seefern",
+				"seefern"
 			],
 			"approach_position": [
 				16.3999996185303,
@@ -7661,9 +7670,9 @@
 		{
 			"action_verb": "TAKE LOAD",
 			"ambient_flora": [
-				"seefern",
+				"capbage",
 				"scarpet",
-				"seefern"
+				"capbage"
 			],
 			"approach_position": [
 				30.5,
@@ -7965,9 +7974,9 @@
 		{
 			"action_verb": "TAKE LYSATE",
 			"ambient_flora": [
-				"capbage",
-				"capbage",
-				"capbage"
+				"scarpet",
+				"seefern",
+				"seefern"
 			],
 			"approach_position": [
 				47.5,
@@ -7977,7 +7986,7 @@
 			"approaches": [],
 			"archetype_id": "",
 			"archetype_name": "",
-			"atp_reward": 3,
+			"atp_reward": 2,
 			"branch_role": "optional_risk_reward",
 			"carry_payload": false,
 			"chain_cycle": -1,
@@ -8172,7 +8181,7 @@
 					"level": 1
 				}
 			},
-			"label": "Risk cache · 3 ATP lysate",
+			"label": "Risk cache · 2 ATP lysate",
 			"layout_step": {},
 			"link_ref": "",
 			"nested_archetypes": [],
@@ -8213,7 +8222,7 @@
 			"resource_beat": true,
 			"resource_item_type": "lysate",
 			"resource_kind": "food",
-			"reward_atp": 3,
+			"reward_atp": 2,
 			"reward_kind": "food",
 			"role": "foraging",
 			"runtime_handler": "physical_lysate_pickup_v1",
@@ -8240,7 +8249,7 @@
 				"prediction": "claiming the cache occupies exactly one hand without changing ATP",
 				"verb": "forage"
 			},
-			"title": "Risk cache · 3 ATP lysate",
+			"title": "Risk cache · 2 ATP lysate",
 			"variant": "",
 			"walk_element": "",
 			"walk_index": -1,
@@ -8250,9 +8259,9 @@
 		},
 		{
 			"ambient_flora": [
-				"scarpet",
-				"scarpet",
-				"scarpet"
+				"seefern",
+				"capbage",
+				"capbage"
 			],
 			"approach_position": [
 				62.5,
@@ -8410,9 +8419,9 @@
 		},
 		{
 			"ambient_flora": [
-				"scarpet",
-				"seefern",
-				"seefern"
+				"capbage",
+				"capbage",
+				"scarpet"
 			],
 			"approach_position": [
 				77.5,
@@ -8530,9 +8539,9 @@
 		{
 			"action_verb": "TAKE LYSATE",
 			"ambient_flora": [
-				"seefern",
-				"seefern",
-				"seefern"
+				"scarpet",
+				"scarpet",
+				"scarpet"
 			],
 			"approach_position": [
 				92.5,
@@ -8830,7 +8839,7 @@
 		{
 			"ambient_flora": [
 				"scarpet",
-				"seefern",
+				"capbage",
 				"scarpet"
 			],
 			"approach_position": [
@@ -9104,9 +9113,9 @@
 		{
 			"action_verb": "TAKE LOAD",
 			"ambient_flora": [
-				"scarpet",
-				"seefern",
-				"capbage"
+				"capbage",
+				"capbage",
+				"scarpet"
 			],
 			"approach_position": [
 				121.5,
@@ -9456,9 +9465,9 @@
 		},
 		{
 			"ambient_flora": [
-				"scarpet",
-				"scarpet",
-				"scarpet"
+				"seefern",
+				"capbage",
+				"capbage"
 			],
 			"approach_position": [
 				136.399993896484,
@@ -9616,9 +9625,9 @@
 		},
 		{
 			"ambient_flora": [
-				"scarpet",
 				"capbage",
-				"capbage"
+				"capbage",
+				"seefern"
 			],
 			"approach_position": [
 				152.5,
@@ -9939,8 +9948,8 @@
 		"structures": [
 			"shelter",
 			"carry_gear",
-			"membrane",
-			"junction",
+			"root_slide",
+			"moving_platform",
 			"hide_slot"
 		]
 	},
@@ -12182,7 +12191,7 @@
 			"branch_role": "optional_risk_reward",
 			"cannot_bypass_unresolved": true,
 			"cost": 0,
-			"damage": 26.0,
+			"damage": 19.0,
 			"from": "node_02",
 			"height_delta": 0.0,
 			"id": "risky_optional_02_03",

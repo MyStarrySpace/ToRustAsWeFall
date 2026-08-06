@@ -145,7 +145,7 @@
 				"lysate",
 				"resource"
 			],
-			"variant": "capbage_head"
+			"variant": "forage_cache_station"
 		},
 		{
 			"all_variants": [
@@ -321,7 +321,7 @@
 				"attrition",
 				"lanes"
 			],
-			"variant": "mixed_families"
+			"variant": "swarm_surge"
 		},
 		{
 			"all_variants": [
@@ -427,7 +427,7 @@
 				"attrition",
 				"crossing"
 			],
-			"variant": "biofilm_mat"
+			"variant": "flooded_lane"
 		}
 	],
 	"area_theme": {},
@@ -651,6 +651,11 @@
 				{
 					"action": "activate",
 					"activation_policy": "interact_at_producer",
+					"affected_node_ids": [
+						"node_03",
+						"node_06",
+						"node_07"
+					],
 					"before_node": "node_02",
 					"before_nodes": [
 						"node_02"
@@ -848,6 +853,11 @@
 					{
 						"action": "activate",
 						"activation_policy": "interact_at_producer",
+						"affected_node_ids": [
+							"node_03",
+							"node_06",
+							"node_07"
+						],
 						"before_node": "node_02",
 						"before_nodes": [
 							"node_02"
@@ -1061,6 +1071,11 @@
 					{
 						"action": "activate",
 						"activation_policy": "interact_at_producer",
+						"affected_node_ids": [
+							"node_03",
+							"node_06",
+							"node_07"
+						],
 						"before_node": "node_02",
 						"before_nodes": [
 							"node_02"
@@ -7444,7 +7459,7 @@
 		{
 			"action_verb": "TAKE LYSATE",
 			"ambient_flora": [
-				"scarpet",
+				"capbage",
 				"capbage",
 				"seefern"
 			],
@@ -7802,8 +7817,8 @@
 		},
 		{
 			"ambient_flora": [
-				"seefern",
-				"seefern",
+				"scarpet",
+				"scarpet",
 				"scarpet"
 			],
 			"approach_position": [
@@ -7938,9 +7953,9 @@
 		{
 			"action_verb": "TAKE LYSATE",
 			"ambient_flora": [
-				"scarpet",
-				"seefern",
-				"capbage"
+				"capbage",
+				"capbage",
+				"scarpet"
 			],
 			"approach_position": [
 				47.5,
@@ -7950,7 +7965,7 @@
 			"approaches": [],
 			"archetype_id": "",
 			"archetype_name": "",
-			"atp_reward": 3,
+			"atp_reward": 2,
 			"branch_role": "optional_risk_reward",
 			"carry_payload": false,
 			"chain_cycle": -1,
@@ -8138,7 +8153,7 @@
 					"level": 1
 				}
 			},
-			"label": "Risk cache · 3 ATP lysate",
+			"label": "Risk cache · 2 ATP lysate",
 			"layout_step": {},
 			"link_ref": "",
 			"nested_archetypes": [],
@@ -8179,7 +8194,7 @@
 			"resource_beat": true,
 			"resource_item_type": "lysate",
 			"resource_kind": "food",
-			"reward_atp": 3,
+			"reward_atp": 2,
 			"reward_kind": "food",
 			"role": "foraging",
 			"runtime_handler": "physical_lysate_pickup_v1",
@@ -8206,7 +8221,7 @@
 				"prediction": "claiming the cache occupies exactly one hand without changing ATP",
 				"verb": "forage"
 			},
-			"title": "Risk cache · 3 ATP lysate",
+			"title": "Risk cache · 2 ATP lysate",
 			"variant": "",
 			"walk_element": "",
 			"walk_index": -1,
@@ -8218,7 +8233,7 @@
 			"ambient_flora": [
 				"seefern",
 				"scarpet",
-				"scarpet"
+				"capbage"
 			],
 			"approach_position": [
 				61.4000015258789,
@@ -8442,8 +8457,8 @@
 		{
 			"ambient_flora": [
 				"capbage",
-				"scarpet",
-				"seefern"
+				"seefern",
+				"capbage"
 			],
 			"approach_position": [
 				76.4000015258789,
@@ -8587,8 +8602,8 @@
 		{
 			"action_verb": "TAKE LYSATE",
 			"ambient_flora": [
-				"seefern",
-				"capbage",
+				"scarpet",
+				"scarpet",
 				"seefern"
 			],
 			"approach_position": [
@@ -8874,7 +8889,7 @@
 			"action_verb": "TAKE LYSATE",
 			"ambient_flora": [
 				"scarpet",
-				"scarpet",
+				"capbage",
 				"capbage"
 			],
 			"approach_position": [
@@ -9203,8 +9218,8 @@
 		},
 		{
 			"ambient_flora": [
-				"capbage",
-				"capbage",
+				"seefern",
+				"seefern",
 				"seefern"
 			],
 			"approach_position": [
@@ -9542,9 +9557,9 @@
 		"structures": [
 			"shelter",
 			"forage_cache",
-			"portal",
-			"membrane",
-			"root_slide"
+			"hide_slot",
+			"root_slide",
+			"rising_water_crossing"
 		]
 	},
 	"roompieces": {
@@ -11987,7 +12002,7 @@
 			"branch_role": "optional_risk_reward",
 			"cannot_bypass_unresolved": true,
 			"cost": 0,
-			"damage": 22.0,
+			"damage": 20.0,
 			"from": "node_02",
 			"height_delta": 0.0,
 			"id": "risky_optional_02_03",

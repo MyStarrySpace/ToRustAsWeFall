@@ -198,8 +198,7 @@ func submit_pointer_command(event_position: Vector3 = Vector3.INF) -> bool:
 		var previous_result_origin := _pointer_result_origin_override
 		if event_position.is_finite():
 			_pointer_result_origin_override = event_position
-		var accepted := bool(delegate.call(
-			"submit_pointer_command", event_position))
+		var accepted := bool(delegate.call("submit_pointer_command", event_position))
 		_pointer_result_origin_override = previous_result_origin
 		return accepted
 	interaction_requested.emit(

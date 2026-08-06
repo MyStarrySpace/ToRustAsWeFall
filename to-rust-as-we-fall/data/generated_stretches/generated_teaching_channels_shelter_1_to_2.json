@@ -328,6 +328,9 @@
 				{
 					"action": "activate",
 					"activation_policy": "interact_at_producer",
+					"affected_node_ids": [
+						"node_02"
+					],
 					"before_node": "node_02",
 					"before_nodes": [
 						"node_02"
@@ -370,6 +373,9 @@
 				{
 					"action": "activate",
 					"activation_policy": "interact_at_producer",
+					"affected_node_ids": [
+						"exit_shelter"
+					],
 					"before_node": "exit_shelter",
 					"before_nodes": [
 						"exit_shelter"
@@ -528,6 +534,9 @@
 					{
 						"action": "activate",
 						"activation_policy": "interact_at_producer",
+						"affected_node_ids": [
+							"node_02"
+						],
 						"before_node": "node_02",
 						"before_nodes": [
 							"node_02"
@@ -570,6 +579,9 @@
 					{
 						"action": "activate",
 						"activation_policy": "interact_at_producer",
+						"affected_node_ids": [
+							"exit_shelter"
+						],
 						"before_node": "exit_shelter",
 						"before_nodes": [
 							"exit_shelter"
@@ -722,6 +734,9 @@
 					{
 						"action": "activate",
 						"activation_policy": "interact_at_producer",
+						"affected_node_ids": [
+							"node_02"
+						],
 						"before_node": "node_02",
 						"before_nodes": [
 							"node_02"
@@ -764,6 +779,9 @@
 					{
 						"action": "activate",
 						"activation_policy": "interact_at_producer",
+						"affected_node_ids": [
+							"exit_shelter"
+						],
 						"before_node": "exit_shelter",
 						"before_nodes": [
 							"exit_shelter"
@@ -4144,8 +4162,8 @@
 		],
 		"structures": [
 			"shelter",
-			"class_gate",
-			"shortcut_gate"
+			"barrier",
+			"carry_gear"
 		]
 	},
 	"roompieces": {

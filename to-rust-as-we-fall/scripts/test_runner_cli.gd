@@ -52091,6 +52091,7 @@ func _test_event_log_mutation_audit() -> void:
 		# persona observation; the accepted movement command remains the logged authority.
 		"is_navigation_route_active", "get_navigation_route_destination",
 		"get_navigation_route_remaining_distance", "get_navigation_wait_state",
+		"navigation_route_intersects_cells",
 		# Detection subscriptions and batching are derived runtime acceleration state.
 		# Logged movement and visibility inputs reproduce their outcomes.
 		"set_detection_targets", "set_detection_enabled",

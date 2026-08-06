@@ -277,6 +277,10 @@
 				{
 					"action": "activate",
 					"activation_policy": "interact_at_producer",
+					"affected_node_ids": [
+						"node_03",
+						"node_05"
+					],
 					"before_node": "node_04",
 					"before_nodes": [
 						"node_03",
@@ -579,6 +583,10 @@
 					"branch_action": {
 						"action": "activate",
 						"activation_policy": "interact_at_producer",
+						"affected_node_ids": [
+							"node_03",
+							"node_05"
+						],
 						"before_node": "node_04",
 						"before_nodes": [
 							"node_03",
@@ -1027,6 +1035,10 @@
 				{
 					"action": "activate",
 					"activation_policy": "interact_at_producer",
+					"affected_node_ids": [
+						"node_03",
+						"node_05"
+					],
 					"before_node": "node_04",
 					"before_nodes": [
 						"node_03",
@@ -1265,6 +1277,10 @@
 					"branch_action": {
 						"action": "activate",
 						"activation_policy": "interact_at_producer",
+						"affected_node_ids": [
+							"node_03",
+							"node_05"
+						],
 						"before_node": "node_04",
 						"before_nodes": [
 							"node_03",

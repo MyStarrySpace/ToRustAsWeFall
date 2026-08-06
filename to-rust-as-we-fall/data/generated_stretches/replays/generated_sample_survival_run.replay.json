@@ -116,7 +116,7 @@
 					1
 				],
 				"id": "node_03",
-				"label": "Risk cache · 3 ATP lysate",
+				"label": "Risk cache · 2 ATP lysate",
 				"level": 1,
 				"optional": true,
 				"role": "foraging"
@@ -363,6 +363,11 @@
 				{
 					"action": "activate",
 					"activation_policy": "interact_at_producer",
+					"affected_node_ids": [
+						"node_03",
+						"node_06",
+						"node_07"
+					],
 					"before_node": "node_02",
 					"before_nodes": [
 						"node_02"
@@ -492,6 +497,11 @@
 					"branch_action": {
 						"action": "activate",
 						"activation_policy": "interact_at_producer",
+						"affected_node_ids": [
+							"node_03",
+							"node_06",
+							"node_07"
+						],
 						"before_node": "node_02",
 						"before_nodes": [
 							"node_02"
@@ -1031,6 +1041,11 @@
 				{
 					"action": "activate",
 					"activation_policy": "interact_at_producer",
+					"affected_node_ids": [
+						"node_03",
+						"node_06",
+						"node_07"
+					],
 					"before_node": "node_02",
 					"before_nodes": [
 						"node_02"
@@ -1128,6 +1143,11 @@
 					"branch_action": {
 						"action": "activate",
 						"activation_policy": "interact_at_producer",
+						"affected_node_ids": [
+							"node_03",
+							"node_06",
+							"node_07"
+						],
 						"before_node": "node_02",
 						"before_nodes": [
 							"node_02"
