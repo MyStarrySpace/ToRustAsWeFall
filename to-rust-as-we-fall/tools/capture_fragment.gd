@@ -5,7 +5,8 @@ extends SceneTree
 ##     [FOG=off] [CLIP=<max dist from median mesh center — drops stray outliers from framing>] \
 ##     [OCCL=off — freeze the see-through dissolve (top-down shots)] [LABELS=off — hide Label3D verbs] \
 ##     [LIGHT=1 — add a key+fill directional rig for dark scenes] \
-##     ../Godot_v4.7-stable_win64.exe --path "." --position 20000,20000 --script res://tools/capture_fragment.gd
+##     godot --path "." --script res://tools/capture_fragment.gd
+## Isolated-display launch only; see tools/README.md.
 ## Writes <frag>_view.png to OUT_DIR (scratchpad) — NEVER the project tree.
 
 func _init() -> void:

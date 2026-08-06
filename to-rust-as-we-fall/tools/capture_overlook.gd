@@ -2,8 +2,9 @@ extends SceneTree
 ## Two stills of the entry beat: the OVERLOOK from the bridge (the whole climb
 ## below, pre-collapse) and Peris's flora-memory marks lighting the coil after
 ## the drop.
-##   OUT_DIR=<scratchpad> ../Godot_v4.7-stable_win64.exe --path "." \
-##       --position 20000,20000 --resolution 1600x900 --script tools/capture_overlook.gd
+## Isolated-display launch only; see tools/README.md:
+##   OUT_DIR=<scratchpad> godot --path "." --resolution 1600x900 \
+##       --script tools/capture_overlook.gd
 
 func _initialize() -> void:
 	get_root().unfocusable = true

@@ -215,6 +215,9 @@ static func mandatory_branch_actions(
 		)
 		if before_node != "" and not before_nodes.has(before_node):
 			before_nodes.append(before_node)
+		var affected_node_ids := _affected_nodes_for_consumer_cut(
+			consumer_cells, nodes, navigation_grid
+		)
 		actions.append({
 			"id": "activate_%s_span" % branch_id,
 			"action": "activate",
@@ -233,6 +236,11 @@ static func mandatory_branch_actions(
 			# that can encounter the cut so neither path arrives at a closed span.
 			"before_node": before_node,
 			"before_nodes": before_nodes,
+			# `before_nodes` is the legacy replay interleave. Runtime actionability
+			# consumes this exact graph-derived set instead: apply the emitted cut to
+			# the final woven graph, then record every typed interaction region whose
+			# own declared predecessor can no longer reach any accepted arrival.
+			"affected_node_ids": affected_node_ids,
 			"produces_state": str(contract.get("produces_state", "%s_resolved" % branch_id)),
 			"expected_phase": str(contract.get("completion_phase", "bridged")),
 			"wait_for_completion": bool(contract.get("wait_for_completion", true)),
@@ -251,6 +259,105 @@ static func mandatory_branch_actions(
 	for index in range(actions.size()):
 		(actions[index] as Dictionary)["solution_order"] = index
 	return actions
+
+
+## Determine the semantic destinations physically severed by one mandatory
+## consumer cut. This is deliberately evaluated on the final woven GridWorld,
+## after actionable nodes have published their exact typed approach regions.
+## A node can be optional, absent from the golden path, or spatially non-monotonic;
+## none of those presentation facts changes whether its real arrival vertices are
+## behind the cut.
+static func _affected_nodes_for_consumer_cut(
+		consumer_cells: Array, nodes: Array, navigation_grid: Dictionary
+	) -> Array[String]:
+	var affected: Array[String] = []
+	if consumer_cells.is_empty() or navigation_grid.is_empty():
+		return affected
+	var grid := GridWorld.from_data(navigation_grid)
+	if grid == null:
+		return affected
+	for cell_v in consumer_cells:
+		var cell := _consumer_cell_from_data(cell_v)
+		if cell == Vector2i(-2147483648, -2147483648):
+			continue
+		grid.add_dynamic_blocker(cell, "mandatory_branch_coverage")
+	for node_v in nodes:
+		if not (node_v is Dictionary):
+			continue
+		var node := node_v as Dictionary
+		var node_id := str(node.get("id", ""))
+		var approach_v: Variant = node.get("interaction_approach", null)
+		if node_id == "" or not (approach_v is Dictionary):
+			continue
+		var approach := approach_v as Dictionary
+		var required_from := _interaction_vertex_from_data(
+			approach.get("required_from_vertex", null))
+		var region_v: Variant = approach.get("region_vertices", null)
+		if required_from.is_empty() or not (region_v is Array) \
+				or (region_v as Array).is_empty():
+			continue
+		var any_reachable := false
+		for vertex_v in region_v as Array:
+			var vertex := _interaction_vertex_from_data(vertex_v)
+			if not vertex.is_empty() \
+					and _interaction_vertices_connected(
+						grid, required_from, vertex):
+				any_reachable = true
+				break
+		if not any_reachable:
+			affected.append(node_id)
+	affected.sort()
+	return affected
+
+
+static func _consumer_cell_from_data(value: Variant) -> Vector2i:
+	if value is Vector2i:
+		return value as Vector2i
+	if value is Array and (value as Array).size() >= 2:
+		var x_v: Variant = (value as Array)[0]
+		var z_v: Variant = (value as Array)[1]
+		if _integral_number(x_v) and _integral_number(z_v):
+			return Vector2i(int(x_v), int(z_v))
+	return Vector2i(-2147483648, -2147483648)
+
+
+static func _interaction_vertex_from_data(value: Variant) -> Dictionary:
+	if not (value is Dictionary):
+		return {}
+	var raw := value as Dictionary
+	var cell := _consumer_cell_from_data(raw.get("cell", null))
+	if cell == Vector2i(-2147483648, -2147483648) \
+			or not _integral_number(raw.get("level", null)):
+		return {}
+	return {"cell": cell, "level": int(raw.get("level", -1))}
+
+
+static func _integral_number(value: Variant) -> bool:
+	var value_type := typeof(value)
+	if value_type != TYPE_INT and value_type != TYPE_FLOAT:
+		return false
+	var number := float(value)
+	return is_finite(number) and number >= -2147483648.0 \
+		and number <= 2147483647.0 and number == floorf(number)
+
+
+static func _interaction_vertices_connected(
+		grid: GridWorld, from_vertex: Dictionary, to_vertex: Dictionary
+	) -> bool:
+	if grid == null or from_vertex.is_empty() or to_vertex.is_empty():
+		return false
+	var from_cell: Vector2i = from_vertex.get("cell", Vector2i.ZERO)
+	var from_level := int(from_vertex.get("level", -1))
+	var to_cell: Vector2i = to_vertex.get("cell", Vector2i.ZERO)
+	var to_level := int(to_vertex.get("level", -1))
+	if from_level < 0 or from_level >= grid.level_count \
+			or to_level < 0 or to_level >= grid.level_count \
+			or not grid.is_walkable(
+				from_cell.x, from_cell.y, {}, {}, from_level) \
+			or not grid.is_walkable(to_cell.x, to_cell.y, {}, {}, to_level):
+		return false
+	return not grid.find_multi_level_plan(
+		from_cell, from_level, to_cell, to_level).is_empty()
 
 
 static func _before_node_for_consumer(

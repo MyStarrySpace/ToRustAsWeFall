@@ -15,7 +15,7 @@ The thirteen enemy types covered here, with one-line role summaries. Full specs 
 | Name | Role | Biology |
 |---|---|---|
 | Sapscraps | Basic swarm drainers, workhorse | Catecholate siderophores |
-| Aembers | Fluorescent specialists at breaches | Mixed-type fluorescent siderophores |
+| Ferrules | Fluorescent specialists at breaches | Mixed-type fluorescent siderophores |
 | Hidras | Infrastructure mimics | Hydroxamate siderophores, segmented wire bodies |
 | Crusts | Surface biofilm, wall-paranoia | Mycobactin-type, membrane-embedded |
 | Candids | Slow biofilm colonizers, environment changers | Candida biofilms |
@@ -23,14 +23,14 @@ The thirteen enemy types covered here, with one-line role summaries. Full specs 
 | Naturalizers | Institutional enforcement patrols | NK cells |
 | Gnawers | Metabolic-signature hunters | Gingipains (Porphyromonas gingivalis) |
 | Flares | AoE bursters, neutral-until-triggered | Neutrophils |
-| Spikers | Line-of-sight lock-on snipers | Pathological hyperexcitable neurons |
+| Spikers | Delayed line-of-sight connection turrets | Pathological hyperexcitable neurons |
 | Tanglers | Stealth-grapple hunters with seeding status | Tau propagation |
 | Toxos | Set piece (NK Slop) or player-facing threat | Toxoplasma gondii |
 | Redactors | Late-game invisible enforcers, deepest institutional class | Membrane-cloaked pathological T-cells; molecular mimicry via host-derived membrane sequestration (cf. *Trypanosoma* antigenic variation) |
 
 ## Siderophores compete with siderophores
 
-The four siderophore species (Sapscraps, Aembers, Hidras, Crusts) all share a class but they do not cooperate. They compete for iron, and because different species prefer different iron sources, they settle into territorial divisions when iron is abundant. Where iron is scarce they displace each other. A Crust patch on a pipe is denying that pipe's surface iron to every Sapscrap nearby. A Hidra burrowed into a conduit makes that conduit's iron unavailable to Aembers. A Aember cluster near a breach is concentrating the local iron economy in a way that starves the smaller siderophores in adjacent corridors.
+The four siderophore species (Sapscraps, Ferrules, Hidras, Crusts) all share a class but they do not cooperate. They compete for iron, and because different species prefer different iron sources, they settle into territorial divisions when iron is abundant. Where iron is scarce they displace each other. A Crust patch on a pipe is denying that pipe's surface iron to every Sapscrap nearby. A Hidra burrowed into a conduit makes that conduit's iron unavailable to Ferrules. A Ferrule cluster near a breach is concentrating the local iron economy in a way that starves the smaller siderophores in adjacent corridors.
 
 The competition is visible to the player as distribution patterns. Heavy Crust coverage on a stretch of wall correlates with reduced Sapscrap population in that stretch. Hidra-dominated conduit sections are quiet of other siderophores. The player who learns to read these patterns can infer which species will be present where before seeing them.
 
@@ -76,13 +76,13 @@ The player can observe this. A corridor with Flare corpses and active Naturalize
 
 ## Gnawers hunt metabolic signatures, any metabolic signatures
 
-Gnawers detect metabolic activity and converge on the strongest signal in range. They do not distinguish between party members, siderophores, Flares mid-degranulation, or Spikers firing. They want the metabolic spike.
+Gnawers detect metabolic activity and converge on the strongest signal in range. They do not distinguish between party members, siderophores, Flares mid-degranulation, or Spikers completing a connection. They want the metabolic spike.
 
 A siderophore feeding on iron produces a strong metabolic signal. Gnawers in range will latch onto feeding siderophores, ignoring the party entirely. The GDD already covers this as the core Gnawer mechanic: a living siderophore ecosystem is cover because the ecosystem generates louder signals than the party does.
 
 Flares degranulating are a massive metabolic signal. Gnawers converge on a Flare burst site. The Flares are already dead or dying from the burst; the Gnawers arrive to scavenge. A Flare event in Gnawer territory produces a Gnawer pileup that takes both species offline for several seconds.
 
-Spikers firing an action potential produce a brief metabolic spike during the firing moment. Gnawers may converge on a recently-fired Spiker before it can recover. A Spiker in Gnawer territory is a Spiker that cannot fire often without being latched onto during the recovery window.
+Spikers completing a damaging connection produce a brief metabolic spike at the discharge moment. Gnawers may converge on a Spiker that has just completed a connection before it can recover. A Spiker in Gnawer territory cannot complete connections often without being latched onto during the recovery window.
 
 The ecological consequence is that Gnawers thin the populations of whatever is metabolically loud around them. Corridors with heavy Gnawer presence have quieter ecosystems because the loud species get eaten and the quiet species survive. The player who wants a quiet corridor should go where Gnawers have been for a while.
 
@@ -101,19 +101,19 @@ The player can weaponize this. Triggering Flare convergence in an area the party
 
 The cost is that the Flare event is real, and getting caught in it is devastating. The player who miscalculates the timing takes the burst.
 
-## Spikers fire at anything that moves
+## Spikers connect to anything that moves
 
-Spikers do not distinguish targets. They fire at anything that enters their receptive field and moves. Siderophores wandering through get glutamated. Naturalizer patrols passing by get hit. Gnawers chasing metabolic signatures run into Spiker zones and take damage. Tanglers stalking prey cross Spiker receptive fields and get fired on.
+Spikers do not distinguish targets. When anything moving enters a Spiker's receptive field with a clear line of sight, the Spiker locks on and establishes a visible connection to it. The connection must remain unbroken for an authored delay before it discharges and deals damage. Breaking line of sight at any point immediately severs the connection, cancels the pending damage, and forces the Spiker to reacquire. Siderophores, Naturalizer patrols, Gnawers, Tanglers, and party members all follow the same rule.
 
-The ecological consequence is that Spiker corridors tend to be depopulated of most other enemies over time. Siderophores learn to route around; those that do not get killed. Tanglers who hunt neural activity are drawn toward Spikers as a food source, but they also have to navigate the firing zone to reach the Spiker itself, which is a dangerous approach. Many Tanglers die in Spiker corridors before reaching the Spiker that drew them.
+The ecological consequence is that Spiker corridors tend to be depopulated of enemies that cannot reach cover before a connection matures. Siderophores learn to route around; those that do not get killed. Tanglers who hunt neural activity are drawn toward Spikers as a food source, but they must cross its connection field and repeatedly break line of sight or reach it before the delay expires. Many Tanglers die in exposed Spiker corridors before reaching the Spiker that drew them.
 
-A Spiker that has been firing regularly for a long time has a corridor around it that is unusually quiet of other enemies. The player may find a Spiker's territory easier to traverse than a siderophore-swarmed one, if they can manage the Spiker itself. The corridor is clean because the Spiker cleaned it.
+A Spiker that has been completing connections regularly for a long time has a corridor around it that is unusually quiet of other enemies. The player may find a Spiker's territory easier to traverse than a siderophore-swarmed one if they can route between sightline breaks. The corridor is clean because the Spiker cleaned it.
 
 ## Tanglers hunt neural activity
 
 Tanglers feed on neural activity. They propagate by contact with cells that contain tau-compatible machinery, which means neural tissue. They are drawn to areas where neurons still fire, which in the dying NVU is a short list.
 
-Spikers are a Tangler food source. Tanglers actively hunt Spikers because hyperexcitable neurons are the strongest neural activity signal in the NVU, and because tau pathology in real biology is known to target hyperexcitable neurons. A Tangler approaching a Spiker has to navigate the Spiker's firing zone, and many die in the attempt. The ones that succeed grapple the Spiker and propagate their tau into the Spiker's cellular machinery. A Spiker that has been tau-seeded eventually collapses. The player may find dead Spikers in corridors where Tangler populations have worked through the local Spiker population.
+Spikers are a Tangler food source. Tanglers actively hunt Spikers because hyperexcitable neurons are the strongest neural activity signal in the NVU, and because tau pathology in real biology is known to target hyperexcitable neurons. A Tangler approaching a Spiker has to navigate the Spiker's connection field, and many die when they fail to break line of sight before the delay expires. The ones that succeed grapple the Spiker and propagate their tau into the Spiker's cellular machinery. A Spiker that has been tau-seeded eventually collapses. The player may find dead Spikers in corridors where Tangler populations have worked through the local Spiker population.
 
 Tanglers avoid Candid colonies because the biofilm chemistry disrupts their filament integrity. Candid zones are Tangler-free, which the GDD already notes.
 
@@ -171,9 +171,9 @@ The short version of who does what to whom. Rows affect columns. Entries describ
 | Candids | Displace from colonized zones | Grow where conditions allow | No effect | Disrupt tag-scanning | No effect | No effect | No effect | Zone-deny | No effect |
 | Meebs | Engulf on contact | Cannot engulf | Territorial | No engagement | Too fast to catch | Degranulation kills Meebs | Hit if in receptive field | Cannot engulf (filaments) | Can engulf |
 | Naturalizers | Ignore (untagged) | Cannot scan (interference) | No engagement | Factional tension | No engagement | Friendly-fire scans | No engagement | Engage if in tagged tissue | Engage aggressively |
-| Gnawers | Converge on feeding signals | No signal to converge on | No engagement | Ignore (signal is low) | Territorial | Converge on burst signal | Converge on firing spike | No engagement | Converge on metabolism |
+| Gnawers | Converge on feeding signals | No signal to converge on | No engagement | Ignore (signal is low) | Territorial | Converge on burst signal | Converge on completed-connection spike | No engagement | Converge on metabolism |
 | Flares | AoE damage | Damage colony edge | Not targeted, but caught in radius | Tag-incoherence response | Attract Gnawers via debris | AoE includes other Flares | Damage if in radius | Damage aggregates | Damage if in radius |
-| Spikers | Glutamate any movement | No effect on colony | Glutamate if in field | Glutamate if in field | Glutamate if in field | Glutamate if in field | N/A | Glutamate if in field | Glutamate if in field |
+| Spikers | Connect; damage only if LOS persists | No effect on colony | Connect; damage only if LOS persists | Connect; damage only if LOS persists | Connect; damage only if LOS persists | Connect; damage only if LOS persists | N/A | Connect; damage only if LOS persists | Connect; damage only if LOS persists |
 | Tanglers | Indifferent | Avoid zones | Cannot grapple | Engaged only if tag-disrupting | No engagement | Damaged by inflammation | Hunt (food source) | Propagate among each other | Indifferent |
 | Toxos | Indifferent | Thrive in zones | Eaten | Killed aggressively | Eaten | Damaged by bursts | Hit if in receptive field | Indifferent | Coexist |
 
@@ -185,7 +185,7 @@ The matrix is not symmetrical. A Flare event damages Naturalizers (through cellu
 
 The enemy ecosystem has emergent behavior. The player does not just navigate enemies; they navigate enemy relationships. A corridor that looks empty might have had a Flare event that killed everything. A Tangler swarm concentrating in an area suggests Spikers nearby that the Tanglers are hunting. A suspiciously quiet Naturalizer patrol zone might be a Candid colony deadening their scans. A pile of dead Spikers indicates recent Tangler activity. A stretch of wall with Crust coverage has fewer Sapscraps for reasons the player can work out.
 
-The player can weaponize these relationships. Leading a Tangler into a Candid zone degrades it. Drawing Spiker fire onto a Tangler patrol clears the patrol. Triggering Flare convergence in a Gnawer-heavy area creates a Gnawer pileup that takes both species offline. Myke's fire triggers Flare convergence intentionally when the party needs a distraction. A party member who has been marked by a Naturalizer can wait in a Candid zone for the scan to lose its lock.
+The player can weaponize these relationships. Leading a Tangler into a Candid zone degrades it. Drawing a Spiker connection onto a Tangler patrol can clear the patrol if the target remains exposed for the full delay. Triggering Flare convergence in a Gnawer-heavy area creates a Gnawer pileup that takes both species offline. Myke's fire triggers Flare convergence intentionally when the party needs a distraction. A party member who has been marked by a Naturalizer can wait in a Candid zone for the scan to lose its lock.
 
 Enemy distribution tells corridor history. A corridor with heavy Candid colonization and no other threats had enemies once but the Candids drove them all out. A corridor with Spikers and no siderophores means the Spikers cleared the siderophores over time. A corridor with Tanglers and dead Spiker remains means the Tanglers fed here recently. A corridor with Flare corpses and active Naturalizer patrols is a corridor where the system ate its own response team.
 

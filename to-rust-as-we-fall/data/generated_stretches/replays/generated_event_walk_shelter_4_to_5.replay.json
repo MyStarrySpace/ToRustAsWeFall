@@ -24,7 +24,7 @@
 			{
 				"category": "flora",
 				"cell": [
-					14,
+					15,
 					7
 				],
 				"kind": "hushbloom",
@@ -35,7 +35,7 @@
 				"category": "flora",
 				"cell": [
 					22,
-					0
+					-1
 				],
 				"kind": "scarpet",
 				"level": 0,
@@ -55,7 +55,7 @@
 				"category": "flora",
 				"cell": [
 					37,
-					7
+					8
 				],
 				"kind": "scarpet",
 				"level": 1,
@@ -64,7 +64,7 @@
 			{
 				"category": "flora",
 				"cell": [
-					44,
+					45,
 					7
 				],
 				"kind": "scarpet",
@@ -85,7 +85,7 @@
 				"category": "flora",
 				"cell": [
 					97,
-					7
+					8
 				],
 				"kind": "scarpet",
 				"level": 1,
@@ -95,7 +95,7 @@
 				"category": "flora",
 				"cell": [
 					105,
-					7
+					8
 				],
 				"kind": "scarpet",
 				"level": 1,
@@ -585,93 +585,45 @@
 				{
 					"action": "activate",
 					"activation_policy": "interact_at_producer",
-					"before_node": "node_05",
+					"before_node": "node_04",
+					"before_nodes": [
+						"node_03",
+						"node_04"
+					],
 					"branch_id": "branch_00",
 					"cannot_bypass_unresolved": true,
 					"consumer_cell": [
-						78.0,
-						35.0
+						50.0,
+						19.0
 					],
 					"consumer_cells": [
 						[
-							78.0,
-							18.0
+							50.0,
+							3.0
 						],
 						[
-							78.0,
+							50.0,
+							4.0
+						],
+						[
+							50.0,
+							5.0
+						],
+						[
+							50.0,
+							6.0
+						],
+						[
+							50.0,
 							19.0
-						],
-						[
-							78.0,
-							20.0
-						],
-						[
-							78.0,
-							21.0
-						],
-						[
-							78.0,
-							22.0
-						],
-						[
-							78.0,
-							23.0
-						],
-						[
-							78.0,
-							24.0
-						],
-						[
-							78.0,
-							25.0
-						],
-						[
-							78.0,
-							26.0
-						],
-						[
-							78.0,
-							27.0
-						],
-						[
-							78.0,
-							28.0
-						],
-						[
-							78.0,
-							29.0
-						],
-						[
-							78.0,
-							30.0
-						],
-						[
-							78.0,
-							31.0
-						],
-						[
-							78.0,
-							32.0
-						],
-						[
-							78.0,
-							33.0
-						],
-						[
-							78.0,
-							34.0
-						],
-						[
-							78.0,
-							35.0
 						]
 					],
 					"expected_phase": "bridged",
 					"id": "activate_branch_00_span",
 					"kind": "mandatory_branch_interaction",
 					"producer_cell": [
-						75.0,
-						39.0
+						47.0,
+						23.0
 					],
 					"produces_state": "branch_00_resolved",
 					"required_for_progress": true,
@@ -845,6 +797,97 @@
 					"t": 3.0
 				},
 				{
+					"approach_id": "activate_branch_00_span",
+					"blocked": false,
+					"borrows_from": "",
+					"branch_action": {
+						"action": "activate",
+						"activation_policy": "interact_at_producer",
+						"before_node": "node_04",
+						"before_nodes": [
+							"node_03",
+							"node_04"
+						],
+						"branch_id": "branch_00",
+						"cannot_bypass_unresolved": true,
+						"consumer_cell": [
+							50.0,
+							19.0
+						],
+						"consumer_cells": [
+							[
+								50.0,
+								3.0
+							],
+							[
+								50.0,
+								4.0
+							],
+							[
+								50.0,
+								5.0
+							],
+							[
+								50.0,
+								6.0
+							],
+							[
+								50.0,
+								19.0
+							]
+						],
+						"expected_phase": "bridged",
+						"id": "activate_branch_00_span",
+						"kind": "mandatory_branch_interaction",
+						"producer_cell": [
+							47.0,
+							23.0
+						],
+						"produces_state": "branch_00_resolved",
+						"required_for_progress": true,
+						"role": "mandatory_producer",
+						"runtime_handler": "branch_span_producer",
+						"solution_order": 0.0,
+						"target": "branch_00",
+						"wait_for_completion": true
+					},
+					"caption": "SIDE BRANCH — EXTEND DOWNSTREAM SPAN",
+					"characters": {
+						"aster": [
+							21.5,
+							9.05
+						],
+						"endo": [
+							21.92,
+							9.38
+						],
+						"myke": [
+							21.5,
+							9.72
+						],
+						"oli": [
+							21.08,
+							9.92
+						],
+						"peris": [
+							21.08,
+							9.38
+						],
+						"tyreg": [
+							21.92,
+							9.92
+						]
+					},
+					"expert": false,
+					"kind": "mandatory_branch_interaction",
+					"min_stage": 0,
+					"node": "node_04",
+					"risk": "safe",
+					"role": "mandatory_producer",
+					"stage_ahead": false,
+					"t": 4.0
+				},
+				{
 					"approach_id": "traverse",
 					"blocked": false,
 					"borrows_from": "",
@@ -881,145 +924,6 @@
 					"node": "node_04",
 					"risk": "safe",
 					"role": "guidance",
-					"stage_ahead": false,
-					"t": 4.0
-				},
-				{
-					"approach_id": "activate_branch_00_span",
-					"blocked": false,
-					"borrows_from": "",
-					"branch_action": {
-						"action": "activate",
-						"activation_policy": "interact_at_producer",
-						"before_node": "node_05",
-						"branch_id": "branch_00",
-						"cannot_bypass_unresolved": true,
-						"consumer_cell": [
-							78.0,
-							35.0
-						],
-						"consumer_cells": [
-							[
-								78.0,
-								18.0
-							],
-							[
-								78.0,
-								19.0
-							],
-							[
-								78.0,
-								20.0
-							],
-							[
-								78.0,
-								21.0
-							],
-							[
-								78.0,
-								22.0
-							],
-							[
-								78.0,
-								23.0
-							],
-							[
-								78.0,
-								24.0
-							],
-							[
-								78.0,
-								25.0
-							],
-							[
-								78.0,
-								26.0
-							],
-							[
-								78.0,
-								27.0
-							],
-							[
-								78.0,
-								28.0
-							],
-							[
-								78.0,
-								29.0
-							],
-							[
-								78.0,
-								30.0
-							],
-							[
-								78.0,
-								31.0
-							],
-							[
-								78.0,
-								32.0
-							],
-							[
-								78.0,
-								33.0
-							],
-							[
-								78.0,
-								34.0
-							],
-							[
-								78.0,
-								35.0
-							]
-						],
-						"expected_phase": "bridged",
-						"id": "activate_branch_00_span",
-						"kind": "mandatory_branch_interaction",
-						"producer_cell": [
-							75.0,
-							39.0
-						],
-						"produces_state": "branch_00_resolved",
-						"required_for_progress": true,
-						"role": "mandatory_producer",
-						"runtime_handler": "branch_span_producer",
-						"solution_order": 0.0,
-						"target": "branch_00",
-						"wait_for_completion": true
-					},
-					"caption": "SIDE BRANCH — EXTEND DOWNSTREAM SPAN",
-					"characters": {
-						"aster": [
-							35.5,
-							17.05
-						],
-						"endo": [
-							35.92,
-							17.38
-						],
-						"myke": [
-							35.5,
-							17.72
-						],
-						"oli": [
-							35.08,
-							17.92
-						],
-						"peris": [
-							35.08,
-							17.38
-						],
-						"tyreg": [
-							35.92,
-							17.92
-						]
-					},
-					"expert": false,
-					"kind": "mandatory_branch_interaction",
-					"min_stage": 0,
-					"node": "node_05",
-					"risk": "safe",
-					"role": "mandatory_producer",
 					"stage_ahead": false,
 					"t": 5.0
 				},
@@ -1731,93 +1635,45 @@
 				{
 					"action": "activate",
 					"activation_policy": "interact_at_producer",
-					"before_node": "node_05",
+					"before_node": "node_04",
+					"before_nodes": [
+						"node_03",
+						"node_04"
+					],
 					"branch_id": "branch_00",
 					"cannot_bypass_unresolved": true,
 					"consumer_cell": [
-						78.0,
-						35.0
+						50.0,
+						19.0
 					],
 					"consumer_cells": [
 						[
-							78.0,
-							18.0
+							50.0,
+							3.0
 						],
 						[
-							78.0,
+							50.0,
+							4.0
+						],
+						[
+							50.0,
+							5.0
+						],
+						[
+							50.0,
+							6.0
+						],
+						[
+							50.0,
 							19.0
-						],
-						[
-							78.0,
-							20.0
-						],
-						[
-							78.0,
-							21.0
-						],
-						[
-							78.0,
-							22.0
-						],
-						[
-							78.0,
-							23.0
-						],
-						[
-							78.0,
-							24.0
-						],
-						[
-							78.0,
-							25.0
-						],
-						[
-							78.0,
-							26.0
-						],
-						[
-							78.0,
-							27.0
-						],
-						[
-							78.0,
-							28.0
-						],
-						[
-							78.0,
-							29.0
-						],
-						[
-							78.0,
-							30.0
-						],
-						[
-							78.0,
-							31.0
-						],
-						[
-							78.0,
-							32.0
-						],
-						[
-							78.0,
-							33.0
-						],
-						[
-							78.0,
-							34.0
-						],
-						[
-							78.0,
-							35.0
 						]
 					],
 					"expected_phase": "bridged",
 					"id": "activate_branch_00_span",
 					"kind": "mandatory_branch_interaction",
 					"producer_cell": [
-						75.0,
-						39.0
+						47.0,
+						23.0
 					],
 					"produces_state": "branch_00_resolved",
 					"required_for_progress": true,
@@ -1927,6 +1783,81 @@
 					"t": 3.0
 				},
 				{
+					"approach_id": "activate_branch_00_span",
+					"blocked": false,
+					"borrows_from": "",
+					"branch_action": {
+						"action": "activate",
+						"activation_policy": "interact_at_producer",
+						"before_node": "node_04",
+						"before_nodes": [
+							"node_03",
+							"node_04"
+						],
+						"branch_id": "branch_00",
+						"cannot_bypass_unresolved": true,
+						"consumer_cell": [
+							50.0,
+							19.0
+						],
+						"consumer_cells": [
+							[
+								50.0,
+								3.0
+							],
+							[
+								50.0,
+								4.0
+							],
+							[
+								50.0,
+								5.0
+							],
+							[
+								50.0,
+								6.0
+							],
+							[
+								50.0,
+								19.0
+							]
+						],
+						"expected_phase": "bridged",
+						"id": "activate_branch_00_span",
+						"kind": "mandatory_branch_interaction",
+						"producer_cell": [
+							47.0,
+							23.0
+						],
+						"produces_state": "branch_00_resolved",
+						"required_for_progress": true,
+						"role": "mandatory_producer",
+						"runtime_handler": "branch_span_producer",
+						"solution_order": 0.0,
+						"target": "branch_00",
+						"wait_for_completion": true
+					},
+					"caption": "SIDE BRANCH — EXTEND DOWNSTREAM SPAN",
+					"characters": {
+						"aster": [
+							21.5,
+							9.05
+						],
+						"peris": [
+							21.08,
+							9.38
+						]
+					},
+					"expert": false,
+					"kind": "mandatory_branch_interaction",
+					"min_stage": 0,
+					"node": "node_04",
+					"risk": "safe",
+					"role": "mandatory_producer",
+					"stage_ahead": false,
+					"t": 4.0
+				},
+				{
 					"approach_id": "traverse",
 					"blocked": false,
 					"borrows_from": "",
@@ -1947,129 +1878,6 @@
 					"node": "node_04",
 					"risk": "safe",
 					"role": "guidance",
-					"stage_ahead": false,
-					"t": 4.0
-				},
-				{
-					"approach_id": "activate_branch_00_span",
-					"blocked": false,
-					"borrows_from": "",
-					"branch_action": {
-						"action": "activate",
-						"activation_policy": "interact_at_producer",
-						"before_node": "node_05",
-						"branch_id": "branch_00",
-						"cannot_bypass_unresolved": true,
-						"consumer_cell": [
-							78.0,
-							35.0
-						],
-						"consumer_cells": [
-							[
-								78.0,
-								18.0
-							],
-							[
-								78.0,
-								19.0
-							],
-							[
-								78.0,
-								20.0
-							],
-							[
-								78.0,
-								21.0
-							],
-							[
-								78.0,
-								22.0
-							],
-							[
-								78.0,
-								23.0
-							],
-							[
-								78.0,
-								24.0
-							],
-							[
-								78.0,
-								25.0
-							],
-							[
-								78.0,
-								26.0
-							],
-							[
-								78.0,
-								27.0
-							],
-							[
-								78.0,
-								28.0
-							],
-							[
-								78.0,
-								29.0
-							],
-							[
-								78.0,
-								30.0
-							],
-							[
-								78.0,
-								31.0
-							],
-							[
-								78.0,
-								32.0
-							],
-							[
-								78.0,
-								33.0
-							],
-							[
-								78.0,
-								34.0
-							],
-							[
-								78.0,
-								35.0
-							]
-						],
-						"expected_phase": "bridged",
-						"id": "activate_branch_00_span",
-						"kind": "mandatory_branch_interaction",
-						"producer_cell": [
-							75.0,
-							39.0
-						],
-						"produces_state": "branch_00_resolved",
-						"required_for_progress": true,
-						"role": "mandatory_producer",
-						"runtime_handler": "branch_span_producer",
-						"solution_order": 0.0,
-						"target": "branch_00",
-						"wait_for_completion": true
-					},
-					"caption": "SIDE BRANCH — EXTEND DOWNSTREAM SPAN",
-					"characters": {
-						"aster": [
-							35.5,
-							17.05
-						],
-						"peris": [
-							35.08,
-							17.38
-						]
-					},
-					"expert": false,
-					"kind": "mandatory_branch_interaction",
-					"min_stage": 0,
-					"node": "node_05",
-					"risk": "safe",
-					"role": "mandatory_producer",
 					"stage_ahead": false,
 					"t": 5.0
 				},

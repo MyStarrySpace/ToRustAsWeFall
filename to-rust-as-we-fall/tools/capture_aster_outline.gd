@@ -2,8 +2,8 @@ extends SceneTree
 
 ## Verify the screen-space outline in the REAL Aster scene (real room model, real walls, real game camera, real
 ## OutlineMaskManager wired by the sequence). Loads aster_sim, runs past the intro fade, force-highlights every
-## OutlineSurfaceTarget, and screenshots the game camera. Run WITH a display:
-##   ../Godot_v4.7-stable_win64.exe --path "." --script res://tools/capture_aster_outline.gd
+## OutlineSurfaceTarget, and screenshots the game camera. Isolated-display launch only; see tools/README.md:
+##   godot --path "." --script res://tools/capture_aster_outline.gd
 
 func _init() -> void:
 	var scene: Node = load("res://scenes/tutorial/aster_sim.tscn").instantiate()

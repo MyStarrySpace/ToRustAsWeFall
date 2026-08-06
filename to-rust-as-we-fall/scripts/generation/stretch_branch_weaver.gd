@@ -118,62 +118,67 @@ static func weave(grid_data: Dictionary, opts: Dictionary = {}) -> Dictionary:
 	var placed := 0
 	for i in range(count):
 		var frac := (float(i) + 0.5) / float(count)
-		var nx := clampi(lo + int(frac * float(hi - lo)) + _ri(rng, -1, 1), 1, width - 2)
-		if not rim.has(nx):
-			nx = _nearest_rim_column(rim, nx, width)
-			if nx < 0:
-				continue
-		var rim_z: int = int(rim[nx])
-		var consumer_cells := _next_spine_consumer_cells(
-			spine_cells, spine_cells, nx, width
+		var preferred_column := clampi(
+			lo + int(frac * float(hi - lo)) + _ri(rng, -1, 1),
+			1,
+			width - 2
 		)
-		# A causal producer without a later, proven spine cut is not a
-		# producer at all. Drop this spoke before adding cells so normalization can
-		# never promote an unaddressable late branch into the mandatory role.
-		if consumer_cells.is_empty():
-			continue
-		var consumer_cell := _visual_consumer_midpoint(consumer_cells, rim_z + 1)
 		var role := _role_for_index(i, count)
-		var shape := _pick_shape(rng, tier, role)
-		var local: Array = _shape_offsets(shape, rng, tier)
-		var branch_cells: Array = []
-		var neck := Vector2i(nx, rim_z + 1)
-		for off in local:
-			var abs_cell := Vector2i(nx + int(off.x), rim_z + 1 + int(off.y))   # +z = outward from the spine
-			# A spoke owns exactly one connection to the spine. Wide rooms used to
-			# expose several depth-zero cells, silently creating a parallel route
-			# around downstream blockers (including the hydraulic bridge gap).
-			if abs_cell != neck and _touches_cell_set(abs_cell, spine_cells):
+		var shape := ""
+		var local: Array = []
+		# A jagged WFC rim can make the nearest doorway unusable after the
+		# single-door filter is applied. Try the remaining real doorways in stable
+		# distance order instead of silently reducing the authored branch count.
+		for column_v in _ordered_rim_columns(rim, preferred_column, width):
+			var nx := int(column_v)
+			var rim_z: int = int(rim[nx])
+			var consumer_cells: Array = _next_spine_consumer_cells(
+				spine_cells, spine_cells, nx, width
+			)
+			# A causal producer without a later, proven spine cut is not a
+			# producer at all. Keep looking for a doorway with a real consumer.
+			if consumer_cells.is_empty():
 				continue
-			if cells.has(abs_cell):
+			if shape.is_empty():
+				shape = _pick_shape(rng, tier, role)
+				local = _shape_offsets(shape, rng, tier)
+			var neck := Vector2i(nx, rim_z + 1)
+			var branch_cells: Array[Vector2i] = _trial_branch_cells(
+				nx, rim_z, local, attachment_cells, cells
+			)
+			# A neck by itself is not a branch decision or a meaningful producer
+			# detour. A later doorway may still fit this deterministic shape.
+			if branch_cells.size() <= 1:
 				continue
-			cells[abs_cell] = true
-			branch_cells.append(abs_cell)
-		if branch_cells.is_empty():
-			continue
-		var branch_id := "branch_%02d" % placed
-		var producer_cell := _farthest_branch_cell(branch_cells, neck)
-		branches.append({
-			"id": branch_id,
-			"neck": [neck.x, neck.y],
-			"shape": shape,
-			"cells": branch_cells,
-			"role": role,
-			"required_for_progress": role == ROLE_MANDATORY_PRODUCER,
-			"normal_route_optional": role != ROLE_MANDATORY_PRODUCER,
-			"_producer_cell": [producer_cell.x, producer_cell.y],
-			"_consumer_cell": [consumer_cell.x, consumer_cell.y],
-			"_consumer_cells": _cells_to_arrays(consumer_cells),
-			"causal_contract": _branch_contract(
-				branch_id,
-				role,
-				nx,
-				[producer_cell.x, producer_cell.y],
-				[consumer_cell.x, consumer_cell.y],
-				_cells_to_arrays(consumer_cells)
-			),
-		})
-		placed += 1
+			for branch_cell in branch_cells:
+				cells[branch_cell] = true
+			var consumer_cell := _visual_consumer_midpoint(
+				consumer_cells, rim_z + 1
+			)
+			var branch_id := "branch_%02d" % placed
+			var producer_cell := _farthest_branch_cell(branch_cells, neck)
+			branches.append({
+				"id": branch_id,
+				"neck": [neck.x, neck.y],
+				"shape": shape,
+				"cells": branch_cells,
+				"role": role,
+				"required_for_progress": role == ROLE_MANDATORY_PRODUCER,
+				"normal_route_optional": role != ROLE_MANDATORY_PRODUCER,
+				"_producer_cell": [producer_cell.x, producer_cell.y],
+				"_consumer_cell": [consumer_cell.x, consumer_cell.y],
+				"_consumer_cells": _cells_to_arrays(consumer_cells),
+				"causal_contract": _branch_contract(
+					branch_id,
+					role,
+					nx,
+					[producer_cell.x, producer_cell.y],
+					[consumer_cell.x, consumer_cell.y],
+					_cells_to_arrays(consumer_cells)
+				),
+			})
+			placed += 1
+			break
 
 	if placed == 0:
 		out["branch_weave_contract_id"] = BRANCH_WEAVE_CONTRACT_ID
@@ -484,16 +489,84 @@ static func _touches_cell_set(cell: Vector2i, cell_set: Dictionary) -> bool:
 	return false
 
 
+static func _trial_branch_cells(
+		nx: int,
+		rim_z: int,
+		local_offsets: Array,
+		attachment_cells: Dictionary,
+		occupied_cells: Dictionary
+) -> Array[Vector2i]:
+	var neck := Vector2i(nx, rim_z + 1)
+	var trial_cells: Array[Vector2i] = []
+	for offset_v in local_offsets:
+		var offset: Vector2i = offset_v as Vector2i
+		var cell := Vector2i(nx + offset.x, rim_z + 1 + offset.y)
+		# A spoke owns exactly one same-level connection to the spine. Applying
+		# this rule to a flattened multi-level footprint removes valid stems merely
+		# because an unrelated deck shares the same X/Z address.
+		if cell != neck and _touches_cell_set(cell, attachment_cells):
+			continue
+		if occupied_cells.has(cell):
+			continue
+		trial_cells.append(cell)
+	# Filtering a wide room can leave diagonal islands. GridWorld will not cross
+	# their blocked corners, so only commit the cardinal component from the neck.
+	return _cardinal_branch_component(trial_cells, neck)
+
+
+static func _cardinal_branch_component(
+		branch_cells: Array, neck: Vector2i
+) -> Array[Vector2i]:
+	var cell_set := {}
+	for cell_v in branch_cells:
+		var cell := _as_cell(cell_v)
+		if cell.x != 2147483647:
+			cell_set[cell] = true
+	if not cell_set.has(neck):
+		return []
+	var open: Array[Vector2i] = [neck]
+	var visited := {neck: true}
+	while not open.is_empty():
+		var current: Vector2i = open.pop_front()
+		for direction in [
+			Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN,
+		]:
+			var neighbor: Vector2i = current + direction
+			if cell_set.has(neighbor) and not visited.has(neighbor):
+				visited[neighbor] = true
+				open.append(neighbor)
+	var connected: Array[Vector2i] = []
+	connected.assign(visited.keys())
+	connected.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
+		return a.y < b.y or (a.y == b.y and a.x < b.x)
+	)
+	return connected
+
+
 ## Public structural verifier for preview hosts and focused generation tests. Runtime mechanics may add state, but
 ## may not reinterpret these roles or turn a recovery link into forward progression.
 static func validate_branch_contracts(branches: Array, grid_data: Dictionary = {}) -> Dictionary:
 	var errors: Array[String] = []
 	var proven_cut_count := 0
+	var reachable_mandatory_producer_count := 0
 	var grid_cells := {}
 	for cell_v in grid_data.get("walkable_cells", []):
 		var grid_cell := _as_cell(cell_v)
 		if grid_cell.x != 2147483647:
 			grid_cells[grid_cell] = true
+	var level_cell_sets := {}
+	for level_v in grid_data.get("level_cells", []):
+		if not (level_v is Dictionary):
+			continue
+		var level := int((level_v as Dictionary).get("level", 0))
+		var level_set := {}
+		for cell_v in (level_v as Dictionary).get("cells", []):
+			var level_cell: Vector2i = _as_cell(cell_v)
+			if level_cell.x != 2147483647:
+				level_set[level_cell] = true
+		level_cell_sets[level] = level_set
+	if level_cell_sets.is_empty() and not grid_cells.is_empty():
+		level_cell_sets[0] = grid_cells.duplicate()
 	var runtime_level_cells := _runtime_branch_attachment_cells(
 		grid_data, grid_cells
 	)
@@ -589,6 +662,34 @@ static func validate_branch_contracts(branches: Array, grid_data: Dictionary = {
 						branch_cells, int(contract.get("spine_column", -1))
 					)
 				)
+				var producer_reachable_before_cut := true
+				if not grid_cells.is_empty():
+					var producer_level := int(branch.get(
+						"navigation_level",
+						contract.get("producer_navigation_level", 0)
+					))
+					var producer_level_cells: Dictionary = level_cell_sets.get(
+						producer_level, {}
+					)
+					var producer: Vector2i = _as_cell(producer_cell)
+					var neck_cell: Vector2i = _as_cell(branch.get("neck", []))
+					var blocked_before_activation := {}
+					for consumer_v in consumer_cells:
+						var blocked_cell: Vector2i = _as_cell(consumer_v)
+						if blocked_cell.x != 2147483647:
+							blocked_before_activation[blocked_cell] = true
+					producer_reachable_before_cut = (
+						producer_level_cells.has(neck_cell)
+						and producer_level_cells.has(producer)
+						and _side_sets_connected(
+							producer_level_cells,
+							[neck_cell],
+							[producer],
+							blocked_before_activation
+						)
+					)
+					if producer_reachable_before_cut:
+						reachable_mandatory_producer_count += 1
 				var cut_is_proven := true
 				if not grid_cells.is_empty():
 					cut_is_proven = _cut_disconnects(grid_cells, consumer_cells)
@@ -600,8 +701,14 @@ static func validate_branch_contracts(branches: Array, grid_data: Dictionary = {
 						or str(contract.get("consumer_addressing", "")) != "exact_cell" \
 						or str(contract.get("consumer_cells_addressing", "")) != "exact_cut_set" \
 						or str(contract.get("consumer_cell_role", "")) != "visual_midpoint" \
-						or not exact_cells_valid or not cut_is_proven:
+						or not exact_cells_valid or not cut_is_proven \
+						or not producer_reachable_before_cut:
 					errors.append("%s does not feed a mandatory spine blocker." % branch_id)
+				if not producer_reachable_before_cut:
+					errors.append(
+						"%s producer is unreachable from its declared-level neck before its consumer cut."
+						% branch_id
+					)
 			ROLE_OPTIONAL_RISK_REWARD:
 				if bool(branch.get("required_for_progress", true)) \
 						or str(contract.get("content_policy", "")) != "risk_scaled_physical_reward" \
@@ -614,6 +721,7 @@ static func validate_branch_contracts(branches: Array, grid_data: Dictionary = {
 		"errors": errors,
 		"role_counts": role_counts,
 		"proven_cut_count": proven_cut_count,
+		"reachable_mandatory_producer_count": reachable_mandatory_producer_count,
 	}
 
 ## Local cell offsets for a shape, in (dv = lateral spread across the spine, du = depth outward). Always includes
@@ -665,13 +773,20 @@ static func len_of(offsets: Array) -> int:
 static func _ri(rng: SeededRng, a: int, b: int) -> int:
 	return int(rng.call("randi_range", a, b))
 
-static func _nearest_rim_column(rim: Dictionary, nx: int, width: int) -> int:
+static func _ordered_rim_columns(
+		rim: Dictionary, preferred_column: int, width: int
+) -> Array[int]:
+	var ordered: Array[int] = []
+	if rim.has(preferred_column):
+		ordered.append(preferred_column)
 	for step in range(1, width):
-		if rim.has(nx + step):
-			return nx + step
-		if rim.has(nx - step):
-			return nx - step
-	return -1
+		var right := preferred_column + step
+		if right <= width - 2 and rim.has(right):
+			ordered.append(right)
+		var left := preferred_column - step
+		if left >= 1 and rim.has(left):
+			ordered.append(left)
+	return ordered
 
 # --- re-emit the unified_grid_v1 with the branch cells added, world positions preserved ------------------------
 
@@ -713,6 +828,11 @@ static func _reemit(out: Dictionary, cells: Dictionary, branches: Array) -> Dict
 	for b in branches:
 		var nc: Array = b["neck"]
 		var emitted: Dictionary = b.duplicate(true)
+		# Newly woven spokes are authored onto the attachment tier selected above.
+		# Persist the graph identity so runtime compatibility code never has to infer
+		# a producer floor from an unrelated consumer sharing the same X/Z address.
+		var producer_level := int(emitted.get("navigation_level", 0))
+		emitted["navigation_level"] = producer_level
 		emitted["neck"] = [int(nc[0]) - shift.x, int(nc[1]) - shift.y]
 		emitted["shape"] = str(b["shape"])
 		emitted["cells"] = _sorted_shift(b["cells"], shift)
@@ -733,12 +853,46 @@ static func _reemit(out: Dictionary, cells: Dictionary, branches: Array) -> Dict
 					raw_consumer.x - shift.x, raw_consumer.y - shift.y,
 				])
 		contract["consumer_cells"] = shifted_consumer_cells
+		contract["producer_navigation_level"] = producer_level
+		if not shifted_consumer_cells.is_empty():
+			contract["consumer_navigation_level"] = _best_level_for_cells(
+				out.get("level_cells", []), shifted_consumer_cells, producer_level
+			)
 		emitted["causal_contract"] = contract
 		brs.append(emitted)
 	out["branches"] = brs
 	out["branch_weave_contract_id"] = BRANCH_WEAVE_CONTRACT_ID
 	out["branch_count"] = brs.size()
 	return out
+
+
+static func _best_level_for_cells(
+		level_entries: Array, addressed_cells: Array, fallback_level: int
+) -> int:
+	if level_entries.is_empty() or addressed_cells.is_empty():
+		return fallback_level
+	var wanted := {}
+	for cell_v in addressed_cells:
+		var cell: Vector2i = _as_cell(cell_v)
+		if cell.x != 2147483647:
+			wanted[cell] = true
+	var best_level := fallback_level
+	var best_coverage := -1
+	for entry_v in level_entries:
+		if not (entry_v is Dictionary):
+			continue
+		var entry := entry_v as Dictionary
+		var level := int(entry.get("level", 0))
+		var coverage := 0
+		for cell_v in entry.get("cells", []):
+			if wanted.has(_as_cell(cell_v)):
+				coverage += 1
+		if coverage > best_coverage or (
+			coverage == best_coverage and level == fallback_level
+		):
+			best_coverage = coverage
+			best_level = level
+	return best_level
 
 static func _reemit_levels(level_cells: Array, all_cells: Dictionary, branches: Array, shift: Vector2i) -> Array:
 	# Branch cells all belong to level 0; other levels keep their original cells (re-shifted). Rebuild level 0 as

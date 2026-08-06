@@ -111,6 +111,13 @@ var _meta_template: MetaTemplate = null
 # that authoritative result in navigation_grid; spine_navigation_grid is only the bare macro path used to derive
 # the helix and recovery anchors. `_woven_nav` is the runtime copy plus any meta-template base cells.
 var _woven_nav: Dictionary = {}
+## Runtime-only coordinate delta introduced when a meta-template prepends and
+## renormalizes grid cells. Generated specs remain immutable; published
+## interaction contracts are projected into this final grid frame instead.
+var _runtime_navigation_cell_delta := Vector2i.ZERO
+## Fail-closed construction diagnostics keyed by generated node id. These are
+## read by the pure route preflight and never written into the saved spec.
+var _runtime_interaction_contract_errors: Dictionary = {}
 
 # Recovery points are tended upper anchors that deploy to a lower deck and only permit the return climb.
 # `_drop_downs` remains as a compatibility readback and must stay empty: no paired forward portal may bypass
@@ -120,6 +127,10 @@ var _climbvines: Array = []
 var _branch_span_producers: Array = []
 var _branch_span_by_id: Dictionary = {}
 var _branch_gap_cells: Dictionary = {}
+# Chunk construction runs before its host installs this generated navigation
+# snapshot into GameState. Never bind a mechanism to the outgoing level's grid;
+# the host's on_game_state_grid_ready receipt opens this build boundary.
+var _branch_span_grid_ready := false
 
 # Salvage caches placed at the far end of each branch spoke — the OPTIONAL reward that makes exploring a spoke
 # (instead of pushing straight down the spine to the shelter) worth the day/night time it costs.
@@ -352,12 +363,15 @@ func _build_chunk() -> void:
 	_climbvines.clear()
 	_branch_span_producers.clear()
 	_branch_span_by_id.clear()
+	_branch_span_grid_ready = false
 	_branch_gap_cells.clear()
 	_branch_caches.clear()
 	_physical_food_spawned_count = 0
 	_nominal_food_atp = 0.0
 	_clear_hydraulic_runtime_refs()
 	_woven_nav = {}
+	_runtime_navigation_cell_delta = Vector2i.ZERO
+	_runtime_interaction_contract_errors.clear()
 	_build_coord_map()
 	_ensure_woven_grid()
 	_refresh_branch_gap_cells()
@@ -386,6 +400,10 @@ func _build_chunk() -> void:
 	if _coord_map != null:
 		for i in range(flat_child_start, get_child_count()):
 			_warp_child(get_child(i))
+		# Physical-source pick hulls cannot be centred until every independently
+		# warped marker mesh has reached its final transform. The shared helper only
+		# touches targets carrying the explicit generated-source opt-in contract.
+		align_opt_in_pick_targets_to_highlights()
 	_wire_hydraulic_feedback()
 	_build_return_points()
 	_ensure_branch_span_producers_ready()
@@ -615,8 +633,12 @@ func _spiral_enabled() -> bool:
 		return bool(_config["spiral"])
 
 	# A hand-authored / ASCII level (from the builder) plays as the FLAT layout the user drew — no spiral warp,
-	# no woven branch spokes. Only procedurally GENERATED stretches spiral. Detected by the authored schema.
-	if str(_spec.get("schema", "")) == "authored_ascii_v1":
+	# no woven branch spokes. Current fixed specs identify that authored spatial
+	# projection explicitly while the old schema check keeps legacy local drafts
+	# readable without pretending they satisfy current acceptance.
+	if str(_spec.get("source", {}).get("spatial_projection", "")) \
+			== "authored_flat_v1" \
+			or str(_spec.get("schema", "")) == "authored_ascii_v1":
 		return false
 	return true
 
@@ -686,11 +708,26 @@ func get_coord_map():
 	return _coord_map
 
 
+## A spiral's authored X axis becomes its tangent. The ordinary +Z camera then
+## looks straight down the deployment formation and through the stacked turns,
+## hiding otherwise healthy party members. Interpret this radial offset in the
+## live coord-map basis so the current deck stays face-on throughout the route.
+func get_preview_camera_profile() -> Dictionary:
+	if _coord_map == null:
+		return {}
+	return {
+		"follow_offset": Vector3(9.0, 12.0, 0.0),
+		"follow_basis_map": _coord_map,
+		"reset_yaw": true,
+	}
+
+
 ## The playable grid = the spine woven with branch spokes (when spiralling). Built once; both the floor render and
 ## the installed GameState grid read this, so the walkable floor, collision, detection and pathing all agree.
 func _ensure_woven_grid() -> void:
 	if not _woven_nav.is_empty():
 		return
+	_runtime_navigation_cell_delta = Vector2i.ZERO
 	_ensure_navigation_layout()
 	var playable: Dictionary = _spec.get("navigation_grid", {})
 	if playable.is_empty():
@@ -784,8 +821,8 @@ func _align_branch_navigation_levels(nav: Dictionary) -> Dictionary:
 		var declared_level := int(branch.get(
 			"navigation_level", contract.get("producer_navigation_level", 0)
 		))
-		var best_level := declared_level
-		var best_score := -1
+		var doorway_neighbors_by_level: Dictionary = {}
+		var consumer_coverage_by_level: Dictionary = {}
 		var level_ids: Array = level_sets.keys()
 		level_ids.sort()
 		for level_v in level_ids:
@@ -806,16 +843,51 @@ func _align_branch_navigation_levels(nav: Dictionary) -> Dictionary:
 			for consumer in consumer_cells:
 				if allowed.has(consumer):
 					consumer_coverage += 1
-			# A real doorway is primary; consumer coverage resolves stacked-address
-			# ambiguity and keeps the producer on the level whose route it changes.
-			var score := doorway_neighbors * 1000 + consumer_coverage
-			if score > best_score or (score == best_score and level == declared_level):
-				best_score = score
-				best_level = level
+			doorway_neighbors_by_level[level] = doorway_neighbors
+			consumer_coverage_by_level[level] = consumer_coverage
+
+		# The branch producer belongs to its authored doorway. A consumer on another
+		# stacked deck is an effect, not permission to lift the producer off a valid
+		# declared floor. Compatibility realignment is reserved for old specs whose
+		# declared floor has no physical doorway at all.
+		var best_level: int = declared_level
+		if int(doorway_neighbors_by_level.get(declared_level, 0)) <= 0:
+			var best_doorway_count: int = 0
+			var best_consumer_tiebreak: int = -1
+			for level_v in level_ids:
+				var candidate_level: int = int(level_v)
+				var doorway_count: int = int(
+					doorway_neighbors_by_level.get(candidate_level, 0)
+				)
+				var consumer_tiebreak: int = int(
+					consumer_coverage_by_level.get(candidate_level, 0)
+				)
+				if doorway_count > best_doorway_count or (
+					doorway_count == best_doorway_count
+					and doorway_count > 0
+					and consumer_tiebreak > best_consumer_tiebreak
+				):
+					best_doorway_count = doorway_count
+					best_consumer_tiebreak = consumer_tiebreak
+					best_level = candidate_level
+		var consumer_level: int = best_level
+		if not consumer_cells.is_empty():
+			var best_consumer_coverage: int = -1
+			for level_v in level_ids:
+				var consumer_candidate_level: int = int(level_v)
+				var coverage: int = int(
+					consumer_coverage_by_level.get(consumer_candidate_level, 0)
+				)
+				if coverage > best_consumer_coverage or (
+					coverage == best_consumer_coverage
+					and consumer_candidate_level == best_level
+				):
+					best_consumer_coverage = coverage
+					consumer_level = consumer_candidate_level
 		branch["navigation_level"] = best_level
 		contract["producer_navigation_level"] = best_level
 		if not consumer_cells.is_empty():
-			contract["consumer_navigation_level"] = best_level
+			contract["consumer_navigation_level"] = consumer_level
 		branch["causal_contract"] = contract
 		if not branch_level_cells.has(best_level):
 			branch_level_cells[best_level] = {}
@@ -913,11 +985,12 @@ func _branch_consumer_cells(contract: Dictionary) -> Array[Vector2i]:
 	return result
 
 
-## Prepend a flat BASE FLOOR block (base_cells x height) BEFORE the spine (cells x < 0), connected to the entry
-## column, then renormalise so indices are >= 0 again — shifting the origin in lockstep preserves every spine
-## cell's WORLD position (so the coord_map, built on the spine, still lines up; base cells land at world x < the
-## spine origin, which the coord_map maps to s < 0 = the flat base). The base is a full-height rectangle so the
-## whole entry face connects to it. Records _base_x_range for placing the entry shelter + spawn on the base.
+## Prepend a flat BASE FLOOR block (base_cells x height) immediately BEFORE the
+## spine's first walkable column, then renormalise so indices are >= 0 again.
+## Generated grids retain padding inside their declared bounds, so grid column zero
+## is not necessarily floor; attaching there leaves an invisible non-walkable moat
+## between the base and entry. Shifting the origin in lockstep preserves every
+## existing cell's WORLD position. Records _base_x_range for shelter/spawn placement.
 var _base_x_range := Vector2i(0, 0)  # [min_x, max_x) of base columns in the FINAL (shifted) grid; empty if none
 
 
@@ -928,9 +1001,15 @@ func _prepend_base_to_grid(nav: Dictionary, base_cells: int) -> Dictionary:
 	var cs := float(nav.get("cell_size", 1.0))
 	var height := int(nav.get("height", 1))
 	var cells := {}
+	var playable_min_x := 2147483647
 	for c in nav.get("walkable_cells", []):
-		cells[Vector2i(int(c[0]), int(c[1]))] = true
-	for bx in range(-base_cells, 0):
+		var cell := Vector2i(int(c[0]), int(c[1]))
+		cells[cell] = true
+		playable_min_x = mini(playable_min_x, cell.x)
+	if playable_min_x == 2147483647:
+		return nav
+	var base_start_x := playable_min_x - base_cells
+	for bx in range(base_start_x, playable_min_x):
 		for bz in range(height):
 			cells[Vector2i(bx, bz)] = true
 
@@ -945,6 +1024,10 @@ func _prepend_base_to_grid(nav: Dictionary, base_cells: int) -> Dictionary:
 		max_x = maxi(max_x, v.x)
 		max_z = maxi(max_z, v.y)
 	var shift := Vector2i(min_x, min_z)
+	# Every persisted interaction vertex uses the pre-template frame. The final
+	# navigation data below stores `cell - shift`, so record that exact projection
+	# once and apply it only to runtime copies of those contracts.
+	_runtime_navigation_cell_delta = -shift
 	var origin: Array = out.get("origin", [0.0, 0.45, 0.0])
 	out["origin"] = [
 		float(origin[0]) + float(shift.x) * cs,
@@ -961,7 +1044,7 @@ func _prepend_base_to_grid(nav: Dictionary, base_cells: int) -> Dictionary:
 	var level_cells: Array = out.get("level_cells", [])
 	if not level_cells.is_empty():
 		var base_set := {}
-		for bx in range(-base_cells, 0):
+		for bx in range(base_start_x, playable_min_x):
 			for bz in range(height):
 				base_set[Vector2i(bx, bz)] = true
 		out["level_cells"] = _shift_levels_with_base(level_cells, base_set, shift)
@@ -1063,6 +1146,341 @@ func _shift_cell_address(value: Variant, shift: Vector2i) -> Array:
 		var cell := value as Vector2i
 		return [cell.x - shift.x, cell.y - shift.y]
 	return []
+
+
+static func _interaction_contract_vertex(value: Variant) -> Dictionary:
+	if not (value is Dictionary):
+		return {}
+	var raw := value as Dictionary
+	var cell_v: Variant = raw.get("cell", null)
+	var cell: Vector2i
+	if cell_v is Vector2i:
+		cell = cell_v as Vector2i
+	elif cell_v is Vector2 and (cell_v as Vector2).is_finite():
+		var vector := cell_v as Vector2
+		cell = Vector2i(int(vector.x), int(vector.y))
+	elif cell_v is Array and (cell_v as Array).size() >= 2:
+		cell = Vector2i(int((cell_v as Array)[0]), int((cell_v as Array)[1]))
+	else:
+		return {}
+	if not raw.has("level"):
+		return {}
+	return {"cell": cell, "level": int(raw.get("level", -1))}
+
+
+static func _project_interaction_vertex_to_runtime_grid(
+		value: Variant, cell_delta: Vector2i
+	) -> Dictionary:
+	if not (value is Dictionary):
+		return {}
+	var projected := (value as Dictionary).duplicate(true)
+	var vertex := _interaction_contract_vertex(value)
+	if vertex.is_empty():
+		return projected
+	var cell: Vector2i = vertex.get("cell", Vector2i.ZERO)
+	projected["cell"] = [cell.x + cell_delta.x, cell.y + cell_delta.y]
+	projected["level"] = int(vertex.get("level", 0))
+	return projected
+
+
+## Project a persisted interaction contract into the final runtime grid frame.
+## The input is never modified; this is intentionally a pure data transform so
+## Hub base-floor renormalization cannot stale the source snapshot.
+static func _project_interaction_approach_to_runtime_grid(
+		authored: Dictionary, cell_delta: Vector2i
+	) -> Dictionary:
+	if authored.is_empty():
+		return {}
+	var projected := authored.duplicate(true)
+	for key in ["approach_vertex", "required_from_vertex", "component_anchor"]:
+		if projected.has(key):
+			projected[key] = _project_interaction_vertex_to_runtime_grid(
+				authored.get(key, {}), cell_delta)
+	var projected_region: Array = []
+	for vertex_v in authored.get("region_vertices", []):
+		projected_region.append(
+			_project_interaction_vertex_to_runtime_grid(vertex_v, cell_delta))
+	projected["region_vertices"] = projected_region
+	var component_anchor := _interaction_contract_vertex(
+		projected.get("component_anchor", {}))
+	if not component_anchor.is_empty() \
+			and str(projected.get("component_id", "")).begins_with(
+				"entry_component:"):
+		var anchor_cell: Vector2i = component_anchor.get("cell", Vector2i.ZERO)
+		projected["component_id"] = "entry_component:%d:%d:%d" % [
+			int(component_anchor.get("level", 0)),
+			anchor_cell.x,
+			anchor_cell.y,
+		]
+	return projected
+
+
+static func _project_entry_component_id(
+		value: String, cell_delta: Vector2i
+	) -> String:
+	var parts := value.split(":")
+	if parts.size() != 4 or parts[0] != "entry_component" \
+			or not parts[1].is_valid_int() \
+			or not parts[2].is_valid_int() \
+			or not parts[3].is_valid_int():
+		return value
+	return "entry_component:%d:%d:%d" % [
+		int(parts[1]),
+		int(parts[2]) + cell_delta.x,
+		int(parts[3]) + cell_delta.y,
+	]
+
+
+## Convert the generator's persisted content receipt into the live interaction
+## controller's accepted-region shape. This is a frame transform only: it never
+## chooses a new standing cell or widens the generator-approved region.
+static func _project_content_navigation_to_runtime_interaction_region(
+		authored: Dictionary, cell_delta: Vector2i
+	) -> Dictionary:
+	if authored.is_empty():
+		return {}
+	var approach := _project_interaction_vertex_to_runtime_grid(
+		authored.get("content_vertex", {}), cell_delta)
+	var projected_region: Array = []
+	var region_v: Variant = authored.get("reachable_region", null)
+	if region_v is Array:
+		for vertex_v in region_v as Array:
+			projected_region.append(
+				_project_interaction_vertex_to_runtime_grid(vertex_v, cell_delta))
+	return {
+		"contract_id": str(authored.get("contract_id", "")),
+		"binding_id": str(authored.get("binding_id", "")),
+		"kind": str(authored.get("kind", "")),
+		"component_id": _project_entry_component_id(
+			str(authored.get("component_id", "")), cell_delta),
+		"content_vertex": approach.duplicate(true),
+		"approach_vertex": approach,
+		"region_vertices": projected_region,
+		"radius": authored.get("radius", null),
+		"arrival_policy": str(authored.get("arrival_policy", "")),
+	}
+
+
+static func _interaction_component_vertex(value: String) -> Dictionary:
+	var parts := value.split(":")
+	if parts.size() != 4 or parts[0] != "entry_component" \
+			or not parts[1].is_valid_int() \
+			or not parts[2].is_valid_int() \
+			or not parts[3].is_valid_int():
+		return {}
+	return {
+		"cell": Vector2i(int(parts[2]), int(parts[3])),
+		"level": int(parts[1]),
+	}
+
+
+func _runtime_interaction_vertex_walkable(
+		nav: Dictionary, value: Variant
+	) -> bool:
+	var vertex := _interaction_contract_vertex(value)
+	if vertex.is_empty():
+		return false
+	var cell: Vector2i = vertex.get("cell", Vector2i.ZERO)
+	var level := int(vertex.get("level", -1))
+	if level < 0 or level >= int(nav.get("level_count", 1)) \
+			or cell.x < 0 or cell.y < 0 \
+			or cell.x >= int(nav.get("width", 0)) \
+			or cell.y >= int(nav.get("height", 0)):
+		return false
+	var global_walkable := false
+	for address_v in nav.get("walkable_cells", []):
+		if _cell_from_address(address_v) == cell:
+			global_walkable = true
+			break
+	if not global_walkable:
+		return false
+	for entry_v in nav.get("level_cells", []):
+		if not (entry_v is Dictionary) \
+				or int((entry_v as Dictionary).get("level", -1)) != level:
+			continue
+		for address_v in (entry_v as Dictionary).get("cells", []):
+			if _cell_from_address(address_v) == cell:
+				return true
+		return false
+	return true
+
+
+func _runtime_interaction_vertex_position(
+		nav: Dictionary, value: Variant
+	) -> Vector3:
+	var vertex := _interaction_contract_vertex(value)
+	if vertex.is_empty():
+		return Vector3.INF
+	var origin := _vec3(nav.get("origin", []), Vector3.ZERO)
+	var cell_size := float(nav.get("cell_size", 1.0))
+	var level_height := float(nav.get("level_height", 0.0))
+	var cell: Vector2i = vertex.get("cell", Vector2i.ZERO)
+	return origin + Vector3(
+		(float(cell.x) + 0.5) * cell_size,
+		float(int(vertex.get("level", 0))) * level_height,
+		(float(cell.y) + 0.5) * cell_size
+	)
+
+
+func _invalid_runtime_interaction_contract(
+		code: String, detail: String
+	) -> Dictionary:
+	return {
+		"accepted": false,
+		"code": code,
+		"message": "This object's marked approach does not match the live navigation grid.",
+		"cue": "RESOLVE FIRST // ROUTE CONTRACT INVALID",
+		"detail": detail,
+	}
+
+
+## Structural validation is performed against the final rendered/installed
+## navigation snapshot, never the pre-template generated spec.
+func _validate_runtime_interaction_approach(
+		contract: Dictionary, source_position: Vector3
+	) -> Dictionary:
+	if str(contract.get("contract_id", "")) != "generated_interaction_approach_v1":
+		return _invalid_runtime_interaction_contract(
+			"interaction_contract_version", "unexpected contract id")
+	var nav := _nav_grid()
+	var primary := _interaction_contract_vertex(
+		contract.get("approach_vertex", {}))
+	if primary.is_empty() or not _runtime_interaction_vertex_walkable(
+			nav, contract.get("approach_vertex", {})):
+		return _invalid_runtime_interaction_contract(
+			"interaction_primary_unwalkable", "primary vertex is not walkable")
+	var primary_in_region := false
+	var region: Array = contract.get("region_vertices", [])
+	if region.is_empty():
+		return _invalid_runtime_interaction_contract(
+			"interaction_region_empty", "accepted region is empty")
+	for vertex_v in region:
+		var vertex := _interaction_contract_vertex(vertex_v)
+		if vertex.is_empty() or not _runtime_interaction_vertex_walkable(nav, vertex_v):
+			return _invalid_runtime_interaction_contract(
+				"interaction_region_unwalkable", "accepted region contains an invalid vertex")
+		primary_in_region = primary_in_region or vertex == primary
+	if not primary_in_region:
+		return _invalid_runtime_interaction_contract(
+			"interaction_primary_outside_region", "primary vertex is outside accepted region")
+	for key in ["required_from_vertex", "component_anchor"]:
+		if contract.has(key) and not _runtime_interaction_vertex_walkable(
+				nav, contract.get(key, {})):
+			return _invalid_runtime_interaction_contract(
+				"interaction_%s_unwalkable" % key,
+				"%s is not walkable" % key)
+	var component_anchor := _interaction_contract_vertex(
+		contract.get("component_anchor", {}))
+	if not component_anchor.is_empty():
+		var anchor_cell: Vector2i = component_anchor.get("cell", Vector2i.ZERO)
+		var expected_component := "entry_component:%d:%d:%d" % [
+			int(component_anchor.get("level", 0)),
+			anchor_cell.x,
+			anchor_cell.y,
+		]
+		if str(contract.get("component_id", "")) != expected_component:
+			return _invalid_runtime_interaction_contract(
+				"interaction_component_mismatch", "component id does not match its anchor")
+	var primary_position := _runtime_interaction_vertex_position(
+		nav, contract.get("approach_vertex", {}))
+	var tolerance := maxf(0.05, float(nav.get("cell_size", 1.0)) * 0.1)
+	if source_position == Vector3.INF or primary_position == Vector3.INF \
+			or source_position.distance_to(primary_position) > tolerance:
+		return _invalid_runtime_interaction_contract(
+			"interaction_source_mismatch", "visible source is not centered on its primary vertex")
+	return {"accepted": true, "code": ""}
+
+
+## A generated HIDE click must use the exact persisted, connected graph region
+## that also owns bodily concealment. A malformed receipt visibly refuses before
+## any movement instead of degrading into resolve-nearest/teleport semantics.
+func _validate_runtime_content_navigation(
+		contract: Dictionary,
+		category: String,
+		content_id: String,
+		source_position: Vector3
+	) -> Dictionary:
+	var expected_binding := RuntimeRegistryScript.generated_content_binding(
+		category, content_id)
+	var expected_navigation := RuntimeRegistryScript.generated_content_navigation(
+		category, content_id)
+	if str(contract.get("contract_id", "")) \
+			!= StretchGeneratorScript.CONTENT_NAVIGATION_CONTRACT_ID:
+		return _invalid_runtime_interaction_contract(
+			"content_navigation_contract_version", "unexpected content contract id")
+	if expected_binding == "" \
+			or str(contract.get("binding_id", "")) != expected_binding:
+		return _invalid_runtime_interaction_contract(
+			"content_navigation_binding", "content binding id does not match runtime")
+	if str(contract.get("kind", "")) \
+			!= str(expected_navigation.get("kind", "")):
+		return _invalid_runtime_interaction_contract(
+			"content_navigation_kind", "content navigation kind does not match runtime")
+	if str(contract.get("arrival_policy", "")) \
+			!= str(expected_navigation.get("arrival_policy", "")):
+		return _invalid_runtime_interaction_contract(
+			"content_navigation_arrival_policy", "arrival policy does not match runtime")
+	var radius_v: Variant = contract.get("radius", null)
+	if typeof(radius_v) not in [TYPE_INT, TYPE_FLOAT] \
+			or not is_finite(float(radius_v)) \
+			or not is_equal_approx(
+				float(radius_v), float(expected_navigation.get("radius", -1.0))):
+		return _invalid_runtime_interaction_contract(
+			"content_navigation_radius", "standing radius does not match runtime")
+	var nav := _nav_grid()
+	var primary := _interaction_contract_vertex(
+		contract.get("approach_vertex", {}))
+	if primary.is_empty() or not _runtime_interaction_vertex_walkable(
+			nav, contract.get("approach_vertex", {})):
+		return _invalid_runtime_interaction_contract(
+			"content_navigation_primary", "content vertex is not walkable")
+	var region_v: Variant = contract.get("region_vertices", null)
+	if not (region_v is Array) or (region_v as Array).is_empty():
+		return _invalid_runtime_interaction_contract(
+			"content_navigation_region_empty", "accepted content region is empty")
+	var component_anchor := _interaction_component_vertex(
+		str(contract.get("component_id", "")))
+	if component_anchor.is_empty() or not _runtime_interaction_vertex_walkable(
+			nav, component_anchor):
+		return _invalid_runtime_interaction_contract(
+			"content_navigation_component", "entry component anchor is not walkable")
+	var runtime_grid := GridWorld.from_data(nav)
+	var anchor_cell: Vector2i = component_anchor.get("cell", Vector2i.ZERO)
+	var anchor_level := int(component_anchor.get("level", -1))
+	var primary_in_region := false
+	var radius := float(radius_v)
+	var tolerance := maxf(0.01, float(nav.get("cell_size", 1.0)) * 0.02)
+	for vertex_v in region_v as Array:
+		var vertex := _interaction_contract_vertex(vertex_v)
+		if vertex.is_empty() or not _runtime_interaction_vertex_walkable(nav, vertex_v):
+			return _invalid_runtime_interaction_contract(
+				"content_navigation_region", "accepted region contains an invalid vertex")
+		primary_in_region = primary_in_region or vertex == primary
+		var cell: Vector2i = vertex.get("cell", Vector2i.ZERO)
+		var level := int(vertex.get("level", -1))
+		if runtime_grid.find_multi_level_plan(
+				anchor_cell, anchor_level, cell, level).is_empty():
+			return _invalid_runtime_interaction_contract(
+				"content_navigation_disconnected", "accepted cell is outside entry graph component")
+		var vertex_position := _runtime_interaction_vertex_position(nav, vertex_v)
+		if not source_position.is_finite() or vertex_position == Vector3.INF \
+				or Vector2(
+					vertex_position.x - source_position.x,
+					vertex_position.z - source_position.z
+				).length() > radius + tolerance:
+			return _invalid_runtime_interaction_contract(
+				"content_navigation_outside_body", "accepted cell lies outside concealment body")
+	if not primary_in_region:
+		return _invalid_runtime_interaction_contract(
+			"content_navigation_primary_outside_region",
+			"content vertex is outside its accepted region")
+	return {"accepted": true, "code": ""}
+
+
+func _generated_content_route_preflight(
+		_source: Node, _actor: String, refusal: Dictionary
+	) -> Dictionary:
+	return refusal.duplicate(true)
 
 
 func _shift_levels_with_base(level_cells: Array, base_set: Dictionary, shift: Vector2i) -> Array:
@@ -2185,6 +2603,29 @@ func _generated_actor_occupies_interactable(source: Node, actor: String) -> bool
 			or gs.is_downed(actor) or gs.is_knocked_down(actor):
 		return false
 	var actor_position: Vector3 = gs.get_position(actor)
+	# Generated nodes publish their accepted graph vertices to the ordinary
+	# interaction controller. That typed region is also the authoritative
+	# physical-arrival contract here: a Rally may legitimately park the servicing
+	# body on a non-primary apron vertex, while another floor can share its X/Z.
+	# Fall back to the legacy radius only for nodes with no typed region at all.
+	var interaction_region_v: Variant = (
+		source.get_meta("interaction_navigation_region")
+		if source.has_meta("interaction_navigation_region") else null
+	)
+	if interaction_region_v is Dictionary \
+			and not (interaction_region_v as Dictionary).is_empty():
+		if gs.grid == null or not gs.has_method("get_character_level"):
+			return false
+		var actor_cell: Vector2i = gs.grid.world_to_grid(actor_position)
+		var actor_level := int(gs.get_character_level(actor))
+		for vertex_v in (interaction_region_v as Dictionary).get(
+				"region_vertices", []):
+			var vertex := _interaction_contract_vertex(vertex_v)
+			if not vertex.is_empty() \
+					and vertex.get("cell", Vector2i(-1, -1)) == actor_cell \
+					and int(vertex.get("level", -1)) == actor_level:
+				return true
+		return false
 	var source_position := _generated_interaction_data_position(source)
 	if gs.grid != null and gs.grid.has_method("level_for_y") \
 			and int(gs.get_character_level(actor)) != int(
@@ -2262,44 +2703,378 @@ func _hydraulic_node_is_ready(node_id: String) -> bool:
 	return true
 
 
-func _validate_generated_node_trigger(
-	source: Node, actor: String, node_id: String, expected_source: Node
-) -> bool:
+func _accepted_generated_interaction_gate() -> Dictionary:
+	return {"accepted": true, "code": ""}
+
+
+## Pure lookup of the first unresolved emitted branch action that must occur
+## before `node_id`. This shares the solution ordering used by headless replay,
+## but never walks to, triggers, advances, or mutates the producer.
+func _required_unresolved_branch_action_before_node(node_id: String) -> Dictionary:
+	var golden_path: Array = _spec.get("headless", {}).get("golden_path", [])
+	for action_v in _ordered_solution_branch_actions():
+		if not (action_v is Dictionary):
+			continue
+		var action := action_v as Dictionary
+		if not bool(action.get("required_for_progress", false)) \
+				or str(action.get("runtime_handler", "")) != "branch_span_producer":
+			continue
+		if not _branch_action_requires_resolution_before_node(
+				action, node_id, golden_path):
+			continue
+		var branch_id := str(action.get("branch_id", action.get("target", "")))
+		var span = _branch_span_by_id.get(branch_id, null)
+		if span != null and is_instance_valid(span) \
+				and bool(span.call("is_bridged")):
+			continue
+		var unresolved := action.duplicate(true)
+		unresolved["branch_id"] = branch_id
+		unresolved["runtime_missing"] = span == null or not is_instance_valid(span)
+		if span != null and is_instance_valid(span) and span.has_method("get_state"):
+			var state_v: Variant = span.call("get_state")
+			if state_v is Dictionary:
+				unresolved["runtime_phase"] = str(
+					(state_v as Dictionary).get("phase", "dormant"))
+		return unresolved
+	return {}
+
+
+## Fresh specs publish the exact typed destinations disconnected by each cut.
+## That graph relation is authoritative even for optional nodes absent from the
+## golden path. `before_nodes` remains only as a compatibility projection for
+## older persisted specs that predate affected-node coverage.
+func _branch_action_requires_resolution_before_node(
+		action: Dictionary, node_id: String, golden_path: Array
+	) -> bool:
+	if action.has("affected_node_ids"):
+		var affected_v: Variant = action.get("affected_node_ids", null)
+		if not (affected_v is Array):
+			return false
+		for affected_id_v in affected_v as Array:
+			if str(affected_id_v) == node_id:
+				return true
+		return false
+	var before_nodes: Array = action.get(
+		"before_nodes", [str(action.get("before_node", ""))])
+	var requested_index := golden_path.find(node_id)
+	var scheduled_index := 2147483647
+	var scheduled_here := false
+	for before_node_v in before_nodes:
+		var before_node_id := str(before_node_v)
+		scheduled_here = scheduled_here or before_node_id == node_id
+		var before_index := golden_path.find(before_node_id)
+		if before_index >= 0:
+			scheduled_index = mini(scheduled_index, before_index)
+	return scheduled_here or (requested_index >= 0 \
+		and scheduled_index <= requested_index)
+
+
+func _query_hydraulic_node_interaction_gate(node_id: String) -> Dictionary:
+	if _hydraulic_node_is_ready(node_id):
+		return _accepted_generated_interaction_gate()
+	match node_id:
+		"node_02":
+			return {
+				"accepted": false,
+				"code": "hydraulic_first_sluice_required",
+				"message": "Open the lit First Sluice before advancing the cistern.",
+				"cue": "RESOLVE FIRST // OPEN FIRST SLUICE",
+				"focus_hydraulic_action": "first_sluice",
+			}
+		"node_03":
+			return {
+				"accepted": false,
+				"code": "hydraulic_cistern_span_required",
+				"message": "Release the lit cistern control and wait for its span to seat.",
+				"cue": "RESOLVE FIRST // RELEASE CISTERN SPAN",
+				"focus_hydraulic_action": "cistern_release",
+			}
+		"node_04":
+			return {
+				"accepted": false,
+				"code": "hydraulic_spillway_delivery_required",
+				"message": (
+					"The lysate is still visibly traveling to the catch."
+					if _spillway_delivery_phase == SPILLWAY_DELIVERY_TRAVELING
+					else "Use the lit diverter if you want the optional lysate detour."
+				),
+				"cue": "RESOLVE FIRST // WAIT FOR THE LYSATE CATCH" if (
+					_spillway_delivery_phase == SPILLWAY_DELIVERY_TRAVELING
+				) else "RESOLVE FIRST // DIVERT BORROWED CURRENT",
+				"focus_hydraulic_action": "borrowed_current",
+			}
+		"exit_shelter":
+			return {
+				"accepted": false,
+				"code": "hydraulic_main_current_required",
+				"message": "Restore the main current at the lit diverter before leaving.",
+				"cue": "RESOLVE FIRST // RESTORE MAIN CURRENT",
+				"focus_hydraulic_action": "borrowed_current",
+			}
+	return {
+		"accepted": false,
+		"code": "hydraulic_state_required",
+		"message": "The visible hydraulic sequence is not ready for that action.",
+		"cue": "RESOLVE FIRST // FOLLOW THE LIT CONTROL",
+	}
+
+
+## Authoritative, read-only interaction gate used both before route commitment
+## and again at physical arrival. It returns data only; visual feedback lives in
+## `_present_generated_interaction_refusal` and runs only after a real attempt.
+func _query_generated_node_interaction_gate(
+		source: Node, actor: String, node_id: String, expected_source: Node
+	) -> Dictionary:
 	if source == null or source != expected_source \
-			or source != _node_interactables.get(node_id, null) \
-			or _completed_nodes.has(node_id) \
-			or not _generated_actor_ready_at(source, actor):
-		return false
+			or source != _node_interactables.get(node_id, null):
+		return {
+			"accepted": false,
+			"code": "generated_source_mismatch",
+			"message": "That object's interaction source is unavailable.",
+			"cue": "RESOLVE FIRST // SOURCE CONTRACT UNAVAILABLE",
+			"focus_node_id": node_id,
+		}
+	if _runtime_interaction_contract_errors.has(node_id):
+		return (_runtime_interaction_contract_errors[node_id] as Dictionary).duplicate(true)
+	var gs = _get_game_state()
+	if actor == "" or gs == null or not gs.characters.has(actor):
+		return {
+			"accepted": false,
+			"code": "generated_actor_unavailable",
+			"message": "No available party member can service that object.",
+			"cue": "RESOLVE FIRST // SELECT AN AVAILABLE CHARACTER",
+			"focus_node_id": node_id,
+		}
+	if _completed_nodes.has(node_id):
+		return {
+			"accepted": false,
+			"code": "generated_node_complete",
+			"message": "That change has already taken effect.",
+			"cue": "RESOLVE FIRST // FOLLOW THE NEXT LIT CHANGE",
+			"focus_node_id": node_id,
+		}
 	var node := _find_node(node_id)
-	if node.is_empty() or _runtime_handler_for_node(node) == "" \
-			or not _hydraulic_node_is_ready(node_id) \
-			or not _generated_node_progression_is_ready(node_id) \
-			or not _generated_chain_is_ready(node):
-		return false
+	if node.is_empty() or _runtime_handler_for_node(node) == "":
+		return {
+			"accepted": false,
+			"code": "generated_handler_unavailable",
+			"message": "That marker has no available interaction.",
+			"cue": "RESOLVE FIRST // INTERACTION UNAVAILABLE",
+			"focus_node_id": node_id,
+		}
+	var branch_action := _required_unresolved_branch_action_before_node(node_id)
+	if not branch_action.is_empty():
+		var branch_id := str(branch_action.get("branch_id", ""))
+		if bool(branch_action.get("runtime_missing", false)):
+			return {
+				"accepted": false,
+				"code": "mandatory_branch_runtime_missing",
+				"message": "The required branch-span control is unavailable.",
+				"cue": "RESOLVE FIRST // BRANCH CONTROL UNAVAILABLE",
+				"focus_branch_id": branch_id,
+			}
+		var phase := str(branch_action.get("runtime_phase", "dormant"))
+		return {
+			"accepted": false,
+			"code": "mandatory_branch_unresolved",
+			"message": (
+				"The lit branch span is still extending; wait for it to seat."
+				if phase == "extending"
+				else "The route crosses an open cut. Work the lit EXTEND terminal first."
+			),
+			"cue": "RESOLVE FIRST // WAIT FOR THE LIT SPAN" if (
+				phase == "extending"
+			) else "RESOLVE FIRST // EXTEND",
+			"focus_branch_id": branch_id,
+		}
+	var hydraulic_gate := _query_hydraulic_node_interaction_gate(node_id)
+	if not bool(hydraulic_gate.get("accepted", false)):
+		return hydraulic_gate
+	if not _generated_node_progression_is_ready(node_id):
+		var predecessor := _required_progression_predecessor(node_id)
+		var predecessor_node := _find_node(predecessor)
+		var predecessor_title := str(
+			predecessor_node.get("title", predecessor)).strip_edges()
+		return {
+			"accepted": false,
+			"code": "generated_progression_required",
+			"message": "A previous visible change has not taken effect yet.",
+			"cue": "RESOLVE FIRST // %s" % predecessor_title.to_upper(),
+			"focus_node_id": predecessor,
+		}
+	if not _generated_chain_is_ready(node):
+		var input_ref := str(node.get("runtime_chain_input_ref", ""))
+		var producer_id := ""
+		for candidate_v in _spec.get("nodes", []):
+			if candidate_v is Dictionary and str(
+					(candidate_v as Dictionary).get("runtime_chain_output_ref", "")) == input_ref:
+				producer_id = str((candidate_v as Dictionary).get("id", ""))
+				break
+		var producer := _find_node(producer_id)
+		var producer_title := str(producer.get(
+			"title", input_ref.replace(":", " -> "))).strip_edges()
+		return {
+			"accepted": false,
+			"code": "generated_chain_input_required",
+			"message": "The required upstream state has not arrived yet.",
+			"cue": "RESOLVE FIRST // %s" % producer_title.to_upper(),
+			"focus_node_id": producer_id,
+		}
+	var approach := _resolve_node_approach(node)
+	if bool(approach.get("blocked", false)):
+		return {
+			"accepted": false,
+			"code": "generated_capability_required",
+			"message": "The current party loadout has no way through that change.",
+			"cue": "RESOLVE FIRST // CHANGE PARTY APPROACH",
+			"focus_node_id": node_id,
+		}
 	var handler_id := _runtime_handler_for_node(node)
 	if handler_id in [
 		RuntimeRegistryScript.HANDLER_PHYSICAL_LYSATE,
 		RuntimeRegistryScript.HANDLER_PHYSICAL_PAYLOAD,
 		RuntimeRegistryScript.HANDLER_HYDRAULIC_SPILLWAY,
 	]:
-		var gs = _get_game_state()
-		if gs == null or not gs.has_method("has_free_hand") \
+		if not gs.has_method("has_free_hand") \
 				or not bool(gs.call("has_free_hand", actor)):
-			return false
+			return {
+				"accepted": false,
+				"code": "generated_free_hand_required",
+				"message": "%s needs a free hand for that visible source." % actor.capitalize(),
+				"cue": "RESOLVE FIRST // FREE A HAND",
+				"focus_node_id": node_id,
+			}
 		var source_id := (
 			_physical_cache_source_id(_hydraulic_spillway_food_cache)
 			if handler_id == RuntimeRegistryScript.HANDLER_HYDRAULIC_SPILLWAY
 			else _node_resource_source_id(node_id)
 		)
 		var claim_v: Variant = _resource_claims.get(source_id, {})
-		# Accepting the one-shot before discovering that no exact source item
-		# exists makes `_trigger()` report success even though its consequence
-		# callback has to re-arm. Item provenance belongs in preflight: an
-		# inventory-less host or a destroyed source cannot mint abstract progress.
 		if not (claim_v is Dictionary) \
 				or not _resource_claim_item_is_at_source(gs, claim_v as Dictionary):
-			return false
-	return true
+			return {
+				"accepted": false,
+				"code": "generated_source_item_missing",
+				"message": "The marked physical source is no longer present there.",
+				"cue": "RESOLVE FIRST // RECOVER THE MARKED SOURCE",
+				"focus_node_id": node_id,
+			}
+	if node_id == "exit_shelter":
+		var payload_delivery := _required_payload_delivery()
+		if not bool(payload_delivery.get("ready", false)):
+			var payload_node := str(payload_delivery.get("node_id", ""))
+			var payload_reason := str(payload_delivery.get("reason", "missing"))
+			return {
+				"accepted": false,
+				"code": "generated_payload_delivery_required",
+				"outcome": "payload_delivery_blocked:%s:%s" % [
+					payload_node, payload_reason],
+				"message": "A required physical load has not reached shelter in a party member's hand.",
+				"cue": "RESOLVE FIRST // RECOVER THE LIT LOAD",
+				"focus_node_id": payload_node,
+			}
+	return _accepted_generated_interaction_gate()
+
+
+## Presentation-only half of the route gate. It is invoked after a real click
+## is rejected (or after an arrival-time race), never by the read-only query.
+func _present_generated_interaction_refusal(
+		source: Node,
+		_actor: String,
+		result: Dictionary,
+		node_id: String,
+		expected_source: Node
+	) -> void:
+	if source == null or source != expected_source \
+			or source != _node_interactables.get(node_id, null):
+		return
+	var focus_target: Node3D = null
+	var focus_branch_id := str(result.get("focus_branch_id", ""))
+	if focus_branch_id != "":
+		var span = _branch_span_by_id.get(focus_branch_id, null)
+		if span != null and is_instance_valid(span) \
+				and span.has_method("get_producer_interactable"):
+			var producer_v: Variant = span.call("get_producer_interactable")
+			if producer_v is Node3D and is_instance_valid(producer_v):
+				focus_target = producer_v as Node3D
+				if focus_target.has_method("set_highlight"):
+					focus_target.call("set_highlight", true)
+				if focus_target.has_method("show_tutorial_label"):
+					focus_target.call("show_tutorial_label")
+	var hydraulic_action := str(result.get("focus_hydraulic_action", ""))
+	if focus_target == null and hydraulic_action != "":
+		var hydraulic_target := _hydraulic_control_for_action(hydraulic_action)
+		if hydraulic_target is Node3D and is_instance_valid(hydraulic_target):
+			focus_target = hydraulic_target as Node3D
+			_set_hydraulic_next_highlight(focus_target)
+	var focus_node_id := str(result.get("focus_node_id", ""))
+	if focus_node_id != "":
+		_highlight_node(focus_node_id, true)
+		var node_target_v: Variant = _node_targets.get(focus_node_id, null)
+		if focus_target == null and node_target_v is Node3D \
+				and is_instance_valid(node_target_v):
+			focus_target = node_target_v as Node3D
+	_show_message(str(result.get(
+		"message", "That interaction is not ready yet.")), 2.4)
+	var cue := str(result.get("cue", "RESOLVE FIRST // FOLLOW THE LIT CHANGE"))
+	if not cue.begins_with("RESOLVE FIRST //"):
+		cue = "RESOLVE FIRST // %s" % cue
+	_show_note(cue, 4.0)
+	if focus_target != null:
+		# The CharacterInteractionController/Interactable has just emitted a red
+		# result on the exact object the player clicked. Let that receipt survive
+		# multiple rendered frames before showing an off-screen prerequisite; an
+		# immediate camera cut would make a correct rejection visually unprovable.
+		var focus_timer := get_tree().create_timer(0.6)
+		focus_timer.timeout.connect(
+			_focus_generated_interaction_prerequisite.bind(
+				focus_target.get_instance_id()))
+
+
+func _focus_generated_interaction_prerequisite(target_instance_id: int) -> void:
+	var target_v: Object = instance_from_id(target_instance_id)
+	if not (target_v is Node3D) or not is_instance_valid(target_v):
+		return
+	_request_preview_focus(
+		target_v as Node3D,
+		1.6,
+		false,
+		{
+			"reason": "generated_interaction_prerequisite",
+			"hold": 0.45,
+			"offscreen_only": true,
+		}
+	)
+
+
+func _validate_generated_node_trigger(
+	source: Node, actor: String, node_id: String, expected_source: Node
+) -> bool:
+	if source == null or source != expected_source \
+			or source != _node_interactables.get(node_id, null):
+		return false
+	if not _generated_actor_ready_at(source, actor):
+		var actor_label := actor.capitalize() if actor != "" else "The selected character"
+		var readiness_refusal := {
+			"accepted": false,
+			"code": "generated_actor_not_at_interaction_region",
+			"message": "%s has not reached and settled on the marked interaction apron." % actor_label,
+			"cue": "RESOLVE FIRST // APPROACH THE MARKED OBJECT",
+			"focus_node_id": node_id,
+		}
+		_present_generated_interaction_refusal(
+			source, actor, readiness_refusal, node_id, expected_source)
+		return false
+	var gate := _query_generated_node_interaction_gate(
+		source, actor, node_id, expected_source)
+	if bool(gate.get("accepted", false)):
+		return true
+	# State can change while the selected servicer is walking. Re-run the same
+	# pure contract at arrival and present the now-current prerequisite before
+	# Interactable emits the exact red source-token result.
+	_present_generated_interaction_refusal(
+		source, actor, gate, node_id, expected_source)
+	return false
 
 
 func _rearm_generated_node_control(source: Node) -> void:
@@ -2590,6 +3365,12 @@ func _headless_activate_generated_node(node_id: String) -> bool:
 	):
 		_last_outcome = "optional_node_skipped:node_04"
 		return true
+	# The generated solution can place a proven blocker before the requested
+	# physical source. A headless activation is already a deterministic journey
+	# helper, so it must execute that emitted mandatory detour through the live
+	# producer instead of attempting an impossible path or opening the cut by fiat.
+	if not _headless_resolve_required_branch_actions_before_node(node_id):
+		return false
 	var source: Node = _node_interactables.get(node_id, null)
 	if source == null or not is_instance_valid(source):
 		_last_outcome = "headless_missing_interactable:%s" % node_id
@@ -2643,6 +3424,57 @@ func _headless_activate_generated_node(node_id: String) -> bool:
 			node_id, interaction_actor
 		]
 	return triggered
+
+
+## Read-only diagnostic seam for focused integration tests. It exposes the same
+## production route gate a shipped pointer command queries, together with the
+## exact clicked surface's public red/green presentation receipt. It never moves
+## a character, triggers an interaction, or mutates scenario state.
+func _headless_generated_interaction_diagnostics(node_id: String) -> Dictionary:
+	var source: Node = _node_interactables.get(node_id, null)
+	if source == null or not is_instance_valid(source):
+		return {
+			"gate": {
+				"accepted": false,
+				"code": "generated_source_mismatch",
+			},
+			"presentation": {},
+		}
+	var actor := _headless_generated_interaction_actor(node_id)
+	var gate := _query_generated_node_interaction_gate(
+		source, actor, node_id, source)
+	var presentation: Dictionary = {}
+	if source.has_method("get_player_interaction_presentation"):
+		var presentation_v: Variant = source.call(
+			"get_player_interaction_presentation")
+		if presentation_v is Dictionary:
+			presentation = (presentation_v as Dictionary).duplicate(true)
+	return {
+		"gate": gate.duplicate(true),
+		"presentation": presentation,
+	}
+
+
+func _headless_resolve_required_branch_actions_before_node(node_id: String) -> bool:
+	var golden_path: Array = _spec.get("headless", {}).get("golden_path", [])
+	for action_v in _ordered_solution_branch_actions():
+		if not (action_v is Dictionary):
+			continue
+		var action := action_v as Dictionary
+		if not _branch_action_requires_resolution_before_node(
+				action, node_id, golden_path):
+			continue
+		var branch_id := str(action.get("branch_id", action.get("target", "")))
+		var span = _branch_span_by_id.get(branch_id, null)
+		if span != null and is_instance_valid(span) \
+				and bool(span.call("is_bridged")):
+			continue
+		if not _headless_activate_branch_span(action):
+			_last_outcome = "required_branch_action_failed:%s:%s" % [
+				branch_id, node_id
+			]
+			return false
+	return true
 
 
 func _headless_generated_interaction_actor(node_id: String) -> String:
@@ -2823,6 +3655,24 @@ func _solution_branch_actions(solution: Dictionary = {}) -> Array:
 	return resolved.get("branch_actions", [])
 
 
+func _ordered_solution_branch_actions(solution: Dictionary = {}) -> Array:
+	var ordered: Array = []
+	for action_v in _solution_branch_actions(solution):
+		if action_v is Dictionary:
+			ordered.append(action_v)
+	ordered.sort_custom(func(a: Variant, b: Variant) -> bool:
+		var action_a := a as Dictionary
+		var action_b := b as Dictionary
+		var order_a := int(action_a.get("solution_order", 2147483647))
+		var order_b := int(action_b.get("solution_order", 2147483647))
+		if order_a != order_b:
+			return order_a < order_b
+		return str(action_a.get("branch_id", action_a.get("target", ""))) \
+			< str(action_b.get("branch_id", action_b.get("target", "")))
+	)
+	return ordered
+
+
 func _run_solution_world_action(action_id: String, action: Dictionary = {}) -> bool:
 	if str(action.get("runtime_handler", "")) == "branch_span_producer":
 		return _headless_activate_branch_span(action)
@@ -2895,33 +3745,52 @@ func _headless_move_character_to(actor: String, target: Vector3) -> bool:
 	var cautious := _get_routing_mode() != "direct"
 	if bool(gs.is_route_cautious()) != cautious:
 		gs.set_route_mode(cautious)
-	if not bool(gs.command_move_to_pos(actor, target)):
+	# Exercise the same stable graph-location boundary as hover/click playback.
+	# Generated interactions can live on another authored deck; a raw position
+	# command would preserve the current floor and silently approach through it.
+	var navigation_location: Dictionary = {}
+	var accepted := false
+	if gs.grid != null:
+		navigation_location = gs.resolve_navigation_location(actor, target)
+		if navigation_location.is_empty():
+			return false
+		accepted = bool(gs.command_move_to_navigation_location(actor, navigation_location))
+	else:
+		accepted = bool(gs.command_move_to_pos(actor, target))
+	if not accepted:
 		return false
 	# Movement is an ordinary deterministic plan. Jumping to its analytic deadline
 	# executes the normal arrival callback without fabricating an endpoint state.
 	for _attempt in range(8):
 		if not bool(gs.is_moving(actor)):
-			return _headless_character_reached(actor, target)
+			return _headless_character_reached(actor, target, navigation_location)
 		var plan_end_tick := float(gs.get_plan_end_tick(actor))
 		var now := float(scheduler.get_current_tick())
 		if plan_end_tick < now:
 			return false
 		var advance := maxf(plan_end_tick - now, 0.000001)
 		scheduler.advance_ticks(advance)
-	return not bool(gs.is_moving(actor)) and _headless_character_reached(actor, target)
+	return not bool(gs.is_moving(actor)) \
+		and _headless_character_reached(actor, target, navigation_location)
 
 
-func _headless_character_reached(actor: String, target: Vector3) -> bool:
+func _headless_character_reached(
+		actor: String,
+		target: Vector3,
+		navigation_location: Dictionary = {}
+	) -> bool:
 	var gs = _get_game_state()
 	if gs == null or not gs.characters.has(actor) or bool(gs.is_downed(actor)):
 		return false
 	var actual: Vector3 = gs.get_position(actor)
 	if gs.grid != null:
-		var level := int(gs.get_character_level(actor))
-		var target_cell: Vector2i = gs.grid.nearest_walkable_cell(
-			gs.grid.world_to_grid(target), level
-		)
-		return gs.grid.world_to_grid(actual) == target_cell
+		var resolved := navigation_location
+		if resolved.is_empty():
+			resolved = gs.resolve_navigation_location(actor, target)
+		if resolved.is_empty():
+			return false
+		return int(gs.get_character_level(actor)) == int(resolved.get("level", -1)) \
+			and gs.grid.world_to_grid(actual) == resolved.get("cell", Vector2i(-1, -1))
 	return actual.distance_to(target) <= 0.05
 
 
@@ -3218,22 +4087,42 @@ func _load_spec_from_config() -> void:
 	var raw_spec: Variant = _config.get("spec", {})
 	if raw_spec is Dictionary and not (raw_spec as Dictionary).is_empty():
 		var canonical_spec := StretchGeneratorScript.canonicalize_spec(raw_spec as Dictionary)
-		var mode_validation := StretchGeneratorScript.validate_mode_independent_spec(canonical_spec)
-		if bool(mode_validation.get("valid", false)):
+		var spec_validation := StretchGeneratorScript.validate_spec_acceptance(
+			canonical_spec)
+		if bool(spec_validation.get("valid", false)):
 			_spec = canonical_spec
 			_ensure_graybox_layout()
 			_ensure_navigation_layout()
 			return
+		if StretchGeneratorScript._legacy_snapshot_requires_full_regeneration(
+				canonical_spec, spec_validation):
+			var regenerated_legacy := StretchGeneratorScript.generate(
+				(canonical_spec.get("settings", {}) as Dictionary).duplicate(true))
+			if bool(regenerated_legacy.get("success", false)):
+				_spec = regenerated_legacy
+				_generation_fallback = {
+					"active": true,
+					"requested_seed": int(
+						canonical_spec.get("settings", {}).get("seed", 0)),
+					"requested_tier": str(
+						canonical_spec.get("settings", {}).get(
+							"complexity_tier", "unknown")),
+					"error": "stale inline snapshot rejected; complete snapshot regenerated from settings",
+				}
+				push_warning(
+					"generated_stretch: rejected stale inline snapshot and regenerated its complete spatial/solver snapshot from settings")
+				_record_generation_fallback_actual()
+				return
 		_generation_fallback = {
 			"active": true,
 			"requested_seed": int(canonical_spec.get("settings", {}).get("seed", 0)),
 			"requested_tier": str(
 				canonical_spec.get("settings", {}).get("complexity_tier", "unknown")
 			),
-			"error": "; ".join(mode_validation.get("errors", [])),
+			"error": "; ".join(spec_validation.get("errors", [])),
 		}
 		push_warning(
-			"generated_stretch: rejected mode-dependent supplied spec; loading an explicit fallback (%s)"
+			"generated_stretch: rejected stale or malformed supplied spec; loading an explicit fallback (%s)"
 			% str(_generation_fallback.get("error", "invalid fixed content"))
 		)
 	var raw_settings: Variant = _config.get("settings", {})
@@ -3262,7 +4151,7 @@ func _load_spec_from_config() -> void:
 			]
 		)
 	var path := str(_config.get("spec_path", default_spec_path))
-	var loaded := StretchGeneratorScript.load_spec(path)
+	var loaded := StretchGeneratorScript.load_spec(path, true)
 	if not loaded.is_empty():
 		# A saved case is a configuration snapshot, not a frozen result. Supplying a
 		# seed regenerates the same profile so N/custom QA variations exercise the
@@ -3494,7 +4383,8 @@ func _build_floor_surface(grid, lvl: int, cells: Array, risk: Dictionary, cell: 
 		_generated_floor_material(
 			floor_tile,
 			_color_from_array(hierarchy.get("floor_tint", []), Color(0.38, 0.46, 0.46))
-		)
+		),
+		lvl
 	)
 	if has_risk:
 		_commit_floor_surface(
@@ -3503,13 +4393,15 @@ func _build_floor_surface(grid, lvl: int, cells: Array, risk: Dictionary, cell: 
 			_generated_floor_material(
 				risk_tile,
 				_color_from_array(hierarchy.get("risk_tint", []), Color(0.42, 0.27, 0.18))
-			)
+			),
+			lvl
 		)
 	if has_transition:
 		_commit_floor_surface(
 			st_transition,
 			"GeneratedZoneTransition_L%d" % lvl,
-			_zone_transition_floor_material(transition)
+			_zone_transition_floor_material(transition),
+			lvl
 		)
 
 
@@ -3810,7 +4702,9 @@ func _tri_auto(
 	st.add_vertex(c)
 
 
-func _commit_floor_surface(st: SurfaceTool, node_name: String, mat: Material) -> void:
+func _commit_floor_surface(
+		st: SurfaceTool, node_name: String, mat: Material, navigation_level: int
+	) -> void:
 	var mesh := st.commit()
 	if mesh == null or mesh.get_surface_count() == 0:
 		return
@@ -3818,11 +4712,19 @@ func _commit_floor_surface(st: SurfaceTool, node_name: String, mat: Material) ->
 	mi.name = node_name
 	mi.mesh = mesh
 	mi.material_override = mat
+	mi.set_meta("navigation_level", navigation_level)
 	add_child(mi)
 	var body := StaticBody3D.new()
 	body.name = node_name + "Collision"
 	body.collision_layer = 1
 	body.collision_mask = 0
+	# Physics rays hit the collision body, not the visible mesh. Preserve which
+	# generated graph floor was clicked so Player can invert a warped world hit in
+	# that surface's data frame instead of silently flattening it to level zero.
+	body.set_meta("navigation_level", navigation_level)
+	# Ground commands use Player's explicit layer-1 physics ray. The viewport object picker must
+	# pierce this walkable shell so a slightly grazing view cannot give the floor a target's RMB.
+	body.input_ray_pickable = false
 	var cs := CollisionShape3D.new()
 	cs.shape = mesh.create_trimesh_shape()
 	body.add_child(cs)
@@ -3953,9 +4855,10 @@ func _climbvine_states() -> Array:
 
 
 ## Hosts call this immediately after installing get_grid_data() as GameState.grid. It closes the construction
-## ordering gap without making the reusable mechanism depend on the preview shell. `_process` calls the same
-## idempotent seam as a fallback for campaign/test hosts that install their grid later.
+## ordering gap without making the reusable mechanism depend on the preview shell. Later `_process` retries are
+## idempotent, but remain closed until this explicit receipt proves the outgoing grid has been replaced.
 func on_game_state_grid_ready() -> void:
+	_branch_span_grid_ready = true
 	_ensure_branch_span_producers_ready()
 
 
@@ -4434,7 +5337,7 @@ func _restore_bridge_cargo_events() -> void:
 
 
 func _ensure_branch_span_producers_ready() -> void:
-	if not _branch_span_producers.is_empty():
+	if not _branch_span_grid_ready or not _branch_span_producers.is_empty():
 		return
 	var gs = _get_game_state()
 	var scheduler = _get_scheduler()
@@ -5613,6 +6516,12 @@ func _build_hydraulic_puzzle() -> void:
 			node_04_interactable
 		)
 		if _hydraulic_catch_target != null:
+			# The authored hydraulic pass replaces node_04's generic target with the
+			# real catch. Preserve the generated-source alignment contract on that
+			# replacement so the pick hull follows the visible catch through a warp.
+			_hydraulic_catch_target.set_meta(
+				"align_pick_target_to_highlights_after_warp", true
+			)
 			node_04_interactable.call("set_outline_target", _hydraulic_catch_target)
 			_node_targets["node_04"] = _hydraulic_catch_target
 		node_04_interactable.set("one_shot", true)
@@ -5646,6 +6555,12 @@ func _build_hydraulic_puzzle() -> void:
 		0.55,
 		"HydraulicExitBeacon"
 	)
+	# This is a player command surface, not tall background architecture. Keep its
+	# StandardMaterial presentation intact so both humans and the public
+	# observation boundary can see the exact shelter target. If the camera
+	# occlusion pass wraps it in a ShaderMaterial, transparency can no longer be
+	# proven and the fail-closed observer must (correctly) omit it.
+	_hydraulic_exit_beacon.set_meta("camera_occlusion_exempt", true)
 	_hydraulic_exit_light = _add_light(
 		self,
 		exit_beacon_route_position + Vector3(0.0, 1.5, 0.0),
@@ -6423,7 +7338,7 @@ func _reset_hydraulic_scavenger_body() -> void:
 		# The construction warp already seated the fresh presenter. Avoid replacing
 		# its render transform with flat data before the host installs coord_map.
 		return
-	# GameState.snap_character_to intentionally preserves a character's current floor/Y.
+	# A plain data-layer snap intentionally preserves a character's current floor/Y.
 	# This scavenger starts on an elevated loading rack and ends at the low lysate basin,
 	# so an ordinary re-post would leave its data body several metres below its model and
 	# make the next approach take a hidden vertical detour. Re-register the same stable body
@@ -6442,9 +7357,6 @@ func _reset_hydraulic_scavenger_body() -> void:
 	_hydraulic_scavenger.call("activate")
 	if _hydraulic_scavenger.has_method("re_post"):
 		_hydraulic_scavenger.call("re_post", _bridge_scavenger_route[0])
-	else:
-		gs.command_stop(character_id)
-		gs.snap_character_to(character_id, _bridge_scavenger_route[0])
 	if _hydraulic_scavenger.has_method("on_game_state_snapshot_restored"):
 		_hydraulic_scavenger.call("on_game_state_snapshot_restored")
 
@@ -8439,21 +9351,59 @@ func _build_generated_node(node: Dictionary) -> void:
 	# the shared outline cursor still exposes this same action verb on hover.
 	if interactable.has_method("hide_tutorial_label_immediate"):
 		interactable.call("hide_tutorial_label_immediate")
+	var authored_interaction_approach: Dictionary = node.get(
+		"interaction_approach", {})
+	var interaction_approach := _project_interaction_approach_to_runtime_grid(
+		authored_interaction_approach, _runtime_navigation_cell_delta)
+	if not interaction_approach.is_empty():
+		var contract_validation := _validate_runtime_interaction_approach(
+			interaction_approach, approach)
+		if not bool(contract_validation.get("accepted", false)):
+			contract_validation["focus_node_id"] = node_id
+			_runtime_interaction_contract_errors[node_id] = \
+				contract_validation.duplicate(true)
+			interactable.set_meta(
+				"runtime_interaction_navigation_error",
+				contract_validation.duplicate(true)
+			)
+			interaction_approach.clear()
+	if not interaction_approach.is_empty():
+		# CharacterInteractionController consumes this exact typed region through
+		# the ordinary outline/delegate click path. The visible source itself is
+		# built at node.approach_position, which the generator projects from the
+		# contract's primary graph vertex.
+		interactable.set_meta(
+			"interaction_navigation_region",
+			interaction_approach.duplicate(true)
+		)
+		interactable.set_meta("flat_authored_position", approach)
+		interactable.set_meta("generated_interaction_data_position", approach)
 	interactable.set_pre_trigger_validator(
 		_validate_generated_node_trigger.bind(node_id, interactable)
 	)
-	interactable.interacted.connect(
-		Callable(self, "_on_generated_node_interacted").bind(node_id, interactable)
+	interactable.set_interaction_route_preflight(
+		_query_generated_node_interaction_gate.bind(node_id, interactable),
+		_present_generated_interaction_refusal.bind(node_id, interactable)
 	)
 	_node_interactables[node_id] = interactable
 	var target_size := Vector3(maxf(1.8, pad_size.x), 1.35, maxf(1.8, pad_size.z))
-	if _hydraulic_enabled():
-		target_size = Vector3(1.5, 1.35, 1.5)
 	var target_position := approach if physical_source_handler else pos
+	var target_center := target_position + Vector3(0.0, 0.58, 0.0)
+	if ground_resource_handler:
+		# The cradle union spans about 1.15 x 0.45 x 0.92. Keep a modest visible-edge
+		# allowance, but do not turn the surrounding room footprint into an invisible
+		# click surface: nested/folded layouts can place another visible pickup behind
+		# this one along the camera ray.
+		target_size = Vector3(1.35, 0.62, 1.12)
+		target_center = approach + Vector3(0.0, 0.25, 0.0)
+	elif physical_source_handler:
+		target_size = Vector3(1.8, 1.35, 1.8)
+	if _hydraulic_enabled() and not ground_resource_handler:
+		target_size = Vector3(1.5, 1.35, 1.5)
 	var target := _add_outline_target(
 		self,
 		"GeneratedNodeTarget_%s" % node_id,
-		target_position + Vector3(0.0, 0.58, 0.0),
+		target_center,
 		target_size,
 		highlight_meshes,
 		node_id,
@@ -8465,8 +9415,26 @@ func _build_generated_node(node: Dictionary) -> void:
 	# latch onto its own dwell ring — a flat circle — before rings were excluded from collection).
 	if target != null and interactable.has_method("set_outline_target"):
 		interactable.call("set_outline_target", target)
+		# Every generated-node pick hull follows its visible marker meshes through
+		# layout warps.  The authored navigation region remains the interaction
+		# approach contract; this alignment only keeps the mouse target on-screen
+		# with the presentation a player can actually see.
+		target.set_meta(
+			"align_pick_target_to_highlights_after_warp", true)
+		if not interaction_approach.is_empty():
+			target.set_meta(
+				"interaction_navigation_region",
+				interaction_approach.duplicate(true)
+			)
 
 		interactable.input_ray_pickable = false
+	# set_outline_target connects the exact source-token success presentation.
+	# Keep it ahead of the consequence callback: a one-shot pickup commits by
+	# disabling/removing its source presenter, so committing first could erase the
+	# target before its green result pulse received the same signal.
+	interactable.interacted.connect(
+		Callable(self, "_on_generated_node_interacted").bind(node_id, interactable)
+	)
 	_node_targets[node_id] = target
 	_wire_generated_section_feedback(node, interactable)
 
@@ -9198,12 +10166,47 @@ func _add_real_content_marker(
 		"capbage":
 			var capbage := Capbage.new()
 			capbage.name = "%s_Runtime" % node_name
+			var runtime_navigation := RuntimeRegistryScript.generated_content_navigation(
+				"flora", "capbage")
+			var body_conceal_radius := float(runtime_navigation.get("radius", 0.45))
 			capbage.configure(
 				_get_game_state(),
 				marker_pos,
-				maxf(1.4, float(placement.get("conceal_radius", 1.4)))
+				maxf(
+					float(runtime_navigation.get("interaction_radius", 1.4)),
+					float(placement.get("conceal_radius", 1.4))
+				),
+				body_conceal_radius
 			)
 			capbage.set_concealment_origin(marker_pos)
+			var authored_navigation_v: Variant = placement.get("navigation", null)
+			var authored_navigation := authored_navigation_v as Dictionary \
+				if authored_navigation_v is Dictionary else {}
+			var navigation_contract := \
+				_project_content_navigation_to_runtime_interaction_region(
+					authored_navigation,
+					_runtime_navigation_cell_delta
+				)
+			var navigation_validation := _validate_runtime_content_navigation(
+				navigation_contract, "flora", "capbage", marker_pos)
+			if bool(navigation_validation.get("accepted", false)):
+				capbage.set_meta(
+					"interaction_navigation_region",
+					navigation_contract.duplicate(true)
+				)
+			else:
+				var error_key := "content:%s:%s" % [
+					node_name, str(placement.get("position", []))]
+				_runtime_interaction_contract_errors[error_key] = \
+					navigation_validation.duplicate(true)
+				capbage.set_meta(
+					"runtime_interaction_navigation_error",
+					navigation_validation.duplicate(true)
+				)
+				capbage.set_interaction_route_preflight(
+					Callable(self, "_generated_content_route_preflight").bind(
+						navigation_validation.duplicate(true))
+				)
 			runtime_root = capbage
 			add_child(capbage)
 			_register_interactable(capbage)

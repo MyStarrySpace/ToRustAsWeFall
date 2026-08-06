@@ -114,6 +114,19 @@ func _configure_channel_sweeps() -> void:
 
 func _wash_destination(char_id: String, position: Vector3) -> Vector3:
 	if char_id in _party_ids:
+		# `_wash_back` is authored as gameplay feet data, not the half-unit
+		# presentation height used by nearby props. Re-derive its graph floor at
+		# consequence time so a stale visual-height baseline cannot wash a body
+		# between navigation levels.
+		var gs = _get_game_state()
+		if gs != null and gs.grid != null:
+			var level: int = gs.grid.level_for_y(_wash_back.y)
+			var cell: Vector2i = gs.grid.nearest_walkable_cell(
+				gs.grid.world_to_grid(_wash_back), level)
+			if gs.grid.is_in_bounds(cell.x, cell.y) \
+					and gs.grid.is_walkable(cell.x, cell.y, {}, {}, level):
+				var graph_position: Vector3 = gs.grid.grid_to_world(cell, level)
+				return Vector3(_wash_back.x, graph_position.y, _wash_back.z)
 		return _wash_back
 	var downstream_sign := signf(position.z)
 	if is_zero_approx(downstream_sign):

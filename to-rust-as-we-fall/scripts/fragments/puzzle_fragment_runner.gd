@@ -2,6 +2,7 @@ class_name PuzzleFragmentRunner
 extends RefCounted
 
 const Schema = preload("res://scripts/fragments/puzzle_fragment_schema.gd")
+const AUTHORITATIVE_PLACEMENT_TOLERANCE := 0.001
 
 var _tree: SceneTree
 
@@ -170,6 +171,8 @@ func _execute_action(instance: Node, anchors: Dictionary, snapshots: Dictionary,
 			return _execute_call(instance, action)
 		Schema.ActionType.CALL_CHUNK:
 			return _execute_call_chunk(instance, action)
+		Schema.ActionType.PHYSICAL_INTERACT:
+			return _execute_physical_interact(instance, action)
 		Schema.ActionType.SNAPSHOT_STATE:
 			return _execute_snapshot(instance, snapshots, action)
 		Schema.ActionType.REFRESH_ANCHORS:
@@ -201,6 +204,9 @@ func _execute_teleport(instance: Node, anchors: Dictionary, action: Dictionary) 
 	if not bool(pos_result.get(Schema.KEY_OK, false)):
 		return pos_result
 	instance.call(Schema.METHOD_HEADLESS_SET_CHARACTER_POSITION, char_id, pos_result[Schema.KEY_VALUE])
+	var placement_result := _validate_authoritative_character_placement(instance, char_id)
+	if not bool(placement_result.get(Schema.KEY_OK, false)):
+		return placement_result
 	return _step_ok("Teleported %s" % char_id, {Schema.KEY_POSITION: pos_result[Schema.KEY_VALUE]})
 
 func _execute_advance(instance: Node, action: Dictionary) -> Dictionary:
@@ -218,8 +224,13 @@ func _execute_call(instance: Node, action: Dictionary) -> Dictionary:
 	if not instance.has_method(method_name):
 		return _step_error(Schema.ERROR_MISSING_METHOD, "Scene does not expose %s" % method_name)
 	var args: Array = action.get(Schema.KEY_ARGS, [])
-	instance.callv(method_name, args)
-	return _step_ok("Called %s" % method_name)
+	var call_result: Variant = instance.callv(method_name, args)
+	if typeof(call_result) == TYPE_BOOL and not bool(call_result):
+		return _step_error(
+			Schema.ERROR_ACTION_REFUSED,
+			"Scene call %s refused the requested action" % method_name
+		)
+	return _step_ok("Called %s" % method_name, {Schema.KEY_VALUE: call_result})
 
 func _execute_call_chunk(instance: Node, action: Dictionary) -> Dictionary:
 	var method_name := str(action.get(Schema.KEY_METHOD, ""))
@@ -228,8 +239,374 @@ func _execute_call_chunk(instance: Node, action: Dictionary) -> Dictionary:
 	if not instance.has_method(Schema.METHOD_HEADLESS_CALL_CHUNK):
 		return _step_error(Schema.ERROR_MISSING_METHOD, "Scene does not expose %s" % Schema.METHOD_HEADLESS_CALL_CHUNK)
 	var args: Array = action.get(Schema.KEY_ARGS, [])
-	instance.call(Schema.METHOD_HEADLESS_CALL_CHUNK, method_name, args)
-	return _step_ok("Called chunk %s" % method_name)
+	var call_result: Variant = instance.call(
+		Schema.METHOD_HEADLESS_CALL_CHUNK, method_name, args)
+	if typeof(call_result) == TYPE_BOOL and not bool(call_result):
+		return _step_error(
+			Schema.ERROR_ACTION_REFUSED,
+			"Chunk call %s refused the requested action" % method_name
+		)
+	return _step_ok("Called chunk %s" % method_name, {Schema.KEY_VALUE: call_result})
+
+func _execute_physical_interact(instance: Node, action: Dictionary) -> Dictionary:
+	var char_id := str(action.get(Schema.KEY_CHAR_ID, ""))
+	if char_id == "":
+		return _step_error(
+			Schema.ERROR_MISSING_CHAR_ID,
+			"physical_interact requires char_id"
+		)
+	if not instance.has_method(Schema.METHOD_HEADLESS_SELECT_CHARACTER):
+		return _step_error(
+			Schema.ERROR_MISSING_METHOD,
+			"Scene does not expose %s" % Schema.METHOD_HEADLESS_SELECT_CHARACTER
+		)
+	if not instance.has_method(Schema.METHOD_HEADLESS_SET_CHARACTER_POSITION):
+		return _step_error(
+			Schema.ERROR_MISSING_METHOD,
+			"Scene does not expose %s" % Schema.METHOD_HEADLESS_SET_CHARACTER_POSITION
+		)
+
+	var source_result := _resolve_physical_source(instance, action)
+	if not bool(source_result.get(Schema.KEY_OK, false)):
+		return source_result
+	var source: Node = source_result.get(Schema.KEY_VALUE) as Node
+	if source == null or not is_instance_valid(source) or not (source is Node3D) \
+			or not source.has_method("_trigger") \
+			or not _object_has_property(source, "active_character"):
+		return _step_error(
+			Schema.ERROR_SOURCE_NOT_INTERACTABLE,
+			"Resolved source is not a live world interactable"
+		)
+
+	var source_position := _physical_source_data_position(instance, source as Node3D)
+	if not source_position.is_finite():
+		return _step_error(
+			Schema.ERROR_MISSING_POSITION,
+			"Could not resolve an authoritative position for %s" % source.name
+		)
+	var offset := _vector3_from_variant(action.get(Schema.KEY_OFFSET, Vector3.ZERO))
+	var approach_position := source_position + offset
+	var party_result := _stage_authoritative_party(instance, char_id, action)
+	if not bool(party_result.get(Schema.KEY_OK, false)):
+		return party_result
+	var clock_result := _stage_authoritative_clock(instance, action)
+	if not bool(clock_result.get(Schema.KEY_OK, false)):
+		return clock_result
+	instance.call(Schema.METHOD_HEADLESS_SELECT_CHARACTER, char_id)
+	instance.call(
+		Schema.METHOD_HEADLESS_SET_CHARACTER_POSITION, char_id, approach_position)
+	var placement_result := _validate_authoritative_character_placement(instance, char_id)
+	if not bool(placement_result.get(Schema.KEY_OK, false)):
+		return placement_result
+	# Selection normally projects the active portrait to every registered source. Set the exact source
+	# again after staging so the accepted receipt names the actor whose authoritative body is here.
+	source.set("active_character", char_id)
+	var accepted: Variant = source.call("_trigger", false)
+	if typeof(accepted) != TYPE_BOOL or not bool(accepted):
+		return _step_error(
+			Schema.ERROR_ACTION_REFUSED,
+			"%s refused %s at its physical source" % [source.name, char_id],
+			{
+				Schema.KEY_SOURCE: str(source.name),
+				Schema.KEY_POSITION: approach_position,
+			}
+		)
+	return _step_ok(
+		"%s interacted with %s" % [char_id, source.name],
+		{
+			Schema.KEY_SOURCE: str(source.name),
+			Schema.KEY_POSITION: approach_position,
+		}
+	)
+
+
+## Some production receipts validate party membership in addition to the body at the source. A tape may
+## declare that roster on the physical action; install it through GameState's public command before the
+## receipt, then verify the exact authoritative roster. Positioning remains explicit teleport/interaction
+## staging, so this never manufactures proximity or bypasses any source validator.
+func _stage_authoritative_party(
+	instance: Node, actor_id: String, action: Dictionary
+) -> Dictionary:
+	if not action.has(Schema.KEY_PARTY):
+		return _step_ok("")
+	var party_v: Variant = action.get(Schema.KEY_PARTY, [])
+	if not (party_v is Array) or (party_v as Array).is_empty():
+		return _step_error(
+			Schema.ERROR_INVALID_PARTY,
+			"physical_interact party must be a non-empty array"
+		)
+	var game_state: Variant = _object_property(instance, "_game_state")
+	if not (game_state is Object) or not is_instance_valid(game_state) \
+			or not game_state.has_method("set_party") \
+			or not game_state.has_method("get_party"):
+		return _step_error(
+			Schema.ERROR_GAME_STATE_NOT_FOUND,
+			"Scene does not expose authoritative party commands"
+		)
+	var characters_v: Variant = _object_property(game_state as Object, "characters")
+	if not (characters_v is Dictionary):
+		return _step_error(
+			Schema.ERROR_GAME_STATE_NOT_FOUND,
+			"GameState does not expose its registered characters"
+		)
+	var party: Array[String] = []
+	for member_v in party_v as Array:
+		var member_id := str(member_v).strip_edges()
+		if member_id.is_empty() or party.has(member_id):
+			return _step_error(
+				Schema.ERROR_INVALID_PARTY,
+				"physical_interact party contains an empty or duplicate member"
+			)
+		if not (characters_v as Dictionary).has(member_id):
+			return _step_error(
+				Schema.ERROR_CHARACTER_NOT_FOUND,
+				"Party member %s is not registered in GameState" % member_id
+			)
+		party.append(member_id)
+	if actor_id not in party:
+		return _step_error(
+			Schema.ERROR_INVALID_PARTY,
+			"Physical actor %s is not in the declared party" % actor_id
+		)
+	game_state.call("set_party", party)
+	var installed_v: Variant = game_state.call("get_party")
+	if not (installed_v is Array) or (installed_v as Array) != party:
+		return _step_error(
+			Schema.ERROR_INVALID_PARTY,
+			"GameState refused the declared physical-interaction party"
+		)
+	return _step_ok("Staged authoritative party", {Schema.KEY_PARTY: party.duplicate()})
+
+
+## Shelter-rest validators read GameState's authoritative clock before invoking their chunk callback.
+## Fragment previews display a host-owned clock and synchronize it at the callback boundary, which is
+## too late for that preflight. A physical tape may therefore declare the same preview clock here;
+## install it through GameState's public command and verify the live value before requesting a receipt.
+func _stage_authoritative_clock(instance: Node, action: Dictionary) -> Dictionary:
+	if not action.has(Schema.KEY_CLOCK):
+		return _step_ok("")
+	var clock_v: Variant = action.get(Schema.KEY_CLOCK, {})
+	if not (clock_v is Dictionary):
+		return _step_error(
+			Schema.ERROR_INVALID_CLOCK,
+			"physical_interact clock must be a day/time dictionary"
+		)
+	var clock: Dictionary = clock_v
+	if not clock.has(Schema.KEY_DAY) or not clock.has(Schema.KEY_TIME):
+		return _step_error(
+			Schema.ERROR_INVALID_CLOCK,
+			"physical_interact clock requires day and time"
+		)
+	var day_v: Variant = clock.get(Schema.KEY_DAY)
+	var time_v: Variant = clock.get(Schema.KEY_TIME)
+	if typeof(day_v) not in [TYPE_INT, TYPE_FLOAT] \
+			or typeof(time_v) not in [TYPE_INT, TYPE_FLOAT]:
+		return _step_error(
+			Schema.ERROR_INVALID_CLOCK,
+			"physical_interact clock day and time must be numeric"
+		)
+	var day_number := float(day_v)
+	var time := float(time_v)
+	if not is_finite(day_number) or day_number != floorf(day_number) \
+			or day_number < 1.0 or day_number > float(0x7fffffff) \
+			or not is_finite(time) or time < 0.0 or time > 1.0:
+		return _step_error(
+			Schema.ERROR_INVALID_CLOCK,
+			"physical_interact clock requires an integer day >= 1 and time in [0, 1]"
+		)
+	var game_state: Variant = _object_property(instance, "_game_state")
+	if not (game_state is Object) or not is_instance_valid(game_state) \
+			or not game_state.has_method("set_game_clock") \
+			or not game_state.has_method("get_game_day") \
+			or not game_state.has_method("get_time_of_day"):
+		return _step_error(
+			Schema.ERROR_GAME_STATE_NOT_FOUND,
+			"Scene does not expose authoritative clock commands"
+		)
+	var day := int(day_number)
+	game_state.call("set_game_clock", day, time)
+	var installed_day := int(game_state.call("get_game_day"))
+	var installed_time := float(game_state.call("get_time_of_day"))
+	if installed_day != day or not is_equal_approx(installed_time, time):
+		return _step_error(
+			Schema.ERROR_INVALID_CLOCK,
+			"GameState refused the declared physical-interaction clock",
+			{
+				Schema.KEY_EXPECTED: {Schema.KEY_DAY: day, Schema.KEY_TIME: time},
+				Schema.KEY_ACTUAL: {
+					Schema.KEY_DAY: installed_day,
+					Schema.KEY_TIME: installed_time,
+				},
+			}
+		)
+	return _step_ok(
+		"Staged authoritative clock",
+		{Schema.KEY_CLOCK: {Schema.KEY_DAY: day, Schema.KEY_TIME: time}}
+	)
+
+func _resolve_physical_source(instance: Node, action: Dictionary) -> Dictionary:
+	var target_id := str(action.get(Schema.KEY_TARGET, ""))
+	if target_id != "":
+		var target_roots: Array = []
+		var chunk: Variant = _object_property(instance, "_active_chunk")
+		if chunk is Object and is_instance_valid(chunk):
+			target_roots.append(chunk)
+		target_roots.append(instance)
+		for root_v in target_roots:
+			var root := root_v as Object
+			if root.has_method("get_playthrough_interaction_target"):
+				var target: Variant = root.call(
+					"get_playthrough_interaction_target", target_id)
+				if target is Node and is_instance_valid(target):
+					return _step_ok(
+						"", {Schema.KEY_VALUE: _interaction_source_from_target(target as Node)})
+
+	var source_path := str(action.get(Schema.KEY_SOURCE_PATH, ""))
+	if source_path != "":
+		var path_result := _read_object_path(instance, source_path)
+		if bool(path_result.get(Schema.KEY_OK, false)):
+			var source: Variant = path_result.get(Schema.KEY_VALUE)
+			if source is Node and is_instance_valid(source):
+				return _step_ok(
+					"", {Schema.KEY_VALUE: _interaction_source_from_target(source as Node)})
+
+	var description := target_id if target_id != "" else source_path
+	return _step_error(
+		Schema.ERROR_SOURCE_NOT_FOUND,
+		"Could not resolve physical interaction source: %s" % description
+	)
+
+func _interaction_source_from_target(target: Node) -> Node:
+	if target.has_method("_trigger"):
+		return target
+	if target.has_method("get_interaction_delegate"):
+		var delegate_v: Variant = target.call("get_interaction_delegate")
+		if delegate_v is Node and is_instance_valid(delegate_v):
+			return delegate_v as Node
+	return target
+
+func _read_object_path(root: Object, path: String) -> Dictionary:
+	var current: Variant = root
+	var parts := path.split(".", false)
+	for part_v in parts:
+		var part := str(part_v)
+		if current is Dictionary:
+			if not (current as Dictionary).has(part):
+				return {Schema.KEY_OK: false}
+			current = (current as Dictionary)[part]
+		elif current is Object and is_instance_valid(current):
+			var object := current as Object
+			if part == "chunk" and object == root:
+				current = _object_property(object, "_active_chunk")
+			elif _object_has_property(object, part):
+				current = object.get(part)
+			else:
+				return {Schema.KEY_OK: false}
+		else:
+			return {Schema.KEY_OK: false}
+		if current == null:
+			return {Schema.KEY_OK: false}
+	return {Schema.KEY_OK: true, Schema.KEY_VALUE: current}
+
+func _physical_source_data_position(instance: Node, source: Node3D) -> Vector3:
+	var game_state: Variant = _object_property(instance, "_game_state")
+	var data_id := str(_object_property(source, "data_id"))
+	if game_state is Object and is_instance_valid(game_state) and data_id != "" \
+			and game_state.has_method("has_interactable") \
+			and bool(game_state.call("has_interactable", data_id)) \
+			and game_state.has_method("get_interactable"):
+		var spec: Variant = game_state.call("get_interactable", data_id)
+		if spec is Dictionary:
+			var registered_position: Variant = (spec as Dictionary).get(
+				"position", Vector3.INF)
+			if registered_position is Vector3 and registered_position.is_finite():
+				return registered_position
+
+	var position := source.global_position
+	if game_state is Object and is_instance_valid(game_state):
+		var coord_map: Variant = _object_property(game_state, "coord_map")
+		if coord_map is Object and is_instance_valid(coord_map) \
+				and coord_map.has_method("to_data"):
+			var data_position: Variant = coord_map.call("to_data", position)
+			if data_position is Vector3:
+				return data_position
+	return position
+
+func _object_has_property(object: Object, property_name: String) -> bool:
+	if object == null or not is_instance_valid(object):
+		return false
+	for property_v in object.get_property_list():
+		if property_v is Dictionary \
+				and str((property_v as Dictionary).get("name", "")) == property_name:
+			return true
+	return false
+
+func _object_property(object: Object, property_name: String) -> Variant:
+	return object.get(property_name) if _object_has_property(object, property_name) else null
+
+func _validate_authoritative_character_placement(
+		instance: Node, char_id: String) -> Dictionary:
+	var game_state_v: Variant = _object_property(instance, "_game_state")
+	if not (game_state_v is Object) or not is_instance_valid(game_state_v):
+		return _step_error(
+			Schema.ERROR_GAME_STATE_NOT_FOUND,
+			"Cannot verify %s placement without the scene GameState" % char_id
+		)
+	var game_state := game_state_v as Object
+	if not game_state.has_method("get_render_position"):
+		return _step_error(
+			Schema.ERROR_GAME_STATE_NOT_FOUND,
+			"Scene GameState cannot report %s's render position" % char_id
+		)
+	var characters_v: Variant = _object_property(game_state, "characters")
+	if not (characters_v is Dictionary) or not (characters_v as Dictionary).has(char_id):
+		return _step_error(
+			Schema.ERROR_CHARACTER_NOT_FOUND,
+			"GameState does not contain requested character %s" % char_id
+		)
+
+	var character_node := _resolve_live_character_node(instance, char_id)
+	if character_node == null:
+		return _step_error(
+			Schema.ERROR_CHARACTER_NOT_FOUND,
+			"Scene does not expose a live Node3D for requested character %s" % char_id
+		)
+	var expected_v: Variant = game_state.call("get_render_position", char_id)
+	if not (expected_v is Vector3):
+		return _step_error(
+			Schema.ERROR_GAME_STATE_NOT_FOUND,
+			"GameState returned no render position for %s" % char_id
+		)
+	var expected: Vector3 = expected_v
+	var actual := character_node.global_transform.origin
+	var distance := actual.distance_to(expected)
+	if not actual.is_finite() or not expected.is_finite() \
+			or distance > AUTHORITATIVE_PLACEMENT_TOLERANCE:
+		return _step_error(
+			Schema.ERROR_CHARACTER_TRANSFORM_MISMATCH,
+			(
+				"Live %s origin %s does not match authoritative render position %s "
+				+ "(distance %.6f)"
+			) % [char_id, actual, expected, distance],
+			{
+				"actual_position": actual,
+				"expected_position": expected,
+				"distance": distance,
+			}
+		)
+	return _step_ok("Verified authoritative placement for %s" % char_id)
+
+func _resolve_live_character_node(instance: Node, char_id: String) -> Node3D:
+	var characters_v: Variant = _object_property(instance, "_characters")
+	if characters_v is Dictionary:
+		var character_v: Variant = (characters_v as Dictionary).get(char_id)
+		if character_v is Node3D and is_instance_valid(character_v):
+			return character_v as Node3D
+	if instance.has_method("_get_character_node"):
+		var accessed_character_v: Variant = instance.call("_get_character_node", char_id)
+		if accessed_character_v is Node3D and is_instance_valid(accessed_character_v):
+			return accessed_character_v as Node3D
+	return null
 
 func _execute_snapshot(instance: Node, snapshots: Dictionary, action: Dictionary) -> Dictionary:
 	var key := str(action.get(Schema.KEY_KEY, ""))

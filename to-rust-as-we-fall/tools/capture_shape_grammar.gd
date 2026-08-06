@@ -2,7 +2,8 @@ extends SceneTree
 
 ## Capture a render of a generation-preview chunk so the output is eyeball-able.
 ##   SEED=3 [CHUNK=shape_grammar|creature_grammar] [ANGLE=low] \
-##     ../Godot_v4.7-stable_win64.exe --path "." --script res://tools/capture_shape_grammar.gd
+##     godot --path "." --script res://tools/capture_shape_grammar.gd
+## Isolated-display launch only; see tools/README.md.
 ## Writes <chunk>_<seed>.png.
 
 func _init() -> void:

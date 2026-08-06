@@ -1,5 +1,6 @@
 class_name WashRelayDressing
 extends RefCounted
+# @rendering_only_file
 
 ## The concept-plate detail pass for the wash_relay channels spiral, built SURVEY-FIRST
 ## (docs/SURVEY_REBUILD.md method). The GEOMETRY is Blender-authored like every modeled

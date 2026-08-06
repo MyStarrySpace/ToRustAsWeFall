@@ -10,9 +10,9 @@ help = "A data-driven fragment: floor, flure, portals, capbages, channels, flora
 default_character = "peris"
 party_ids = PackedStringArray("aster", "peris", "endo")
 spawns = {
-"aster": Vector3(3.5, 0.5, 1.5),
-"endo": Vector3(2.5, 0.5, -1.5),
-"peris": Vector3(2.5, 0.5, 0.5)
+"aster": Vector3(3.5, 0, 1.5),
+"endo": Vector3(2.5, 0, -1.5),
+"peris": Vector3(2.5, 0, 0.5)
 }
 floors = Array[Dictionary]([{
 "color": Color(0.09, 0.1, 0.12, 1),

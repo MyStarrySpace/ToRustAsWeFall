@@ -174,8 +174,8 @@ func _input(event: InputEvent) -> void:
 			# select mode: never intercept — the finger IS the left button
 			elif mode == "action":
 				# Preserve both edges so SelectionController can distinguish a short command from a
-				# configurable hold. It consumes this proxy press and replays a normal RMB click on
-				# short release, or commits RALLY ALL on long release.
+				# configurable hold. It submits one immutable visible-surface/ground record on short
+				# release, or commits RALLY ALL on long release.
 				_begin_action_command_proxy(mb.position)
 				get_viewport().set_input_as_handled()
 		else:
@@ -254,8 +254,9 @@ func _resolve_selection_controller():
 func is_action_command_proxy_active() -> bool:
 	return _action_command_proxy_active
 
-## One edge of the desktop COMMAND gesture. SelectionController owns timing and later either replays
-## the ordinary click through physics picking or commits an explicit-member whole-party rally.
+## One edge of the desktop COMMAND gesture. SelectionController owns timing and later either submits
+## one immutable short-command record through the visible production surface or commits an
+## explicit-member whole-party rally.
 func _dispatch_command_edge(pos: Vector2, pressed_state: bool) -> void:
 	var ev := InputEventMouseButton.new()
 	ev.button_index = MOUSE_BUTTON_RIGHT

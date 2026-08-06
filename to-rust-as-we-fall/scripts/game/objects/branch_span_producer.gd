@@ -408,6 +408,19 @@ func _apply_interaction_truth(phase: StringName, force_rearm_dormant: bool) -> v
 			_set_interactable_enabled(true)
 	else:
 		_set_interactable_enabled(false)
+	_enforce_visual_pointer_ownership()
+
+
+func _enforce_visual_pointer_ownership() -> void:
+	if _producer_interactable == null or _producer_outline == null \
+			or not is_instance_valid(_producer_outline):
+		return
+	# The Area's radius is the character service distance, not visible terminal
+	# geometry. On a folded/stacked route that invisible sphere can sit in front
+	# of another coil's visible object. The delegated outline hull is the exact
+	# terminal surface and therefore owns pointer input; the Area still monitors
+	# bodies and remains the authoritative interaction receipt.
+	_producer_interactable.input_ray_pickable = false
 
 
 func _set_interactable_enabled(enabled: bool) -> void:
@@ -597,6 +610,7 @@ func _on_producer_interacted(source: Node) -> void:
 		# Interactable has already consumed its local one-shot before emitting `interacted`. If the
 		# authoritative proximity guard rejects, immediately re-arm so a bad click is not a soft-lock.
 		_producer_interactable.reset()
+		_enforce_visual_pointer_ownership()
 
 
 func _wire_game_state_signals() -> void:
@@ -665,7 +679,15 @@ func _wire_outline() -> void:
 		"terminal", maxf(1.0, _interaction_radius)
 	)
 	if _producer_outline != null:
+		# The visible housing owns pointer input, while the Interactable owns the
+		# source receipt and mechanism transaction. Forward both target resolution
+		# and arrival; otherwise a click walks to the terminal and then dies on the
+		# decorative outline without ever reaching the real source.
+		if _producer_outline.has_method("set_interaction_delegate"):
+			_producer_outline.call(
+				"set_interaction_delegate", _producer_interactable)
 		_producer_interactable.set_outline_target(_producer_outline)
+		_enforce_visual_pointer_ownership()
 
 
 func _exit_tree() -> void:

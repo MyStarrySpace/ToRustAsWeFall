@@ -5,6 +5,12 @@
 *.exe
 godot.bat
 
+# Tracked test gate outputs and local CI tool downloads
+.test-gate/
+.ci/
+to-rust-as-we-fall/node_modules/
+to-rust-as-we-fall/test-results/
+
 # godot-cpp (large dependency — clone/copy separately)
 godot-cpp/
 

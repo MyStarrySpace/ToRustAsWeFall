@@ -1,7 +1,8 @@
 class_name ChainEnemy
 extends Enemy
 
-## Segmented chain enemy with anchored follow motion and contact damage.
+## HIDRA runtime: a segmented infrastructure mimic that lies along wires and cabling, then
+## unspools into an anchored lunge. The legacy class name remains for scene compatibility.
 
 # --- Segment configuration ---
 @export var segment_count := 8
@@ -22,6 +23,11 @@ const CHAIN_CONTACT_RANGE := 0.6
 var _chain_contact_next_tick := 0.0
 
 # --- Overrides ---
+
+func _ready() -> void:
+	if display_name == "Entity":
+		display_name = "Hidra"
+	super._ready()
 
 func _build_visual() -> void:
 	var body_color := Color(0.08, 0.06, 0.05)

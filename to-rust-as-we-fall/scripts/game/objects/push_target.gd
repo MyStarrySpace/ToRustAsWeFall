@@ -82,4 +82,9 @@ func _on_input_event(_camera: Node, event: InputEvent, _pos: Vector3, _normal: V
 		var viewport := get_viewport()
 		if viewport != null:
 			viewport.set_input_as_handled()
-		push_queue_requested.emit(obj_id)
+		submit_pointer_command()
+
+
+func submit_pointer_command(_event_position: Vector3 = Vector3.INF) -> bool:
+	push_queue_requested.emit(obj_id)
+	return true

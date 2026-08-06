@@ -33,8 +33,7 @@ regenerate mid-chase; a sealed door also blocks YOUR retreat.
 - **S2 — the conduit gallery** (~25 wu). LEVER 2: a **Chelator cluster** feeding on an iron
   seep along the left wall — the signature protocol-hesitation beat: Naturalizers detour wide of
   iron-feeding fauna (the framework's canon slowdown). Route the party THROUGH the cluster's
-  apron (safe for them) and the pursuit line breaks around it. LEVER 3 (Peris): a **Flure** on
-  a fertile lip — one decoy redirection, pulling the lead rank up the dead gallery stair.
+  apron (safe for them) and the pursuit line breaks around it.
 - **S3 — the junction + THE OFFSHOOT** (~25 wu; the corridor's midpoint). Tyreg's side corridor
   enters here (phase shift + accept/decline choice, canon). The junction is watched by a fixed
   scan fan. And one of the junction's THREE portal terminals is different:
@@ -48,13 +47,13 @@ regenerate mid-chase; a sealed door also blocks YOUR retreat.
   - In normal play the offshoot is a *shortcut with a toll*: hacking the portal (Aster, ~3 s
     inside the scan fan — the sacrificial-activation grammar) skips S3's watched half. The
     expert solution lives in the same geometry (below).
-- **S4 — the flooded undercut** (~30 wu). LEVER 4: a **Scarpet run** down the dry side
-  (friction + signal — the party crosses clean; pursuit slips wide). LEVER 5 (accept path):
+- **S4 — the flooded undercut** (~30 wu). LEVER 3: a **Scarpet run** down the dry side
+  (friction + signal — the party crosses clean; pursuit slips wide). LEVER 4 (accept path):
   **ammo cache A** behind portal terminal 2 (the Tyreg loop: Aster hacks, Peris runs, Tyreg
   Suppresses the lead rank).
-- **S5 — the collapse shelf** (~30 wu). LEVER 6: a **weak wall** over the shelf (the built
+- **S5 — the collapse shelf** (~30 wu). LEVER 5: a **weak wall** over the shelf (the built
   weak-wall object): pried as the party passes, it drops rubble across the lane — the late big
-  delay, priced by the pry dwell. LEVER 7 (decline path pressure): the second wave enters HERE
+  delay, priced by the pry dwell. LEVER 6 (decline path pressure): the second wave enters HERE
   from the side corridor Tyreg would have cleared.
 - **S6 — the boundary run** (~20 wu, lever-less by design). Pure stamina math: whatever margin
   the levers bought is spent here. **Endo's wall**: Naturalizers stop at the maintained line
@@ -90,7 +89,7 @@ variant is listed there as the alternative if the director wants a whisper).
 ## Buildability (against what exists today)
 
 - ✅ EXISTS: pursuit/search/return FSM + two-tier detection (tight-hide = CONCEAL_FULL, the
-  Capbage grammar); PortalPad + group queueing; weak walls; Scarpet; Flure decoy; scheduler-
+  Capbage grammar); PortalPad + group queueing; weak walls; Scarpet; scheduler-
   driven waves; whiff/strike timing; stamina/sprint; shelter-region sanctuary at Endo's wall
   (the new law); wipe-restart (the reset's chassis — needs the zone-rollback + flora-kill
   flavor); real-input test machinery.
@@ -128,7 +127,7 @@ rebuilt as chase dressing + its lever:
 |-----|--------------|-----------------------------------|
 | S0 | `facility_checkpoint` kind (built) | the plaza, scan gates, queue rails; the trigger |
 | S1 | **stacks** (Open Files) | data-terminal ROWS as weave-lanes; conduit troughs pulsing AGAINST your direction (you run against the data flow); the door lever at the hall's exit |
-| S2 | **pump_hall** | pipe gantries + the iron seep feeding THE CHELATOR CLUSTER; the Flure decoy on its fertile lip |
+| S2 | **pump_hall** | pipe gantries + the iron seep feeding THE CHELATOR CLUSTER |
 | S3 | **lure_relay** | the watched junction fan grammar; Tyreg's side mouth; THREE look-alike portal terminals (two ammo caches + the unmarked offshoot) |
 | S4 | **channels_wash_intro** | a REAL Channel wash strip crossing the corridor, flow-strip tell live — time it like the channels taught you; a wave following badly is SWEPT (the canon environmental slowdown); the Scarpet dry lane beside it |
 | S5 | **sprint_gap** | the stamina squeeze; the weak-wall pry; the decline side-wave mouth |
@@ -144,7 +143,7 @@ S5 → S6 visual upgrade.
 `--preview=lockout_chase` ("The Lockout Chase (Act 1 climax)", picker top). Built: the checkpoint
 plaza (the new `facility_checkpoint` kind) + scanner trigger -> scheduled Naturalizer waves; the
 sealable door (holds cutters DOOR_HOLD_SECS, never re-opens); the Chelator hesitation zone (real
-logged slow on every pursuer); Flure + Scarpet levers; the UNMARKED offshoot pocket (portal pair,
+logged slow on every pursuer); the Scarpet lever; the UNMARKED offshoot pocket (portal pair,
 two capacity-one Capbage tight-hides, SEAL points that spend carried Hushblooms to stun the pads
 — pursuit walks to the receiver and follows through OPEN portals over a saved PortalPad transit,
 so only the double-seal locks the pocket); Tyreg's
@@ -314,4 +313,3 @@ the no-Tyreg route is beatable at last; tyreg_accepter survives indefinitely on 
 cheap retries at their markers. Balance state: healthy. Open tuning: tyreg_accepter's grind pace
 (its naive wash play keeps feeding Peris to the pack) — a real player reads the wash after one
 sweep.
-

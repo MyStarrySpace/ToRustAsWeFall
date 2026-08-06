@@ -9,7 +9,46 @@
 > unpaused. Dragging things onto enemies throws things at them (predicting their arrival location to
 > ensure a hit).
 
-The economy consequence is already ruled in `FRAGMENT_COMPOSITION_MODEL.md` §1j. This is the spec doc §1j promises at line 549 and which did not exist.
+And, overruling this document's own opt-in allowlist (2026-08-06, after the spec was drafted):
+
+> Actually why not make the fire fruit and the gas pod from the gasafoetida and everything theowable?
+> Everything should be or it's unintuitive and increases mental load
+
+The economy consequence is already ruled in `FRAGMENT_COMPOSITION_MODEL.md` §1j.
+
+## AMENDMENT — everything is throwable (supersedes the allowlist below)
+
+The drafted spec made `throwable` an opt-in allowlist and singled out `fire_fruit` as permanently
+refused. **That is overruled.** Every item flies, with no allowlist and no per-item opt-out. Wherever
+the sections below say otherwise — §1's "opt-in `throwable` allowlist", §8's "`fire_fruit` must be
+`throwable: false` permanently", §9's rule 3 and its per-item table, §10 stage 1's `item_data.gd`
+opt-in — read them as superseded by this amendment. They are left in place because their *reasoning*
+about payloads is still correct; only the gating mechanism changed.
+
+**Why the ruling is right.** A verb that works on some items and not others is a rule the player must
+memorise, and the mental load costs more than the restriction saves. It is also the law this game
+already follows elsewhere: the Capbage cache is documented as obeying "the same one-rule-no-exceptions
+principle as endocytosis — the cavity holds whatever the player puts in it, and the player learns
+through results what stores well and what doesn't." Throwing now reads the same way.
+
+**Where the safety actually lives.** The allowlist was standing in for a guard that belongs one layer
+down, and putting it there makes it stronger rather than weaker: **there must never be a generic "run
+the item's effect where it lands" rule.** What arrives is an item on the floor. A fire fruit's damage
+is an *endocytosis* effect — it hurts the character who eats it — so throwing one delivers a fire
+fruit, not an explosion. One rule in one place beats a per-item affordance the player has to learn,
+and it holds for every item that will ever be added rather than only the ones someone remembered to
+mark.
+
+This is now enforced positively rather than by refusal: `--test-throw-item-analytic` throws a fire
+fruit at a party member and asserts it flies, arrives, and leaves the catcher's HP at 100 — a test
+that would go red the moment a landing payload started running item effects.
+
+**Consequence for the Gasafoetida pod.** The director names it, and it is a better first payload than
+the `flure_seed` scent recommended in §8. Canon already has the pod emitting on contact with the
+carrier's body heat, and the effect is *repel*, not damage — so a thrown pod that lands and emits is
+area denial that routes enemies rather than striking them, which is exactly the tool-delivery register
+this whole spec is defending. It is still a payload and still gated on Q2; it is simply the one I would
+now bring first.
 
 ## The one-paragraph settlement
 

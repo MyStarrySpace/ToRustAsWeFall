@@ -20,9 +20,9 @@ const EnemyScript := preload("res://scripts/game/ai/enemy.gd")
 
 const PARTY_IDS := ["aster", "peris", "endo"]
 const SPAWNS := {
-	"aster": Vector3(5.0, 0.5, 0.0),
-	"peris": Vector3(4.0, 0.5, 1.0),
-	"endo": Vector3(4.0, 0.5, -1.0),
+	"aster": Vector3(5.0, 0.0, 0.0),
+	"peris": Vector3(4.0, 0.0, 1.0),
+	"endo": Vector3(4.0, 0.0, -1.0),
 }
 
 const HALL_CENTER := Vector3(31.0, -0.05, 0.0)

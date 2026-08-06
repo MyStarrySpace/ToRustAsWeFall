@@ -170,9 +170,7 @@
 			"variant": "short_rest"
 		}
 	],
-	"area_theme": {
-
-	},
+	"area_theme": {},
 	"biome": "",
 	"budget": {
 		"archetype_depth": 2,
@@ -190,7 +188,8 @@
 		"chain_count": 2,
 		"element_coverage": {
 			"complete": true,
-			"contract_id": "trawf_element_coverage_v1",
+			"contract_id": "trawf_element_coverage_v2",
+			"coverage_scope": "realized_runtime_content",
 			"covered_count": 1,
 			"elements": {
 				"cover": {
@@ -199,7 +198,6 @@
 						"16"
 					],
 					"supplied_by": [
-						"entry",
 						"node_01",
 						"node_02",
 						"node_03",
@@ -226,9 +224,7 @@
 			"stage": 2,
 			"total_ambient": 6
 		},
-		"random_walk": {
-
-		},
+		"random_walk": {},
 		"runtime_bound_link_count": 0,
 		"teaching_chain": [],
 		"uses_random_walk": false,
@@ -236,6 +232,7 @@
 		"walk_element_count": 0
 	},
 	"graybox": {
+		"actionable_interaction_approach_count": 3,
 		"bounds": {
 			"center": [
 				37.5,
@@ -258,7 +255,7 @@
 				5.0
 			]
 		},
-		"content_placement_count": 8,
+		"content_placement_count": 7,
 		"contract_id": "generated_stretch_graybox_v1",
 		"elevation_count": 1,
 		"elevation_indices": [
@@ -271,6 +268,7 @@
 		"navigation_edge_count": 5,
 		"navigation_node_count": 6,
 		"node_surface_count": 6,
+		"realized_content_navigation_count": 7,
 		"roompiece_catalog": "trawf_roompiece_catalog_v1",
 		"route_surface_count": 5,
 		"source": {
@@ -279,6 +277,7 @@
 			"spec_id": "generated_teaching_channels_shelter_1_to_2"
 		},
 		"spatial_feature_count": 0,
+		"spawn_excluded_content_count": 1,
 		"supports_click_to_move": true,
 		"supports_multiple_elevations": false,
 		"supports_outline_targets": true,
@@ -330,6 +329,9 @@
 					"action": "activate",
 					"activation_policy": "interact_at_producer",
 					"before_node": "node_02",
+					"before_nodes": [
+						"node_02"
+					],
 					"branch_id": "branch_00",
 					"cannot_bypass_unresolved": true,
 					"consumer_cell": [
@@ -369,6 +371,9 @@
 					"action": "activate",
 					"activation_policy": "interact_at_producer",
 					"before_node": "exit_shelter",
+					"before_nodes": [
+						"exit_shelter"
+					],
 					"branch_id": "branch_02",
 					"cannot_bypass_unresolved": true,
 					"consumer_cell": [
@@ -524,6 +529,9 @@
 						"action": "activate",
 						"activation_policy": "interact_at_producer",
 						"before_node": "node_02",
+						"before_nodes": [
+							"node_02"
+						],
 						"branch_id": "branch_00",
 						"cannot_bypass_unresolved": true,
 						"consumer_cell": [
@@ -563,6 +571,9 @@
 						"action": "activate",
 						"activation_policy": "interact_at_producer",
 						"before_node": "exit_shelter",
+						"before_nodes": [
+							"exit_shelter"
+						],
 						"branch_id": "branch_02",
 						"cannot_bypass_unresolved": true,
 						"consumer_cell": [
@@ -712,6 +723,9 @@
 						"action": "activate",
 						"activation_policy": "interact_at_producer",
 						"before_node": "node_02",
+						"before_nodes": [
+							"node_02"
+						],
 						"branch_id": "branch_00",
 						"cannot_bypass_unresolved": true,
 						"consumer_cell": [
@@ -751,6 +765,9 @@
 						"action": "activate",
 						"activation_policy": "interact_at_producer",
 						"before_node": "exit_shelter",
+						"before_nodes": [
+							"exit_shelter"
+						],
 						"branch_id": "branch_02",
 						"cannot_bypass_unresolved": true,
 						"consumer_cell": [
@@ -876,6 +893,7 @@
 					],
 					"consumer_cells_addressing": "exact_cut_set",
 					"consumer_derivation": "first_later_spine_disconnect_cut",
+					"consumer_navigation_level": 0,
 					"consumer_policy": "next_unresolved_spine_blocker",
 					"content_policy": "causal_producer",
 					"contract_id": "generated_branch_role_v1",
@@ -884,6 +902,7 @@
 						15,
 						11
 					],
+					"producer_navigation_level": 0,
 					"produces_state": "branch_00_resolved",
 					"role": "mandatory_producer",
 					"runtime_handler": "branch_span_producer",
@@ -971,6 +990,7 @@
 					]
 				],
 				"id": "branch_00",
+				"navigation_level": 0,
 				"neck": [
 					17,
 					7
@@ -989,6 +1009,7 @@
 					"consumer_policy": "none",
 					"content_policy": "risk_scaled_physical_reward",
 					"contract_id": "generated_branch_role_v1",
+					"producer_navigation_level": 0,
 					"produces_state": "",
 					"role": "optional_risk_reward",
 					"spine_column": 39,
@@ -1050,6 +1071,7 @@
 					]
 				],
 				"id": "branch_01",
+				"navigation_level": 0,
 				"neck": [
 					39,
 					7
@@ -1084,6 +1106,7 @@
 					],
 					"consumer_cells_addressing": "exact_cut_set",
 					"consumer_derivation": "first_later_spine_disconnect_cut",
+					"consumer_navigation_level": 0,
 					"consumer_policy": "next_unresolved_spine_blocker",
 					"content_policy": "causal_producer",
 					"contract_id": "generated_branch_role_v1",
@@ -1092,6 +1115,7 @@
 						60,
 						11
 					],
+					"producer_navigation_level": 0,
 					"produces_state": "branch_02_resolved",
 					"role": "mandatory_producer",
 					"runtime_handler": "branch_span_producer",
@@ -1159,6 +1183,7 @@
 					]
 				],
 				"id": "branch_02",
+				"navigation_level": 0,
 				"neck": [
 					61,
 					7
@@ -2666,7 +2691,6 @@
 	},
 	"nodes": [
 		{
-			"action_verb": "",
 			"approach_position": [
 				2.01999998092651,
 				0.449999988079071,
@@ -2686,33 +2710,7 @@
 			"chain_output": "",
 			"chain_output_ref": "",
 			"composition_role": "",
-			"content_placements": [
-				{
-					"category": "flora",
-					"id": "capbage",
-					"label": "capbage",
-					"local_offset": [
-						-1.55999994277954,
-						0.699999988079071,
-						-0.839999973773956
-					],
-					"position": [
-						0.940000057220459,
-						1.14999997615814,
-						0.660000026226044
-					],
-					"role": "cover",
-					"rotation_y_degrees": -11.0,
-					"shape": "plant_cluster",
-					"size": [
-						1.20000004768372,
-						1.39999997615814,
-						1.20000004768372
-					],
-					"socket_id": "",
-					"support": "implemented"
-				}
-			],
+			"content_placements": [],
 			"elevation_index": 0,
 			"elevation_meters": -0.0000000119209289661804,
 			"enemies": [],
@@ -2722,9 +2720,7 @@
 				0.140000000596046,
 				3.0
 			],
-			"flora": [
-				"capbage"
-			],
+			"flora": [],
 			"footprint": [
 				4.0,
 				0.140000000596046,
@@ -2732,9 +2728,7 @@
 			],
 			"id": "entry",
 			"label": "Entry Boundary",
-			"layout_step": {
-
-			},
+			"layout_step": {},
 			"link_ref": "",
 			"nested_archetypes": [],
 			"nested_depth": 0,
@@ -2756,9 +2750,7 @@
 			"runtime_handler": "",
 			"runtime_progression_required": false,
 			"runtime_support": "layout_only",
-			"shadow_solution": {
-
-			},
+			"shadow_solution": {},
 			"spatial_affordances": [],
 			"stage": 1,
 			"structures": [
@@ -2775,7 +2767,6 @@
 			"walk_transition": ""
 		},
 		{
-			"action_verb": "",
 			"approach_position": [
 				15.1400003433228,
 				0.449999988079071,
@@ -2813,14 +2804,65 @@
 					"id": "scarpet",
 					"label": "scarpet",
 					"local_offset": [
-						-1.24000000953674,
-						0.0799999982118607,
-						-0.839999973773956
+						-1.0,
+						0.0799999833106995,
+						-1.0
 					],
+					"navigation": {
+						"binding_id": "scarpet_concealment_v1",
+						"component_id": "entry_component:0:5:4",
+						"content_vertex": {
+							"cell": [
+								17,
+								4
+							],
+							"level": 0
+						},
+						"contract_id": "generated_content_navigation_v1",
+						"kind": "occupiable",
+						"radius": 1.65,
+						"reachable_region": [
+							{
+								"cell": [
+									17,
+									4
+								],
+								"level": 0
+							},
+							{
+								"cell": [
+									18,
+									4
+								],
+								"level": 0
+							},
+							{
+								"cell": [
+									17,
+									5
+								],
+								"level": 0
+							},
+							{
+								"cell": [
+									16,
+									5
+								],
+								"level": 0
+							},
+							{
+								"cell": [
+									18,
+									5
+								],
+								"level": 0
+							}
+						]
+					},
 					"position": [
-						14.2600002288818,
+						14.5,
 						0.529999971389771,
-						0.660000026226044
+						0.5
 					],
 					"role": "cover",
 					"rotation_y_degrees": 0.0,
@@ -2853,9 +2895,7 @@
 			],
 			"id": "node_01",
 			"label": "Entry Boundary",
-			"layout_step": {
-
-			},
+			"layout_step": {},
 			"link_ref": "",
 			"nested_archetypes": [],
 			"nested_depth": 0,
@@ -2905,7 +2945,7 @@
 			"approach_position": [
 				29.5,
 				0.449999988079071,
-				2.51999998092651
+				2.5
 			],
 			"approaches": [
 				{
@@ -2941,14 +2981,38 @@
 					"id": "capbage",
 					"label": "capbage",
 					"local_offset": [
-						-1.24000000953674,
+						-1.0,
 						0.699999988079071,
-						-0.839999973773956
+						-1.0
 					],
+					"navigation": {
+						"arrival_policy": "primary_then_nearest",
+						"binding_id": "capbage_concealment_v1",
+						"component_id": "entry_component:0:5:4",
+						"content_vertex": {
+							"cell": [
+								31,
+								4
+							],
+							"level": 0
+						},
+						"contract_id": "generated_content_navigation_v1",
+						"kind": "interactable",
+						"radius": 0.45,
+						"reachable_region": [
+							{
+								"cell": [
+									31,
+									4
+								],
+								"level": 0
+							}
+						]
+					},
 					"position": [
-						28.2600002288818,
+						28.5,
 						1.14999997615814,
-						0.660000026226044
+						0.5
 					],
 					"role": "cover",
 					"rotation_y_degrees": 11.0,
@@ -2966,14 +3030,72 @@
 					"id": "scarpet",
 					"label": "scarpet",
 					"local_offset": [
-						-0.959999978542328,
-						0.0799999982118607,
-						-0.839999973773956
+						-1.0,
+						0.0799999833106995,
+						0.0
 					],
+					"navigation": {
+						"binding_id": "scarpet_concealment_v1",
+						"component_id": "entry_component:0:5:4",
+						"content_vertex": {
+							"cell": [
+								31,
+								5
+							],
+							"level": 0
+						},
+						"contract_id": "generated_content_navigation_v1",
+						"kind": "occupiable",
+						"radius": 1.65,
+						"reachable_region": [
+							{
+								"cell": [
+									31,
+									5
+								],
+								"level": 0
+							},
+							{
+								"cell": [
+									31,
+									4
+								],
+								"level": 0
+							},
+							{
+								"cell": [
+									30,
+									5
+								],
+								"level": 0
+							},
+							{
+								"cell": [
+									32,
+									5
+								],
+								"level": 0
+							},
+							{
+								"cell": [
+									31,
+									6
+								],
+								"level": 0
+							},
+							{
+								"cell": [
+									32,
+									6
+								],
+								"level": 0
+							}
+						]
+					},
 					"position": [
-						28.5400009155273,
+						28.5,
 						0.529999971389771,
-						0.660000026226044
+						1.5
 					],
 					"role": "cover",
 					"rotation_y_degrees": 48.0,
@@ -3007,10 +3129,81 @@
 				3.0
 			],
 			"id": "node_02",
-			"label": "Shelter-rest management · Full Rest",
-			"layout_step": {
-
+			"interaction_approach": {
+				"acceptance_radius": 1.95,
+				"approach_vertex": {
+					"cell": [
+						32,
+						6
+					],
+					"level": 0
+				},
+				"component_anchor": {
+					"cell": [
+						5,
+						4
+					],
+					"level": 0
+				},
+				"component_id": "entry_component:0:5:4",
+				"contract_id": "generated_interaction_approach_v1",
+				"handler_id": "physical_lysate_pickup_v1",
+				"interaction_radius": 1.8,
+				"region_vertices": [
+					{
+						"cell": [
+							32,
+							6
+						],
+						"level": 0
+					},
+					{
+						"cell": [
+							32,
+							5
+						],
+						"level": 0
+					},
+					{
+						"cell": [
+							31,
+							6
+						],
+						"level": 0
+					},
+					{
+						"cell": [
+							33,
+							6
+						],
+						"level": 0
+					},
+					{
+						"cell": [
+							31,
+							5
+						],
+						"level": 0
+					},
+					{
+						"cell": [
+							33,
+							5
+						],
+						"level": 0
+					}
+				],
+				"required_from_node_id": "entry",
+				"required_from_vertex": {
+					"cell": [
+						5,
+						4
+					],
+					"level": 0
+				}
 			},
+			"label": "Shelter-rest management · Full Rest",
+			"layout_step": {},
 			"link_ref": "",
 			"nested_archetypes": [],
 			"nested_depth": 0,
@@ -3089,7 +3282,6 @@
 			"walk_transition": ""
 		},
 		{
-			"action_verb": "",
 			"ambient_flora": [
 				"seefern",
 				"seefern"
@@ -3131,14 +3323,93 @@
 					"id": "scarpet",
 					"label": "scarpet",
 					"local_offset": [
-						-1.24000000953674,
-						0.0799999982118607,
-						-0.280000001192093
+						-1.0,
+						0.0799999833106995,
+						0.0
 					],
+					"navigation": {
+						"binding_id": "scarpet_concealment_v1",
+						"component_id": "entry_component:0:5:4",
+						"content_vertex": {
+							"cell": [
+								45,
+								4
+							],
+							"level": 0
+						},
+						"contract_id": "generated_content_navigation_v1",
+						"kind": "occupiable",
+						"radius": 1.65,
+						"reachable_region": [
+							{
+								"cell": [
+									45,
+									4
+								],
+								"level": 0
+							},
+							{
+								"cell": [
+									45,
+									3
+								],
+								"level": 0
+							},
+							{
+								"cell": [
+									44,
+									4
+								],
+								"level": 0
+							},
+							{
+								"cell": [
+									46,
+									4
+								],
+								"level": 0
+							},
+							{
+								"cell": [
+									45,
+									5
+								],
+								"level": 0
+							},
+							{
+								"cell": [
+									44,
+									3
+								],
+								"level": 0
+							},
+							{
+								"cell": [
+									46,
+									3
+								],
+								"level": 0
+							},
+							{
+								"cell": [
+									44,
+									5
+								],
+								"level": 0
+							},
+							{
+								"cell": [
+									46,
+									5
+								],
+								"level": 0
+							}
+						]
+					},
 					"position": [
-						42.2599983215332,
+						42.5,
 						0.529999971389771,
-						0.219999998807907
+						0.5
 					],
 					"role": "cover",
 					"rotation_y_degrees": 0.0,
@@ -3171,9 +3442,7 @@
 			],
 			"id": "node_03",
 			"label": "Narrative beat · Recognition",
-			"layout_step": {
-
-			},
+			"layout_step": {},
 			"link_ref": "",
 			"nested_archetypes": [],
 			"nested_depth": 0,
@@ -3223,7 +3492,7 @@
 			"approach_position": [
 				57.5,
 				0.449999988079071,
-				2.51999998092651
+				2.5
 			],
 			"approaches": [
 				{
@@ -3259,14 +3528,38 @@
 					"id": "capbage",
 					"label": "capbage",
 					"local_offset": [
-						-1.24000000953674,
+						-1.0,
 						0.699999988079071,
-						-0.839999973773956
+						-1.0
 					],
+					"navigation": {
+						"arrival_policy": "primary_then_nearest",
+						"binding_id": "capbage_concealment_v1",
+						"component_id": "entry_component:0:5:4",
+						"content_vertex": {
+							"cell": [
+								59,
+								4
+							],
+							"level": 0
+						},
+						"contract_id": "generated_content_navigation_v1",
+						"kind": "interactable",
+						"radius": 0.45,
+						"reachable_region": [
+							{
+								"cell": [
+									59,
+									4
+								],
+								"level": 0
+							}
+						]
+					},
 					"position": [
-						56.2599983215332,
+						56.5,
 						1.14999997615814,
-						0.660000026226044
+						0.5
 					],
 					"role": "cover",
 					"rotation_y_degrees": 11.0,
@@ -3284,14 +3577,93 @@
 					"id": "scarpet",
 					"label": "scarpet",
 					"local_offset": [
-						-0.959999978542328,
-						0.0799999982118607,
-						-0.839999973773956
+						-1.0,
+						0.0799999833106995,
+						0.0
 					],
+					"navigation": {
+						"binding_id": "scarpet_concealment_v1",
+						"component_id": "entry_component:0:5:4",
+						"content_vertex": {
+							"cell": [
+								59,
+								5
+							],
+							"level": 0
+						},
+						"contract_id": "generated_content_navigation_v1",
+						"kind": "occupiable",
+						"radius": 1.65,
+						"reachable_region": [
+							{
+								"cell": [
+									59,
+									5
+								],
+								"level": 0
+							},
+							{
+								"cell": [
+									59,
+									4
+								],
+								"level": 0
+							},
+							{
+								"cell": [
+									58,
+									5
+								],
+								"level": 0
+							},
+							{
+								"cell": [
+									60,
+									5
+								],
+								"level": 0
+							},
+							{
+								"cell": [
+									59,
+									6
+								],
+								"level": 0
+							},
+							{
+								"cell": [
+									58,
+									4
+								],
+								"level": 0
+							},
+							{
+								"cell": [
+									60,
+									4
+								],
+								"level": 0
+							},
+							{
+								"cell": [
+									58,
+									6
+								],
+								"level": 0
+							},
+							{
+								"cell": [
+									60,
+									6
+								],
+								"level": 0
+							}
+						]
+					},
 					"position": [
-						56.5400009155273,
+						56.5,
 						0.529999971389771,
-						0.660000026226044
+						1.5
 					],
 					"role": "cover",
 					"rotation_y_degrees": 48.0,
@@ -3325,10 +3697,88 @@
 				3.0
 			],
 			"id": "node_04",
-			"label": "Shelter-rest management · Contested Rest",
-			"layout_step": {
-
+			"interaction_approach": {
+				"acceptance_radius": 1.95,
+				"approach_vertex": {
+					"cell": [
+						60,
+						6
+					],
+					"level": 0
+				},
+				"component_anchor": {
+					"cell": [
+						5,
+						4
+					],
+					"level": 0
+				},
+				"component_id": "entry_component:0:5:4",
+				"contract_id": "generated_interaction_approach_v1",
+				"handler_id": "authored_hydraulic_spillway_food_v1",
+				"interaction_radius": 1.8,
+				"region_vertices": [
+					{
+						"cell": [
+							60,
+							6
+						],
+						"level": 0
+					},
+					{
+						"cell": [
+							60,
+							5
+						],
+						"level": 0
+					},
+					{
+						"cell": [
+							59,
+							6
+						],
+						"level": 0
+					},
+					{
+						"cell": [
+							61,
+							6
+						],
+						"level": 0
+					},
+					{
+						"cell": [
+							59,
+							5
+						],
+						"level": 0
+					},
+					{
+						"cell": [
+							61,
+							5
+						],
+						"level": 0
+					},
+					{
+						"cell": [
+							61,
+							7
+						],
+						"level": 0
+					}
+				],
+				"required_from_node_id": "node_02",
+				"required_from_vertex": {
+					"cell": [
+						32,
+						6
+					],
+					"level": 0
+				}
 			},
+			"label": "Shelter-rest management · Contested Rest",
+			"layout_step": {},
 			"link_ref": "",
 			"nested_archetypes": [],
 			"nested_depth": 0,
@@ -3411,9 +3861,9 @@
 		{
 			"action_verb": "ENTER SHELTER",
 			"approach_position": [
-				72.0199966430664,
+				72.5,
 				0.449999988079071,
-				0.360000014305115
+				0.5
 			],
 			"approaches": [],
 			"archetype_id": "11",
@@ -3435,14 +3885,72 @@
 					"id": "hushbloom",
 					"label": "hushbloom",
 					"local_offset": [
-						-1.55999994277954,
+						-2.0,
 						0.550000011920929,
-						-0.839999973773956
+						-1.0
 					],
+					"navigation": {
+						"binding_id": "hushbloom_proximity_stun_v1",
+						"component_id": "entry_component:0:5:4",
+						"content_vertex": {
+							"cell": [
+								73,
+								4
+							],
+							"level": 0
+						},
+						"contract_id": "generated_content_navigation_v1",
+						"kind": "occupiable",
+						"radius": 1.5,
+						"reachable_region": [
+							{
+								"cell": [
+									73,
+									4
+								],
+								"level": 0
+							},
+							{
+								"cell": [
+									72,
+									4
+								],
+								"level": 0
+							},
+							{
+								"cell": [
+									74,
+									4
+								],
+								"level": 0
+							},
+							{
+								"cell": [
+									73,
+									5
+								],
+								"level": 0
+							},
+							{
+								"cell": [
+									72,
+									5
+								],
+								"level": 0
+							},
+							{
+								"cell": [
+									74,
+									5
+								],
+								"level": 0
+							}
+						]
+					},
 					"position": [
-						70.9400024414063,
+						70.5,
 						1.0,
-						0.660000026226044
+						0.5
 					],
 					"role": "resource",
 					"rotation_y_degrees": -11.0,
@@ -3475,10 +3983,81 @@
 				3.0
 			],
 			"id": "exit_shelter",
-			"label": "Shelter Arrival",
-			"layout_step": {
-
+			"interaction_approach": {
+				"acceptance_radius": 1.95,
+				"approach_vertex": {
+					"cell": [
+						75,
+						4
+					],
+					"level": 0
+				},
+				"component_anchor": {
+					"cell": [
+						5,
+						4
+					],
+					"level": 0
+				},
+				"component_id": "entry_component:0:5:4",
+				"contract_id": "generated_interaction_approach_v1",
+				"handler_id": "canonical_shelter_arrival_v1",
+				"interaction_radius": 1.8,
+				"region_vertices": [
+					{
+						"cell": [
+							75,
+							4
+						],
+						"level": 0
+					},
+					{
+						"cell": [
+							74,
+							4
+						],
+						"level": 0
+					},
+					{
+						"cell": [
+							76,
+							4
+						],
+						"level": 0
+					},
+					{
+						"cell": [
+							75,
+							5
+						],
+						"level": 0
+					},
+					{
+						"cell": [
+							74,
+							5
+						],
+						"level": 0
+					},
+					{
+						"cell": [
+							76,
+							5
+						],
+						"level": 0
+					}
+				],
+				"required_from_node_id": "node_02",
+				"required_from_vertex": {
+					"cell": [
+						32,
+						6
+					],
+					"level": 0
+				}
 			},
+			"label": "Shelter Arrival",
+			"layout_step": {},
 			"link_ref": "",
 			"nested_archetypes": [],
 			"nested_depth": 0,
@@ -3524,9 +4103,7 @@
 			"runtime_handler": "canonical_shelter_arrival_v1",
 			"runtime_progression_required": true,
 			"runtime_support": "implemented",
-			"shadow_solution": {
-
-			},
+			"shadow_solution": {},
 			"spatial_affordances": [],
 			"stage": 1,
 			"structures": [
@@ -4210,9 +4787,7 @@
 					4,
 					3
 				],
-				"spatial_affordance": {
-
-				},
+				"spatial_affordance": {},
 				"spatial_feature_kind": ""
 			},
 			{
@@ -4228,9 +4803,7 @@
 					3,
 					3
 				],
-				"spatial_affordance": {
-
-				},
+				"spatial_affordance": {},
 				"spatial_feature_kind": ""
 			},
 			{
@@ -4246,9 +4819,7 @@
 					3,
 					3
 				],
-				"spatial_affordance": {
-
-				},
+				"spatial_affordance": {},
 				"spatial_feature_kind": ""
 			},
 			{
@@ -4264,9 +4835,7 @@
 					3,
 					1
 				],
-				"spatial_affordance": {
-
-				},
+				"spatial_affordance": {},
 				"spatial_feature_kind": ""
 			},
 			{
@@ -4282,9 +4851,7 @@
 					3,
 					3
 				],
-				"spatial_affordance": {
-
-				},
+				"spatial_affordance": {},
 				"spatial_feature_kind": ""
 			},
 			{
@@ -4300,9 +4867,7 @@
 					4,
 					3
 				],
-				"spatial_affordance": {
-
-				},
+				"spatial_affordance": {},
 				"spatial_feature_kind": ""
 			}
 		],
@@ -4679,9 +5244,7 @@
 	],
 	"schema": "trawf_generated_stretch_spec_v1",
 	"settings": {
-		"area_theme": {
-
-		},
+		"area_theme": {},
 		"biome": "",
 		"budget": {
 			"archetype_depth": 2,
@@ -4731,9 +5294,7 @@
 				"step_count": 0,
 				"transition_chance": 0.35
 			},
-			"shadow_solution": {
-
-			}
+			"shadow_solution": {}
 		},
 		"id": "generated_teaching_channels_shelter_1_to_2",
 		"limitations": {
@@ -4811,9 +5372,7 @@
 			"region": "Channels",
 			"slot_id": "generated_teaching_channels_shelter_1_to_2"
 		},
-		"zone_transition": {
-
-		}
+		"zone_transition": {}
 	},
 	"source": {
 		"complexity_tier": "teaching",
@@ -4823,6 +5382,12 @@
 		"seed": 1701
 	},
 	"spatial_features": [],
+	"spec_integrity": {
+		"content_navigation_contract_id": "generated_content_navigation_v1",
+		"contract_id": "generated_spec_integrity_v1",
+		"party_spawn_clearance_contract_id": "generated_party_spawn_clearance_v1",
+		"spatial_socket_contract_id": "generated_spatial_feature_sockets_v1"
+	},
 	"spine_navigation_grid": {
 		"cell_size": 1.0,
 		"contract_id": "unified_grid_v1",
@@ -6650,6 +7215,7 @@
 					],
 					"consumer_cells_addressing": "exact_cut_set",
 					"consumer_derivation": "first_later_spine_disconnect_cut",
+					"consumer_navigation_level": 0,
 					"consumer_policy": "next_unresolved_spine_blocker",
 					"content_policy": "causal_producer",
 					"contract_id": "generated_branch_role_v1",
@@ -6658,6 +7224,7 @@
 						15,
 						11
 					],
+					"producer_navigation_level": 0,
 					"produces_state": "branch_00_resolved",
 					"role": "mandatory_producer",
 					"runtime_handler": "branch_span_producer",
@@ -6761,6 +7328,7 @@
 					"consumer_policy": "none",
 					"content_policy": "risk_scaled_physical_reward",
 					"contract_id": "generated_branch_role_v1",
+					"producer_navigation_level": 0,
 					"produces_state": "",
 					"role": "optional_risk_reward",
 					"spine_column": 39,
@@ -6854,6 +7422,7 @@
 					],
 					"consumer_cells_addressing": "exact_cut_set",
 					"consumer_derivation": "first_later_spine_disconnect_cut",
+					"consumer_navigation_level": 0,
 					"consumer_policy": "next_unresolved_spine_blocker",
 					"content_policy": "causal_producer",
 					"contract_id": "generated_branch_role_v1",
@@ -6862,6 +7431,7 @@
 						60,
 						11
 					],
+					"producer_navigation_level": 0,
 					"produces_state": "branch_02_resolved",
 					"role": "mandatory_producer",
 					"runtime_handler": "branch_span_producer",
@@ -6955,12 +7525,22 @@
 		"topology_routes": []
 	},
 	"validation": {
+		"actionable_interaction_approaches": {
+			"actionable_node_count": 3,
+			"component_id": "entry_component:0:5:4",
+			"errors": [],
+			"valid": true
+		},
 		"area_theme": {
 			"errors": [],
 			"landmark_count": 0,
 			"valid": true
 		},
 		"bare_pair_solvable": true,
+		"integrity": {
+			"errors": [],
+			"valid": true
+		},
 		"mode_independence": {
 			"errors": [],
 			"runtime_paths": [],
@@ -6969,6 +7549,17 @@
 		"multi_solution": false,
 		"multi_solution_ok": true,
 		"multi_solution_required": false,
+		"party_spawn_clearance": {
+			"errors": [],
+			"party_anchor_count": 3,
+			"realized_content_placement_count": 7,
+			"valid": true
+		},
+		"realized_content_navigation": {
+			"errors": [],
+			"realized_content_placement_count": 7,
+			"valid": true
+		},
 		"shadow_solvable": true,
 		"solution_warnings": [],
 		"spatial_features": {
@@ -7037,7 +7628,5 @@
 		"region": "Channels",
 		"slot_id": "generated_teaching_channels_shelter_1_to_2"
 	},
-	"zone_transition": {
-
-	}
+	"zone_transition": {}
 }

@@ -4,9 +4,8 @@ extends SceneTree
 ## and shoots an authored list of beauty framings (the story beats, the broken coil, the
 ## falls at full flood — forced via WashRelayDressing.drive_falls, which live play only
 ## shows mid-surge). Writes <name>.png + <name>.jpg to OUT_DIR (scratchpad — NEVER the
-## project tree). Run WITH a display, parked off-screen:
-##   OUT_DIR=<scratchpad> ../Godot_v4.7-stable_win64.exe --path "." --position 20000,20000 \
-##     --script res://tools/capture_wash_money.gd
+## project tree). Isolated-display launch only; see tools/README.md:
+##   OUT_DIR=<scratchpad> godot --path "." --script res://tools/capture_wash_money.gd
 func _init() -> void:
 	DisplayServer.window_set_size(Vector2i(1600, 900))
 	var out_dir := OS.get_environment("OUT_DIR")

@@ -908,7 +908,8 @@ func _enemy_report(enemy: Enemy) -> Dictionary:
 
 
 func _build_shelter() -> void:
-	_add_authored_shelter_region(self, Layout.SHELTER_POS, Layout.SHELTER_SIZE)
+	var shelter_pad := _add_authored_shelter_region(
+		self, Layout.SHELTER_POS, Layout.SHELTER_SIZE)
 	_add_box(self, Layout.SHELTER_POS + Vector3(0.0, 1.55, 4.15),
 		Vector3(10.6, 3.1, 0.34), Color(0.105, 0.083, 0.057))
 	_add_box(self, Layout.SHELTER_POS + Vector3(5.15, 1.55, 0.0),
@@ -919,6 +920,9 @@ func _build_shelter() -> void:
 		self, "OpenFilesShelterRest", "Rest with the party", Layout.SHELTER_POS,
 		"REST PARTY", "", 1.2, true, 2.6, Interactable.InteractableType.HOLD_ACTION
 	)
+	_shelter_interactable.set_meta(
+		"interaction_activation_contract", "proximity_rest")
+	_shelter_interactable.set_meta("authored_shelter_pad", shelter_pad)
 	_shelter_interactable.set("consequence_preview",
 		"Settle here with Aster, Peris, and Endo after reading the cleaned support record")
 	_shelter_interactable.set_pre_trigger_validator(_validate_shelter_trigger)

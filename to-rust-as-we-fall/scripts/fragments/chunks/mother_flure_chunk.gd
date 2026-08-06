@@ -125,9 +125,9 @@ const BODY_NAMES := {
 }
 
 const SPAWNS := {
-	"aster": Vector3(8.0, 0.5, 0.0),
-	"peris": Vector3(5.8, 0.5, 1.8),
-	"endo": Vector3(3.6, 0.5, -1.8),
+	"aster": Vector3(8.0, 0.0, 0.0),
+	"peris": Vector3(5.8, 0.0, 1.8),
+	"endo": Vector3(3.6, 0.0, -1.8),
 }
 
 const TERMINAL_ORDER := ["term_alpha", "term_beta", "term_gamma"]
@@ -1532,7 +1532,7 @@ func _complete_exit_handoff_from_source_receipt() -> bool:
 	_set_preview_step("mother_complete")
 	_clear_dialogue()
 	_say("Mother's stable. The Rings route is ours.", "ASTER")
-	_show_note("Mother Flure complete — the party can continue toward the Residential Rings.", 3.4)
+	_show_note("Mother Flure complete — the party can continue toward the Greenfields Collective.", 3.4)
 	_update_extension_interactable_states()
 	_update_extension_visuals()
 	_update_overlay_label_states()
@@ -2111,7 +2111,7 @@ func _build_exit_handoff() -> void:
 	_rings_gate_collision_shape = gate_blocker.get("shape")
 	_exit_label = _add_label(self, "RINGS HANDOFF  ·  SEALED", EXIT_POS + Vector3(0.0, 3.35, 0.0), Color(0.46, 0.5, 0.42))
 	_exit_interactable = _add_object_interactable(
-		self, "MotherExitInteractable", "Gather the conscious party for the Residential Rings", EXIT_POS,
+		self, "MotherExitInteractable", "Gather the conscious party for the Greenfields Collective", EXIT_POS,
 		"REGROUP", [pad, left_pylon, right_pylon, lintel, _rings_membrane_mesh], "", EXIT_HANDOFF_SECONDS,
 		true, EXIT_INTERACTION_RADIUS, Interactable.InteractableType.TIMED_ACTION
 	)
@@ -2174,6 +2174,11 @@ func _build_collapse_offshoot() -> void:
 	)
 	_collapse_blocker_body = collapse_blocker.get("body")
 	_collapse_collision_shape = collapse_blocker.get("shape")
+	# The rubble body remains movement-authoritative, but the visible debris/interactable owns
+	# object picking. Letting this enclosing physics volume answer input rays makes the truthful
+	# SHIFT affordance unreachable even though Endo can see it.
+	if is_instance_valid(_collapse_blocker_body):
+		_collapse_blocker_body.input_ray_pickable = false
 	_collapse_interactable = _add_inspection_interactable(
 		self,
 		"MotherCollapseInteractable",

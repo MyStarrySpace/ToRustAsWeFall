@@ -1,4 +1,4 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene load_steps=7 format=3]
 
 [ext_resource type="PackedScene" path="res://scenes/ui/input_glyph.tscn" id="1_glyph"]
 
@@ -29,6 +29,22 @@ border_width_top = 1
 border_width_right = 1
 border_width_bottom = 1
 border_color = Color(0.17, 0.21, 0.25, 0.54)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_status"]
+content_margin_left = 10.0
+content_margin_top = 7.0
+content_margin_right = 10.0
+content_margin_bottom = 7.0
+bg_color = Color(0.025, 0.028, 0.036, 0.9)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.48, 0.42, 0.24, 0.7)
 corner_radius_top_left = 4
 corner_radius_top_right = 4
 corner_radius_bottom_right = 4
@@ -92,11 +108,28 @@ layout_mode = 2
 theme_override_constants/h_separation = 4
 theme_override_constants/v_separation = 4
 
-[node name="NoteLabel" type="Label" parent="InstructionsMargin/Panel/Content"]
+[node name="StatusMargin" type="MarginContainer" parent="."]
+anchors_preset = 10
+anchor_right = 1.0
+offset_left = 12.0
+offset_top = 210.0
+offset_right = -376.0
+offset_bottom = 260.0
+grow_horizontal = 2
+mouse_filter = 2
+
+[node name="Panel" type="PanelContainer" parent="StatusMargin"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.82, 0.76, 0.62, 1)
-theme_override_font_sizes/font_size = 11
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_status")
+
+[node name="NoteLabel" type="Label" parent="StatusMargin/Panel"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.9, 0.82, 0.58, 1)
+theme_override_font_sizes/font_size = 12
 autowrap_mode = 2
+vertical_alignment = 1
 
 [node name="InventoryMargin" type="MarginContainer" parent="."]
 anchors_preset = 2

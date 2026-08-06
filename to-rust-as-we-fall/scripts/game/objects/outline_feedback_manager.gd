@@ -343,12 +343,34 @@ func outline_meshes(
 		opts: Dictionary = {},
 		padding: float = 0.12
 	) -> Node3D:
-	var bounds := combined_world_bounds(meshes)
+	var bounds := combined_bounds_in_space(meshes, parent)
 	if bounds.size == Vector3.ZERO:
 		return null
 	var center := bounds.position + bounds.size * 0.5
 	var size := bounds.size + Vector3.ONE * (padding * 2.0)
 	return create_outline_target(parent, target_name, center, size, meshes, element_id, radius, opts)
+
+## AABB enclosing `meshes` in `space`'s LOCAL coordinates.  outline_meshes creates
+## its target as a child of `space`, so both center and size must be expressed in
+## this coordinate system (world-space sizes are also wrong under rotation/scale).
+static func combined_bounds_in_space(meshes: Array, space: Node3D) -> AABB:
+	var bounds := AABB()
+	var started := false
+	var world_to_space := space.global_transform.affine_inverse()
+	for mesh in meshes:
+		if not (mesh is MeshInstance3D):
+			continue
+		var mi := mesh as MeshInstance3D
+		if mi.mesh == null:
+			continue
+		var mesh_to_space := world_to_space * mi.global_transform
+		var local_bounds: AABB = mesh_to_space * mi.mesh.get_aabb()
+		if not started:
+			bounds = local_bounds
+			started = true
+		else:
+			bounds = bounds.merge(local_bounds)
+	return bounds
 
 ## World-space AABB enclosing every MeshInstance3D in `meshes` (empty if none).
 static func combined_world_bounds(meshes: Array) -> AABB:

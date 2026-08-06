@@ -2,7 +2,8 @@ extends SceneTree
 
 ## Dev capture: boot Pump Hall in the real preview and screenshot it top-down so the whole level reads:
 ## yard + crates + scarpet, the aisle walk, the gallery door, the pump room + orbit + shelter.
-## Run WITH a display: ../Godot_v4.7-stable_win64.exe --path "." --script res://tools/capture_pump_hall.gd
+## Isolated-display launch only; see tools/README.md:
+##   godot --path "." --script res://tools/capture_pump_hall.gd
 
 func _init() -> void:
 	DisplayServer.window_set_size(Vector2i(1280, 800))

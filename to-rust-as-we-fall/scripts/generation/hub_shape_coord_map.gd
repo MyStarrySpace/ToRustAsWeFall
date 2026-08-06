@@ -318,13 +318,21 @@ func to_world(p: Vector3) -> Vector3:
 	return arc_pos(s, p.z - lane_center) + Vector3.UP * (p.y - y0)
 
 func to_data(w: Vector3) -> Vector3:
+	return to_data_on_surface(w, y0)
+
+
+## Exact inverse for a point on a known data-space floor. Upper floors are a
+## vertical lift of the base/perimeter mapping; remove that lift before either
+## base detection or the height-selected perimeter inverse runs.
+func to_data_on_surface(w: Vector3, data_y: float) -> Vector3:
+	var base_world := w - Vector3.UP * (data_y - y0)
 	# Base if the world point sits on the flat base rectangle (near y0, backward off the entry rim); else perimeter.
 	if base_span > 0.0:
-		var b := _base_data(w)
-		if float(b["s"]) < 0.0 and float(b["s"]) > -base_span - 1.0 and absf(float(b["lane"])) < base_half_lane + 1.0 and absf(w.y - y0) < 1.5:
-			return Vector3(float(b["s"]) + s_offset, y0, float(b["lane"]) + lane_center)
-	var r := world_to_arc(w)
-	return Vector3(float(r["s"]) + s_offset, y0, float(r["lane"]) + lane_center)
+		var b := _base_data(base_world)
+		if float(b["s"]) < 0.0 and float(b["s"]) > -base_span - 1.0 and absf(float(b["lane"])) < base_half_lane + 1.0 and absf(base_world.y - y0) < 1.5:
+			return Vector3(float(b["s"]) + s_offset, data_y, float(b["lane"]) + lane_center)
+	var r := world_to_arc(base_world)
+	return Vector3(float(r["s"]) + s_offset, data_y, float(r["lane"]) + lane_center)
 
 func to_basis(p: Vector3) -> Basis:
 	var s := p.x - s_offset

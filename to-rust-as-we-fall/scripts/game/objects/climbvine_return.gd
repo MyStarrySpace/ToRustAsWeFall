@@ -778,6 +778,8 @@ func _ensure_runtime() -> void:
 
 	_lower_interactable = _make_interactable(
 		"LowerClimbMouth", "CLIMB", "Climb back to the tended upper deck", false)
+	_lower_interactable.set_meta(
+		"outline_visibility_contract", "dormant_until_enabled")
 	_lower_interactable.interactable_type = Interactable.InteractableType.INSPECTION
 	_lower_interactable.one_shot = false
 	_lower_interactable.interacted.connect(_on_lower_interacted)

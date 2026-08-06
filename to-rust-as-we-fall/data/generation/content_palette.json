@@ -14,7 +14,7 @@
   },
   "enemies": {
     "sapscraps": {"display_name": "Sapscraps", "support": "implemented", "tags": ["siderophore", "swarm", "iron"]},
-    "aembers": {"display_name": "Aembers", "support": "placeholder", "tags": ["siderophore", "breach", "fluorescent"]},
+    "ferrules": {"display_name": "Ferrules", "support": "placeholder", "tags": ["siderophore", "breach", "fluorescent"]},
     "hidras": {"display_name": "Hidras", "support": "placeholder", "tags": ["siderophore", "infrastructure", "mimic"]},
     "crusts": {"display_name": "Crusts", "support": "placeholder", "tags": ["siderophore", "surface", "biofilm"]},
     "candids": {"display_name": "Candids", "support": "placeholder", "tags": ["biofilm", "environment", "slow"]},
@@ -22,7 +22,7 @@
     "naturalizers": {"display_name": "Naturalizers", "support": "implemented", "tags": ["patrol", "enforcement", "tag_scan"]},
     "gnawers": {"display_name": "Gnawers", "support": "placeholder", "tags": ["metabolic", "hunter"]},
     "flares": {"display_name": "Flares", "support": "placeholder", "tags": ["burst", "aoe", "neutral_until_triggered"]},
-    "spikers": {"display_name": "Spikers", "support": "placeholder", "tags": ["line_of_sight", "sniper"]},
+    "spikers": {"display_name": "Spikers", "support": "placeholder", "tags": ["line_of_sight", "delayed_connection", "cover_counter"]},
     "tanglers": {"display_name": "Tanglers", "support": "placeholder", "tags": ["stealth", "grapple", "tau"]},
     "toxos": {"display_name": "Toxos", "support": "placeholder", "tags": ["setpiece", "parasite"]},
     "redactors": {"display_name": "Redactors", "support": "placeholder", "tags": ["late_game", "invisible", "enforcer"]}
@@ -41,6 +41,8 @@
     "forage_cache": {"display_name": "Forage Cache", "support": "implemented", "tags": ["resource", "food", "endo"]},
     "hide_slot": {"display_name": "Hide Slot", "support": "implemented", "tags": ["hide", "refuge", "survival"]},
     "water_control": {"display_name": "Water Control", "support": "implemented", "tags": ["channels", "flow", "wash"]},
+    "moving_platform": {"display_name": "Moving Platform", "support": "implemented", "tags": ["traversal", "timing", "passenger_carry", "piston", "rotation"], "runtime": "res://scripts/game/objects/moving_platform_3d.gd"},
+    "rising_water_crossing": {"display_name": "Rising Water Crossing", "support": "implemented", "tags": ["water", "topology", "timing", "floating_platforms"], "runtime_contract": "rising_water_crossing/v1", "generator": "res://scripts/generation/rising_water_crossing_generator.gd"},
     "class_gate": {"display_name": "Class Gate", "support": "implemented", "tags": ["authority", "gate", "terminal"]},
     "carry_gear": {"display_name": "Carry Gear", "support": "implemented", "tags": ["carry", "gear", "endo"]}
   }

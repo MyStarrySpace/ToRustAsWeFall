@@ -13,6 +13,9 @@ extends RefCounted
 ## Multi-level grids print one labelled block per level (stacked floors), rows are +Z downward.
 
 const GridWorldScript := preload("res://scripts/game/world/grid_world.gd")
+const StretchGeneratorScript := preload(
+	"res://scripts/generation/stretch_generator.gd"
+)
 
 const CH_VOID := " "
 const CH_FLOOR := "."
@@ -237,14 +240,19 @@ static func spec_from_ascii(ascii: String, title := "Authored Level", id := "aut
 	}
 	for n in nodes:
 		anchors[str(n.id)] = n.position
-	return {
+	var authored_draft := {
 		"success": true, "ok": true, "schema": "authored_ascii_v1", "id": id, "title": title, "biome": "",
 		"navigation_grid": grid_data, "nodes": nodes, "routes": [], "anchors": anchors, "graybox": graybox,
 		"roompieces": {}, "composition": {"chain": [], "nested": [], "teaching_chain": []},
 		"headless": {"golden_path": golden, "solution_summary": {"bare_pair_solvable": true}},
-		"source": {"generator": "ascii_authored_v1"}, "palette_usage": {"flora": [], "enemies": [], "structures": []},
+		"source": {
+			"generator": "ascii_authored_v1",
+			"spatial_projection": "authored_flat_v1",
+		},
+		"palette_usage": {"flora": [], "enemies": [], "structures": []},
 		"world_slot": {}, "budget": {},
 	}
+	return StretchGeneratorScript.finalize_authored_fixed_spec(authored_draft)
 
 static func _has_node(node_cells: Array, id: String) -> bool:
 	for nc in node_cells:

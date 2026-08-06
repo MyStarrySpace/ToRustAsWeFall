@@ -570,6 +570,10 @@ func _recenter_party_camera() -> void:
 func _begin() -> void:
 	if _hud:
 		_hud.bind_game_state(_game_state, "aster", false)
+	# The base sequence creates PartyItemController after this subclass registers
+	# characters, but before _begin. Restore or spawn the cache only now so its
+	# authoritative item id can never be published empty at startup.
+	_restore_cache_authority()
 	_set_game_time(_game_day, _game_time, false)
 	_start_fade_in()
 
@@ -661,7 +665,11 @@ func _build_route_gameplay() -> void:
 	_cache_interactable.set("interactable_type", Interactable.InteractableType.TIMED_ACTION)
 	_configure_leaving_source(_cache_interactable, LEAVING_SOURCE_CACHE)
 	_cache_mesh = _add_route_station_mesh(_cache_interactable, Color(0.67, 0.55, 0.25), "CACHE")
-	_retract_cache_to_source(true, false)
+	# _register_characters runs before TutorialSequence creates the shared item
+	# controller. Keep the cache retracted during construction; _begin restores or
+	# spawns its authoritative item after that controller is live.
+	_set_leaving_source_enabled(_cache_interactable, false)
+	_cache_mesh.visible = false
 
 	_lookout_interactable = _create_interactable(
 		environment, LOOKOUT_POS, "IronLookoutSurvey", 2.0, 3.0, "SURVEY LATTICE",

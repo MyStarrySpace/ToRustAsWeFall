@@ -2,6 +2,7 @@ extends Node
 
 ## Neutral-light capture of an authored Act 1 space after the shared decoration pass.
 ##
+## Isolated-display launch only; see tools/README.md.
 ## ACT1_CHUNK=lockout [FOCUS_X=740] [OUT_DIR=<scratch>] Godot --path . \
 ##   res://tools/capture_act1_decoration.tscn
 ##

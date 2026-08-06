@@ -1,8 +1,9 @@
 extends SceneTree
 
 ## Dev capture: build an object + OutlineSurfaceTarget, highlight it, and screenshot so the
-## outline shader + surface particles can be eyeballed. Run WITH a display (not --headless):
-##   ../Godot_v4.6.1-stable_win64_console.exe --path "." --script res://tools/capture_highlight.gd
+## outline shader + surface particles can be eyeballed. Isolated-display launch only
+## (not --headless); see tools/README.md:
+##   godot --path "." --script res://tools/capture_highlight.gd
 
 const OutlineTarget := preload("res://scripts/game/objects/outline_surface_target.gd")
 

@@ -319,13 +319,29 @@ func _activate_chunk_grid(chunk_name: String) -> void:
 
 ## Scene chunks can author carved cells and dynamic obstacles rather than Act 1's open rectangles.
 ## Adopt that exact grid so the campaign version routes identically to the fragment preview/tests.
-func _activate_hosted_chunk_grid(chunk: Node) -> void:
+func _activate_hosted_chunk_grid(chunk: Node) -> bool:
 	if chunk == null or _game_state == null or not chunk.has_method("get_grid_data"):
-		return
+		push_error("Act 1 hosted-grid handoff requires a live chunk, GameState, and get_grid_data().")
+		return false
 	var grid_data: Variant = chunk.call("get_grid_data")
 	if not (grid_data is Dictionary) or (grid_data as Dictionary).is_empty():
-		return
-	_grid = GridWorld.from_data(grid_data as Dictionary)
+		push_error("Act 1 refused an empty hosted grid from %s; the previous grid remains active." % chunk.name)
+		return false
+	var data := grid_data as Dictionary
+	if int(data.get("width", 0)) <= 0 or int(data.get("height", 0)) <= 0 \
+			or (not bool(data.get("default_walkable", false)) \
+				and (data.get("walkable_regions", []) as Array).is_empty() \
+				and (data.get("walkable_cells", []) as Array).is_empty()):
+		push_error("Act 1 refused a hosted grid with no navigable footprint from %s." % chunk.name)
+		return false
+	var candidate := GridWorld.from_data(data)
+	if candidate.width <= 0 or candidate.height <= 0:
+		push_error("Act 1 could not construct the hosted grid from %s." % chunk.name)
+		return false
+	# Commit only after the replacement has been validated. A malformed incoming
+	# chunk can no longer strand the campaign on a stale origin after the outgoing
+	# district has already been unloaded.
+	_grid = candidate
 	_game_state.grid = _grid
 	if chunk.has_method("on_game_state_grid_ready"):
 		chunk.call("on_game_state_grid_ready")
@@ -334,6 +350,7 @@ func _activate_hosted_chunk_grid(chunk: Node) -> void:
 			node.grid_world = _grid
 	for id in _game_state.characters.keys():
 		_game_state.characters[id]["grid_cell"] = _grid.world_to_grid(_game_state.get_position(id))
+	return true
 
 # --- Chunk dispatch ---
 
@@ -5283,10 +5300,13 @@ func _start_lockout_approach() -> void:
 	_lockout_rejection_presented = false
 	_lockout_dispatch_presented = false
 	_lockout_chase_chunk = _load_chunk("lockout_chase_campaign")
+	if not _activate_hosted_chunk_grid(_lockout_chase_chunk):
+		_lockout_chase_active = false
+		push_error("Lockout handoff aborted before unloading the current Act 1 district.")
+		return
 	_unload_chunk("rings")
 	_unload_chunk("stacks")
 	_unload_chunk("channels")
-	_activate_hosted_chunk_grid(_lockout_chase_chunk)
 	if _lockout_chase_chunk != null:
 		if _lockout_chase_chunk.has_method("set_pursuit_start_deferred"):
 			_lockout_chase_chunk.call("set_pursuit_start_deferred", true)
@@ -5483,9 +5503,12 @@ func _start_endo_junction_stretch_enter() -> void:
 		return
 	_endo_junction_active = true
 	_endo_junction_chunk = _load_chunk("endo_junction_stretch")
+	if not _activate_hosted_chunk_grid(_endo_junction_chunk):
+		_endo_junction_active = false
+		push_error("Endo stretch handoff aborted before unloading Channels.")
+		return
 	_unload_chunk("channels")
 	_clear_channels_runtime_state()
-	_activate_hosted_chunk_grid(_endo_junction_chunk)
 
 	var spawns := {}
 	if _endo_junction_chunk != null and _endo_junction_chunk.has_method("get_spawn_positions"):
@@ -6711,9 +6734,22 @@ func headless_set_character_position(char_id: String, pos: Vector3) -> void:
 	if node == null:
 		return
 	if _game_state and _game_state.characters.has(char_id):
+		if _game_state.is_external_traversal_active(char_id):
+			_game_state.cancel_external_traversal(char_id, &"fixture_placement")
 		_game_state.command_stop(char_id)
-		_game_state.characters[char_id].position = pos
-	node.global_position = pos
+		if _game_state.grid != null:
+			var target_level := int(_game_state.grid.level_for_y(pos.y)) \
+				if int(_game_state.grid.level_count) > 1 \
+				else int(_game_state.get_character_level(char_id))
+			# Re-applying the level is intentional: it projects stale spawn height
+			# onto the actual graph floor before XZ is snapped.
+			_game_state.set_character_level(char_id, target_level)
+			pos.y = _game_state.grid.grid_to_world(
+				_game_state.grid.world_to_grid(pos), target_level).y
+		_game_state.snap_character_to(char_id, pos, false)
+		node.global_position = _game_state.get_render_position(char_id)
+	else:
+		node.global_position = pos
 
 # Shared front-half of every prepare_*_fragment entry point: wipe the transient UI/scheduler
 # state and swap the named chunk in (load it, unload the others, activate its grid). Every
@@ -7187,7 +7223,7 @@ func _build_stacks_chunk(parent: Node3D) -> void:
 	parent.add_child(workspace)
 	_stacks_workspace_interactable = workspace
 
-	# The Stacks' required story payoff is a shelter rest, not another archive station.
+	# The Open Files Initiative's required story payoff is a shelter rest, not another archive station.
 	# These primitives are the district's existing blockout language; the shelter fixture itself
 	# remains replaceable without changing the data-layer shelter region or interaction callback.
 	_add_corridor_section(

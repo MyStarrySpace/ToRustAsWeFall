@@ -36,6 +36,7 @@ extends "res://scripts/scene_chunks/scene_chunk.gd"
 ## (modeled arcs, one per unit of s, one shared appearance), never tiled sheets.
 
 const PROPS_SCENE := preload("res://scenes/fragments/chunks/wash_ascent_props.tscn")
+const PARTY_RESOURCE_GRANT := preload("res://scripts/game/objects/party_resource_grant.gd")
 
 const DECK_W := 173.0
 const DECK_D := 8.0
@@ -109,7 +110,7 @@ const WASH_SECTIONS := [
 	{"s0": 140.0, "s1": 148.0, "period": 10.0, "dur": 9.2, "phase": 2.4, "keyed": true},
 ]
 const WASH_GRACE := 1.0            # quiet second after reset before the ladder starts
-const TELEGRAPH_LEAD := 1.2        # channel brightens this long before the water arrives
+const TELEGRAPH_LEAD := 2.0        # enough time to identify the metal bed before the water arrives
 const WASH_Z_CENTER := 3.6         # THE GATE: the surge floods the FULL walkway width
 const WASH_Z_HALF := 4.4           # (z -0.8 .. 8.0) — sections cross only on the dry beat;
 const DANGER_Z := 2.0              # legacy band const kept for anchors/notes
@@ -125,6 +126,7 @@ var _unresolved: Array = []
 var _wall_cells: Array = []
 var _channel_segments: Array = []   # [{node, s, mats: [StandardMaterial3D]}]
 var _section_water: Array = []      # [{node, s0, kind}] — helical water bands
+var _wash_display_states: Dictionary = {} # section -> idle/telegraph/flood/cleared/held
 var _channel_span := Vector2.ZERO   # flat s range the trough actually covers
 var _channel_base_energy: Dictionary = {}
 var _flures: Array = []
@@ -132,6 +134,7 @@ var _checkpoint_vines: Array = []   # [{drop, up, down}] per checkpoint
 var _ropes_dropped: Array = [false, false, false, false]
 var _hide_spots_cache: Array = []
 var _intro_done := false
+var _intro_arm_pending := false
 
 var _channels: Array = []           # the composed Channel kit objects, one per section
 var _fauna: Dictionary = {}         # char_id -> Enemy (canonical Sapscraps; placeholder bodies)
@@ -210,11 +213,39 @@ class AscentCoordMap:
 ## camera below that pitch so the view never looks through the turn above.
 func get_preview_camera_profile() -> Dictionary:
 	return {
-		"follow_offset": Vector3(0.0, 6.0, 7.0),
+		"follow_offset": Vector3(0.0, 7.2, 8.2),
 		"min_zoom": 0.8,
-		"max_zoom": 1.25,
+		"max_zoom": 1.2,
 		"initial_zoom": 1.0,
 		"reset_yaw": true,
+	}
+
+## A point-average around the helix falls inside the solid drum. During the authored
+## fall, keep the camera on its rail; afterward, center on the median-progress party
+## member so the target is guaranteed to remain on the playable coil.
+func get_preview_camera_recenter_target() -> Dictionary:
+	if _phase == "overlook":
+		return {
+			"allowed": false,
+			"message": "Camera follows the fall — center again after landing.",
+		}
+	var gs = _get_game_state()
+	if gs == null:
+		return {}
+	var party_progress: Array = []
+	for id in PARTY_IDS:
+		if not gs.characters.has(id):
+			continue
+		party_progress.append({"id": id, "s": gs.get_position(id).x})
+	if party_progress.is_empty():
+		return {}
+	party_progress.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return float(a["s"]) < float(b["s"]))
+	var median_id := str(party_progress[party_progress.size() / 2]["id"])
+	return {
+		"allowed": true,
+		"target": gs.get_render_position(median_id),
+		"message": "Camera centered on the party route",
 	}
 
 # --- Realizing the props scene ---
@@ -845,6 +876,7 @@ func _register_water_band(band: Node3D, s0: float, kind: String) -> void:
 func _set_wash_state(section: int, state: String) -> void:
 	if section < 0 or section >= WASH_SECTIONS.size():
 		return
+	_wash_display_states[section] = state
 	var s0 := float(WASH_SECTIONS[section]["s0"])
 	var s1 := float(WASH_SECTIONS[section]["s1"])
 	var band := 1.0
@@ -852,11 +884,16 @@ func _set_wash_state(section: int, state: String) -> void:
 	var trough_on := false
 	var deck_on := false
 	var trough_lift := 0.0
+	var deck_lift := -0.06
 	match state:
 		"telegraph":
-			band = 2.4; flow = 2.0; trough_on = true; trough_lift = 0.14
+			band = 3.6; flow = 2.8; trough_on = true; deck_on = true
+			trough_lift = 0.18; deck_lift = -0.025
 		"flood":
-			band = 4.5; flow = 3.2; trough_on = true; deck_on = true; trough_lift = 0.24
+			band = 5.5; flow = 4.0; trough_on = true; deck_on = true
+			trough_lift = 0.24; deck_lift = 0.20
+		"cleared":
+			band = 0.7; flow = 0.35; trough_on = true; trough_lift = -0.02
 		"held":
 			band = 0.5; flow = 0.25
 	for seg in _channel_segments:
@@ -886,20 +923,24 @@ func _set_wash_state(section: int, state: String) -> void:
 		else:
 			# cosmetic rise/sink (node-bound tweens, wall-clock by design —
 			# the kill predicate is the Channel's; this is only the look)
-			var target := _water_band_transform(float(entry["s0"]), 0.20)
+			var target := _water_band_transform(float(entry["s0"]), deck_lift)
 			if deck_on and not w.visible:
 				w.visible = true
-				w.transform = _water_band_transform(float(entry["s0"]), -0.06)
+				w.transform = _water_band_transform(float(entry["s0"]), -0.10)
 				var rise := w.create_tween()
-				rise.tween_property(w, "transform", target, 0.35) \
+				rise.tween_property(w, "transform", target, 0.28) \
 					.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 			elif deck_on:
-				w.transform = target
+				var swell := w.create_tween()
+				swell.tween_property(w, "transform", target, 0.22) \
+					.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 			elif w.visible:
 				var sink := w.create_tween()
 				sink.tween_property(w, "transform",
 					_water_band_transform(float(entry["s0"]), -0.06), 0.3)
-				sink.tween_callback(func(): w.visible = false)
+				sink.tween_callback(func():
+					if str(_wash_display_states.get(section, "")) == state:
+						w.visible = false)
 
 ## One display truth: repaint every section from the kit's ACTUAL state. The
 ## bands are signal-driven, and two seams bypass signals — Channel.reset()
@@ -1140,6 +1181,9 @@ func _arm_channels() -> void:
 		_set_wash_state(i, "idle")
 
 func _arm_overlook_intro() -> void:
+	_intro_arm_pending = false
+	if _intro_done or not is_inside_tree():
+		return
 	_phase = "overlook"
 	_swept_count = 0
 	var gs = _get_game_state()
@@ -1148,10 +1192,10 @@ func _arm_overlook_intro() -> void:
 	# the coil SURGES below the overlook — the spectacle IS the read; the
 	# catch can't touch the riders (their drop is a locked traversal)
 	_arm_channels()
-	# the party STANDS on the center span for the overlook: a locked carry
-	# holds their RENDER over the core (the flat frame cannot address the
-	# axis) while their data waits at the spawn — the collapse then cancels
-	# this carry straight into the fall, no frame of snap-back
+	# The party STANDS on the center span for the overlook: a locked carry
+	# holds their RENDER over the core while their authoritative positions stay
+	# on legal graph nodes at the base. The collapse replaces this carry with
+	# the visible fall in the same tick, with no hidden snap or off-grid body.
 	if gs != null:
 		var order := 0
 		for id in PARTY_IDS:
@@ -1184,10 +1228,14 @@ func _intro_span_slot(order: int) -> Vector3:
 		+ Vector3(0, INTRO_SPAN_Y + 0.1, 0)
 
 func _bridge_spawn_positions() -> Dictionary:
+	var anchor := Vector3(1.2, DECK_TOP, 3.0)
+	var marker := _props_root.find_child("SpawnPlayer", true, false) if _props_root else null
+	if marker is Node3D:
+		anchor = (marker as Node3D).global_position
 	return {
-		"aster": Vector3(176.6, DECK_TOP, 2.2),
-		"peris": Vector3(177.4, DECK_TOP, 1.8),
-		"endo": Vector3(177.8, DECK_TOP, 2.8),
+		"aster": anchor,
+		"peris": anchor + Vector3(-0.4, 0.0, -0.8),
+		"endo": anchor + Vector3(0.4, 0.0, 1.2),
 	}
 
 ## The collapse: cosmetic tumble on the span pieces (node-bound tweens), and
@@ -1201,11 +1249,7 @@ func _collapse_bridge() -> void:
 	var gs = _get_game_state()
 	var map = get_coord_map()
 	if gs != null:
-		var landings := {
-			"aster": Vector3(1.2, DECK_TOP, 3.0),
-			"peris": Vector3(0.8, DECK_TOP, 2.2),
-			"endo": Vector3(0.9, DECK_TOP, 3.8),
-		}
+		var landings := _bridge_spawn_positions()
 		var order := 0
 		for id in PARTY_IDS:
 			if not gs.characters.has(id):
@@ -1215,19 +1259,20 @@ func _collapse_bridge() -> void:
 			gs.cancel_external_traversal(id, &"span_collapse")
 			var from: Vector3 = gs.get_position(id)
 			var landing: Vector3 = landings.get(id, Vector3(1.2, DECK_TOP, 3.0))
-			# The DATA carry is a straight sweep to the stretch start; what the
+			# The DATA carry remains entirely on the legal start component; what the
 			# player SEES is the canonical fall (director): the span tips the
 			# party INWARD past the crown rim, straight down the drum's open
 			# CORE — through the header water — to the circular sump basin at
 			# the bottom, then out with the outflow to the first shelter's
 			# ground. Data and render paths diverge by design; the traversal
 			# API owns both.
-			# the traversal API pairs data/render waypoints 1:1, so the straight
-			# data sweep is sampled at the same seven stations as the visual fall
-			var knee := Vector3(2.6, DECK_TOP, -0.4)
+			# The traversal API pairs data/render waypoints 1:1. Keep every data
+			# station between the graph-backed start and landing rather than
+			# inventing a cinematic coordinate beyond the authored floor.
 			var data_path: Array = [from,
-				from.lerp(knee, 0.25), from.lerp(knee, 0.45), from.lerp(knee, 0.7),
-				from.lerp(knee, 0.92), knee, landing]
+				from.lerp(landing, 0.18), from.lerp(landing, 0.36),
+				from.lerp(landing, 0.54), from.lerp(landing, 0.72),
+				from.lerp(landing, 0.9), landing]
 			# the span crosses the CENTER, so the fall is dead-vertical: each
 			# member drops from their span stance straight down the core
 			var slot := _intro_span_slot(order)
@@ -1305,7 +1350,12 @@ func get_peris_flora_marks() -> Array:
 ## invokes that after build and on every reload, so play and headless match.
 func reset_preview_state() -> void:
 	if not _intro_done:
-		_arm_overlook_intro()
+		# The preview host resets a chunk before it installs the chunk graph and
+		# positions the party. Arm on the deferred boundary so host placement
+		# cannot cancel the bridge-stand traversal it just created.
+		if not _intro_arm_pending and _phase != "overlook":
+			_intro_arm_pending = true
+			call_deferred("_arm_overlook_intro")
 		return
 	_phase = "active"
 	_swept_count = 0
@@ -1333,7 +1383,9 @@ func reset_preview_state() -> void:
 		var enemy = _fauna[id_v]
 		if is_instance_valid(enemy) and gs != null and gs.characters.has(str(id_v)):
 			var anchor: Vector3 = enemy.get_meta("roam_anchor", gs.get_position(str(id_v)))
-			gs.snap_character_to(str(id_v), anchor)
+			# Enemy owns the visible reset consequence; the chunk only supplies its
+			# authored home post and asks the reusable FSM kit to re-seat the body.
+			enemy.re_post(anchor)
 			# a HARD home reset — a polite set_roam leaves a mid-pursuit sentry
 			# chasing ghosts with old damage across scenario re-arms
 			enemy.reset_to_home()
@@ -1355,9 +1407,16 @@ func _sweep_landing(id: String, _origin: Vector3, i: int) -> Vector3:
 	return Vector3(0.9 + 0.25 * float(absi(hash(id)) % 3), DECK_TOP,
 		2.2 + 0.8 * float(absi(hash(id)) % 3))
 
-func _on_swept(_id: String, _i: int) -> void:
+func _on_swept(id: String, i: int) -> void:
 	_swept_count += 1
-	_show_note("The surge takes one of you. The channel gives nothing back.", 2.4)
+	var display_name := id.capitalize()
+	var stretch := i + 1
+	if PARTY_IDS.has(id):
+		_show_note("%s was caught by the rising water on wash stretch %d and carried to the base shelter." % [
+			display_name, stretch], 3.8)
+	else:
+		_show_note("%s was caught by the rising water on wash stretch %d and thrown back to its mouth." % [
+			display_name, stretch], 3.2)
 
 func _on_channel_telegraph(i: int) -> void:
 	if _phase == "active":
@@ -1371,7 +1430,12 @@ func _on_channel_flood_started(i: int) -> void:
 
 func _on_channel_flood_ended(i: int) -> void:
 	if _phase == "active":
-		_set_wash_state(i, "idle")
+		_set_wash_state(i, "cleared")
+		var drain := create_tween()
+		drain.tween_interval(0.65)
+		drain.tween_callback(func():
+			if _phase == "active" and str(_wash_display_states.get(i, "")) == "cleared":
+				_set_wash_state(i, "idle"))
 
 # --- Interactables: the valve, the terminal, the portal ---
 
@@ -1543,6 +1607,22 @@ func _wire_warped_outlines() -> void:
 				and not (it as Node).is_ancestor_of(stale):
 			(stale as Node).queue_free()
 		it.call("set_outline_target", null)
+		# The base rest source sits on the dwelling's porch. Its visible shelter is
+		# a realized library piece rather than a child of the interaction Area, so
+		# nearest-mesh auto-collection cannot discover it reliably after the helix
+		# warp. Explicitly bind the rest command to the shelter players can see.
+		if it == _base_shelter and _realized_root != null:
+			var shelter_visual := _realized_root.find_child("Shelter", true, false)
+			if shelter_visual != null:
+				var shelter_meshes := OutlineFeedbackManager.collect_mesh_instances(
+					shelter_visual)
+				if _outline_interactable_meshes(
+						it as Node3D,
+						shelter_meshes,
+						"BaseShelterRest",
+						maxf(1.2, float(it.get("interaction_radius")))
+					) != null:
+					continue
 		_auto_outline_interactable(it, self, (it as Node3D).global_position,
 			maxf(1.2, float(it.get("interaction_radius"))))
 
@@ -1801,9 +1881,7 @@ func _wire_trigger(interactable: Area3D, cb: Callable) -> void:
 func _on_den_stash(_args = null) -> void:
 	var gs = _get_game_state()
 	if gs != null:
-		for id in PARTY_IDS:
-			if gs.characters.has(id) and gs.has_method("adjust_stat"):
-				gs.adjust_stat(id, "atp", 1.0)
+		PARTY_RESOURCE_GRANT.apply(gs, PARTY_IDS, {"atp": 1.0})
 	_show_note("The den cache comes loose. Whatever hoarded it will notice.", 2.4)
 	_set_preview_step("wash_ascent_den_salvaged")
 
@@ -1827,10 +1905,7 @@ func _on_transfer_cache(_args = null) -> void:
 	var gs = _get_game_state()
 	if gs == null:
 		return
-	for id_v in PARTY_IDS:
-		if gs.characters.has(str(id_v)):
-			gs.adjust_stat(str(id_v), "hp", 8.0)
-			gs.adjust_stat(str(id_v), "stamina", 25.0)
+	PARTY_RESOURCE_GRANT.apply(gs, PARTY_IDS, {"hp": 8.0, "stamina": 25.0})
 	_show_note("The crew's kit, still packed. Rations for everyone.", 2.4)
 	_set_preview_step("wash_ascent_transfer_cache")
 
@@ -1877,10 +1952,7 @@ func _on_exam_valve(_args = null) -> void:
 func _on_sunken_stash(_args = null) -> void:
 	var gs = _get_game_state()
 	if gs != null:
-		for id_v in PARTY_IDS:
-			if gs.characters.has(str(id_v)):
-				gs.adjust_stat(str(id_v), "hp", 10.0)
-				gs.adjust_stat(str(id_v), "stamina", 20.0)
+		PARTY_RESOURCE_GRANT.apply(gs, PARTY_IDS, {"hp": 10.0, "stamina": 20.0})
 	_show_note("The stash comes loose — crew rations, still sealed. Everyone breathes easier.", 2.8)
 	_set_preview_step("wash_ascent_stash_salvaged")
 
@@ -2035,17 +2107,10 @@ func get_grid_data() -> Dictionary:
 ## Channel catch is boundary-inclusive) — nobody boots standing on the visible
 ## kill edge, and every offset stays on the deck (x > 0).
 func get_spawn_positions() -> Dictionary:
-	if not _intro_done:
-		return _bridge_spawn_positions()
-	var anchor := Vector3(1.2, DECK_TOP, 3.0)
-	var marker := _props_root.find_child("SpawnPlayer", true, false) if _props_root else null
-	if marker is Node3D:
-		anchor = (marker as Node3D).global_position
-	return {
-		"aster": anchor,
-		"peris": anchor + Vector3(-0.6, 0.0, 1.4),
-		"endo": anchor + Vector3(-0.9, 0.0, -1.2),
-	}
+	# The opening span is a presentation-space traversal, not a second logical
+	# map beyond DECK_W. Saves, AI, hover, and pathfinding always begin on these
+	# connected graph nodes; the visible bridge stance is carried explicitly.
+	return _bridge_spawn_positions()
 
 func get_preview_anchors() -> Dictionary:
 	var anchors := get_spawn_positions()
@@ -2077,6 +2142,8 @@ func get_preview_state() -> Dictionary:
 		"phase": _phase,
 		"channels": _channels.size(),
 		"next_onsets_in": onsets,
+		"telegraph_lead": TELEGRAPH_LEAD,
+		"wash_display_states": _wash_display_states.duplicate(),
 		"swept_count": _swept_count,
 		"valve_hold_until": (_channels[0] as Channel).held_until() if not _channels.is_empty() else -1.0,
 		"fauna": _fauna.size(),

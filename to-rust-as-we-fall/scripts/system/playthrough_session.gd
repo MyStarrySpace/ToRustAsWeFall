@@ -198,7 +198,8 @@ func begin_recording(path: String, input_owner := INPUT_OWNER_MANUAL) -> bool:
 	_artifact = {
 		"contract": CONTRACT,
 		"version": FORMAT_VERSION,
-		"created_unix": int(Time.get_unix_time_from_system()),
+		# Artifact metadata only; replay ordering uses deterministic gameplay ticks.
+		"created_unix": int(Time.get_unix_time_from_system()), # @artifact_metadata_only
 		"input_owner": _input_owner,
 		CAMERA_POLICY_KEY: _camera_input_policy.duplicate(true),
 		"initial_scene": "",
@@ -399,11 +400,9 @@ func _playback_step() -> void:
 					return
 			_next_input += 1
 			if event != null:
-				# Native PopupMenu windows route mouse input using the OS cursor's current
-				# window/position as well as the event coordinates. Keep that physical state
-				# aligned so recorded selector and context-menu clicks reach the same popup.
-				if event is InputEventMouse:
-					Input.warp_mouse((event as InputEventMouse).position)
+				# Replay remains app-local: the artifact may reproduce a player's pointer
+				# event, but it must never take ownership of the workstation cursor. Test
+				# launches use one embedded window so popup input follows this same seam.
 				Input.parse_input_event(event)
 	if _next_input < inputs.size() or _timeline + TICK_EPSILON < float(_artifact.get("duration", 0.0)):
 		return

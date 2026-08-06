@@ -351,6 +351,35 @@ func warp_interactables_onto_coord_map(coord_map) -> void:
 			if not tgt.has_meta("flat_authored_position"):
 				tgt.set_meta("flat_authored_position", tgt.global_position)
 			tgt.global_position = coord_map.to_world(tgt.get_meta("flat_authored_position"))
+			# Generated physical sources keep their interaction approach on the
+			# delegate, but the pick body must stay on the visible source after a
+			# non-linear warp. Re-centre only targets that explicitly opt into this
+			# contract; ordinary approach targets preserve their authored offset.
+			_align_opt_in_pick_target_to_highlights(tgt)
+
+
+## Custom-warp chunks build all of their flat children and transform them as one
+## batch. They call this after the batch so every highlighted mesh has reached
+## its final world transform before its explicitly opted-in pick hull is centred.
+func align_opt_in_pick_targets_to_highlights() -> void:
+	for interactable in _interactables:
+		if not is_instance_valid(interactable) or not ("_outline_target" in interactable):
+			continue
+		_align_opt_in_pick_target_to_highlights(interactable.get("_outline_target"))
+
+
+func _align_opt_in_pick_target_to_highlights(target: Node) -> bool:
+	if target == null or not is_instance_valid(target) or not (target is Node3D) \
+			or not bool(target.get_meta(
+				"align_pick_target_to_highlights_after_warp", false)) \
+			or not ("_highlight_meshes" in target):
+		return false
+	var meshes: Array = target.get("_highlight_meshes") as Array
+	var bounds := OutlineFeedbackManager.combined_world_bounds(meshes)
+	if bounds.size == Vector3.ZERO:
+		return false
+	(target as Node3D).global_position = bounds.position + bounds.size * 0.5
+	return true
 
 func _make_material(
 	color: Color,
@@ -1572,6 +1601,7 @@ func _add_rest_point(
 	var rest = _add_interactable(
 		parent, "RestInteractable", "Rest with the party", center, "REST PARTY", "", 1.2, false, 2.5,
 		Interactable.InteractableType.HOLD_ACTION)
+	rest.set_meta("interaction_activation_contract", "proximity_rest")
 	rest.set_meta("authored_shelter_pad", shelter_pad)
 	_party_rest_points[rest.get_instance_id()] = {
 		"center": center,
@@ -2006,8 +2036,8 @@ func _set_causal_feedback_mode(source: Node, mode: String) -> void:
 			link.call("set_feedback_mode", mode)
 
 
-## Ask the preview host for a short, guarded camera emphasis. Full campaign hosts and headless
-## chunk stubs safely no-op; the gameplay relationship remains valid without presentation.
+## Ask the shared scene-level consequence controller for a short, guarded camera emphasis.
+## Campaign and preview hosts use the same wrapper; headless chunk stubs safely no-op.
 func _request_preview_focus(target: Node3D, duration := 0.9, pause_gameplay := false, opts: Dictionary = {}) -> bool:
 	if host == null or target == null or not host.has_method("emphasize_preview_target"):
 		return false
@@ -2175,20 +2205,83 @@ func _add_object_interactable(
 ## the interactable, its dressing mesh, and the outline target all move together under warp_interactables_
 ## onto_coord_map. Use for a procedural interactable whose visual is its child (build the mesh as a child of
 ## the interactable first, then call this). On flat scenes it behaves like any other outline.
-func _outline_interactable_child(interactable: Node3D, mesh: MeshInstance3D, element_name: String, radius := 1.5) -> Node3D:
-	if interactable == null or mesh == null:
+func _outline_interactable_meshes(
+		interactable: Node3D,
+		meshes: Array,
+		element_name: String,
+		radius := 1.5
+	) -> Node3D:
+	if interactable == null or meshes.is_empty():
 		return null
-	var target := _outline_object(interactable, element_name + "Outline", [mesh], _interactable_data_id(element_name), radius)
+	var target := _outline_object(
+		interactable,
+		element_name + "Outline",
+		meshes,
+		_interactable_data_id(element_name),
+		radius
+	)
 	if target == null:
 		return null
-	# outline_meshes sets target.position from the mesh's WORLD bounds; as a CHILD of the off-origin
-	# interactable that becomes a wrong LOCAL offset (a double-count that strands the target at the authored
-	# spot). Re-anchor by GLOBAL position onto the mesh so the target sits on it and rides the interactable's
-	# warp as a child onto the helix deck.
-	if (target is Node3D) and (mesh is Node3D):
-		(target as Node3D).global_position = (mesh as Node3D).global_position
 	if target.has_method("set_interaction_delegate"):
 		target.call("set_interaction_delegate", interactable)
 	if interactable.has_method("set_outline_target"):
 		interactable.call("set_outline_target", target)
 	return target
+
+
+func _outline_interactable_child(
+		interactable: Node3D,
+		mesh: MeshInstance3D,
+		element_name: String,
+		radius := 1.5
+	) -> Node3D:
+	return _outline_interactable_meshes(
+		interactable,
+		[mesh] if mesh != null else [],
+		element_name,
+		radius
+	)
+
+
+## Link a concealed pickup control to the controller-owned presenter of its exact
+## authoritative item. The visible item is the click/outline surface; the meshless
+## interaction Area remains the source receipt and navigation delegate.
+func _outline_item_source_interactable(
+		interactable: Node3D,
+		item_id: String,
+		element_name: String,
+		radius := 1.5
+	) -> Node3D:
+	if interactable == null or item_id.is_empty() or host == null \
+			or not host.has_method("get_preview_item_presenter"):
+		return null
+	var presenter = host.call("get_preview_item_presenter", item_id)
+	if not (presenter is Node3D) or not is_instance_valid(presenter):
+		return null
+	var meshes := OutlineFeedbackManager.collect_mesh_instances(presenter)
+	if meshes.is_empty():
+		return null
+	var existing = interactable.get("_outline_target") \
+		if "_outline_target" in interactable else null
+	if existing != null and is_instance_valid(existing):
+		if int(existing.get_meta("item_presenter_instance_id", -1)) \
+				== (presenter as Node).get_instance_id():
+			return existing
+		(existing as Node).queue_free()
+		interactable.call("set_outline_target", null)
+	var target := _outline_interactable_meshes(
+		interactable, meshes, element_name, radius)
+	if target != null:
+		target.set_meta(
+			"item_presenter_instance_id", (presenter as Node).get_instance_id())
+	return target
+
+
+func _clear_interactable_outline_target(interactable: Node) -> void:
+	if interactable == null or not ("_outline_target" in interactable):
+		return
+	var target = interactable.get("_outline_target")
+	if target != null and is_instance_valid(target):
+		(target as Node).queue_free()
+	if interactable.has_method("set_outline_target"):
+		interactable.call("set_outline_target", null)

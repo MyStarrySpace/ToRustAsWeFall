@@ -1,5 +1,6 @@
 class_name CausalFeedbackLink
 extends Node3D
+# @rendering_only_file
 
 ## A reusable cause -> effect read for 3D gameplay objects.
 ##
@@ -9,6 +10,8 @@ extends Node3D
 ## enemies, doors, or any future Node3D without bespoke update code.
 
 const DEFAULT_DASH_COUNT := 8
+const LOOK_DIRECTION_EPSILON_SQUARED := 0.000001
+const LOOK_UP_COLLINEAR_DOT := 0.98
 const MODE_PREDICTED := "predicted"
 const MODE_ACTIVE := "active"
 const MODE_READY := "ready"
@@ -76,6 +79,10 @@ var _material: StandardMaterial3D = null
 var _arrival_material: StandardMaterial3D = null
 var _visuals_built := false
 var _rendering_enabled := DisplayServer.get_name() != "headless"
+## `visible` is the logical/perception latch on this Node3D. Track the stricter framebuffer
+## condition separately so Windowed/Web tests cannot mistake an off-camera requested link for a
+## cue the player could actually see.
+var _render_parts_visible := false
 
 
 func configure(source_node: Node3D, target_node: Node3D, tint: Color, opts: Dictionary = {}) -> void:
@@ -215,6 +222,8 @@ func is_feedback_visible() -> bool:
 func get_feedback_state() -> Dictionary:
 	return {
 		"visible": visible,
+		"render_parts_visible": _render_parts_visible,
+		"rendering_enabled": _rendering_enabled,
 		"requested": _feedback_requested(),
 		"perception_allowed": _perception_allowed,
 		"source_perceived": _source_perceived,
@@ -279,6 +288,8 @@ func _refresh_visibility() -> void:
 		_target_perceived = false
 	var perceived_request := requested and _perception_allowed
 	visible = perceived_request
+	if not perceived_request or not _rendering_enabled:
+		_set_visual_parts_visible(false)
 	if perceived_request and not was_visible:
 		_reveal_started_msec = Time.get_ticks_msec()
 	# Poll while requested even if currently unseen: when a scout enters sight the link
@@ -437,6 +448,31 @@ func _curve_point(t: float, start: Vector3, finish: Vector3) -> Vector3:
 	return first.lerp(second, t)
 
 
+func _orient_visual_segment(segment: Node3D, origin: Vector3, destination: Vector3) -> bool:
+	if segment == null or not origin.is_finite() or not destination.is_finite():
+		return false
+	var direction := destination - origin
+	if direction.length_squared() <= LOOK_DIRECTION_EPSILON_SQUARED:
+		# Position remains truthful even though this one chord has no drawable heading.
+		segment.global_position = origin
+		return false
+	var heading := direction.normalized()
+	var reference_up := Vector3.UP
+	if absf(heading.dot(reference_up)) >= LOOK_UP_COLLINEAR_DOT:
+		reference_up = Vector3.RIGHT
+	# Project the reference onto the plane perpendicular to the heading. This keeps
+	# look_at stable for steep segments without inventing any gameplay transform.
+	var safe_up := reference_up - heading * reference_up.dot(heading)
+	if safe_up.length_squared() <= LOOK_DIRECTION_EPSILON_SQUARED:
+		reference_up = Vector3.FORWARD
+		safe_up = reference_up - heading * reference_up.dot(heading)
+	if safe_up.length_squared() <= LOOK_DIRECTION_EPSILON_SQUARED:
+		segment.global_position = origin
+		return false
+	segment.look_at_from_position(origin, destination, safe_up.normalized())
+	return true
+
+
 func _mode_tint() -> Color:
 	return _character_tint
 
@@ -482,6 +518,7 @@ func _route_draw_progress(now_msec: int) -> float:
 
 func _update_visuals(now: float) -> void:
 	if not _visuals_built or not is_instance_valid(source) or not is_instance_valid(target):
+		_render_parts_visible = false
 		return
 	var logical_start := source.global_position + _source_offset
 	var logical_finish := target.global_position + _target_offset
@@ -552,7 +589,14 @@ func _update_visuals(now: float) -> void:
 		var midpoint := (a + b) * 0.5
 		if _feedback_mode == MODE_FAILED:
 			midpoint += Vector3.UP * sin(now * 29.0 + float(i)) * 0.09
-		dash.look_at_from_position(midpoint, b, Vector3.UP)
+		# Coincident cause/effect endpoints produce a retraced quadratic arc: its apex
+		# chord has zero length, while the neighboring chords can be vertical. Godot's
+		# look_at rejects both cases and floods the playtest log. Retire only the
+		# directionless mark; orient vertical marks with a computed perpendicular up so
+		# the remaining trail, endpoint rings, packet, and label stay legible.
+		if not _orient_visual_segment(dash, midpoint, b):
+			dash.visible = false
+			continue
 		if _path_style == "movement_chevrons":
 			var base_scale := 0.88 + pulse * 0.14
 			var weight := _mode_weight_multiplier(pulse)
@@ -596,15 +640,16 @@ func _update_visuals(now: float) -> void:
 
 
 func _set_visual_parts_visible(active: bool) -> void:
+	_render_parts_visible = active and _visuals_built and _rendering_enabled
 	for dash in _dashes:
-		dash.visible = active
+		dash.visible = _render_parts_visible
 	if _source_ring != null:
-		_source_ring.visible = active
+		_source_ring.visible = _render_parts_visible
 	if _target_ring != null:
-		_target_ring.visible = active
+		_target_ring.visible = _render_parts_visible
 	if _arrival_ring != null:
 		_arrival_ring.visible = false
 	if _packet != null:
-		_packet.visible = active
+		_packet.visible = _render_parts_visible
 	if _label != null:
-		_label.visible = active and _show_label
+		_label.visible = _render_parts_visible and _show_label

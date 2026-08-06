@@ -10,9 +10,9 @@ help = "A beautified street: ornamental invasives are scenery, while the anti-lo
 default_character = "peris"
 party_ids = PackedStringArray("aster", "peris", "endo")
 spawns = {
-"aster": Vector3(1.5, 0.5, 1.8),
-"endo": Vector3(1.5, 0.5, -1.8),
-"peris": Vector3(1.5, 0.5, 0.0)
+"aster": Vector3(1.5, 0, 1.8),
+"endo": Vector3(1.5, 0, -1.8),
+"peris": Vector3(1.5, 0, 0.0)
 }
 floors = Array[Dictionary]([{
 "color": Color(0.09, 0.1, 0.12, 1),

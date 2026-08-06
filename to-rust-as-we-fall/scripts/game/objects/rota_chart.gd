@@ -11,7 +11,6 @@ extends Interactable
 
 signal chart_read(rota_text: String)
 
-const STATE_NAMES := ["LOW", "MID", "HIGH"]
 const BAR_COLORS := [Color(0.24, 0.5, 0.46), Color(0.3, 0.7, 0.78), Color(0.85, 0.4, 0.3)]
 
 var _gs = null
@@ -46,17 +45,28 @@ func _on_read() -> void:
 	if snapshot.is_empty():
 		return
 	_read_count += 1
+	var state_names := _state_names(snapshot)
 	var parts: Array = []
 	for entry_v in (snapshot.get("rota", []) as Array):
 		var entry := entry_v as Dictionary
-		var lvl := clampi(int(entry.get("level", 0)), 0, STATE_NAMES.size() - 1)
-		parts.append("%s %ds" % [STATE_NAMES[lvl], int(round(float(entry.get("dwell", 0.0))))])
+		var lvl := clampi(int(entry.get("level", 0)), 0, state_names.size() - 1)
+		parts.append("%s %ds" % [state_names[lvl], int(round(float(entry.get("dwell", 0.0))))])
 	var text := "ROTA // " + " > ".join(PackedStringArray(parts))
-	var next_state := clampi(int(snapshot.get("next_state", 0)), 0, STATE_NAMES.size() - 1)
+	var next_state := clampi(int(snapshot.get("next_state", 0)), 0, state_names.size() - 1)
 	var next_in := float(snapshot.get("next_change_in", -1.0))
 	if next_in >= 0.0:
-		text += " // NEXT: %s in %.0fs" % [STATE_NAMES[next_state], next_in]
+		text += " // NEXT: %s in %.0fs" % [state_names[next_state], next_in]
 	chart_read.emit(text)
+
+
+func _state_names(snapshot: Dictionary) -> Array[String]:
+	var names: Array[String] = []
+	for state_v in (snapshot.get("water_states", []) as Array):
+		var state := state_v as Dictionary
+		names.append(str(state.get("name", "LEVEL %d" % names.size())).to_upper())
+	if names.is_empty():
+		names.append("LEVEL 0")
+	return names
 
 func _basin_snapshot() -> Dictionary:
 	if _gs == null or not _gs.has_method("get_world_state"):
@@ -80,7 +90,11 @@ func _build_board() -> void:
 	bmat.emission = Color(0.3, 0.6, 0.62)
 	bmat.emission_energy_multiplier = 0.35
 	_board.material_override = bmat
-	_board.position = Vector3(0.0, 1.5, 0.0)
+	# Seat the physical board on the deck instead of floating it above its authored
+	# interaction anchor.  The board is both what the player sees and what the
+	# outline system ray-picks, so its lower face must cover the ordinary
+	# root-height cursor aim rather than letting that ray fall through to the deck.
+	_board.position = Vector3(0.0, 0.6, 0.0)
 	add_child(_board)
 
 func _build_bars() -> void:
@@ -101,15 +115,17 @@ func _build_bars() -> void:
 		var entry := entry_v as Dictionary
 		var dwell := maxf(0.5, float(entry.get("dwell", 0.0)))
 		var w := usable * dwell / total
-		var lvl := clampi(int(entry.get("level", 0)), 0, BAR_COLORS.size() - 1)
+		var lvl := maxi(0, int(entry.get("level", 0)))
 		var bar := MeshInstance3D.new()
 		var bar_mesh := BoxMesh.new()
 		bar_mesh.size = Vector3(maxf(0.03, w - 0.02), 0.16, 0.05)
 		bar.mesh = bar_mesh
 		var mat := StandardMaterial3D.new()
-		mat.albedo_color = BAR_COLORS[lvl]
+		var bar_color: Color = BAR_COLORS[lvl] if lvl < BAR_COLORS.size() else \
+			Color.from_hsv(fmod(0.46 + float(lvl) * 0.13, 1.0), 0.55, 0.82)
+		mat.albedo_color = bar_color
 		mat.emission_enabled = true
-		mat.emission = BAR_COLORS[lvl]
+		mat.emission = bar_color
 		mat.emission_energy_multiplier = 0.8
 		bar.material_override = mat
 		# Bars stack by height as well as hue: the water level IS the bar's altitude.

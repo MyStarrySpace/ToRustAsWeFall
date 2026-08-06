@@ -36,6 +36,23 @@ Seeded variants are parametric outputs, not manually duplicated scenes. Bake the
 variant into a DCC editor. Authored biome gameplay landmarks use external model wrappers; procedural
 architecture preview/generation code remains the deterministic construction source for arbitrary seeds.
 
+## Authored fauna assets
+
+| Fauna | Portable source | Runtime wrapper | Editable source | Motion-ready structure |
+| --- | --- | --- | --- | --- |
+| Ferrule | `resources/models/fauna/ferrule/` | `scenes/props/biota/ferrule_visual.tscn` | `../blender/fauna/ferrule/ferrule.blend` | 17 named mesh parts, 7 rigid rig pivots, and idle/compress/spring/latch clips |
+
+The Ferrule visual carries the approved mobile, mouth-first slinky silhouette. Its body, mouth void,
+fluorescent signal, and signal-emissive paint sheets stay external and independently replaceable. The
+wrapper exposes forward, mouth-impact, and rear-anchor sockets but deliberately owns no collision or
+enemy authority. This asset does not by itself promote `ferrules` beyond placeholder gameplay support.
+
+Re-export the saved master from the repository root without rebuilding its geometry:
+
+```powershell
+blender.exe --background blender/fauna/ferrule/ferrule.blend --python blender/fauna/ferrule/export_ferrule.py
+```
+
 ## World biota placeholder inventory
 
 This bounded starter kit supplies world-scale, intentionally replaceable presenters where an
@@ -151,6 +168,7 @@ added to that queue: they must start as portable assets under `resources/models/
 ..\Godot_v4.7-stable_win64_console.exe --headless --path . --script res://tools/verify_mother_flure_visual_assets.gd
 ..\Godot_v4.7-stable_win64_console.exe --headless --path . --script res://tools/verify_biota_placeholder_assets.gd
 ..\Godot_v4.7-stable_win64_console.exe --headless --path . --script res://tools/verify_biota_gameplay_presenters.gd
+..\Godot_v4.7-stable_win64_console.exe --headless --path . --script res://tools/verify_ferrule_model.gd
 ```
 
 The generated-asset guard requires every biome definition to declare its portable model list, ensures

@@ -43,6 +43,7 @@ const KIND_REMOVE_ITEM := &"remove_item"
 const KIND_PICK_UP_ITEM := &"pick_up_item"
 const KIND_DROP_ITEM := &"drop_item"
 const KIND_TRANSFER_ITEM := &"transfer_item"
+
 const KIND_ENDOCYTOSE_ITEM := &"endocytose_item"
 const KIND_CANCEL_ENDOCYTOSIS := &"cancel_endocytosis"
 const KIND_EXOCYTOSE_ITEM := &"exocytose_item"
@@ -174,6 +175,7 @@ const ALL_KINDS: Array[StringName] = [
 	KIND_SET_STAT,
 	KIND_SET_RUNNING,
 	KIND_SET_ROUTE_MODE,
+	KIND_SET_LEVEL,
 	KIND_REGISTER_INTERACTABLE,
 	KIND_UNREGISTER_INTERACTABLE,
 	KIND_TRIGGER_INTERACTABLE,

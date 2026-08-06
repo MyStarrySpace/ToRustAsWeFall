@@ -4,6 +4,45 @@ extends StaticBody3D
 
 ## Pickable room object with object-local outline and selected feedback.
 
+const PLAYER_OBSERVATION_PRESENTER_GROUP := &"player_observation_presenters"
+const PLAYER_OBSERVATION_PIXEL_OFFSETS: Array[Vector2] = [
+	Vector2.ZERO,
+	Vector2(0.0, -8.0), Vector2(0.0, 8.0),
+	Vector2(-8.0, 0.0), Vector2(8.0, 0.0),
+	Vector2(0.0, -16.0), Vector2(0.0, 16.0),
+	Vector2(-16.0, 0.0), Vector2(16.0, 0.0),
+]
+## A result created during a slow gameplay frame must reach the framebuffer before
+## its time-based tween can consume that frame's entire delta. A shipped quick-click
+## uses one post-packet frame plus two ordinary settle frames; retain the result for
+## one draw beyond that same human input sequence so its exact target receipt can be
+## perceived before the time-based animation begins.
+const INTERACTION_RESULT_MIN_PRESENTED_FRAMES := 4
+## Draw count alone is not a readable lifetime: an uncapped renderer can complete
+## four frames between a player's action and their next glance. Start the readable
+## dwell only when the fourth completed draw after local pulse visibility lands.
+## The full elapsed-presentation minimum therefore follows the required draw floor,
+## matching movement/route-status semantics. Because the Tween is created from
+## frame_post_draw, a slow frame which precedes that receipt cannot be charged to
+## the scale-out on its first process tick. Camera/framebuffer eligibility remains the
+## observer's separate, fail-closed responsibility.
+const INTERACTION_RESULT_MIN_PRESENTED_MSEC := 1200
+## One completed draw after a renderer stall cannot claim the whole readable
+## interval by itself. The frozen prior framebuffer remains useful, but a bounded
+## contribution keeps minimize/device stalls from retiring the cue on return.
+const INTERACTION_RESULT_MAX_ELIGIBLE_DRAW_INTERVAL_MSEC := 250
+## A pulse that never enters the active camera must not retain a global render
+## callback forever. This is a presentation-only retirement bound: eligibility
+## still owns the readable clock, while a process-always timer guarantees cleanup
+## when rendering is paused, hidden, culled, or permanently offscreen.
+const INTERACTION_RESULT_MAX_LIFETIME_MSEC := 6000
+const INTERACTION_RESULT_MAX_SURFACE_SAMPLES := 96
+## Saturated enough to remain visibly green after the Compatibility tonemapper;
+## the former mint-blue mix clipped both G and B in bright generated scenes.
+const INTERACTION_SUCCESS_TINT := Color(0.08, 0.9, 0.12, 1.0)
+const INTERACTION_SUCCESS_EMISSION_ENERGY := 0.0
+const INTERACTION_RESULT_HALO_CAMERA_MARGIN := 0.08
+
 @export var hover_enabled := true
 @export var hover_outline_color := Color.WHITE
 @export var selected_feedback_color := Color(1.0, 0.62, 0.12, 1.0)
@@ -24,6 +63,17 @@ extends StaticBody3D
 @export_node_path("Node") var interaction_delegate_path: NodePath
 
 var _interaction_delegate: Node
+## The real world-space collision point for the synchronous pointer command now
+## being delivered. A partially HUD-occluded object can have a hidden center but
+## a visible clickable edge; immediate success/refusal feedback must appear at
+## the point the player could actually see and choose.
+var _pointer_result_origin_override := Vector3.INF
+## Whether this rendered wrapper currently represents an actionable command
+## surface.  This is deliberately separate from `hover_enabled`: consumed and
+## hard-disabled Interactables keep their mesh, collision body, presenter token,
+## and result-pulse surface, but must stop winning pointer picking.
+var _interaction_command_enabled := true
+var _pointer_hover_active := false
 var _selected_particles: GPUParticles3D
 var _selected_particle_material: ParticleProcessMaterial
 var _debug_anchor: MeshInstance3D
@@ -46,6 +96,20 @@ var _external_highlight_reasons := {}
 var _interaction_pulse: MeshInstance3D = null
 var _interaction_pulse_material: StandardMaterial3D = null
 var _interaction_pulse_tween: Tween = null
+var _interaction_pulse_generation := 0
+var _interaction_result_post_mint_epoch_complete := false
+var _interaction_result_hold_frames_left := 0
+var _interaction_result_readable_elapsed_msec := 0
+var _interaction_result_last_eligible_draw_msec := -1
+var _interaction_result_pending_tween: Dictionary = {}
+var _interaction_presentation_serial := 0
+## The authoritative outcome that minted the current serial, even when a
+## headless renderer cannot instantiate its actual halo. Observation still
+## requires `result` + `visible`; command ordering uses this field only to avoid
+## overwriting a synchronous result with a later queued pulse.
+var _interaction_presentation_authority_result := ""
+var _interaction_presentation_result := ""
+var _interaction_presentation_visible := false
 
 signal outline_hovered(interactable: Node)
 signal outline_unhovered(interactable: Node)
@@ -57,31 +121,46 @@ func _ready() -> void:
 		_interaction_delegate = get_node_or_null(interaction_delegate_path)
 	collision_layer = 4 if hover_enabled else 0
 	collision_mask = 0
-	input_ray_pickable = hover_enabled
+	_sync_command_availability_from_delegate()
+	input_ray_pickable = hover_enabled and _interaction_command_enabled
 	if not mouse_entered.is_connected(_on_mouse_entered):
 		mouse_entered.connect(_on_mouse_entered)
 	if not mouse_exited.is_connected(_on_mouse_exited):
 		mouse_exited.connect(_on_mouse_exited)
 	if not input_event.is_connected(_on_input_event):
 		input_event.connect(_on_input_event)
+	_refresh_player_observation_presenter_registration()
+
+
+func _exit_tree() -> void:
+	# RenderingServer is global, so explicitly release the transient draw listener
+	# when a generated chunk is torn down instead of waiting for a later draw to
+	# discover that its target disappeared.
+	_disconnect_result_pulse_draw()
+	_interaction_result_pending_tween.clear()
+	_interaction_result_post_mint_epoch_complete = false
+	_interaction_result_hold_frames_left = 0
+	_interaction_result_readable_elapsed_msec = 0
+	_interaction_result_last_eligible_draw_msec = -1
+	if _interaction_pulse_tween != null and _interaction_pulse_tween.is_valid():
+		_interaction_pulse_tween.kill()
 
 func _on_mouse_entered() -> void:
 	if GridWorld._fx_debug:
 		GridWorld._pf_trace("[outline] HIT surface-target '%s' (hover_enabled=%s managed=%s layer=%d pickable=%s)" % [
 			name, hover_enabled, _feedback_managed, collision_layer, input_ray_pickable])
-	if not hover_enabled:
+	if not hover_enabled or not _interaction_command_enabled:
 		return
+	_pointer_hover_active = true
 	if not _feedback_managed:
 		set_hover_feedback(true)
 	outline_hovered.emit(self)
 
 func _on_mouse_exited() -> void:
-	if not _feedback_managed:
-		set_hover_feedback(false)
-	outline_unhovered.emit(self)
+	_clear_pointer_hover()
 
 func _on_input_event(_camera: Node, event: InputEvent, event_position: Vector3, _normal: Vector3, _shape_idx: int) -> void:
-	if not hover_enabled:
+	if not hover_enabled or not _interaction_command_enabled:
 		return
 	if event is InputEventMouseButton:
 		# The `command` action (right mouse) is the interact command (mirror of Interactable). A `select`
@@ -90,14 +169,86 @@ func _on_input_event(_camera: Node, event: InputEvent, event_position: Vector3, 
 			var viewport := get_viewport()
 			if viewport != null:
 				viewport.set_input_as_handled()
-			interaction_requested.emit(self, event_position)
-			outline_selected.emit(self)
+			submit_pointer_command(event_position)
+
+
+## Production semantic edge used by the classified short-RMB controller and by
+## ordinary physics-object input. Both paths retain this visible surface as the
+## exact source of the interaction request.
+func submit_pointer_command(event_position: Vector3 = Vector3.INF) -> bool:
+	if not hover_enabled:
+		return false
+	# A short command is captured from the real physics hit before it is submitted
+	# from the FIFO.  The delegate may be consumed in between those two production
+	# steps.  Reject that stale capture on this exact visible target so the player
+	# gets a red result pulse instead of a silent no-op.
+	if not _interaction_command_enabled:
+		play_interaction_result(false)
+		return false
+	# The wrapper owns the rendered/pickable surface, while a linked delegate owns
+	# the gameplay interaction. Route the semantic command through that canonical
+	# public seam so dynamically created wrappers do not depend on a second
+	# CharacterInteractionController signal binding, and so arrival invokes the
+	# delegate that can actually trigger. The delegate's outline_selected signal
+	# already drives this wrapper through Interactable.set_outline_target(); emitting
+	# both would start the same queued pulse twice and could erase an immediate
+	# result. Bare surface targets retain their original direct command contract.
+	var delegate := _valid_interaction_delegate()
+	if delegate != null and delegate.has_method("submit_pointer_command"):
+		var previous_result_origin := _pointer_result_origin_override
+		if event_position.is_finite():
+			_pointer_result_origin_override = event_position
+		var accepted := bool(delegate.call(
+			"submit_pointer_command", event_position))
+		_pointer_result_origin_override = previous_result_origin
+		return accepted
+	interaction_requested.emit(
+		self, event_position if event_position.is_finite() else global_position)
+	outline_selected.emit(self)
+	return true
 
 func set_interaction_delegate(delegate: Node) -> void:
 	_interaction_delegate = delegate
+	_sync_command_availability_from_delegate()
+	_refresh_player_observation_presenter_registration()
 
 func get_interaction_delegate() -> Node:
 	return _valid_interaction_delegate()
+
+
+## Mirror a linked gameplay delegate's hard availability without retracting the
+## rendered object or its collision truth.  `input_ray_pickable=false` makes both
+## viewport picking and Player's production command ray pass through to typed
+## ground, while the collision layer remains available to non-input diagnostics.
+func set_interaction_command_enabled(active: bool) -> void:
+	var changed := _interaction_command_enabled != active
+	_interaction_command_enabled = active
+	input_ray_pickable = hover_enabled and _interaction_command_enabled
+	if changed and not active:
+		_clear_pointer_hover()
+	_refresh_player_observation_presenter_registration()
+
+
+func is_interaction_command_enabled() -> bool:
+	return _interaction_command_enabled
+
+
+func _sync_command_availability_from_delegate() -> void:
+	var delegate := _valid_interaction_delegate()
+	if delegate != null and delegate.has_method("is_pointer_command_available"):
+		set_interaction_command_enabled(
+			bool(delegate.call("is_pointer_command_available")))
+	else:
+		set_interaction_command_enabled(true)
+
+
+func _clear_pointer_hover() -> void:
+	if not _pointer_hover_active:
+		return
+	_pointer_hover_active = false
+	if not _feedback_managed:
+		set_hover_feedback(false)
+	outline_unhovered.emit(self)
 
 func play_selected_feedback(origin: Vector3 = Vector3.ZERO, use_world_origin := false) -> void:
 	# Legacy burst API: the queued energy glow replaced the particle sprays entirely.
@@ -205,6 +356,7 @@ func register_highlight_mesh(mesh_instance: MeshInstance3D) -> void:
 	mesh_instance.set_meta("outline_owner_id", get_instance_id())
 	_highlight_meshes.append(mesh_instance)
 	_original_overlays[mesh_instance.get_instance_id()] = mesh_instance.material_overlay
+	_refresh_player_observation_presenter_registration()
 	# If the outline is already showing (mesh registered after a hover), feed the new mesh into the mask too.
 	if _outline_active:
 		_register_mask(_active_outline_color, _glow_active)
@@ -218,6 +370,138 @@ func get_highlight_mesh_count() -> int:
 func get_highlight_meshes() -> Array:
 	_prune_highlight_meshes()
 	return _highlight_meshes.duplicate()
+
+
+## Public accessibility/testing surface for the geometry a player can actually
+## see and hover. Collision alone is deliberately insufficient: an invisible
+## Area/Body may still be pickable, but it must never become a policy affordance.
+## The observation adapter still performs camera, framebuffer/occlusion, UI, and
+## exact production-pointer checks on these nodes before exposing an opaque token.
+func get_player_observation_render_nodes() -> Array[Node3D]:
+	_prune_highlight_meshes()
+	var render_nodes: Array[Node3D] = []
+	for mesh_instance in _highlight_meshes:
+		if _render_node_has_visible_surface(mesh_instance):
+			render_nodes.append(mesh_instance)
+	if not render_nodes.is_empty():
+		return render_nodes
+
+	# Some small authored interactables intentionally use a visible tutorial
+	# billboard as their only rendered target. Accept that fallback only while the
+	# exact Label3D is in-tree, non-empty, and visibly modulated.
+	var delegate := _valid_interaction_delegate()
+	if delegate != null and delegate.has_method("get_tutorial_label_node"):
+		var label_v: Variant = delegate.call("get_tutorial_label_node")
+		if label_v is Label3D and _render_node_has_visible_surface(label_v as Label3D):
+			render_nodes.append(label_v as Label3D)
+	return render_nodes
+
+
+## Screen-space discovery owned by the same production presentation object that
+## draws and receives pointer input. Automated observers iterate only the
+## explicit presenter group and never walk arbitrary scene nodes or inspect
+## their transforms. Exact production pointer hit, UI blocking, and live
+## occlusion checks remain mandatory after these candidate pixels are returned.
+func get_player_observation_screen_candidates(
+		camera: Camera3D, viewport: Viewport
+	) -> Array[Vector2]:
+	return _screen_candidates_for_render_nodes(
+		get_player_observation_render_nodes(), camera, viewport)
+
+
+func _refresh_player_observation_presenter_registration() -> void:
+	if not is_inside_tree():
+		return
+	# Every enabled OutlineSurfaceTarget is itself a production command surface:
+	# it owns a pickable StaticBody and emits interaction_requested. A linked
+	# delegate refines the verb/receipt but is not required for direct targets.
+	# A PushTarget deliberately disables this wrapper's own hover ray and routes
+	# input through its linked delegate, but the wrapper still owns the visible
+	# crate surface. Keep that legitimate presenter registered as well.
+	var should_register := has_signal(&"interaction_requested") and (
+		input_ray_pickable or _valid_interaction_delegate() != null)
+	if should_register and not is_in_group(PLAYER_OBSERVATION_PRESENTER_GROUP):
+		add_to_group(PLAYER_OBSERVATION_PRESENTER_GROUP)
+	elif not should_register and is_in_group(PLAYER_OBSERVATION_PRESENTER_GROUP):
+		remove_from_group(PLAYER_OBSERVATION_PRESENTER_GROUP)
+
+
+func _screen_candidates_for_render_nodes(
+		render_nodes: Array[Node3D], camera: Camera3D, viewport: Viewport
+	) -> Array[Vector2]:
+	var candidates: Array[Vector2] = []
+	if camera == null or viewport == null or not camera.is_inside_tree():
+		return candidates
+	var visible_rect := viewport.get_visible_rect()
+	var world_points: Array[Vector3] = []
+	for render_node in render_nodes:
+		if render_node == null or not is_instance_valid(render_node) \
+				or not render_node.is_visible_in_tree():
+			continue
+		world_points.append(render_node.global_position)
+		if render_node is MeshInstance3D:
+			var mesh_instance := render_node as MeshInstance3D
+			if mesh_instance.mesh == null:
+				continue
+			var bounds := mesh_instance.get_aabb()
+			world_points.append(mesh_instance.global_transform * bounds.get_center())
+			for endpoint_index in range(8):
+				world_points.append(
+					mesh_instance.global_transform * bounds.get_endpoint(endpoint_index))
+	for world_point in world_points:
+		if camera.is_position_behind(world_point):
+			continue
+		var projected := camera.unproject_position(world_point)
+		for offset in PLAYER_OBSERVATION_PIXEL_OFFSETS:
+			var candidate := projected + offset
+			if visible_rect.has_point(candidate) and not candidates.has(candidate):
+				candidates.append(candidate)
+	return candidates
+
+
+func _render_node_has_visible_surface(node: Node3D) -> bool:
+	if node == null or not is_instance_valid(node) or not node.is_visible_in_tree():
+		return false
+	if node is Label3D:
+		var label := node as Label3D
+		return not str(label.text).strip_edges().is_empty() and label.modulate.a > 0.01
+	if not (node is MeshInstance3D):
+		return false
+	var mesh_instance := node as MeshInstance3D
+	if mesh_instance.mesh == null or mesh_instance.transparency >= 0.99:
+		return false
+	if _material_has_visible_surface(mesh_instance.material_override):
+		return true
+	var saw_surface_material := false
+	for surface_index in range(mesh_instance.mesh.get_surface_count()):
+		var material := mesh_instance.get_active_material(surface_index)
+		if material == null:
+			continue
+		saw_surface_material = true
+		if _material_has_visible_surface(material):
+			return true
+	# A mesh with no explicit material still renders with Godot's fallback material.
+	return not saw_surface_material
+
+
+func _material_has_visible_surface(material: Material) -> bool:
+	if material == null:
+		return false
+	if material is BaseMaterial3D:
+		var base := material as BaseMaterial3D
+		# With no target-ID framebuffer pass, dynamic alpha and camera-distance
+		# fades cannot be distinguished from collision-only geometry. Only the
+		# fully opaque, non-fading BaseMaterial path is independently safe here.
+		return base.albedo_color.a > 0.01 \
+			and base.transparency == BaseMaterial3D.TRANSPARENCY_DISABLED \
+			and base.distance_fade_mode == BaseMaterial3D.DISTANCE_FADE_DISABLED \
+			and not base.proximity_fade_enabled
+	# A custom shader can discard every fragment or drive ALPHA from arbitrary
+	# uniforms/textures. Collision, a material reference, and even a pointer ray
+	# therefore cannot prove that a human can see it. Until a shader-backed target
+	# supplies independently verified render evidence, fail closed instead of
+	# manufacturing a policy affordance from hidden gameplay geometry.
+	return false
 
 ## Number of meshes this target outlines. Named "shell count" for the historical inverted-hull shells; the crisp
 ## outline is now the screen-space mask, so this is the count of registered outline meshes (the contract callers
@@ -247,7 +531,8 @@ func begin_queued_feedback(_origin: Vector3 = Vector3.ZERO, queue_color: Color =
 	_selection_token += 1
 	var tint := queue_color if queue_color.a > 0.0 else selected_feedback_color
 	_apply_object_outline(tint, true)
-	_play_interaction_pulse(tint, "queued")
+	_clear_interaction_presentation(_interaction_presentation_serial)
+	_play_interaction_pulse(tint, "queued", -1)
 
 func complete_queued_feedback() -> void:
 	_clear_queued_feedback()
@@ -272,30 +557,174 @@ func _clear_queued_feedback() -> void:
 ## authoritative `interacted` / `interaction_rejected` signals here so a timed action does not
 ## celebrate merely because the character reached it.
 func play_interaction_result(succeeded: bool) -> void:
-	_play_interaction_pulse(
-		Color(0.3, 1.0, 0.55, 1.0) if succeeded else Color(1.0, 0.16, 0.12, 1.0),
-		"success" if succeeded else "rejected"
+	_interaction_presentation_serial += 1
+	var presentation_serial := _interaction_presentation_serial
+	var result_kind := "success" if succeeded else "rejected"
+	_interaction_presentation_authority_result = result_kind
+	var rendered := _play_interaction_pulse(
+		INTERACTION_SUCCESS_TINT if succeeded else Color(1.0, 0.16, 0.12, 1.0),
+		result_kind,
+		presentation_serial
 	)
+	_interaction_presentation_result = result_kind if rendered else ""
+	_interaction_presentation_visible = rendered
 
 
-func _play_interaction_pulse(tint: Color, kind: String) -> void:
+## Target-specific presentation receipt. The monotonically increasing serial
+## distinguishes this object's latest authoritative trigger result from ambient
+## HUD/consequence churn. `visible` is true only while its real green/red result
+## pulse is actually present in the rendered scene.
+func get_player_interaction_presentation() -> Dictionary:
+	var pulse_is_visible := _interaction_pulse != null \
+		and is_instance_valid(_interaction_pulse) \
+		and _interaction_pulse.is_visible_in_tree()
+	return {
+		"presentation_serial": _interaction_presentation_serial,
+		"authority_result": _interaction_presentation_authority_result,
+		"result": _interaction_presentation_result,
+		"visible": _interaction_presentation_visible and pulse_is_visible,
+	}
+
+
+## The exact geometry carrying the current green/red result. Presentation
+## observers must still prove this node is inside the current camera, on-screen,
+## and associated with the same production pointer affordance before admitting a
+## result cue. The boolean receipt above is deliberately not sufficient alone.
+func get_player_interaction_presentation_render_nodes() -> Array[Node3D]:
+	var render_nodes: Array[Node3D] = []
+	if _interaction_presentation_visible \
+			and _interaction_presentation_result in ["success", "rejected"] \
+			and _interaction_pulse != null \
+			and is_instance_valid(_interaction_pulse) \
+			and _interaction_pulse.is_visible_in_tree():
+		render_nodes.append(_interaction_pulse)
+	return render_nodes
+
+
+## Candidate pixels for the actual transient green/red geometry. This separate
+## surface lets the observer prove the cue itself remains in the current view;
+## it may not infer that from the source object's earlier visibility.
+func get_player_interaction_presentation_screen_candidates(
+		camera: Camera3D, viewport: Viewport
+	) -> Array[Vector2]:
+	# The annulus AABB centre is its transparent hole and its corners sit
+	# outside the ring.  The generic centre/corner probe happened to work for
+	# small authored targets because its framebuffer neighbourhood reached the
+	# nearby ring, but a generated target can legitimately clamp this pulse to a
+	# three-world-unit radius.  At that scale every generic probe can miss the
+	# actual red/green pixels even though a human plainly sees them.  Project a
+	# bounded sample of the real pulse vertices so the observation contract
+	# proves the rendered result geometry rather than its empty bounds.
+	var pulse_candidates := _interaction_pulse_surface_screen_candidates(
+		camera, viewport)
+	if not pulse_candidates.is_empty():
+		return pulse_candidates
+	return _screen_candidates_for_render_nodes(
+		get_player_interaction_presentation_render_nodes(), camera, viewport)
+
+
+func _interaction_pulse_surface_screen_candidates(
+		camera: Camera3D, viewport: Viewport
+	) -> Array[Vector2]:
+	var candidates: Array[Vector2] = []
+	if camera == null or viewport == null or not camera.is_inside_tree() \
+			or _interaction_pulse == null \
+			or not is_instance_valid(_interaction_pulse) \
+			or not _interaction_pulse.is_visible_in_tree() \
+			or _interaction_pulse.mesh == null:
+		return candidates
+	var visible_rect := viewport.get_visible_rect()
+	for surface_index in range(_interaction_pulse.mesh.get_surface_count()):
+		var arrays := _interaction_pulse.mesh.surface_get_arrays(surface_index)
+		if arrays.size() <= Mesh.ARRAY_VERTEX:
+			continue
+		var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		if vertices.is_empty():
+			continue
+		var stride := maxi(1, ceili(float(vertices.size()) \
+			/ float(INTERACTION_RESULT_MAX_SURFACE_SAMPLES)))
+		for vertex_index in range(0, vertices.size(), stride):
+			var world_point := _interaction_pulse.global_transform \
+				* vertices[vertex_index]
+			if camera.is_position_behind(world_point):
+				continue
+			var projected := camera.unproject_position(world_point)
+			if visible_rect.has_point(projected) and not candidates.has(projected):
+				candidates.append(projected)
+	return candidates
+
+
+func _play_interaction_pulse(
+		tint: Color, kind: String, presentation_serial := -1
+	) -> bool:
 	if DisplayServer.get_name() == "headless" or not is_inside_tree():
-		return
+		return false
 	_ensure_interaction_pulse()
 	if _interaction_pulse == null or _interaction_pulse_material == null:
-		return
+		return false
+	# Adversarial render tests may temporarily suppress the shared material. Every
+	# real mint re-establishes the complete draw contract for its kind instead of
+	# inheriting a prior presentation's mutated render state. Completed results use
+	# the Compatibility-safe opaque path; queued intent retains its short
+	# translucent/emissive fade because it is not the attested result surface.
+	var completed_result := kind in ["success", "rejected"]
+	_interaction_pulse_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_interaction_pulse_material.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED \
+		if completed_result else BaseMaterial3D.TRANSPARENCY_ALPHA
+	_interaction_pulse_material.emission_enabled = not completed_result
+	_interaction_pulse_material.no_depth_test = false
+	_interaction_pulse_material.cull_mode = BaseMaterial3D.CULL_DISABLED
 	if _interaction_pulse_tween != null and _interaction_pulse_tween.is_valid():
 		_interaction_pulse_tween.kill()
+	_interaction_pulse_generation += 1
+	var pulse_generation := _interaction_pulse_generation
+	_disconnect_result_pulse_draw()
+	_interaction_result_post_mint_epoch_complete = false
+	_interaction_result_hold_frames_left = 0
+	_interaction_result_readable_elapsed_msec = 0
+	_interaction_result_last_eligible_draw_msec = -1
+	_interaction_result_pending_tween.clear()
 	var radius := clampf(get_outline_highlight_radius(), 0.55, 3.0)
 	var extents := get_outline_highlight_extents()
-	var floor_y := _get_feedback_origin().y - maxf(0.0, extents.y) + 0.045
-	_interaction_pulse.global_position = Vector3(_get_feedback_origin().x, floor_y, _get_feedback_origin().z)
+	var feedback_origin := _pointer_result_origin_override \
+		if completed_result and _pointer_result_origin_override.is_finite() \
+		else _get_feedback_origin()
+	var floor_y := feedback_origin.y - maxf(0.0, extents.y) + 0.045
+	# Authored/generated props may be embedded into a raised deck, which can
+	# completely hide a ground ring. Raising a result in world Y is not safe
+	# either: with an oblique camera it moves the cue away from its source and
+	# underneath opaque instruction UI. Keep queued feedback grounded, but place
+	# completed results just beyond the source AABB's camera-facing support plane.
+	# This preserves the source's screen centre and ordinary depth testing: the
+	# source/deck sit behind the halo while real foreground geometry still wins.
+	_interaction_pulse.global_position = Vector3(
+		feedback_origin.x, floor_y, feedback_origin.z)
+	if completed_result:
+		# The pointer collision point is already on the camera-facing visible
+		# surface. Applying the whole object's support distance a second time can
+		# slide the halo back underneath adjacent HUD. Only center-authored results
+		# need that depth offset; a click-authored result keeps its screen anchor.
+		var result_extents := Vector3.ZERO \
+			if _pointer_result_origin_override.is_finite() else extents
+		_interaction_pulse.global_position = _interaction_result_halo_position(
+			feedback_origin, result_extents)
+	# Result feedback must read as a halo around the source in the player's
+	# actual view. A horizontal ground ring can collapse to a few fragments at
+	# an oblique camera angle, and can share every remaining pixel with selection
+	# decals even when its world AABB is technically visible. Rotate only the
+	# completed result surface into the active camera plane. It remains ordinary
+	# depth-tested world geometry, so walls and other foreground objects still
+	# occlude it; queued/path feedback keeps its authored horizontal grounding.
+	_orient_interaction_pulse(kind)
 	var start_scale := 1.32
 	var end_scale := 0.92
 	var duration := 0.32
 	if kind == "success":
-		start_scale = 0.72
-		end_scale = 1.72
+		# Hold the truthful success ring outside the selected character's blue
+		# ground hex. The former 0.72 scale put both markers on the same pixels, so
+		# a successful Capbage HIDE produced only a few occluded green flecks.
+		start_scale = 1.25
+		end_scale = 2.1
 		duration = 0.46
 	elif kind == "rejected":
 		start_scale = 1.45
@@ -303,21 +732,260 @@ func _play_interaction_pulse(tint: Color, kind: String) -> void:
 		duration = 0.42
 	_interaction_pulse.scale = Vector3.ONE * radius * start_scale
 	_interaction_pulse.visible = true
-	_interaction_pulse_material.albedo_color = Color(tint.r, tint.g, tint.b, 0.96)
+	_interaction_pulse_material.albedo_color = Color(
+		tint.r, tint.g, tint.b, 1.0 if completed_result else 0.96)
 	_interaction_pulse_material.emission = tint
-	_interaction_pulse_material.emission_energy_multiplier = 5.0 if kind != "queued" else 3.8
+	# Compatibility rendering dropped this short-lived surface when it used the
+	# transparent/emissive path, even though the same camera projected all of its
+	# vertices. The unshaded opaque annulus carries hue through albedo only.
+	_interaction_pulse_material.emission_energy_multiplier = \
+		0.0 if completed_result else 3.8
+	if completed_result:
+		_interaction_result_hold_frames_left = INTERACTION_RESULT_MIN_PRESENTED_FRAMES
+		_interaction_result_pending_tween = {
+			"pulse_generation": pulse_generation,
+			"radius": radius,
+			"end_scale": end_scale,
+			"duration": duration,
+			"presentation_serial": presentation_serial,
+			"kind": kind,
+		}
+		_ensure_result_pulse_draw_connection()
+		_schedule_interaction_result_hard_cleanup(
+			pulse_generation, presentation_serial, kind)
+		return true
+	_start_interaction_pulse_tween(
+		pulse_generation, radius, end_scale, duration,
+		presentation_serial, kind)
+	return true
+
+
+func _interaction_result_halo_position(
+		feedback_origin: Vector3, extents: Vector3
+	) -> Vector3:
+	var viewport := get_viewport()
+	var camera := viewport.get_camera_3d() if viewport != null else null
+	if camera == null or not camera.current:
+		return feedback_origin + Vector3.UP * (
+			maxf(0.0, extents.y) + INTERACTION_RESULT_HALO_CAMERA_MARGIN)
+	var toward_camera := camera.global_position - feedback_origin
+	if toward_camera.length_squared() <= 0.000001:
+		return feedback_origin
+	toward_camera = toward_camera.normalized()
+	# Project the world-axis highlight AABB onto the view ray. Advancing by this
+	# support distance places the camera-facing plane just beyond the source
+	# without using an x-ray material or an arbitrary screen-space offset.
+	var source_support := (
+		absf(toward_camera.x) * maxf(0.0, extents.x)
+		+ absf(toward_camera.y) * maxf(0.0, extents.y)
+		+ absf(toward_camera.z) * maxf(0.0, extents.z)
+	)
+	return feedback_origin + toward_camera * (
+		source_support + INTERACTION_RESULT_HALO_CAMERA_MARGIN)
+
+
+func _orient_interaction_pulse(kind: String) -> void:
+	if _interaction_pulse == null or not is_instance_valid(_interaction_pulse):
+		return
+	if kind not in ["success", "rejected"]:
+		_interaction_pulse.global_basis = Basis.IDENTITY
+		return
+	var viewport := _interaction_pulse.get_viewport()
+	var camera := viewport.get_camera_3d() if viewport != null else null
+	if camera == null or not camera.current:
+		_interaction_pulse.global_basis = Basis.IDENTITY
+		return
+	# The annulus is authored in local XZ with local Y as its ring normal. Map
+	# that normal to the camera's backward axis while retaining a right-handed
+	# basis: camera X x camera Z == -camera Y.
+	_interaction_pulse.global_basis = Basis(
+		camera.global_basis.x.normalized(),
+		camera.global_basis.z.normalized(),
+		-camera.global_basis.y.normalized())
+
+
+func _ensure_result_pulse_draw_connection() -> void:
+	var callback := Callable(self, "_on_result_pulse_frame_drawn")
+	if not RenderingServer.frame_post_draw.is_connected(callback):
+		RenderingServer.frame_post_draw.connect(callback)
+
+
+func _disconnect_result_pulse_draw() -> void:
+	var callback := Callable(self, "_on_result_pulse_frame_drawn")
+	if RenderingServer.frame_post_draw.is_connected(callback):
+		RenderingServer.frame_post_draw.disconnect(callback)
+
+
+func _on_result_pulse_frame_drawn() -> void:
+	if _interaction_result_pending_tween.is_empty():
+		_disconnect_result_pulse_draw()
+		return
+	var pulse_generation := int(_interaction_result_pending_tween.get(
+		"pulse_generation", -1))
+	if pulse_generation != _interaction_pulse_generation \
+			or _interaction_pulse == null \
+			or not is_instance_valid(_interaction_pulse) \
+			or not _interaction_pulse.visible:
+		_interaction_result_hold_frames_left = 0
+		_interaction_result_post_mint_epoch_complete = false
+		_interaction_result_readable_elapsed_msec = 0
+		_interaction_result_last_eligible_draw_msec = -1
+		_interaction_result_pending_tween.clear()
+		_disconnect_result_pulse_draw()
+		return
+	# frame_post_draw is global. Count it only when this exact pulse had a real
+	# opportunity to draw for its own viewport: inherited visibility is live, the
+	# active camera includes its render layer, and sampled annulus surface vertices
+	# intersect the current viewport. Occlusion/tint remain the observer's stricter
+	# framebuffer proof; this predicate merely prevents unrelated draws from aging
+	# production presentation.
+	if not _interaction_result_has_draw_opportunity():
+		_interaction_result_last_eligible_draw_msec = -1
+		return
+	# Do not treat the signal-delivery turn that first makes a newly minted pulse
+	# eligible as one of its retained receipts. One complete post-mint draw epoch
+	# must land before the four human-readable draw opportunities begin.
+	if not _interaction_result_post_mint_epoch_complete:
+		_interaction_result_post_mint_epoch_complete = true
+		return
+	var completed_draw_msec := Time.get_ticks_msec() # @rendering_only
+	if _interaction_result_hold_frames_left > 0:
+		_interaction_result_hold_frames_left -= 1
+		if _interaction_result_hold_frames_left == 0:
+			_interaction_result_readable_elapsed_msec = 0
+			_interaction_result_last_eligible_draw_msec = completed_draw_msec
+		return
+	if _interaction_result_last_eligible_draw_msec < 0:
+		_interaction_result_last_eligible_draw_msec = completed_draw_msec
+		return
+	_interaction_result_readable_elapsed_msec += maxi(
+		0, mini(
+			INTERACTION_RESULT_MAX_ELIGIBLE_DRAW_INTERVAL_MSEC,
+			completed_draw_msec \
+				- _interaction_result_last_eligible_draw_msec))
+	_interaction_result_last_eligible_draw_msec = completed_draw_msec
+	if _interaction_result_readable_elapsed_msec \
+			< INTERACTION_RESULT_MIN_PRESENTED_MSEC:
+		return
+	var pending := _interaction_result_pending_tween.duplicate()
+	_interaction_result_pending_tween.clear()
+	_interaction_result_readable_elapsed_msec = 0
+	_interaction_result_last_eligible_draw_msec = -1
+	_disconnect_result_pulse_draw()
+	_start_interaction_pulse_tween(
+		pulse_generation,
+		float(pending.get("radius", 0.0)),
+		float(pending.get("end_scale", 1.0)),
+		float(pending.get("duration", 0.0)),
+		int(pending.get("presentation_serial", -1)),
+		str(pending.get("kind", "")))
+
+
+func _interaction_result_has_draw_opportunity() -> bool:
+	if _interaction_pulse == null or not is_instance_valid(_interaction_pulse) \
+			or not _interaction_pulse.is_visible_in_tree():
+		return false
+	var viewport := _interaction_pulse.get_viewport()
+	if viewport == null or viewport.get_visible_rect().size.x <= 0.0 \
+			or viewport.get_visible_rect().size.y <= 0.0:
+		return false
+	var camera := viewport.get_camera_3d()
+	if camera == null or not camera.is_inside_tree() or not camera.is_current():
+		return false
+	if (_interaction_pulse.layers & camera.cull_mask) == 0:
+		return false
+	return not _interaction_pulse_surface_screen_candidates(
+		camera, viewport).is_empty()
+
+
+func _schedule_interaction_result_hard_cleanup(
+		pulse_generation: int, presentation_serial: int, kind: String
+	) -> void:
+	var tree := get_tree()
+	if tree == null:
+		return
+	var cleanup_timer := tree.create_timer(
+		float(_interaction_result_hard_cleanup_msec()) / 1000.0,
+		true,
+		false,
+		true)
+	cleanup_timer.timeout.connect(
+		_on_interaction_result_hard_timeout.bind(
+			pulse_generation, presentation_serial, kind),
+		CONNECT_ONE_SHOT)
+
+
+func _interaction_result_hard_cleanup_msec() -> int:
+	return INTERACTION_RESULT_MAX_LIFETIME_MSEC
+
+
+func _on_interaction_result_hard_timeout(
+		pulse_generation: int, presentation_serial: int, kind: String
+	) -> void:
+	# A superseded result owns neither the pulse nor this cleanup. The current
+	# generation is retired even if it never drew or its scale-out stalled while paused.
+	if pulse_generation != _interaction_pulse_generation \
+			or presentation_serial != _interaction_presentation_serial \
+			or _interaction_presentation_result != kind:
+		return
+	if _interaction_pulse_tween != null and _interaction_pulse_tween.is_valid():
+		_interaction_pulse_tween.kill()
+	_interaction_result_pending_tween.clear()
+	_interaction_result_post_mint_epoch_complete = false
+	_interaction_result_hold_frames_left = 0
+	_interaction_result_readable_elapsed_msec = 0
+	_interaction_result_last_eligible_draw_msec = -1
+	_disconnect_result_pulse_draw()
+	_finish_interaction_pulse(
+		presentation_serial, kind, pulse_generation)
+
+
+func _start_interaction_pulse_tween(
+		pulse_generation: int,
+		radius: float,
+		end_scale: float,
+		duration: float,
+		presentation_serial: int,
+		kind: String
+	) -> void:
+	if pulse_generation != _interaction_pulse_generation \
+			or _interaction_pulse == null \
+			or not is_instance_valid(_interaction_pulse) \
+			or _interaction_pulse_material == null:
+		return
 	_interaction_pulse_tween = create_tween()
 	_interaction_pulse_tween.set_trans(Tween.TRANS_QUAD)
 	_interaction_pulse_tween.set_ease(Tween.EASE_OUT)
 	_interaction_pulse_tween.tween_property(
 		_interaction_pulse, "scale", Vector3.ONE * radius * end_scale, duration)
-	_interaction_pulse_tween.parallel().tween_property(
-		_interaction_pulse_material, "albedo_color:a", 0.0, duration)
-	_interaction_pulse_tween.parallel().tween_property(
-		_interaction_pulse_material, "emission_energy_multiplier", 0.6, duration)
-	_interaction_pulse_tween.tween_callback(func() -> void:
-		if _interaction_pulse != null:
-			_interaction_pulse.visible = false)
+	if kind not in ["success", "rejected"]:
+		_interaction_pulse_tween.parallel().tween_property(
+			_interaction_pulse_material, "albedo_color:a", 0.0, duration)
+		_interaction_pulse_tween.parallel().tween_property(
+			_interaction_pulse_material, "emission_energy_multiplier", 0.6, duration)
+	_interaction_pulse_tween.tween_callback(
+		_finish_interaction_pulse.bind(
+			presentation_serial, kind, pulse_generation)
+	)
+
+
+func _finish_interaction_pulse(
+		presentation_serial: int, kind: String, pulse_generation: int
+	) -> void:
+	if pulse_generation != _interaction_pulse_generation:
+		return
+	if _interaction_pulse != null:
+		_interaction_pulse.visible = false
+	if kind in ["success", "rejected"]:
+		_clear_interaction_presentation(presentation_serial)
+
+
+func _clear_interaction_presentation(presentation_serial: int) -> void:
+	if presentation_serial != _interaction_presentation_serial:
+		return
+	_interaction_presentation_authority_result = ""
+	_interaction_presentation_result = ""
+	_interaction_presentation_visible = false
 
 
 func _ensure_interaction_pulse() -> void:
@@ -325,25 +993,78 @@ func _ensure_interaction_pulse() -> void:
 		return
 	_interaction_pulse_material = StandardMaterial3D.new()
 	_interaction_pulse_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	_interaction_pulse_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	_interaction_pulse_material.emission_enabled = true
+	_interaction_pulse_material.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED
+	_interaction_pulse_material.emission_enabled = false
 	_interaction_pulse_material.no_depth_test = false
+	_interaction_pulse_material.cull_mode = BaseMaterial3D.CULL_DISABLED
 	_interaction_pulse_material.render_priority = 4
-	var torus := TorusMesh.new()
-	torus.inner_radius = 0.82
-	torus.outer_radius = 1.0
-	torus.rings = 28
-	torus.ring_segments = 10
 	_interaction_pulse = MeshInstance3D.new()
 	_interaction_pulse.name = "InteractionPulse"
-	_interaction_pulse.mesh = torus
+	_interaction_pulse.mesh = _make_interaction_pulse_annulus_mesh()
 	_interaction_pulse.material_override = _interaction_pulse_material
 	_interaction_pulse.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	# Transient feedback is too short-lived to wait for an occlusion-culling
+	# history update after it is minted. Skip only the coarse instance culler;
+	# the material still performs ordinary per-fragment depth testing.
+	_interaction_pulse.ignore_occlusion_culling = true
 	_interaction_pulse.layers = 2
 	_interaction_pulse.set_meta("camera_occlusion_exempt", true)
 	_interaction_pulse.visible = false
-	add_child(_interaction_pulse)
 	_interaction_pulse.top_level = true
+	add_child(_interaction_pulse)
+
+
+func _make_interaction_pulse_annulus_mesh() -> ArrayMesh:
+	# The generated Compatibility regression proved the exact boundary: TorusMesh
+	# and transparent annuli exposed valid projected vertices but no readable
+	# fragments, while this opaque planar surface rendered at the same transform.
+	# It is explicitly double-sided because a result must remain visible across
+	# camera-handedness changes; ordinary depth testing still lets real foreground
+	# geometry occlude it, so this is never an x-ray or screen overlay.
+	const SEGMENT_COUNT := 40
+	const INNER_RADIUS := 0.76
+	const OUTER_RADIUS := 1.0
+	var vertices := PackedVector3Array()
+	var normals := PackedVector3Array()
+	var uvs := PackedVector2Array()
+	var indices := PackedInt32Array()
+	for segment_index in range(SEGMENT_COUNT):
+		var angle_a := TAU * float(segment_index) / float(SEGMENT_COUNT)
+		var angle_b := TAU * float(segment_index + 1) / float(SEGMENT_COUNT)
+		var outer_a := Vector3(
+			cos(angle_a) * OUTER_RADIUS, 0.0,
+			sin(angle_a) * OUTER_RADIUS)
+		var inner_a := Vector3(
+			cos(angle_a) * INNER_RADIUS, 0.0,
+			sin(angle_a) * INNER_RADIUS)
+		var outer_b := Vector3(
+			cos(angle_b) * OUTER_RADIUS, 0.0,
+			sin(angle_b) * OUTER_RADIUS)
+		var inner_b := Vector3(
+			cos(angle_b) * INNER_RADIUS, 0.0,
+			sin(angle_b) * INNER_RADIUS)
+		var base_index := vertices.size()
+		vertices.append_array(PackedVector3Array([
+			outer_a, inner_a, outer_b, inner_b]))
+		for _vertex_index in range(4):
+			normals.append(Vector3.UP)
+		uvs.append_array(PackedVector2Array([
+			Vector2(1.0, 0.0), Vector2(0.0, 0.0),
+			Vector2(1.0, 1.0), Vector2(0.0, 1.0),
+		]))
+		indices.append_array(PackedInt32Array([
+			base_index, base_index + 1, base_index + 2,
+			base_index + 1, base_index + 3, base_index + 2,
+		]))
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = vertices
+	arrays[Mesh.ARRAY_NORMAL] = normals
+	arrays[Mesh.ARRAY_TEX_UV] = uvs
+	arrays[Mesh.ARRAY_INDEX] = indices
+	var annulus := ArrayMesh.new()
+	annulus.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return annulus
 
 ## active=hover outline (glow_on=false) OR the queued energy glow (glow_on=true). The crisp outline + the morphing
 ## energy halo are both the screen-space mask now (OutlineMaskManager); glow_on flips the mask's fill-alpha flag.

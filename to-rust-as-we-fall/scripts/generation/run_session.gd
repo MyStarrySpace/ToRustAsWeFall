@@ -49,6 +49,7 @@ var target_depth: int = 6        # the finale's depth — seeded per run below
 var completed := false           # the prize was retrieved
 var run_over := false            # wiped: everyone is gone
 var deaths: Array = []           # permadeath ledger, in falling order
+var last_transition_rejection: Dictionary = {}
 
 func _init(run_seed: int = 1, levels_mode: String = LEVELS_STRETCH) -> void:
 	seed = run_seed
@@ -61,6 +62,7 @@ func _init(run_seed: int = 1, levels_mode: String = LEVELS_STRETCH) -> void:
 func start() -> Dictionary:
 	depth = 0
 	roster = ["aster", "peris"]
+	last_transition_rejection = {}
 	if levels == LEVELS_ATOM:
 		spec = _generate_atom_level(0)
 	else:
@@ -90,29 +92,119 @@ func choose(option: Dictionary) -> Dictionary:
 	# interludes have no biome, so fall back to the last generated history entry.
 	var previous_biome := _latest_generated_biome()
 	var reward: Dictionary = option.get("reward", {})
+	var candidate_roster: Array = roster.duplicate()
 	if reward.has("recruit"):
 		var who := str(reward["recruit"])
-		if who != "" and not roster.has(who):
-			roster.append(who)
-	depth += 1 + int(reward.get("depth_skip", 0))
-	if depth >= target_depth:
-		depth = target_depth
-		spec = _generate_finale()
-	elif depth == _chase_depth() and roster.has("aster") and roster.has("peris"):
-		spec = _generate_chase_level()
+		if who != "" and not candidate_roster.has(who):
+			candidate_roster.append(who)
+	var candidate_depth := mini(
+		depth + 1 + int(reward.get("depth_skip", 0)), target_depth)
+	var candidate_spec: Dictionary
+	var candidate_settings: Dictionary = {}
+	if candidate_depth >= target_depth:
+		candidate_spec = _generate_finale(candidate_depth)
+	elif candidate_depth == _chase_depth() \
+			and candidate_roster.has("aster") and candidate_roster.has("peris"):
+		candidate_spec = _generate_chase_level(candidate_depth)
 	elif levels == LEVELS_ATOM:
-		spec = _generate_atom_level(int(option.get("atom_stage_bonus", 0)))
+		candidate_spec = _generate_atom_level(
+			int(option.get("atom_stage_bonus", 0)), candidate_depth)
 	else:
-		var settings: Dictionary = (option.get("settings", {}) as Dictionary).duplicate(true)
-		settings["roster"] = roster.duplicate()
-		_apply_depth_theme(settings, depth, previous_biome)
-		spec = GeneratorScript.generate(settings)
+		candidate_settings = (
+			option.get("settings", {}) as Dictionary).duplicate(true)
+		candidate_settings["roster"] = candidate_roster.duplicate()
+		_apply_depth_theme(candidate_settings, candidate_depth, previous_biome)
+		candidate_spec = GeneratorScript.generate(candidate_settings)
+	# A generated branch is a transaction. Never spend its reward, advance the
+	# descent, replace the live level, or append history unless the candidate
+	# passed generation. The presenter can visibly report this rejected choice
+	# while the player remains at the shelter and selects another route.
+	if not bool(candidate_spec.get("success", false)):
+		candidate_spec["run_transition_rejected"] = true
+		candidate_spec["requested_choice"] = str(option.get("id", ""))
+		candidate_spec["requested_depth"] = candidate_depth
+		if not candidate_settings.is_empty():
+			candidate_spec["requested_settings"] = candidate_settings.duplicate(true)
+		last_transition_rejection = candidate_spec.duplicate(true)
+		var rejection_draft: Dictionary = candidate_spec.get("draft_spec", {})
+		var rejection_settings: Dictionary = candidate_spec.get(
+			"draft_settings", candidate_settings)
+		var rejection_biome := str(rejection_draft.get(
+			"biome", rejection_settings.get("biome", candidate_spec.get("biome", ""))))
+		var rejection_details := _generation_failure_details(candidate_spec)
+		push_warning(
+			"RunSession rejected generated choice '%s' for depth %d: %s; biome=%s; details=%s"
+			% [str(option.get("id", "")), candidate_depth,
+				str(candidate_spec.get("error", "unknown_generation_failure")),
+				rejection_biome,
+				str(rejection_details)]
+		)
+		return candidate_spec
+	last_transition_rejection = {}
+	roster = candidate_roster
+	depth = candidate_depth
+	spec = candidate_spec
 	history.append({
 		"depth": depth, "choice": str(option.get("id", "")), "pattern": str(option.get("id", "")),
 		"reward": reward, "roster": roster.duplicate(), "spec_id": str(spec.get("id", "")),
 		"biome": str(spec.get("biome", "")),
 	})
 	return spec
+
+
+## Surface the validation section that actually rejected the candidate. Early
+## projection failures do not have a `draft_spec`, and logging area-theme errors
+## for every failure hid the offending node/content receipt behind `details=[]`.
+static func _generation_failure_details(candidate_spec: Dictionary) -> Array[String]:
+	var details: Array[String] = []
+	var validation_v: Variant = candidate_spec.get("validation", null)
+	if not (validation_v is Dictionary):
+		return details
+	var validation := validation_v as Dictionary
+	var error := str(candidate_spec.get("error", ""))
+	var preferred_key := ""
+	if error.begins_with("realized_content_navigation"):
+		preferred_key = "realized_content_navigation"
+	elif error.begins_with("actionable_interaction_approach"):
+		preferred_key = "actionable_interaction_approaches"
+	elif error.begins_with("spec_integrity"):
+		preferred_key = "integrity"
+	elif error.begins_with("party_spawn_clearance"):
+		preferred_key = "party_spawn_clearance"
+	elif error.begins_with("area_theme"):
+		preferred_key = "area_theme"
+	if preferred_key != "":
+		_append_generation_validation_errors(
+			details, preferred_key, validation.get(preferred_key, null), false)
+	if not details.is_empty():
+		return details
+	var section_keys: Array = validation.keys()
+	section_keys.sort_custom(func(a: Variant, b: Variant) -> bool:
+		return str(a) < str(b))
+	for section_key_v in section_keys:
+		_append_generation_validation_errors(
+			details,
+			str(section_key_v),
+			validation.get(section_key_v, null),
+			true)
+	return details
+
+
+static func _append_generation_validation_errors(
+		details: Array[String],
+		section_key: String,
+		section_v: Variant,
+		include_section: bool
+	) -> void:
+	if not (section_v is Dictionary):
+		return
+	var errors_v: Variant = (section_v as Dictionary).get("errors", null)
+	if not (errors_v is Array):
+		return
+	for error_v in errors_v as Array:
+		var message := str(error_v)
+		details.append(
+			"%s: %s" % [section_key, message] if include_section else message)
 
 ## Theme is a property of the descended DEPTH, not of which risk/reward option happened to reach it. This gives
 ## the run a reproducible district sequence and guarantees adjacent generated stretches change area identity;
@@ -164,24 +256,24 @@ func current_is_playable() -> bool:
 ## The boss-site finale: the bottom of the descent. The site itself is authored content (the
 ## paranucleus wheels + alignment crossing + the prize) seeded per run; the spec is the handle
 ## the presenter loads it by.
-func _generate_finale() -> Dictionary:
+func _generate_finale(target_level_depth: int = depth) -> Dictionary:
 	return {
 		"success": true,
 		"kind": FINALE_PARANUCLEUS,
 		"id": "finale_%d" % seed,
-		"seed": posmod(seed * 31 + depth * 7, 1000),
+		"seed": posmod(seed * 31 + target_level_depth * 7, 1000),
 	}
 
 ## The run's one chase sits at a seeded depth in [2, target) -- never the opener, never the finale.
 func _chase_depth() -> int:
 	return 2 + posmod(int(hash("chase:%d" % seed)), maxi(1, target_depth - 3))
 
-func _generate_chase_level() -> Dictionary:
+func _generate_chase_level(target_level_depth: int = depth) -> Dictionary:
 	return {
 		"success": true,
 		"kind": LEVEL_CHASE,
-		"id": "chase_d%d_%d" % [depth, seed],
-		"depth": depth,
+		"id": "chase_d%d_%d" % [target_level_depth, seed],
+		"depth": target_level_depth,
 	}
 
 func at_finale() -> bool:
@@ -221,14 +313,14 @@ func summary() -> Dictionary:
 ## variant pool widens with depth (teaching runs are lure-only and legible; deeper runs mix patrol/twin —
 ## information and register demands rise, windows never tighten), and the hub SHAPE rotates by seed+depth.
 ## The skeleton is composed + graded HERE so the run can refuse an unfair level before it ever loads.
-func _generate_atom_level(stage_bonus: int) -> Dictionary:
-	var atom_seed := int(hash("atomrun:%d:%d" % [seed, depth]))
+func _generate_atom_level(stage_bonus: int, target_level_depth: int = depth) -> Dictionary:
+	var atom_seed := int(hash("atomrun:%d:%d" % [seed, target_level_depth]))
 	var rng := SeededRng.new(atom_seed)
-	var count := clampi(2 + depth / 2 + stage_bonus, 2, 5)
+	var count := clampi(2 + target_level_depth / 2 + stage_bonus, 2, 5)
 	var pool: Array = ["lure"]
-	if depth >= 1:
+	if target_level_depth >= 1:
 		pool.append("patrol")
-	if depth >= 2:
+	if target_level_depth >= 2:
 		pool.append("twin")
 	var stages: Array = []
 	for i in range(count):
@@ -242,11 +334,11 @@ func _generate_atom_level(stage_bonus: int) -> Dictionary:
 	var card: Dictionary = ChunkGenScript.report_card(skeleton)
 	return {
 		"kind": "atom",
-		"id": "atom_d%d_%d" % [depth, atom_seed],
+		"id": "atom_d%d_%d" % [target_level_depth, atom_seed],
 		"success": bool(card.get("ok", false)),
 		"stages": stages,
 		"seed": atom_seed,
 		"hub_shape": shape,
-		"depth": depth,
+		"depth": target_level_depth,
 		"card": card,
 	}

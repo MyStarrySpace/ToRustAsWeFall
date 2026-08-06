@@ -29,7 +29,10 @@ enum InteractableType {
 ## prediction the runtime can actually honor, not another object name.
 @export_multiline var consequence_preview := ""
 @export var one_shot := false
-@export var interaction_enabled := true
+@export var interaction_enabled := true:
+	set(value):
+		interaction_enabled = value
+		_sync_outline_target_command_availability()
 @export var interactable_type := InteractableType.HOLD_ACTION
 @export var interactable_id := ""
 @export var tutorial_label := ""
@@ -53,7 +56,10 @@ enum InteractableType {
 
 var _player_in_range := false
 var _dwell_progress := 0.0
-var _used := false
+var _used := false:
+	set(value):
+		_used = value
+		_sync_outline_target_command_availability()
 
 # Gameplay scheduler. When set, a HOLD_ACTION's dwell completion is a scheduled
 # event that pauses with gameplay; when null, dwell falls back to the wall clock.
@@ -80,6 +86,11 @@ var speed_multiplier := 1.0
 var dialogue_box: Node = null
 ## Active character id.
 var active_character := ""
+## Immutable owner of the pointer command while `interaction_requested` is
+## synchronously being delivered. `active_character` is also used by the
+## servicing interaction and may change to a required party member; listeners
+## must never use that mutable field to decide whether the same click is theirs.
+var _interaction_request_owner := ""
 
 var _progress_ring: MeshInstance3D
 var _progress_mat: StandardMaterial3D
@@ -113,9 +124,20 @@ var _owner_enabled_override: Variant = null
 ## this presenter mutates one-shot, dwell, feedback, or dialogue state. An invalid callable preserves
 ## the legacy/default behavior.
 var _pre_trigger_validator := Callable()
+## Optional click-route preflight. Unlike `_pre_trigger_validator`, this query
+## runs before any movement is committed. It may only inspect current authority
+## and returns a plain result dictionary; presentation is a separate callable so
+## observation never changes selection, movement, inventory, or puzzle state.
+## Query signature: `(interactable, active_character) -> Dictionary`.
+## Presenter signature: `(interactable, active_character, result) -> void`.
+var _interaction_route_preflight := Callable()
+var _interaction_route_refusal_presenter := Callable()
 
 signal interacted()
-## The wrong character tried this (required_character mismatch) — hosts surface "who is needed".
+## The authoritative trigger rejected this interaction. `required_character` is populated for a
+## character mismatch and empty for another preflight/authority refusal. The linked object surface
+## always consumes this signal so a rejected player command gets an exact red target result instead
+## of failing silently.
 signal interaction_rejected(interactable: Node, required_character: String)
 signal outline_hovered(interactable: Node)
 signal outline_unhovered(interactable: Node)
@@ -140,7 +162,7 @@ func _ready() -> void:
 	# Match packed-scene physics layers for script-created zones.
 	collision_layer = 4 if interaction_enabled else 0
 	collision_mask = 2 if interaction_enabled else 0
-	input_ray_pickable = true
+	input_ray_pickable = is_pointer_command_available()
 	_collision_shape = get_node_or_null("CollisionShape3D")
 	if _collision_shape != null and _collision_shape.shape != null:
 		_collision_shape.shape = _collision_shape.shape.duplicate()
@@ -478,6 +500,10 @@ func _trigger(play_feedback := true) -> bool:
 		return false
 	if _pre_trigger_validator.is_valid() \
 			and not bool(_pre_trigger_validator.call(self, active_character)):
+		# Scenario preflight is still authoritative refusal. The old early return
+		# left a routed click with no target-specific result even though the player
+		# had reached and attempted the visible object (Basin REST PARTY exposed it).
+		interaction_rejected.emit(self, required_character)
 		return false
 	# When bound, the data layer is the trigger authority (guards the required
 	# character + enabled state, records the event for replay, disables one-shots).
@@ -518,6 +544,50 @@ func _trigger(play_feedback := true) -> bool:
 
 func set_pre_trigger_validator(validator: Callable) -> void:
 	_pre_trigger_validator = validator
+
+
+## Install a read-only route gate plus its presentation-only refusal handler.
+## Invalid callables preserve the default open route contract.
+func set_interaction_route_preflight(
+		query: Callable, refusal_presenter := Callable()
+	) -> void:
+	_interaction_route_preflight = query
+	_interaction_route_refusal_presenter = refusal_presenter
+
+
+## Read-only result consumed by CharacterInteractionController before it asks
+## GameState to move anybody. A malformed query fails closed with an explicit
+## player-facing reason instead of degrading to an approximate position move.
+func get_interaction_route_preflight(character_id: String) -> Dictionary:
+	if not _interaction_route_preflight.is_valid():
+		return {"accepted": true, "code": ""}
+	var result_v: Variant = _interaction_route_preflight.call(self, character_id)
+	if not (result_v is Dictionary):
+		return {
+			"accepted": false,
+			"code": "invalid_route_preflight",
+			"message": "That object's route contract is unavailable.",
+			"cue": "RESOLVE FIRST // ROUTE CONTRACT UNAVAILABLE",
+		}
+	var result := (result_v as Dictionary).duplicate(true)
+	if not result.has("accepted"):
+		result["accepted"] = false
+	if not result.has("code"):
+		result["code"] = "" if bool(result.get("accepted", false)) \
+			else "route_preflight_refused"
+	return result
+
+
+## Scenario presentation is deliberately invoked only after a real click has
+## been refused. CharacterInteractionController owns the exact clicked-surface
+## red pulse; keeping that receipt there prevents a delegate's stale/missing
+## outline link from losing the player's source-token result.
+func present_interaction_route_refusal(
+		character_id: String, result: Dictionary
+	) -> void:
+	if _interaction_route_refusal_presenter.is_valid():
+		_interaction_route_refusal_presenter.call(
+			self, character_id, result.duplicate(true))
 
 ## The meshes juice animates: the object's registered outline geometry — the
 ## same meshes the hover mask renders, so the outline squashes with the body.
@@ -591,6 +661,100 @@ func get_action_preview() -> String:
 func get_tutorial_label_node() -> Label3D:
 	return _tutorial_label_3d
 
+
+## Public presentation-only discovery seam. The meshless interaction Area is
+## never enough evidence by itself: expose the linked object's registered,
+## visible render geometry, or the tutorial billboard only while that exact
+## label is visibly rendered. Policy observers receive opaque tokens later and
+## never receive these nodes or authored identities.
+func get_player_observation_render_nodes() -> Array[Node3D]:
+	var render_nodes: Array[Node3D] = []
+	if _outline_target != null and is_instance_valid(_outline_target) \
+			and _outline_target.has_method("get_player_observation_render_nodes"):
+		var target_nodes_v: Variant = _outline_target.call(
+			"get_player_observation_render_nodes"
+		)
+		if target_nodes_v is Array:
+			for node_v in target_nodes_v as Array:
+				if node_v is Node3D and is_instance_valid(node_v):
+					render_nodes.append(node_v as Node3D)
+	if not render_nodes.is_empty():
+		return render_nodes
+	if _tutorial_label_3d != null \
+			and is_instance_valid(_tutorial_label_3d) \
+			and _tutorial_label_3d.is_visible_in_tree() \
+			and _tutorial_label_3d.modulate.a > 0.01 \
+			and not str(_tutorial_label_3d.text).strip_edges().is_empty():
+		render_nodes.append(_tutorial_label_3d)
+	return render_nodes
+
+
+## Proxy the target-specific green/red result pulse owned by the linked visible
+## object. An unlinked meshless Area has no visual receipt and therefore cannot
+## make an automated player call an interaction successful.
+func get_player_interaction_presentation() -> Dictionary:
+	if _outline_target != null and is_instance_valid(_outline_target) \
+			and _outline_target.has_method("get_player_interaction_presentation"):
+		var presentation_v: Variant = _outline_target.call(
+			"get_player_interaction_presentation"
+		)
+		if presentation_v is Dictionary:
+			return (presentation_v as Dictionary).duplicate(true)
+	return {
+		"presentation_serial": 0,
+		"authority_result": "",
+		"result": "",
+		"visible": false,
+	}
+
+
+## Optional semantic formation target for a hold-Rally command over this exact
+## visible surface. The value is portable data authored by the owning chunk;
+## this presenter exposes a defensive copy and never resolves or mutates routes.
+func get_rally_formation_region() -> Dictionary:
+	if not has_meta("rally_formation_region"):
+		return {}
+	var region_v: Variant = get_meta("rally_formation_region")
+	if not (region_v is Dictionary):
+		return {}
+	return (region_v as Dictionary).duplicate(true)
+
+
+## Proxy the real green/red pulse geometry so a presentation observer can
+## independently establish that the exact result is currently camera-visible.
+func get_player_interaction_presentation_render_nodes() -> Array[Node3D]:
+	var render_nodes: Array[Node3D] = []
+	if _outline_target == null or not is_instance_valid(_outline_target) \
+			or not _outline_target.has_method(
+				"get_player_interaction_presentation_render_nodes"):
+		return render_nodes
+	var target_nodes_v: Variant = _outline_target.call(
+		"get_player_interaction_presentation_render_nodes"
+	)
+	if target_nodes_v is Array:
+		for node_v in target_nodes_v as Array:
+			if node_v is Node3D and is_instance_valid(node_v):
+				render_nodes.append(node_v as Node3D)
+	return render_nodes
+
+
+func get_player_interaction_presentation_screen_candidates(
+		camera: Camera3D, viewport: Viewport
+	) -> Array[Vector2]:
+	var candidates: Array[Vector2] = []
+	if _outline_target == null or not is_instance_valid(_outline_target) \
+			or not _outline_target.has_method(
+				"get_player_interaction_presentation_screen_candidates"):
+		return candidates
+	var target_candidates_v: Variant = _outline_target.call(
+		"get_player_interaction_presentation_screen_candidates", camera, viewport
+	)
+	if target_candidates_v is Array:
+		for candidate_v in target_candidates_v as Array:
+			if candidate_v is Vector2:
+				candidates.append(candidate_v as Vector2)
+	return candidates
+
 func show_tutorial_label() -> void:
 	set_process(true)  # the label pulse is per-frame work
 	if _tutorial_label_3d and interaction_enabled:
@@ -634,6 +798,14 @@ func set_highlight(active: bool) -> void:
 func set_outline_target(target) -> void:
 	_outline_target = target
 	if _outline_target != null and is_instance_valid(_outline_target):
+		# Keep the visual/body wrapper and gameplay Area as one canonical command
+		# object regardless of which side a procedural builder happened to wire
+		# first. Without this reverse link, a ray can hit a fully visible wrapper
+		# whose interaction_requested signal was never registered, while the linked
+		# Interactable that can actually trigger remains idle.
+		if _outline_target.has_method("set_interaction_delegate"):
+			_outline_target.call("set_interaction_delegate", self)
+		_sync_outline_target_command_availability()
 		_outline_target.set_highlight(_feedback_emitting)
 	if not interacted.is_connected(_on_visual_interaction_succeeded):
 		interacted.connect(_on_visual_interaction_succeeded)
@@ -642,15 +814,20 @@ func set_outline_target(target) -> void:
 
 
 func _on_visual_interaction_succeeded() -> void:
-	if _outline_target != null and is_instance_valid(_outline_target) \
-			and _outline_target.has_method("play_interaction_result"):
-		_outline_target.call("play_interaction_result", true)
+	play_interaction_result(true)
 
 
 func _on_visual_interaction_rejected(_interactable: Node, _required_character: String) -> void:
+	play_interaction_result(false)
+
+
+## Public presentation surface used when the routed approach itself is authoritatively refused
+## before this object's trigger can run. It forwards to the same linked mesh pulse as ordinary
+## trigger success/rejection and never changes gameplay state.
+func play_interaction_result(succeeded: bool) -> void:
 	if _outline_target != null and is_instance_valid(_outline_target) \
 			and _outline_target.has_method("play_interaction_result"):
-		_outline_target.call("play_interaction_result", false)
+		_outline_target.call("play_interaction_result", succeeded)
 
 func _on_body_entered(body: Node3D) -> void:
 	if _used or not interaction_enabled:
@@ -678,7 +855,6 @@ func _on_body_exited(body: Node3D) -> void:
 		# while it is dwelling even when there is no physics overlap to rediscover.
 		_player_in_range = remaining != null or _is_dwelling()
 		return
-
 	_dwell_pending = false
 	_cancel_dwell()
 	_dwell_progress = 0.0
@@ -724,9 +900,63 @@ func _on_input_event(_camera: Node, event: InputEvent, _event_position: Vector3,
 		# is NEVER an interaction — it falls through to the player as a plain move/select, so clicking
 		# past or grazing an object's pick volume no longer walks the character onto it (the old hijack).
 		if event.is_action_pressed("command"):
-			get_viewport().set_input_as_handled()
-			interaction_requested.emit(self, global_position)
-			outline_selected.emit(self)
+			var viewport := get_viewport()
+			if viewport != null:
+				viewport.set_input_as_handled()
+			submit_pointer_command()
+
+
+## Uniform visible-surface command seam shared with OutlineSurfaceTarget and
+## PushTarget. SelectionController's classified short click reaches this method
+## through Player's production collision query; no caller mutates interaction or
+## movement authority directly.
+func submit_pointer_command(_event_position: Vector3 = Vector3.INF) -> bool:
+	if _used or not interaction_enabled:
+		# Direct Area hits can race the same capture/FIFO boundary as rendered
+		# wrappers.  Preserve an exact target-specific refusal even though the
+		# command no longer has authority to mutate or move anything.
+		play_interaction_result(false)
+		return false
+	# `interaction_requested` is synchronous. A semantic route gate can therefore
+	# mint this exact target's authoritative red/green result before emit returns.
+	# Do not follow that result with queued-selection feedback: the queued pulse
+	# clears the just-minted result and turns a visible refusal into a silent click.
+	var result_before := get_player_interaction_presentation()
+	var previous_request_owner := _interaction_request_owner
+	_interaction_request_owner = active_character
+	interaction_requested.emit(self, global_position)
+	_interaction_request_owner = previous_request_owner
+	var result_after := get_player_interaction_presentation()
+	if int(result_after.get("presentation_serial", 0)) \
+			> int(result_before.get("presentation_serial", 0)):
+		var synchronous_result := str(result_after.get(
+			"authority_result", result_after.get("result", "")))
+		if synchronous_result in ["success", "rejected"]:
+			return synchronous_result == "success"
+	outline_selected.emit(self)
+	return true
+
+
+## Stable read-only command ownership seam. This value exists only for the
+## synchronous signal delivery started by `submit_pointer_command`; it cannot be
+## rewritten when a controller assigns a different party member to service the
+## interaction.
+func get_interaction_request_owner() -> String:
+	return _interaction_request_owner
+
+
+## Public query used only to keep a linked rendered command surface truthful.
+## Wrong-character and scenario-preflight failures remain actionable: they are
+## still clickable and produce their ordinary exact refusal after submission.
+func is_pointer_command_available() -> bool:
+	return interaction_enabled and not _used
+
+
+func _sync_outline_target_command_availability() -> void:
+	if _outline_target != null and is_instance_valid(_outline_target) \
+			and _outline_target.has_method("set_interaction_command_enabled"):
+		_outline_target.call(
+			"set_interaction_command_enabled", is_pointer_command_available())
 
 func play_selected_feedback() -> void:
 	# Legacy burst API: the queued energy glow replaced the particle sprays entirely.
@@ -1039,6 +1269,13 @@ func restore_one_shot_presenter(used: bool, enabled: bool) -> void:
 	_restoring_dwell_authority = true
 	_owner_used_override = used
 	_owner_enabled_override = enabled
+	# Owner projections can run every scheduler publication. Reapplying an
+	# unchanged projection is not harmless: set_interaction_enabled() deliberately
+	# cancels an in-flight dwell. Preserve the physical work beat unless authority
+	# actually crossed a used/enabled boundary.
+	if _used == used and interaction_enabled == enabled:
+		_restoring_dwell_authority = was_restoring
+		return
 	_used = used
 	set_interaction_enabled(enabled)
 	_restoring_dwell_authority = was_restoring

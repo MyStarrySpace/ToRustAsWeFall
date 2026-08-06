@@ -4,6 +4,9 @@ const LatheBuilderScript := preload("res://scripts/generation/lathe_builder.gd")
 const SdfMesherScript := preload("res://scripts/generation/sdf_mesher.gd")
 const InfrastructureBuilderScript := preload("res://scripts/generation/infrastructure_structure_builder.gd")
 const FixedCadenceScript := preload("res://scripts/system/core/fixed_cadence.gd")
+const RisingWaterCrossingScript := preload("res://scripts/game/objects/basin_water.gd")
+const RisingWaterCrossingSpecScript := preload(
+	"res://scripts/game/objects/rising_water_crossing_spec.gd")
 const GRIME_SHADER := preload("res://resources/tile_grime.gdshader")
 const WEAK_WALL_COLLAPSE_PIECE_SCENE := preload(
 	"res://scenes/game/weak_wall_collapse_piece.tscn")
@@ -13,7 +16,10 @@ const WEAK_WALL_CRUMBLE_DURATION := 0.9
 const WEAK_WALL_POSITION_TOLERANCE := 0.25
 const WEAK_WALL_HEIGHT_TOLERANCE := 1.25
 const CONCEALMENT_TICK := 0.1
+const CONCEALMENT_BOUNDARY_EPSILON := 0.0001
 const EXIT_REST_PHASES := ["ready", "committing", "rested"]
+const EXIT_SHELTER_NAVIGATION_REGION_CONTRACT := "exit_shelter_interaction_region/v1"
+const RALLY_FORMATION_REGION_CONTRACT := "rally_formation_region/v1"
 
 ## The DATA-DRIVEN fragment loader. Point it at a `Fragment` resource (the data) and it COMPOSES the scene from
 ## the shared modular classes — no bespoke build code per fragment. It reads the fragment's map (floors/walls/
@@ -51,11 +57,13 @@ var _spike_strips: Array = []    # SpikeStrip hostile architecture (the shared D
 var _infrastructure_operations: Array = [] # typed source -> receiver -> environmental consequence beats
 var _infrastructure_fields: Array = []     # shared hazard/concealment polling, like Candids/SpikeStrips
 var _hushblooms: Array = []      # Hushbloom stun flora (thigmonastic; pickable for the carried throw)
-var _basins: Array = []          # BasinWater bowls (rota-driven water state; docs/BALANCING_BASIN.md)
+var _basins: Array = []          # RisingWaterCrossing instances; legacy query name kept for callers.
 var _assists: Array = []         # CrossingAssist consoles (the priced perfect-launch read)
 var _fall_pos := Vector3.ZERO    # where the party last wiped (the runback decor pass grows here)
 var _candid_epoch := -1.0        # first absolute tick in the fixed Candid/Spike/service-field cadence
 var _concealment_epoch := -1.0   # first absolute spatial-cover sample in the fixed simulation cadence
+var _concealment_boundary_ticks: Dictionary = {} # party id -> exact Candid entry/exit deadlines
+var _spike_crossing_events: Dictionary = {} # party/enemy id -> exact swept damage events
 var _restart_deadline := -1.0    # full-wipe restart; absolute scheduler tick
 var _weak_wall_deadlines := {}   # wall index -> absolute crumble tick
 var _restoring_fragment_authority := false
@@ -95,6 +103,35 @@ func _build_chunk() -> void:
 	# Install simulation cadence during construction when the host is already attached. `_process`
 	# retains a retry for unusual hosts which attach their scheduler after the chunk enters the tree.
 	_ensure_scheduled()
+
+
+## SceneChunk builds its objects before the host installs the fragment GridWorld.
+## Publish graph-backed shelter regions only after that explicit lifecycle receipt;
+## construction already stored the authored center and size for this pure refresh.
+func on_game_state_grid_ready() -> void:
+	_republish_exit_shelter_navigation_regions()
+
+
+## BasinWater emits state_changed only after its scheduled commit has applied
+## every per-level blocker. Refresh semantic destinations at that exact graph
+## boundary so a permanent shelter never advertises a stale topology revision.
+func _on_basin_navigation_state_changed(_state: int) -> void:
+	_republish_exit_shelter_navigation_regions()
+
+
+func _republish_exit_shelter_navigation_regions() -> void:
+	for shelter_v in _exit_shelters:
+		var shelter := shelter_v as Node
+		if not is_instance_valid(shelter):
+			continue
+		var center_v: Variant = shelter.get_meta(
+			"exit_shelter_center", Vector3.INF)
+		var half_v: Variant = shelter.get_meta(
+			"exit_shelter_half_size", Vector2.ZERO)
+		if center_v is Vector3 and half_v is Vector2:
+			_publish_exit_shelter_navigation_region(
+				shelter, center_v as Vector3, half_v as Vector2)
+
 
 # --- Environment ---
 
@@ -1249,17 +1286,26 @@ func _spawn_object(spec: Dictionary) -> void:
 			var cr_stub := _add_box(cr, Vector3(0.0, 0.3, 0.0), Vector3(0.45, 0.6, 0.45),
 				Color(0.11, 0.12, 0.13))
 			_outline_interactable_child(cr, cr_stub, cr.name, 1.5)
-		"basin":
+		"rising_water_crossing", "basin":
 			# {tag, pos:Vector3, plane_size:Vector2, floor_min/floor_max:Vector2 (world XZ),
 			#  safe_cells/float_cells:[[x,z]...], float_level, rota:[{level,dwell}...],
-			#  telegraph_lead, water_y/float_y:[3], outfall:Vector3, sweep:{...},
+			#  telegraph_lead, water_y/float_y:[3], outfall:Vector3,
+			#  recovery_cells:[[x,z]...], recovery_level:int, sweep:{...},
 			#  dwellers:[{id,refuge,home,radius}...]} — the bowl-scale water rota
 			#  (docs/BALANCING_BASIN.md); BasinWater owns states + catches + eviction.
-			var basin := BasinWater.new()
+			var report: Dictionary = RisingWaterCrossingSpecScript.validate(
+				spec, fragment.party_ids.size())
+			if not bool(report.get("valid", false)):
+				push_error("Invalid rising-water crossing '%s': %s" % [
+					_name(spec, "RisingWaterCrossing"), str(report.get("errors", []))])
+				return
+			var normalized := report.get("normalized", {}) as Dictionary
+			var basin = RisingWaterCrossingScript.new()
 			basin.name = _name(spec, "Basin")
-			basin.configure(gs, spec)
+			basin.configure(gs, normalized)
 			basin.set_party_ids(Array(fragment.party_ids))
 			basin.set_enemy_resolver(_enemy_by_id)
+			basin.state_changed.connect(_on_basin_navigation_state_changed)
 			add_child(basin)
 			_basins.append(basin)
 		"rota_chart":
@@ -1281,7 +1327,19 @@ func _spawn_object(spec: Dictionary) -> void:
 			assist.name = _name(spec, "CrossingAssist")
 			assist.configure(gs, spec)
 			assist.set_group_provider(_selected_party_ids)
+			assist.set_party_provider(_playable_party_ids)
 			assist.set_basin_resolver(_basin_by_tag)
+			assist.read_refused.connect(func(reason: String):
+				# A correction is state, not a toast: retain it until the next
+				# explicit assist attempt replaces it with staging/armed feedback.
+				_show_note(_crossing_assist_refusal_note(reason), 0.0))
+			assist.staging_started.connect(func():
+				# A zero-duration preview note is persistent until the next explicit state cue.
+				_show_note("CROSSING STAGING // the full group is moving to the safe hold line.", 0.0))
+			assist.read_logged.connect(func(_launch_tick: float):
+				_show_note("CROSSING ARMED // the staged group launches on the next MID beat.", 0.0))
+			assist.crossing_launched.connect(func():
+				_show_note("CROSSING LAUNCHED // the full group is moving to the south shelter.", 3.0))
 			add_child(assist)
 			_register_interactable(assist)
 			_assists.append(assist)
@@ -1374,28 +1432,35 @@ func _update_shared_concealment() -> void:
 		var cid := str(cid_v)
 		if not gs.characters.has(cid):
 			continue
-		var pos: Vector3 = gs.get_position(cid)
-		var tier: int = GameState.CONCEAL_NONE
-		for cap in _capbages:
-			if is_instance_valid(cap) and cap.conceals(pos):
+		_update_character_shared_concealment(cid)
+
+
+func _update_character_shared_concealment(cid: String) -> void:
+	var gs = _get_game_state()
+	if gs == null or not gs.characters.has(cid):
+		return
+	var pos: Vector3 = gs.get_position(cid)
+	var tier: int = GameState.CONCEAL_NONE
+	for cap in _capbages:
+		if is_instance_valid(cap) and cap.conceals(pos):
+			tier = GameState.CONCEAL_FULL
+			break
+	if tier == GameState.CONCEAL_NONE:
+		for cz in _candid_zones:
+			if is_instance_valid(cz) and cz.covers(pos):
 				tier = GameState.CONCEAL_FULL
 				break
-		if tier == GameState.CONCEAL_NONE:
-			for cz in _candid_zones:
-				if is_instance_valid(cz) and cz.covers(pos):
-					tier = GameState.CONCEAL_FULL
-					break
-		if tier == GameState.CONCEAL_NONE:
-			for mat in _scarpets:
-				if is_instance_valid(mat) and mat.conceals(pos):
-					tier = GameState.CONCEAL_MEDIUM
-					break
-		if tier == GameState.CONCEAL_NONE:
-			for service_field in _infrastructure_fields:
-				if is_instance_valid(service_field) and service_field.conceals(pos):
-					tier = GameState.CONCEAL_FULL
-					break
-		gs.set_character_concealment(cid, tier)
+	if tier == GameState.CONCEAL_NONE:
+		for mat in _scarpets:
+			if is_instance_valid(mat) and mat.conceals(pos):
+				tier = GameState.CONCEAL_MEDIUM
+				break
+	if tier == GameState.CONCEAL_NONE:
+		for service_field in _infrastructure_fields:
+			if is_instance_valid(service_field) and service_field.conceals(pos):
+				tier = GameState.CONCEAL_FULL
+				break
+	gs.set_character_concealment(cid, tier)
 
 ## The fragment's win pad: a click-gated INSPECTION interactable; resting there completes the fragment.
 func _spawn_exit_shelter(spec: Dictionary) -> void:
@@ -1413,8 +1478,14 @@ func _spawn_exit_shelter(spec: Dictionary) -> void:
 	var shalf := maxf(_f(spec, "radius", 1.2) * 1.5, 1.8)
 	it.set_meta("exit_shelter_center", p)
 	it.set_meta("exit_shelter_half_size", Vector2(shalf, shalf))
+	_publish_exit_shelter_navigation_region(it, p, Vector2(shalf, shalf))
+	it.set_interaction_route_preflight(
+		_preflight_exit_shelter_route.bind(it),
+		_present_exit_shelter_route_refusal.bind(it))
 	it.set_pre_trigger_validator(_validate_exit_shelter_trigger.bind(it))
 	it.interacted.connect(_on_exit_shelter_rested.bind(it))
+	it.interaction_rejected.connect(
+		_on_exit_shelter_interaction_rejected.bind(it))
 	_exit_shelters.append(it)
 	_exit_rest_trigger_consumed[str(it.get("data_id"))] = maxi(
 		0, _fragment_source_trigger_count(it))
@@ -1424,6 +1495,136 @@ func _spawn_exit_shelter(spec: Dictionary) -> void:
 	var gs = _get_game_state()
 	if gs != null and gs.has_method("add_shelter_region"):
 		gs.add_shelter_region(Vector2(p.x - shalf, p.z - shalf), Vector2(p.x + shalf, p.z + shalf))
+
+
+## Publish the exact graph vertices from which this source can be serviced.  The
+## shelter rectangle may overlap another stacked floor in XZ, but that lower
+## vertex is not the balcony shelter and must never satisfy arrival or rest.
+## Restrict the accepted graph region to the source's real interaction reach so
+## standing in a far corner does not bypass the visible pad itself.
+func _publish_exit_shelter_navigation_region(
+		it: Node, center: Vector3, half_size: Vector2
+	) -> void:
+	var gs = _get_game_state()
+	if not is_instance_valid(it):
+		return
+	# Republish is replace-not-merge. A host that temporarily has no graph, or an
+	# authored shelter with no valid vertices, must not retain a stale formation
+	# target from an earlier walkability revision.
+	it.remove_meta("interaction_navigation_region")
+	it.remove_meta("rally_formation_region")
+	it.set_meta("exit_shelter_level", 0)
+	if gs == null or gs.grid == null:
+		return
+	var grid = gs.grid
+	var shelter_level := int(grid.level_for_y(center.y)) \
+		if grid.has_method("level_for_y") else 0
+	it.set_meta("exit_shelter_level", shelter_level)
+	var source_cell: Vector2i = grid.world_to_grid(center)
+	var graph_cell_size := maxf(0.001, float(grid.cell_size))
+	var search_x := ceili(half_size.x / graph_cell_size) + 1
+	var search_z := ceili(half_size.y / graph_cell_size) + 1
+	var source_reach := float(it.get("interaction_radius")) \
+		+ WEAK_WALL_POSITION_TOLERANCE
+	var region_vertices: Array = []
+	var approach_vertex: Dictionary = {}
+	var approach_distance := INF
+	for dz in range(-search_z, search_z + 1):
+		for dx in range(-search_x, search_x + 1):
+			var cell := source_cell + Vector2i(dx, dz)
+			if not grid.is_in_bounds(cell.x, cell.y) \
+					or not grid.is_walkable(cell.x, cell.y, {}, {}, shelter_level):
+				continue
+			var graph_position: Vector3 = grid.grid_to_world(cell, shelter_level)
+			if absf(graph_position.x - center.x) > half_size.x + 0.0001 \
+					or absf(graph_position.z - center.z) > half_size.y + 0.0001:
+				continue
+			var distance := Vector2(
+				graph_position.x - center.x,
+				graph_position.z - center.z
+			).length()
+			if distance > source_reach + 0.0001:
+				continue
+			var vertex := {"cell": cell, "level": shelter_level}
+			region_vertices.append(vertex)
+			if cell == source_cell:
+				approach_vertex = vertex.duplicate(true)
+				approach_distance = -1.0
+			elif approach_distance >= 0.0 \
+					and (approach_vertex.is_empty() \
+						or distance < approach_distance - 0.0001):
+				approach_vertex = vertex.duplicate(true)
+				approach_distance = distance
+	if region_vertices.is_empty():
+		return
+	var region := {
+		"contract_id": EXIT_SHELTER_NAVIGATION_REGION_CONTRACT,
+		"source_data": GameEvent.v3_to_arr(center),
+		"shelter_half_size": [half_size.x, half_size.y],
+		"interaction_radius": float(it.get("interaction_radius")),
+		"acceptance_radius": source_reach,
+		"authored_level": shelter_level,
+		"arrival_policy": "primary_then_nearest",
+		"approach_vertex": approach_vertex,
+		"region_vertices": region_vertices,
+	}
+	if grid.has_method("get_path_walkability_revision"):
+		region["graph_revision"] = int(grid.get_path_walkability_revision())
+	it.set_meta("interaction_navigation_region", region)
+	if not _exit_shelter_navigation_region_valid(it):
+		it.remove_meta("interaction_navigation_region")
+		return
+
+	# The visible shelter pad is also a semantic Rally destination. REST keeps the
+	# strict source-reach service vertices above, but a formation needs every
+	# connected walkable vertex inside the authored shelter rectangle so the whole
+	# roster can park there without enlarging the interaction radius or sanctuary.
+	# The wire stays JSON-portable so GameState can log/replay it without scene
+	# nodes or Vector2i values. Canonical ordering makes the formation deterministic.
+	var approach_cell := approach_vertex.get("cell", Vector2i.ZERO) as Vector2i
+	var formation_allowed := {}
+	for dz in range(-search_z, search_z + 1):
+		for dx in range(-search_x, search_x + 1):
+			var formation_cell := source_cell + Vector2i(dx, dz)
+			if not grid.is_in_bounds(formation_cell.x, formation_cell.y) \
+					or not grid.is_walkable(
+						formation_cell.x, formation_cell.y, {}, {}, shelter_level):
+				continue
+			var formation_position: Vector3 = grid.grid_to_world(
+				formation_cell, shelter_level)
+			if absf(formation_position.x - center.x) > half_size.x + 0.0001 \
+					or absf(formation_position.z - center.z) > half_size.y + 0.0001:
+				continue
+			formation_allowed[formation_cell] = true
+	if not formation_allowed.has(approach_cell):
+		return
+	var rally_cells: Array[Vector2i] = []
+	for rally_cell_v in formation_allowed.keys():
+		var rally_cell := rally_cell_v as Vector2i
+		var connected_path: Array = grid.find_path(
+			approach_cell, rally_cell, {}, false, {}, {},
+			shelter_level, formation_allowed)
+		if connected_path.is_empty():
+			continue
+		rally_cells.append(rally_cell)
+	rally_cells.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
+		return a.x < b.x if a.y == b.y else a.y < b.y)
+	var portable_cells: Array = []
+	for rally_cell in rally_cells:
+		portable_cells.append([rally_cell.x, rally_cell.y])
+	var graph_revision := int(grid.get_path_walkability_revision()) \
+		if grid.has_method("get_path_walkability_revision") else 0
+	it.set_meta("rally_formation_region", {
+		"contract_id": RALLY_FORMATION_REGION_CONTRACT,
+		"semantic_id": str(it.get("data_id")),
+		"label": "SHELTER // RALLY PARTY HERE",
+		"authored_level": shelter_level,
+		"graph_revision": graph_revision,
+		"approach_cell": [approach_cell.x, approach_cell.y],
+		"cells": portable_cells,
+	})
+	if not _exit_shelter_rally_formation_region_valid(it):
+		it.remove_meta("rally_formation_region")
 
 
 func _on_exit_shelter_rested(it: Node = null) -> bool:
@@ -1466,9 +1667,246 @@ func _on_exit_shelter_rested(it: Node = null) -> bool:
 
 
 func _validate_exit_shelter_trigger(source: Node, actor: String, expected_source: Node) -> bool:
-	return source == expected_source and _exit_shelters.has(source) \
+	if not (source == expected_source and _exit_shelters.has(source) \
 		and _phase != "complete" and _exit_rest_phase != "committing" \
-		and _fragment_actor_ready_at_source(source, actor)
+		and _exit_shelter_navigation_region_valid(source) \
+		and _fragment_actor_ready_at_source(source, actor)):
+		return false
+	return bool(_preflight_canonical_exit_shelter_rest(source).get(
+		"complete", false))
+
+
+## REST PARTY is one collective command.  Refuse before the interaction
+## controller picks a route when the full roster is not already settled, so a
+## visible click cannot silently reinterpret the verb as a singleton move.
+func _preflight_exit_shelter_route(
+		source: Node, _actor: String, expected_source: Node
+	) -> Dictionary:
+	if not is_instance_valid(source) or source != expected_source \
+			or not _exit_shelters.has(source):
+		return {
+			"accepted": false,
+			"code": "exit_shelter_unavailable",
+			"message": "That shelter is unavailable.",
+			"cue": "SHELTER WAITING // SHELTER UNAVAILABLE",
+		}
+	if not _exit_shelter_navigation_region_valid(source):
+		return {
+			"accepted": false,
+			"code": "invalid_route_preflight",
+			"message": "The shelter route contract is unavailable.",
+			"cue": "RESOLVE FIRST // ROUTE CONTRACT UNAVAILABLE",
+		}
+	var outcome := _preflight_canonical_exit_shelter_rest(source)
+	if bool(outcome.get("complete", false)):
+		return {"accepted": true, "code": ""}
+	var blocked: Array = outcome.get("blocked", []) as Array
+	var reason := str(blocked[0]) if not blocked.is_empty() \
+		else "the party cannot settle yet"
+	return {
+		"accepted": false,
+		"code": "exit_shelter_waiting",
+		"message": reason,
+		"cue": "SHELTER WAITING // %s." % reason,
+	}
+
+
+## Validate the exact typed contract before either route or trigger authority can
+## proceed.  A missing/stale metadata blob must not fall back to an approximate
+## position on a stacked map: that would recreate the below-the-balcony bug.
+func _exit_shelter_navigation_region_valid(source: Node) -> bool:
+	if not is_instance_valid(source) \
+			or not source.has_meta("interaction_navigation_region"):
+		return false
+	var region_v: Variant = source.get_meta("interaction_navigation_region")
+	if not (region_v is Dictionary):
+		return false
+	var region := region_v as Dictionary
+	var gs = _get_game_state()
+	if gs == null or gs.grid == null \
+			or str(region.get("contract_id", "")) \
+				!= EXIT_SHELTER_NAVIGATION_REGION_CONTRACT:
+		return false
+	var grid = gs.grid
+	var expected_level := int(source.get_meta("exit_shelter_level", -1))
+	if expected_level < 0 \
+			or int(region.get("authored_level", -1)) != expected_level:
+		return false
+	var center_v: Variant = source.get_meta(
+		"exit_shelter_center", Vector3.INF)
+	var half_v: Variant = source.get_meta(
+		"exit_shelter_half_size", Vector2.ZERO)
+	var approach_v: Variant = region.get("approach_vertex", null)
+	var vertices_v: Variant = region.get("region_vertices", null)
+	if not (center_v is Vector3) or not (half_v is Vector2) \
+			or not (approach_v is Dictionary) \
+			or (approach_v as Dictionary).is_empty() \
+			or not (vertices_v is Array) or (vertices_v as Array).is_empty():
+		return false
+	var approach := approach_v as Dictionary
+	var approach_cell_v: Variant = approach.get("cell", null)
+	var approach_level := int(approach.get("level", -1))
+	if not (approach_cell_v is Vector2i) or approach_level != expected_level:
+		return false
+	var center := center_v as Vector3
+	var half_size := half_v as Vector2
+	var source_reach := float(source.get("interaction_radius")) \
+		+ WEAK_WALL_POSITION_TOLERANCE
+	if not is_equal_approx(
+			float(region.get("acceptance_radius", -1.0)), source_reach):
+		return false
+	var approach_present := false
+	for vertex_v in (vertices_v as Array):
+		if not (vertex_v is Dictionary):
+			return false
+		var vertex := vertex_v as Dictionary
+		var cell_v: Variant = vertex.get("cell", null)
+		var level := int(vertex.get("level", -1))
+		if not (cell_v is Vector2i) or level != expected_level:
+			return false
+		var cell := cell_v as Vector2i
+		if not grid.is_in_bounds(cell.x, cell.y) \
+				or not grid.is_walkable(cell.x, cell.y, {}, {}, level):
+			return false
+		var graph_position: Vector3 = grid.grid_to_world(cell, level)
+		if absf(graph_position.x - center.x) > half_size.x + 0.0001 \
+				or absf(graph_position.z - center.z) > half_size.y + 0.0001 \
+				or Vector2(
+					graph_position.x - center.x,
+					graph_position.z - center.z
+				).length() > source_reach + 0.0001:
+			return false
+		if cell == (approach_cell_v as Vector2i) and level == approach_level:
+			approach_present = true
+	return approach_present
+
+
+## The Rally wire is a separate, wider formation contract over the same exact
+## shelter rectangle and authored level. It remains fail-closed on stale graph
+## revisions, malformed/non-canonical portable cells, insufficient capacity, or
+## any vertex disconnected from the interaction approach within the region.
+func _exit_shelter_rally_formation_region_valid(source: Node) -> bool:
+	if not _exit_shelter_navigation_region_valid(source) \
+			or not source.has_meta("rally_formation_region"):
+		return false
+	var rally_v: Variant = source.get_meta("rally_formation_region")
+	if not (rally_v is Dictionary):
+		return false
+	var rally := rally_v as Dictionary
+	var gs = _get_game_state()
+	if gs == null or gs.grid == null or rally.size() != 7 \
+			or str(rally.get("contract_id", "")) \
+				!= RALLY_FORMATION_REGION_CONTRACT \
+			or str(rally.get("semantic_id", "")) != str(source.get("data_id")) \
+			or str(rally.get("label", "")) != "SHELTER // RALLY PARTY HERE":
+		return false
+	var grid = gs.grid
+	var expected_level := int(source.get_meta("exit_shelter_level", -1))
+	var current_revision := int(grid.get_path_walkability_revision()) \
+		if grid.has_method("get_path_walkability_revision") else 0
+	if expected_level < 0 \
+			or int(rally.get("authored_level", -1)) != expected_level \
+			or int(rally.get("graph_revision", -1)) != current_revision:
+		return false
+	var interaction := source.get_meta(
+		"interaction_navigation_region", {}) as Dictionary
+	var interaction_approach := interaction.get(
+		"approach_vertex", {}) as Dictionary
+	var approach_cell_v: Variant = interaction_approach.get("cell", null)
+	var portable_approach_v: Variant = rally.get("approach_cell", null)
+	if not (approach_cell_v is Vector2i) \
+			or not (portable_approach_v is Array) \
+			or (portable_approach_v as Array).size() != 2:
+		return false
+	var approach_cell := approach_cell_v as Vector2i
+	if int((portable_approach_v as Array)[0]) != approach_cell.x \
+			or int((portable_approach_v as Array)[1]) != approach_cell.y:
+		return false
+	var cells_v: Variant = rally.get("cells", null)
+	if not (cells_v is Array):
+		return false
+	var required_capacity := maxi(
+		1, fragment.party_ids.size() if fragment != null else 1)
+	if (cells_v as Array).size() < required_capacity:
+		return false
+	var center_v: Variant = source.get_meta(
+		"exit_shelter_center", Vector3.INF)
+	var half_v: Variant = source.get_meta(
+		"exit_shelter_half_size", Vector2.ZERO)
+	if not (center_v is Vector3) or not (half_v is Vector2):
+		return false
+	var center := center_v as Vector3
+	var half_size := half_v as Vector2
+	var cells: Array[Vector2i] = []
+	var allowed_cells := {}
+	for portable_cell_v in (cells_v as Array):
+		if not (portable_cell_v is Array) \
+				or (portable_cell_v as Array).size() != 2 \
+				or not ((portable_cell_v as Array)[0] is int) \
+				or not ((portable_cell_v as Array)[1] is int):
+			return false
+		var cell := Vector2i(
+			int((portable_cell_v as Array)[0]),
+			int((portable_cell_v as Array)[1]))
+		if allowed_cells.has(cell) \
+				or not grid.is_in_bounds(cell.x, cell.y) \
+				or not grid.is_walkable(cell.x, cell.y, {}, {}, expected_level):
+			return false
+		var position: Vector3 = grid.grid_to_world(cell, expected_level)
+		if absf(position.x - center.x) > half_size.x + 0.0001 \
+				or absf(position.z - center.z) > half_size.y + 0.0001:
+			return false
+		allowed_cells[cell] = true
+		cells.append(cell)
+	if not allowed_cells.has(approach_cell):
+		return false
+	var canonical_cells: Array[Vector2i] = cells.duplicate()
+	canonical_cells.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
+		return a.x < b.x if a.y == b.y else a.y < b.y)
+	if canonical_cells != cells:
+		return false
+	for cell in cells:
+		if grid.find_path(
+				approach_cell, cell, {}, false, {}, {},
+				expected_level, allowed_cells).is_empty():
+			return false
+	return true
+
+
+func _present_exit_shelter_route_refusal(
+		source: Node,
+		_actor: String,
+		result: Dictionary,
+		expected_source: Node
+	) -> void:
+	if not is_instance_valid(source) or source != expected_source \
+			or not _exit_shelters.has(source):
+		return
+	var cue := str(result.get("cue", "")).strip_edges()
+	if cue.is_empty():
+		_present_exit_shelter_waiting(source)
+	else:
+		_show_note(cue, 0.0)
+
+
+## Interactable owns the exact red result pulse.  This owner supplies the
+## durable correction beside it, naming the first failed collective condition
+## instead of letting repeated REST clicks appear successful but do nothing.
+func _on_exit_shelter_interaction_rejected(
+		source: Node, _required_character: String, expected_source: Node
+	) -> void:
+	if not is_instance_valid(source) or source != expected_source \
+			or not _exit_shelters.has(source):
+		return
+	_present_exit_shelter_waiting(source)
+
+
+func _present_exit_shelter_waiting(source: Node) -> void:
+	var blocked: Array = _preflight_canonical_exit_shelter_rest(
+		source).get("blocked", []) as Array
+	var reason := str(blocked[0]) if not blocked.is_empty() \
+		else "the party cannot settle yet"
+	_show_note("SHELTER WAITING // %s." % reason, 0.0)
 
 
 func _exit_shelter_source_receipt_pending(source: Node) -> bool:
@@ -1588,7 +2026,9 @@ func _preflight_canonical_exit_shelter_rest(it: Node) -> Dictionary:
 		if gs.is_downed(char_id) or gs.is_knocked_down(char_id):
 			(outcome["blocked"] as Array).append("%s must be revived" % char_id.capitalize())
 			continue
-		if not _character_inside_exit_shelter(gs.get_position(char_id), it):
+		if int(gs.get_character_level(char_id)) \
+				!= int(it.get_meta("exit_shelter_level", -1)) \
+				or not _character_inside_exit_shelter(gs.get_position(char_id), it):
 			(outcome["blocked"] as Array).append("%s is outside this shelter" % char_id.capitalize())
 			continue
 		if not gs.is_at_shelter(char_id):
@@ -1838,6 +2278,51 @@ func _selected_party_ids() -> Array:
 		return host.call("get_preview_selected_characters")
 	return []
 
+## The same live roster the host presents as selectable/playable. This stays
+## separate from the current selection so collective kit verbs can fail closed
+## instead of silently degrading to whichever singleton happens to be active.
+func _playable_party_ids() -> Array:
+	if host != null and host.has_method("get_preview_available_party_ids"):
+		var provided: Variant = host.call("get_preview_available_party_ids")
+		if provided is Array:
+			return (provided as Array).duplicate()
+	var gs = _get_game_state()
+	if gs == null or fragment == null:
+		return []
+	var live_party: Array = gs.get_party()
+	var result: Array = []
+	for cid_v in fragment.party_ids:
+		var cid := str(cid_v)
+		if live_party.has(cid) and gs.characters.has(cid) \
+				and gs.is_narratively_available(cid):
+			result.append(cid)
+	return result
+
+func _crossing_assist_refusal_note(reason: String) -> String:
+	match reason:
+		"full party not selected":
+			return "ASSIST WAITING // select the full playable party before arming."
+		"group not staged":
+			return "ASSIST WAITING // get the full party onto the upper deck before arming."
+		"route or busy", "launch route or busy":
+			return "ASSIST WAITING // the full selected group needs one clear route."
+		"unsafe staging route":
+			return "ASSIST WAITING // the hold formation is not safe through the water change."
+		"group unavailable", "staging interrupted":
+			return "ASSIST WAITING // staging stopped; the stamina charge was returned."
+		"wrong character":
+			return "ASSIST WAITING // Aster must log this rota."
+		"stamina":
+			return "ASSIST WAITING // Aster needs more stamina."
+		"already armed":
+			return "CROSSING ALREADY ARMED // hold at the mouth."
+		"already staging":
+			return "CROSSING STAGING // the full group is still moving to the safe hold line."
+		"cooldown":
+			return "ASSIST COOLING DOWN // use the rota or wait."
+		_:
+			return "ASSIST WAITING // the crossing could not be armed."
+
 func _enemy_by_id(cid: String):
 	for enemy in _enemies:
 		if is_instance_valid(enemy) and str(enemy.char_id) == cid:
@@ -1846,12 +2331,23 @@ func _enemy_by_id(cid: String):
 
 ## Freed while the scheduler lives (preview reloads): retract every tag this loader owns.
 func _exit_tree() -> void:
+	var gs = _get_game_state()
+	if gs != null and gs.movement_started.is_connected(_on_spatial_movement_started):
+		gs.movement_started.disconnect(_on_spatial_movement_started)
+	if gs != null and gs.movement_cancelled.is_connected(_on_spatial_movement_cancelled):
+		gs.movement_cancelled.disconnect(_on_spatial_movement_cancelled)
 	var sched = _get_scheduler()
 	if sched == null:
 		return
 	sched.cancel_tag(_restart_tag())
 	sched.cancel_tag(_candid_tag())
 	sched.cancel_tag(_concealment_tag())
+	for cid_v in _concealment_boundary_ticks.keys():
+		sched.cancel_tag(_concealment_boundary_tag(str(cid_v)))
+	_concealment_boundary_ticks.clear()
+	for cid_v in _spike_crossing_events.keys():
+		sched.cancel_tag(_spike_crossing_tag(str(cid_v)))
+	_spike_crossing_events.clear()
 	for idx_v in _weak_wall_deadlines.keys():
 		sched.cancel_tag(_weak_wall_tag(int(idx_v)))
 	for fl in _flures:
@@ -1869,9 +2365,185 @@ func _concealment_tag() -> String:
 		fragment.id if fragment != null and fragment.id != "" else "data_fragment")
 
 
+func _concealment_boundary_tag(cid: String) -> String:
+	return "%s_boundary_%s" % [_concealment_tag(), cid]
+
+
 func _has_shared_concealment_sources() -> bool:
 	return not _capbages.is_empty() or not _scarpets.is_empty() \
 		or not _candid_zones.is_empty() or not _infrastructure_fields.is_empty()
+
+
+## Candid is an axis-aligned terrain volume, so its entry/exit moments are analytically knowable from
+## the same committed movement segments predictive detection reads. Schedule those exact boundaries
+## ahead of the detection event; the fixed cadence remains the fallback for non-analytic/moving cover.
+func _on_spatial_movement_started(cid: String) -> void:
+	if fragment == null:
+		return
+	var gs = _get_game_state()
+	var sched = _get_scheduler()
+	if gs == null or sched == null:
+		return
+	_arm_spike_crossing_events(cid)
+	if not fragment.party_ids.has(cid):
+		return
+	sched.cancel_tag(_concealment_boundary_tag(cid))
+	_concealment_boundary_ticks.erase(cid)
+	_update_character_shared_concealment(cid)
+	if _candid_zones.is_empty() or not gs.is_moving(cid):
+		return
+	var candidates: Array[float] = []
+	for cz in _candid_zones:
+		if not is_instance_valid(cz):
+			continue
+		var center := Vector2(cz.global_position.x, cz.global_position.z)
+		for boundary_tick in gs.predict_axis_aligned_region_boundary_ticks(
+				cid, center, cz.half_size):
+			candidates.append(float(boundary_tick))
+			# `covers` includes the edge. The paired epsilon sample changes truth immediately after
+			# an EXIT without moving an ENTRY later than its exact protective boundary.
+			candidates.append(float(boundary_tick) + CONCEALMENT_BOUNDARY_EPSILON)
+	candidates.sort()
+	var unique_ticks: Array[float] = []
+	for candidate in candidates:
+		if unique_ticks.is_empty() \
+				or absf(candidate - unique_ticks[unique_ticks.size() - 1]) > 0.00001:
+			unique_ticks.append(candidate)
+	if unique_ticks.is_empty():
+		return
+	_concealment_boundary_ticks[cid] = unique_ticks
+	_schedule_next_concealment_boundary(cid)
+
+
+func _on_spatial_movement_cancelled(cid: String) -> void:
+	var sched = _get_scheduler()
+	if sched == null:
+		return
+	sched.cancel_tag(_spike_crossing_tag(cid))
+	_spike_crossing_events.erase(cid)
+	if fragment != null and fragment.party_ids.has(cid):
+		sched.cancel_tag(_concealment_boundary_tag(cid))
+		_concealment_boundary_ticks.erase(cid)
+
+
+func _schedule_next_concealment_boundary(cid: String) -> void:
+	var sched = _get_scheduler()
+	if sched == null or not _concealment_boundary_ticks.has(cid):
+		return
+	var pending: Array = _concealment_boundary_ticks[cid]
+	var now := float(sched.get_current_tick())
+	while not pending.is_empty() and float(pending[0]) < now - 0.000001:
+		pending.pop_front()
+	if pending.is_empty():
+		_concealment_boundary_ticks.erase(cid)
+		return
+	_concealment_boundary_ticks[cid] = pending
+	sched.schedule_at(
+		maxf(now, float(pending[0])),
+		_on_concealment_boundary.bind(cid),
+		_concealment_boundary_tag(cid))
+
+
+func _on_concealment_boundary(cid: String) -> void:
+	_update_character_shared_concealment(cid)
+	if not _concealment_boundary_ticks.has(cid):
+		return
+	var pending: Array = _concealment_boundary_ticks[cid]
+	if not pending.is_empty():
+		pending.pop_front()
+	if pending.is_empty():
+		_concealment_boundary_ticks.erase(cid)
+		return
+	_concealment_boundary_ticks[cid] = pending
+	_schedule_next_concealment_boundary(cid)
+
+
+func _spike_crossing_tag(cid: String) -> String:
+	return "%s_spike_crossing_%s" % [_candid_tag(), cid]
+
+
+func _spike_crossing_event_before(a: Dictionary, b: Dictionary) -> bool:
+	return float(a.get("tick", 0.0)) < float(b.get("tick", 0.0))
+
+
+## A thin strip can be entered and exited between two 0.5-second samples. Integrate the exact
+## positive-duration overlap of every committed movement segment and deliver that damage at the
+## interval's end. The fixed cadence handles only parked bodies, so travel is never double charged.
+func _arm_spike_crossing_events(cid: String) -> void:
+	var gs = _get_game_state()
+	var sched = _get_scheduler()
+	if gs == null or sched == null:
+		return
+	sched.cancel_tag(_spike_crossing_tag(cid))
+	_spike_crossing_events.erase(cid)
+	if _spike_strips.is_empty() or not gs.characters.has(cid) or not gs.is_moving(cid):
+		return
+	var is_party_member := fragment != null and fragment.party_ids.has(cid)
+	var enemy = _enemy_by_id(cid)
+	if not is_party_member and enemy == null:
+		return
+	var events: Array[Dictionary] = []
+	for strip in _spike_strips:
+		if not is_instance_valid(strip):
+			continue
+		var center := Vector2(strip.global_position.x, strip.global_position.z)
+		for interval_v in gs.predict_axis_aligned_region_occupancy_intervals(
+				cid, center, strip.half_size):
+			var interval := interval_v as Dictionary
+			var start_tick := float(interval.get("start_tick", -1.0))
+			var end_tick := float(interval.get("end_tick", -1.0))
+			var exposure := maxf(0.0, end_tick - start_tick)
+			if exposure <= 0.000001:
+				continue
+			events.append({
+				"tick": end_tick,
+				"damage": float(strip.dot_per_sec) * exposure,
+				"source": str(strip.name),
+			})
+	if events.is_empty():
+		return
+	events.sort_custom(_spike_crossing_event_before)
+	_spike_crossing_events[cid] = events
+	_schedule_next_spike_crossing(cid)
+
+
+func _schedule_next_spike_crossing(cid: String) -> void:
+	var sched = _get_scheduler()
+	if sched == null or not _spike_crossing_events.has(cid):
+		return
+	var pending: Array = _spike_crossing_events[cid]
+	if pending.is_empty():
+		_spike_crossing_events.erase(cid)
+		return
+	var event := pending[0] as Dictionary
+	sched.schedule_at(
+		maxf(float(sched.get_current_tick()), float(event.get("tick", 0.0))),
+		_on_spike_crossing_damage.bind(cid),
+		_spike_crossing_tag(cid))
+
+
+func _on_spike_crossing_damage(cid: String) -> void:
+	if not _spike_crossing_events.has(cid):
+		return
+	var pending: Array = _spike_crossing_events[cid]
+	if pending.is_empty():
+		_spike_crossing_events.erase(cid)
+		return
+	var event := pending.pop_front() as Dictionary
+	var damage := maxf(0.0, float(event.get("damage", 0.0)))
+	var gs = _get_game_state()
+	if damage > 0.0 and gs != null and gs.characters.has(cid):
+		if fragment != null and fragment.party_ids.has(cid):
+			gs.adjust_stat(cid, "hp", -damage, str(event.get("source", "spike_strip")))
+		else:
+			var enemy = _enemy_by_id(cid)
+			if enemy != null and enemy.is_alive():
+				enemy.take_damage(damage)
+	if pending.is_empty():
+		_spike_crossing_events.erase(cid)
+		return
+	_spike_crossing_events[cid] = pending
+	_schedule_next_spike_crossing(cid)
 
 
 func _arm_concealment_tick() -> void:
@@ -1912,10 +2584,13 @@ func _on_candid_tick() -> void:
 				if is_instance_valid(cz) and cz.covers(pos):
 					gs.adjust_stat(cid, "hp", -cz.dot_per_sec * CANDID_TICK)
 					break
-			for strip in _spike_strips:
-				if is_instance_valid(strip) and strip.covers(pos):
-					gs.adjust_stat(cid, "hp", -strip.dot_per_sec * CANDID_TICK)
-					break
+			# Moving exposure is integrated from the committed segment, so a thin strip cannot be
+			# skipped between samples and this parked cadence never double-charges the same travel.
+			if not gs.is_moving(cid):
+				for strip in _spike_strips:
+					if is_instance_valid(strip) and strip.covers(pos):
+						gs.adjust_stat(cid, "hp", -strip.dot_per_sec * CANDID_TICK)
+						break
 			for service_field in _infrastructure_fields:
 				if is_instance_valid(service_field) and service_field.is_hazardous() \
 						and service_field.covers(pos):
@@ -1928,6 +2603,8 @@ func _on_candid_tick() -> void:
 			if not is_instance_valid(enemy) or not enemy.is_alive():
 				continue
 			if not gs.characters.has(enemy.char_id):
+				continue
+			if gs.is_moving(enemy.char_id):
 				continue
 			var epos: Vector3 = gs.get_position(enemy.char_id)
 			for strip in _spike_strips:
@@ -1946,6 +2623,12 @@ func _ensure_scheduled() -> void:
 	var sched = _get_scheduler()
 	if sched == null:
 		return
+	var gs = _get_game_state()
+	if gs != null and (_has_shared_concealment_sources() or not _spike_strips.is_empty()):
+		if not gs.movement_started.is_connected(_on_spatial_movement_started):
+			gs.movement_started.connect(_on_spatial_movement_started)
+		if not gs.movement_cancelled.is_connected(_on_spatial_movement_cancelled):
+			gs.movement_cancelled.connect(_on_spatial_movement_cancelled)
 	_scheduled = true
 	for ch in _channels:
 		ch.start(sched, _get_game_state())
@@ -1953,6 +2636,11 @@ func _ensure_scheduled() -> void:
 		basin.start(sched, _get_game_state())
 	_arm_candid_tick()
 	_arm_concealment_tick()
+	if gs != null:
+		for cid_v in gs.characters.keys():
+			var cid := str(cid_v)
+			if gs.is_moving(cid):
+				_on_spatial_movement_started(cid)
 	_publish_fragment_authority()
 
 

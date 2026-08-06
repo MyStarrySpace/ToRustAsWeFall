@@ -18,6 +18,28 @@ const RuntimeRegistryScript := preload(
 	"res://scripts/generation/generated_node_runtime_registry.gd"
 )
 
+# The generated entry is a deployment surface, not a content socket. Party
+# presenters have a 0.25 m body radius; the extra margin keeps real generated
+# flora (including its outline/pointer collider) out of both the initial body
+# volume and the immediately readable formation around it.
+const PARTY_SPAWN_IDS: Array[String] = ["aster", "peris", "endo"]
+const PARTY_SPAWN_BODY_RADIUS := 0.25
+const PARTY_SPAWN_CONTENT_MARGIN := 0.30
+
+# Generated actions are not points floating over approximate floor geometry.
+# Their approach is a persisted typed graph vertex plus the nearby vertices from
+# which the shipped interactable will actually accept the action.  The extra
+# 0.15 m mirrors generated_stretch_chunk's physical arrival tolerance.
+const INTERACTION_APPROACH_CONTRACT_ID := "generated_interaction_approach_v1"
+const GENERATED_INTERACTION_RADIUS := 1.8
+const GENERATED_INTERACTION_ACCEPTANCE_RADIUS := (
+	GENERATED_INTERACTION_RADIUS + 0.15
+)
+const CONTENT_NAVIGATION_CONTRACT_ID := "generated_content_navigation_v1"
+const SPEC_INTEGRITY_CONTRACT_ID := "generated_spec_integrity_v1"
+const SPATIAL_SOCKET_CONTRACT_ID := "generated_spatial_feature_sockets_v1"
+const PARTY_SPAWN_CLEARANCE_CONTRACT_ID := "generated_party_spawn_clearance_v1"
+
 const SPEC_SCHEMA := "trawf_generated_stretch_spec_v1"
 const DEFAULT_SPEC_DIR := "res://data/generated_stretches"
 
@@ -193,9 +215,27 @@ static func generate(settings: Dictionary) -> Dictionary:
 	var spine_navigation_grid := navigation_grid.duplicate(true)
 	navigation_grid = _weave_navigation_grid(spine_navigation_grid, resolved)
 	var navigation_branches: Array = navigation_grid.get("branches", [])
+	var approach_projection := _project_actionable_interaction_approaches(
+		nodes,
+		routes,
+		navigation_grid,
+		str(resolved.get("id", "generated_stretch"))
+	)
+	if not bool(approach_projection.get("valid", false)):
+		return {
+			"success": false,
+			"ok": false,
+			"error": "actionable_interaction_approach_projection_failed",
+			"validation": {"actionable_interaction_approaches": approach_projection},
+			"draft_nodes": nodes,
+			"draft_navigation_grid": navigation_grid,
+		}
 	graybox["navigation_contract_id"] = str(navigation_grid.get("contract_id", ""))
 	graybox["navigation_node_count"] = nodes.size()
 	graybox["navigation_edge_count"] = routes.size()
+	graybox["actionable_interaction_approach_count"] = int(
+		approach_projection.get("actionable_node_count", 0)
+	)
 	graybox["spatial_feature_count"] = spatial_features.size()
 	var themed_landmarks := _build_themed_landmarks(nodes, navigation_grid, resolved)
 	var infrastructure := _build_infrastructure_composition(nodes, navigation_grid, resolved, themed_landmarks)
@@ -205,6 +245,86 @@ static func generate(settings: Dictionary) -> Dictionary:
 	var themed_setpieces := _build_themed_route_setpieces(navigation_grid, resolved)
 	graybox["themed_setpiece_count"] = themed_setpieces.size()
 	var anchors := _build_anchors(nodes)
+	# WFC footprints can be as small as 3x2. The legacy boundary-flora socket
+	# shared the open approach face with the three spawn anchors, which could put
+	# a Capbage's real 1.4 m outline collider directly over Endo. Exclude only
+	# content that actually overlaps a party spawn; all other generated content
+	# remains unchanged, and the validator below fails closed on any overlap that
+	# appears outside the entry boundary.
+	var spawn_excluded_content_count := _exclude_entry_spawn_overlaps(nodes, anchors)
+	if spawn_excluded_content_count > 0:
+		# Spawn clearance may remove the one noun that supplied a stretch-wide
+		# crucial element. Relocate that clue onto a non-entry node after the
+		# exclusion; re-injecting it at the boundary would recreate the collision
+		# this pass just removed.
+		var relocated_content_node_indices: Array[int] = _guarantee_element_coverage(
+			nodes,
+			poi_distribution,
+			available_flora,
+			available_structures,
+			true)
+		# Rebuild only nodes that received a relocated noun. Rebuilding the entry
+		# would compact its placement indices and could move a previously safe
+		# retained noun back into the party's spawn footprint.
+		_rebuild_declared_content_placements(
+			nodes, catalog, relocated_content_node_indices)
+		# `_collect_spatial_features` returns detached dictionaries. Refresh the
+		# emitted top-level runtime contract after socket reassignment so it cannot
+		# retain an excluded entry socket or omit the relocated visible clue.
+		spatial_features = _collect_spatial_features(nodes, navigation_grid)
+		graybox["spatial_feature_count"] = spatial_features.size()
+		graybox["content_placement_count"] = _content_placement_count(nodes)
+		graybox["spawn_excluded_content_count"] = spawn_excluded_content_count
+		element_coverage = _compute_element_coverage(nodes, poi_distribution)
+		systems_contract = SystemsCurriculumScript.build_contract(
+			catalog, nodes, routes, resolved)
+	else:
+		graybox["spawn_excluded_content_count"] = 0
+	# Content placement is part of the navigation graph, not decorative metadata
+	# projected onto it after the fact. Reconcile every realized noun to a
+	# reachable vertex inside its owning room before emitting its receipt. The
+	# visible position, local offset, and any authored feature socket all move
+	# together, so presentation and click movement consume the same truth.
+	var content_navigation_placement := _place_realized_content_on_navigation(
+		nodes,
+		navigation_grid,
+		layout.get("slot_cells", {}) as Dictionary,
+		anchors
+	)
+	if not bool(content_navigation_placement.get("valid", false)):
+		return {
+			"success": false,
+			"ok": false,
+			"error": "realized_content_navigation_projection_failed",
+			"validation": {
+				"realized_content_navigation": content_navigation_placement,
+			},
+			"draft_nodes": nodes,
+			"draft_navigation_grid": navigation_grid,
+			"draft_settings": resolved,
+		}
+	if int(content_navigation_placement.get("moved_placement_count", 0)) > 0:
+		# `_collect_spatial_features` returns detached dictionaries. Refresh it
+		# after graph-first socket placement so the top-level runtime contract
+		# cannot retain the pre-navigation assignment positions.
+		spatial_features = _collect_spatial_features(nodes, navigation_grid)
+		graybox["spatial_feature_count"] = spatial_features.size()
+	var content_navigation_projection := _project_realized_content_navigation(
+		nodes, navigation_grid)
+	if not bool(content_navigation_projection.get("valid", false)):
+		return {
+			"success": false,
+			"ok": false,
+			"error": "realized_content_navigation_projection_failed",
+			"validation": {
+				"realized_content_navigation": content_navigation_projection,
+			},
+			"draft_nodes": nodes,
+			"draft_navigation_grid": navigation_grid,
+			"draft_settings": resolved,
+		}
+	graybox["realized_content_navigation_count"] = int(
+		content_navigation_projection.get("realized_content_placement_count", 0))
 	var world_slot := _build_world_slot(resolved, anchors)
 	var teaching_chain := _teaching_chain_edges(catalog, archetype_chain)
 	var composition_summary := _build_composition_summary(resolved.get("composition", {}), archetype_chain, nodes, random_walk)
@@ -245,6 +365,12 @@ static func generate(settings: Dictionary) -> Dictionary:
 			"complexity_tier": str(resolved.get("complexity_tier", "teaching")),
 			"progression_stage": int(resolved.get("progression_stage", 99)),
 			"roster": resolved.get("roster", []),
+		},
+		"spec_integrity": {
+			"contract_id": SPEC_INTEGRITY_CONTRACT_ID,
+			"party_spawn_clearance_contract_id": PARTY_SPAWN_CLEARANCE_CONTRACT_ID,
+			"spatial_socket_contract_id": SPATIAL_SOCKET_CONTRACT_ID,
+			"content_navigation_contract_id": CONTENT_NAVIGATION_CONTRACT_ID,
 		},
 		"settings": resolved,
 		"budget": budget.duplicate(true),
@@ -362,6 +488,51 @@ static func generate(settings: Dictionary) -> Dictionary:
 			"validation": spec["validation"],
 			"draft_spec": spec,
 		}
+	var integrity_validation := validate_spec_integrity_contract(spec)
+	(spec["validation"] as Dictionary)["integrity"] = integrity_validation
+	if not bool(integrity_validation.get("valid", false)):
+		return {
+			"success": false,
+			"ok": false,
+			"error": "spec_integrity_contract_failed",
+			"validation": spec["validation"],
+			"draft_spec": spec,
+		}
+	var content_navigation_validation := validate_realized_content_navigation(spec)
+	(spec["validation"] as Dictionary)["realized_content_navigation"] = (
+		content_navigation_validation)
+	if not bool(content_navigation_validation.get("valid", false)):
+		return {
+			"success": false,
+			"ok": false,
+			"error": "realized_content_navigation_contract_failed",
+			"validation": spec["validation"],
+			"draft_spec": spec,
+		}
+	var approach_validation := validate_actionable_interaction_approaches(spec)
+	(spec["validation"] as Dictionary)["actionable_interaction_approaches"] = (
+		approach_validation
+	)
+	if not bool(approach_validation.get("valid", false)):
+		return {
+			"success": false,
+			"ok": false,
+			"error": "actionable_interaction_approach_contract_failed",
+			"validation": spec["validation"],
+			"draft_spec": spec,
+		}
+	var spawn_clearance_validation := validate_party_spawn_clearance(spec)
+	(spec["validation"] as Dictionary)["party_spawn_clearance"] = (
+		spawn_clearance_validation
+	)
+	if not bool(spawn_clearance_validation.get("valid", false)):
+		return {
+			"success": false,
+			"ok": false,
+			"error": "party_spawn_clearance_contract_failed",
+			"validation": spec["validation"],
+			"draft_spec": spec,
+		}
 	var theme_validation := validate_area_theme(spec)
 	(spec["validation"] as Dictionary)["area_theme"] = theme_validation
 	if not bool(theme_validation.get("valid", false)):
@@ -372,6 +543,133 @@ static func generate(settings: Dictionary) -> Dictionary:
 			"validation": spec["validation"],
 			"draft_spec": spec,
 		}
+	return spec
+
+
+## Seal a deliberately authored fixed spatial spec through the same current
+## acceptance boundary as procedural output.  This is an explicit authoring
+## operation, not a persisted-spec repair path: callers supply the authoritative
+## grid/nodes, and a disconnected action or stale runtime projection fails rather
+## than regenerating or replacing that authored geometry.
+static func finalize_authored_fixed_spec(draft: Dictionary) -> Dictionary:
+	var spec := draft.duplicate(true)
+	var nodes_v: Variant = spec.get("nodes", null)
+	var routes_v: Variant = spec.get("routes", null)
+	var navigation_v: Variant = spec.get("navigation_grid", null)
+	if not (nodes_v is Array) or not (routes_v is Array) \
+			or not (navigation_v is Dictionary):
+		return {
+			"success": false,
+			"ok": false,
+			"error": "authored_fixed_spec_shape_failed",
+			"validation": {
+				"valid": false,
+				"errors": [
+					"Authored fixed specs require nodes, routes, and a navigation grid."
+				],
+			},
+			"draft_spec": spec,
+		}
+
+	var nodes := nodes_v as Array
+	var routes := routes_v as Array
+	var navigation_grid := navigation_v as Dictionary
+	var spec_id := str(spec.get("id", "authored_fixed_spec"))
+	var settings_v: Variant = spec.get("settings", {})
+	var settings := (
+		(settings_v as Dictionary).duplicate(true)
+		if settings_v is Dictionary else {}
+	)
+	settings["id"] = spec_id
+	settings["title"] = str(spec.get("title", "Authored Fixed Spec"))
+	settings["progression_stage"] = maxi(
+		1, int(settings.get("progression_stage", 1)))
+	spec["settings"] = settings
+	spec["schema"] = SPEC_SCHEMA
+	spec["biome"] = str(spec.get("biome", ""))
+	for empty_array_field in [
+		"spatial_features",
+		"themed_landmarks",
+		"themed_setpieces",
+		"infrastructure_operations",
+	]:
+		if not (spec.get(empty_array_field, null) is Array):
+			spec[empty_array_field] = []
+	if not (spec.get("area_theme", null) is Dictionary):
+		spec["area_theme"] = {}
+	if not (spec.get("zone_transition", null) is Dictionary):
+		spec["zone_transition"] = {}
+
+	# Systems projection is allowed to remove invented actions from layout-only
+	# nodes and to attach only handlers that the production registry implements.
+	var catalog := CatalogScript.new()
+	spec["systems_contract"] = SystemsCurriculumScript.build_contract(
+		catalog, nodes, routes, settings)
+	spec["nodes"] = nodes
+
+	var approach_projection := _project_actionable_interaction_approaches(
+		nodes, routes, navigation_grid, spec_id)
+	if not bool(approach_projection.get("valid", false)):
+		return {
+			"success": false,
+			"ok": false,
+			"error": "authored_actionable_interaction_approach_failed",
+			"validation": {
+				"valid": false,
+				"errors": approach_projection.get("errors", []),
+				"actionable_interaction_approaches": approach_projection,
+			},
+			"draft_spec": spec,
+		}
+	spec["nodes"] = nodes
+
+	var content_navigation_projection := _project_realized_content_navigation(
+		nodes, navigation_grid)
+	if not bool(content_navigation_projection.get("valid", false)):
+		return {
+			"success": false,
+			"ok": false,
+			"error": "authored_content_navigation_failed",
+			"validation": {
+				"valid": false,
+				"errors": content_navigation_projection.get("errors", []),
+				"realized_content_navigation": content_navigation_projection,
+			},
+			"draft_spec": spec,
+		}
+	spec["nodes"] = nodes
+
+	var navigation_branches: Array = navigation_grid.get("branches", [])
+	spec["topology_contract"] = _build_topology_contract(
+		nodes, routes, navigation_branches, navigation_grid)
+	spec["spec_integrity"] = {
+		"contract_id": SPEC_INTEGRITY_CONTRACT_ID,
+		"party_spawn_clearance_contract_id": PARTY_SPAWN_CLEARANCE_CONTRACT_ID,
+		"spatial_socket_contract_id": SPATIAL_SOCKET_CONTRACT_ID,
+		"content_navigation_contract_id": CONTENT_NAVIGATION_CONTRACT_ID,
+	}
+	var graybox_v: Variant = spec.get("graybox", {})
+	if graybox_v is Dictionary:
+		var graybox := graybox_v as Dictionary
+		graybox["navigation_contract_id"] = str(
+			navigation_grid.get("contract_id", ""))
+		graybox["navigation_node_count"] = nodes.size()
+		graybox["navigation_edge_count"] = routes.size()
+		graybox["actionable_interaction_approach_count"] = int(
+			approach_projection.get("actionable_node_count", 0))
+		graybox["realized_content_navigation_count"] = int(
+			content_navigation_projection.get(
+				"realized_content_placement_count", 0))
+		spec["graybox"] = graybox
+
+	var acceptance := validate_spec_acceptance(spec)
+	spec["success"] = bool(acceptance.get("valid", false))
+	spec["ok"] = bool(acceptance.get("valid", false))
+	spec["validation"] = acceptance
+	if not bool(acceptance.get("valid", false)):
+		spec["error"] = "authored_fixed_spec_acceptance_failed"
+	else:
+		spec.erase("error")
 	return spec
 
 
@@ -732,8 +1030,19 @@ static func validate_topology_contract(spec: Dictionary) -> Dictionary:
 			navigation_branches, nodes, navigation_grid
 		)
 		for branch_action_v in expected_branch_actions:
-			if str((branch_action_v as Dictionary).get("before_node", "")) == "":
+			var branch_action := branch_action_v as Dictionary
+			if str(branch_action.get("before_node", "")) == "":
 				errors.append("A mandatory branch action lacks an executable before_node interleave anchor.")
+			var affected_node_ids: Array = branch_action.get(
+				"affected_node_ids", [])
+			var sorted_affected_node_ids := affected_node_ids.duplicate()
+			sorted_affected_node_ids.sort()
+			if affected_node_ids.is_empty():
+				errors.append(
+					"A mandatory branch action disconnects no typed interaction destination.")
+			elif affected_node_ids != sorted_affected_node_ids:
+				errors.append(
+					"A mandatory branch action has non-canonical affected_node_ids ordering.")
 		var emitted_branch_actions: Array = spec.get("headless", {}).get(
 			"solution", {}
 		).get("branch_actions", [])
@@ -768,6 +1077,64 @@ static func validate_systems_contract(spec: Dictionary) -> Dictionary:
 	return SystemsCurriculumScript.validate_contract(spec)
 
 
+static func validate_spec_integrity_contract(spec: Dictionary) -> Dictionary:
+	var errors: Array[String] = []
+	var integrity_v: Variant = spec.get("spec_integrity", null)
+	if not (integrity_v is Dictionary):
+		return {
+			"valid": false,
+			"errors": ["Generated stretch has no spec-integrity contract."],
+		}
+	var integrity := integrity_v as Dictionary
+	var required := {
+		"contract_id": SPEC_INTEGRITY_CONTRACT_ID,
+		"party_spawn_clearance_contract_id": PARTY_SPAWN_CLEARANCE_CONTRACT_ID,
+		"spatial_socket_contract_id": SPATIAL_SOCKET_CONTRACT_ID,
+		"content_navigation_contract_id": CONTENT_NAVIGATION_CONTRACT_ID,
+	}
+	for key_v in required.keys():
+		var key := str(key_v)
+		if str(integrity.get(key, "")) != str(required[key_v]):
+			errors.append(
+				"Spec-integrity contract uses the wrong %s." % key)
+	return {"valid": errors.is_empty(), "errors": errors}
+
+
+## One acceptance boundary for generated results, persisted JSON, editor saves,
+## and inline configured specs. Keeping the sections visible lets callers report
+## the exact rejected contract without choosing a weaker subset of validators.
+static func validate_spec_acceptance(spec: Dictionary) -> Dictionary:
+	var sections := {
+		"integrity": validate_spec_integrity_contract(spec),
+		"mode_independence": validate_mode_independent_spec(spec),
+		"topology": validate_topology_contract(spec),
+		"systems": validate_systems_contract(spec),
+		"spatial_features": validate_spatial_features(spec),
+		"actionable_interaction_approaches": (
+			validate_actionable_interaction_approaches(spec)),
+		"party_spawn_clearance": validate_party_spawn_clearance(spec),
+		"realized_content_navigation": validate_realized_content_navigation(spec),
+		"area_theme": validate_area_theme(spec),
+	}
+	var errors: Array[String] = []
+	for section_name_v in sections.keys():
+		var section_name := str(section_name_v)
+		var section := sections[section_name_v] as Dictionary
+		if bool(section.get("valid", false)):
+			continue
+		var section_errors_v: Variant = section.get("errors", [])
+		if not (section_errors_v is Array) or (section_errors_v as Array).is_empty():
+			errors.append("%s contract failed." % section_name)
+			continue
+		for error_v in section_errors_v as Array:
+			errors.append("%s: %s" % [section_name, str(error_v)])
+	return {
+		"valid": errors.is_empty(),
+		"errors": errors,
+		"sections": sections,
+	}
+
+
 ## Public verifier for generated feature prefabs. A platform is only valid when it replaces real walkable cells,
 ## assigns its archetype content to explicit sockets, and names the causal relationship it is meant to expose.
 static func validate_spatial_features(spec: Dictionary) -> Dictionary:
@@ -793,6 +1160,11 @@ static func validate_spatial_features(spec: Dictionary) -> Dictionary:
 			errors.append("Node %s owns more than one primary spatial feature" % node_id)
 		seen_nodes[node_id] = true
 		var node := nodes_by_id[node_id] as Dictionary
+		var node_feature_v: Variant = node.get("spatial_feature", null)
+		if not (node_feature_v is Dictionary) \
+				or not _serialized_variants_equal(node_feature_v, feature):
+			errors.append(
+				"%s diverges from its node-owned spatial feature receipt" % feature_id)
 		if str(node.get("role", "")) in ["boundary", "shelter", "shelter_arrival"]:
 			errors.append("%s occupies a boundary/shelter node" % feature_id)
 		var scene_path := str(feature.get("scene", ""))
@@ -815,6 +1187,8 @@ static func validate_spatial_features(spec: Dictionary) -> Dictionary:
 		var assignments: Array = feature.get("socket_assignments", [])
 		if assignments.size() < 2:
 			errors.append("%s does not spatially separate at least two system elements" % feature_id)
+		_validate_spatial_feature_socket_assignments(
+			feature, node, feature_id, errors)
 		var assignment_ids := []
 		for assignment_v in assignments:
 			if assignment_v is Dictionary:
@@ -844,6 +1218,1135 @@ static func validate_spatial_features(spec: Dictionary) -> Dictionary:
 		if (causal_model.get("emergent_inputs", []) as Array).size() < 3:
 			errors.append("%s does not name enough interacting systems for emergence" % feature_id)
 	return {"valid": errors.is_empty(), "errors": errors, "feature_count": features.size()}
+
+
+static func _validate_spatial_feature_socket_assignments(
+		feature: Dictionary,
+		node: Dictionary,
+		feature_id: String,
+		errors: Array[String]
+	) -> void:
+	var content_sockets_v: Variant = feature.get("content_sockets", null)
+	if not (content_sockets_v is Dictionary):
+		errors.append("%s has no typed content-socket catalog" % feature_id)
+		return
+	var content_sockets := content_sockets_v as Dictionary
+	var assignments_v: Variant = feature.get("socket_assignments", null)
+	if not (assignments_v is Array):
+		errors.append("%s has no socket-assignment array" % feature_id)
+		return
+	var assignments_by_socket := {}
+	for assignment_v in assignments_v as Array:
+		if not (assignment_v is Dictionary):
+			errors.append("%s has a malformed socket assignment" % feature_id)
+			continue
+		var assignment := assignment_v as Dictionary
+		var socket_id := str(assignment.get("socket", ""))
+		if socket_id == "":
+			errors.append("%s has an unnamed socket assignment" % feature_id)
+			continue
+		if assignments_by_socket.has(socket_id):
+			errors.append("%s assigns socket %s more than once" % [feature_id, socket_id])
+			continue
+		assignments_by_socket[socket_id] = assignment
+
+	var realized_socket_ids := {}
+	var realized_count := 0
+	var node_position := _array_to_vec3(node.get("position", []), Vector3.INF)
+	for placement_v in node.get("content_placements", []):
+		if not (placement_v is Dictionary):
+			errors.append("%s owns a malformed content placement" % feature_id)
+			continue
+		var placement := placement_v as Dictionary
+		var category := str(placement.get("category", ""))
+		var content_id := str(placement.get("id", ""))
+		if not RuntimeRegistryScript.generated_content_is_realized(category, content_id):
+			continue
+		realized_count += 1
+		var socket_id := str(placement.get("socket_id", ""))
+		if socket_id == "":
+			errors.append(
+				"%s leaves realized %s/%s without an authored socket"
+				% [feature_id, category, content_id])
+			continue
+		if realized_socket_ids.has(socket_id):
+			errors.append("%s seats more than one placement on %s" % [feature_id, socket_id])
+			continue
+		realized_socket_ids[socket_id] = true
+		var socket_index := _spatial_socket_index(socket_id, category)
+		var category_sockets_v: Variant = content_sockets.get(category, null)
+		if socket_index < 0 or not (category_sockets_v is Array) \
+				or socket_index >= (category_sockets_v as Array).size():
+			errors.append(
+				"%s seats %s/%s on incompatible socket %s"
+				% [feature_id, category, content_id, socket_id])
+			continue
+		var assignment_v: Variant = assignments_by_socket.get(socket_id, null)
+		if not (assignment_v is Dictionary):
+			errors.append(
+				"%s has no assignment receipt for realized %s/%s on %s"
+				% [feature_id, category, content_id, socket_id])
+			continue
+		var assignment := assignment_v as Dictionary
+		if str(assignment.get("category", "")) != category \
+				or str(assignment.get("content_id", "")) != content_id \
+				or not _serialized_variants_equal(
+					assignment.get("position", null), placement.get("position", null)):
+			errors.append(
+				"%s assignment %s does not exactly describe its realized placement"
+				% [feature_id, socket_id])
+		if node_position.is_finite():
+			var socket_offset := _array_to_vec3(
+				(category_sockets_v as Array)[socket_index], Vector3.INF)
+			var size := _array_to_vec3(placement.get("size", []), Vector3.INF)
+			var placed_position := _array_to_vec3(
+				placement.get("position", []), Vector3.INF)
+			if socket_offset.is_finite() and size.is_finite():
+				socket_offset.y = size.y * 0.5
+				var expected_position := node_position + socket_offset
+				if not placed_position.is_finite() \
+						or not placed_position.is_equal_approx(expected_position):
+					errors.append(
+						"%s placement on %s has drifted from its authored socket"
+						% [feature_id, socket_id])
+	for socket_id_v in assignments_by_socket.keys():
+		if not realized_socket_ids.has(str(socket_id_v)):
+			errors.append(
+				"%s retains stale assignment %s with no realized placement"
+				% [feature_id, str(socket_id_v)])
+	if assignments_by_socket.size() != realized_count:
+		errors.append(
+			"%s has %d assignments for %d realized placements"
+			% [feature_id, assignments_by_socket.size(), realized_count])
+
+
+static func _spatial_socket_index(socket_id: String, category: String) -> int:
+	var prefix := str({
+		"flora": "flora", "enemies": "enemy", "structures": "structure",
+	}.get(category, ""))
+	if prefix == "" or not socket_id.begins_with("%s_" % prefix):
+		return -1
+	var index_text := socket_id.trim_prefix("%s_" % prefix)
+	if not index_text.is_valid_int():
+		return -1
+	var index := int(index_text)
+	return index if socket_id == "%s_%d" % [prefix, index] else -1
+
+
+## Public validation boundary for generated action navigation.  A semantic node
+## is executable only when its visible source is projected onto a walkable
+## `(cell, level)` and every accepted arrival vertex is connected to the prior
+## required action (or the entry for the first action).  Requiring an alternate
+## vertex is what keeps a normal full-party Rally from turning the source into a
+## permanently occupied singleton destination.
+static func validate_actionable_interaction_approaches(
+	spec: Dictionary
+	) -> Dictionary:
+	var errors: Array[String] = []
+	var navigation_grid: Dictionary = spec.get("navigation_grid", {})
+	if str(navigation_grid.get("contract_id", "")) \
+			!= GridWorld.GRID_DATA_CONTRACT_ID:
+		return {
+			"valid": false,
+			"errors": ["Generated stretch has no unified navigation grid."],
+			"actionable_node_count": 0,
+		}
+	var grid := GridWorld.from_data(navigation_grid)
+	var nodes: Array = spec.get("nodes", [])
+	var spec_id := str(spec.get("id", ""))
+	var entry_node := _find_node_in_list(nodes, "entry")
+	var entry_vertex := _project_reference_vertex(grid, entry_node)
+	if entry_vertex.is_empty():
+		errors.append("Generated entry has no walkable graph vertex on its declared level.")
+	var required_from_vertex := entry_vertex
+	var required_from_node_id := "entry"
+	var expected_component_id := _interaction_component_id(entry_vertex)
+	var actionable_count := 0
+	for node_v in nodes:
+		if not (node_v is Dictionary):
+			continue
+		var node := node_v as Dictionary
+		var handler_id := RuntimeRegistryScript.handler_for_node(node, spec_id)
+		if handler_id == "":
+			continue
+		actionable_count += 1
+		var node_id := str(node.get("id", "node"))
+		var contract_v: Variant = node.get("interaction_approach", {})
+		if not (contract_v is Dictionary):
+			errors.append("%s has no interaction approach dictionary." % node_id)
+			continue
+		var contract := contract_v as Dictionary
+		if str(contract.get("contract_id", "")) \
+				!= INTERACTION_APPROACH_CONTRACT_ID:
+			errors.append("%s uses an unknown interaction approach contract." % node_id)
+		if str(contract.get("handler_id", "")) != handler_id:
+			errors.append("%s interaction approach names the wrong runtime handler." % node_id)
+		if str(contract.get("required_from_node_id", "")) != required_from_node_id:
+			errors.append(
+				"%s interaction approach is not anchored to required predecessor %s."
+				% [node_id, required_from_node_id]
+			)
+		if str(contract.get("component_id", "")) != expected_component_id:
+			errors.append("%s interaction approach names the wrong graph component." % node_id)
+		var interaction_radius_v: Variant = contract.get("interaction_radius", null)
+		var interaction_radius := (
+			float(interaction_radius_v)
+			if _interaction_finite_number(interaction_radius_v) else NAN
+		)
+		if not contract.has("interaction_radius") \
+				or not _interaction_finite_number(interaction_radius_v) \
+				or not is_equal_approx(
+					interaction_radius, GENERATED_INTERACTION_RADIUS):
+			errors.append(
+				"%s interaction approach does not persist the shipped interaction radius."
+				% node_id
+			)
+		var acceptance_radius_v: Variant = contract.get("acceptance_radius", null)
+		var acceptance_radius := (
+			float(acceptance_radius_v)
+			if _interaction_finite_number(acceptance_radius_v) else NAN
+		)
+		if not contract.has("acceptance_radius") \
+				or not _interaction_finite_number(acceptance_radius_v) \
+				or not is_equal_approx(
+					acceptance_radius, GENERATED_INTERACTION_ACCEPTANCE_RADIUS):
+			errors.append(
+				"%s interaction approach does not persist the shipped acceptance radius."
+				% node_id
+			)
+		var declared_from := _interaction_vertex_from_data(
+			contract.get("required_from_vertex", {})
+		)
+		if not _interaction_vertices_equal(declared_from, required_from_vertex):
+			errors.append(
+				"%s interaction approach does not retain its predecessor graph vertex."
+				% node_id
+			)
+		var component_anchor := _interaction_vertex_from_data(
+			contract.get("component_anchor", {})
+		)
+		if not _interaction_vertices_equal(component_anchor, entry_vertex):
+			errors.append(
+				"%s interaction approach does not retain the entry component anchor."
+				% node_id
+			)
+		var primary := _interaction_vertex_from_data(
+			contract.get("approach_vertex", {})
+		)
+		if primary.is_empty() or not _interaction_vertex_walkable(grid, primary):
+			errors.append("%s primary interaction approach is not walkable." % node_id)
+			continue
+		var primary_cell: Vector2i = primary.get("cell", Vector2i.ZERO)
+		var primary_level := int(primary.get("level", -1))
+		var source_position := _array_to_vec3(
+			node.get("approach_position", []), Vector3.INF
+		)
+		if not source_position.is_finite() \
+				or grid.world_to_grid(source_position) != primary_cell \
+				or grid.level_for_y(source_position.y) != primary_level \
+				or not source_position.is_equal_approx(
+					grid.grid_to_world(primary_cell, primary_level)):
+			errors.append(
+				"%s visible interaction source is not built from its primary graph vertex."
+				% node_id
+			)
+		var region_v: Variant = contract.get("region_vertices", [])
+		if not (region_v is Array):
+			errors.append("%s interaction region is not an array." % node_id)
+			continue
+		var region := region_v as Array
+		if region.size() < 2:
+			errors.append(
+				"%s interaction region has no alternate arrival when Rally occupies its primary."
+				% node_id
+			)
+		var primary_count := 0
+		var seen_vertices := {}
+		for region_index in range(region.size()):
+			var vertex_v: Variant = region[region_index]
+			var vertex := _interaction_vertex_from_data(vertex_v)
+			if vertex.is_empty():
+				errors.append("%s interaction region contains malformed graph data." % node_id)
+				continue
+			if _interaction_vertices_equal(vertex, primary):
+				primary_count += 1
+				if region_index != 0:
+					errors.append(
+					"%s interaction region does not place its primary vertex first."
+					% node_id
+				)
+			var vertex_key := _interaction_vertex_key(vertex)
+			if seen_vertices.has(vertex_key):
+				errors.append("%s interaction region repeats vertex %s." % [node_id, vertex_key])
+				continue
+			seen_vertices[vertex_key] = true
+			if not _interaction_vertex_walkable(grid, vertex):
+				errors.append("%s interaction region contains non-walkable %s." % [node_id, vertex_key])
+				continue
+			var region_cell: Vector2i = vertex.get("cell", Vector2i.ZERO)
+			var region_level := int(vertex.get("level", -1))
+			if region_level != primary_level:
+				errors.append("%s interaction region crosses an unannotated floor." % node_id)
+				continue
+			var region_world := grid.grid_to_world(region_cell, region_level)
+			if Vector2(region_world.x - source_position.x,
+					region_world.z - source_position.z).length() \
+					> GENERATED_INTERACTION_ACCEPTANCE_RADIUS + 0.001:
+				errors.append("%s interaction region exceeds the source's physical reach." % node_id)
+			if required_from_vertex.is_empty() \
+					or not _interaction_vertices_connected(
+						grid, required_from_vertex, vertex):
+				errors.append(
+					"%s interaction region vertex %s is unreachable from %s."
+					% [node_id, vertex_key, required_from_node_id]
+				)
+		if primary_count == 0:
+			errors.append("%s interaction region omits its primary vertex." % node_id)
+		elif primary_count > 1:
+			errors.append("%s interaction region repeats its primary vertex." % node_id)
+		if _node_updates_required_interaction_predecessor(node):
+			required_from_vertex = primary
+			required_from_node_id = node_id
+	return {
+		"valid": errors.is_empty(),
+		"errors": errors,
+		"actionable_node_count": actionable_count,
+		"component_id": expected_component_id,
+	}
+
+
+## Project every actionable node into the final authoritative navigation graph.
+## This runs after branch weaving, so the contract cannot accidentally describe
+## the pre-weave spine while gameplay routes on a different graph.
+static func _project_actionable_interaction_approaches(
+	nodes: Array,
+	_routes: Array,
+	navigation_grid: Dictionary,
+	spec_id: String,
+	only_missing := false
+	) -> Dictionary:
+	var errors: Array[String] = []
+	if str(navigation_grid.get("contract_id", "")) \
+			!= GridWorld.GRID_DATA_CONTRACT_ID:
+		return {
+			"valid": false,
+			"errors": ["Cannot project actions without a unified navigation grid."],
+			"actionable_node_count": 0,
+		}
+	var grid := GridWorld.from_data(navigation_grid)
+	var entry_node := _find_node_in_list(nodes, "entry")
+	var entry_vertex := _project_reference_vertex(grid, entry_node)
+	if entry_vertex.is_empty():
+		return {
+			"valid": false,
+			"errors": ["Generated entry cannot be projected onto its declared navigation level."],
+			"actionable_node_count": 0,
+		}
+	var required_from_vertex := entry_vertex
+	var required_from_node_id := "entry"
+	var component_id := _interaction_component_id(entry_vertex)
+	var actionable_count := 0
+	for node_index in range(nodes.size()):
+		if not (nodes[node_index] is Dictionary):
+			continue
+		var node := nodes[node_index] as Dictionary
+		var handler_id := RuntimeRegistryScript.handler_for_node(node, spec_id)
+		if handler_id == "":
+			continue
+		actionable_count += 1
+		var node_id := str(node.get("id", "node"))
+		var existing_v: Variant = node.get("interaction_approach", null)
+		if only_missing and node.has("interaction_approach"):
+			# Presence is an explicit authored claim even when its value is {}, null,
+			# an array, or a string. Preserve it for fail-closed validation; legacy
+			# migration is allowed only when the key itself is absent.
+			if existing_v is Dictionary:
+				var existing_primary := _interaction_vertex_from_data(
+					(existing_v as Dictionary).get("approach_vertex", {})
+				)
+				if _node_updates_required_interaction_predecessor(node) \
+						and not existing_primary.is_empty():
+					required_from_vertex = existing_primary
+					required_from_node_id = node_id
+			continue
+		var declared_level := int(node.get("elevation_index", 0))
+		var authored_position := _array_to_vec3(
+			node.get("approach_position", node.get("position", [])), Vector3.INF
+		)
+		if not authored_position.is_finite():
+			errors.append("%s has no finite authored interaction approach." % node_id)
+			continue
+		var nearby := _walkable_interaction_vertices(
+			grid,
+			authored_position,
+			declared_level,
+			GENERATED_INTERACTION_ACCEPTANCE_RADIUS
+		)
+		var reachable: Array[Dictionary] = []
+		for vertex_v in nearby:
+			var vertex := vertex_v as Dictionary
+			if _interaction_vertices_connected(grid, required_from_vertex, vertex):
+				reachable.append(vertex)
+		if reachable.is_empty():
+			errors.append(
+				"%s has no walkable interaction approach reachable from %s."
+				% [node_id, required_from_node_id]
+			)
+			continue
+		var primary := reachable[0]
+		var primary_cell: Vector2i = primary.get("cell", Vector2i.ZERO)
+		var primary_world := grid.grid_to_world(primary_cell, declared_level)
+		var region_candidates := _walkable_interaction_vertices(
+			grid,
+			primary_world,
+			declared_level,
+			GENERATED_INTERACTION_ACCEPTANCE_RADIUS
+		)
+		var region: Array[Dictionary] = []
+		for vertex_v in region_candidates:
+			var vertex := vertex_v as Dictionary
+			if _interaction_vertices_connected(grid, required_from_vertex, vertex):
+				region.append(vertex)
+		if region.size() < 2:
+			errors.append(
+				"%s has no alternate reachable interaction arrival for a rallied party."
+				% node_id
+			)
+			continue
+		# The primary is the first item because the region sorter measures from its
+		# exact cell centre. Persist arrays, not Vector2i, so JSON replay is stable.
+		var exported_region: Array = []
+		for vertex_v in region:
+			exported_region.append(_interaction_vertex_to_data(vertex_v))
+		node["approach_position"] = _vec3_to_array(primary_world)
+		node["interaction_approach"] = {
+			"contract_id": INTERACTION_APPROACH_CONTRACT_ID,
+			"handler_id": handler_id,
+			"required_from_node_id": required_from_node_id,
+			"required_from_vertex": _interaction_vertex_to_data(required_from_vertex),
+			"component_id": component_id,
+			"component_anchor": _interaction_vertex_to_data(entry_vertex),
+			"approach_vertex": _interaction_vertex_to_data(primary),
+			"region_vertices": exported_region,
+			"interaction_radius": GENERATED_INTERACTION_RADIUS,
+			"acceptance_radius": GENERATED_INTERACTION_ACCEPTANCE_RADIUS,
+		}
+		nodes[node_index] = node
+		if _node_updates_required_interaction_predecessor(node):
+			required_from_vertex = primary
+			required_from_node_id = node_id
+	return {
+		"valid": errors.is_empty(),
+		"errors": errors,
+		"actionable_node_count": actionable_count,
+		"component_id": component_id,
+	}
+
+
+static func _node_updates_required_interaction_predecessor(node: Dictionary) -> bool:
+	return not bool(node.get("optional", false)) \
+		and bool(node.get("runtime_progression_required", true))
+
+
+static func _project_reference_vertex(grid: GridWorld, node: Dictionary) -> Dictionary:
+	if node.is_empty():
+		return {}
+	var position := _array_to_vec3(
+		node.get("approach_position", node.get("position", [])), Vector3.INF
+	)
+	var level := int(node.get("elevation_index", 0))
+	if not position.is_finite() or level < 0 or level >= grid.level_count:
+		return {}
+	var requested := grid.world_to_grid(position)
+	var cell := grid.nearest_walkable_cell(
+		requested, level, maxi(grid.width, grid.height)
+	)
+	if not grid.is_walkable(cell.x, cell.y, {}, {}, level):
+		return {}
+	return {"cell": cell, "level": level}
+
+
+static func _walkable_interaction_vertices(
+	grid: GridWorld,
+	center: Vector3,
+	level: int,
+	radius: float
+	) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	if not center.is_finite() or level < 0 or level >= grid.level_count:
+		return result
+	var center_cell := grid.world_to_grid(center)
+	var search_radius := int(ceil(radius / maxf(grid.cell_size, 0.001))) + 1
+	for dz in range(-search_radius, search_radius + 1):
+		for dx in range(-search_radius, search_radius + 1):
+			var cell := center_cell + Vector2i(dx, dz)
+			if not grid.is_walkable(cell.x, cell.y, {}, {}, level):
+				continue
+			var world := grid.grid_to_world(cell, level)
+			var distance := Vector2(
+				world.x - center.x, world.z - center.z
+			).length()
+			if distance > radius + 0.001:
+				continue
+			result.append({
+				"cell": cell,
+				"level": level,
+				"distance": distance,
+			})
+	result.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		var a_distance := float(a.get("distance", INF))
+		var b_distance := float(b.get("distance", INF))
+		if not is_equal_approx(a_distance, b_distance):
+			return a_distance < b_distance
+		var a_cell: Vector2i = a.get("cell", Vector2i.ZERO)
+		var b_cell: Vector2i = b.get("cell", Vector2i.ZERO)
+		return a_cell.y < b_cell.y or (a_cell.y == b_cell.y and a_cell.x < b_cell.x)
+	)
+	for vertex in result:
+		vertex.erase("distance")
+	return result
+
+
+static func _interaction_vertex_from_data(value: Variant) -> Dictionary:
+	if not (value is Dictionary):
+		return {}
+	var raw := value as Dictionary
+	var cell_v: Variant = raw.get("cell", null)
+	var cell: Vector2i
+	if cell_v is Vector2i:
+		cell = cell_v as Vector2i
+	elif cell_v is Array and (cell_v as Array).size() == 2 \
+			and _interaction_integral_component((cell_v as Array)[0]) \
+			and _interaction_integral_component((cell_v as Array)[1]):
+		cell = Vector2i(
+			int((cell_v as Array)[0]), int((cell_v as Array)[1])
+		)
+	else:
+		return {}
+	if not raw.has("level") \
+			or not _interaction_integral_component(raw.get("level", null)):
+		return {}
+	return {"cell": cell, "level": int(raw.get("level", -1))}
+
+
+static func _interaction_integral_component(value: Variant) -> bool:
+	if not _interaction_finite_number(value):
+		return false
+	var number := float(value)
+	return number >= -2147483648.0 \
+		and number <= 2147483647.0 \
+		and number == floorf(number)
+
+
+static func _interaction_finite_number(value: Variant) -> bool:
+	var value_type := typeof(value)
+	return (value_type == TYPE_INT or value_type == TYPE_FLOAT) \
+		and is_finite(float(value))
+
+
+static func _interaction_vertex_to_data(vertex: Dictionary) -> Dictionary:
+	var normalized := _interaction_vertex_from_data(vertex)
+	if normalized.is_empty():
+		return {}
+	var cell: Vector2i = normalized.get("cell", Vector2i.ZERO)
+	return {"cell": [cell.x, cell.y], "level": int(normalized.get("level", 0))}
+
+
+static func _interaction_vertex_key(vertex: Dictionary) -> String:
+	var normalized := _interaction_vertex_from_data(vertex)
+	if normalized.is_empty():
+		return "invalid"
+	var cell: Vector2i = normalized.get("cell", Vector2i.ZERO)
+	return "%d:%d:%d" % [int(normalized.get("level", -1)), cell.x, cell.y]
+
+
+static func _interaction_component_id(entry_vertex: Dictionary) -> String:
+	return "entry_component:%s" % _interaction_vertex_key(entry_vertex)
+
+
+static func _interaction_vertices_equal(a: Dictionary, b: Dictionary) -> bool:
+	return not a.is_empty() and not b.is_empty() \
+		and int(a.get("level", -1)) == int(b.get("level", -1)) \
+		and a.get("cell", Vector2i(-1, -1)) == b.get("cell", Vector2i(-2, -2))
+
+
+static func _interaction_vertex_walkable(
+	grid: GridWorld, vertex: Dictionary
+	) -> bool:
+	var normalized := _interaction_vertex_from_data(vertex)
+	if normalized.is_empty():
+		return false
+	var cell: Vector2i = normalized.get("cell", Vector2i.ZERO)
+	var level := int(normalized.get("level", -1))
+	return level >= 0 and level < grid.level_count \
+		and grid.is_walkable(cell.x, cell.y, {}, {}, level)
+
+
+static func _interaction_vertices_connected(
+	grid: GridWorld, from_vertex: Dictionary, to_vertex: Dictionary
+	) -> bool:
+	var from_normalized := _interaction_vertex_from_data(from_vertex)
+	var to_normalized := _interaction_vertex_from_data(to_vertex)
+	if not _interaction_vertex_walkable(grid, from_normalized) \
+			or not _interaction_vertex_walkable(grid, to_normalized):
+		return false
+	var from_cell: Vector2i = from_normalized.get("cell", Vector2i.ZERO)
+	var to_cell: Vector2i = to_normalized.get("cell", Vector2i.ZERO)
+	return not grid.find_multi_level_plan(
+		from_cell,
+		int(from_normalized.get("level", 0)),
+		to_cell,
+		int(to_normalized.get("level", 0))
+	).is_empty()
+
+
+## Seat each runtime-bound content object on a real vertex in its owning room
+## before a receipt is projected. Generated visuals and navigation therefore
+## share one authored position; there is no runtime-only nearest-cell snap.
+static func _place_realized_content_on_navigation(
+		nodes: Array,
+		navigation_grid: Dictionary,
+		slot_cells: Dictionary,
+		anchors: Dictionary
+	) -> Dictionary:
+	var errors: Array[String] = []
+	if str(navigation_grid.get("contract_id", "")) \
+			!= GridWorld.GRID_DATA_CONTRACT_ID:
+		return {
+			"valid": false,
+			"errors": [
+				"Cannot place realized content without a unified navigation grid."
+			],
+			"realized_content_placement_count": 0,
+			"moved_placement_count": 0,
+		}
+	var grid := GridWorld.from_data(navigation_grid)
+	var entry_vertex := _project_reference_vertex(
+		grid, _find_node_in_list(nodes, "entry"))
+	if entry_vertex.is_empty():
+		return {
+			"valid": false,
+			"errors": [
+				"Cannot place realized content without a walkable entry vertex."
+			],
+			"realized_content_placement_count": 0,
+			"moved_placement_count": 0,
+		}
+	var used_vertices := {}
+	var spawn_positions := _party_spawn_positions(anchors)
+	var realized_count := 0
+	var moved_count := 0
+	for node_index in range(nodes.size()):
+		if not (nodes[node_index] is Dictionary):
+			continue
+		var node := nodes[node_index] as Dictionary
+		var node_id := str(node.get("id", "node"))
+		var candidates := _realized_content_room_vertices(
+			node,
+			slot_cells.get(node_id, {}) as Dictionary,
+			grid,
+			entry_vertex
+		)
+		var placements: Array = node.get("content_placements", [])
+		for placement_index in range(placements.size()):
+			if not (placements[placement_index] is Dictionary):
+				continue
+			var placement := placements[placement_index] as Dictionary
+			var category := str(placement.get("category", ""))
+			var content_id := str(placement.get("id", ""))
+			if not RuntimeRegistryScript.generated_content_is_realized(
+					category, content_id):
+				continue
+			realized_count += 1
+			var authored_position := _placement_world_position(placement, node)
+			if not authored_position.is_finite():
+				errors.append(
+					"%s/%s: Placement has no finite authored position."
+					% [node_id, content_id])
+				continue
+			var ordered_candidates: Array = candidates.duplicate(true)
+			for candidate_v in ordered_candidates:
+				if not (candidate_v is Dictionary):
+					continue
+				var candidate := candidate_v as Dictionary
+				var candidate_world: Vector3 = candidate.get(
+					"world", Vector3.INF) as Vector3
+				candidate["distance"] = Vector2(
+					candidate_world.x - authored_position.x,
+					candidate_world.z - authored_position.z
+				).length()
+			ordered_candidates.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+				var a_distance := float(a.get("distance", INF))
+				var b_distance := float(b.get("distance", INF))
+				if not is_equal_approx(a_distance, b_distance):
+					return a_distance < b_distance
+				var a_cell: Vector2i = a.get("cell", Vector2i.ZERO)
+				var b_cell: Vector2i = b.get("cell", Vector2i.ZERO)
+				return a_cell.y < b_cell.y \
+					or (a_cell.y == b_cell.y and a_cell.x < b_cell.x)
+			)
+			var chosen := {}
+			for candidate_v in ordered_candidates:
+				if not (candidate_v is Dictionary):
+					continue
+				var candidate := candidate_v as Dictionary
+				var vertex := {
+					"cell": candidate.get("cell", Vector2i.ZERO),
+					"level": int(candidate.get("level", -1)),
+				}
+				var vertex_key := _interaction_vertex_key(vertex)
+				if used_vertices.has(vertex_key):
+					continue
+				var vertex_world: Vector3 = candidate.get(
+					"world", Vector3.INF) as Vector3
+				if not vertex_world.is_finite():
+					continue
+				var placed_position := Vector3(
+					vertex_world.x, authored_position.y, vertex_world.z)
+				var candidate_placement := placement.duplicate(true)
+				candidate_placement["position"] = _vec3_to_array(placed_position)
+				if not spawn_positions.is_empty() \
+						and _placement_overlaps_party_spawn(
+							candidate_placement, node, spawn_positions):
+					continue
+				var expected := _expected_realized_content_navigation(
+					candidate_placement, node, grid, entry_vertex)
+				if not bool(expected.get("valid", false)):
+					continue
+				chosen = {
+					"position": placed_position,
+					"vertex_key": vertex_key,
+				}
+				break
+			if chosen.is_empty():
+				errors.append(
+					"%s/%s: No distinct reachable walkable vertex in the owning room can seat the visible content."
+					% [node_id, content_id])
+				continue
+			var placed_position: Vector3 = chosen.get(
+				"position", authored_position) as Vector3
+			var node_position := _array_to_vec3(
+				node.get("position", []), Vector3.INF)
+			placement["position"] = _vec3_to_array(placed_position)
+			if node_position.is_finite():
+				placement["local_offset"] = _vec3_to_array(
+					placed_position - node_position)
+			placement.erase("navigation")
+			used_vertices[str(chosen.get("vertex_key", ""))] = true
+			if Vector2(
+				placed_position.x - authored_position.x,
+				placed_position.z - authored_position.z
+			).length() > 0.001:
+				moved_count += 1
+			placements[placement_index] = placement
+			node = _move_realized_content_socket_with_placement(node, placement)
+		node["content_placements"] = placements
+		nodes[node_index] = node
+	return {
+		"valid": errors.is_empty(),
+		"errors": errors,
+		"realized_content_placement_count": realized_count,
+		"moved_placement_count": moved_count,
+	}
+
+
+## Candidate vertices are restricted to the room-piece mask when WFC data is
+## available. The legacy rasterizer has no mask receipt, so its node footprint is
+## the equivalent owning-room boundary.
+static func _realized_content_room_vertices(
+		node: Dictionary,
+		slot_cell: Dictionary,
+		grid: GridWorld,
+		entry_vertex: Dictionary
+	) -> Array:
+	var result: Array = []
+	var level_v: Variant = node.get("elevation_index", null)
+	if not _interaction_integral_component(level_v):
+		return result
+	var level := int(level_v)
+	if level < 0 or level >= grid.level_count:
+		return result
+	if not slot_cell.is_empty():
+		var origin_v: Variant = slot_cell.get("origin_cell", null)
+		var rows_v: Variant = slot_cell.get("walkable", null)
+		if origin_v is Array and (origin_v as Array).size() >= 2 \
+				and rows_v is Array:
+			var origin_cell := Vector2i(
+				int((origin_v as Array)[0]), int((origin_v as Array)[1]))
+			var graph_origin_cell := Vector2i(
+				roundi(grid.origin.x / maxf(grid.cell_size, 0.001)),
+				roundi(grid.origin.z / maxf(grid.cell_size, 0.001)))
+			var rows := rows_v as Array
+			for row_index in range(rows.size()):
+				var row := str(rows[row_index])
+				for column_index in range(row.length()):
+					if row[column_index] != ".":
+						continue
+					var cell := Vector2i(
+						origin_cell.x + column_index - graph_origin_cell.x,
+						origin_cell.y + row_index - graph_origin_cell.y)
+					var world := grid.grid_to_world(cell, level)
+					_append_realized_content_vertex(
+						result, world, level, grid, entry_vertex)
+			return result
+	var node_position := _array_to_vec3(
+		node.get("position", []), Vector3.INF)
+	var footprint := _array_to_vec3(
+		node.get("footprint", []), Vector3.INF)
+	if not node_position.is_finite() or not footprint.is_finite():
+		return result
+	for z in range(grid.height):
+		for x in range(grid.width):
+			var cell := Vector2i(x, z)
+			var world := grid.grid_to_world(cell, level)
+			if absf(world.x - node_position.x) > footprint.x * 0.5 + 0.001 \
+					or absf(world.z - node_position.z) > footprint.z * 0.5 + 0.001:
+				continue
+			_append_realized_content_vertex(
+				result, world, level, grid, entry_vertex)
+	return result
+
+
+static func _append_realized_content_vertex(
+		result: Array,
+		world: Vector3,
+		level: int,
+		grid: GridWorld,
+		entry_vertex: Dictionary
+	) -> void:
+	var cell := grid.world_to_grid(world)
+	var vertex := {"cell": cell, "level": level}
+	if not _interaction_vertex_walkable(grid, vertex) \
+			or not _interaction_vertices_connected(grid, entry_vertex, vertex):
+		return
+	for existing_v in result:
+		if existing_v is Dictionary \
+				and (existing_v as Dictionary).get("cell", Vector2i(-1, -1)) == cell \
+				and int((existing_v as Dictionary).get("level", -1)) == level:
+			return
+	result.append({"cell": cell, "level": level, "world": world})
+
+
+## A feature socket is authored data too. Moving only the content placement would
+## make the visible object disagree with both its feature assignment and the
+## integrity validator, so all three representations are updated atomically.
+static func _move_realized_content_socket_with_placement(
+		node: Dictionary, placement: Dictionary
+	) -> Dictionary:
+	var socket_id := str(placement.get("socket_id", ""))
+	if socket_id == "":
+		return node
+	var category := str(placement.get("category", ""))
+	var feature_v: Variant = node.get("spatial_feature", null)
+	if not (feature_v is Dictionary):
+		return node
+	var feature := feature_v as Dictionary
+	if feature.is_empty():
+		return node
+	var socket_index := _spatial_socket_index(socket_id, category)
+	var sockets_v: Variant = feature.get("content_sockets", null)
+	if socket_index >= 0 and sockets_v is Dictionary:
+		var sockets := sockets_v as Dictionary
+		var category_sockets_v: Variant = sockets.get(category, null)
+		if category_sockets_v is Array \
+				and socket_index < (category_sockets_v as Array).size():
+			var category_sockets := category_sockets_v as Array
+			category_sockets[socket_index] = (
+				placement.get("local_offset", []) as Array).duplicate()
+			sockets[category] = category_sockets
+			feature["content_sockets"] = sockets
+	var assignments: Array = feature.get("socket_assignments", [])
+	for assignment_index in range(assignments.size()):
+		if not (assignments[assignment_index] is Dictionary):
+			continue
+		var assignment := assignments[assignment_index] as Dictionary
+		if str(assignment.get("socket", "")) != socket_id:
+			continue
+		assignment["position"] = (
+			placement.get("position", []) as Array).duplicate()
+		assignments[assignment_index] = assignment
+	feature["socket_assignments"] = assignments
+	node["spatial_feature"] = feature
+	return node
+
+
+## Project every runtime-bound content object onto the same typed graph used by
+## click movement. The object cell identifies where the visible mechanism lives;
+## the reachable region identifies where a body can actually produce its verb.
+## This runs only during fresh generation. Persisted explicit receipts are never
+## rewritten by canonicalization.
+static func _project_realized_content_navigation(
+		nodes: Array, navigation_grid: Dictionary
+	) -> Dictionary:
+	var errors: Array[String] = []
+	if str(navigation_grid.get("contract_id", "")) \
+			!= GridWorld.GRID_DATA_CONTRACT_ID:
+		return {
+			"valid": false,
+			"errors": ["Cannot project realized content without a unified navigation grid."],
+			"realized_content_placement_count": 0,
+		}
+	var grid := GridWorld.from_data(navigation_grid)
+	var entry_vertex := _project_reference_vertex(
+		grid, _find_node_in_list(nodes, "entry"))
+	if entry_vertex.is_empty():
+		return {
+			"valid": false,
+			"errors": ["Cannot project realized content without a walkable entry vertex."],
+			"realized_content_placement_count": 0,
+		}
+	var realized_count := 0
+	for node_index in range(nodes.size()):
+		if not (nodes[node_index] is Dictionary):
+			continue
+		var node := nodes[node_index] as Dictionary
+		var placements: Array = node.get("content_placements", [])
+		for placement_index in range(placements.size()):
+			if not (placements[placement_index] is Dictionary):
+				continue
+			var placement := placements[placement_index] as Dictionary
+			var category := str(placement.get("category", ""))
+			var content_id := str(placement.get("id", ""))
+			if not RuntimeRegistryScript.generated_content_is_realized(
+					category, content_id):
+				continue
+			realized_count += 1
+			var expected := _expected_realized_content_navigation(
+				placement, node, grid, entry_vertex)
+			if not bool(expected.get("valid", false)):
+				for error_v in expected.get("errors", []):
+					errors.append(
+						"%s/%s: %s" % [
+							str(node.get("id", "node")), content_id, str(error_v)])
+				continue
+			placement["navigation"] = expected.get("receipt", {})
+			placements[placement_index] = placement
+		node["content_placements"] = placements
+		nodes[node_index] = node
+	return {
+		"valid": errors.is_empty(),
+		"errors": errors,
+		"realized_content_placement_count": realized_count,
+	}
+
+
+## Fail-closed public verifier. A saved or inline spec must carry the exact graph
+## receipt emitted from its visible position and runtime binding; a stale cell,
+## level, radius, kind, or disconnected region is rejected rather than repaired.
+static func validate_realized_content_navigation(spec: Dictionary) -> Dictionary:
+	var errors: Array[String] = []
+	var navigation_grid: Dictionary = spec.get("navigation_grid", {})
+	if str(navigation_grid.get("contract_id", "")) \
+			!= GridWorld.GRID_DATA_CONTRACT_ID:
+		return {
+			"valid": false,
+			"errors": ["Generated stretch has no unified navigation grid."],
+			"realized_content_placement_count": 0,
+		}
+	var grid := GridWorld.from_data(navigation_grid)
+	var nodes: Array = spec.get("nodes", [])
+	var entry_vertex := _project_reference_vertex(
+		grid, _find_node_in_list(nodes, "entry"))
+	if entry_vertex.is_empty():
+		errors.append("Generated entry has no walkable content-navigation anchor.")
+	var realized_count := 0
+	for node_v in nodes:
+		if not (node_v is Dictionary):
+			continue
+		var node := node_v as Dictionary
+		var placements_v: Variant = node.get("content_placements", null)
+		if not (placements_v is Array):
+			errors.append(
+				"%s has no content-placement array." % str(node.get("id", "node")))
+			continue
+		for placement_v in placements_v as Array:
+			if not (placement_v is Dictionary):
+				errors.append(
+					"%s has a malformed content placement."
+					% str(node.get("id", "node")))
+				continue
+			var placement := placement_v as Dictionary
+			var category := str(placement.get("category", ""))
+			var content_id := str(placement.get("id", ""))
+			if not RuntimeRegistryScript.generated_content_is_realized(
+					category, content_id):
+				continue
+			realized_count += 1
+			var label := "%s/%s" % [str(node.get("id", "node")), content_id]
+			var expected := _expected_realized_content_navigation(
+				placement, node, grid, entry_vertex)
+			if not bool(expected.get("valid", false)):
+				for error_v in expected.get("errors", []):
+					errors.append("%s: %s" % [label, str(error_v)])
+				continue
+			var receipt_v: Variant = placement.get("navigation", null)
+			if not (receipt_v is Dictionary):
+				errors.append("%s has no typed content-navigation receipt." % label)
+				continue
+			if not _serialized_variants_equal(
+					receipt_v, expected.get("receipt", {})):
+				errors.append(
+					"%s content-navigation receipt differs from its reachable graph region."
+					% label)
+	return {
+		"valid": errors.is_empty(),
+		"errors": errors,
+		"realized_content_placement_count": realized_count,
+	}
+
+
+static func _expected_realized_content_navigation(
+		placement: Dictionary,
+		node: Dictionary,
+		grid: GridWorld,
+		entry_vertex: Dictionary
+	) -> Dictionary:
+	var errors: Array[String] = []
+	var category := str(placement.get("category", ""))
+	var content_id := str(placement.get("id", ""))
+	var binding_id := RuntimeRegistryScript.generated_content_binding(
+		category, content_id)
+	var runtime_navigation := RuntimeRegistryScript.generated_content_navigation(
+		category, content_id)
+	if binding_id == "" or runtime_navigation.is_empty():
+		errors.append("Runtime binding has no content-navigation semantics.")
+		return {"valid": false, "errors": errors}
+	var level_v: Variant = node.get("elevation_index", null)
+	if not _interaction_integral_component(level_v):
+		errors.append("Owning node has no integral navigation level.")
+		return {"valid": false, "errors": errors}
+	var level := int(level_v)
+	if level < 0 or level >= grid.level_count:
+		errors.append("Owning node level is outside the unified graph.")
+		return {"valid": false, "errors": errors}
+	var position := _array_to_vec3(placement.get("position", []), Vector3.INF)
+	if not position.is_finite():
+		errors.append("Placement has no finite world position.")
+		return {"valid": false, "errors": errors}
+	var content_cell := grid.world_to_grid(position)
+	if content_cell.x < 0 or content_cell.y < 0 \
+			or content_cell.x >= grid.width or content_cell.y >= grid.height:
+		errors.append("Placement cell is outside the unified graph bounds.")
+		return {"valid": false, "errors": errors}
+	var content_vertex := {"cell": content_cell, "level": level}
+	var radius_v: Variant = runtime_navigation.get("radius", null)
+	if not _interaction_finite_number(radius_v) or float(radius_v) <= 0.0:
+		errors.append("Runtime binding has no finite standing-region radius.")
+		return {"valid": false, "errors": errors}
+	var radius := float(radius_v)
+	var reachable_region: Array = []
+	for candidate_v in _walkable_interaction_vertices(
+			grid, position, level, radius):
+		var candidate := candidate_v as Dictionary
+		if _interaction_vertices_connected(grid, entry_vertex, candidate):
+			reachable_region.append(_interaction_vertex_to_data(candidate))
+	if reachable_region.is_empty():
+		errors.append("Placement has no reachable adjacent standing region.")
+		return {"valid": false, "errors": errors}
+	var navigation_kind := str(runtime_navigation.get("kind", ""))
+	var requires_content_vertex := (
+		navigation_kind == RuntimeRegistryScript.CONTENT_NAVIGATION_OCCUPIABLE
+		or bool(runtime_navigation.get("requires_content_vertex", false))
+	)
+	if requires_content_vertex:
+		if not _interaction_vertex_walkable(grid, content_vertex) \
+				or not _interaction_vertices_connected(
+					grid, entry_vertex, content_vertex):
+			errors.append("Content does not occupy a reachable walkable cell.")
+			return {"valid": false, "errors": errors}
+		var content_vertex_data := _interaction_vertex_to_data(content_vertex)
+		var region_contains_content := false
+		for region_vertex_v in reachable_region:
+			if _serialized_variants_equal(region_vertex_v, content_vertex_data):
+				region_contains_content = true
+				break
+		if not region_contains_content:
+			errors.append("Content standing region omits its required content cell.")
+			return {"valid": false, "errors": errors}
+	if navigation_kind not in [
+		RuntimeRegistryScript.CONTENT_NAVIGATION_OCCUPIABLE,
+		RuntimeRegistryScript.CONTENT_NAVIGATION_INTERACTABLE,
+	]:
+		errors.append("Runtime binding uses an unknown content-navigation kind.")
+		return {"valid": false, "errors": errors}
+	var receipt := {
+		"contract_id": CONTENT_NAVIGATION_CONTRACT_ID,
+		"binding_id": binding_id,
+		"kind": navigation_kind,
+		"component_id": _interaction_component_id(entry_vertex),
+		"content_vertex": _interaction_vertex_to_data(content_vertex),
+		"reachable_region": reachable_region,
+		"radius": radius,
+	}
+	var arrival_policy := str(runtime_navigation.get("arrival_policy", ""))
+	if arrival_policy != "":
+		receipt["arrival_policy"] = arrival_policy
+	return {
+		"valid": true,
+		"errors": [],
+		"receipt": receipt,
+	}
+
+
+## Public generated-spawn invariant. Only content with a shipped generated
+## runtime binding participates: prose-only palette nouns create no collider and
+## therefore cannot invalidate the physical deployment surface. The clearance
+## radius includes the real presenter's interaction/outline footprint, the
+## player capsule, and a small readable-formation margin.
+static func validate_party_spawn_clearance(spec: Dictionary) -> Dictionary:
+	var errors: Array[String] = []
+	var anchors: Dictionary = spec.get("anchors", {})
+	var spawn_positions := _party_spawn_positions(anchors)
+	for char_id in PARTY_SPAWN_IDS:
+		if not anchors.has(char_id):
+			errors.append("Missing generated party spawn anchor '%s'." % char_id)
+	var checked_placements := 0
+	for node_v in spec.get("nodes", []):
+		if not (node_v is Dictionary):
+			continue
+		var node := node_v as Dictionary
+		for placement_v in node.get("content_placements", []):
+			if not (placement_v is Dictionary):
+				continue
+			var placement := placement_v as Dictionary
+			if not RuntimeRegistryScript.generated_content_is_realized(
+					str(placement.get("category", "")),
+					str(placement.get("id", ""))):
+				continue
+			checked_placements += 1
+			var position := _placement_world_position(placement, node)
+			if not position.is_finite():
+				errors.append(
+					"%s/%s has no finite generated content position."
+					% [str(node.get("id", "node")), str(placement.get("id", "content"))]
+				)
+				continue
+			var clearance := _placement_spawn_clearance_radius(placement)
+			for spawn_v in spawn_positions:
+				var spawn := spawn_v as Dictionary
+				var spawn_position := spawn.get("position", Vector3.INF) as Vector3
+				var horizontal_distance := Vector2(
+					position.x - spawn_position.x,
+					position.z - spawn_position.z
+				).length()
+				if horizontal_distance + 0.001 >= clearance:
+					continue
+				errors.append(
+					"%s/%s is %.3f m from %s spawn; %.3f m is required."
+					% [
+						str(node.get("id", "node")),
+						str(placement.get("id", "content")),
+						horizontal_distance,
+						str(spawn.get("character_id", "party")),
+						clearance,
+					]
+				)
+	return {
+		"valid": errors.is_empty(),
+		"errors": errors,
+		"party_anchor_count": spawn_positions.size(),
+		"realized_content_placement_count": checked_placements,
+	}
 
 
 ## Public verifier for roguelite district identity. A biome is not a color name: it must carry an authored
@@ -909,7 +2412,14 @@ static func validate_area_theme(spec: Dictionary) -> Dictionary:
 			if str(landmark.get(field, "")).strip_edges() == "":
 				errors.append("Theme landmark %s is missing %s" % [str(landmark.get("id", "")), field])
 	var setpiece_defs: Array = theme.get("route_setpieces", [])
-	if not setpiece_defs.is_empty() and setpieces.is_empty():
+	var authored_risk_cells: Array = (
+		spec.get("navigation_grid", {}) as Dictionary
+	).get("risk_cell_list", [])
+	# Route-setpiece definitions are vocabulary, not permission to invent a
+	# hazard. An all-safe generated graph must emit neither false-positive risk
+	# cells nor scenery that claims a risky lane exists.
+	if not setpiece_defs.is_empty() and not authored_risk_cells.is_empty() \
+			and setpieces.is_empty():
 		errors.append("Biome '%s' emitted no interactive route setpieces" % biome)
 	var risk_cells := {}
 	for risk_v in spec.get("navigation_grid", {}).get("risk_cell_list", []):
@@ -1178,7 +2688,9 @@ static func _ng_mark(walk: Dictionary, levels: Dictionary, multi: bool, elev: in
 			levels[elev] = {}
 		levels[elev][c] = true
 
-static func load_spec(path: String) -> Dictionary:
+static func load_spec(
+		path: String, regenerate_stale_from_settings := false
+	) -> Dictionary:
 	if not FileAccess.file_exists(path):
 		return {}
 	var file := FileAccess.open(path, FileAccess.READ)
@@ -1188,21 +2700,69 @@ static func load_spec(path: String) -> Dictionary:
 	if not (parsed is Dictionary):
 		return {}
 	var canonical := canonicalize_spec(parsed as Dictionary)
-	var mode_validation := validate_mode_independent_spec(canonical)
-	if not bool(mode_validation.get("valid", false)):
+	var acceptance := validate_spec_acceptance(canonical)
+	if not bool(acceptance.get("valid", false)):
+		if regenerate_stale_from_settings \
+				and _legacy_snapshot_requires_full_regeneration(
+					canonical, acceptance):
+			var regenerated := generate(
+				(canonical.get("settings", {}) as Dictionary).duplicate(true))
+			if bool(regenerated.get("success", false)):
+				push_warning(
+					"Rejected stale generated snapshot '%s' and regenerated its complete spatial/solver snapshot from settings."
+					% path)
+				return regenerated
 		push_error(
-			"Refusing mode-dependent generated stretch spec '%s': %s"
-			% [path, "; ".join(mode_validation.get("errors", []))]
+			"Refusing stale or malformed generated stretch spec '%s'; regenerate the complete snapshot from its settings: %s"
+			% [path, "; ".join(acceptance.get("errors", []))]
 		)
 		return {}
 	return canonical
 
+
+static func _legacy_snapshot_requires_full_regeneration(
+		spec: Dictionary, acceptance: Dictionary
+	) -> bool:
+	# Absence identifies the pre-integrity schema. Presence is an explicit claim,
+	# even when null/empty/malformed, and may never enter the regeneration path.
+	if spec.has("spec_integrity"):
+		return false
+	var settings_v: Variant = spec.get("settings", null)
+	if not (settings_v is Dictionary) or (settings_v as Dictionary).is_empty():
+		return false
+	# Likewise, an explicit per-placement receipt is never overwritten. Legacy
+	# snapshots have none of these keys; a partially authored migration must fail.
+	for node_v in spec.get("nodes", []):
+		if not (node_v is Dictionary):
+			continue
+		for placement_v in (node_v as Dictionary).get("content_placements", []):
+			if placement_v is Dictionary \
+					and (placement_v as Dictionary).has("navigation"):
+				return false
+	var sections: Dictionary = acceptance.get("sections", {})
+	# Only contracts introduced or made stricter by this integrity revision may be
+	# stale. Existing authored semantics must already validate before settings are
+	# allowed to reproduce the whole deterministic snapshot.
+	for required_section in [
+		"mode_independence",
+		"topology",
+		"systems",
+		"actionable_interaction_approaches",
+		"area_theme",
+	]:
+		var section_v: Variant = sections.get(required_section, null)
+		if not (section_v is Dictionary) \
+				or not bool((section_v as Dictionary).get("valid", false)):
+			return false
+	return true
+
 static func save_spec(spec: Dictionary, path: String) -> bool:
-	var mode_validation := validate_mode_independent_spec(spec)
-	if not bool(mode_validation.get("valid", false)):
+	var canonical := canonicalize_spec(spec)
+	var acceptance := validate_spec_acceptance(canonical)
+	if not bool(acceptance.get("valid", false)):
 		push_error(
-			"Refusing to save a mode-dependent generated stretch spec: %s"
-			% "; ".join(mode_validation.get("errors", []))
+			"Refusing to save a stale or malformed generated stretch: %s"
+			% "; ".join(acceptance.get("errors", []))
 		)
 		return false
 	if path == "":
@@ -1212,7 +2772,7 @@ static func save_spec(spec: Dictionary, path: String) -> bool:
 	var file := FileAccess.open(path, FileAccess.WRITE)
 	if file == null:
 		return false
-	file.store_string(JSON.stringify(canonicalize_spec(spec), "\t"))
+	file.store_string(JSON.stringify(canonical, "\t"))
 	return true
 
 ## Persisted specs may predate the flora identity migration. Retired flora names are
@@ -1220,7 +2780,86 @@ static func save_spec(spec: Dictionary, path: String) -> bool:
 ## uses the canonical key. This intentionally does not add aliases to the live palette.
 static func canonicalize_spec(spec: Dictionary) -> Dictionary:
 	var normalized := _canonicalize_persisted_flora(spec) as Dictionary
-	return _canonicalize_persisted_branch_action_triggers(normalized) as Dictionary
+	normalized = _canonicalize_persisted_branch_action_triggers(normalized) as Dictionary
+	normalized = _canonicalize_persisted_interaction_approaches(normalized)
+	return _canonicalize_persisted_branch_action_coverage(normalized)
+
+
+## Legacy fixtures predate typed action approaches.  Migrate only an absent
+## contract; an explicitly present malformed/unreachable contract must survive
+## to the fail-closed validator rather than being silently repaired.
+static func _canonicalize_persisted_interaction_approaches(
+	spec: Dictionary
+	) -> Dictionary:
+	var nodes: Array = spec.get("nodes", [])
+	var navigation_grid: Dictionary = spec.get("navigation_grid", {})
+	if nodes.is_empty() or navigation_grid.is_empty():
+		return spec
+	var projection := _project_actionable_interaction_approaches(
+		nodes,
+		spec.get("routes", []),
+		navigation_grid,
+		str(spec.get("id", "")),
+		true
+	)
+	if bool(projection.get("valid", false)):
+		spec["nodes"] = nodes
+	return spec
+
+
+## Typed interaction regions were added before exact per-cut destination coverage.
+## Migrate only an absent `affected_node_ids` field by recomputing it from the
+## persisted woven graph and typed approaches. An explicitly present malformed or
+## stale claim remains untouched so acceptance validation fails closed.
+static func _canonicalize_persisted_branch_action_coverage(
+		spec: Dictionary
+	) -> Dictionary:
+	var navigation_grid: Dictionary = spec.get("navigation_grid", {})
+	var nodes: Array = spec.get("nodes", [])
+	var branches: Array = navigation_grid.get("branches", [])
+	if navigation_grid.is_empty() or nodes.is_empty() or branches.is_empty():
+		return spec
+	var expected_by_branch := {}
+	for action_v in SolverScript.mandatory_branch_actions(
+			branches, nodes, navigation_grid):
+		if not (action_v is Dictionary):
+			continue
+		var action := action_v as Dictionary
+		var branch_id := str(action.get("branch_id", action.get("target", "")))
+		if branch_id != "":
+			expected_by_branch[branch_id] = (
+				action.get("affected_node_ids", []) as Array).duplicate()
+	if expected_by_branch.is_empty():
+		return spec
+	return _canonicalize_persisted_branch_action_coverage_value(
+		spec, expected_by_branch) as Dictionary
+
+
+static func _canonicalize_persisted_branch_action_coverage_value(
+		value: Variant, expected_by_branch: Dictionary
+	) -> Variant:
+	if value is Dictionary:
+		var normalized := {}
+		for raw_key in (value as Dictionary).keys():
+			normalized[raw_key] = \
+				_canonicalize_persisted_branch_action_coverage_value(
+					(value as Dictionary)[raw_key], expected_by_branch)
+		if str(normalized.get("kind", "")) == "mandatory_branch_interaction" \
+				and not normalized.has("affected_node_ids"):
+			var branch_id := str(normalized.get(
+				"branch_id", normalized.get("target", "")))
+			if expected_by_branch.has(branch_id):
+				normalized["affected_node_ids"] = (
+					expected_by_branch[branch_id] as Array).duplicate()
+		return normalized
+	if value is Array:
+		var normalized := []
+		for item in value as Array:
+			normalized.append(
+				_canonicalize_persisted_branch_action_coverage_value(
+					item, expected_by_branch))
+		return normalized
+	return value
 
 
 ## `before_nodes` extends the original singular interleave anchor so an optional
@@ -2442,7 +4081,9 @@ static func _assign_spatial_features(nodes: Array, layout: Dictionary, piece_cat
 					category, str(content_id_v)
 				):
 					realized_socket_count += 1
-		if realized_socket_count < 2:
+		if realized_socket_count < 2 \
+				or not _spatial_feature_can_socket_all_realized_content(
+					node, feature_def):
 			continue
 		var runtime_binding: Dictionary = affordance.get(
 			"runtime_binding", feature_def.get("runtime_binding", {})
@@ -2476,6 +4117,28 @@ static func _assign_spatial_features(nodes: Array, layout: Dictionary, piece_cat
 		}, true)
 		node["spatial_feature"] = feature
 		nodes[node_index] = node
+
+
+static func _spatial_feature_can_socket_all_realized_content(
+		node: Dictionary, feature: Dictionary
+	) -> bool:
+	var sockets_v: Variant = feature.get("content_sockets", null)
+	if not (sockets_v is Dictionary):
+		return false
+	var sockets := sockets_v as Dictionary
+	for category in ["flora", "enemies", "structures"]:
+		var realized_count := 0
+		for content_id_v in node.get(category, []):
+			if RuntimeRegistryScript.generated_content_is_realized(
+					category, str(content_id_v)):
+				realized_count += 1
+		var category_sockets_v: Variant = sockets.get(category, null)
+		if realized_count > 0 and not (category_sockets_v is Array):
+			return false
+		if category_sockets_v is Array \
+				and realized_count > (category_sockets_v as Array).size():
+			return false
+	return true
 
 
 static func _spatial_feature_runtime_binding_is_exact(
@@ -2624,17 +4287,6 @@ static func _build_infrastructure_composition(
 			or not _infrastructure_pair_matches(source_kind, receiver_kind, commodity):
 		return empty
 	var seed := int(settings.get("seed", 0))
-	var used_nodes := {}
-	var source_node := _infrastructure_anchor_node(nodes, catalog[source_kind] as Dictionary,
-		used_nodes, seed, "source")
-	if source_node.is_empty():
-		return empty
-	used_nodes[str(source_node.get("id", ""))] = true
-	var receiver_node := _infrastructure_anchor_node(nodes, catalog[receiver_kind] as Dictionary,
-		used_nodes, seed, "receiver")
-	if receiver_node.is_empty():
-		return empty
-
 	var grid = GridWorld.from_data(navigation_grid)
 	var occupied: Array[Vector3] = []
 	for existing_v in existing_landmarks:
@@ -2642,10 +4294,41 @@ static func _build_infrastructure_composition(
 			var existing_position := _array_to_vec3((existing_v as Dictionary).get("position", []), Vector3.INF)
 			if existing_position != Vector3.INF:
 				occupied.append(existing_position)
+	# Anchor choice and physical seating are one placement problem. Selecting one
+	# high-scoring node for each endpoint before checking the authored building
+	# footprints made a valid compact/branched graph fail whenever that single
+	# pair happened to have no two clear off-route sites. Search the same ranked,
+	# deterministic candidates and backtrack both node and site choices. Nothing
+	# is squeezed onto the route: every candidate still passes the existing
+	# authored-clearance test, and the endpoints must use distinct nodes/sites.
+	var placement_plan := _select_infrastructure_placement(
+		grid,
+		nodes,
+		catalog[source_kind] as Dictionary,
+		catalog[receiver_kind] as Dictionary,
+		seed,
+		source_kind,
+		receiver_kind,
+		occupied
+	)
+	if placement_plan.is_empty():
+		return empty
+	var source_node := placement_plan.get("source_node", {}) as Dictionary
+	var receiver_node := placement_plan.get("receiver_node", {}) as Dictionary
 	var landmarks: Array = []
 	var placements := [
-		{"kind": source_kind, "node": source_node, "definition": catalog[source_kind]},
-		{"kind": receiver_kind, "node": receiver_node, "definition": catalog[receiver_kind]},
+		{
+			"kind": source_kind,
+			"node": source_node,
+			"definition": catalog[source_kind],
+			"position": placement_plan.get("source_position", Vector3.INF),
+		},
+		{
+			"kind": receiver_kind,
+			"node": receiver_node,
+			"definition": catalog[receiver_kind],
+			"position": placement_plan.get("receiver_position", Vector3.INF),
+		},
 	]
 	for placement_v in placements:
 		var placement := placement_v as Dictionary
@@ -2654,8 +4337,7 @@ static func _build_infrastructure_composition(
 		var anchor_position := _array_to_vec3(node.get("position", []), Vector3.ZERO)
 		var level := int(node.get("elevation_index", 0))
 		var kind := str(placement.get("kind", "infrastructure"))
-		var building_position := _themed_landmark_position(grid, anchor_position, level,
-			float(definition.get("clearance", 3.5)), seed, "infra_%s" % kind, occupied)
+		var building_position := placement.get("position", Vector3.INF) as Vector3
 		if building_position == Vector3.INF:
 			return empty
 		var toward_anchor := anchor_position - building_position
@@ -2718,9 +4400,70 @@ static func _infrastructure_pair_matches(source_kind: String, receiver_kind: Str
 	return false
 
 
-static func _infrastructure_anchor_node(
-		nodes: Array, definition: Dictionary, used: Dictionary, seed: int, endpoint: String
+static func _select_infrastructure_placement(
+		grid,
+		nodes: Array,
+		source_definition: Dictionary,
+		receiver_definition: Dictionary,
+		seed: int,
+		source_kind: String,
+		receiver_kind: String,
+		occupied: Array[Vector3]
 	) -> Dictionary:
+	var source_candidates := _infrastructure_anchor_candidates(
+		nodes, source_definition, seed, "source")
+	var receiver_candidates := _infrastructure_anchor_candidates(
+		nodes, receiver_definition, seed, "receiver")
+	var source_clearance := float(source_definition.get("clearance", 3.5))
+	var receiver_clearance := float(receiver_definition.get("clearance", 3.5))
+	for source_node_v in source_candidates:
+		var source_node := source_node_v as Dictionary
+		var source_node_id := str(source_node.get("id", ""))
+		var source_anchor := _array_to_vec3(
+			source_node.get("position", []), Vector3.ZERO)
+		var source_level := int(source_node.get("elevation_index", 0))
+		var source_sites := _themed_landmark_positions(
+			grid,
+			source_anchor,
+			source_level,
+			source_clearance,
+			seed,
+			"infra_%s" % source_kind,
+			occupied
+		)
+		for source_position in source_sites:
+			var occupied_after_source: Array[Vector3] = occupied.duplicate()
+			occupied_after_source.append(source_position)
+			for receiver_node_v in receiver_candidates:
+				var receiver_node := receiver_node_v as Dictionary
+				if str(receiver_node.get("id", "")) == source_node_id:
+					continue
+				var receiver_anchor := _array_to_vec3(
+					receiver_node.get("position", []), Vector3.ZERO)
+				var receiver_level := int(receiver_node.get("elevation_index", 0))
+				var receiver_position := _themed_landmark_position(
+					grid,
+					receiver_anchor,
+					receiver_level,
+					receiver_clearance,
+					seed,
+					"infra_%s" % receiver_kind,
+					occupied_after_source
+				)
+				if receiver_position == Vector3.INF:
+					continue
+				return {
+					"source_node": source_node,
+					"source_position": source_position,
+					"receiver_node": receiver_node,
+					"receiver_position": receiver_position,
+				}
+	return {}
+
+
+static func _infrastructure_anchor_candidates(
+		nodes: Array, definition: Dictionary, seed: int, endpoint: String
+	) -> Array:
 	var wanted: Array = definition.get("anchor_structures", [])
 	var candidates: Array = []
 	for node_v in nodes:
@@ -2728,16 +4471,31 @@ static func _infrastructure_anchor_node(
 			continue
 		var node := node_v as Dictionary
 		var node_id := str(node.get("id", ""))
-		if used.has(node_id) or str(node.get("role", "")) in ["entry", "boundary", "shelter", "shelter_arrival"]:
+		if str(node.get("role", "")) in ["entry", "boundary", "shelter", "shelter_arrival"]:
 			continue
 		var matches := 0
 		for structure_v in node.get("structures", []):
 			if wanted.has(str(structure_v)):
 				matches += 1
-		candidates.append({"node": node, "score": matches * 1000 + posmod(int(hash(
-			"infra-anchor:%d:%s:%s" % [seed, endpoint, node_id])), 1000)})
-	candidates.sort_custom(func(a, b): return int(a.get("score", 0)) > int(b.get("score", 0)))
-	return (candidates[0] as Dictionary).get("node", {}) as Dictionary if not candidates.is_empty() else {}
+		candidates.append({
+			"node": node,
+			"node_id": node_id,
+			"score": matches * 1000 + posmod(int(hash(
+				"infra-anchor:%d:%s:%s" % [seed, endpoint, node_id])), 1000),
+		})
+	# Hash collisions must not let implementation-specific sort behavior choose a
+	# different authored layout on replay. Node id is the total-order tiebreaker.
+	candidates.sort_custom(func(a, b):
+		var score_a := int(a.get("score", 0))
+		var score_b := int(b.get("score", 0))
+		if score_a != score_b:
+			return score_a > score_b
+		return str(a.get("node_id", "")) < str(b.get("node_id", ""))
+	)
+	var result: Array = []
+	for candidate_v in candidates:
+		result.append((candidate_v as Dictionary).get("node", {}) as Dictionary)
+	return result
 
 
 static func _infrastructure_control_position(
@@ -2882,20 +4640,105 @@ static func _themed_landmark_position(
 	landmark_id: String,
 	occupied: Array[Vector3]
 ) -> Vector3:
+	var positions := _themed_landmark_positions(
+		grid, anchor, level, clearance, seed, landmark_id, occupied, 1)
+	return positions[0] as Vector3 if not positions.is_empty() else Vector3.INF
+
+
+static func _themed_landmark_positions(
+	grid,
+	anchor: Vector3,
+	level: int,
+	clearance: float,
+	seed: int,
+	landmark_id: String,
+	occupied: Array[Vector3],
+	max_results: int = 0
+) -> Array[Vector3]:
 	var directions := [
 		Vector3(0, 0, 1), Vector3(1, 0, 0), Vector3(0, 0, -1), Vector3(-1, 0, 0),
 		Vector3(1, 0, 1).normalized(), Vector3(1, 0, -1).normalized(),
 		Vector3(-1, 0, -1).normalized(), Vector3(-1, 0, 1).normalized(),
 	]
+	var positions: Array[Vector3] = []
 	var start := posmod(int(hash("theme-site:%d:%s" % [seed, landmark_id])), directions.size())
-	for radius in [clearance + 4.0, clearance + 6.0, clearance + 8.0]:
+	# Preserve the original three rings byte-for-byte for every placement that
+	# already succeeded. A finite woven graph can extend beyond that legacy local
+	# window, though, so continue in the same 2 m cadence to a cap derived from
+	# the actual grid and occupied sites rather than silently dropping the theme.
+	var radii: Array[float] = [
+		clearance + 4.0,
+		clearance + 6.0,
+		clearance + 8.0,
+	]
+	var extended_radius := clearance + 10.0
+	var radius_cap := _themed_landmark_search_radius_cap(
+		grid, anchor, clearance, occupied)
+	while extended_radius <= radius_cap + 0.001:
+		radii.append(extended_radius)
+		extended_radius += 2.0
+	for radius in radii:
 		for i in range(directions.size()):
 			var direction := directions[(start + i) % directions.size()] as Vector3
 			var candidate := anchor + direction * float(radius)
 			candidate.y = anchor.y
 			if _themed_landmark_site_is_clear(grid, candidate, level, clearance, occupied):
-				return candidate
-	return Vector3.INF
+				positions.append(candidate)
+				if max_results > 0 and positions.size() >= max_results:
+					return positions
+	return positions
+
+
+## Finite sufficiency bound for the radial site search. Once a candidate radius
+## exceeds the farthest grid corner plus the exact cell-ring margin used by the
+## clearance predicate, every direction lies beyond every possible walkable
+## cell. Once it also exceeds every occupied site's anchor distance plus the
+## unchanged separation threshold, every direction clears existing landmarks.
+## Aligning that bound upward to the existing 2 m cadence guarantees the search
+## terminates with at least one valid ring without introducing a magic radius.
+static func _themed_landmark_search_radius_cap(
+	grid,
+	anchor: Vector3,
+	clearance: float,
+	occupied: Array[Vector3]
+) -> float:
+	var cell_size := maxf(0.01, float(grid.cell_size))
+	var anchor_flat := Vector2(anchor.x, anchor.z)
+	var grid_origin: Vector3 = grid.origin
+	var grid_min := Vector2(grid_origin.x, grid_origin.z)
+	var grid_max := grid_min + Vector2(
+		maxi(0, int(grid.width)) * cell_size,
+		maxi(0, int(grid.height)) * cell_size
+	)
+	var farthest_grid_corner := 0.0
+	for corner in [
+		grid_min,
+		Vector2(grid_max.x, grid_min.y),
+		grid_max,
+		Vector2(grid_min.x, grid_max.y),
+	]:
+		farthest_grid_corner = maxf(
+			farthest_grid_corner, anchor_flat.distance_to(corner as Vector2))
+	var clearance_cell_radius := int(ceil(
+		(clearance + 0.75) / cell_size))
+	# The predicate scans a square of cells. This diagonal bound includes the
+	# candidate cell itself plus one full cell for floor/world quantization.
+	var grid_cell_margin := sqrt(2.0) \
+		* float(clearance_cell_radius + 1) * cell_size
+	var required_radius := farthest_grid_corner + grid_cell_margin
+	var separation_threshold := clearance * 2.0 + 2.0
+	for used in occupied:
+		if not used.is_finite():
+			continue
+		required_radius = maxf(
+			required_radius,
+			anchor_flat.distance_to(Vector2(used.x, used.z))
+				+ separation_threshold
+		)
+	var extended_start := clearance + 10.0
+	var additional_steps := maxi(0, int(ceil(
+		(required_radius + 0.001 - extended_start) / 2.0)))
+	return extended_start + float(additional_steps) * 2.0
 
 
 static func _themed_landmark_site_is_clear(
@@ -3355,6 +5198,189 @@ static func _navigation_risk_penalty(kind: String) -> float:
 static func _navigation_floor_key(position: Vector3) -> String:
 	return "%d:%d" % [int(roundf(position.x * 10.0)), int(roundf(position.z * 10.0))]
 
+
+static func _party_spawn_positions(anchors: Dictionary) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	for char_id in PARTY_SPAWN_IDS:
+		if not anchors.has(char_id):
+			continue
+		var position := _array_to_vec3(anchors.get(char_id, []), Vector3.INF)
+		if not position.is_finite():
+			continue
+		result.append({"character_id": char_id, "position": position})
+	return result
+
+
+static func _placement_world_position(
+	placement: Dictionary, node: Dictionary
+	) -> Vector3:
+	var direct := _array_to_vec3(placement.get("position", []), Vector3.INF)
+	if direct.is_finite():
+		return direct
+	var node_position := _array_to_vec3(node.get("position", []), Vector3.INF)
+	var local_offset := _array_to_vec3(
+		placement.get("local_offset", []), Vector3.INF)
+	if node_position.is_finite() and local_offset.is_finite():
+		return node_position + local_offset
+	return Vector3.INF
+
+
+static func _placement_spawn_clearance_radius(placement: Dictionary) -> float:
+	var size := _array_to_vec3(
+		placement.get("size", []), Vector3(1.0, 1.0, 1.0))
+	var presenter_radius := Vector2(size.x, size.z).length() * 0.5
+	match str(placement.get("id", "")):
+		"capbage":
+			presenter_radius = maxf(
+				presenter_radius,
+				maxf(1.4, float(placement.get("conceal_radius", 1.4)))
+			)
+		"scarpet":
+			presenter_radius = maxf(
+				presenter_radius,
+				maxf(1.65, float(placement.get("conceal_radius", 1.65)))
+			)
+		"hushbloom":
+			presenter_radius = maxf(presenter_radius, 1.1)
+	return presenter_radius + PARTY_SPAWN_BODY_RADIUS \
+		+ PARTY_SPAWN_CONTENT_MARGIN
+
+
+static func _placement_overlaps_party_spawn(
+	placement: Dictionary,
+	node: Dictionary,
+	spawn_positions: Array[Dictionary]
+	) -> bool:
+	if not RuntimeRegistryScript.generated_content_is_realized(
+			str(placement.get("category", "")),
+			str(placement.get("id", ""))):
+		return false
+	var position := _placement_world_position(placement, node)
+	if not position.is_finite():
+		return true
+	var clearance := _placement_spawn_clearance_radius(placement)
+	for spawn_v in spawn_positions:
+		var spawn_position := (spawn_v as Dictionary).get(
+			"position", Vector3.INF) as Vector3
+		if not spawn_position.is_finite():
+			continue
+		if Vector2(position.x - spawn_position.x,
+				position.z - spawn_position.z).length() + 0.001 < clearance:
+			return true
+	return false
+
+
+## Generated content is allowed to be near the entry, but never inside the
+## three-character deployment formation. Removing the placement and its semantic
+## noun together is intentional: a missing real mechanism is honest; retaining a
+## hidden noun or collision-only proxy is not. Non-entry overlaps are left for
+## `validate_party_spawn_clearance` to reject, since silently deleting a causal
+## interior mechanism could change the solution.
+static func _exclude_entry_spawn_overlaps(
+	nodes: Array, anchors: Dictionary
+	) -> int:
+	var spawn_positions := _party_spawn_positions(anchors)
+	if spawn_positions.size() != PARTY_SPAWN_IDS.size():
+		return 0
+	var excluded_count := 0
+	for node_index in range(nodes.size()):
+		if not (nodes[node_index] is Dictionary):
+			continue
+		var node := nodes[node_index] as Dictionary
+		if str(node.get("id", "")) != "entry" \
+				and str(node.get("role", "")) != "boundary":
+			continue
+		var retained: Array = []
+		var excluded_keys := {}
+		var excluded_socket_ids := {}
+		for placement_v in node.get("content_placements", []):
+			if not (placement_v is Dictionary):
+				retained.append(placement_v)
+				continue
+			var placement := placement_v as Dictionary
+			if not _placement_overlaps_party_spawn(
+					placement, node, spawn_positions):
+				retained.append(placement)
+				continue
+			excluded_count += 1
+			excluded_keys[
+				"%s:%s" % [str(placement.get("category", "")),
+				str(placement.get("id", ""))]
+			] = true
+			var socket_id := str(placement.get("socket_id", ""))
+			if socket_id != "":
+				excluded_socket_ids[socket_id] = true
+		node["content_placements"] = retained
+		for key_v in excluded_keys.keys():
+			var parts := str(key_v).split(":", false, 1)
+			if parts.size() != 2:
+				continue
+			var category := str(parts[0])
+			var content_id := str(parts[1])
+			var still_placed := false
+			for placement_v in retained:
+				if placement_v is Dictionary \
+						and str((placement_v as Dictionary).get(
+							"category", "")) == category \
+						and str((placement_v as Dictionary).get(
+							"id", "")) == content_id:
+					still_placed = true
+					break
+			if not still_placed:
+				var declared: Array = node.get(category, [])
+				declared.erase(content_id)
+				node[category] = declared
+		if not excluded_socket_ids.is_empty():
+			var feature: Dictionary = node.get("spatial_feature", {})
+			if not feature.is_empty():
+				var assignments: Array = []
+				for assignment_v in feature.get("socket_assignments", []):
+					if assignment_v is Dictionary and excluded_socket_ids.has(
+							str((assignment_v as Dictionary).get("socket", ""))):
+						continue
+					assignments.append(assignment_v)
+				feature["socket_assignments"] = assignments
+				node["spatial_feature"] = feature
+		nodes[node_index] = node
+	return excluded_count
+
+
+static func _content_placement_count(nodes: Array) -> int:
+	var count := 0
+	for node_v in nodes:
+		if node_v is Dictionary:
+			count += ((node_v as Dictionary).get(
+				"content_placements", []) as Array).size()
+	return count
+
+
+## Re-project semantic nouns after a spawn-colliding crucial clue is relocated.
+## Coverage is not real unless the fallback noun gets the same portable content
+## placement and spatial-socket receipt that the runtime presenter consumes.
+static func _rebuild_declared_content_placements(
+		nodes: Array, catalog, node_indices: Array[int]
+	) -> void:
+	for node_index in node_indices:
+		if node_index < 0 or node_index >= nodes.size() \
+				or not (nodes[node_index] is Dictionary):
+			continue
+		var node := nodes[node_index] as Dictionary
+		var position := _array_to_vec3(node.get("position", []), Vector3.INF)
+		var footprint := _array_to_vec3(node.get("footprint", []), Vector3.INF)
+		if not position.is_finite() or not footprint.is_finite():
+			continue
+		var placements := _build_graybox_content_placements(
+			node, position, footprint, catalog)
+		node["content_placements"] = placements
+		var feature_v: Variant = node.get("spatial_feature", {})
+		if feature_v is Dictionary and not (feature_v as Dictionary).is_empty():
+			var feature := feature_v as Dictionary
+			feature["socket_assignments"] = _spatial_feature_socket_assignments(
+				placements)
+			node["spatial_feature"] = feature
+		nodes[node_index] = node
+
+
 static func _build_anchors(nodes: Array) -> Dictionary:
 	var anchors := {}
 	var entry_pos: Array = [0.0, 0.45, 0.0]
@@ -3798,51 +5824,135 @@ static func _structure_for_node(archetype: Dictionary, role: String, available: 
 
 # --- POI distribution (Layer A: crucial-element coverage + shared-element merge + progression density) ----------
 
-## The element keys a node's PLACED content (flora + structures) currently supplies.
+## The element keys a node's PLAYABLE content currently supplies. Once layout
+## has emitted `content_placements`, that list is authoritative: a semantic noun
+## without a portable runtime binding must never make the coverage report green.
+## Before layout, only runtime-bound declared nouns participate in the injection
+## pass, so an unsupported palette entry cannot suppress a real fallback clue.
 static func _node_supplied_elements(node: Dictionary, distribution) -> Array:
 	var out := {}
-	for fid in node.get("flora", []):
-		for key in distribution.satisfies("flora", str(fid)):
-			out[key] = true
-	for sid in node.get("structures", []):
-		for key in distribution.satisfies("structures", str(sid)):
-			out[key] = true
+	if node.has("content_placements"):
+		for placement_v in node.get("content_placements", []):
+			if not (placement_v is Dictionary):
+				continue
+			var placement := placement_v as Dictionary
+			var category := str(placement.get("category", ""))
+			var content_id := str(placement.get("id", ""))
+			if not RuntimeRegistryScript.generated_content_is_realized(
+					category, content_id):
+				continue
+			for key in distribution.satisfies(category, content_id):
+				out[key] = true
+		return out.keys()
+	for category in ["flora", "structures"]:
+		for content_id_v in node.get(category, []):
+			var content_id := str(content_id_v)
+			if not RuntimeRegistryScript.generated_content_is_realized(
+					category, content_id):
+				continue
+			for key in distribution.satisfies(category, content_id):
+				out[key] = true
 	return out.keys()
 
 ## Guarantee every archetype's crucial element is realized as content SOMEWHERE in the stretch. Because coverage is
 ## keyed by ELEMENT (not by node), a shared element placed once already covers every archetype that needs it — the
 ## merge is structural. We only inject when an element is entirely absent AND the palette can supply it; otherwise
 ## the element is left unsatisfiable (the bare pair's base capabilities still guarantee solvability via the solver).
-static func _guarantee_element_coverage(nodes: Array, distribution, available_flora: Array, available_structures: Array) -> void:
+static func _guarantee_element_coverage(
+		nodes: Array,
+		distribution,
+		available_flora: Array,
+		available_structures: Array,
+		avoid_entry_boundaries := false
+	) -> Array[int]:
+	var changed_node_indices: Array[int] = []
 	var covered := {}
 	for node in nodes:
 		if node is Dictionary:
 			for key in _node_supplied_elements(node, distribution):
 				covered[key] = true
-	for node in nodes:
-		if not (node is Dictionary):
+	for requesting_index in range(nodes.size()):
+		var requesting_node_v: Variant = nodes[requesting_index]
+		if not (requesting_node_v is Dictionary):
 			continue
-		for key in distribution.crucial_elements_for(node):
+		var requesting_node := requesting_node_v as Dictionary
+		for key in distribution.crucial_elements_for(requesting_node):
 			if covered.has(key):
 				continue
 			var ec: Dictionary = distribution.element_content(str(key))
-			var injected := false
-			# Prefer flora (cheap, no structure-placement rules), capped so a node never floods with plants.
-			if (node.get("flora", []) as Array).size() < 3:
-				for fid in ec.get("flora", []):
-					if available_flora.has(str(fid)) and not (node["flora"] as Array).has(str(fid)):
-						(node["flora"] as Array).append(str(fid))
-						covered[key] = true
-						injected = true
-						break
-			if injected:
+			if _coverage_injection_node_allowed(
+					requesting_node, avoid_entry_boundaries) \
+					and _inject_element_content(
+					requesting_node, ec, available_flora, available_structures):
+				covered[key] = true
+				if not changed_node_indices.has(requesting_index):
+					changed_node_indices.append(requesting_index)
 				continue
-			if (node.get("structures", []) as Array).size() < 2:
-				for sid in ec.get("structures", []):
-					if available_structures.has(str(sid)) and not (node["structures"] as Array).has(str(sid)):
-						(node["structures"] as Array).append(str(sid))
-						covered[key] = true
-						break
+			# Coverage is a stretch-level contract. A dense late-stage requesting node
+			# may already be at its local flora/structure cap; in that case, place the
+			# same authored clue on the first other node with room instead of silently
+			# reporting an uncovered crucial element. Requesting-node preference keeps
+			# the clue local whenever possible, while this deterministic fallback makes
+			# the implementation match the documented "somewhere in the stretch" rule.
+			for fallback_index in range(nodes.size()):
+				var fallback_node_v: Variant = nodes[fallback_index]
+				if fallback_index == requesting_index \
+						or not (fallback_node_v is Dictionary) \
+						or not _coverage_injection_node_allowed(
+							fallback_node_v as Dictionary, avoid_entry_boundaries):
+					continue
+				if _inject_element_content(
+						fallback_node_v as Dictionary,
+						ec,
+						available_flora,
+						available_structures):
+					covered[key] = true
+					if not changed_node_indices.has(fallback_index):
+						changed_node_indices.append(fallback_index)
+					break
+	return changed_node_indices
+
+
+static func _inject_element_content(
+		node: Dictionary,
+		element_content: Dictionary,
+		available_flora: Array,
+		available_structures: Array
+	) -> bool:
+	# Prefer flora (cheap, no structure-placement rules), capped so a node never
+	# floods with plants. The same caps governed the original local-only path.
+	var flora_v: Variant = node.get("flora", [])
+	if flora_v is Array and (flora_v as Array).size() < 3:
+		for fid_v in element_content.get("flora", []):
+			var fid := str(fid_v)
+			if available_flora.has(fid) \
+					and RuntimeRegistryScript.generated_content_is_realized(
+						"flora", fid) \
+					and not (flora_v as Array).has(fid):
+				(flora_v as Array).append(fid)
+				return true
+	var structures_v: Variant = node.get("structures", [])
+	if structures_v is Array and (structures_v as Array).size() < 2:
+		for sid_v in element_content.get("structures", []):
+			var sid := str(sid_v)
+			if available_structures.has(sid) \
+					and RuntimeRegistryScript.generated_content_is_realized(
+						"structures", sid) \
+					and not (structures_v as Array).has(sid):
+				(structures_v as Array).append(sid)
+				return true
+	return false
+
+
+static func _coverage_injection_node_allowed(
+		node: Dictionary, avoid_entry_boundaries: bool
+	) -> bool:
+	if not avoid_entry_boundaries:
+		return true
+	return str(node.get("id", "")) != "entry" \
+		and str(node.get("role", "")) not in [
+			"boundary", "shelter", "shelter_arrival",
+		]
 
 ## Compute the coverage report for the spec: which crucial elements each stretch requires, which are covered, and
 ## which are SHARED (required by more than one distinct archetype — placed once, used by all). Pure read, no mutation.
@@ -3877,7 +5987,8 @@ static func _compute_element_coverage(nodes: Array, distribution) -> Dictionary:
 	uncovered.sort()
 	shared.sort()
 	return {
-		"contract_id": "trawf_element_coverage_v1",
+		"contract_id": "trawf_element_coverage_v2",
+		"coverage_scope": "realized_runtime_content",
 		"elements": elements,
 		"required_count": required_by.size(),
 		"covered_count": required_by.size() - uncovered.size(),

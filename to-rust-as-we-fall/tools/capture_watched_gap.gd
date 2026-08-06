@@ -2,8 +2,8 @@ extends SceneTree
 
 ## Dev capture: boot the REAL fragment preview on The Watched Gap and screenshot it top-down-ish, so the room
 ## reads: west room + flure pocket, the one-lane gap in the dividing wall, the sentry at its post, east room.
-## Run WITH a display (not --headless):
-##   ../Godot_v4.7-stable_win64.exe --path "." --script res://tools/capture_watched_gap.gd
+## Isolated-display launch only (not --headless); see tools/README.md:
+##   godot --path "." --script res://tools/capture_watched_gap.gd
 
 func _init() -> void:
 	DisplayServer.window_set_size(Vector2i(1280, 800))

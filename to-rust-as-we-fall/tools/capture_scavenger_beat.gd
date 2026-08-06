@@ -9,8 +9,9 @@ extends SceneTree
 ## control node names). Those live in the parallel session's in-flight work — if a name
 ## drifts, this tool fails LOUDLY rather than photographing the wrong thing.
 ##
-##   OUT_DIR=<scratchpad> ../Godot_v4.7-stable_win64.exe --path "." \
-##       --position 20000,20000 --resolution 1600x900 --script tools/capture_scavenger_beat.gd
+## Isolated-display launch only; see tools/README.md:
+##   OUT_DIR=<scratchpad> godot --path "." --resolution 1600x900 \
+##       --script tools/capture_scavenger_beat.gd
 
 const SPEC := "res://data/generated_stretches/generated_teaching_channels_shelter_1_to_2.json"
 

@@ -10,9 +10,10 @@ extends Node3D
 ## touching the real render. Tests then drive REAL input at those pixels (mouse motion, right-clicks)
 ## and assert the player-visible contract, instead of force-firing data-layer triggers.
 ##
-## The ID encoding is exact-match (no AA in the mask viewport, unshaded fills, nearest filtering):
-##   R = kind * 32 + 16   (kind 0..6)
-##   G = index low byte, B = index high byte
+## IDs use broad color bins rather than raw byte values. Values such as index 1 -> G=1/255 are
+## quantized to zero by real GL framebuffers, which previously made every target after index 0
+## decode as the first target. Three kind bins and two base-8 index digits keep every channel well
+## away from black and at least 28 byte-values apart (64 targets per kind, far above current use).
 ##
 ## Purely a dev/test surface: proxies read transforms every frame and write nothing back. The dev
 ## console's `chroma on` overlays the same proxies semi-transparently in the MAIN view for humans.
@@ -20,6 +21,13 @@ extends Node3D
 const KIND_INTERACTABLE := 0
 const KIND_CHARACTER := 1
 const KIND_MARKER := 2
+const ID_KIND_BASE := 64
+const ID_KIND_STEP := 80
+const ID_KIND_COUNT := 3
+const ID_DIGIT_BASE := 32
+const ID_DIGIT_STEP := 28
+const ID_DIGIT_RADIX := 8
+const ID_MAX_INDEX := ID_DIGIT_RADIX * ID_DIGIT_RADIX - 1
 
 var _sub: SubViewport
 var _cam: Camera3D
@@ -57,22 +65,46 @@ func _viewport_size() -> Vector2i:
 	return Vector2i(maxi(8, int(s.x)), maxi(8, int(s.y)))
 
 static func encode(kind: int, index: int) -> Color:
-	return Color8(kind * 32 + 16, index & 0xff, (index >> 8) & 0xff)
+	if not supports_id(kind, index):
+		push_error("ChromaProbe.encode: unsupported id kind=%d index=%d (kind 0..%d, index 0..%d)" % [
+			kind, index, ID_KIND_COUNT - 1, ID_MAX_INDEX])
+		return Color.TRANSPARENT
+	return Color8(
+		ID_KIND_BASE + kind * ID_KIND_STEP,
+		ID_DIGIT_BASE + (index % ID_DIGIT_RADIX) * ID_DIGIT_STEP,
+		ID_DIGIT_BASE + int(index / ID_DIGIT_RADIX) * ID_DIGIT_STEP
+	)
+
+static func supports_id(kind: int, index: int) -> bool:
+	return kind >= 0 and kind < ID_KIND_COUNT and index >= 0 and index <= ID_MAX_INDEX
+
+static func _decode_bin(byte_value: int, base: int, step: int, count: int) -> int:
+	var value := clampi(int(round(float(byte_value - base) / float(step))), 0, count - 1)
+	# Broad tolerance admits renderer color conversion but rejects transparent/background noise.
+	return value if absi(byte_value - (base + value * step)) <= int(ceil(step * 0.6)) else -1
 
 ## Decode one mask pixel -> {kind, index} or empty (background / unreadable).
 static func decode(c: Color) -> Dictionary:
 	if c.a < 0.5:
 		return {}
 	var r := int(round(c.r * 255.0))
-	var kind := int((r - 16) / 32.0)
-	if kind < 0 or absi(r - (kind * 32 + 16)) > 6:
+	var g := int(round(c.g * 255.0))
+	var b := int(round(c.b * 255.0))
+	var kind := _decode_bin(r, ID_KIND_BASE, ID_KIND_STEP, ID_KIND_COUNT)
+	var low := _decode_bin(g, ID_DIGIT_BASE, ID_DIGIT_STEP, ID_DIGIT_RADIX)
+	var high := _decode_bin(b, ID_DIGIT_BASE, ID_DIGIT_STEP, ID_DIGIT_RADIX)
+	if kind < 0 or low < 0 or high < 0:
 		return {}
-	return {"kind": kind, "index": int(round(c.g * 255.0)) | (int(round(c.b * 255.0)) << 8)}
+	return {"kind": kind, "index": low + high * ID_DIGIT_RADIX}
 
 ## Register an entity. `radius`/`height` size the proxy; an Interactable's interaction zone and a
 ## character's body are the natural fits. Re-registering an index replaces its proxy.
 func register(node: Node3D, kind: int, index: int, radius := 0.7, height := 1.2) -> void:
 	_ensure_built()
+	if not supports_id(kind, index):
+		push_error("ChromaProbe.register: unsupported id kind=%d index=%d (kind 0..%d, index 0..%d)" % [
+			kind, index, ID_KIND_COUNT - 1, ID_MAX_INDEX])
+		return
 	var key := _key(kind, index)
 	if _entries.has(key):
 		unregister(kind, index)

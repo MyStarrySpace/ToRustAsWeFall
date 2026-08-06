@@ -20,9 +20,9 @@ const LEVEL_TRANSFER := 1
 const LEVEL_SHELTER := 2
 
 const SPAWNS := {
-	"aster": Vector3(5.0, 0.5, 0.0),
-	"peris": Vector3(3.0, 0.5, 1.6),
-	"endo": Vector3(3.0, 0.5, -1.6),
+	"aster": Vector3(5.0, 0.0, 0.0),
+	"peris": Vector3(3.0, 0.0, 1.6),
+	"endo": Vector3(3.0, 0.0, -1.6),
 }
 
 # Compatibility names consumed by the current chunk while its mechanisms migrate to the richer

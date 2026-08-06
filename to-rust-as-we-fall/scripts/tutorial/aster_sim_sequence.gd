@@ -1544,6 +1544,7 @@ func _start_drink_from_source_receipt(source_receipt: Dictionary) -> void:
 		"atp_restore": maxf(0.0, ATP_MAX - _game_state.get_stat("aster", "atp")),
 		"endocytosis_duration": DRINK_ENDOCYTOSIS_DURATION,
 		"aster_drink_authority": DRINK_AUTHORITY_KEY,
+		"visual_color": DRINK_VISUAL_COLOR,
 	})
 	if _drink_item_id == "" or not pick_up_preview_item("aster", _drink_item_id):
 		_abort_drink_dispense("The machine cannot place the drink in Aster's hand.")
@@ -1696,31 +1697,21 @@ func _show_drink_failure(message: String) -> void:
 
 
 func _retire_drink_item_visual(item_id: String) -> void:
-	if not _chunk_item_nodes.has(item_id):
-		return
-	var node: Node3D = _chunk_item_nodes[item_id]
-	if is_instance_valid(node):
-		node.queue_free()
-	_chunk_item_nodes.erase(item_id)
+	if is_instance_valid(_party_item_controller):
+		_party_item_controller.retire_presenter(item_id)
 
 
 func _sync_drink_item_visual() -> void:
-	if _drink_item_id == "" or _game_state == null:
+	if _drink_item_id == "" or _game_state == null \
+			or not is_instance_valid(_party_item_controller):
 		return
 	if not _game_state.items.has(_drink_item_id):
 		_retire_drink_item_visual(_drink_item_id)
 		_drink_item_id = ""
 		return
-	_ensure_chunk_item_node(_drink_item_id)
-	var node := _chunk_item_nodes.get(_drink_item_id) as Node3D
-	if node == null or not is_instance_valid(node):
+	var node := _party_item_controller.ensure_presenter_node(_drink_item_id) as Node3D
+	if not is_instance_valid(node):
 		return
-	var material: StandardMaterial3D = null
-	if node is MeshInstance3D:
-		material = (node as MeshInstance3D).material_override as StandardMaterial3D
-	if material != null:
-		material.albedo_color = DRINK_VISUAL_COLOR
-		material.emission = DRINK_VISUAL_COLOR.lightened(0.1)
 	var item := _game_state.items[_drink_item_id] as Dictionary
 	if str(item.get("location", "ground")) == "hand" and str(item.get("holder", "")) == "aster":
 		var aster_world := _game_state.get_render_position("aster")

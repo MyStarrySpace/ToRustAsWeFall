@@ -779,20 +779,30 @@ func headless_select_character(char_id: String) -> void:
 	_select_character(char_id)
 
 func headless_set_character_position(char_id: String, pos: Vector3) -> void:
-	if not _characters.has(char_id):
+	if not _characters.has(char_id) or _game_state == null \
+			or not _game_state.characters.has(char_id):
 		return
-	if _game_state.characters.has(char_id):
-		_game_state.command_stop(char_id)
-		var ch: Dictionary = _game_state.characters[char_id]
-		ch.position = Vector3(pos.x, 0.0, pos.z)
-		if _game_state.grid:
-			ch.grid_cell = _game_state.grid.world_to_grid(pos)
+	if _game_state.is_external_traversal_active(char_id):
+		_game_state.cancel_external_traversal(char_id, &"fixture_placement")
+	_game_state.command_stop(char_id)
+	if _game_state.grid != null:
+		var target_level := int(_game_state.grid.level_for_y(pos.y)) \
+			if int(_game_state.grid.level_count) > 1 \
+			else int(_game_state.get_character_level(char_id))
+		# Same-level placement must still clear a stale vertical offset; the
+		# graph floor is the authority for settled character Y.
+		_game_state.set_character_level(char_id, target_level)
+		pos.y = _game_state.grid.grid_to_world(
+			_game_state.grid.world_to_grid(pos), target_level).y
+	_game_state.snap_character_to(char_id, pos, false)
 	var node: CharacterBody3D = _characters[char_id]
-	node.global_position = Vector3(pos.x, node.global_position.y, pos.z)
-	if _game_state:
-		_game_state._recompute_all_detection_predictions()
-		_game_state._recompute_physics_predictions()
-		_game_state._recompute_pendulum_predictions()
+	# The live feet transform is a presenter of GameState. Never preserve its old
+	# Y independently: doing so allowed logical-only tests to pass while the body
+	# remained on another deck/height.
+	node.global_position = _game_state.get_render_position(char_id)
+	_game_state._recompute_all_detection_predictions()
+	_game_state._recompute_physics_predictions()
+	_game_state._recompute_pendulum_predictions()
 
 func headless_set_character_hp(char_id: String, hp: float) -> void:
 	if _game_state == null or not _game_state.characters.has(char_id):

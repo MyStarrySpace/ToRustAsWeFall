@@ -1,6 +1,9 @@
 extends "res://scripts/tutorial/tutorial_sequence.gd"
 
 const DayNightCycleScript = preload("res://scripts/system/simulation/day_night_cycle.gd")
+const PreviewWebE2EControllerScript = preload(
+	"res://scripts/fragments/preview_web_e2e_controller.gd"
+)
 const GameHUDScript = preload("res://scripts/ui/game_hud.gd")
 const GameHUDScene = preload("res://scenes/ui/game_hud.tscn")
 const InputGlyphScene = preload("res://scenes/ui/input_glyph.tscn")
@@ -12,11 +15,7 @@ const OverlayToggleButtonScene = preload("res://scenes/ui/overlay_toggle_button.
 const StretchSeedCatalogScript = preload("res://scripts/generation/stretch_seed_catalog.gd")
 const CanonicalCharacterAbilityScript = preload("res://scripts/game/mechanics/canonical_character_ability.gd")
 const FixedCadenceScript := preload("res://scripts/system/core/fixed_cadence.gd")
-# ItemData is inherited from tutorial_sequence.gd (the shared chunk-host base).
 const PERCEPTION_STACK_SHADER := preload("res://resources/perception_stack.gdshader")
-const MOTHER_GEAR_VISUAL_SCENE := preload(
-	"res://scenes/props/mother_flure/mother_gear.tscn"
-)
 
 const STACKS_CHUNK_SCENE := preload("res://scenes/fragments/chunks/stacks_fragment_chunk.tscn")
 const RINGS_CHUNK_SCENE := preload("res://scenes/fragments/chunks/rings_fragment_chunk.tscn")
@@ -25,6 +24,8 @@ const MOTHER_FLURE_CHUNK_SCENE := preload("res://scenes/fragments/chunks/mother_
 const SURVIVAL_RANGE_CHUNK_SCENE := preload("res://scenes/fragments/chunks/survival_range_chunk.tscn")
 const ENDO_JUNCTION_STRETCH_CHUNK_SCENE := preload("res://scenes/fragments/chunks/endo_junction_stretch_chunk.tscn")
 const GENERATED_STRETCH_CHUNK_SCENE := preload("res://scenes/fragments/chunks/generated_stretch_chunk.tscn")
+const RESULT_PULSE_WEB_CONTRACT_CHUNK_SCENE := preload(
+	"res://scenes/fragments/chunks/result_pulse_web_contract_chunk.tscn")
 const REFUGE_RUN_CHUNK_SCENE := preload("res://scenes/fragments/chunks/refuge_run_chunk.tscn")
 const CHANNELS_WASH_INTRO_CHUNK_SCENE := preload("res://scenes/fragments/chunks/channels_wash_intro_chunk.tscn")
 const PUSH_LAB_CHUNK_SCENE := preload("res://scenes/fragments/chunks/push_lab_chunk.tscn")
@@ -49,10 +50,7 @@ const INFLAMMASHUNT_CHUNK_SCENE := preload("res://scenes/fragments/chunks/inflam
 const AGHORA_BAZAAR_CHUNK_SCENE := preload("res://scenes/fragments/chunks/aghora_bazaar_chunk.tscn")
 const WASH_ASCENT_CHUNK_SCENE := preload("res://scenes/fragments/chunks/wash_ascent_chunk.tscn")
 const SightMaskBakerScript := preload("res://scripts/game/world/sight_mask_baker.gd")
-const PREVIEW_EMPHASIS_TAG := "preview_event_emphasis"
 const DEFAULT_PREVIEW_EDGE_SCROLL_MARGIN := 6.0
-const QA_GENERATED_COMMAND_PREFIX := "qa_generated_node_command/"
-const QA_WORLD_INTERACTION_PREFIX := "qa_world_interaction/"
 ## Matches perception_stack.gdshader's fully-clear fog radius. Relationship UI uses
 ## the clear region rather than the soft fringe so it cannot reveal a fogged endpoint.
 const PARTY_PERCEPTION_CLEAR_RADIUS := 14.0
@@ -224,12 +222,54 @@ const PREVIEW_ENTRIES := [
 		"config": {"fragment_path": "res://data/fragments/basin_fill_proof.tres"}},
 ]
 
+# Exported-browser regression fixtures are immutable launch contracts, not game
+# content. They are absent from PREVIEW_ENTRIES, the ordinary picker, handoffs,
+# and CLI id routing; MainMenu may resolve them only behind explicit ?e2e=1.
+const WEB_E2E_PREVIEW_ENTRIES := {
+	"generated_player_surface_seed_5": {
+		"id": "generated_player_surface_seed_5",
+		"chunk": "generated_stretch",
+		"title": "Generated Player Surface — Seed 5",
+		"stage": 2,
+		"config": {
+			"settings": {
+				"id": "generated_player_surface_seed_5",
+				"seed": 5,
+				"complexity_tier": "standard",
+				"budget": {"node_count": 7},
+			},
+			"spiral": false,
+		},
+	},
+	"result_pulse_static_green_contract": {
+		"id": "result_pulse_static_green_contract",
+		"chunk": "result_pulse_web_contract",
+		"title": "Result Pulse Static-Green Web Contract",
+		"stage": 1,
+	},
+}
+
+const WEB_E2E_CHUNK_SCENES := {
+	"result_pulse_web_contract": RESULT_PULSE_WEB_CONTRACT_CHUNK_SCENE,
+}
+
 ## The menu entry for an id (or {} if none).
 static func get_preview_entry(entry_id: String) -> Dictionary:
 	for entry in PREVIEW_ENTRIES:
 		if String(entry.get("id", "")) == entry_id:
 			return entry
 	return {}
+
+
+## Resolve the ordinary picker plus quarantined exported-browser fixtures. The
+## caller is MainMenu's Web + ?e2e=1 boundary; normal preview routing deliberately
+## continues to use get_preview_entry() and therefore cannot select these rows.
+static func get_web_e2e_preview_entry(entry_id: String) -> Dictionary:
+	var fixture_v: Variant = WEB_E2E_PREVIEW_ENTRIES.get(entry_id, null)
+	if fixture_v is Dictionary:
+		return (fixture_v as Dictionary).duplicate(true)
+	var ordinary := get_preview_entry(entry_id)
+	return ordinary.duplicate(true) if not ordinary.is_empty() else {}
 
 ## The curriculum progression stage a preview entry sits at (1 = intro, climbing to the
 ## Mother-Flure diagnosis). The picker is authored in ascending-stage order, so this reads
@@ -265,10 +305,10 @@ const CHARACTER_SPEEDS := {
 	"myke": 3.1,
 }
 const DEFAULT_SPAWNS := {
-	"aster": Vector3(4.0, 0.5, 0.0),
-	"peris": Vector3(2.0, 0.5, 1.8),
-	"endo": Vector3(0.0, 0.5, -1.8),
-	"myke": Vector3(-2.2, 0.5, 0.0),
+	"aster": Vector3(4.0, 0.0, 0.0),
+	"peris": Vector3(2.0, 0.0, 1.8),
+	"endo": Vector3(0.0, 0.0, -1.8),
+	"myke": Vector3(-2.2, 0.0, 0.0),
 }
 
 const ABILITY_KEYCODES := {
@@ -394,12 +434,6 @@ var _preview_dodge_unlocked := false
 var _pushed_active_char_id := ""
 var _preview_interactables: Array = []
 var _active_chunk: Node3D
-var _preview_emphasis_active := false
-var _preview_emphasis_uses_exploration_focus := false
-var _preview_emphasis_token := 0
-var _preview_emphasis_prev_camera_target: Node3D = null
-var _preview_emphasis_prev_camera_offset := Vector3.ZERO
-var _preview_emphasis_prev_camera_state := {}
 var _preview_day := DEFAULT_DAY
 var _preview_time := DEFAULT_TIME
 var _preview_clock_running := true
@@ -422,6 +456,9 @@ var _preview_environment: Environment
 var _preview_directional_light: DirectionalLight3D
 var _suppress_hud_character_signal := false
 
+# Browser release observation is isolated in an addable controller and is dormant unless ?e2e=1.
+var _web_e2e_controller = null
+
 var _overlay_states := {
 	"aster": true,
 	"peris": true,
@@ -442,7 +479,6 @@ var _inventory_panel_label: Label
 var _inventory_panel_title: Label
 var _inventory_controls_flow: HFlowContainer
 var _inventory_panel_margin: MarginContainer
-var _preview_item_nodes: Dictionary = {}
 
 var _preview_layer: CanvasLayer
 var _menu_panel: PanelContainer
@@ -460,12 +496,24 @@ var _control_hint_flow: HFlowContainer
 var _ability_hint_flow: HFlowContainer
 var _note_label: Label
 var _note_default := ""
+var _show_default_note := true
+var _status_margin: MarginContainer
 var _note_timer := 0.0
 
 func _get_chunk_scene(chunk_name: String) -> PackedScene:
+	if WEB_E2E_PREVIEW_ENTRIES.has(_active_preview_entry_id):
+		var web_fixture_scene_v: Variant = WEB_E2E_CHUNK_SCENES.get(
+			chunk_name, null)
+		if web_fixture_scene_v is PackedScene:
+			return web_fixture_scene_v as PackedScene
 	return CHUNK_SCENES.get(chunk_name, null)
 
 func _build_scene() -> void:
+	_web_e2e_controller = PreviewWebE2EControllerScript.new()
+	_web_e2e_controller.name = "PreviewWebE2EController"
+	add_child(_web_e2e_controller)
+	_web_e2e_controller.setup(Callable(self, "_web_e2e_context"), CHARACTER_IDS)
+
 	var env := Node3D.new()
 	env.name = "Environment"
 	add_child(env)
@@ -516,6 +564,10 @@ func _build_characters() -> void:
 		if character_node != null and character_node.has_signal("ground_clicked") \
 				and not character_node.is_connected("ground_clicked", target_callable):
 			character_node.connect("ground_clicked", target_callable)
+		var refused_callable := Callable(self, "_on_preview_move_command_refused")
+		if character_node != null and character_node.has_signal("move_command_refused") \
+				and not character_node.is_connected("move_command_refused", refused_callable):
+			character_node.connect("move_command_refused", refused_callable)
 
 	_player = _characters["aster"]
 	if not Engine.is_editor_hint():
@@ -542,7 +594,20 @@ func _register_characters() -> void:
 func _setup_ui() -> void:
 	_build_preview_ui()
 	_build_game_hud()
-	_connect_preview_item_signals()
+	if is_instance_valid(_party_item_controller):
+		_party_item_controller.configure({
+			"mode": "rich",
+			"present_all_items": true,
+			"character_names": CHARACTER_DISPLAY_NAMES,
+			"message_sink": Callable(self, "show_preview_message"),
+			"note_sink": Callable(self, "show_preview_note"),
+			"status_sink": Callable(self, "set_preview_character_status"),
+			"character_sync_sink": Callable(self, "_sync_character_from_game_state"),
+			"character_position_resolver": Callable(self, "get_preview_character_position"),
+			"character_node_resolver": Callable(self, "get_preview_character_node"),
+		})
+		_party_item_controller.bind_inventory_view(Callable(self, "_refresh_inventory_panel"))
+	_connect_preview_runtime_signals()
 	_initialize_default_character_state()
 	_apply_selection_state(["aster"], "aster")
 
@@ -590,7 +655,7 @@ func _begin_chunk() -> void:
 		_hud.visible = true
 	# Fail LOUD on a typo'd id — otherwise _load_chunk silently builds an empty placeholder chunk and
 	# the preview looks "booted but blank". The registry is the allow-list.
-	if not CHUNK_SCENES.has(preview_chunk):
+	if _get_chunk_scene(preview_chunk) == null:
 		push_error("fragment_preview: unknown chunk '%s'. Valid: %s" % [preview_chunk, ", ".join(CHUNK_SCENES.keys())])
 		show_preview_message("Unknown fragment '%s' — see CHUNK_SCENES." % preview_chunk, 6.0)
 	set_preview_step(preview_chunk)
@@ -1029,7 +1094,7 @@ func _roguelike_respawn_party() -> void:
 	var spawns: Dictionary = _active_chunk.call("get_spawn_positions")
 	for cid in spawns.keys():
 		if _game_state.characters.has(cid):
-			_game_state.snap_character_to(cid, spawns[cid])
+			_game_state.snap_character_to(cid, spawns[cid], false)
 
 func _apply_photo_mode(active: bool) -> void:
 	if _hud != null and is_instance_valid(_hud):
@@ -1038,10 +1103,31 @@ func _apply_photo_mode(active: bool) -> void:
 		_preview_layer.visible = not active
 	_sync_overlay_stack()
 
+func _web_e2e_context() -> Dictionary:
+	return {
+		"game_state": _game_state,
+		"characters": _characters,
+		"active_chunk": _active_chunk,
+		"preview_interactables": _preview_interactables,
+		"camera": _camera,
+		"active_preview_entry_id": _active_preview_entry_id,
+		"preview_chunk": preview_chunk,
+		"active_char_id": _active_char_id,
+		"selected_char_ids": _selected_char_ids,
+		"scheduler": _scheduler,
+		"anchor_positions": headless_get_anchor_positions(),
+		"consequence_presentation_controller": _consequence_presentation_controller,
+	}
+
+
 func _process(delta: float) -> void:
 	super._process(delta)
 	_sync_preview_character_holds()
 	_roguelike_poll()
+	if _web_e2e_controller != null:
+		_web_e2e_controller.update(delta)
+
+
 
 ## A chunk may report positional work without the shared HUD knowing any level-specific details. The
 ## same portrait badge also falls back to a carried item, matching the rally rule: click the visible
@@ -1064,20 +1150,8 @@ func _sync_preview_character_holds() -> void:
 		_hud.call("set_portrait_hold_state", char_id, info if info is Dictionary else {})
 
 func _preview_carried_item_hold(char_id: String) -> Dictionary:
-	if (_game_state == null or not _game_state.characters.has(char_id)
-			or not _game_state.has_method("get_hand_items")):
-		return {}
-	var hand_items: Array = _game_state.call("get_hand_items", char_id)
-	for raw_item_id in hand_items:
-		var item_id := str(raw_item_id)
-		if item_id == "":
-			continue
-		return {
-			"control_id": "carried_item:%s" % item_id,
-			"kind": "carried_item",
-			"label": get_preview_item_display_name(item_id, char_id),
-		}
-	return {}
+	return _party_item_controller.get_hold_receipt(char_id) \
+		if is_instance_valid(_party_item_controller) else {}
 
 ## When the roguelike party rests at the exit shelter, present the run's next branch CHOICE (the meta-decision).
 func _roguelike_poll() -> void:
@@ -1130,9 +1204,19 @@ func _roguelike_choose(option: Dictionary) -> void:
 		_roguelike_advancing = false
 		return
 	var reward: Dictionary = option.get("reward", {})
+	var candidate_spec: Dictionary = _run_session.choose(option)
+	if not bool(candidate_spec.get("success", false)):
+		# RunSession rejects failed generation transactionally, so the current
+		# shelter and level remain authoritative. Make that refusal visible and
+		# return the player to the same real branch choice instead of unloading
+		# the world into a failed spec.
+		show_preview_message(
+			"That route failed to form. Choose another path.", 6.0)
+		_roguelike_advancing = false
+		call_deferred("_roguelike_present_branch")
+		return
 	if reward.has("recruit"):
 		show_preview_message("%s joins the run." % RunBranchDecisions.display_name(str(reward["recruit"])), 3.5)
-	_run_session.choose(option)   # grows the roster, deepens, generates the next level
 	_roguelike_sync_config()
 	if _active_chunk != null and _active_chunk.has_method("preserve_carried_resources_on_detach"):
 		_active_chunk.call("preserve_carried_resources_on_detach")
@@ -1152,12 +1236,8 @@ func _roguelike_choose(option: Dictionary) -> void:
 ## Clear authoritative inventory before a summary-driven new run so an item first
 ## claimed several chunks ago cannot escape the current chunk's cleanup ledger.
 func _clear_roguelike_inventory() -> void:
-	if _game_state == null:
-		return
-	for item_id_v in _game_state.items.keys().duplicate():
-		_game_state.remove_item(str(item_id_v))
-	_refresh_preview_items()
-	_refresh_inventory_panel()
+	if is_instance_valid(_party_item_controller):
+		_party_item_controller.clear_items()
 
 ## PERMADEATH (the DLC doc's law): in a roguelike run a fallen character leaves the run — the
 ## session shrinks the roster (every deeper level regenerates for the smaller party) and an empty
@@ -1381,12 +1461,14 @@ func _apply_chunk_navigation_graph() -> void:
 		return
 	# A chunk exposing get_grid_data() routes on the unified grid (cells + per-cell risk). Chunks
 	# without one are gridless: straight-line movement only.
+	var next_grid: GridWorld = null
 	if _active_chunk != null and _active_chunk.has_method("get_grid_data"):
 		var grid_data: Variant = _active_chunk.call("get_grid_data")
 		if grid_data is Dictionary and not (grid_data as Dictionary).is_empty():
-			_game_state.grid = GridWorld.from_data(grid_data as Dictionary)
-			return
-	_game_state.grid = null
+			next_grid = GridWorld.from_data(grid_data as Dictionary)
+	# Player derives its navigation grid from GameState, so this one assignment updates
+	# both simulation and click-to-move authority (including clearing gridless chunks).
+	_game_state.grid = next_grid
 
 func _compute_speed() -> float:
 	if _scheduler != null and _scheduler.is_paused():
@@ -1413,7 +1495,7 @@ func _on_process(delta: float, spd: float) -> void:
 	if _note_timer > 0.0:
 		_note_timer = maxf(0.0, _note_timer - delta)
 		if _note_timer <= 0.0 and _note_label != null:
-			_note_label.text = _note_default
+			_restore_default_note()
 
 func _get_speed_recipients() -> Array:
 	return _preview_interactables
@@ -1478,42 +1560,6 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			var code := key_event.physical_keycode if key_event.physical_keycode != KEY_NONE else key_event.keycode
 			_activate_keybound_preview_ability(code)
 
-func _input(event: InputEvent) -> void:
-	# Deterministic QA tapes store stable semantic target commands as InputEventActions.
-	# This avoids baking camera projection and window scaling into a replay while still entering
-	# through the ordinary interaction coordinator: the servicing character walks to the live
-	# generated node or authored world control, performs its timed action, and produces the same
-	# GameState events as a right-click.
-	if not (event is InputEventAction) or not (event as InputEventAction).pressed:
-		return
-	var action_name := str((event as InputEventAction).action)
-	if _active_chunk == null:
-		return
-	var target: Node3D = null
-	if action_name.begins_with(QA_GENERATED_COMMAND_PREFIX):
-		var node_id := action_name.trim_prefix(QA_GENERATED_COMMAND_PREFIX)
-		target = _active_chunk.get_node_or_null("GeneratedNode_%s" % node_id) as Node3D
-	elif (
-		action_name.begins_with(QA_WORLD_INTERACTION_PREFIX)
-		and _active_chunk.has_method("get_playthrough_interaction_target")
-	):
-		var target_id := action_name.trim_prefix(QA_WORLD_INTERACTION_PREFIX)
-		target = _active_chunk.call("get_playthrough_interaction_target", target_id) as Node3D
-	else:
-		return
-	if target == null or not target.has_signal("interaction_requested"):
-		return
-	var active_character: Node = _characters.get(_active_char_id, null)
-	var interaction_controller := (
-		active_character.get_node_or_null("CharacterInteractionController")
-		if active_character != null else null
-	)
-	if interaction_controller != null and interaction_controller.has_method("_on_interaction_requested"):
-		interaction_controller.call("_on_interaction_requested", target, target.global_position)
-	else:
-		target.emit_signal("interaction_requested", target, target.global_position)
-	get_viewport().set_input_as_handled()
-
 func _select_or_toggle_character(char_id: String, key_event: InputEventKey) -> void:
 	if key_event.ctrl_pressed or key_event.shift_pressed:
 		_toggle_character_selected(char_id)
@@ -1561,6 +1607,12 @@ func get_preview_character_node(char_id: String) -> Node3D:
 func get_preview_selected_characters() -> Array:
 	return _selected_char_ids.duplicate()
 
+## Public roster seam for collective kit objects. This is deliberately the
+## exact set the shipped selection UI can currently present and accept, not the
+## current selection and not an authored hard-coded party list.
+func get_preview_available_party_ids() -> Array:
+	return _available_preview_party_ids()
+
 func get_preview_scheduler_tick() -> float:
 	return _scheduler.get_current_tick() if _scheduler != null else 0.0
 
@@ -1576,112 +1628,6 @@ func get_preview_character_move_speed(char_id: String, running := false) -> floa
 		if run_speed != null:
 			return float(run_speed)
 	return base_speed
-
-func spawn_preview_item(item_type: String, position: Vector3, properties: Dictionary = {}) -> String:
-	if _game_state == null:
-		return ""
-	var item_id := _game_state.spawn_item(item_type, position, properties)
-	_ensure_preview_item_node(item_id)
-	_refresh_inventory_panel()
-	return item_id
-
-func remove_preview_item(item_id: String) -> void:
-	if _game_state == null:
-		return
-	_game_state.remove_item(item_id)
-	if _preview_item_nodes.has(item_id):
-		var node: Node3D = _preview_item_nodes[item_id]
-		if node != null:
-			node.queue_free()
-		_preview_item_nodes.erase(item_id)
-	_refresh_inventory_panel()
-
-func get_preview_item_state(item_id: String) -> Dictionary:
-	if _game_state == null or not _game_state.items.has(item_id):
-		return {}
-	return (_game_state.items[item_id] as Dictionary).duplicate(true)
-
-func get_preview_hand_items(char_id: String) -> Array:
-	if _game_state == null:
-		return []
-	return _game_state.get_hand_items(char_id)
-
-func get_preview_hand_slots(char_id: String) -> Array:
-	if _game_state == null:
-		return []
-	return _game_state.get_hand_slots(char_id)
-
-func get_preview_internal_items(char_id: String) -> Array:
-	if _game_state == null:
-		return []
-	return _game_state.get_internal_items(char_id)
-
-func get_preview_collection_items() -> Array:
-	if _game_state == null:
-		return []
-	return _game_state.collection.duplicate()
-
-func get_preview_item_display_name(item_id: String, char_id := "") -> String:
-	if _game_state == null or not _game_state.items.has(item_id):
-		return item_id
-	var item: Dictionary = _game_state.items[item_id]
-	var properties: Dictionary = item.get("properties", {})
-	var display_names: Dictionary = properties.get("display_names_by_character", {})
-	if char_id != "" and display_names.has(char_id):
-		return str(display_names.get(char_id, item_id))
-	if properties.has("display_name"):
-		return str(properties.get("display_name", item_id))
-	return ItemData.get_display_name(str(item.get("type", item_id)))
-
-func pick_up_preview_item(char_id: String, item_id: String) -> bool:
-	if _game_state == null:
-		return false
-	var picked := _game_state.pick_up_item(char_id, item_id)
-	if picked:
-		show_preview_message("%s picked up %s." % [CHARACTER_DISPLAY_NAMES.get(char_id, char_id.capitalize()), get_preview_item_display_name(item_id, char_id)], 1.2)
-	_refresh_inventory_panel()
-	return picked
-
-func drop_preview_item(char_id: String, item_id: String) -> bool:
-	if _game_state == null:
-		return false
-	var dropped := _game_state.drop_item(char_id, item_id)
-	if dropped:
-		show_preview_message("%s dropped %s." % [CHARACTER_DISPLAY_NAMES.get(char_id, char_id.capitalize()), get_preview_item_display_name(item_id, char_id)], 1.2)
-	_refresh_inventory_panel()
-	return dropped
-
-func transfer_preview_item(from_id: String, to_id: String, item_id: String) -> bool:
-	if _game_state == null:
-		return false
-	var transferred := _game_state.transfer_item(from_id, to_id, item_id)
-	if transferred:
-		show_preview_message("%s handed %s to %s." % [
-			CHARACTER_DISPLAY_NAMES.get(from_id, from_id.capitalize()),
-			get_preview_item_display_name(item_id, to_id),
-			CHARACTER_DISPLAY_NAMES.get(to_id, to_id.capitalize()),
-		], 1.3)
-	_refresh_inventory_panel()
-	return transferred
-
-func endocytose_preview_item(char_id: String, item_id: String) -> bool:
-	if _game_state == null:
-		return false
-	var started := _game_state.endocytose_item(char_id, item_id)
-	if started:
-		set_preview_character_status(char_id, "consuming")
-		show_preview_message("%s starts consuming %s." % [CHARACTER_DISPLAY_NAMES.get(char_id, char_id.capitalize()), get_preview_item_display_name(item_id, char_id)], 1.4)
-	_refresh_inventory_panel()
-	return started
-
-func exocytose_preview_item(char_id: String, item_id: String) -> bool:
-	if _game_state == null:
-		return false
-	var exocytosed := _game_state.exocytose_item(char_id, item_id)
-	if exocytosed:
-		show_preview_message("%s retrieves %s." % [CHARACTER_DISPLAY_NAMES.get(char_id, char_id.capitalize()), get_preview_item_display_name(item_id, char_id)], 1.4)
-	_refresh_inventory_panel()
-	return exocytosed
 
 func get_preview_character_position(char_id: String) -> Vector3:
 	# Chunk logic runs in the flat DATA frame, so return the DATA position whenever the data layer knows the
@@ -1793,7 +1739,7 @@ func restore_preview_character_for_restart(char_id: String, world_pos: Vector3) 
 			_characters[char_id].call("bind_interaction_root", self)
 	set_preview_character_visible(char_id, true)
 	_game_state.restore_character(char_id)
-	_game_state.snap_character_to(char_id, world_pos)
+	_game_state.snap_character_to(char_id, world_pos, false)
 	_sync_character_from_game_state(char_id)
 	return true
 
@@ -1807,81 +1753,122 @@ func show_preview_message(text: String, duration := 2.0) -> void:
 		_hud.show_message(text, duration)
 
 
-## A short, guarded camera beat for a consequential world change. The default keeps
-## gameplay moving so the player can watch machinery/enemies respond; pause_gameplay
-## reuses the dialogue focus contract for static explanation beats. The timeout lives
-## on the UI scheduler, which continues through gameplay planning pause.
-func emphasize_preview_target(
-		target_node: Node3D,
-		duration := 0.9,
-		pause_gameplay := false,
-		opts: Dictionary = {}
-	) -> bool:
-	if target_node == null or not is_instance_valid(target_node):
-		return false
-	# Camera emphasis is presentation-only. Headless simulations jump gameplay ticks directly;
-	# pausing that scheduler for an invisible UI beat makes predicted arrival ticks finish early.
-	if DisplayServer.get_name() == "headless":
-		return true
-	if _camera == null or _ui_scheduler == null:
-		return false
-	if _preview_emphasis_active or _exploration_focus_active or _camera.is_locked():
-		return false
-	var shake_amount := float(opts.get("shake", 0.1))
-	if shake_amount > 0.0:
-		_camera.shake(shake_amount, float(opts.get("shake_decay", 8.0)))
-	if bool(opts.get("offscreen_only", true)) and _camera.is_position_on_screen(target_node.global_position):
-		return true
+## Public, read-only presentation seams for accessibility and input-driven
+## players. They expose only controls that are actually rendered; private scene
+## state and authored world coordinates stay behind the preview controller.
+func get_player_observation_pointer_source() -> Node:
+	return _player if _player != null and is_instance_valid(_player) else null
 
-	_preview_emphasis_token += 1
-	var token := _preview_emphasis_token
-	_preview_emphasis_active = true
-	_preview_emphasis_uses_exploration_focus = pause_gameplay
-	if pause_gameplay:
-		_begin_exploration_focus(target_node)
-	else:
-		_preview_emphasis_prev_camera_target = _camera.target
-		_preview_emphasis_prev_camera_offset = _camera.follow_offset
-		_preview_emphasis_prev_camera_state = _camera.capture_view_state() \
-			if _camera.has_method("capture_view_state") else {}
-		var focus_height := float(opts.get("focus_height", 0.7))
-		_camera.lock_to(target_node.global_position + Vector3.UP * focus_height)
 
-	_ui_scheduler.cancel_tag(PREVIEW_EMPHASIS_TAG)
-	_ui_scheduler.schedule_after(maxf(0.15, duration), func() -> void:
-		if token == _preview_emphasis_token:
-			_finish_preview_emphasis(), PREVIEW_EMPHASIS_TAG)
+## Read-only twin of the fog overlay's clear-region rule. Player observation
+## calls this only after a real production pointer ray has hit a rendered command
+## surface, and passes that exact hit point. This prevents automation from seeing
+## or clicking a collider that the screen-space fog still hides while preserving
+## partially revealed large objects whose visible edge a human can actually hit.
+func is_player_observation_world_point_visible(world_point: Vector3) -> bool:
+	if not world_point.is_finite():
+		return false
+	if not fog_of_war_enabled:
+		return true
+	return _party_can_perceive_world_point(world_point)
+
+
+func get_player_observation_consequence_presenter() -> Node:
+	# Explicit presentation-only seam. Automated players may inspect the same
+	# warning/carry/arrival presenter that is rendering to the player, but never
+	# the GameState traversal registry or a fragment-private sweep counter.
+	return _consequence_presentation_controller \
+		if _consequence_presentation_controller != null \
+			and is_instance_valid(_consequence_presentation_controller) else null
+
+
+func get_player_observation_text_cues() -> Array:
+	var cues: Array = []
+	for pair in [
+		[_title_label, "instruction"],
+		[_help_label, "instruction"],
+		[_note_label, "hud"],
+	]:
+		var label: Label = (pair as Array)[0]
+		if label == null or not label.is_visible_in_tree() or label.modulate.a <= 0.01:
+			continue
+		var text := str(label.text).strip_edges()
+		if text == "":
+			continue
+		cues.append({
+			"kind": str((pair as Array)[1]),
+			"text": text,
+			"visible": true,
+		})
+	# Input-hint chips are part of the rendered briefing too. Preserve their
+	# visible glyph labels and descriptions so an observation-only browser player
+	# can discover the same camera/selection/action controls a human reads. The
+	# flow's inherited visibility makes Hiding the briefing remove these cues.
+	for flow in [
+		_control_hint_flow,
+		_ability_hint_flow,
+		_inventory_controls_flow,
+	]:
+		for hint_text in _visible_input_hint_texts(flow):
+			cues.append({
+				"kind": "instruction",
+				"text": hint_text,
+				"visible": true,
+			})
+	return cues
+
+
+func _visible_input_hint_texts(flow: Container) -> Array[String]:
+	var result: Array[String] = []
+	if flow == null or not flow.is_visible_in_tree():
+		return result
+	for chip_v in flow.get_children():
+		if not (chip_v is Control) \
+				or not _control_has_player_visible_area(chip_v as Control):
+			continue
+		var row := (chip_v as Node).get_node_or_null("Row")
+		if row == null:
+			continue
+		var parts: Array[String] = []
+		for part_v in row.get_children():
+			if part_v.has_method("get_binding_label"):
+				var binding_label := str(part_v.call(
+					"get_binding_label")).strip_edges()
+				if binding_label != "":
+					parts.append(binding_label)
+			elif part_v is Label and (part_v as Label).is_visible_in_tree():
+				var description := str((part_v as Label).text).strip_edges()
+				if description != "":
+					parts.append(description)
+		var rendered_text := " ".join(parts).strip_edges()
+		if rendered_text != "" and not result.has(rendered_text):
+			result.append(rendered_text)
+	return result
+
+
+func _control_has_player_visible_area(control: Control) -> bool:
+	if control == null or not control.is_visible_in_tree() \
+			or control.modulate.a <= 0.01 or control.self_modulate.a <= 0.01:
+		return false
+	var viewport := control.get_viewport()
+	if viewport == null:
+		return false
+	var visible_area := control.get_global_rect().intersection(
+		viewport.get_visible_rect())
+	if not visible_area.has_area():
+		return false
+	var ancestor := control.get_parent()
+	while ancestor != null:
+		if ancestor is CanvasItem \
+				and not (ancestor as CanvasItem).is_visible_in_tree():
+			return false
+		if ancestor is Control and (ancestor as Control).clip_contents:
+			visible_area = visible_area.intersection(
+				(ancestor as Control).get_global_rect())
+			if not visible_area.has_area():
+				return false
+		ancestor = ancestor.get_parent()
 	return true
-
-
-func _finish_preview_emphasis() -> void:
-	if not _preview_emphasis_active:
-		return
-	if _ui_scheduler != null:
-		_ui_scheduler.cancel_tag(PREVIEW_EMPHASIS_TAG)
-	if _preview_emphasis_uses_exploration_focus:
-		_finish_exploration_focus()
-	elif _camera != null:
-		if not _preview_emphasis_prev_camera_state.is_empty() and _camera.has_method("restore_view_state"):
-			_camera.restore_view_state(_preview_emphasis_prev_camera_state)
-		else:
-			_camera.follow_offset = _preview_emphasis_prev_camera_offset
-			_camera.target = _preview_emphasis_prev_camera_target if is_instance_valid(_preview_emphasis_prev_camera_target) else null
-			_camera.unlock()
-	_preview_emphasis_active = false
-	_preview_emphasis_uses_exploration_focus = false
-	_preview_emphasis_prev_camera_target = null
-	_preview_emphasis_prev_camera_state.clear()
-
-
-func cancel_preview_emphasis() -> void:
-	_preview_emphasis_token += 1
-	_finish_preview_emphasis()
-
-
-func shake_preview_camera(intensity := 0.12, decay := 7.0) -> void:
-	if _camera != null:
-		_camera.shake(maxf(0.0, intensity), maxf(0.1, decay))
 
 
 ## Atom is a long planning board. Browser pointers naturally rest against the viewport
@@ -1919,6 +1906,8 @@ func show_preview_note(text: String, duration := 3.0) -> void:
 		print("[NOTE] %s" % text)
 	if _note_label == null:
 		return
+	if _status_margin != null:
+		_status_margin.visible = true
 	_note_label.text = text
 	_note_timer = maxf(0.0, duration)
 
@@ -2148,18 +2137,19 @@ func headless_move_character(char_id: String, pos: Vector3, running := false) ->
 	if _game_state == null or not _game_state.characters.has(char_id):
 		return false
 	_game_state.change_move_speed(char_id, get_preview_character_move_speed(char_id, running))
-	# Deterministic input playback must exercise the same floor-link traversal as an
-	# ordinary click. A raw position command preserves the character's current level,
-	# so using it for a generated node on another deck could appear to reach the same
-	# x/z cell through the ceiling while the real interaction correctly rejected it.
-	if _game_state.grid != null and int(_game_state.grid.level_count) > 1:
-		var destination_level := int(_game_state.grid.level_for_y(pos.y))
-		if destination_level != int(_game_state.get_character_level(char_id)):
-			return _game_state.command_move_cross_level(
-				char_id,
-				_game_state.grid.world_to_grid(pos),
-				destination_level
-			)
+	# Deterministic input playback must exercise the same graph-location boundary as
+	# an ordinary click. Generated approach points can lie on dressing or a WFC wall
+	# mask; resolve them to the nearest valid node while preserving the inferred deck
+	# and typed connector edges. Gridless previews retain straight-line movement.
+	if _game_state.grid != null:
+		var navigation_location: Dictionary = _game_state.resolve_navigation_location(
+			char_id, pos
+		)
+		if navigation_location.is_empty():
+			return false
+		return _game_state.command_move_to_navigation_location(
+			char_id, navigation_location
+		)
 	return _game_state.command_move_to_pos(char_id, pos)
 
 func headless_is_character_moving(char_id: String) -> bool:
@@ -2266,10 +2256,22 @@ func headless_set_character_position(char_id: String, pos: Vector3) -> void:
 	if not _characters.has(char_id):
 		return
 	if _game_state != null and _game_state.characters.has(char_id):
+		if _game_state.is_external_traversal_active(char_id):
+			_game_state.cancel_external_traversal(char_id, &"fixture_placement")
 		_game_state.command_stop(char_id)
-		_game_state.characters[char_id].position = pos
+		if _game_state.grid != null:
+			var target_level := int(_game_state.grid.level_for_y(pos.y)) \
+				if int(_game_state.grid.level_count) > 1 \
+				else int(_game_state.get_character_level(char_id))
+			# Re-apply even when the level index is unchanged. Authoritative fixture
+			# placement must normalize a stale body Y onto that graph floor.
+			_game_state.set_character_level(char_id, target_level)
+			pos.y = _game_state.grid.grid_to_world(
+				_game_state.grid.world_to_grid(pos), target_level).y
+		_game_state.snap_character_to(char_id, pos, false)
 	if _characters[char_id] != null:
-		_characters[char_id].global_position = pos
+		_characters[char_id].global_position = _game_state.get_render_position(char_id) \
+			if _game_state != null and _game_state.characters.has(char_id) else pos
 
 func headless_call_chunk(method_name: String, args: Array = []) -> Variant:
 	if _active_chunk == null or not _active_chunk.has_method(method_name):
@@ -2303,7 +2305,10 @@ func _build_preview_ui() -> void:
 	_control_hint_flow = _preview_layer.get_node("InstructionsMargin/Panel/Content/ControlHints") as HFlowContainer
 	_refresh_control_hint_flow()
 	_ability_hint_flow = _preview_layer.get_node("InstructionsMargin/Panel/Content/AbilityHints") as HFlowContainer
-	_note_label = _preview_layer.get_node("InstructionsMargin/Panel/Content/NoteLabel") as Label
+	# Consequence/refusal status is intentionally outside the H-toggle briefing.
+	# H may clear the board, but it must never hide a state-change receipt.
+	_status_margin = _preview_layer.get_node("StatusMargin") as MarginContainer
+	_note_label = _preview_layer.get_node("StatusMargin/Panel/NoteLabel") as Label
 	_build_inventory_panel()
 	_build_overlay_stack()
 	_build_overlay_panel()
@@ -2813,19 +2818,9 @@ func _overlay_vision_source_at(positions: Array[Vector3], index: int) -> Vector3
 		return positions[0]
 	return Vector3(0.0, 0.0, -9999.0)
 
-func _connect_preview_item_signals() -> void:
+func _connect_preview_runtime_signals() -> void:
 	if _game_state == null:
 		return
-	if not _game_state.item_picked_up.is_connected(_on_preview_item_changed):
-		_game_state.item_picked_up.connect(_on_preview_item_changed)
-	if not _game_state.item_dropped.is_connected(_on_preview_item_changed):
-		_game_state.item_dropped.connect(_on_preview_item_changed)
-	if not _game_state.item_transferred.is_connected(_on_preview_item_transferred):
-		_game_state.item_transferred.connect(_on_preview_item_transferred)
-	if not _game_state.item_endocytosed.is_connected(_on_preview_item_endocytosed):
-		_game_state.item_endocytosed.connect(_on_preview_item_endocytosed)
-	if not _game_state.item_exocytosed.is_connected(_on_preview_item_changed):
-		_game_state.item_exocytosed.connect(_on_preview_item_changed)
 	if not _game_state.stat_changed.is_connected(_on_gs_stat_changed):
 		_game_state.stat_changed.connect(_on_gs_stat_changed)
 	if not _game_state.running_changed.is_connected(_on_preview_running_changed):
@@ -2906,196 +2901,9 @@ func _on_preview_character_downed(char_id: String) -> void:
 	_ensure_valid_selection()
 	_refresh_active_overlay()
 
-func _on_preview_item_changed(_char_id: String, _item_id: String) -> void:
-	_refresh_inventory_panel()
-
-func _on_preview_item_transferred(_from_id: String, _to_id: String, _item_id: String) -> void:
-	_refresh_inventory_panel()
-
-func _on_preview_item_endocytosed(char_id: String, item_id: String, effect: String) -> void:
-	_sync_character_from_game_state(char_id)
-	if effect == "digest":
-		set_preview_character_status(char_id, "")
-	elif effect == "stun_self":
-		set_preview_character_status(char_id, "stunned")
-	elif effect == "self_damage":
-		set_preview_character_status(char_id, "hurt")
-	else:
-		set_preview_character_status(char_id, "")
-	_refresh_inventory_panel()
-	if effect == "digest":
-		show_preview_note("%s digested %s and restored ATP." % [CHARACTER_DISPLAY_NAMES.get(char_id, char_id.capitalize()), get_preview_item_display_name(item_id, char_id)], 3.2)
-	elif effect == "store":
-		show_preview_note("%s stored %s internally." % [CHARACTER_DISPLAY_NAMES.get(char_id, char_id.capitalize()), get_preview_item_display_name(item_id, char_id)], 3.2)
-	elif effect == "stun_self":
-		show_preview_note("%s consumed something that should have stayed out of their body." % CHARACTER_DISPLAY_NAMES.get(char_id, char_id.capitalize()), 3.2)
-	elif effect == "self_damage":
-		show_preview_note("%s took internal damage from what they consumed." % CHARACTER_DISPLAY_NAMES.get(char_id, char_id.capitalize()), 3.2)
-
-func _ensure_preview_item_node(item_id: String) -> void:
-	if _preview_item_nodes.has(item_id):
-		return
-	if _game_state == null or not _game_state.items.has(item_id):
-		return
-	var item: Dictionary = _game_state.items[item_id]
-	var item_type := str(item.get("type", ""))
-	var properties: Dictionary = item.get("properties", {})
-
-	var root := Node3D.new()
-	root.name = "PreviewItem_%s" % item_id
-
-	var visual_kind := str(properties.get("visual_kind", item_type))
-	var visual_scene_path := str(properties.get("visual_scene", ""))
-	var authored_visual_added := false
-	if visual_scene_path != "":
-		var packed_visual := load(visual_scene_path) as PackedScene
-		if packed_visual != null:
-			var authored_visual := packed_visual.instantiate() as Node3D
-			if authored_visual != null:
-				authored_visual.name = "Mesh"
-				authored_visual.set_meta("visual_identity", str(properties.get(
-					"visual_identity", visual_kind)))
-				root.add_child(authored_visual)
-				authored_visual_added = true
-	if not authored_visual_added and visual_kind == "mother_gear":
-		var authored_gear := MOTHER_GEAR_VISUAL_SCENE.instantiate() as Node3D
-		authored_gear.name = "Mesh"
-		authored_gear.set_meta("visual_identity", "mother_gear_v1")
-		root.add_child(authored_gear)
-	elif not authored_visual_added:
-		var mesh_instance := MeshInstance3D.new()
-		mesh_instance.name = "Mesh"
-		mesh_instance.mesh = _build_preview_item_mesh(visual_kind)
-		var material := StandardMaterial3D.new()
-		material.albedo_color = properties.get("visual_color", _preview_item_color(item_type))
-		material.emission_enabled = true
-		material.emission = material.albedo_color.lightened(0.08)
-		material.emission_energy_multiplier = 0.24
-		mesh_instance.material_override = material
-		root.add_child(mesh_instance)
-
-	var label := Label3D.new()
-	label.name = "Label"
-	label.pixel_size = 0.0075
-	label.font_size = 24
-	label.position = Vector3(0.0, 0.65, 0.0)
-	label.outline_modulate = Color(0.0, 0.0, 0.0, 0.45)
-	label.outline_size = 6
-	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	root.add_child(label)
-
-	add_child(root)
-	_preview_item_nodes[item_id] = root
-
-func _build_preview_item_mesh(visual_kind: String) -> Mesh:
-	match visual_kind:
-		"gear":
-			var torus := TorusMesh.new()
-			torus.inner_radius = 0.34
-			torus.outer_radius = 0.58
-			torus.rings = 18
-			torus.ring_segments = 12
-			return torus
-		"seed":
-			var sphere := SphereMesh.new()
-			sphere.radius = 0.18
-			sphere.height = 0.36
-			return sphere
-		"component":
-			var box := BoxMesh.new()
-			box.size = Vector3(0.34, 0.34, 0.34)
-			return box
-		_:
-			var blob := SphereMesh.new()
-			blob.radius = 0.24
-			blob.height = 0.48
-			return blob
-
-func _preview_item_color(item_type: String) -> Color:
-	match item_type:
-		"lysate":
-			return Color(0.78, 0.68, 0.42)
-		"seed":
-			return Color(0.56, 0.82, 0.48)
-		"hushbloom":
-			return Color(0.82, 0.74, 0.95)
-		"cure_component":
-			return Color(0.62, 0.82, 0.95)
-		"mother_gear":
-			return Color(0.84, 0.7, 0.44)
-		_:
-			return Color(0.78, 0.78, 0.82)
-
 func _refresh_preview_items() -> void:
-	if _game_state == null:
-		return
-	for item_id in _game_state.items.keys():
-		_ensure_preview_item_node(str(item_id))
-
-	var existing_ids := _preview_item_nodes.keys().duplicate()
-	for raw_id in existing_ids:
-		var item_id := str(raw_id)
-		if not _game_state.items.has(item_id):
-			var stale_node: Node3D = _preview_item_nodes[item_id]
-			if stale_node != null:
-				stale_node.queue_free()
-			_preview_item_nodes.erase(item_id)
-			continue
-
-		var item: Dictionary = _game_state.items[item_id]
-		var properties: Dictionary = item.get("properties", {})
-		var root: Node3D = _preview_item_nodes[item_id]
-		if root == null:
-			continue
-		var label: Label3D = root.get_node("Label")
-		label.text = get_preview_item_display_name(item_id, str(item.get("holder", ""))).to_upper()
-		var occurrence_count := 0
-		var slot_index := -1
-		if str(item.get("holder", "")) != "" and _game_state.characters.has(str(item.get("holder", ""))):
-			var slots: Array = _game_state.get_hand_slots(str(item.get("holder", "")))
-			for i in range(slots.size()):
-				if slots[i] == item_id:
-					occurrence_count += 1
-					if slot_index == -1:
-						slot_index = i
-
-		match str(item.get("location", "ground")):
-			"ground":
-				root.visible = true
-				# Items live in the same flat/data coordinate frame as characters and
-				# navigation. Generated stretches bend that frame through coord_map, so
-				# a source item must take the same render transform as its source fixture
-				# instead of appearing back on the discarded flat grid.
-				var data_position: Vector3 = item.get("position", Vector3.ZERO)
-				# A source item may sit inside authored geometry (a housing, cradle, nest) rather
-				# than on an open floor. Its portable item authority still owns the position;
-				# this optional presenter height only prevents the generic floor clamp from
-				# making a sealed payload visibly float through its lid.
-				data_position.y = float(properties.get(
-					"ground_visual_y", maxf(data_position.y, 0.42)))
-				root.global_position = (
-					_game_state.coord_map.to_world(data_position)
-					if _game_state.coord_map != null
-					and _game_state.coord_map.has_method("to_world")
-					else data_position
-				)
-				label.visible = bool(properties.get("ground_label_visible", true))
-			"hand":
-				root.visible = true
-				var holder_id := str(item.get("holder", ""))
-				var char_pos := get_preview_character_position(holder_id)
-				var offset := Vector3(0.0, 1.02, 0.38)
-				if occurrence_count >= 2:
-					offset = Vector3(0.0, 1.08, 0.46)
-				elif slot_index == 0:
-					offset = Vector3(-0.34, 0.98, 0.3)
-				elif slot_index == 1:
-					offset = Vector3(0.34, 0.98, 0.3)
-				root.global_position = char_pos + offset
-				label.visible = false
-			_:
-				root.visible = false
-
+	if is_instance_valid(_party_item_controller):
+		_party_item_controller.refresh_presenters()
 func _refresh_inventory_panel() -> void:
 	if _inventory_panel_label == null:
 		return
@@ -3143,66 +2951,29 @@ func _refresh_inventory_panel() -> void:
 	_inventory_panel_label.text = "\n".join(lines)
 
 func _get_primary_held_item(char_id: String) -> String:
-	var held := get_preview_hand_items(char_id)
-	return str(held[0]) if held.size() > 0 else ""
+	return _party_item_controller.get_primary_held_item(char_id) \
+		if is_instance_valid(_party_item_controller) else ""
 
 func _consume_active_item() -> void:
-	if _active_char_id == "":
-		return
-	var item_id := _get_primary_held_item(_active_char_id)
-	if item_id == "":
-		show_preview_message("No held item to consume.", 1.1)
-		return
-	if not endocytose_preview_item(_active_char_id, item_id):
-		show_preview_message("That item cannot be consumed here.", 1.2)
+	if is_instance_valid(_party_item_controller) and not _active_char_id.is_empty():
+		_party_item_controller.consume_primary(_active_char_id)
 
 func _drop_active_item() -> void:
-	if _active_char_id == "":
-		return
-	var item_id := _get_primary_held_item(_active_char_id)
-	if item_id == "":
-		show_preview_message("No held item to drop.", 1.1)
-		return
-	if not drop_preview_item(_active_char_id, item_id):
-		show_preview_message("Couldn't drop that item right now.", 1.2)
+	if is_instance_valid(_party_item_controller) and not _active_char_id.is_empty():
+		_party_item_controller.drop_primary(_active_char_id)
 
 func _transfer_active_item() -> void:
-	if _active_char_id == "":
+	if not is_instance_valid(_party_item_controller) or _active_char_id.is_empty():
 		return
-	var item_id := _get_primary_held_item(_active_char_id)
-	if item_id == "":
-		show_preview_message("No held item to transfer.", 1.1)
-		return
-	var target_id := ""
-	var best_distance := INF
-	for char_id in _selected_char_ids:
-		if char_id == _active_char_id or not _character_is_available(char_id):
-			continue
-		var dist := get_preview_character_position(_active_char_id).distance_to(get_preview_character_position(char_id))
-		if dist < best_distance:
-			best_distance = dist
-			target_id = char_id
-	if target_id == "":
-		for char_id in CHARACTER_IDS:
-			if char_id == _active_char_id or not _character_is_available(char_id):
-				continue
-			var dist := get_preview_character_position(_active_char_id).distance_to(get_preview_character_position(char_id))
-			if dist < best_distance:
-				best_distance = dist
-				target_id = char_id
-	if target_id == "" or not transfer_preview_item(_active_char_id, target_id, item_id):
-		show_preview_message("No nearby teammate can take that item.", 1.2)
+	var candidates: Array = _selected_char_ids.duplicate()
+	for char_id in CHARACTER_IDS:
+		if not candidates.has(char_id):
+			candidates.append(char_id)
+	_party_item_controller.transfer_primary(_active_char_id, candidates)
 
 func _exocytose_active_item() -> void:
-	if _active_char_id == "":
-		return
-	var internal := get_preview_internal_items(_active_char_id)
-	if internal.is_empty():
-		show_preview_message("No internal item to retrieve.", 1.1)
-		return
-	if not exocytose_preview_item(_active_char_id, str(internal[0])):
-		show_preview_message("Couldn't retrieve that item right now.", 1.2)
-
+	if is_instance_valid(_party_item_controller) and not _active_char_id.is_empty():
+		_party_item_controller.retrieve_primary(_active_char_id)
 func _build_game_hud() -> void:
 	_hud = GameHUDScene.instantiate()
 	add_child(_hud)
@@ -3277,6 +3048,7 @@ func _apply_chunk_runtime_preset() -> void:
 	_preview_cycle.configure(DEFAULT_DAY_DURATION_SECONDS, DEFAULT_NIGHT_DURATION_SECONDS)
 	_routing_mode = "safe"
 	_note_default = ""
+	_show_default_note = true
 
 	_apply_preview_time_state(chunk_time_state)
 
@@ -3304,10 +3076,18 @@ func _apply_preview_time_state(state: Dictionary) -> void:
 		_preview_day = maxi(int(state.get("day", DEFAULT_DAY)), 1)
 		_preview_time = clampf(float(state.get("time", DEFAULT_TIME)), 0.0, 1.0)
 		_routing_mode = str(state.get("routing_mode", _routing_mode))
+		_show_default_note = bool(state.get("show_default_note", true))
 		if state.has("note_default"):
 			_note_default = str(state.get("note_default", ""))
 
 	_anchor_preview_clock(_preview_day, _preview_time)
+	# The displayed preview clock and shelter/hazard authority must begin from one
+	# state. Previously the HUD could render authored night while GameState kept
+	# its default daytime value, so a visible REST PARTY command was refused for
+	# a condition the player could not observe. This is the explicit preview-preset
+	# command boundary; later frames remain analytic projections and do not write.
+	if _game_state != null and _game_state.has_method("set_game_clock"):
+		_game_state.set_game_clock(_preview_day, _preview_time)
 	_sync_preview_time_presentation()
 
 	if _hud != null:
@@ -3925,10 +3705,18 @@ func _apply_chunk_metadata() -> void:
 	_refresh_control_hint_flow()
 	_refresh_ability_hint_flow()
 
-	if _note_default == "":
+	if _show_default_note and _note_default == "":
 		_note_default = "All three characters start topped off. Run and cast abilities spend stamina; ATP pays for shelter rest unless an experimental scarcity preset is selected."
-	if _note_label != null and _note_timer <= 0.0:
-		_note_label.text = _note_default
+	if _note_timer <= 0.0:
+		_restore_default_note()
+
+
+func _restore_default_note() -> void:
+	if _note_label == null:
+		return
+	_note_label.text = _note_default if _show_default_note else ""
+	if _status_margin != null:
+		_status_margin.visible = _show_default_note
 
 func _position_party_for_chunk() -> void:
 	var positions := DEFAULT_SPAWNS.duplicate(true)
@@ -4100,10 +3888,14 @@ func _set_active_character(char_id: String) -> void:
 
 	if _active_char_id != "" and _characters.has(_active_char_id):
 		var previous: CharacterBody3D = _characters[_active_char_id]
-		previous.set_move_enabled(false)
+		previous.restore_move_input_enabled(false)
 		previous.set_running(false)
 		if _game_state != null and _game_state.characters.has(_active_char_id):
-			_game_state.change_move_speed(_active_char_id, CHARACTER_SPEEDS[_active_char_id])
+			var walk_speed := float(CHARACTER_SPEEDS[_active_char_id])
+			if not is_equal_approx(
+					float(_game_state.characters[_active_char_id].get("move_speed", walk_speed)),
+					walk_speed):
+				_game_state.change_move_speed(_active_char_id, walk_speed)
 
 	_active_char_id = char_id
 	_player = _characters[char_id]
@@ -4133,8 +3925,8 @@ func _sync_character_move_enabled() -> void:
 	# and the late arrival can steal a timed action's actor.
 	for char_id in CHARACTER_IDS + OPT_IN_CHARACTER_IDS:
 		var character_node = _characters.get(char_id, null)
-		if character_node != null and character_node.has_method("set_move_enabled"):
-			character_node.call("set_move_enabled", char_id == _active_char_id)
+		if character_node != null and character_node.has_method("restore_move_input_enabled"):
+			character_node.call("restore_move_input_enabled", char_id == _active_char_id)
 
 ## Push the dodge-roll setting onto every party member's stats. Off (the default) means enemy strikes
 ## land; on means they can auto-evade. Derived preview state — set from a toggle, not the data log.
@@ -4247,6 +4039,12 @@ func _on_pause_toggled(is_paused: bool) -> void:
 
 func _on_routing_toggled(mode: String) -> void:
 	_routing_mode = "direct" if mode == "direct" else "safe"
+	# The HUD is only a projection of the authoritative routing policy. Keeping
+	# this in preview-only state made SAFE labels issue DIRECT GameState plans,
+	# invalidating both player feedback and survival timing measurements.
+	if _game_state != null \
+			and bool(_game_state.is_route_cautious()) != (_routing_mode == "safe"):
+		_game_state.set_route_mode(_routing_mode == "safe")
 	if _hud != null:
 		_hud.set_routing_mode(_routing_mode)
 	show_preview_message("Routing: %s" % _routing_mode.to_upper(), 1.2)
@@ -4274,12 +4072,31 @@ func _on_portrait_hold_lock_changed(char_id: String, locked: bool) -> void:
 func _on_ability_pressed(ability_id: String) -> void:
 	_activate_preview_ability(ability_id)
 
-## Recenter the camera on the whole available party. Averages the RENDERED node positions (correct on
-## warped scenes, where the data-layer positions live in the flat frame) and steers the camera pan
-## there. No-ops if a scripted focus holds the camera.
+## Recenter the camera on the whole available party. Warped chunks may provide a safe target because
+## a Euclidean average of points around a coil can sit inside its solid core. No-ops if a scripted
+## focus holds the camera.
 func _on_center_camera_requested() -> void:
-	if _camera == null or not _camera.has_method("recenter_on") or _camera.is_locked():
+	if _camera == null or not _camera.has_method("recenter_on"):
 		return
+	var safe_chunk_target = null
+	if _active_chunk != null and _active_chunk.has_method("get_preview_camera_recenter_target"):
+		var chunk_target = _active_chunk.call("get_preview_camera_recenter_target")
+		if chunk_target is Dictionary:
+			var target_info := chunk_target as Dictionary
+			if not bool(target_info.get("allowed", true)):
+				show_preview_message(str(target_info.get("message", "Camera is following the action.")), 1.8)
+				return
+			safe_chunk_target = target_info
+	if _camera.is_locked():
+		show_preview_message("Camera is following the action.", 1.4)
+		return
+	if safe_chunk_target is Dictionary:
+		var safe_target = (safe_chunk_target as Dictionary).get("target", null)
+		if safe_target is Vector3 and (safe_target as Vector3).is_finite():
+			_camera.recenter_on(safe_target as Vector3)
+			show_preview_message(str((safe_chunk_target as Dictionary).get(
+				"message", "Camera centered on the party")), 1.0)
+			return
 	var sum := Vector3.ZERO
 	var n := 0
 	for char_id in CHARACTER_IDS:
@@ -4294,6 +4111,12 @@ func _on_center_camera_requested() -> void:
 		return
 	_camera.recenter_on(sum / float(n))
 	show_preview_message("Camera centered on the party", 1.0)
+
+func _on_preview_move_command_refused(char_id: String, reason: String) -> void:
+	if _web_e2e_controller != null:
+		_web_e2e_controller.record_move_refusal(char_id, reason)
+	var display_name := str(CHARACTER_DISPLAY_NAMES.get(char_id, char_id.capitalize()))
+	show_preview_message("%s — %s" % [display_name, reason], 2.2)
 
 func _activate_preview_ability(ability_id: String) -> void:
 	var failure := _preview_ability_cast_failure(ability_id)

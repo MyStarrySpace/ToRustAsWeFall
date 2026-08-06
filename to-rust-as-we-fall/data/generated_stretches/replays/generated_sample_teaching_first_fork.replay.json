@@ -24,16 +24,6 @@
 			{
 				"category": "flora",
 				"cell": [
-					-1,
-					0
-				],
-				"kind": "capbage",
-				"level": 0,
-				"support": "implemented"
-			},
-			{
-				"category": "flora",
-				"cell": [
 					7,
 					0
 				],
@@ -45,7 +35,7 @@
 				"category": "flora",
 				"cell": [
 					11,
-					0
+					1
 				],
 				"kind": "hushbloom",
 				"level": 0,
@@ -222,6 +212,9 @@
 					"action": "activate",
 					"activation_policy": "interact_at_producer",
 					"before_node": "node_02",
+					"before_nodes": [
+						"node_02"
+					],
 					"branch_id": "branch_00",
 					"cannot_bypass_unresolved": true,
 					"consumer_cell": [
@@ -340,6 +333,9 @@
 						"action": "activate",
 						"activation_policy": "interact_at_producer",
 						"before_node": "node_02",
+						"before_nodes": [
+							"node_02"
+						],
 						"branch_id": "branch_00",
 						"cannot_bypass_unresolved": true,
 						"consumer_cell": [
@@ -660,6 +656,9 @@
 					"action": "activate",
 					"activation_policy": "interact_at_producer",
 					"before_node": "node_02",
+					"before_nodes": [
+						"node_02"
+					],
 					"branch_id": "branch_00",
 					"cannot_bypass_unresolved": true,
 					"consumer_cell": [
@@ -746,6 +745,9 @@
 						"action": "activate",
 						"activation_policy": "interact_at_producer",
 						"before_node": "node_02",
+						"before_nodes": [
+							"node_02"
+						],
 						"branch_id": "branch_00",
 						"cannot_bypass_unresolved": true,
 						"consumer_cell": [

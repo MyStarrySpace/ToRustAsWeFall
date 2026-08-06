@@ -10,9 +10,9 @@ help = "Aster went down holding the line. Cross to him, take him up — both han
 default_character = "peris"
 party_ids = PackedStringArray("aster", "peris", "endo")
 spawns = {
-"aster": Vector3(31.5, 0.5, 0.0),
-"endo": Vector3(1.9, 0.5, 1.2),
-"peris": Vector3(3.1, 0.5, 0.0)
+"aster": Vector3(31.5, 0, 0.0),
+"endo": Vector3(1.9, 0, 1.2),
+"peris": Vector3(3.1, 0, 0.0)
 }
 floors = Array[Dictionary]([{
 "color": Color(0.1, 0.11, 0.13, 1),

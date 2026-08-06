@@ -1,112 +1,1596 @@
 {
-	"schema": "persona_decision_library_v1",
-	"comment": "Decision nodes harvested from recorded AI playthroughs (docs/PLAYTEST_PERSONAS.md, 'The decision harvest'). The policy engine in test_runner_cli.gd implements each node's logic; this file is the registry \u2014 which nodes exist, who uses them, and the trace that taught us each one. Grow it one playthrough at a time.",
+	"comment": "Persona decision registry. Hash-verified v2 evidence distills machine-readable policy trees; legacy v1 prose remains audit history and is not automation-eligible until re-earned through shipped player input.",
+	"contract": {
+		"activation": "repeated_support_from_distinct_hash_verified_trace_complete_persona_goal_runs_with_zero_contradictions",
+		"learning_boundary": "shipped_player_input_with_observable_feedback",
+		"legacy_policy": "prose nodes remain visible but cannot execute until re-earned by v2 evidence",
+		"player_observation_schema": "player_observation_v1",
+		"source_trace_schema": "persona_decision_trace_v2"
+	},
+	"distillation": {
+		"eligible_node_count": 5,
+		"minimum_support": 2,
+		"rejected_evidence_count": 0
+	},
 	"nodes": [
 		{
-			"id": "observe_from_cover",
-			"rule": "Before committing to any route, hold at cover and sample every threat's walk until it stops surprising you (its observed extents stop growing).",
-			"personas": [
-				"skumnut"
-			],
-			"source": "pump_hall_ai_2026-07-31 #0-#2"
-		},
-		{
-			"id": "full_loop_before_crossing",
-			"rule": "Patrol reach = walk line + detect + pursuit. Never extrapolate from partial samples; a dash is only legal once the loop is known.",
-			"personas": [
-				"skumnut"
-			],
-			"source": "pump_hall_ai_2026-07-31 #12 (the 75hp landing mistake)"
-		},
-		{
+			"eligible_for_automation": false,
+			"evidence": {
+				"contradiction_count": 0,
+				"distinct_content_count": 0,
+				"distinct_fragment_count": 0,
+				"distinct_persona_count": 0,
+				"distinct_run_count": 0,
+				"distinct_trace_count": 0,
+				"inadmissible_provenance_count": 0,
+				"legacy_sources": [
+					"pump_hall_ai_2026-07-31 #13"
+				],
+				"provenance": [],
+				"support_count": 0
+			},
 			"id": "break_on_recover",
+			"personas": [
+				"skumnut",
+				"eazy_speezy"
+			],
 			"rule": "A committed striker (windup/charge/impact/recover) is not tracking you: abort the leg and break for the nearest cover while it is busy.",
-			"personas": [
-				"skumnut",
-				"eazy_speezy"
-			],
-			"source": "pump_hall_ai_2026-07-31 #13"
+			"source": "pump_hall_ai_2026-07-31 #13",
+			"status": "legacy_unverified"
 		},
 		{
-			"id": "exposure_beats_stamina",
-			"rule": "Run watched ground, walk safe ground; never start a watched leg below the stamina it costs.",
-			"personas": [
-				"skumnut",
-				"eazy_speezy"
-			],
-			"source": "pump_hall_ai_2026-07-31 #14, #20"
-		},
-		{
-			"id": "one_body_per_hide",
-			"rule": "A Capbage conceals one body; route the party across hides one leaf each, or accept exposed escorts.",
-			"personas": [
-				"skumnut"
-			],
-			"source": "pump_hall_ai_2026-07-31 #19 (two members parked beside the leaf)"
-		},
-		{
-			"id": "far_post_is_the_window",
-			"rule": "When a room's owner stands at the far end of its observed walk, the window is open NOW \u2014 go; waiting for better spends it.",
-			"personas": [
-				"skumnut",
-				"eazy_speezy"
-			],
-			"source": "pump_hall_ai_2026-07-31 #21"
-		},
-		{
-			"id": "settled_selected_adjacent_commit",
-			"rule": "A commit needs a settled body, a SELECTED character, standing within the interaction radius. Walk the actor to the console, wait a beat, then fire.",
-			"personas": [
-				"skumnut",
-				"eazy_speezy",
-				"prod"
-			],
-			"source": "pump_hall_ai_2026-07-31 #25-#30 (one rest, three refusals)"
-		},
-		{
-			"id": "read_the_heading",
-			"rule": "The far post is only a window when the walk is heading AWAY - launching into a turnaround meets the sweep head-on. Heading beats distance.",
-			"personas": [
-				"eazy_speezy",
-				"skumnut"
-			],
-			"source": "sprint_gap_eazy_2026-07-31 #0-#10 (launched into the turn; windup at arm's length)"
-		},
-		{
+			"eligible_for_automation": false,
+			"evidence": {
+				"contradiction_count": 0,
+				"distinct_content_count": 0,
+				"distinct_fragment_count": 0,
+				"distinct_persona_count": 0,
+				"distinct_run_count": 0,
+				"distinct_trace_count": 0,
+				"inadmissible_provenance_count": 0,
+				"legacy_sources": [
+					"sprint_gap_eazy_2026-07-31 (endo's bar hit zero on a leg the leader funded)"
+				],
+				"provenance": [],
+				"support_count": 0
+			},
 			"id": "caboose_pays_more",
+			"personas": [
+				"eazy_speezy"
+			],
 			"rule": "Party members drain differently - check EVERY bar before a party sprint; the slowest bar sets the plan.",
+			"source": "sprint_gap_eazy_2026-07-31 (endo's bar hit zero on a leg the leader funded)",
+			"status": "legacy_unverified"
+		},
+		{
+			"eligible_for_automation": false,
+			"evidence": {
+				"contradiction_count": 0,
+				"distinct_content_count": 1,
+				"distinct_fragment_count": 1,
+				"distinct_persona_count": 1,
+				"distinct_run_count": 1,
+				"distinct_trace_count": 1,
+				"inadmissible_provenance_count": 0,
+				"provenance": [
+					{
+						"content_fingerprint": "8f38a2744b12d83114b26ccb49b47d47531b51cdfef45e28952d89c716574725",
+						"decision_index": 2,
+						"execution_platform": "native",
+						"fragment_id": "basin_fill_proof",
+						"input_receipt_id": "3",
+						"persona": "dean_takahashi",
+						"persona_goal_reached": true,
+						"record_hash": "5e34be37643223697c5d2c5cbab5f7f9577d2ad885b48b822f423cf9cae2adfc",
+						"run_decision_count": 4,
+						"run_id": "basin_fill_proof:dean_takahashi:9967297_0",
+						"seed": 0,
+						"summary_record_hash": "24da3625c00bfddd3cff60052622096697977263960b4e11402872f887ce64a7",
+						"trace_complete": true,
+						"trace_id": "basin_fill_proof:dean_takahashi:9967297_0",
+						"trace_integrity_verified": true,
+						"validation_check_count": 82,
+						"validation_checked_decision_count": 4,
+						"validation_contract_id": "native_basin_fill_proof_dean_takahashi_v2",
+						"validation_contract_version": 2,
+						"validation_execution_platform": "native",
+						"validation_failure_count": 0,
+						"validation_invocation_id": "native_persona_probe:bdd1ca5e3a94bf68a37e7bc160ce6a89db104db6588dfb68456e69c6818c1537",
+						"validation_passed": true,
+						"validation_record_hash": "af6084cc6424dd1535507b073b6ee1a69d9b32b67c376af8821cc2fa5f3875ad",
+						"validation_schema": "persona_strict_validation_v1",
+						"validation_validator_id": "godot_windowed_persona_probe",
+						"verdict": "supports"
+					}
+				],
+				"support_count": 1
+			},
+			"id": "dean_takahashi_arm_visible_mid_console",
+			"personas": [
+				"dean_takahashi"
+			],
+			"policy": {
+				"action": {
+					"target_ref": "matching_visible_interaction",
+					"verb": "interact"
+				},
+				"condition": {
+					"op": "contains",
+					"path": "visible_affordance_verbs",
+					"value": "UPPER DECK > ARM NEXT MID"
+				},
+				"expected": {
+					"op": "eq",
+					"path": "accepted",
+					"value": true
+				},
+				"priority": 70,
+				"scope": "fragment"
+			},
+			"policy_signature": "f31b06285141ef00a7e709e34d19bcc00e2c087424581926aef992d9f07db9bc",
+			"rule": "Dean clicks the visible UPPER DECK > ARM NEXT MID prompt without checking whether it advances the puzzle.",
+			"status": "candidate"
+		},
+		{
+			"eligible_for_automation": true,
+			"evidence": {
+				"contradiction_count": 0,
+				"distinct_content_count": 2,
+				"distinct_fragment_count": 1,
+				"distinct_persona_count": 1,
+				"distinct_run_count": 4,
+				"distinct_trace_count": 4,
+				"inadmissible_provenance_count": 0,
+				"provenance": [
+					{
+						"content_fingerprint": "8f38a2744b12d83114b26ccb49b47d47531b51cdfef45e28952d89c716574725",
+						"decision_index": 1,
+						"execution_platform": "native",
+						"fragment_id": "basin_fill_proof",
+						"input_receipt_id": "2",
+						"persona": "dean_takahashi",
+						"persona_goal_reached": true,
+						"record_hash": "0ac9b94ab4baaeb09ed802eef9a50af6ce586e64ba0d5e1df1994ce09e0ce59a",
+						"run_decision_count": 4,
+						"run_id": "basin_fill_proof:dean_takahashi:9967297_0",
+						"seed": 0,
+						"summary_record_hash": "24da3625c00bfddd3cff60052622096697977263960b4e11402872f887ce64a7",
+						"trace_complete": true,
+						"trace_id": "basin_fill_proof:dean_takahashi:9967297_0",
+						"trace_integrity_verified": true,
+						"validation_check_count": 82,
+						"validation_checked_decision_count": 4,
+						"validation_contract_id": "native_basin_fill_proof_dean_takahashi_v2",
+						"validation_contract_version": 2,
+						"validation_execution_platform": "native",
+						"validation_failure_count": 0,
+						"validation_invocation_id": "native_persona_probe:bdd1ca5e3a94bf68a37e7bc160ce6a89db104db6588dfb68456e69c6818c1537",
+						"validation_passed": true,
+						"validation_record_hash": "af6084cc6424dd1535507b073b6ee1a69d9b32b67c376af8821cc2fa5f3875ad",
+						"validation_schema": "persona_strict_validation_v1",
+						"validation_validator_id": "godot_windowed_persona_probe",
+						"verdict": "supports"
+					},
+					{
+						"content_fingerprint": "8f38a2744b12d83114b26ccb49b47d47531b51cdfef45e28952d89c716574725",
+						"decision_index": 3,
+						"execution_platform": "native",
+						"fragment_id": "basin_fill_proof",
+						"input_receipt_id": "5",
+						"persona": "dean_takahashi",
+						"persona_goal_reached": true,
+						"record_hash": "14a05e7d9b32f8f79d27950008474f6624eb6f955dd796febc22911f18c22b2a",
+						"run_decision_count": 4,
+						"run_id": "basin_fill_proof:dean_takahashi:9967297_0",
+						"seed": 0,
+						"summary_record_hash": "24da3625c00bfddd3cff60052622096697977263960b4e11402872f887ce64a7",
+						"trace_complete": true,
+						"trace_id": "basin_fill_proof:dean_takahashi:9967297_0",
+						"trace_integrity_verified": true,
+						"validation_check_count": 82,
+						"validation_checked_decision_count": 4,
+						"validation_contract_id": "native_basin_fill_proof_dean_takahashi_v2",
+						"validation_contract_version": 2,
+						"validation_execution_platform": "native",
+						"validation_failure_count": 0,
+						"validation_invocation_id": "native_persona_probe:bdd1ca5e3a94bf68a37e7bc160ce6a89db104db6588dfb68456e69c6818c1537",
+						"validation_passed": true,
+						"validation_record_hash": "af6084cc6424dd1535507b073b6ee1a69d9b32b67c376af8821cc2fa5f3875ad",
+						"validation_schema": "persona_strict_validation_v1",
+						"validation_validator_id": "godot_windowed_persona_probe",
+						"verdict": "supports"
+					},
+					{
+						"content_fingerprint": "8f38a2744b12d83114b26ccb49b47d47531b51cdfef45e28952d89c716574725",
+						"decision_index": 1,
+						"execution_platform": "native",
+						"fragment_id": "basin_fill_proof",
+						"input_receipt_id": "2",
+						"persona": "dean_takahashi",
+						"persona_goal_reached": true,
+						"record_hash": "1a7cf9716cc985a944d684723d928806ada0d090cf5bce9f65cda72fae801cc9",
+						"run_decision_count": 3,
+						"run_id": "basin_fill_proof:dean_takahashi:80080621_1",
+						"seed": 1,
+						"summary_record_hash": "ce474d245773342675d24442ca476068e54af7c4297cf7d68d378b2f1c99e075",
+						"trace_complete": true,
+						"trace_id": "basin_fill_proof:dean_takahashi:80080621_1",
+						"trace_integrity_verified": true,
+						"validation_check_count": 82,
+						"validation_checked_decision_count": 3,
+						"validation_contract_id": "native_basin_fill_proof_dean_takahashi_v2",
+						"validation_contract_version": 2,
+						"validation_execution_platform": "native",
+						"validation_failure_count": 0,
+						"validation_invocation_id": "native_persona_probe:bdd1ca5e3a94bf68a37e7bc160ce6a89db104db6588dfb68456e69c6818c1537",
+						"validation_passed": true,
+						"validation_record_hash": "4e5d7f4a08b2717377257091e7ef9e9a395df927f75955f338f04acde4f9d1c2",
+						"validation_schema": "persona_strict_validation_v1",
+						"validation_validator_id": "godot_windowed_persona_probe",
+						"verdict": "supports"
+					},
+					{
+						"content_fingerprint": "76ca13b6c16e43263f9112d0de92c01567aaa96762e705a8113b4f7665be018e",
+						"decision_index": 0,
+						"execution_platform": "web",
+						"fragment_id": "basin_fill_proof",
+						"input_receipt_id": "basin_fill_proof:dean_takahashi:web_1_1:input:0",
+						"persona": "dean_takahashi",
+						"persona_goal_reached": true,
+						"record_hash": "3df271ad1605da6ac4843b69b85af50659b02847b5835c7ad5bfca1004313f32",
+						"run_decision_count": 3,
+						"run_id": "basin_fill_proof:dean_takahashi:web_1_1",
+						"seed": 1,
+						"summary_record_hash": "2fd1d03f0dd9488ed2715ecf41b2a3a2f791511bd9a4589c8a8338c09c54ebb3",
+						"trace_complete": true,
+						"trace_id": "basin_fill_proof:dean_takahashi:web_1_1",
+						"trace_integrity_verified": true,
+						"validation_check_count": 4,
+						"validation_checked_decision_count": 3,
+						"validation_contract_id": "web_basin_fill_proof_dean_takahashi_v2",
+						"validation_contract_version": 2,
+						"validation_execution_platform": "web",
+						"validation_failure_count": 0,
+						"validation_invocation_id": "web_basin_fill_proof_repeat2_1785819343265_2563e2d0-9010-45d8-8897-9eebf051829c",
+						"validation_passed": true,
+						"validation_record_hash": "5a50ec81f4140b685cf5e9232c0dc16a3e4d58bbe73a882acbb39904ab70b807",
+						"validation_schema": "persona_strict_validation_v1",
+						"validation_validator_id": "playwright_persona_probe",
+						"verdict": "supports"
+					},
+					{
+						"content_fingerprint": "76ca13b6c16e43263f9112d0de92c01567aaa96762e705a8113b4f7665be018e",
+						"decision_index": 0,
+						"execution_platform": "web",
+						"fragment_id": "basin_fill_proof",
+						"input_receipt_id": "basin_fill_proof:dean_takahashi:web_0_0:input:0",
+						"persona": "dean_takahashi",
+						"persona_goal_reached": true,
+						"record_hash": "920ab3b035ebf278ac3f93938fb78b9b3518b1e0c2c3d36de17d384302df4976",
+						"run_decision_count": 3,
+						"run_id": "basin_fill_proof:dean_takahashi:web_0_0",
+						"seed": 0,
+						"summary_record_hash": "d7e6c4ae8e43baa41069d253532b1a8d558c88d315c9c3ae3633df927b41ab0a",
+						"trace_complete": true,
+						"trace_id": "basin_fill_proof:dean_takahashi:web_0_0",
+						"trace_integrity_verified": true,
+						"validation_check_count": 4,
+						"validation_checked_decision_count": 3,
+						"validation_contract_id": "web_basin_fill_proof_dean_takahashi_v2",
+						"validation_contract_version": 2,
+						"validation_execution_platform": "web",
+						"validation_failure_count": 0,
+						"validation_invocation_id": "web_basin_fill_proof_repeat2_1785819343265_2563e2d0-9010-45d8-8897-9eebf051829c",
+						"validation_passed": true,
+						"validation_record_hash": "068c7a43ca45544111420f6ee88f69c6c805eed9f5853204ef1639cdf7527f87",
+						"validation_schema": "persona_strict_validation_v1",
+						"validation_validator_id": "playwright_persona_probe",
+						"verdict": "supports"
+					},
+					{
+						"content_fingerprint": "8f38a2744b12d83114b26ccb49b47d47531b51cdfef45e28952d89c716574725",
+						"decision_index": 0,
+						"execution_platform": "native",
+						"fragment_id": "basin_fill_proof",
+						"input_receipt_id": "1",
+						"persona": "dean_takahashi",
+						"persona_goal_reached": true,
+						"record_hash": "c1ae260001b444002a95c097472bdd8d6bc9a62b5edfc2bdc112c2dfac3986a6",
+						"run_decision_count": 3,
+						"run_id": "basin_fill_proof:dean_takahashi:80080621_1",
+						"seed": 1,
+						"summary_record_hash": "ce474d245773342675d24442ca476068e54af7c4297cf7d68d378b2f1c99e075",
+						"trace_complete": true,
+						"trace_id": "basin_fill_proof:dean_takahashi:80080621_1",
+						"trace_integrity_verified": true,
+						"validation_check_count": 82,
+						"validation_checked_decision_count": 3,
+						"validation_contract_id": "native_basin_fill_proof_dean_takahashi_v2",
+						"validation_contract_version": 2,
+						"validation_execution_platform": "native",
+						"validation_failure_count": 0,
+						"validation_invocation_id": "native_persona_probe:bdd1ca5e3a94bf68a37e7bc160ce6a89db104db6588dfb68456e69c6818c1537",
+						"validation_passed": true,
+						"validation_record_hash": "4e5d7f4a08b2717377257091e7ef9e9a395df927f75955f338f04acde4f9d1c2",
+						"validation_schema": "persona_strict_validation_v1",
+						"validation_validator_id": "godot_windowed_persona_probe",
+						"verdict": "supports"
+					},
+					{
+						"content_fingerprint": "8f38a2744b12d83114b26ccb49b47d47531b51cdfef45e28952d89c716574725",
+						"decision_index": 0,
+						"execution_platform": "native",
+						"fragment_id": "basin_fill_proof",
+						"input_receipt_id": "1",
+						"persona": "dean_takahashi",
+						"persona_goal_reached": true,
+						"record_hash": "e7c0a6f702bff361da26fd42d75ee54794e7da12624149e36b0a32b81785363b",
+						"run_decision_count": 4,
+						"run_id": "basin_fill_proof:dean_takahashi:9967297_0",
+						"seed": 0,
+						"summary_record_hash": "24da3625c00bfddd3cff60052622096697977263960b4e11402872f887ce64a7",
+						"trace_complete": true,
+						"trace_id": "basin_fill_proof:dean_takahashi:9967297_0",
+						"trace_integrity_verified": true,
+						"validation_check_count": 82,
+						"validation_checked_decision_count": 4,
+						"validation_contract_id": "native_basin_fill_proof_dean_takahashi_v2",
+						"validation_contract_version": 2,
+						"validation_execution_platform": "native",
+						"validation_failure_count": 0,
+						"validation_invocation_id": "native_persona_probe:bdd1ca5e3a94bf68a37e7bc160ce6a89db104db6588dfb68456e69c6818c1537",
+						"validation_passed": true,
+						"validation_record_hash": "af6084cc6424dd1535507b073b6ee1a69d9b32b67c376af8821cc2fa5f3875ad",
+						"validation_schema": "persona_strict_validation_v1",
+						"validation_validator_id": "godot_windowed_persona_probe",
+						"verdict": "supports"
+					}
+				],
+				"support_count": 7
+			},
+			"id": "dean_takahashi_rally_unmarked_visible_floor",
+			"personas": [
+				"dean_takahashi"
+			],
+			"policy": {
+				"action": {
+					"target_ref": "chosen_visible_ground",
+					"verb": "rally"
+				},
+				"condition": {
+					"any": [
+						{
+							"op": "exists",
+							"path": "viewport_bins.top_center.0",
+							"value": true
+						},
+						{
+							"op": "exists",
+							"path": "viewport_bins.top_left.0",
+							"value": true
+						},
+						{
+							"op": "exists",
+							"path": "viewport_bins.middle_center.0",
+							"value": true
+						},
+						{
+							"op": "exists",
+							"path": "viewport_bins.top_right.0",
+							"value": true
+						},
+						{
+							"op": "exists",
+							"path": "viewport_bins.middle_right.0",
+							"value": true
+						},
+						{
+							"op": "exists",
+							"path": "viewport_bins.middle_left.0",
+							"value": true
+						},
+						{
+							"op": "exists",
+							"path": "viewport_bins.bottom_center.0",
+							"value": true
+						},
+						{
+							"op": "exists",
+							"path": "viewport_bins.bottom_right.0",
+							"value": true
+						},
+						{
+							"op": "exists",
+							"path": "viewport_bins.bottom_left.0",
+							"value": true
+						}
+					]
+				},
+				"expected": {
+					"any": [
+						{
+							"op": "eq",
+							"path": "accepted",
+							"value": true
+						},
+						{
+							"op": "eq",
+							"path": "status",
+							"value": "refused"
+						}
+					]
+				},
+				"priority": 40,
+				"scope": "fragment"
+			},
+			"policy_signature": "2d9d20ee8e3954842993afecf0206d8d491fa70a20618b7018a81c997573bd34",
+			"rule": "Dean ignores the visible DECK ACCESS marker and issues a pointless Rally toward an arbitrary screen-space floor target.",
+			"status": "validated"
+		},
+		{
+			"eligible_for_automation": true,
+			"evidence": {
+				"contradiction_count": 0,
+				"distinct_content_count": 2,
+				"distinct_fragment_count": 1,
+				"distinct_persona_count": 1,
+				"distinct_run_count": 4,
+				"distinct_trace_count": 4,
+				"inadmissible_provenance_count": 0,
+				"provenance": [
+					{
+						"content_fingerprint": "8f38a2744b12d83114b26ccb49b47d47531b51cdfef45e28952d89c716574725",
+						"decision_index": 4,
+						"execution_platform": "native",
+						"fragment_id": "basin_fill_proof",
+						"input_receipt_id": "5",
+						"persona": "eazy_speezy",
+						"persona_goal_reached": true,
+						"record_hash": "4a50c03cbfdd723ff04a51c980490d4d937585b82798a3044239df3752c6af1a",
+						"run_decision_count": 10,
+						"run_id": "basin_fill_proof:eazy_speezy:102491012_1",
+						"seed": 1,
+						"summary_record_hash": "604e754673b71fc0ddd2fdf83e47744a5c1ed2e7579168e50f1f1debe0df4b77",
+						"trace_complete": true,
+						"trace_id": "basin_fill_proof:eazy_speezy:102491012_1",
+						"trace_integrity_verified": true,
+						"validation_check_count": 82,
+						"validation_checked_decision_count": 10,
+						"validation_contract_id": "native_basin_fill_proof_eazy_speezy_v2",
+						"validation_contract_version": 2,
+						"validation_execution_platform": "native",
+						"validation_failure_count": 0,
+						"validation_invocation_id": "native_persona_probe:bdd1ca5e3a94bf68a37e7bc160ce6a89db104db6588dfb68456e69c6818c1537",
+						"validation_passed": true,
+						"validation_record_hash": "d6d8f9395988f11b777bf72e605c840c6c1626f74bc9ea42b3fae8c5c9a5c3e9",
+						"validation_schema": "persona_strict_validation_v1",
+						"validation_validator_id": "godot_windowed_persona_probe",
+						"verdict": "supports"
+					},
+					{
+						"content_fingerprint": "76ca13b6c16e43263f9112d0de92c01567aaa96762e705a8113b4f7665be018e",
+						"decision_index": 3,
+						"execution_platform": "web",
+						"fragment_id": "basin_fill_proof",
+						"input_receipt_id": "basin_fill_proof:eazy_speezy:web_1_1:input:3",
+						"persona": "eazy_speezy",
+						"persona_goal_reached": true,
+						"record_hash": "9233d55bc7840cb8bd5a272ee98ada46c6c13e22ab4dda59b8bc9d9f3dfc89d9",
+						"run_decision_count": 8,
+						"run_id": "basin_fill_proof:eazy_speezy:web_1_1",
+						"seed": 1,
+						"summary_record_hash": "e93d5ad96313ad8dfd5c40ad3c1f9c288d8229fdedb206b544367a17c32b64a6",
+						"trace_complete": true,
+						"trace_id": "basin_fill_proof:eazy_speezy:web_1_1",
+						"trace_integrity_verified": true,
+						"validation_check_count": 4,
+						"validation_checked_decision_count": 8,
+						"validation_contract_id": "web_basin_fill_proof_eazy_speezy_v2",
+						"validation_contract_version": 2,
+						"validation_execution_platform": "web",
+						"validation_failure_count": 0,
+						"validation_invocation_id": "web_basin_fill_proof_repeat2_1785819343265_2563e2d0-9010-45d8-8897-9eebf051829c",
+						"validation_passed": true,
+						"validation_record_hash": "dc8c735b0b1e938a80ca224922e54f049e586383ff7f5c2e9a91d066edfbb3aa",
+						"validation_schema": "persona_strict_validation_v1",
+						"validation_validator_id": "playwright_persona_probe",
+						"verdict": "supports"
+					},
+					{
+						"content_fingerprint": "76ca13b6c16e43263f9112d0de92c01567aaa96762e705a8113b4f7665be018e",
+						"decision_index": 3,
+						"execution_platform": "web",
+						"fragment_id": "basin_fill_proof",
+						"input_receipt_id": "basin_fill_proof:eazy_speezy:web_0_0:input:3",
+						"persona": "eazy_speezy",
+						"persona_goal_reached": true,
+						"record_hash": "d175684136abbf48a89a402167c23ebb029d43d3d70db4daccfd383537bff6c3",
+						"run_decision_count": 8,
+						"run_id": "basin_fill_proof:eazy_speezy:web_0_0",
+						"seed": 0,
+						"summary_record_hash": "ae141650b207b2292415654f70ead9e30fb8fea313ae7ef9846fe0103041e15f",
+						"trace_complete": true,
+						"trace_id": "basin_fill_proof:eazy_speezy:web_0_0",
+						"trace_integrity_verified": true,
+						"validation_check_count": 4,
+						"validation_checked_decision_count": 8,
+						"validation_contract_id": "web_basin_fill_proof_eazy_speezy_v2",
+						"validation_contract_version": 2,
+						"validation_execution_platform": "web",
+						"validation_failure_count": 0,
+						"validation_invocation_id": "web_basin_fill_proof_repeat2_1785819343265_2563e2d0-9010-45d8-8897-9eebf051829c",
+						"validation_passed": true,
+						"validation_record_hash": "6079cbce4a76cff2c4a6f7d3cc7f9be95c7032c03e30b8bf3d0784e56ccc195c",
+						"validation_schema": "persona_strict_validation_v1",
+						"validation_validator_id": "playwright_persona_probe",
+						"verdict": "supports"
+					},
+					{
+						"content_fingerprint": "8f38a2744b12d83114b26ccb49b47d47531b51cdfef45e28952d89c716574725",
+						"decision_index": 4,
+						"execution_platform": "native",
+						"fragment_id": "basin_fill_proof",
+						"input_receipt_id": "5",
+						"persona": "eazy_speezy",
+						"persona_goal_reached": true,
+						"record_hash": "d87935b30c3ae4b5b3270c702b0e797b89ed7dd42bddb027296a7bcc1877e494",
+						"run_decision_count": 10,
+						"run_id": "basin_fill_proof:eazy_speezy:34393143_0",
+						"seed": 0,
+						"summary_record_hash": "5cd87d8107dfa8033ba5ce695877e008c0441c029523f7c3028d4fb7d159e673",
+						"trace_complete": true,
+						"trace_id": "basin_fill_proof:eazy_speezy:34393143_0",
+						"trace_integrity_verified": true,
+						"validation_check_count": 82,
+						"validation_checked_decision_count": 10,
+						"validation_contract_id": "native_basin_fill_proof_eazy_speezy_v2",
+						"validation_contract_version": 2,
+						"validation_execution_platform": "native",
+						"validation_failure_count": 0,
+						"validation_invocation_id": "native_persona_probe:bdd1ca5e3a94bf68a37e7bc160ce6a89db104db6588dfb68456e69c6818c1537",
+						"validation_passed": true,
+						"validation_record_hash": "2c768ac97da7b7af31fc793fd0507c61fdfb1e0ff6b9182d7f06f8e7340db2f3",
+						"validation_schema": "persona_strict_validation_v1",
+						"validation_validator_id": "godot_windowed_persona_probe",
+						"verdict": "supports"
+					}
+				],
+				"support_count": 4
+			},
+			"id": "eazy_speezy_arm_visible_mid_console",
 			"personas": [
 				"eazy_speezy"
 			],
-			"source": "sprint_gap_eazy_2026-07-31 (endo's bar hit zero on a leg the leader funded)"
+			"policy": {
+				"action": {
+					"target_ref": "matching_visible_interaction",
+					"verb": "interact"
+				},
+				"condition": {
+					"op": "contains",
+					"path": "visible_affordance_verbs",
+					"value": "UPPER DECK > ARM NEXT MID"
+				},
+				"expected": {
+					"op": "eq",
+					"path": "accepted",
+					"value": true
+				},
+				"priority": 70,
+				"scope": "fragment"
+			},
+			"policy_signature": "f31b06285141ef00a7e709e34d19bcc00e2c087424581926aef992d9f07db9bc",
+			"rule": "Eazy prioritizes the visible UPPER DECK > ARM NEXT MID prompt before wandering to another floor target.",
+			"status": "validated"
 		},
 		{
-			"id": "sacrifice_is_not_a_timesave",
-			"rule": "A downed member costs the retrieve round-trip under watch plus the revive wait - always slower than the window you tried to skip.",
+			"eligible_for_automation": true,
+			"evidence": {
+				"contradiction_count": 0,
+				"distinct_content_count": 2,
+				"distinct_fragment_count": 1,
+				"distinct_persona_count": 1,
+				"distinct_run_count": 4,
+				"distinct_trace_count": 4,
+				"inadmissible_provenance_count": 0,
+				"provenance": [
+					{
+						"content_fingerprint": "76ca13b6c16e43263f9112d0de92c01567aaa96762e705a8113b4f7665be018e",
+						"decision_index": 5,
+						"execution_platform": "web",
+						"fragment_id": "basin_fill_proof",
+						"input_receipt_id": "basin_fill_proof:eazy_speezy:web_0_0:input:5",
+						"persona": "eazy_speezy",
+						"persona_goal_reached": true,
+						"record_hash": "1006e683bd1c4f053db5359574e00df5b08f96996d4fff900f91f1cedca602f3",
+						"run_decision_count": 8,
+						"run_id": "basin_fill_proof:eazy_speezy:web_0_0",
+						"seed": 0,
+						"summary_record_hash": "ae141650b207b2292415654f70ead9e30fb8fea313ae7ef9846fe0103041e15f",
+						"trace_complete": true,
+						"trace_id": "basin_fill_proof:eazy_speezy:web_0_0",
+						"trace_integrity_verified": true,
+						"validation_check_count": 4,
+						"validation_checked_decision_count": 8,
+						"validation_contract_id": "web_basin_fill_proof_eazy_speezy_v2",
+						"validation_contract_version": 2,
+						"validation_execution_platform": "web",
+						"validation_failure_count": 0,
+						"validation_invocation_id": "web_basin_fill_proof_repeat2_1785819343265_2563e2d0-9010-45d8-8897-9eebf051829c",
+						"validation_passed": true,
+						"validation_record_hash": "6079cbce4a76cff2c4a6f7d3cc7f9be95c7032c03e30b8bf3d0784e56ccc195c",
+						"validation_schema": "persona_strict_validation_v1",
+						"validation_validator_id": "playwright_persona_probe",
+						"verdict": "supports"
+					},
+					{
+						"content_fingerprint": "8f38a2744b12d83114b26ccb49b47d47531b51cdfef45e28952d89c716574725",
+						"decision_index": 7,
+						"execution_platform": "native",
+						"fragment_id": "basin_fill_proof",
+						"input_receipt_id": "6",
+						"persona": "eazy_speezy",
+						"persona_goal_reached": true,
+						"record_hash": "48285e6393794861676d9710eb1afc17b35967c2b11806b31cdc49dd12a65434",
+						"run_decision_count": 10,
+						"run_id": "basin_fill_proof:eazy_speezy:102491012_1",
+						"seed": 1,
+						"summary_record_hash": "604e754673b71fc0ddd2fdf83e47744a5c1ed2e7579168e50f1f1debe0df4b77",
+						"trace_complete": true,
+						"trace_id": "basin_fill_proof:eazy_speezy:102491012_1",
+						"trace_integrity_verified": true,
+						"validation_check_count": 82,
+						"validation_checked_decision_count": 10,
+						"validation_contract_id": "native_basin_fill_proof_eazy_speezy_v2",
+						"validation_contract_version": 2,
+						"validation_execution_platform": "native",
+						"validation_failure_count": 0,
+						"validation_invocation_id": "native_persona_probe:bdd1ca5e3a94bf68a37e7bc160ce6a89db104db6588dfb68456e69c6818c1537",
+						"validation_passed": true,
+						"validation_record_hash": "d6d8f9395988f11b777bf72e605c840c6c1626f74bc9ea42b3fae8c5c9a5c3e9",
+						"validation_schema": "persona_strict_validation_v1",
+						"validation_validator_id": "godot_windowed_persona_probe",
+						"verdict": "supports"
+					},
+					{
+						"content_fingerprint": "8f38a2744b12d83114b26ccb49b47d47531b51cdfef45e28952d89c716574725",
+						"decision_index": 7,
+						"execution_platform": "native",
+						"fragment_id": "basin_fill_proof",
+						"input_receipt_id": "6",
+						"persona": "eazy_speezy",
+						"persona_goal_reached": true,
+						"record_hash": "75c43940251126ff9113f7430a5c4361f44cc2a89a1be6cc0620f69d763e9ef6",
+						"run_decision_count": 10,
+						"run_id": "basin_fill_proof:eazy_speezy:34393143_0",
+						"seed": 0,
+						"summary_record_hash": "5cd87d8107dfa8033ba5ce695877e008c0441c029523f7c3028d4fb7d159e673",
+						"trace_complete": true,
+						"trace_id": "basin_fill_proof:eazy_speezy:34393143_0",
+						"trace_integrity_verified": true,
+						"validation_check_count": 82,
+						"validation_checked_decision_count": 10,
+						"validation_contract_id": "native_basin_fill_proof_eazy_speezy_v2",
+						"validation_contract_version": 2,
+						"validation_execution_platform": "native",
+						"validation_failure_count": 0,
+						"validation_invocation_id": "native_persona_probe:bdd1ca5e3a94bf68a37e7bc160ce6a89db104db6588dfb68456e69c6818c1537",
+						"validation_passed": true,
+						"validation_record_hash": "2c768ac97da7b7af31fc793fd0507c61fdfb1e0ff6b9182d7f06f8e7340db2f3",
+						"validation_schema": "persona_strict_validation_v1",
+						"validation_validator_id": "godot_windowed_persona_probe",
+						"verdict": "supports"
+					},
+					{
+						"content_fingerprint": "76ca13b6c16e43263f9112d0de92c01567aaa96762e705a8113b4f7665be018e",
+						"decision_index": 5,
+						"execution_platform": "web",
+						"fragment_id": "basin_fill_proof",
+						"input_receipt_id": "basin_fill_proof:eazy_speezy:web_1_1:input:5",
+						"persona": "eazy_speezy",
+						"persona_goal_reached": true,
+						"record_hash": "e81f283b287b0347572a581a0ef89579095af7cfe379c7b92f664a85929b233b",
+						"run_decision_count": 8,
+						"run_id": "basin_fill_proof:eazy_speezy:web_1_1",
+						"seed": 1,
+						"summary_record_hash": "e93d5ad96313ad8dfd5c40ad3c1f9c288d8229fdedb206b544367a17c32b64a6",
+						"trace_complete": true,
+						"trace_id": "basin_fill_proof:eazy_speezy:web_1_1",
+						"trace_integrity_verified": true,
+						"validation_check_count": 4,
+						"validation_checked_decision_count": 8,
+						"validation_contract_id": "web_basin_fill_proof_eazy_speezy_v2",
+						"validation_contract_version": 2,
+						"validation_execution_platform": "web",
+						"validation_failure_count": 0,
+						"validation_invocation_id": "web_basin_fill_proof_repeat2_1785819343265_2563e2d0-9010-45d8-8897-9eebf051829c",
+						"validation_passed": true,
+						"validation_record_hash": "dc8c735b0b1e938a80ca224922e54f049e586383ff7f5c2e9a91d066edfbb3aa",
+						"validation_schema": "persona_strict_validation_v1",
+						"validation_validator_id": "playwright_persona_probe",
+						"verdict": "supports"
+					}
+				],
+				"support_count": 4
+			},
+			"id": "eazy_speezy_rally_full_party_to_visible_shelter",
 			"personas": [
 				"eazy_speezy"
 			],
-			"source": "sprint_gap_eazy_2026-07-31 (the 75hp retrieve leg)"
+			"policy": {
+				"action": {
+					"target_ref": "nearest_visible_ground_to_shelter_label",
+					"verb": "rally"
+				},
+				"condition": {
+					"all": [
+						{
+							"op": "contains",
+							"path": "visible_affordance_verbs",
+							"value": "REST PARTY"
+						},
+						{
+							"any": [
+								{
+									"op": "exists",
+									"path": "viewport_bins.top_center.0",
+									"value": true
+								},
+								{
+									"op": "exists",
+									"path": "viewport_bins.top_left.0",
+									"value": true
+								},
+								{
+									"op": "exists",
+									"path": "viewport_bins.middle_center.0",
+									"value": true
+								},
+								{
+									"op": "exists",
+									"path": "viewport_bins.top_right.0",
+									"value": true
+								},
+								{
+									"op": "exists",
+									"path": "viewport_bins.middle_right.0",
+									"value": true
+								},
+								{
+									"op": "exists",
+									"path": "viewport_bins.middle_left.0",
+									"value": true
+								},
+								{
+									"op": "exists",
+									"path": "viewport_bins.bottom_center.0",
+									"value": true
+								},
+								{
+									"op": "exists",
+									"path": "viewport_bins.bottom_right.0",
+									"value": true
+								},
+								{
+									"op": "exists",
+									"path": "viewport_bins.bottom_left.0",
+									"value": true
+								}
+							]
+						}
+					]
+				},
+				"expected": {
+					"op": "eq",
+					"path": "accepted",
+					"value": true
+				},
+				"priority": 68,
+				"scope": "fragment"
+			},
+			"policy_signature": "1ad2b209e794dabac397f06d2913f713ec4a089cbb8439ef65f27373ee895748",
+			"rule": "When REST PARTY is visible, gather the full party on the marked shelter with one held Rally before interacting.",
+			"status": "validated"
 		},
 		{
-			"id": "pursuit_defeats_medium_cover",
-			"rule": "A scarpet sheds an outer-range watcher, not a pursuer - once spotted, do not hold cover on the watch line; break instead.",
+			"eligible_for_automation": true,
+			"evidence": {
+				"contradiction_count": 0,
+				"distinct_content_count": 2,
+				"distinct_fragment_count": 1,
+				"distinct_persona_count": 1,
+				"distinct_run_count": 4,
+				"distinct_trace_count": 4,
+				"inadmissible_provenance_count": 0,
+				"provenance": [
+					{
+						"content_fingerprint": "8f38a2744b12d83114b26ccb49b47d47531b51cdfef45e28952d89c716574725",
+						"decision_index": 2,
+						"execution_platform": "native",
+						"fragment_id": "basin_fill_proof",
+						"input_receipt_id": "3",
+						"persona": "eazy_speezy",
+						"persona_goal_reached": true,
+						"record_hash": "6688ff7ff688e785fba5b7d2ff805e4c8eae4c59cfb16888fa27d51e1df4988f",
+						"run_decision_count": 10,
+						"run_id": "basin_fill_proof:eazy_speezy:102491012_1",
+						"seed": 1,
+						"summary_record_hash": "604e754673b71fc0ddd2fdf83e47744a5c1ed2e7579168e50f1f1debe0df4b77",
+						"trace_complete": true,
+						"trace_id": "basin_fill_proof:eazy_speezy:102491012_1",
+						"trace_integrity_verified": true,
+						"validation_check_count": 82,
+						"validation_checked_decision_count": 10,
+						"validation_contract_id": "native_basin_fill_proof_eazy_speezy_v2",
+						"validation_contract_version": 2,
+						"validation_execution_platform": "native",
+						"validation_failure_count": 0,
+						"validation_invocation_id": "native_persona_probe:bdd1ca5e3a94bf68a37e7bc160ce6a89db104db6588dfb68456e69c6818c1537",
+						"validation_passed": true,
+						"validation_record_hash": "d6d8f9395988f11b777bf72e605c840c6c1626f74bc9ea42b3fae8c5c9a5c3e9",
+						"validation_schema": "persona_strict_validation_v1",
+						"validation_validator_id": "godot_windowed_persona_probe",
+						"verdict": "supports"
+					},
+					{
+						"content_fingerprint": "76ca13b6c16e43263f9112d0de92c01567aaa96762e705a8113b4f7665be018e",
+						"decision_index": 1,
+						"execution_platform": "web",
+						"fragment_id": "basin_fill_proof",
+						"input_receipt_id": "basin_fill_proof:eazy_speezy:web_1_1:input:1",
+						"persona": "eazy_speezy",
+						"persona_goal_reached": true,
+						"record_hash": "74d2141c3e6267e5a4889ce4048384b9320a0ab989f435f272701845764d7a89",
+						"run_decision_count": 8,
+						"run_id": "basin_fill_proof:eazy_speezy:web_1_1",
+						"seed": 1,
+						"summary_record_hash": "e93d5ad96313ad8dfd5c40ad3c1f9c288d8229fdedb206b544367a17c32b64a6",
+						"trace_complete": true,
+						"trace_id": "basin_fill_proof:eazy_speezy:web_1_1",
+						"trace_integrity_verified": true,
+						"validation_check_count": 4,
+						"validation_checked_decision_count": 8,
+						"validation_contract_id": "web_basin_fill_proof_eazy_speezy_v2",
+						"validation_contract_version": 2,
+						"validation_execution_platform": "web",
+						"validation_failure_count": 0,
+						"validation_invocation_id": "web_basin_fill_proof_repeat2_1785819343265_2563e2d0-9010-45d8-8897-9eebf051829c",
+						"validation_passed": true,
+						"validation_record_hash": "dc8c735b0b1e938a80ca224922e54f049e586383ff7f5c2e9a91d066edfbb3aa",
+						"validation_schema": "persona_strict_validation_v1",
+						"validation_validator_id": "playwright_persona_probe",
+						"verdict": "supports"
+					},
+					{
+						"content_fingerprint": "76ca13b6c16e43263f9112d0de92c01567aaa96762e705a8113b4f7665be018e",
+						"decision_index": 1,
+						"execution_platform": "web",
+						"fragment_id": "basin_fill_proof",
+						"input_receipt_id": "basin_fill_proof:eazy_speezy:web_0_0:input:1",
+						"persona": "eazy_speezy",
+						"persona_goal_reached": true,
+						"record_hash": "b6e53c063bab6dc5f3dfc21fd193239170220d210ef8b6e56847cecb3021eada",
+						"run_decision_count": 8,
+						"run_id": "basin_fill_proof:eazy_speezy:web_0_0",
+						"seed": 0,
+						"summary_record_hash": "ae141650b207b2292415654f70ead9e30fb8fea313ae7ef9846fe0103041e15f",
+						"trace_complete": true,
+						"trace_id": "basin_fill_proof:eazy_speezy:web_0_0",
+						"trace_integrity_verified": true,
+						"validation_check_count": 4,
+						"validation_checked_decision_count": 8,
+						"validation_contract_id": "web_basin_fill_proof_eazy_speezy_v2",
+						"validation_contract_version": 2,
+						"validation_execution_platform": "web",
+						"validation_failure_count": 0,
+						"validation_invocation_id": "web_basin_fill_proof_repeat2_1785819343265_2563e2d0-9010-45d8-8897-9eebf051829c",
+						"validation_passed": true,
+						"validation_record_hash": "6079cbce4a76cff2c4a6f7d3cc7f9be95c7032c03e30b8bf3d0784e56ccc195c",
+						"validation_schema": "persona_strict_validation_v1",
+						"validation_validator_id": "playwright_persona_probe",
+						"verdict": "supports"
+					},
+					{
+						"content_fingerprint": "8f38a2744b12d83114b26ccb49b47d47531b51cdfef45e28952d89c716574725",
+						"decision_index": 2,
+						"execution_platform": "native",
+						"fragment_id": "basin_fill_proof",
+						"input_receipt_id": "3",
+						"persona": "eazy_speezy",
+						"persona_goal_reached": true,
+						"record_hash": "d2d0e7e9f904d35de1dd752dd25ee358a4217873cc3b36ecaf08c67c3ca3d07b",
+						"run_decision_count": 10,
+						"run_id": "basin_fill_proof:eazy_speezy:34393143_0",
+						"seed": 0,
+						"summary_record_hash": "5cd87d8107dfa8033ba5ce695877e008c0441c029523f7c3028d4fb7d159e673",
+						"trace_complete": true,
+						"trace_id": "basin_fill_proof:eazy_speezy:34393143_0",
+						"trace_integrity_verified": true,
+						"validation_check_count": 82,
+						"validation_checked_decision_count": 10,
+						"validation_contract_id": "native_basin_fill_proof_eazy_speezy_v2",
+						"validation_contract_version": 2,
+						"validation_execution_platform": "native",
+						"validation_failure_count": 0,
+						"validation_invocation_id": "native_persona_probe:bdd1ca5e3a94bf68a37e7bc160ce6a89db104db6588dfb68456e69c6818c1537",
+						"validation_passed": true,
+						"validation_record_hash": "2c768ac97da7b7af31fc793fd0507c61fdfb1e0ff6b9182d7f06f8e7340db2f3",
+						"validation_schema": "persona_strict_validation_v1",
+						"validation_validator_id": "godot_windowed_persona_probe",
+						"verdict": "supports"
+					}
+				],
+				"support_count": 4
+			},
+			"id": "eazy_speezy_rally_marked_deck_access",
+			"personas": [
+				"eazy_speezy"
+			],
+			"policy": {
+				"action": {
+					"target_ref": "matching_visible_ladder_route",
+					"verb": "rally"
+				},
+				"condition": {
+					"op": "contains",
+					"path": "visible_affordance_consequences",
+					"value": "ROUTE VIA LADDER"
+				},
+				"expected": {
+					"op": "eq",
+					"path": "accepted",
+					"value": true
+				},
+				"priority": 60,
+				"scope": "fragment"
+			},
+			"policy_signature": "64ed061c54155688a4dad11a0563b03b07a723ba03004ad3b8eb977b0f1e1aba",
+			"rule": "Eazy reads the visible instructions and rallies the full party toward the marked DECK ACCESS target in screen-space.",
+			"status": "validated"
+		},
+		{
+			"eligible_for_automation": true,
+			"evidence": {
+				"contradiction_count": 0,
+				"distinct_content_count": 2,
+				"distinct_fragment_count": 1,
+				"distinct_persona_count": 1,
+				"distinct_run_count": 4,
+				"distinct_trace_count": 4,
+				"inadmissible_provenance_count": 0,
+				"provenance": [
+					{
+						"content_fingerprint": "76ca13b6c16e43263f9112d0de92c01567aaa96762e705a8113b4f7665be018e",
+						"decision_index": 7,
+						"execution_platform": "web",
+						"fragment_id": "basin_fill_proof",
+						"input_receipt_id": "basin_fill_proof:eazy_speezy:web_0_0:input:7",
+						"persona": "eazy_speezy",
+						"persona_goal_reached": true,
+						"record_hash": "46c2e318afb19fcc57695e8454984a103dde61b3794c97fa01ae90fa6ac48df5",
+						"run_decision_count": 8,
+						"run_id": "basin_fill_proof:eazy_speezy:web_0_0",
+						"seed": 0,
+						"summary_record_hash": "ae141650b207b2292415654f70ead9e30fb8fea313ae7ef9846fe0103041e15f",
+						"trace_complete": true,
+						"trace_id": "basin_fill_proof:eazy_speezy:web_0_0",
+						"trace_integrity_verified": true,
+						"validation_check_count": 4,
+						"validation_checked_decision_count": 8,
+						"validation_contract_id": "web_basin_fill_proof_eazy_speezy_v2",
+						"validation_contract_version": 2,
+						"validation_execution_platform": "web",
+						"validation_failure_count": 0,
+						"validation_invocation_id": "web_basin_fill_proof_repeat2_1785819343265_2563e2d0-9010-45d8-8897-9eebf051829c",
+						"validation_passed": true,
+						"validation_record_hash": "6079cbce4a76cff2c4a6f7d3cc7f9be95c7032c03e30b8bf3d0784e56ccc195c",
+						"validation_schema": "persona_strict_validation_v1",
+						"validation_validator_id": "playwright_persona_probe",
+						"verdict": "supports"
+					},
+					{
+						"content_fingerprint": "8f38a2744b12d83114b26ccb49b47d47531b51cdfef45e28952d89c716574725",
+						"decision_index": 9,
+						"execution_platform": "native",
+						"fragment_id": "basin_fill_proof",
+						"input_receipt_id": "8",
+						"persona": "eazy_speezy",
+						"persona_goal_reached": true,
+						"record_hash": "ced6bfef94deff49839618ded51b281b05c4fb8cba82db380f1bac1d01ca3a17",
+						"run_decision_count": 10,
+						"run_id": "basin_fill_proof:eazy_speezy:34393143_0",
+						"seed": 0,
+						"summary_record_hash": "5cd87d8107dfa8033ba5ce695877e008c0441c029523f7c3028d4fb7d159e673",
+						"trace_complete": true,
+						"trace_id": "basin_fill_proof:eazy_speezy:34393143_0",
+						"trace_integrity_verified": true,
+						"validation_check_count": 82,
+						"validation_checked_decision_count": 10,
+						"validation_contract_id": "native_basin_fill_proof_eazy_speezy_v2",
+						"validation_contract_version": 2,
+						"validation_execution_platform": "native",
+						"validation_failure_count": 0,
+						"validation_invocation_id": "native_persona_probe:bdd1ca5e3a94bf68a37e7bc160ce6a89db104db6588dfb68456e69c6818c1537",
+						"validation_passed": true,
+						"validation_record_hash": "2c768ac97da7b7af31fc793fd0507c61fdfb1e0ff6b9182d7f06f8e7340db2f3",
+						"validation_schema": "persona_strict_validation_v1",
+						"validation_validator_id": "godot_windowed_persona_probe",
+						"verdict": "supports"
+					},
+					{
+						"content_fingerprint": "76ca13b6c16e43263f9112d0de92c01567aaa96762e705a8113b4f7665be018e",
+						"decision_index": 7,
+						"execution_platform": "web",
+						"fragment_id": "basin_fill_proof",
+						"input_receipt_id": "basin_fill_proof:eazy_speezy:web_1_1:input:7",
+						"persona": "eazy_speezy",
+						"persona_goal_reached": true,
+						"record_hash": "e0a370428e616c6399ec1b8838626cfaa14f2aeefeb1c47b4ec78b33d6279871",
+						"run_decision_count": 8,
+						"run_id": "basin_fill_proof:eazy_speezy:web_1_1",
+						"seed": 1,
+						"summary_record_hash": "e93d5ad96313ad8dfd5c40ad3c1f9c288d8229fdedb206b544367a17c32b64a6",
+						"trace_complete": true,
+						"trace_id": "basin_fill_proof:eazy_speezy:web_1_1",
+						"trace_integrity_verified": true,
+						"validation_check_count": 4,
+						"validation_checked_decision_count": 8,
+						"validation_contract_id": "web_basin_fill_proof_eazy_speezy_v2",
+						"validation_contract_version": 2,
+						"validation_execution_platform": "web",
+						"validation_failure_count": 0,
+						"validation_invocation_id": "web_basin_fill_proof_repeat2_1785819343265_2563e2d0-9010-45d8-8897-9eebf051829c",
+						"validation_passed": true,
+						"validation_record_hash": "dc8c735b0b1e938a80ca224922e54f049e586383ff7f5c2e9a91d066edfbb3aa",
+						"validation_schema": "persona_strict_validation_v1",
+						"validation_validator_id": "playwright_persona_probe",
+						"verdict": "supports"
+					},
+					{
+						"content_fingerprint": "8f38a2744b12d83114b26ccb49b47d47531b51cdfef45e28952d89c716574725",
+						"decision_index": 9,
+						"execution_platform": "native",
+						"fragment_id": "basin_fill_proof",
+						"input_receipt_id": "8",
+						"persona": "eazy_speezy",
+						"persona_goal_reached": true,
+						"record_hash": "fbed88293e9a33c11ee49c2e7b8435773b314e809c90a991e0b6c2fee81286ef",
+						"run_decision_count": 10,
+						"run_id": "basin_fill_proof:eazy_speezy:102491012_1",
+						"seed": 1,
+						"summary_record_hash": "604e754673b71fc0ddd2fdf83e47744a5c1ed2e7579168e50f1f1debe0df4b77",
+						"trace_complete": true,
+						"trace_id": "basin_fill_proof:eazy_speezy:102491012_1",
+						"trace_integrity_verified": true,
+						"validation_check_count": 82,
+						"validation_checked_decision_count": 10,
+						"validation_contract_id": "native_basin_fill_proof_eazy_speezy_v2",
+						"validation_contract_version": 2,
+						"validation_execution_platform": "native",
+						"validation_failure_count": 0,
+						"validation_invocation_id": "native_persona_probe:bdd1ca5e3a94bf68a37e7bc160ce6a89db104db6588dfb68456e69c6818c1537",
+						"validation_passed": true,
+						"validation_record_hash": "d6d8f9395988f11b777bf72e605c840c6c1626f74bc9ea42b3fae8c5c9a5c3e9",
+						"validation_schema": "persona_strict_validation_v1",
+						"validation_validator_id": "godot_windowed_persona_probe",
+						"verdict": "supports"
+					}
+				],
+				"support_count": 4
+			},
+			"id": "eazy_speezy_use_visible_exit_shelter",
+			"personas": [
+				"eazy_speezy"
+			],
+			"policy": {
+				"action": {
+					"target_ref": "matching_visible_interaction",
+					"verb": "interact"
+				},
+				"condition": {
+					"op": "contains",
+					"path": "visible_affordance_verbs",
+					"value": "REST PARTY"
+				},
+				"expected": {
+					"op": "eq",
+					"path": "accepted",
+					"value": true
+				},
+				"priority": 70,
+				"scope": "fragment"
+			},
+			"policy_signature": "9572dc52285ee1a0d55df5101806b647f8d53396021a4c678357ee0d022557d0",
+			"rule": "Eazy prioritizes the visible REST PARTY prompt before wandering to another floor target.",
+			"status": "validated"
+		},
+		{
+			"eligible_for_automation": false,
+			"evidence": {
+				"contradiction_count": 0,
+				"distinct_content_count": 0,
+				"distinct_fragment_count": 0,
+				"distinct_persona_count": 0,
+				"distinct_run_count": 0,
+				"distinct_trace_count": 0,
+				"inadmissible_provenance_count": 0,
+				"legacy_sources": [
+					"pump_hall_ai_2026-07-31 #14, #20"
+				],
+				"provenance": [],
+				"support_count": 0
+			},
+			"id": "exposure_beats_stamina",
 			"personas": [
 				"skumnut",
 				"eazy_speezy"
 			],
-			"source": "sprint_gap_eazy_2026-07-31 (the watcher walked over the scarpet in pursuit)"
+			"rule": "Run watched ground, walk safe ground; never start a watched leg below the stamina it costs.",
+			"source": "pump_hall_ai_2026-07-31 #14, #20",
+			"status": "legacy_unverified"
 		},
 		{
-			"id": "wake_before_group_rest",
-			"rule": "A sanctuary revive leaves the body in its own rest, which blocks the group bed-down - nudge everyone awake, settle, then commit the rest.",
+			"eligible_for_automation": false,
+			"evidence": {
+				"contradiction_count": 0,
+				"distinct_content_count": 0,
+				"distinct_fragment_count": 0,
+				"distinct_persona_count": 0,
+				"distinct_run_count": 0,
+				"distinct_trace_count": 0,
+				"inadmissible_provenance_count": 0,
+				"legacy_sources": [
+					"pump_hall_ai_2026-07-31 #21"
+				],
+				"provenance": [],
+				"support_count": 0
+			},
+			"id": "far_post_is_the_window",
+			"personas": [
+				"skumnut",
+				"eazy_speezy"
+			],
+			"rule": "When a room's owner stands at the far end of its observed walk, the window is open NOW — go; waiting for better spends it.",
+			"source": "pump_hall_ai_2026-07-31 #21",
+			"status": "legacy_unverified"
+		},
+		{
+			"eligible_for_automation": false,
+			"evidence": {
+				"contradiction_count": 0,
+				"distinct_content_count": 0,
+				"distinct_fragment_count": 0,
+				"distinct_persona_count": 0,
+				"distinct_run_count": 0,
+				"distinct_trace_count": 0,
+				"inadmissible_provenance_count": 0,
+				"legacy_sources": [
+					"pump_hall_ai_2026-07-31 #12 (the 75hp landing mistake)"
+				],
+				"provenance": [],
+				"support_count": 0
+			},
+			"id": "full_loop_before_crossing",
+			"personas": [
+				"skumnut"
+			],
+			"rule": "Patrol reach = walk line + detect + pursuit. Never extrapolate from partial samples; a dash is only legal once the loop is known.",
+			"source": "pump_hall_ai_2026-07-31 #12 (the 75hp landing mistake)",
+			"status": "legacy_unverified"
+		},
+		{
+			"eligible_for_automation": false,
+			"evidence": {
+				"contradiction_count": 0,
+				"distinct_content_count": 0,
+				"distinct_fragment_count": 0,
+				"distinct_persona_count": 0,
+				"distinct_run_count": 0,
+				"distinct_trace_count": 0,
+				"inadmissible_provenance_count": 0,
+				"legacy_sources": [
+					"pump_hall_ai_2026-07-31 #0-#2"
+				],
+				"provenance": [],
+				"support_count": 0
+			},
+			"id": "observe_from_cover",
+			"personas": [
+				"skumnut"
+			],
+			"rule": "Before committing to any route, hold at cover and sample every threat's walk until it stops surprising you (its observed extents stop growing).",
+			"source": "pump_hall_ai_2026-07-31 #0-#2",
+			"status": "legacy_unverified"
+		},
+		{
+			"eligible_for_automation": false,
+			"evidence": {
+				"contradiction_count": 0,
+				"distinct_content_count": 0,
+				"distinct_fragment_count": 0,
+				"distinct_persona_count": 0,
+				"distinct_run_count": 0,
+				"distinct_trace_count": 0,
+				"inadmissible_provenance_count": 0,
+				"legacy_sources": [
+					"pump_hall_ai_2026-07-31 #19 (two members parked beside the leaf)"
+				],
+				"provenance": [],
+				"support_count": 0
+			},
+			"id": "one_body_per_hide",
+			"personas": [
+				"skumnut"
+			],
+			"rule": "A Capbage conceals one body; route the party across hides one leaf each, or accept exposed escorts.",
+			"source": "pump_hall_ai_2026-07-31 #19 (two members parked beside the leaf)",
+			"status": "legacy_unverified"
+		},
+		{
+			"eligible_for_automation": false,
+			"evidence": {
+				"contradiction_count": 0,
+				"distinct_content_count": 0,
+				"distinct_fragment_count": 0,
+				"distinct_persona_count": 0,
+				"distinct_run_count": 0,
+				"distinct_trace_count": 0,
+				"inadmissible_provenance_count": 0,
+				"legacy_sources": [
+					"sprint_gap_eazy_2026-07-31 (the watcher walked over the scarpet in pursuit)"
+				],
+				"provenance": [],
+				"support_count": 0
+			},
+			"id": "pursuit_defeats_medium_cover",
+			"personas": [
+				"skumnut",
+				"eazy_speezy"
+			],
+			"rule": "A scarpet sheds an outer-range watcher, not a pursuer - once spotted, do not hold cover on the watch line; break instead.",
+			"source": "sprint_gap_eazy_2026-07-31 (the watcher walked over the scarpet in pursuit)",
+			"status": "legacy_unverified"
+		},
+		{
+			"eligible_for_automation": false,
+			"evidence": {
+				"contradiction_count": 0,
+				"distinct_content_count": 0,
+				"distinct_fragment_count": 0,
+				"distinct_persona_count": 0,
+				"distinct_run_count": 0,
+				"distinct_trace_count": 0,
+				"inadmissible_provenance_count": 0,
+				"legacy_sources": [
+					"sprint_gap_eazy_2026-07-31 #0-#10 (launched into the turn; windup at arm's length)"
+				],
+				"provenance": [],
+				"support_count": 0
+			},
+			"id": "read_the_heading",
+			"personas": [
+				"eazy_speezy",
+				"skumnut"
+			],
+			"rule": "The far post is only a window when the walk is heading AWAY - launching into a turnaround meets the sweep head-on. Heading beats distance.",
+			"source": "sprint_gap_eazy_2026-07-31 #0-#10 (launched into the turn; windup at arm's length)",
+			"status": "legacy_unverified"
+		},
+		{
+			"eligible_for_automation": false,
+			"evidence": {
+				"contradiction_count": 0,
+				"distinct_content_count": 0,
+				"distinct_fragment_count": 0,
+				"distinct_persona_count": 0,
+				"distinct_run_count": 0,
+				"distinct_trace_count": 0,
+				"inadmissible_provenance_count": 0,
+				"legacy_sources": [
+					"sprint_gap_eazy_2026-07-31 (the 75hp retrieve leg)"
+				],
+				"provenance": [],
+				"support_count": 0
+			},
+			"id": "sacrifice_is_not_a_timesave",
+			"personas": [
+				"eazy_speezy"
+			],
+			"rule": "A downed member costs the retrieve round-trip under watch plus the revive wait - always slower than the window you tried to skip.",
+			"source": "sprint_gap_eazy_2026-07-31 (the 75hp retrieve leg)",
+			"status": "legacy_unverified"
+		},
+		{
+			"eligible_for_automation": false,
+			"evidence": {
+				"contradiction_count": 0,
+				"distinct_content_count": 0,
+				"distinct_fragment_count": 0,
+				"distinct_persona_count": 0,
+				"distinct_run_count": 0,
+				"distinct_trace_count": 0,
+				"inadmissible_provenance_count": 0,
+				"legacy_sources": [
+					"pump_hall_ai_2026-07-31 #25-#30 (one rest, three refusals)"
+				],
+				"provenance": [],
+				"support_count": 0
+			},
+			"id": "settled_selected_adjacent_commit",
 			"personas": [
 				"skumnut",
 				"eazy_speezy",
 				"prod"
 			],
+			"rule": "A commit needs a settled body, a SELECTED character, standing within the interaction radius. Walk the actor to the console, wait a beat, then fire.",
+			"source": "pump_hall_ai_2026-07-31 #25-#30 (one rest, three refusals)",
+			"status": "legacy_unverified"
+		},
+		{
+			"eligible_for_automation": false,
+			"evidence": {
+				"contradiction_count": 0,
+				"distinct_content_count": 0,
+				"distinct_fragment_count": 0,
+				"distinct_persona_count": 0,
+				"distinct_run_count": 0,
+				"distinct_trace_count": 0,
+				"inadmissible_provenance_count": 0,
+				"legacy_sources": [
+					"sprint_gap_eazy_2026-07-31 (Endo is already resting)"
+				],
+				"provenance": [],
+				"support_count": 0
+			},
+			"id": "wake_before_group_rest",
+			"personas": [
+				"skumnut",
+				"eazy_speezy",
+				"prod"
+			],
+			"retired": "2026-07-31: the party rest now ABSORBS an in-shelter solo rester (director's pick; the sanctuary-revive rest yields to the group bed-down). Kept as history - the trace that motivated the rule change.",
+			"rule": "A sanctuary revive leaves the body in its own rest, which blocks the group bed-down - nudge everyone awake, settle, then commit the rest.",
 			"source": "sprint_gap_eazy_2026-07-31 (Endo is already resting)",
-			"retired": "2026-07-31: the party rest now ABSORBS an in-shelter solo rester (director's pick; the sanctuary-revive rest yields to the group bed-down). Kept as history - the trace that motivated the rule change."
+			"status": "retired"
 		}
-	]
+	],
+	"rejected_evidence": [],
+	"schema": "persona_decision_library_v2",
+	"trees": {
+		"dean_takahashi": {
+			"evaluation_order": [
+				"dean_takahashi_rally_unmarked_visible_floor"
+			],
+			"nodes": {
+				"dean_takahashi_rally_unmarked_visible_floor": {
+					"choose": {
+						"target_ref": "chosen_visible_ground",
+						"verb": "rally"
+					},
+					"evidence": {
+						"distinct_run_count": 4,
+						"support_count": 7
+					},
+					"expect": {
+						"any": [
+							{
+								"op": "eq",
+								"path": "accepted",
+								"value": true
+							},
+							{
+								"op": "eq",
+								"path": "status",
+								"value": "refused"
+							}
+						]
+					},
+					"priority": 40,
+					"scope": "fragment",
+					"when": {
+						"any": [
+							{
+								"op": "exists",
+								"path": "viewport_bins.top_center.0",
+								"value": true
+							},
+							{
+								"op": "exists",
+								"path": "viewport_bins.top_left.0",
+								"value": true
+							},
+							{
+								"op": "exists",
+								"path": "viewport_bins.middle_center.0",
+								"value": true
+							},
+							{
+								"op": "exists",
+								"path": "viewport_bins.top_right.0",
+								"value": true
+							},
+							{
+								"op": "exists",
+								"path": "viewport_bins.middle_right.0",
+								"value": true
+							},
+							{
+								"op": "exists",
+								"path": "viewport_bins.middle_left.0",
+								"value": true
+							},
+							{
+								"op": "exists",
+								"path": "viewport_bins.bottom_center.0",
+								"value": true
+							},
+							{
+								"op": "exists",
+								"path": "viewport_bins.bottom_right.0",
+								"value": true
+							},
+							{
+								"op": "exists",
+								"path": "viewport_bins.bottom_left.0",
+								"value": true
+							}
+						]
+					}
+				}
+			},
+			"schema": "persona_policy_tree_v1"
+		},
+		"eazy_speezy": {
+			"evaluation_order": [
+				"eazy_speezy_arm_visible_mid_console",
+				"eazy_speezy_use_visible_exit_shelter",
+				"eazy_speezy_rally_full_party_to_visible_shelter",
+				"eazy_speezy_rally_marked_deck_access"
+			],
+			"nodes": {
+				"eazy_speezy_arm_visible_mid_console": {
+					"choose": {
+						"target_ref": "matching_visible_interaction",
+						"verb": "interact"
+					},
+					"evidence": {
+						"distinct_run_count": 4,
+						"support_count": 4
+					},
+					"expect": {
+						"op": "eq",
+						"path": "accepted",
+						"value": true
+					},
+					"priority": 70,
+					"scope": "fragment",
+					"when": {
+						"op": "contains",
+						"path": "visible_affordance_verbs",
+						"value": "UPPER DECK > ARM NEXT MID"
+					}
+				},
+				"eazy_speezy_rally_full_party_to_visible_shelter": {
+					"choose": {
+						"target_ref": "nearest_visible_ground_to_shelter_label",
+						"verb": "rally"
+					},
+					"evidence": {
+						"distinct_run_count": 4,
+						"support_count": 4
+					},
+					"expect": {
+						"op": "eq",
+						"path": "accepted",
+						"value": true
+					},
+					"priority": 68,
+					"scope": "fragment",
+					"when": {
+						"all": [
+							{
+								"op": "contains",
+								"path": "visible_affordance_verbs",
+								"value": "REST PARTY"
+							},
+							{
+								"any": [
+									{
+										"op": "exists",
+										"path": "viewport_bins.top_center.0",
+										"value": true
+									},
+									{
+										"op": "exists",
+										"path": "viewport_bins.top_left.0",
+										"value": true
+									},
+									{
+										"op": "exists",
+										"path": "viewport_bins.middle_center.0",
+										"value": true
+									},
+									{
+										"op": "exists",
+										"path": "viewport_bins.top_right.0",
+										"value": true
+									},
+									{
+										"op": "exists",
+										"path": "viewport_bins.middle_right.0",
+										"value": true
+									},
+									{
+										"op": "exists",
+										"path": "viewport_bins.middle_left.0",
+										"value": true
+									},
+									{
+										"op": "exists",
+										"path": "viewport_bins.bottom_center.0",
+										"value": true
+									},
+									{
+										"op": "exists",
+										"path": "viewport_bins.bottom_right.0",
+										"value": true
+									},
+									{
+										"op": "exists",
+										"path": "viewport_bins.bottom_left.0",
+										"value": true
+									}
+								]
+							}
+						]
+					}
+				},
+				"eazy_speezy_rally_marked_deck_access": {
+					"choose": {
+						"target_ref": "matching_visible_ladder_route",
+						"verb": "rally"
+					},
+					"evidence": {
+						"distinct_run_count": 4,
+						"support_count": 4
+					},
+					"expect": {
+						"op": "eq",
+						"path": "accepted",
+						"value": true
+					},
+					"priority": 60,
+					"scope": "fragment",
+					"when": {
+						"op": "contains",
+						"path": "visible_affordance_consequences",
+						"value": "ROUTE VIA LADDER"
+					}
+				},
+				"eazy_speezy_use_visible_exit_shelter": {
+					"choose": {
+						"target_ref": "matching_visible_interaction",
+						"verb": "interact"
+					},
+					"evidence": {
+						"distinct_run_count": 4,
+						"support_count": 4
+					},
+					"expect": {
+						"op": "eq",
+						"path": "accepted",
+						"value": true
+					},
+					"priority": 70,
+					"scope": "fragment",
+					"when": {
+						"op": "contains",
+						"path": "visible_affordance_verbs",
+						"value": "REST PARTY"
+					}
+				}
+			},
+			"schema": "persona_policy_tree_v1"
+		}
+	}
 }

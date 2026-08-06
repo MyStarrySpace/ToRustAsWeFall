@@ -164,6 +164,8 @@ func activate() -> void:
 		_fsm.set_scheduler(_get_scheduler())
 	if game_state and not game_state.detection_predicted.is_connected(_on_detection_predicted):
 		game_state.detection_predicted.connect(_on_detection_predicted)
+	if game_state and not game_state.character_arrived.is_connected(_on_gs_arrived):
+		game_state.character_arrived.connect(_on_gs_arrived)
 	if game_state != null:
 		if game_state.has_method("set_coop_exempt"):
 			game_state.set_coop_exempt(char_id, not cooperative_navigation)
@@ -706,10 +708,15 @@ func _sync_enemy_presenter_position() -> void:
 	if game_state == null or not game_state.characters.has(char_id):
 		return
 	var restored_pos := game_state.get_render_position(char_id)
-	if game_state.coord_map != null or game_state.is_external_traversal_active(char_id):
-		global_position = restored_pos
-	else:
-		global_position = Vector3(restored_pos.x, global_position.y, restored_pos.z)
+	# The visual's local transform supplies its body lift; the root mirrors the complete
+	# authoritative feet position so snapshot restores cannot retain a stale floor Y.
+	global_position = restored_pos
+
+func _on_gs_arrived(id: String) -> void:
+	if id == char_id:
+		# GameState clears movement before the next process frame. Snap on the derived
+		# arrival event so the presenter cannot retain the previous interpolation sample.
+		_sync_enemy_presenter_position()
 
 func _kill_enemy_presentation_tweens() -> void:
 	for tween in [_anim_tween, _flash_tween, _recover_tween, _fade_tween]:
@@ -927,6 +934,12 @@ func _on_detection_predicted(detector_id: String, target_id: String) -> void:
 	if detector_id != char_id:
 		return
 	if target_id not in _detection_targets:
+		return
+	# A prediction is a scheduled forecast, not acquisition authority. Terrain concealment and
+	# effective range can change before delivery (notably at a Candid boundary), so defend the
+	# consumer as well as GameState's emitter against stale queued detections.
+	if game_state == null or not game_state.is_detection_pair_currently_visible(
+			detector_id, target_id):
 		return
 	# Only respond to detections when in a scanning state (roaming / searching / returning still see).
 	if get_state() not in ["idle", "roam", "patrol", "lured", "search", "return"]:
@@ -1572,7 +1585,7 @@ func _update_threat_marker() -> void:
 			tint = Color(1.0, 0.02, 0.01)
 			speed = 4.2
 			energy_base = 4.0
-	var now := float(Time.get_ticks_msec()) * 0.001
+	var now := float(Time.get_ticks_msec()) * 0.001 # @rendering_only
 	var pulse := 0.5 + 0.5 * sin(now * (5.0 + absf(speed) * 2.0))
 	var urgent := state in ["alert", "pursuit", "windup", "charge", "impact"]
 	_threat_marker.rotation.y = now * speed
@@ -1662,8 +1675,7 @@ func _process(_delta: float) -> void:
 		if game_state.coord_map != null or game_state.is_external_traversal_active(char_id):
 			global_position = game_state.get_render_position(char_id)
 		elif game_state.is_moving(char_id):
-			var pos := game_state.get_render_position(char_id)
-			global_position = Vector3(pos.x, global_position.y, pos.z)
+			global_position = game_state.get_render_position(char_id)
 	PerformanceTrace.end(&"update", &"enemy.process", perf_started, char_id, 1)
 
 func _stop_movement() -> void:

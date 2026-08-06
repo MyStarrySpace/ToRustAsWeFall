@@ -295,7 +295,7 @@ permanently dead members are excluded.
   - [BUILD] (new-mechanic) Inter-enemy interaction matrix (13 species; enemy-on-enemy resolution) — _resolve_strike is enemy→party only today; every matrix edge must be scheduler-analytic or FF invariance breaks
   - [BUILD] (generator-constraint) Deployment sub-archetype schema in content_palette.json (per-enemy, per-biome: hiding_spots, cover, affordances, ways_to_deal)
   - [BUILD] (new-mechanic) Seefern reveal layer exposing invisible enemies (Redactor outlines) within a glow radius
-  - [BUILD] (content-pattern) Distribution-as-history dressing (dead Spikers where Tanglers fed, Flare corpses under Naturalizers) — use the CANONICAL renamed roster — Sapscraps/Aembers/Flares/Redactors per fauna_roster.md
+  - [BUILD] (content-pattern) Distribution-as-history dressing (dead Spikers where Tanglers fed, Flare corpses under Naturalizers) — use the CANONICAL renamed roster — Sapscraps/Ferrules/Flares/Redactors per fauna_roster.md
 
 ### P14-flora-one-verb
 
@@ -517,6 +517,15 @@ its preview surface. CONSEQUENCES — teleports, damage, revives, floor changes 
 objects (loader object kinds, Enemy behaviors, Channel, CrawlTunnel...), where the player can see
 the mechanism that did it to them. When the kit lacks a verb, EXTEND THE KIT (the Enemy
 return-to-post default was born exactly this way), never script around it.
+
+**The presentation law:** a kit consequence is not complete when authority merely reaches the
+correct endpoint. Every player-facing state change carries a portable cause/effect receipt and is
+legible before, during, and after commitment: source/timing telegraph, authoritative active cue,
+then destination/state aftermath. Forced motion must read as involuntary motion, not an ordinary
+walk. Scene-level presentation controllers consume receipts consistently across campaign, preview,
+save/load, replay, and Web; chunk scripts do not author one-off camera or HUD explanations.
+Bookkeeping may be silent only with a named reason. Release tests must exercise a representative
+failure path and sample all three visual phases; transform parity by itself is insufficient.
 
 **The guard:** `--test-chunk-mutation-discipline` (in --test-all) freezes the existing debt per
 (file, mutator) exactly — a new bespoke consequence goes red naming the file and the remedy, and

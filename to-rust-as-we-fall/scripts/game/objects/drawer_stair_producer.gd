@@ -353,6 +353,18 @@ func _build_index_lever(index_id: String, spec: Dictionary) -> void:
 	source.bind_data(_game_state, index_interactable_id(index_id))
 	_lever_sources[index_id] = source
 
+	# The reusable archive terminal is the visible cause, while `source` owns the exact interaction
+	# receipt. Wrap that mesh in the shared surface target so hover/click feedback stays visible no
+	# matter whether the physics ray finds the mesh hull or the source Area first.
+	var manager := OutlineFeedbackManager.ensure(self)
+	if manager != null:
+		var outline := manager.outline_meshes(
+			self, "%sIndexLeverOutline" % index_id.to_pascal_case(), [mesh],
+			index_interactable_id(index_id), maxf(1.0, _interaction_radius))
+		if outline != null:
+			outline.set_interaction_delegate(source)
+			source.set_outline_target(outline)
+
 
 func _register_index_source(index_id: String, position: Vector3) -> void:
 	var source_id := index_interactable_id(index_id)

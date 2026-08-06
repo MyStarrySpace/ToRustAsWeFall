@@ -177,7 +177,7 @@ func _run() -> void:
 		"disabled mouse camera ignores wheel zoom")
 	camera.call("_unhandled_input", middle)
 	_check(camera.get("_panning") == false, "disabled mouse camera cannot begin drag-pan")
-	Input.warp_mouse(Vector2.ZERO)
+	_inject_pointer_motion(Vector2.ZERO)
 	await get_tree().process_frame
 	var pan_before: Vector3 = camera.get("_pan_offset")
 	camera.call("_process", 0.5)
@@ -199,7 +199,7 @@ func _run() -> void:
 	camera.call("_unhandled_input", wheel)
 	_check(float(camera.get("_view_zoom")) < manual_zoom_before,
 		"explicitly replayed human mouse input remains available under the manual artifact policy")
-	Input.warp_mouse(get_viewport().get_visible_rect().size * 0.5)
+	_inject_pointer_motion(get_viewport().get_visible_rect().size * 0.5)
 
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(artifact_path))
 	print("[PLAYTHROUGH_VERIFY] %s (%d checks)" % [
@@ -207,6 +207,13 @@ func _run() -> void:
 		_checks,
 	])
 	get_tree().quit(0 if _failures == 0 else 1)
+
+
+func _inject_pointer_motion(position: Vector2) -> void:
+	var motion := InputEventMouseMotion.new()
+	motion.position = position
+	motion.global_position = position
+	Input.parse_input_event(motion)
 
 func _check(condition: bool, label: String) -> void:
 	_checks += 1

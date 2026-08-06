@@ -4,7 +4,8 @@ extends SceneTree
 ## advances the clock, and every awaited frame is one written movie frame,
 ## so the recording is deterministic at the fixed fps.
 ##
-##   ../Godot_v4.7-stable_win64_console.exe --path "." \
+## Isolated-display launch only; see tools/README.md:
+##   godot --path "." \
 ##       --write-movie <out.avi> --fixed-fps 30 --resolution 1280x720 \
 ##       --script tools/record_playthrough.gd
 ##

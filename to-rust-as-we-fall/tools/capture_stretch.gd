@@ -1,7 +1,8 @@
 extends SceneTree
 
 ## Dev capture: force-build the elevator's below-deck stretch chunks and screenshot the tiling.
-##   ../Godot_v4.6.1-stable_win64_console.exe --path "." --script res://tools/capture_stretch.gd
+## Isolated-display launch only; see tools/README.md:
+##   godot --path "." --script res://tools/capture_stretch.gd
 
 func _init() -> void:
 	DisplayServer.window_set_size(Vector2i(1360, 820))

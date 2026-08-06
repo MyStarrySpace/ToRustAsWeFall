@@ -478,6 +478,8 @@ func _build_junction_room() -> void:
 	_take_sac_it = _add_interactable(self, "TakeSac", "Take the swollen gas sac",
 		SAC_SOURCE_POS, "TAKE SAC", "", 0.8, true, 1.4,
 		Interactable.InteractableType.INSPECTION, false)
+	_take_sac_it.set_meta(
+		"outline_visibility_contract", "concealed_until_enabled")
 	_configure_inflammashunt_source(_take_sac_it, ACTION_TAKE_SAC)
 	# 7. the terminal (hack = read-only diagnostics; the reset command is the trap)
 	_terminal_it = _add_interactable(self, "JunctionTerminal", "Hack the maintenance terminal",
@@ -511,6 +513,8 @@ func _build_junction_room() -> void:
 		"Lift the warm Resolution Catalyst from its housing",
 		DEVICE_SOURCE_POS, "TAKE DEVICE", "", 0.8, true, 1.35,
 		Interactable.InteractableType.INSPECTION, false)
+	_device_it.set_meta(
+		"outline_visibility_contract", "concealed_until_enabled")
 	_configure_inflammashunt_source(_device_it, ACTION_TAKE_DEVICE)
 	_ensure_device_source_item()
 	var grate := _add_box(self, GRATE_POS + Vector3(0, 0.02, 0), Vector3(2.2, 0.05, 2.2), Color(0.12, 0.13, 0.14))
@@ -900,10 +904,56 @@ func _project_inflammashunt_source(action_id: String) -> void:
 	var triggered := bool(spec.get("triggered", false))
 	if should_enable and triggered:
 		_rearm_inflammashunt_source(source)
+		_sync_revealed_pickup_outline(action_id, source, true)
 		return
 	gs.set_interactable_enabled(data_id, should_enable)
 	if source.has_method("restore_one_shot_presenter"):
 		source.restore_one_shot_presenter(triggered, should_enable)
+	_sync_revealed_pickup_outline(action_id, source, should_enable)
+
+
+func _sync_revealed_pickup_outline(
+		action_id: String,
+		source: Node,
+		enabled: bool
+	) -> void:
+	if action_id not in [ACTION_TAKE_SAC, ACTION_TAKE_DEVICE] \
+			or not (source is Node3D) or not is_instance_valid(source):
+		return
+	if not enabled:
+		_clear_interactable_outline_target(source)
+		return
+	var item_id := _sac_item_id if action_id == ACTION_TAKE_SAC else _device_item_id
+	var target := _outline_item_source_interactable(
+		source as Node3D,
+		item_id,
+		"TakeSac" if action_id == ACTION_TAKE_SAC else "InflammashuntDevice",
+		1.4 if action_id == ACTION_TAKE_SAC else 1.35
+	)
+	# PartyItemController normally materializes the presenter synchronously. The
+	# deferred retry covers snapshot reconstruction without inventing a parallel
+	# pickup visual or exposing an invisible click body in the interim.
+	if target == null and is_inside_tree():
+		call_deferred(
+			"_retry_revealed_pickup_outline", action_id, source, item_id)
+
+
+func _retry_revealed_pickup_outline(
+		action_id: String,
+		source: Node,
+		expected_item_id: String
+	) -> void:
+	if not is_instance_valid(source) or not bool(source.get("interaction_enabled")):
+		return
+	var live_item_id := _sac_item_id if action_id == ACTION_TAKE_SAC else _device_item_id
+	if live_item_id != expected_item_id:
+		return
+	_outline_item_source_interactable(
+		source as Node3D,
+		live_item_id,
+		"TakeSac" if action_id == ACTION_TAKE_SAC else "InflammashuntDevice",
+		1.4 if action_id == ACTION_TAKE_SAC else 1.35
+	)
 
 
 func _inflammashunt_source_should_enable(action_id: String) -> bool:

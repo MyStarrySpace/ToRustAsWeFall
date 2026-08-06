@@ -84,11 +84,24 @@ func basis_at(s: float) -> Basis:
 func to_world(p: Vector3) -> Vector3:
 	return arc_pos(p.x - s_offset, p.z - lane_center) + Vector3.UP * (p.y - y0)
 
-## Warped world point (e.g. a clicked deck) -> flat data point. Returns the deck-base Y (y0); the caller keeps its
-## own level (a click snaps to a cell on the character's current floor), so the small per-level lift is discarded.
+## Warped world point (e.g. a clicked deck) -> flat data point on the base floor.
+## Multi-level pointer hits must use `to_data_on_surface()` with the typed Y carried
+## by the floor collider. Inferring the turn before removing that floor's lift can
+## select a different helix coil even when X/Z are identical.
 func to_data(w: Vector3) -> Vector3:
-	var r := world_to_arc(w)
-	return Vector3(float(r["s"]) + s_offset, y0, float(r["lane"]) + lane_center)
+	return to_data_on_surface(w, y0)
+
+
+## Inverse for a point known to lie on a typed data-space floor. `to_world()` adds
+## `(data_y - y0)` after evaluating the helix, so the exact inverse must remove
+## that lift before `world_to_arc()` uses world Y to choose the wrapped turn.
+func to_data_on_surface(w: Vector3, data_y: float) -> Vector3:
+	var base_world := w - Vector3.UP * (data_y - y0)
+	var r := world_to_arc(base_world)
+	return Vector3(
+		float(r["s"]) + s_offset,
+		data_y,
+		float(r["lane"]) + lane_center)
 
 ## Upright render orientation at a flat data point (facing along the helix +s tangent).
 func to_basis(p: Vector3) -> Basis:

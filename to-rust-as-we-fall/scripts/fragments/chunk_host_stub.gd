@@ -43,6 +43,18 @@ func get_preview_scheduler_tick() -> float:
 func get_preview_active_character() -> String:
 	return active_character
 
+func get_preview_available_party_ids() -> Array:
+	var result: Array = []
+	if game_state == null:
+		return result
+	for cid_v in game_state.get_party():
+		var cid := str(cid_v)
+		if game_state.characters.has(cid) \
+				and game_state.is_narratively_available(cid) \
+				and not game_state.is_downed(cid):
+			result.append(cid)
+	return result
+
 func set_preview_active_character(char_id: String) -> void:
 	active_character = char_id
 

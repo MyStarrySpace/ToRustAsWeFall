@@ -2,6 +2,11 @@
 .godot/
 /android/
 
+# Browser release-test dependencies and failure artifacts.
+/node_modules/
+/test-results/
+/playwright-report/
+
 # Godot binaries (kept at project root, outside this dir)
 *.exe
 

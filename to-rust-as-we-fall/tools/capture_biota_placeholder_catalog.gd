@@ -3,7 +3,8 @@ extends SceneTree
 ## Renders the editor catalog as an art-review lineup. This staging geometry is tooling-only and
 ## never enters a gameplay scene.
 ##
-##   OUT_DIR=<scratchpad> ..\Godot_v4.6.1-stable_win64_console.exe --path . \
+## Isolated-display launch only; see tools/README.md:
+##   OUT_DIR=<scratchpad> godot --path . \
 ##     --script res://tools/capture_biota_placeholder_catalog.gd
 
 const CATALOG_SCENE := "res://scenes/props/biota/placeholder_biota_catalog.tscn"

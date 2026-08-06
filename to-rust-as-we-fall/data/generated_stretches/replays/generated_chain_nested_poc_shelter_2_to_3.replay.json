@@ -25,7 +25,7 @@
 				"category": "flora",
 				"cell": [
 					6,
-					0
+					1
 				],
 				"kind": "scarpet",
 				"level": 0,
@@ -55,7 +55,7 @@
 				"category": "flora",
 				"cell": [
 					38,
-					0
+					1
 				],
 				"kind": "scarpet",
 				"level": 0,
@@ -65,7 +65,7 @@
 				"category": "flora",
 				"cell": [
 					45,
-					0
+					1
 				],
 				"kind": "hushbloom",
 				"level": 0,
@@ -396,6 +396,10 @@
 					"action": "activate",
 					"activation_policy": "interact_at_producer",
 					"before_node": "node_04",
+					"before_nodes": [
+						"node_03",
+						"node_04"
+					],
 					"branch_id": "branch_00",
 					"cannot_bypass_unresolved": true,
 					"consumer_cell": [
@@ -602,6 +606,10 @@
 						"action": "activate",
 						"activation_policy": "interact_at_producer",
 						"before_node": "node_04",
+						"before_nodes": [
+							"node_03",
+							"node_04"
+						],
 						"branch_id": "branch_00",
 						"cannot_bypass_unresolved": true,
 						"consumer_cell": [
@@ -1110,6 +1118,10 @@
 					"action": "activate",
 					"activation_policy": "interact_at_producer",
 					"before_node": "node_04",
+					"before_nodes": [
+						"node_03",
+						"node_04"
+					],
 					"branch_id": "branch_00",
 					"cannot_bypass_unresolved": true,
 					"consumer_cell": [
@@ -1252,6 +1264,10 @@
 						"action": "activate",
 						"activation_policy": "interact_at_producer",
 						"before_node": "node_04",
+						"before_nodes": [
+							"node_03",
+							"node_04"
+						],
 						"branch_id": "branch_00",
 						"cannot_bypass_unresolved": true,
 						"consumer_cell": [

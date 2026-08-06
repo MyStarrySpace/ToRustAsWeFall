@@ -28,6 +28,9 @@ var _next_bite_tick := -1.0
 var _pending_batch: Dictionary = {}
 var _batch_resume_armed := false
 var _restoring := false
+var _cadence_rearm_source := ""
+var _cadence_rearm_cue := ""
+var _cadence_rearm_tick := -1.0
 
 ## rect_min/rect_max are world-XZ corners. opts: dps_tick, interval, tag,
 ## target_filter(id, position) -> bool, on_bite(id) -> void, restore_existing_authority.
@@ -51,6 +54,7 @@ func setup(gs, scheduler, rect_min: Vector2, rect_max: Vector2, ids: Array, opts
 	_target_filter = opts.get("target_filter", Callable())
 	if bool(opts.get("restore_existing_authority", false)) and restore_from_authority():
 		return
+	_clear_cadence_rearm_provenance()
 	_active = was_active
 	if _active:
 		_arm_bite_at(_scheduler_tick() + _interval)
@@ -61,11 +65,31 @@ func set_active(on: bool) -> void:
 		return
 	_active = on
 	_cancel_derived_callbacks()
+	_clear_cadence_rearm_provenance()
 	if _pending_batch.is_empty():
 		_next_bite_tick = -1.0
 	if on and _pending_batch.is_empty():
 		_arm_bite_at(_scheduler_tick() + _interval)
 	_publish_authoritative_state()
+
+
+## Rebase an already-visible field's next pulse from a player-facing mechanism
+## commitment. Unlike set_active(false/true), this never creates an unrenderable
+## off/on state between frames. The source and cue remain in portable authority so
+## presentation and replay can explain why this cadence starts at this tick.
+func rearm_cadence_from_visible_commitment(
+		source_id: StringName, cue_id: StringName) -> bool:
+	if not _active or _scheduler == null or _gs == null \
+			or not _pending_batch.is_empty() \
+			or String(source_id).is_empty() or String(cue_id).is_empty():
+		return false
+	_cancel_derived_callbacks()
+	_cadence_rearm_source = String(source_id)
+	_cadence_rearm_cue = String(cue_id)
+	_cadence_rearm_tick = _scheduler_tick()
+	_arm_bite_at(_cadence_rearm_tick + _interval)
+	_publish_authoritative_state()
+	return true
 
 func is_active() -> bool:
 	return _active
@@ -198,6 +222,9 @@ func get_state() -> Dictionary:
 		"interval": _interval,
 		"damage_per_bite": _dps_tick,
 		"pending_batch": _pending_batch.duplicate(true),
+		"cadence_rearm_source": _cadence_rearm_source,
+		"cadence_rearm_cue": _cadence_rearm_cue,
+		"cadence_rearm_tick": _cadence_rearm_tick,
 	}
 
 
@@ -225,6 +252,12 @@ func restore_state(snapshot: Dictionary) -> bool:
 	_active = bool(snapshot.get("active", false))
 	_pending_batch = (snapshot.get("pending_batch", {}) as Dictionary).duplicate(true) \
 		if contract == STATE_CONTRACT else {}
+	_cadence_rearm_source = str(snapshot.get("cadence_rearm_source", "")) \
+		if contract == STATE_CONTRACT else ""
+	_cadence_rearm_cue = str(snapshot.get("cadence_rearm_cue", "")) \
+		if contract == STATE_CONTRACT else ""
+	_cadence_rearm_tick = float(snapshot.get("cadence_rearm_tick", -1.0)) \
+		if contract == STATE_CONTRACT else -1.0
 	_bite_armed = false
 	_next_bite_tick = float(snapshot.get("next_bite_tick", -1.0))
 	if not _pending_batch.is_empty():
@@ -265,6 +298,7 @@ func on_game_state_snapshot_restored() -> void:
 	_cancel_bite()
 	_pending_batch.clear()
 	_active = false
+	_clear_cadence_rearm_provenance()
 
 
 func _arm_bite_at(deadline: float) -> void:
@@ -310,6 +344,12 @@ func _batch_resume_tag() -> String:
 
 func _scheduler_tick() -> float:
 	return float(_scheduler.get_current_tick()) if _scheduler != null else 0.0
+
+
+func _clear_cadence_rearm_provenance() -> void:
+	_cadence_rearm_source = ""
+	_cadence_rearm_cue = ""
+	_cadence_rearm_tick = -1.0
 
 
 func _publish_authoritative_state() -> void:

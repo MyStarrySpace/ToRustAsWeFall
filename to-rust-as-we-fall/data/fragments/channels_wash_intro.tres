@@ -10,9 +10,9 @@ help = "The hunters guard the way down. Light the flure to draw them into the ch
 default_character = "endo"
 party_ids = PackedStringArray("aster", "peris", "endo")
 spawns = {
-"aster": Vector3(3.5, 0.5, 1.5),
-"endo": Vector3(2.5, 0.5, -1.5),
-"peris": Vector3(2.5, 0.5, 0.5)
+"aster": Vector3(3.5, 0, 1.5),
+"endo": Vector3(2.5, 0, -1.5),
+"peris": Vector3(2.5, 0, 0.5)
 }
 floors = Array[Dictionary]([{
 "color": Color(0.34, 0.36, 0.4, 1),
@@ -210,5 +210,5 @@ params = {
 "exit_radius": 3.75,
 "flure_attract": 32.0,
 "restart_on_wipe": true,
-"wash_back_pos": Vector3(2.5, 0.5, 0.5)
+"wash_back_pos": Vector3(2.5, 0, 0.5)
 }

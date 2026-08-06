@@ -2,6 +2,7 @@ extends SceneTree
 
 ## Art-review capture for the presentation-only Shelter 2 cutscene shell.
 ## The floor and WorldEnvironment are capture-only; runtime supplies the generated shelter.
+## Isolated-display launch only; see tools/README.md.
 
 const SCENE_PATH := "res://scenes/tutorial/shelter_2_aster_stim_cutscene.tscn"
 const STAGING_CLIP := "shelter_2_staging"

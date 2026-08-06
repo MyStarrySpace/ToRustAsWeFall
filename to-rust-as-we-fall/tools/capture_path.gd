@@ -1,8 +1,8 @@
 extends SceneTree
 
 ## Dev capture: draw a PathRenderer's line over a floor and screenshot it, to see whether the
-## movement path is visible at all. Run WITH a display:
-##   ../Godot_v4.6.1-stable_win64_console.exe --path "." --script res://tools/capture_path.gd
+## movement path is visible at all. Isolated-display launch only; see tools/README.md:
+##   godot --path "." --script res://tools/capture_path.gd
 
 const PathRendererScript := preload("res://scripts/game/world/path_renderer.gd")
 

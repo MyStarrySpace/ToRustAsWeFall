@@ -17,22 +17,29 @@ Puzzle fragments are small, reusable level beats that can be tested on their own
 
 ## Headless Commands
 
+Set `GODOT_BIN` to the Godot 4.7 console executable for focused commands.
+Required suite/release validation uses the tracked launcher documented in
+[`docs/TESTING.md`](../../docs/TESTING.md), not the ignored workstation-only
+`godot.bat`.
+
 Run the whole fragment suite:
 
 ```powershell
-& ..\godot.bat --headless --path . -- --test-puzzle-fragments
+& $env:GODOT_BIN --headless --path . -- --test-puzzle-fragments
 ```
 
 Run one fragment by id:
 
 ```powershell
-& ..\godot.bat --headless --path . -- --test-puzzle-fragment hide_lane
+& $env:GODOT_BIN --headless --path . -- --test-puzzle-fragment hide_lane
 ```
 
 Fragments also run inside:
 
 ```powershell
-& ..\godot.bat --headless --path . -- --test-all
+Push-Location ..
+& .\scripts\test-gate.ps1 -Tier Headless
+Pop-Location
 ```
 
 ## Catalog Shape

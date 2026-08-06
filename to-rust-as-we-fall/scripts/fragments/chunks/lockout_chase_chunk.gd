@@ -17,8 +17,8 @@ signal tags_rejected
 ## reference-docs/chase_scene_framework.md): the Act 1 climax. The party's tags fail at the
 ## simulation-boundary checkpoint; Naturalizer waves pursue them back down the corridor to Endo's
 ## maintained wall. Levers (framework canon: recognizable on first sight, never regenerating):
-## the sealable service door, the Chelator cluster's protocol hesitation, a Flure decoy, a
-## Scarpet run — and the UNMARKED offshoot pocket behind a portal pair, whose Hushbloom
+## the sealable service door, the Chelator cluster's protocol hesitation, a Scarpet run — and
+## the UNMARKED offshoot pocket behind a portal pair, whose Hushbloom
 ## double-seal is the decline-path expert solution (knowledge-gated; no UI flag, no hint).
 ## Tyreg's junction choice: ACCEPT arms her Suppress escort; ignoring her prices the decline
 ## wave. Endo's wall is a REAL shelter region (the sanctuary law) — the chase ends where the
@@ -248,8 +248,6 @@ func _chase_fragment() -> Fragment:
 		"color": Color(0.72, 0.84, 1.0)}]
 	frag.objects = [
 		# levers the party already knows, placed where the spec puts them
-		{"type": "flure", "name": "DecoyFlure", "pos": Vector3(60.0, 0.5, 3.4), "radius": 1.5,
-			"targets": [], "attract": 20.0},
 		{"type": "scarpet", "name": "ScarpetRun", "pos": Vector3(105.0, 0.0, -2.0), "radius": 2.2},
 		{"type": "channel", "name": "LockoutWash", "x": 120.0, "half": 2.2, "z_half": 5.0,
 			"period": 7.0, "dur": 2.2, "phase": 2.0, "tag": "lockout_wash"},

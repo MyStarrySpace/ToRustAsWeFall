@@ -36,6 +36,33 @@ const GENERATED_CONTENT_BINDINGS := {
 	},
 }
 
+const CONTENT_NAVIGATION_INTERACTABLE := "interactable"
+const CONTENT_NAVIGATION_OCCUPIABLE := "occupiable"
+
+# This is part of the runtime binding, not generator decoration. Capbage keeps
+# a broad, forgiving click hull around its head, but its accepted arrival region
+# is the tight cell physically inside the plant. Scarpet and generated
+# (non-pickable) Hushbloom are entered bodily to produce their effect.
+const GENERATED_CONTENT_NAVIGATION := {
+	"flora": {
+		"capbage": {
+			"kind": CONTENT_NAVIGATION_INTERACTABLE,
+			"interaction_radius": 1.4,
+			"radius": 0.45,
+			"arrival_policy": "primary_then_nearest",
+			"requires_content_vertex": true,
+		},
+		"scarpet": {
+			"kind": CONTENT_NAVIGATION_OCCUPIABLE,
+			"radius": 1.65,
+		},
+		"hushbloom": {
+			"kind": CONTENT_NAVIGATION_OCCUPIABLE,
+			"radius": 1.5,
+		},
+	},
+}
+
 
 static func generated_content_binding(category: String, content_id: String) -> String:
 	var category_bindings: Variant = GENERATED_CONTENT_BINDINGS.get(category, {})
@@ -46,6 +73,14 @@ static func generated_content_binding(category: String, content_id: String) -> S
 
 static func generated_content_is_realized(category: String, content_id: String) -> bool:
 	return generated_content_binding(category, content_id) != ""
+
+
+static func generated_content_navigation(category: String, content_id: String) -> Dictionary:
+	var category_navigation: Variant = GENERATED_CONTENT_NAVIGATION.get(category, {})
+	if not (category_navigation is Dictionary):
+		return {}
+	var navigation: Variant = (category_navigation as Dictionary).get(content_id, {})
+	return (navigation as Dictionary).duplicate(true) if navigation is Dictionary else {}
 
 
 static func generated_content_omission(category: String, content_id: String) -> Dictionary:

@@ -2,7 +2,8 @@ extends SceneTree
 
 ## Capture a FACADE elevation of one showcase building (freezes the turntable so the front reads).
 ##   HERO=beacon_hill [YAW=0.5] [OUT_DIR=<scratchpad>] \
-##     ../Godot_v4.7-stable_win64.exe --path "." --script res://tools/capture_building.gd
+##     godot --path "." --script res://tools/capture_building.gd
+## Isolated-display launch only; see tools/README.md.
 ## Writes <hero>_facade.png to OUT_DIR (scratchpad) — NEVER the project tree.
 
 func _init() -> void:

@@ -24,16 +24,6 @@
 			{
 				"category": "flora",
 				"cell": [
-					-1,
-					8
-				],
-				"kind": "capbage",
-				"level": 0,
-				"support": "implemented"
-			},
-			{
-				"category": "flora",
-				"cell": [
 					8,
 					16
 				],
@@ -44,7 +34,7 @@
 			{
 				"category": "flora",
 				"cell": [
-					15,
+					16,
 					16
 				],
 				"kind": "scarpet",
@@ -95,7 +85,7 @@
 				"category": "flora",
 				"cell": [
 					56,
-					0
+					-1
 				],
 				"kind": "scarpet",
 				"level": 0,
@@ -104,8 +94,8 @@
 			{
 				"category": "flora",
 				"cell": [
-					63,
-					7
+					64,
+					8
 				],
 				"kind": "scarpet",
 				"level": 2,
@@ -114,8 +104,8 @@
 			{
 				"category": "flora",
 				"cell": [
-					71,
-					0
+					72,
+					-1
 				],
 				"kind": "scarpet",
 				"level": 1,
@@ -479,24 +469,20 @@
 				{
 					"action": "activate",
 					"activation_policy": "interact_at_producer",
-					"before_node": "node_04",
+					"before_node": "node_07",
+					"before_nodes": [
+						"node_06",
+						"node_07"
+					],
 					"branch_id": "branch_00",
 					"cannot_bypass_unresolved": true,
 					"consumer_cell": [
-						56.0,
+						90.0,
 						37.0
 					],
 					"consumer_cells": [
 						[
-							56.0,
-							35.0
-						],
-						[
-							56.0,
-							36.0
-						],
-						[
-							56.0,
+							90.0,
 							37.0
 						]
 					],
@@ -504,7 +490,7 @@
 					"id": "activate_branch_00_span",
 					"kind": "mandatory_branch_interaction",
 					"producer_cell": [
-						53.0,
+						87.0,
 						42.0
 					],
 					"produces_state": "branch_00_resolved",
@@ -679,85 +665,6 @@
 					"t": 3.0
 				},
 				{
-					"approach_id": "activate_branch_00_span",
-					"blocked": false,
-					"borrows_from": "",
-					"branch_action": {
-						"action": "activate",
-						"activation_policy": "interact_at_producer",
-						"before_node": "node_04",
-						"branch_id": "branch_00",
-						"cannot_bypass_unresolved": true,
-						"consumer_cell": [
-							56.0,
-							37.0
-						],
-						"consumer_cells": [
-							[
-								56.0,
-								35.0
-							],
-							[
-								56.0,
-								36.0
-							],
-							[
-								56.0,
-								37.0
-							]
-						],
-						"expected_phase": "bridged",
-						"id": "activate_branch_00_span",
-						"kind": "mandatory_branch_interaction",
-						"producer_cell": [
-							53.0,
-							42.0
-						],
-						"produces_state": "branch_00_resolved",
-						"required_for_progress": true,
-						"role": "mandatory_producer",
-						"runtime_handler": "branch_span_producer",
-						"solution_order": 0.0,
-						"target": "branch_00",
-						"wait_for_completion": true
-					},
-					"caption": "SIDE BRANCH — EXTEND DOWNSTREAM SPAN",
-					"characters": {
-						"aster": [
-							24.5,
-							18.55
-						],
-						"endo": [
-							24.92,
-							18.88
-						],
-						"myke": [
-							24.5,
-							19.22
-						],
-						"oli": [
-							24.08,
-							19.42
-						],
-						"peris": [
-							24.08,
-							18.88
-						],
-						"tyreg": [
-							24.92,
-							19.42
-						]
-					},
-					"expert": false,
-					"kind": "mandatory_branch_interaction",
-					"min_stage": 0,
-					"node": "node_04",
-					"risk": "safe",
-					"role": "mandatory_producer",
-					"stage_ahead": false,
-					"t": 4.0
-				},
-				{
 					"approach_id": "traverse",
 					"blocked": false,
 					"borrows_from": "",
@@ -795,7 +702,7 @@
 					"risk": "safe",
 					"role": "guidance",
 					"stage_ahead": false,
-					"t": 5.0
+					"t": 4.0
 				},
 				{
 					"approach_id": "take_physical_lysate",
@@ -835,7 +742,7 @@
 					"risk": "safe",
 					"role": "foraging",
 					"stage_ahead": false,
-					"t": 6.0
+					"t": 5.0
 				},
 				{
 					"approach_id": "skip_optional_interaction",
@@ -874,6 +781,81 @@
 					"node": "node_06",
 					"risk": "safe",
 					"role": "foraging",
+					"stage_ahead": false,
+					"t": 6.0
+				},
+				{
+					"approach_id": "activate_branch_00_span",
+					"blocked": false,
+					"borrows_from": "",
+					"branch_action": {
+						"action": "activate",
+						"activation_policy": "interact_at_producer",
+						"before_node": "node_07",
+						"before_nodes": [
+							"node_06",
+							"node_07"
+						],
+						"branch_id": "branch_00",
+						"cannot_bypass_unresolved": true,
+						"consumer_cell": [
+							90.0,
+							37.0
+						],
+						"consumer_cells": [
+							[
+								90.0,
+								37.0
+							]
+						],
+						"expected_phase": "bridged",
+						"id": "activate_branch_00_span",
+						"kind": "mandatory_branch_interaction",
+						"producer_cell": [
+							87.0,
+							42.0
+						],
+						"produces_state": "branch_00_resolved",
+						"required_for_progress": true,
+						"role": "mandatory_producer",
+						"runtime_handler": "branch_span_producer",
+						"solution_order": 0.0,
+						"target": "branch_00",
+						"wait_for_completion": true
+					},
+					"caption": "SIDE BRANCH — EXTEND DOWNSTREAM SPAN",
+					"characters": {
+						"aster": [
+							41.5,
+							18.55
+						],
+						"endo": [
+							41.92,
+							18.88
+						],
+						"myke": [
+							41.5,
+							19.22
+						],
+						"oli": [
+							41.08,
+							19.42
+						],
+						"peris": [
+							41.08,
+							18.88
+						],
+						"tyreg": [
+							41.92,
+							19.42
+						]
+					},
+					"expert": false,
+					"kind": "mandatory_branch_interaction",
+					"min_stage": 0,
+					"node": "node_07",
+					"risk": "safe",
+					"role": "mandatory_producer",
 					"stage_ahead": false,
 					"t": 7.0
 				},
@@ -1245,24 +1227,20 @@
 				{
 					"action": "activate",
 					"activation_policy": "interact_at_producer",
-					"before_node": "node_04",
+					"before_node": "node_07",
+					"before_nodes": [
+						"node_06",
+						"node_07"
+					],
 					"branch_id": "branch_00",
 					"cannot_bypass_unresolved": true,
 					"consumer_cell": [
-						56.0,
+						90.0,
 						37.0
 					],
 					"consumer_cells": [
 						[
-							56.0,
-							35.0
-						],
-						[
-							56.0,
-							36.0
-						],
-						[
-							56.0,
+							90.0,
 							37.0
 						]
 					],
@@ -1270,7 +1248,7 @@
 					"id": "activate_branch_00_span",
 					"kind": "mandatory_branch_interaction",
 					"producer_cell": [
-						53.0,
+						87.0,
 						42.0
 					],
 					"produces_state": "branch_00_resolved",
@@ -1381,69 +1359,6 @@
 					"t": 3.0
 				},
 				{
-					"approach_id": "activate_branch_00_span",
-					"blocked": false,
-					"borrows_from": "",
-					"branch_action": {
-						"action": "activate",
-						"activation_policy": "interact_at_producer",
-						"before_node": "node_04",
-						"branch_id": "branch_00",
-						"cannot_bypass_unresolved": true,
-						"consumer_cell": [
-							56.0,
-							37.0
-						],
-						"consumer_cells": [
-							[
-								56.0,
-								35.0
-							],
-							[
-								56.0,
-								36.0
-							],
-							[
-								56.0,
-								37.0
-							]
-						],
-						"expected_phase": "bridged",
-						"id": "activate_branch_00_span",
-						"kind": "mandatory_branch_interaction",
-						"producer_cell": [
-							53.0,
-							42.0
-						],
-						"produces_state": "branch_00_resolved",
-						"required_for_progress": true,
-						"role": "mandatory_producer",
-						"runtime_handler": "branch_span_producer",
-						"solution_order": 0.0,
-						"target": "branch_00",
-						"wait_for_completion": true
-					},
-					"caption": "SIDE BRANCH — EXTEND DOWNSTREAM SPAN",
-					"characters": {
-						"aster": [
-							24.5,
-							18.55
-						],
-						"peris": [
-							24.08,
-							18.88
-						]
-					},
-					"expert": false,
-					"kind": "mandatory_branch_interaction",
-					"min_stage": 0,
-					"node": "node_04",
-					"risk": "safe",
-					"role": "mandatory_producer",
-					"stage_ahead": false,
-					"t": 4.0
-				},
-				{
 					"approach_id": "traverse",
 					"blocked": false,
 					"borrows_from": "",
@@ -1465,7 +1380,7 @@
 					"risk": "safe",
 					"role": "guidance",
 					"stage_ahead": false,
-					"t": 5.0
+					"t": 4.0
 				},
 				{
 					"approach_id": "take_physical_lysate",
@@ -1489,7 +1404,7 @@
 					"risk": "safe",
 					"role": "foraging",
 					"stage_ahead": false,
-					"t": 6.0
+					"t": 5.0
 				},
 				{
 					"approach_id": "skip_optional_interaction",
@@ -1512,6 +1427,65 @@
 					"node": "node_06",
 					"risk": "safe",
 					"role": "foraging",
+					"stage_ahead": false,
+					"t": 6.0
+				},
+				{
+					"approach_id": "activate_branch_00_span",
+					"blocked": false,
+					"borrows_from": "",
+					"branch_action": {
+						"action": "activate",
+						"activation_policy": "interact_at_producer",
+						"before_node": "node_07",
+						"before_nodes": [
+							"node_06",
+							"node_07"
+						],
+						"branch_id": "branch_00",
+						"cannot_bypass_unresolved": true,
+						"consumer_cell": [
+							90.0,
+							37.0
+						],
+						"consumer_cells": [
+							[
+								90.0,
+								37.0
+							]
+						],
+						"expected_phase": "bridged",
+						"id": "activate_branch_00_span",
+						"kind": "mandatory_branch_interaction",
+						"producer_cell": [
+							87.0,
+							42.0
+						],
+						"produces_state": "branch_00_resolved",
+						"required_for_progress": true,
+						"role": "mandatory_producer",
+						"runtime_handler": "branch_span_producer",
+						"solution_order": 0.0,
+						"target": "branch_00",
+						"wait_for_completion": true
+					},
+					"caption": "SIDE BRANCH — EXTEND DOWNSTREAM SPAN",
+					"characters": {
+						"aster": [
+							41.5,
+							18.55
+						],
+						"peris": [
+							41.08,
+							18.88
+						]
+					},
+					"expert": false,
+					"kind": "mandatory_branch_interaction",
+					"min_stage": 0,
+					"node": "node_07",
+					"risk": "safe",
+					"role": "mandatory_producer",
 					"stage_ahead": false,
 					"t": 7.0
 				},

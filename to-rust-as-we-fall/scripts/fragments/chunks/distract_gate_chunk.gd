@@ -20,9 +20,9 @@ const EnemyScript := preload("res://scripts/game/ai/enemy.gd")
 
 const PARTY_IDS := ["aster", "peris", "endo"]
 const SPAWNS := {
-	"aster": Vector3(2.5, 0.5, -1.0),
-	"peris": Vector3(3.0, 0.5, 0.0),
-	"endo": Vector3(2.5, 0.5, 1.0),
+	"aster": Vector3(2.5, 0.0, -1.0),
+	"peris": Vector3(3.0, 0.0, 0.0),
+	"endo": Vector3(2.5, 0.0, 1.0),
 }
 
 # Cell-exact rooms (origin [0,0,-7], cell 1.0): west room cells x 1..8, the WALL band cells x 9..11 broken only

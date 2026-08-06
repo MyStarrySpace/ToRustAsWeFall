@@ -2,7 +2,8 @@ extends SceneTree
 
 ## Path-ribbon visibility check on a DATA fragment: boot Sprint Gap, put peris on a long move,
 ## capture mid-flight, and dump the PathRenderManager's renderer states alongside.
-## Run WITH a display: ../Godot_v4.7-stable_win64.exe --path "." --script res://tools/capture_path_check.gd
+## Isolated-display launch only; see tools/README.md:
+##   godot --path "." --script res://tools/capture_path_check.gd
 
 func _init() -> void:
 	var packed: PackedScene = load("res://scenes/fragments/fragment_preview.tscn")
@@ -11,11 +12,14 @@ func _init() -> void:
 	inst.set("preview_chunk", "data_fragment")
 	inst.set("preview_chunk_config", {"fragment_path": "res://data/fragments/sprint_gap.tres"})
 	# All three ON — the default play state. NOTE: the capture harness must PIN THE CAMERA — the
-	# windowed run inherits the real OS cursor, and a cursor parked on a window edge RTS-edge-scrolls
-	# the camera into the void mid-capture (the false "blackout" that mimicked an overlay bug TWICE).
+	# capture disables ambient camera panning so the workstation cursor cannot edge-scroll
+	# the camera into the void (the false "blackout" that mimicked an overlay bug TWICE).
 	root.add_child(inst)
 	await process_frame
-	Input.warp_mouse(Vector2(576, 324))   # park the cursor mid-window: no edge-scroll drift
+	var neutral_motion := InputEventMouseMotion.new()
+	neutral_motion.position = Vector2(576, 324)
+	neutral_motion.global_position = neutral_motion.position
+	Input.parse_input_event(neutral_motion)
 	var cam = inst.get("_camera")
 	if cam != null and cam.has_method("set_pan_enabled"):
 		cam.set_pan_enabled(false)

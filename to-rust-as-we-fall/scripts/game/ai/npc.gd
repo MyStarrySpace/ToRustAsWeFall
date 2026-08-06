@@ -82,8 +82,9 @@ func _process(delta: float) -> void:
 	# GameState-driven: read interpolated position
 	if game_state and char_id != "":
 		if game_state.is_moving(char_id):
-			var pos := game_state.get_position(char_id)
-			global_position = Vector3(pos.x, global_position.y, pos.z)
+			# The capsule's local transform supplies its body lift; this node mirrors its
+			# authoritative feet position, including the current navigation level's Y.
+			global_position = game_state.get_render_position(char_id)
 		PerformanceTrace.end(&"update", &"npc.process", perf_started, char_id, 1)
 		return
 
@@ -116,8 +117,13 @@ func sync_scheduler_visuals() -> void:
 	_update_scheduler_fade()
 
 func _on_gs_arrived(id: String) -> void:
-	if id == char_id:
-		path_complete.emit()
+	if id != char_id:
+		return
+	if game_state != null and game_state.characters.has(char_id):
+		# Completion clears the movement before the next process frame, so make the
+		# scheduler's final node/feet transform visible here rather than stopping short.
+		global_position = game_state.get_render_position(char_id)
+	path_complete.emit()
 
 func walk_path(path: Array[Vector3]) -> void:
 	if game_state and char_id != "":

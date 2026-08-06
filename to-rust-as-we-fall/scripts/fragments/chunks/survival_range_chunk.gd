@@ -11,15 +11,15 @@ const CapbageScript := preload("res://scripts/game/objects/capbage.gd")
 const FLOOR_CENTER := Vector3(162.0, -0.05, 0.0)
 const FLOOR_SIZE := Vector3(328.0, 0.1, 24.0)
 
-const WEST_SHELTER_POS := Vector3(8.0, 0.45, 0.0)
-const SCOUT_PERCH_POS := Vector3(52.0, 0.45, -4.0)
-const ECHO_COUPLER_POS := Vector3(106.0, 0.45, 5.8)
-const MID_SEAM_POS := Vector3(132.0, 0.45, -1.8)
-const SHORT_BLOOM_POS := Vector3(134.5, 0.45, 3.6)
-const LURE_SPINDLE_POS := Vector3(194.0, 0.45, 0.0)
-const HIDE_SLIT_POS := Vector3(258.0, 0.45, -3.2)
-const EAST_SHELTER_POS := Vector3(316.0, 0.45, 0.0)
-const RECOVERY_RIG_POS := Vector3(258.0, 0.45, -1.7)
+const WEST_SHELTER_POS := Vector3(8.0, 0.0, 0.0)
+const SCOUT_PERCH_POS := Vector3(52.0, 0.0, -4.0)
+const ECHO_COUPLER_POS := Vector3(106.0, 0.0, 5.8)
+const MID_SEAM_POS := Vector3(132.0, 0.0, -1.8)
+const SHORT_BLOOM_POS := Vector3(134.5, 0.0, 3.6)
+const LURE_SPINDLE_POS := Vector3(194.0, 0.0, 0.0)
+const HIDE_SLIT_POS := Vector3(258.0, 0.0, -3.2)
+const EAST_SHELTER_POS := Vector3(316.0, 0.0, 0.0)
+const RECOVERY_RIG_POS := Vector3(258.0, 0.0, -1.7)
 
 const DEPART_WORK_SECONDS := 6.0
 const SCOUT_WORK_SECONDS := 12.0
@@ -52,8 +52,8 @@ const DIRECT_BLOOM_MIN := Vector2(136.0, 1.6)
 const DIRECT_BLOOM_MAX := Vector2(142.5, 5.7)
 const DIRECT_BLOOM_DAMAGE := 6.0
 const DIRECT_BLOOM_INTERVAL := 1.0
-const SAFE_CROSS_END_POS := Vector3(143.5, 0.5, -1.8)
-const DIRECT_CROSS_END_POS := Vector3(143.2, 0.5, 3.6)
+const SAFE_CROSS_END_POS := Vector3(143.5, 0.0, -1.8)
+const DIRECT_CROSS_END_POS := Vector3(143.2, 0.0, 3.6)
 
 const PARTY_IDS := ["aster", "peris", "endo"]
 const RANGE_AUTHORITY_VERSION := 4
@@ -62,7 +62,7 @@ const LURE_EXPIRY_TAG_PREFIX := "survival_range_lure_expiry:"
 const SHELTER_REST_TAG_PREFIX := "survival_range_party_rest:"
 const WINCH_TRAVERSAL_PREFIX := "survival_range_reset_winch:"
 const CROSS_TRAVERSAL_PREFIX := "survival_range_seam_crossing:"
-const WINCH_RETURN_POS := MID_SEAM_POS + Vector3(-INTERACT_RADIUS + 0.25, 0.05, 0.0)
+const WINCH_RETURN_POS := MID_SEAM_POS + Vector3(-INTERACT_RADIUS + 0.25, 0.0, 0.0)
 const VALID_ROUTE_PHASES := [
 	"briefing", "departed", "scouted", "calibrated", "window", "crossing", "midway",
 	"hide", "run", "failed", "resetting", "complete",
@@ -99,9 +99,9 @@ const DECORATION_PROFILE := {
 }
 
 const SPAWNS := {
-	"aster": Vector3(7.0, 0.5, 1.4),
-	"peris": Vector3(5.4, 0.5, 0.0),
-	"endo": Vector3(6.0, 0.5, -1.7),
+	"aster": Vector3(7.0, 0.0, 1.4),
+	"peris": Vector3(5.4, 0.0, 0.0),
+	"endo": Vector3(6.0, 0.0, -1.7),
 }
 
 var _departure_interactable
@@ -214,8 +214,8 @@ func get_preview_anchors() -> Dictionary:
 		"west_shelter": WEST_SHELTER_POS,
 		"scout_perch": SCOUT_PERCH_POS,
 		"echo_coupler": ECHO_COUPLER_POS,
-		"echo_lane_endpoint": Vector3(SWARM_UNTUNED_X, 0.5, SWARM_UNTUNED_Z),
-		"echo_recess_endpoint": Vector3(SWARM_LURE_X, 0.5, SWARM_LURE_Z),
+		"echo_lane_endpoint": Vector3(SWARM_UNTUNED_X, 0.0, SWARM_UNTUNED_Z),
+		"echo_recess_endpoint": Vector3(SWARM_LURE_X, 0.0, SWARM_LURE_Z),
 		"mid_seam": MID_SEAM_POS,
 		"short_bloom": SHORT_BLOOM_POS,
 		"lure_spindle": LURE_SPINDLE_POS,
@@ -780,13 +780,29 @@ func cross_seam(source: Node = null) -> bool:
 		_cross_start_hp = 0.0
 		_rearm_range_control(source)
 		return false
+	if cross_mode == "short_bloom":
+		# The orange CUT control is the visible authority that commits both the
+		# traversal and its pulse phase. Re-arming here (after traversal acceptance)
+		# makes the promised single midpoint pulse independent of scene-boot/render
+		# timing while keeping damage spatial: HazardField still samples Endo's real
+		# authoritative position at the scheduled pulse.
+		if _direct_bloom_field == null or not bool(
+				_direct_bloom_field.rearm_cadence_from_visible_commitment(
+					&"survival_range_direct_commit", &"rust_bloom_phase_lock")):
+			gs.cancel_external_traversal("endo", &"hazard_cadence_unavailable")
+			_cross_mode = ""
+			_cross_start_hp = 0.0
+			_rearm_range_control(source)
+			return false
 	_route_phase = "crossing"
 	_set_preview_step("survival_range_crossing")
 	_show_message(
-		"Endo commits to the %s. Damage now comes only from the space his body crosses." % [
-			"short rust bloom" if cross_mode == "short_bloom" else "long unburned seam"],
-		2.0
-	)
+		(
+			"Endo commits to the short rust bloom. The orange CUT control phase-locks one visible pulse to his midpoint; damage still comes only from the space his body crosses."
+			if cross_mode == "short_bloom" else
+			"Endo commits to the long unburned seam. Damage comes only from the space his body crosses."
+		),
+		2.0)
 	_refresh_interaction_gates()
 	_update_visual_state()
 	_publish_range_authority()
@@ -1213,6 +1229,9 @@ func _build_mid_seam() -> void:
 		INTERACT_RADIUS,
 		Interactable.InteractableType.TIMED_ACTION
 	)
+	_direct_interactable.set(
+		"consequence_preview",
+		"starts a locked two-second crossing and visibly phase-locks one 6 HP orange-field pulse to its midpoint")
 	_configure_range_control(_direct_interactable, "direct", cross_seam)
 
 func _build_lure_spindle() -> void:
@@ -1398,14 +1417,14 @@ func _swarm_id(index: int) -> String:
 
 
 func _swarm_post(index: int) -> Vector3:
-	return Vector3(SWARM_START_X + float(index) * 4.0, 0.5, SWARM_OFFSETS[index])
+	return Vector3(SWARM_START_X + float(index) * 4.0, 0.0, SWARM_OFFSETS[index])
 
 
 func _swarm_lure_endpoint(index: int) -> Vector3:
 	var offset: float = float(SWARM_OFFSETS[index]) * 0.45
 	if _lure_route_mode == LURE_ROUTE_RECESS:
-		return Vector3(SWARM_LURE_X, 0.5, SWARM_LURE_Z + offset)
-	return Vector3(SWARM_UNTUNED_X, 0.5, SWARM_UNTUNED_Z + offset)
+		return Vector3(SWARM_LURE_X, 0.0, SWARM_LURE_Z + offset)
+	return Vector3(SWARM_UNTUNED_X, 0.0, SWARM_UNTUNED_Z + offset)
 
 
 func _reset_swarm_to_posts() -> void:
@@ -1702,8 +1721,16 @@ func _validate_range_control_trigger(
 	if source == null or source != expected_source \
 			or source != _range_control_for_action(action_id):
 		return false
-	return _range_interaction_actor_ready_at(source, actor, _range_required_actor(action_id)) \
-		and _range_control_action_ready(action_id)
+	if not _range_interaction_actor_ready_at(
+			source, actor, _range_required_actor(action_id)):
+		return false
+	# Preview clocks are projected from the host scheduler and are synchronized to
+	# GameState only at a command boundary. Shelter preflight runs in this validator,
+	# before the interaction callback, so synchronize here or a valid night arrival is
+	# rejected against GameState's stale daytime default and can never emit a receipt.
+	if action_id == "shelter":
+		_sync_host_clock_to_game_state()
+	return _range_control_action_ready(action_id)
 
 
 func _range_control_receipt_pending(source: Node, action_id: String) -> bool:
@@ -1907,7 +1934,6 @@ func rest_at_east_shelter(source: Node = null) -> bool:
 	var gs = _get_game_state()
 	if gs == null:
 		return false
-	_sync_host_clock_to_game_state()
 	var preflight := _preflight_range_shelter_rest()
 	var blocked := preflight.get("blocked", []) as Array
 	if not blocked.is_empty():

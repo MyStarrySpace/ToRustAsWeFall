@@ -9,6 +9,8 @@ extends SceneTree
 ##
 ## Run: ../Godot_v4.6.1-stable_win64_console.exe --headless --path "." \
 ##        --script res://tools/generate_stretch_batch.gd
+## Regenerate one committed sample without rewriting its peers by appending:
+##        -- --id=generated_sample_standard_garden_patrol
 
 const StretchGeneratorScript := preload("res://scripts/generation/stretch_generator.gd")
 const StretchSolutionSolverScript := preload("res://scripts/generation/stretch_solution_solver.gd")
@@ -104,10 +106,14 @@ func _batch() -> Array:
 	]
 
 func _init() -> void:
+	var batch := _selected_batch()
+	if batch.is_empty():
+		quit(2)
+		return
 	var saved := 0
 	var skipped := 0
 	print("=== Generating stretch batch ===")
-	for settings in _batch():
+	for settings in batch:
 		var spec: Dictionary = StretchGeneratorScript.generate(settings)
 		var spec_id := str(settings.get("id", "?"))
 		if not bool(spec.get("success", false)):
@@ -138,6 +144,38 @@ func _init() -> void:
 		])
 	print("=== Batch complete: %d saved, %d skipped ===" % [saved, skipped])
 	quit(1 if skipped > 0 else 0)
+
+
+func _selected_batch() -> Array:
+	var batch := _batch()
+	var requested_id := ""
+	var filter_seen := false
+	for arg_v in OS.get_cmdline_user_args():
+		var arg := str(arg_v)
+		if arg == "--id":
+			push_error("Missing value: use --id=<exact generated stretch id>.")
+			return []
+		if not arg.begins_with("--id="):
+			continue
+		var candidate := arg.trim_prefix("--id=")
+		if candidate.is_empty():
+			push_error("Empty --id filter; provide an exact generated stretch id.")
+			return []
+		if filter_seen and requested_id != candidate:
+			push_error("Conflicting --id filters: %s and %s." % [requested_id, candidate])
+			return []
+		requested_id = candidate
+		filter_seen = true
+	if not filter_seen:
+		return batch
+	var selected: Array = []
+	for settings_v in batch:
+		if settings_v is Dictionary \
+				and str((settings_v as Dictionary).get("id", "")) == requested_id:
+			selected.append(settings_v)
+	if selected.is_empty():
+		push_error("Unknown generated stretch id: %s" % requested_id)
+	return selected
 
 ## Returns a list of human-readable reasons a generated spec is not ship-worthy.
 func _validation_problems(spec: Dictionary, analysis: Dictionary) -> Array:

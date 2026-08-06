@@ -60,13 +60,13 @@ const FRAGMENT := preload("res://data/fragments/wash_relay.tres")
 const PARTY_IDS := ["aster", "peris", "endo"]
 var SPAWNS: Dictionary = FRAGMENT.spawns
 var SECTIONS: Array = FRAGMENT.params.get("sections", [])
-var START_POS: Vector3 = FRAGMENT.params.get("start_pos", Vector3(3.0, 0.5, 0.0))
+var START_POS: Vector3 = FRAGMENT.params.get("start_pos", Vector3(3.0, 0.0, 0.0))
 var FLOOR_Z_HALF: float = FRAGMENT.params.get("floor_z_half", 4.0)
 var FLOOR_MIN_X: float = FRAGMENT.params.get("floor_min_x", -1.0)
 var FLOOR_MAX_X: float = FRAGMENT.params.get("floor_max_x", 87.0)
 var CHUNK_END_X: float = FRAGMENT.params.get("chunk_end_x", 84.0)
-var CLIMB_POS: Vector3 = FRAGMENT.params.get("climb_pos", Vector3(5.0, 0.5, 2.5))
-var RETURN_LANDING: Vector3 = FRAGMENT.params.get("return_landing", Vector3(83.0, 0.5, 0.0))
+var CLIMB_POS: Vector3 = FRAGMENT.params.get("climb_pos", Vector3(5.0, 0.0, 2.5))
+var RETURN_LANDING: Vector3 = FRAGMENT.params.get("return_landing", Vector3(83.0, 0.0, 0.0))
 const SLOPEROPE_DEPLOY_DURATION := 2.5
 const SLOPEROPE_CLIMB_DURATION := 6.0
 const SLOPEROPE_TRAVERSAL_PREFIX := "wash_relay_sloperope:"
@@ -213,7 +213,7 @@ const DRAIN_LOOP_PHASE := 1.0        # stagger from FIRST_FLOOD so the loop isn'
 const DRAIN_BAIT_PULL := 6.5         # the bait holds the guard committed in the run a bit longer than one flood
 									 # PERIOD, so a surge is GUARANTEED to catch it while it's parked there
 const DRAIN_KILL_DELAY := 0.7        # the drowned guard's body lingers this long (cosmetic dissolve) then is removed
-const DRAIN_FLORA_POS := Vector3(79.6, 0.5, 6.0) # reachable entry-leg fixture, clear of bait + flood centre
+const DRAIN_FLORA_POS := Vector3(82.2, 0.5, 3.6) # dry deck between loop legs; clear of bait + flood centre
 const FLOOD_SWEEP_INTERVAL := 0.1    # scheduler ticks: visible water is dangerous for its whole window
 const DRAIN_DROWN_SWEEPS := 16       # DRAIN_LOOP_DUR / FLOOD_SWEEP_INTERVAL
 var _drain_root: Node3D
@@ -1637,11 +1637,11 @@ func _build_neck_garden() -> void:
 	_warped_box(garden, 42.5, -8.65, Vector3(2.5, 0.3, 4.8), Color(0.10, 0.14, 0.11), Color.BLACK, 0.0, -0.15)
 	_warped_box(garden, 42.5, -8.65, Vector3(2.3, 0.05, 4.4), Color(0.09, 0.2, 0.12),
 		Color(0.16, 0.5, 0.3), 0.45, 0.03)
-	var srng := RandomNumberGenerator.new()
+	var srng := RandomNumberGenerator.new() # @rendering_only
 	srng.seed = 421
 	for k in range(7):
-		var h := 0.45 + srng.randf() * 0.6
-		_warped_box(garden, 40.9 + srng.randf() * 3.4, -9.6 + srng.randf() * 1.9,
+		var h := 0.45 + srng.randf() * 0.6 # @rendering_only
+		_warped_box(garden, 40.9 + srng.randf() * 3.4, -9.6 + srng.randf() * 1.9, # @rendering_only
 			Vector3(0.09, h, 0.09), Color(0.08, 0.22, 0.14), Color(0.2, 0.85, 0.5), 1.1, h * 0.5)
 	# the sealed gate: dark slab, one warm seam — gold lives on the ITEM's promise, never
 	# on portal fixtures (the portal color law)
@@ -1677,7 +1677,7 @@ func _build_neck_garden() -> void:
 	gate_glow.position = ChannelsArc.arc_pos(44.2, -8.6) + Vector3(0.0, 1.6, 0.0)
 	garden.add_child(gate_glow)
 
-## The Channels is INTERIOR infrastructure (director's lighting brief): night is
+## The Plumbing Power Project is INTERIOR infrastructure (director's lighting brief): night is
 ## lit by the AUTHORED rig below, and "day" is only occasional seep light — the
 ## shared day/night curve barely moves this level. Near-zero sun in both phases,
 ## a constant ambient band in the channels' dark teal, glow held so emissives
@@ -5791,15 +5791,23 @@ func reset_preview_state() -> void:
 				if str(SECTIONS[i]["type"]) == "sluice":
 					for cell in _sluice_gate_cells(i):
 						gs.grid.remove_dynamic_blocker(cell)
+		# Wipe recovery belongs to the preview/campaign host: it owns both the
+		# authoritative record and the live presenter. Asking that framework seam
+		# to restore the body prevents a chunk-local logical snap from leaving the
+		# CharacterBody behind on another transform.
+		var preview_host: Node = host
 		for char_id in PARTY_IDS:
+			if preview_host != null \
+					and preview_host.has_method("restore_preview_character_for_restart"):
+				preview_host.call(
+					"restore_preview_character_for_restart",
+					char_id,
+					SPAWNS.get(char_id, START_POS))
 			if gs.characters.has(char_id):
-				gs.restore_character(char_id)
-				gs.snap_character_to(char_id, SPAWNS.get(char_id, START_POS))
 				gs.set_character_concealment(char_id, GameState.CONCEAL_NONE)
 		for enemy in _enemies:
 			if is_instance_valid(enemy) and gs.characters.has(enemy.char_id):
-				gs.set_character_distracted(enemy.char_id, false)
-				gs.snap_character_to(enemy.char_id, _enemy_spawn_for(enemy.char_id))
+				enemy.re_post(_enemy_spawn_for(enemy.char_id))
 	for i in range(_flow_strips.size()):
 		_set_strip(i, STRIP_IDLE_ENERGY)
 	for i in range(_lure_meshes.size()):

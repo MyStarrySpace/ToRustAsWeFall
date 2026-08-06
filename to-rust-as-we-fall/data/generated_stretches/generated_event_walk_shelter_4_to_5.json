@@ -1068,9 +1068,7 @@
 			"walk_step_index": 1
 		}
 	],
-	"area_theme": {
-
-	},
+	"area_theme": {},
 	"biome": "",
 	"budget": {
 		"archetype_depth": 5,
@@ -1088,32 +1086,23 @@
 		"chain_count": 8,
 		"element_coverage": {
 			"complete": false,
-			"contract_id": "trawf_element_coverage_v1",
-			"covered_count": 6,
+			"contract_id": "trawf_element_coverage_v2",
+			"coverage_scope": "realized_runtime_content",
+			"covered_count": 2,
 			"elements": {
 				"barrier": {
-					"covered": true,
+					"covered": false,
 					"required_by": [
 						"3"
 					],
-					"supplied_by": [
-						"entry",
-						"node_04",
-						"node_05",
-						"node_12",
-						"node_13",
-						"node_14"
-					]
+					"supplied_by": []
 				},
 				"carry": {
-					"covered": true,
+					"covered": false,
 					"required_by": [
 						"3"
 					],
-					"supplied_by": [
-						"node_07",
-						"node_15"
-					]
+					"supplied_by": []
 				},
 				"cover": {
 					"covered": true,
@@ -1133,26 +1122,18 @@
 					]
 				},
 				"iron_decoy": {
-					"covered": true,
+					"covered": false,
 					"required_by": [
 						"2"
 					],
-					"supplied_by": [
-						"entry",
-						"node_01",
-						"node_08"
-					]
+					"supplied_by": []
 				},
 				"lure": {
-					"covered": true,
+					"covered": false,
 					"required_by": [
 						"2"
 					],
-					"supplied_by": [
-						"entry",
-						"node_01",
-						"node_08"
-					]
+					"supplied_by": []
 				},
 				"stabilize": {
 					"covered": false,
@@ -1183,6 +1164,10 @@
 				"cover"
 			],
 			"uncovered": [
+				"barrier",
+				"carry",
+				"iron_decoy",
+				"lure",
 				"stabilize",
 				"traversal"
 			]
@@ -1628,6 +1613,7 @@
 		"walk_element_count": 8
 	},
 	"graybox": {
+		"actionable_interaction_approach_count": 5,
 		"bounds": {
 			"center": [
 				122.25,
@@ -1664,6 +1650,7 @@
 		"navigation_edge_count": 18,
 		"navigation_node_count": 17,
 		"node_surface_count": 17,
+		"realized_content_navigation_count": 9,
 		"roompiece_catalog": "trawf_roompiece_catalog_v1",
 		"route_surface_count": 18,
 		"source": {
@@ -1672,6 +1659,7 @@
 			"spec_id": "generated_event_walk_shelter_4_to_5"
 		},
 		"spatial_feature_count": 0,
+		"spawn_excluded_content_count": 0,
 		"supports_click_to_move": true,
 		"supports_multiple_elevations": true,
 		"supports_outline_targets": true,
@@ -1736,93 +1724,45 @@
 				{
 					"action": "activate",
 					"activation_policy": "interact_at_producer",
-					"before_node": "node_05",
+					"before_node": "node_04",
+					"before_nodes": [
+						"node_03",
+						"node_04"
+					],
 					"branch_id": "branch_00",
 					"cannot_bypass_unresolved": true,
 					"consumer_cell": [
-						78,
-						35
+						50,
+						19
 					],
 					"consumer_cells": [
 						[
-							78,
-							18
+							50,
+							3
 						],
 						[
-							78,
+							50,
+							4
+						],
+						[
+							50,
+							5
+						],
+						[
+							50,
+							6
+						],
+						[
+							50,
 							19
-						],
-						[
-							78,
-							20
-						],
-						[
-							78,
-							21
-						],
-						[
-							78,
-							22
-						],
-						[
-							78,
-							23
-						],
-						[
-							78,
-							24
-						],
-						[
-							78,
-							25
-						],
-						[
-							78,
-							26
-						],
-						[
-							78,
-							27
-						],
-						[
-							78,
-							28
-						],
-						[
-							78,
-							29
-						],
-						[
-							78,
-							30
-						],
-						[
-							78,
-							31
-						],
-						[
-							78,
-							32
-						],
-						[
-							78,
-							33
-						],
-						[
-							78,
-							34
-						],
-						[
-							78,
-							35
 						]
 					],
 					"expected_phase": "bridged",
 					"id": "activate_branch_00_span",
 					"kind": "mandatory_branch_interaction",
 					"producer_cell": [
-						75,
-						39
+						47,
+						23
 					],
 					"produces_state": "branch_00_resolved",
 					"required_for_progress": true,
@@ -2067,93 +2007,45 @@
 					{
 						"action": "activate",
 						"activation_policy": "interact_at_producer",
-						"before_node": "node_05",
+						"before_node": "node_04",
+						"before_nodes": [
+							"node_03",
+							"node_04"
+						],
 						"branch_id": "branch_00",
 						"cannot_bypass_unresolved": true,
 						"consumer_cell": [
-							78,
-							35
+							50,
+							19
 						],
 						"consumer_cells": [
 							[
-								78,
-								18
+								50,
+								3
 							],
 							[
-								78,
+								50,
+								4
+							],
+							[
+								50,
+								5
+							],
+							[
+								50,
+								6
+							],
+							[
+								50,
 								19
-							],
-							[
-								78,
-								20
-							],
-							[
-								78,
-								21
-							],
-							[
-								78,
-								22
-							],
-							[
-								78,
-								23
-							],
-							[
-								78,
-								24
-							],
-							[
-								78,
-								25
-							],
-							[
-								78,
-								26
-							],
-							[
-								78,
-								27
-							],
-							[
-								78,
-								28
-							],
-							[
-								78,
-								29
-							],
-							[
-								78,
-								30
-							],
-							[
-								78,
-								31
-							],
-							[
-								78,
-								32
-							],
-							[
-								78,
-								33
-							],
-							[
-								78,
-								34
-							],
-							[
-								78,
-								35
 							]
 						],
 						"expected_phase": "bridged",
 						"id": "activate_branch_00_span",
 						"kind": "mandatory_branch_interaction",
 						"producer_cell": [
-							75,
-							39
+							47,
+							23
 						],
 						"produces_state": "branch_00_resolved",
 						"required_for_progress": true,
@@ -2414,93 +2306,45 @@
 					{
 						"action": "activate",
 						"activation_policy": "interact_at_producer",
-						"before_node": "node_05",
+						"before_node": "node_04",
+						"before_nodes": [
+							"node_03",
+							"node_04"
+						],
 						"branch_id": "branch_00",
 						"cannot_bypass_unresolved": true,
 						"consumer_cell": [
-							78,
-							35
+							50,
+							19
 						],
 						"consumer_cells": [
 							[
-								78,
-								18
+								50,
+								3
 							],
 							[
-								78,
+								50,
+								4
+							],
+							[
+								50,
+								5
+							],
+							[
+								50,
+								6
+							],
+							[
+								50,
 								19
-							],
-							[
-								78,
-								20
-							],
-							[
-								78,
-								21
-							],
-							[
-								78,
-								22
-							],
-							[
-								78,
-								23
-							],
-							[
-								78,
-								24
-							],
-							[
-								78,
-								25
-							],
-							[
-								78,
-								26
-							],
-							[
-								78,
-								27
-							],
-							[
-								78,
-								28
-							],
-							[
-								78,
-								29
-							],
-							[
-								78,
-								30
-							],
-							[
-								78,
-								31
-							],
-							[
-								78,
-								32
-							],
-							[
-								78,
-								33
-							],
-							[
-								78,
-								34
-							],
-							[
-								78,
-								35
 							]
 						],
 						"expected_phase": "bridged",
 						"id": "activate_branch_00_span",
 						"kind": "mandatory_branch_interaction",
 						"producer_cell": [
-							75,
-							39
+							47,
+							23
 						],
 						"produces_state": "branch_00_resolved",
 						"required_for_progress": true,
@@ -2584,148 +2428,103 @@
 					"completion_phase": "bridged",
 					"consumer_addressing": "exact_cell",
 					"consumer_cell": [
-						78,
-						35
+						50,
+						19
 					],
 					"consumer_cell_role": "visual_midpoint",
 					"consumer_cells": [
 						[
-							78,
-							18
+							50,
+							3
 						],
 						[
-							78,
+							50,
+							4
+						],
+						[
+							50,
+							5
+						],
+						[
+							50,
+							6
+						],
+						[
+							50,
 							19
-						],
-						[
-							78,
-							20
-						],
-						[
-							78,
-							21
-						],
-						[
-							78,
-							22
-						],
-						[
-							78,
-							23
-						],
-						[
-							78,
-							24
-						],
-						[
-							78,
-							25
-						],
-						[
-							78,
-							26
-						],
-						[
-							78,
-							27
-						],
-						[
-							78,
-							28
-						],
-						[
-							78,
-							29
-						],
-						[
-							78,
-							30
-						],
-						[
-							78,
-							31
-						],
-						[
-							78,
-							32
-						],
-						[
-							78,
-							33
-						],
-						[
-							78,
-							34
-						],
-						[
-							78,
-							35
 						]
 					],
 					"consumer_cells_addressing": "exact_cut_set",
 					"consumer_derivation": "first_later_spine_disconnect_cut",
+					"consumer_navigation_level": 0,
 					"consumer_policy": "next_unresolved_spine_blocker",
 					"content_policy": "causal_producer",
 					"contract_id": "generated_branch_role_v1",
 					"cut_proof": "entry_exit_disconnected_when_removed",
 					"producer_cell": [
-						75,
-						39
+						47,
+						23
 					],
+					"producer_navigation_level": 0,
 					"produces_state": "branch_00_resolved",
 					"role": "mandatory_producer",
 					"runtime_handler": "branch_span_producer",
-					"spine_column": 76,
+					"spine_column": 48,
 					"starts_active": true,
 					"topology_effect": "unlock_next_spine_blocker",
 					"wait_for_completion": true
 				},
 				"cells": [
 					[
-						76,
-						36
+						48,
+						20
 					],
 					[
-						75,
-						37
+						49,
+						20
 					],
 					[
-						76,
-						37
+						47,
+						21
 					],
 					[
-						77,
-						37
+						48,
+						21
 					],
 					[
-						75,
-						38
+						49,
+						21
 					],
 					[
-						76,
-						38
+						47,
+						22
 					],
 					[
-						77,
-						38
+						48,
+						22
 					],
 					[
-						75,
-						39
+						49,
+						22
 					],
 					[
-						76,
-						39
+						47,
+						23
 					],
 					[
-						77,
-						39
+						48,
+						23
+					],
+					[
+						49,
+						23
 					]
 				],
 				"id": "branch_00",
+				"navigation_level": 0,
 				"neck": [
-					76,
-					36
+					48,
+					20
 				],
 				"normal_route_optional": false,
 				"required_for_progress": true,
@@ -2741,78 +2540,80 @@
 					"consumer_policy": "none",
 					"content_policy": "risk_scaled_physical_reward",
 					"contract_id": "generated_branch_role_v1",
+					"producer_navigation_level": 0,
 					"produces_state": "",
 					"role": "optional_risk_reward",
-					"spine_column": 176,
+					"spine_column": 154,
 					"starts_active": true,
 					"topology_effect": "none"
 				},
 				"cells": [
 					[
-						176,
-						20
-					],
-					[
-						175,
-						21
-					],
-					[
-						176,
-						21
-					],
-					[
-						175,
+						154,
 						22
 					],
 					[
-						176,
-						22
-					],
-					[
-						174,
+						153,
 						23
 					],
 					[
-						175,
+						154,
 						23
 					],
 					[
-						176,
-						23
-					],
-					[
-						177,
-						23
-					],
-					[
-						178,
-						23
-					],
-					[
-						174,
+						153,
 						24
 					],
 					[
-						175,
+						154,
 						24
 					],
 					[
-						176,
-						24
+						152,
+						25
 					],
 					[
-						177,
-						24
+						153,
+						25
 					],
 					[
-						178,
-						24
+						154,
+						25
+					],
+					[
+						155,
+						25
+					],
+					[
+						156,
+						25
+					],
+					[
+						152,
+						26
+					],
+					[
+						153,
+						26
+					],
+					[
+						154,
+						26
+					],
+					[
+						155,
+						26
+					],
+					[
+						156,
+						26
 					]
 				],
 				"id": "branch_01",
+				"navigation_level": 0,
 				"neck": [
-					176,
-					20
+					154,
+					22
 				],
 				"normal_route_optional": true,
 				"required_for_progress": false,
@@ -4157,6 +3958,14 @@
 						20
 					],
 					[
+						48,
+						20
+					],
+					[
+						49,
+						20
+					],
+					[
 						64,
 						20
 					],
@@ -4234,10 +4043,6 @@
 					],
 					[
 						154,
-						20
-					],
-					[
-						176,
 						20
 					],
 					[
@@ -4317,6 +4122,18 @@
 						21
 					],
 					[
+						47,
+						21
+					],
+					[
+						48,
+						21
+					],
+					[
+						49,
+						21
+					],
+					[
 						64,
 						21
 					],
@@ -4397,12 +4214,16 @@
 						21
 					],
 					[
-						175,
-						21
+						47,
+						22
 					],
 					[
-						176,
-						21
+						48,
+						22
+					],
+					[
+						49,
+						22
 					],
 					[
 						64,
@@ -4417,12 +4238,20 @@
 						22
 					],
 					[
-						175,
+						154,
 						22
 					],
 					[
-						176,
-						22
+						47,
+						23
+					],
+					[
+						48,
+						23
+					],
+					[
+						49,
+						23
 					],
 					[
 						64,
@@ -4437,23 +4266,11 @@
 						23
 					],
 					[
-						174,
+						153,
 						23
 					],
 					[
-						175,
-						23
-					],
-					[
-						176,
-						23
-					],
-					[
-						177,
-						23
-					],
-					[
-						178,
+						154,
 						23
 					],
 					[
@@ -4469,23 +4286,11 @@
 						24
 					],
 					[
-						174,
+						153,
 						24
 					],
 					[
-						175,
-						24
-					],
-					[
-						176,
-						24
-					],
-					[
-						177,
-						24
-					],
-					[
-						178,
+						154,
 						24
 					],
 					[
@@ -4498,6 +4303,26 @@
 					],
 					[
 						66,
+						25
+					],
+					[
+						152,
+						25
+					],
+					[
+						153,
+						25
+					],
+					[
+						154,
+						25
+					],
+					[
+						155,
+						25
+					],
+					[
+						156,
 						25
 					],
 					[
@@ -4510,6 +4335,26 @@
 					],
 					[
 						66,
+						26
+					],
+					[
+						152,
+						26
+					],
+					[
+						153,
+						26
+					],
+					[
+						154,
+						26
+					],
+					[
+						155,
+						26
+					],
+					[
+						156,
 						26
 					],
 					[
@@ -4607,46 +4452,6 @@
 					[
 						66,
 						34
-					],
-					[
-						76,
-						36
-					],
-					[
-						75,
-						37
-					],
-					[
-						76,
-						37
-					],
-					[
-						77,
-						37
-					],
-					[
-						75,
-						38
-					],
-					[
-						76,
-						38
-					],
-					[
-						77,
-						38
-					],
-					[
-						75,
-						39
-					],
-					[
-						76,
-						39
-					],
-					[
-						77,
-						39
 					]
 				],
 				"level": 0
@@ -13666,6 +13471,14 @@
 				20
 			],
 			[
+				48,
+				20
+			],
+			[
+				49,
+				20
+			],
+			[
 				63,
 				20
 			],
@@ -13894,10 +13707,6 @@
 				20
 			],
 			[
-				176,
-				20
-			],
-			[
 				197,
 				20
 			],
@@ -14054,6 +13863,18 @@
 				21
 			],
 			[
+				47,
+				21
+			],
+			[
+				48,
+				21
+			],
+			[
+				49,
+				21
+			],
+			[
 				63,
 				21
 			],
@@ -14186,14 +14007,6 @@
 				21
 			],
 			[
-				175,
-				21
-			],
-			[
-				176,
-				21
-			],
-			[
 				197,
 				21
 			],
@@ -14278,6 +14091,18 @@
 				21
 			],
 			[
+				47,
+				22
+			],
+			[
+				48,
+				22
+			],
+			[
+				49,
+				22
+			],
+			[
 				63,
 				22
 			],
@@ -14330,11 +14155,7 @@
 				22
 			],
 			[
-				175,
-				22
-			],
-			[
-				176,
+				154,
 				22
 			],
 			[
@@ -14378,6 +14199,18 @@
 				22
 			],
 			[
+				47,
+				23
+			],
+			[
+				48,
+				23
+			],
+			[
+				49,
+				23
+			],
+			[
 				63,
 				23
 			],
@@ -14414,23 +14247,11 @@
 				23
 			],
 			[
-				174,
+				153,
 				23
 			],
 			[
-				175,
-				23
-			],
-			[
-				176,
-				23
-			],
-			[
-				177,
-				23
-			],
-			[
-				178,
+				154,
 				23
 			],
 			[
@@ -14470,23 +14291,11 @@
 				24
 			],
 			[
-				174,
+				153,
 				24
 			],
 			[
-				175,
-				24
-			],
-			[
-				176,
-				24
-			],
-			[
-				177,
-				24
-			],
-			[
-				178,
+				154,
 				24
 			],
 			[
@@ -14526,6 +14335,26 @@
 				25
 			],
 			[
+				152,
+				25
+			],
+			[
+				153,
+				25
+			],
+			[
+				154,
+				25
+			],
+			[
+				155,
+				25
+			],
+			[
+				156,
+				25
+			],
+			[
 				63,
 				26
 			],
@@ -14559,6 +14388,26 @@
 			],
 			[
 				125,
+				26
+			],
+			[
+				152,
+				26
+			],
+			[
+				153,
+				26
+			],
+			[
+				154,
+				26
+			],
+			[
+				155,
+				26
+			],
+			[
+				156,
 				26
 			],
 			[
@@ -15078,10 +14927,6 @@
 				36
 			],
 			[
-				76,
-				36
-			],
-			[
 				108,
 				36
 			],
@@ -15122,18 +14967,6 @@
 				37
 			],
 			[
-				75,
-				37
-			],
-			[
-				76,
-				37
-			],
-			[
-				77,
-				37
-			],
-			[
 				108,
 				37
 			],
@@ -15152,30 +14985,6 @@
 			[
 				112,
 				37
-			],
-			[
-				75,
-				38
-			],
-			[
-				76,
-				38
-			],
-			[
-				77,
-				38
-			],
-			[
-				75,
-				39
-			],
-			[
-				76,
-				39
-			],
-			[
-				77,
-				39
 			]
 		],
 		"width": 250
@@ -15222,9 +15031,7 @@
 			],
 			"id": "entry",
 			"label": "Entry Boundary",
-			"layout_step": {
-
-			},
+			"layout_step": {},
 			"link_ref": "",
 			"nested_archetypes": [],
 			"nested_depth": 0,
@@ -15246,9 +15053,7 @@
 			"runtime_handler": "",
 			"runtime_progression_required": false,
 			"runtime_support": "layout_only",
-			"shadow_solution": {
-
-			},
+			"shadow_solution": {},
 			"spatial_affordances": [],
 			"stage": 1,
 			"structures": [
@@ -15274,7 +15079,7 @@
 			"approach_position": [
 				16.5,
 				0.449999988079071,
-				-12.4799995422363
+				-12.5
 			],
 			"approaches": [
 				{
@@ -15361,6 +15166,86 @@
 				3.0
 			],
 			"id": "node_01",
+			"interaction_approach": {
+				"acceptance_radius": 1.95,
+				"approach_vertex": {
+					"cell": [
+						19,
+						5
+					],
+					"level": 0
+				},
+				"component_anchor": {
+					"cell": [
+						4,
+						18
+					],
+					"level": 0
+				},
+				"component_id": "entry_component:0:4:18",
+				"contract_id": "generated_interaction_approach_v1",
+				"handler_id": "physical_lysate_pickup_v1",
+				"interaction_radius": 1.8,
+				"region_vertices": [
+					{
+						"cell": [
+							19,
+							5
+						],
+						"level": 0
+					},
+					{
+						"cell": [
+							19,
+							4
+						],
+						"level": 0
+					},
+					{
+						"cell": [
+							18,
+							5
+						],
+						"level": 0
+					},
+					{
+						"cell": [
+							20,
+							5
+						],
+						"level": 0
+					},
+					{
+						"cell": [
+							18,
+							4
+						],
+						"level": 0
+					},
+					{
+						"cell": [
+							20,
+							4
+						],
+						"level": 0
+					},
+					{
+						"cell": [
+							18,
+							6
+						],
+						"level": 0
+					}
+				],
+				"required_from_node_id": "entry",
+				"required_from_vertex": {
+					"cell": [
+						4,
+						18
+					],
+					"level": 0
+				}
+			},
 			"label": "Plant as tool · Flure Iron Decoy",
 			"layout_step": {
 				"lane": -1,
@@ -15551,14 +15436,58 @@
 					"id": "hushbloom",
 					"label": "hushbloom",
 					"local_offset": [
-						-1.24000000953674,
-						0.550000011920929,
-						-0.839999973773956
+						-1.0,
+						0.550000071525574,
+						-1.0
 					],
+					"navigation": {
+						"binding_id": "hushbloom_proximity_stun_v1",
+						"component_id": "entry_component:0:4:18",
+						"content_vertex": {
+							"cell": [
+								33,
+								18
+							],
+							"level": 1
+						},
+						"contract_id": "generated_content_navigation_v1",
+						"kind": "occupiable",
+						"radius": 1.5,
+						"reachable_region": [
+							{
+								"cell": [
+									33,
+									18
+								],
+								"level": 1
+							},
+							{
+								"cell": [
+									33,
+									17
+								],
+								"level": 1
+							},
+							{
+								"cell": [
+									33,
+									19
+								],
+								"level": 1
+							},
+							{
+								"cell": [
+									34,
+									19
+								],
+								"level": 1
+							}
+						]
+					},
 					"position": [
-						30.2600002288818,
+						30.5,
 						1.72000002861023,
-						0.660000026226044
+						0.5
 					],
 					"role": "resource",
 					"rotation_y_degrees": 11.0,
@@ -15674,7 +15603,7 @@
 			"approach_position": [
 				47.5,
 				0.449999988079071,
-				-12.4799995422363
+				-12.5
 			],
 			"approaches": [],
 			"archetype_id": "",
@@ -15696,14 +15625,72 @@
 					"id": "scarpet",
 					"label": "scarpet",
 					"local_offset": [
-						-1.55999994277954,
-						0.0799999982118607,
-						-0.839999973773956
+						-2.0,
+						0.0799999833106995,
+						-1.0
 					],
+					"navigation": {
+						"binding_id": "scarpet_concealment_v1",
+						"component_id": "entry_component:0:4:18",
+						"content_vertex": {
+							"cell": [
+								48,
+								3
+							],
+							"level": 0
+						},
+						"contract_id": "generated_content_navigation_v1",
+						"kind": "occupiable",
+						"radius": 1.65,
+						"reachable_region": [
+							{
+								"cell": [
+									48,
+									3
+								],
+								"level": 0
+							},
+							{
+								"cell": [
+									47,
+									3
+								],
+								"level": 0
+							},
+							{
+								"cell": [
+									49,
+									3
+								],
+								"level": 0
+							},
+							{
+								"cell": [
+									48,
+									4
+								],
+								"level": 0
+							},
+							{
+								"cell": [
+									47,
+									4
+								],
+								"level": 0
+							},
+							{
+								"cell": [
+									49,
+									4
+								],
+								"level": 0
+							}
+						]
+					},
 					"position": [
-						45.939998626709,
+						45.5,
 						0.529999971389771,
-						-14.3400001525879
+						-14.5
 					],
 					"role": "cover",
 					"rotation_y_degrees": -11.0,
@@ -15736,6 +15723,93 @@
 				3.0
 			],
 			"id": "node_03",
+			"interaction_approach": {
+				"acceptance_radius": 1.95,
+				"approach_vertex": {
+					"cell": [
+						50,
+						5
+					],
+					"level": 0
+				},
+				"component_anchor": {
+					"cell": [
+						4,
+						18
+					],
+					"level": 0
+				},
+				"component_id": "entry_component:0:4:18",
+				"contract_id": "generated_interaction_approach_v1",
+				"handler_id": "physical_lysate_pickup_v1",
+				"interaction_radius": 1.8,
+				"region_vertices": [
+					{
+						"cell": [
+							50,
+							5
+						],
+						"level": 0
+					},
+					{
+						"cell": [
+							50,
+							4
+						],
+						"level": 0
+					},
+					{
+						"cell": [
+							49,
+							5
+						],
+						"level": 0
+					},
+					{
+						"cell": [
+							51,
+							5
+						],
+						"level": 0
+					},
+					{
+						"cell": [
+							50,
+							6
+						],
+						"level": 0
+					},
+					{
+						"cell": [
+							49,
+							4
+						],
+						"level": 0
+					},
+					{
+						"cell": [
+							51,
+							4
+						],
+						"level": 0
+					},
+					{
+						"cell": [
+							51,
+							6
+						],
+						"level": 0
+					}
+				],
+				"required_from_node_id": "node_01",
+				"required_from_vertex": {
+					"cell": [
+						19,
+						5
+					],
+					"level": 0
+				}
+			},
 			"label": "Risk cache · 3 ATP lysate",
 			"layout_step": {
 				"lane": -2,
@@ -15787,9 +15861,7 @@
 			"runtime_handler": "physical_lysate_pickup_v1",
 			"runtime_progression_required": false,
 			"runtime_support": "implemented",
-			"shadow_solution": {
-
-			},
+			"shadow_solution": {},
 			"spatial_affordances": [],
 			"stage": 1,
 			"structures": [
@@ -15901,14 +15973,72 @@
 					"id": "scarpet",
 					"label": "scarpet",
 					"local_offset": [
-						-1.87999999523163,
-						0.0799999982118607,
-						-1.39999997615814
+						-2.0,
+						0.0800000429153442,
+						-1.0
 					],
+					"navigation": {
+						"binding_id": "scarpet_concealment_v1",
+						"component_id": "entry_component:0:4:18",
+						"content_vertex": {
+							"cell": [
+								63,
+								34
+							],
+							"level": 1
+						},
+						"contract_id": "generated_content_navigation_v1",
+						"kind": "occupiable",
+						"radius": 1.65,
+						"reachable_region": [
+							{
+								"cell": [
+									63,
+									34
+								],
+								"level": 1
+							},
+							{
+								"cell": [
+									63,
+									33
+								],
+								"level": 1
+							},
+							{
+								"cell": [
+									64,
+									34
+								],
+								"level": 1
+							},
+							{
+								"cell": [
+									63,
+									35
+								],
+								"level": 1
+							},
+							{
+								"cell": [
+									64,
+									33
+								],
+								"level": 1
+							},
+							{
+								"cell": [
+									64,
+									35
+								],
+								"level": 1
+							}
+						]
+					},
 					"position": [
-						60.6199989318848,
+						60.5,
 						1.25,
-						16.1000003814697
+						16.5
 					],
 					"role": "cover",
 					"rotation_y_degrees": 22.0,
@@ -16027,8 +16157,8 @@
 			],
 			"approach_position": [
 				77.5,
-				1.16999995708466,
-				4.19999980926514
+				1.17000007629395,
+				4.5
 			],
 			"approaches": [
 				{
@@ -16101,14 +16231,86 @@
 					"id": "scarpet",
 					"label": "scarpet",
 					"local_offset": [
-						-1.87999999523163,
-						0.0799999982118607,
-						-1.39999997615814
+						-2.0,
+						0.0800000429153442,
+						-1.0
 					],
+					"navigation": {
+						"binding_id": "scarpet_concealment_v1",
+						"component_id": "entry_component:0:4:18",
+						"content_vertex": {
+							"cell": [
+								78,
+								19
+							],
+							"level": 1
+						},
+						"contract_id": "generated_content_navigation_v1",
+						"kind": "occupiable",
+						"radius": 1.65,
+						"reachable_region": [
+							{
+								"cell": [
+									78,
+									19
+								],
+								"level": 1
+							},
+							{
+								"cell": [
+									78,
+									18
+								],
+								"level": 1
+							},
+							{
+								"cell": [
+									77,
+									19
+								],
+								"level": 1
+							},
+							{
+								"cell": [
+									79,
+									19
+								],
+								"level": 1
+							},
+							{
+								"cell": [
+									78,
+									20
+								],
+								"level": 1
+							},
+							{
+								"cell": [
+									79,
+									18
+								],
+								"level": 1
+							},
+							{
+								"cell": [
+									77,
+									20
+								],
+								"level": 1
+							},
+							{
+								"cell": [
+									79,
+									20
+								],
+								"level": 1
+							}
+						]
+					},
 					"position": [
-						75.620002746582,
+						75.5,
 						1.25,
-						1.10000002384186
+						1.5
 					],
 					"role": "cover",
 					"rotation_y_degrees": 33.0,
@@ -16143,6 +16345,79 @@
 				5.0
 			],
 			"id": "node_05",
+			"interaction_approach": {
+				"acceptance_radius": 1.95,
+				"approach_vertex": {
+					"cell": [
+						80,
+						22
+					],
+					"level": 1
+				},
+				"component_anchor": {
+					"cell": [
+						4,
+						18
+					],
+					"level": 0
+				},
+				"component_id": "entry_component:0:4:18",
+				"contract_id": "generated_interaction_approach_v1",
+				"handler_id": "physical_lysate_pickup_v1",
+				"interaction_radius": 1.8,
+				"region_vertices": [
+					{
+						"cell": [
+							80,
+							22
+						],
+						"level": 1
+					},
+					{
+						"cell": [
+							80,
+							21
+						],
+						"level": 1
+					},
+					{
+						"cell": [
+							79,
+							22
+						],
+						"level": 1
+					},
+					{
+						"cell": [
+							81,
+							22
+						],
+						"level": 1
+					},
+					{
+						"cell": [
+							79,
+							21
+						],
+						"level": 1
+					},
+					{
+						"cell": [
+							81,
+							21
+						],
+						"level": 1
+					}
+				],
+				"required_from_node_id": "node_01",
+				"required_from_vertex": {
+					"cell": [
+						19,
+						5
+					],
+					"level": 0
+				}
+			},
 			"label": "Redirected enemy aggression · Kill Enemy",
 			"layout_step": {
 				"lane": -1,
@@ -16265,8 +16540,8 @@
 			],
 			"approach_position": [
 				91.5,
-				1.16999995708466,
-				2.51999998092651
+				1.17000007629395,
+				2.5
 			],
 			"approaches": [],
 			"archetype_id": "",
@@ -16288,14 +16563,72 @@
 					"id": "scarpet",
 					"label": "scarpet",
 					"local_offset": [
-						-1.24000000953674,
-						0.0799999982118607,
-						-0.839999973773956
+						-1.0,
+						0.0800000429153442,
+						-1.0
 					],
+					"navigation": {
+						"binding_id": "scarpet_concealment_v1",
+						"component_id": "entry_component:0:4:18",
+						"content_vertex": {
+							"cell": [
+								93,
+								18
+							],
+							"level": 1
+						},
+						"contract_id": "generated_content_navigation_v1",
+						"kind": "occupiable",
+						"radius": 1.65,
+						"reachable_region": [
+							{
+								"cell": [
+									93,
+									18
+								],
+								"level": 1
+							},
+							{
+								"cell": [
+									92,
+									18
+								],
+								"level": 1
+							},
+							{
+								"cell": [
+									94,
+									18
+								],
+								"level": 1
+							},
+							{
+								"cell": [
+									93,
+									19
+								],
+								"level": 1
+							},
+							{
+								"cell": [
+									92,
+									19
+								],
+								"level": 1
+							},
+							{
+								"cell": [
+									94,
+									19
+								],
+								"level": 1
+							}
+						]
+					},
 					"position": [
-						90.2600021362305,
+						90.5,
 						1.25,
-						0.660000026226044
+						0.5
 					],
 					"role": "cover",
 					"rotation_y_degrees": -11.0,
@@ -16328,6 +16661,79 @@
 				3.0
 			],
 			"id": "node_06",
+			"interaction_approach": {
+				"acceptance_radius": 1.95,
+				"approach_vertex": {
+					"cell": [
+						94,
+						20
+					],
+					"level": 1
+				},
+				"component_anchor": {
+					"cell": [
+						4,
+						18
+					],
+					"level": 0
+				},
+				"component_id": "entry_component:0:4:18",
+				"contract_id": "generated_interaction_approach_v1",
+				"handler_id": "physical_lysate_pickup_v1",
+				"interaction_radius": 1.8,
+				"region_vertices": [
+					{
+						"cell": [
+							94,
+							20
+						],
+						"level": 1
+					},
+					{
+						"cell": [
+							94,
+							19
+						],
+						"level": 1
+					},
+					{
+						"cell": [
+							93,
+							20
+						],
+						"level": 1
+					},
+					{
+						"cell": [
+							95,
+							20
+						],
+						"level": 1
+					},
+					{
+						"cell": [
+							93,
+							19
+						],
+						"level": 1
+					},
+					{
+						"cell": [
+							95,
+							19
+						],
+						"level": 1
+					}
+				],
+				"required_from_node_id": "node_05",
+				"required_from_vertex": {
+					"cell": [
+						80,
+						22
+					],
+					"level": 1
+				}
+			},
 			"label": "Lysate reserve",
 			"layout_step": {
 				"lane": -1,
@@ -16379,9 +16785,7 @@
 			"runtime_handler": "physical_lysate_pickup_v1",
 			"runtime_progression_required": false,
 			"runtime_support": "implemented",
-			"shadow_solution": {
-
-			},
+			"shadow_solution": {},
 			"spatial_affordances": [],
 			"stage": 1,
 			"structures": [
@@ -16506,14 +16910,93 @@
 					"id": "scarpet",
 					"label": "scarpet",
 					"local_offset": [
-						-1.87999999523163,
-						0.0799999982118607,
-						-1.39999997615814
+						-2.0,
+						0.0800000429153442,
+						-1.0
 					],
+					"navigation": {
+						"binding_id": "scarpet_concealment_v1",
+						"component_id": "entry_component:0:4:18",
+						"content_vertex": {
+							"cell": [
+								108,
+								34
+							],
+							"level": 1
+						},
+						"contract_id": "generated_content_navigation_v1",
+						"kind": "occupiable",
+						"radius": 1.65,
+						"reachable_region": [
+							{
+								"cell": [
+									108,
+									34
+								],
+								"level": 1
+							},
+							{
+								"cell": [
+									108,
+									33
+								],
+								"level": 1
+							},
+							{
+								"cell": [
+									107,
+									34
+								],
+								"level": 1
+							},
+							{
+								"cell": [
+									109,
+									34
+								],
+								"level": 1
+							},
+							{
+								"cell": [
+									108,
+									35
+								],
+								"level": 1
+							},
+							{
+								"cell": [
+									107,
+									33
+								],
+								"level": 1
+							},
+							{
+								"cell": [
+									109,
+									33
+								],
+								"level": 1
+							},
+							{
+								"cell": [
+									107,
+									35
+								],
+								"level": 1
+							},
+							{
+								"cell": [
+									109,
+									35
+								],
+								"level": 1
+							}
+						]
+					},
 					"position": [
-						105.620002746582,
+						105.5,
 						1.25,
-						16.1000003814697
+						16.5
 					],
 					"role": "cover",
 					"rotation_y_degrees": 44.0,
@@ -16835,9 +17318,7 @@
 			],
 			"id": "node_09",
 			"label": "Pattern reconstruction · Area Map",
-			"layout_step": {
-
-			},
+			"layout_step": {},
 			"link_ref": "walk_06",
 			"nested_archetypes": [],
 			"nested_depth": 0,
@@ -16957,9 +17438,7 @@
 			],
 			"id": "node_10",
 			"label": "Pattern reconstruction · Flow Diagram",
-			"layout_step": {
-
-			},
+			"layout_step": {},
 			"link_ref": "walk_07",
 			"nested_archetypes": [],
 			"nested_depth": 0,
@@ -17093,9 +17572,7 @@
 			],
 			"id": "node_11",
 			"label": "Plant as tool · Climbvine Traversal",
-			"layout_step": {
-
-			},
+			"layout_step": {},
 			"link_ref": "walk_00",
 			"nested_archetypes": [],
 			"nested_depth": 0,
@@ -17255,9 +17732,7 @@
 			],
 			"id": "node_12",
 			"label": "Plant as tool · Resolution Roots Stabilize",
-			"layout_step": {
-
-			},
+			"layout_step": {},
 			"link_ref": "walk_01",
 			"nested_archetypes": [],
 			"nested_depth": 0,
@@ -17407,14 +17882,93 @@
 					"id": "scarpet",
 					"label": "scarpet",
 					"local_offset": [
-						-1.87999999523163,
-						0.0799999982118607,
-						-1.39999997615814
+						-2.0,
+						0.0800000429153442,
+						-1.0
 					],
+					"navigation": {
+						"binding_id": "scarpet_concealment_v1",
+						"component_id": "entry_component:0:4:18",
+						"content_vertex": {
+							"cell": [
+								198,
+								19
+							],
+							"level": 1
+						},
+						"contract_id": "generated_content_navigation_v1",
+						"kind": "occupiable",
+						"radius": 1.65,
+						"reachable_region": [
+							{
+								"cell": [
+									198,
+									19
+								],
+								"level": 1
+							},
+							{
+								"cell": [
+									198,
+									18
+								],
+								"level": 1
+							},
+							{
+								"cell": [
+									197,
+									19
+								],
+								"level": 1
+							},
+							{
+								"cell": [
+									199,
+									19
+								],
+								"level": 1
+							},
+							{
+								"cell": [
+									198,
+									20
+								],
+								"level": 1
+							},
+							{
+								"cell": [
+									197,
+									18
+								],
+								"level": 1
+							},
+							{
+								"cell": [
+									199,
+									18
+								],
+								"level": 1
+							},
+							{
+								"cell": [
+									197,
+									20
+								],
+								"level": 1
+							},
+							{
+								"cell": [
+									199,
+									20
+								],
+								"level": 1
+							}
+						]
+					},
 					"position": [
-						195.619995117188,
+						195.5,
 						1.25,
-						1.10000002384186
+						1.5
 					],
 					"role": "cover",
 					"rotation_y_degrees": 22.0,
@@ -17449,9 +18003,7 @@
 			],
 			"id": "node_13",
 			"label": "Redirected enemy aggression · Reveal Plant",
-			"layout_step": {
-
-			},
+			"layout_step": {},
 			"link_ref": "walk_02",
 			"nested_archetypes": [],
 			"nested_depth": 0,
@@ -17605,14 +18157,86 @@
 					"id": "scarpet",
 					"label": "scarpet",
 					"local_offset": [
-						-1.87999999523163,
-						0.0799999982118607,
-						-1.39999997615814
+						-2.0,
+						0.0800000429153442,
+						-1.0
 					],
+					"navigation": {
+						"binding_id": "scarpet_concealment_v1",
+						"component_id": "entry_component:0:4:18",
+						"content_vertex": {
+							"cell": [
+								213,
+								19
+							],
+							"level": 1
+						},
+						"contract_id": "generated_content_navigation_v1",
+						"kind": "occupiable",
+						"radius": 1.65,
+						"reachable_region": [
+							{
+								"cell": [
+									213,
+									19
+								],
+								"level": 1
+							},
+							{
+								"cell": [
+									213,
+									18
+								],
+								"level": 1
+							},
+							{
+								"cell": [
+									212,
+									19
+								],
+								"level": 1
+							},
+							{
+								"cell": [
+									214,
+									19
+								],
+								"level": 1
+							},
+							{
+								"cell": [
+									213,
+									20
+								],
+								"level": 1
+							},
+							{
+								"cell": [
+									214,
+									18
+								],
+								"level": 1
+							},
+							{
+								"cell": [
+									212,
+									20
+								],
+								"level": 1
+							},
+							{
+								"cell": [
+									214,
+									20
+								],
+								"level": 1
+							}
+						]
+					},
 					"position": [
-						210.619995117188,
+						210.5,
 						1.25,
-						1.10000002384186
+						1.5
 					],
 					"role": "cover",
 					"rotation_y_degrees": 33.0,
@@ -17647,9 +18271,7 @@
 			],
 			"id": "node_14",
 			"label": "Redirected enemy aggression · Reveal Terminal",
-			"layout_step": {
-
-			},
+			"layout_step": {},
 			"link_ref": "walk_03",
 			"nested_archetypes": [],
 			"nested_depth": 0,
@@ -17816,14 +18438,86 @@
 					"id": "scarpet",
 					"label": "scarpet",
 					"local_offset": [
-						-1.55999994277954,
-						0.0799999982118607,
-						-0.560000002384186
+						-2.0,
+						0.0799999833106995,
+						-1.0
 					],
+					"navigation": {
+						"binding_id": "scarpet_concealment_v1",
+						"component_id": "entry_component:0:4:18",
+						"content_vertex": {
+							"cell": [
+								228,
+								18
+							],
+							"level": 0
+						},
+						"contract_id": "generated_content_navigation_v1",
+						"kind": "occupiable",
+						"radius": 1.65,
+						"reachable_region": [
+							{
+								"cell": [
+									228,
+									18
+								],
+								"level": 0
+							},
+							{
+								"cell": [
+									228,
+									17
+								],
+								"level": 0
+							},
+							{
+								"cell": [
+									227,
+									18
+								],
+								"level": 0
+							},
+							{
+								"cell": [
+									229,
+									18
+								],
+								"level": 0
+							},
+							{
+								"cell": [
+									228,
+									19
+								],
+								"level": 0
+							},
+							{
+								"cell": [
+									227,
+									17
+								],
+								"level": 0
+							},
+							{
+								"cell": [
+									227,
+									19
+								],
+								"level": 0
+							},
+							{
+								"cell": [
+									229,
+									19
+								],
+								"level": 0
+							}
+						]
+					},
 					"position": [
-						225.940002441406,
+						225.5,
 						0.529999971389771,
-						0.939999997615814
+						0.5
 					],
 					"role": "cover",
 					"rotation_y_degrees": 44.0,
@@ -17856,9 +18550,7 @@
 			],
 			"id": "node_15",
 			"label": "Carry the heavy thing · Puzzle Piece",
-			"layout_step": {
-
-			},
+			"layout_step": {},
 			"link_ref": "walk_04",
 			"nested_archetypes": [],
 			"nested_depth": 0,
@@ -17902,9 +18594,9 @@
 		{
 			"action_verb": "ENTER SHELTER",
 			"approach_position": [
-				242.020004272461,
+				242.5,
 				0.449999988079071,
-				0.360000014305115
+				0.5
 			],
 			"approaches": [],
 			"archetype_id": "11",
@@ -17940,10 +18632,81 @@
 				3.0
 			],
 			"id": "exit_shelter",
-			"label": "Shelter Arrival",
-			"layout_step": {
-
+			"interaction_approach": {
+				"acceptance_radius": 1.95,
+				"approach_vertex": {
+					"cell": [
+						245,
+						18
+					],
+					"level": 0
+				},
+				"component_anchor": {
+					"cell": [
+						4,
+						18
+					],
+					"level": 0
+				},
+				"component_id": "entry_component:0:4:18",
+				"contract_id": "generated_interaction_approach_v1",
+				"handler_id": "canonical_shelter_arrival_v1",
+				"interaction_radius": 1.8,
+				"region_vertices": [
+					{
+						"cell": [
+							245,
+							18
+						],
+						"level": 0
+					},
+					{
+						"cell": [
+							244,
+							18
+						],
+						"level": 0
+					},
+					{
+						"cell": [
+							246,
+							18
+						],
+						"level": 0
+					},
+					{
+						"cell": [
+							245,
+							19
+						],
+						"level": 0
+					},
+					{
+						"cell": [
+							244,
+							19
+						],
+						"level": 0
+					},
+					{
+						"cell": [
+							246,
+							19
+						],
+						"level": 0
+					}
+				],
+				"required_from_node_id": "node_05",
+				"required_from_vertex": {
+					"cell": [
+						80,
+						22
+					],
+					"level": 1
+				}
 			},
+			"label": "Shelter Arrival",
+			"layout_step": {},
 			"link_ref": "",
 			"nested_archetypes": [],
 			"nested_depth": 0,
@@ -17989,9 +18752,7 @@
 			"runtime_handler": "canonical_shelter_arrival_v1",
 			"runtime_progression_required": true,
 			"runtime_support": "implemented",
-			"shadow_solution": {
-
-			},
+			"shadow_solution": {},
 			"spatial_affordances": [],
 			"stage": 1,
 			"structures": [
@@ -21397,9 +22158,7 @@
 					3,
 					4
 				],
-				"spatial_affordance": {
-
-				},
+				"spatial_affordance": {},
 				"spatial_feature_kind": ""
 			},
 			{
@@ -21415,9 +22174,7 @@
 					3,
 					3
 				],
-				"spatial_affordance": {
-
-				},
+				"spatial_affordance": {},
 				"spatial_feature_kind": ""
 			},
 			{
@@ -21433,9 +22190,7 @@
 					3,
 					3
 				],
-				"spatial_affordance": {
-
-				},
+				"spatial_affordance": {},
 				"spatial_feature_kind": ""
 			},
 			{
@@ -21451,9 +22206,7 @@
 					4,
 					3
 				],
-				"spatial_affordance": {
-
-				},
+				"spatial_affordance": {},
 				"spatial_feature_kind": ""
 			},
 			{
@@ -21557,9 +22310,7 @@
 					3,
 					3
 				],
-				"spatial_affordance": {
-
-				},
+				"spatial_affordance": {},
 				"spatial_feature_kind": ""
 			},
 			{
@@ -21575,9 +22326,7 @@
 					5,
 					5
 				],
-				"spatial_affordance": {
-
-				},
+				"spatial_affordance": {},
 				"spatial_feature_kind": ""
 			},
 			{
@@ -21593,9 +22342,7 @@
 					5,
 					5
 				],
-				"spatial_affordance": {
-
-				},
+				"spatial_affordance": {},
 				"spatial_feature_kind": ""
 			},
 			{
@@ -21611,9 +22358,7 @@
 					3,
 					4
 				],
-				"spatial_affordance": {
-
-				},
+				"spatial_affordance": {},
 				"spatial_feature_kind": ""
 			},
 			{
@@ -21629,9 +22374,7 @@
 					3,
 					1
 				],
-				"spatial_affordance": {
-
-				},
+				"spatial_affordance": {},
 				"spatial_feature_kind": ""
 			},
 			{
@@ -21647,9 +22390,7 @@
 					3,
 					4
 				],
-				"spatial_affordance": {
-
-				},
+				"spatial_affordance": {},
 				"spatial_feature_kind": ""
 			},
 			{
@@ -21665,9 +22406,7 @@
 					4,
 					2
 				],
-				"spatial_affordance": {
-
-				},
+				"spatial_affordance": {},
 				"spatial_feature_kind": ""
 			},
 			{
@@ -21771,9 +22510,7 @@
 					4,
 					2
 				],
-				"spatial_affordance": {
-
-				},
+				"spatial_affordance": {},
 				"spatial_feature_kind": ""
 			},
 			{
@@ -21789,9 +22526,7 @@
 					4,
 					3
 				],
-				"spatial_affordance": {
-
-				},
+				"spatial_affordance": {},
 				"spatial_feature_kind": ""
 			}
 		],
@@ -23004,9 +23739,7 @@
 	],
 	"schema": "trawf_generated_stretch_spec_v1",
 	"settings": {
-		"area_theme": {
-
-		},
+		"area_theme": {},
 		"biome": "",
 		"budget": {
 			"archetype_depth": 5,
@@ -23062,9 +23795,7 @@
 				"step_count": 8,
 				"transition_chance": 0.5
 			},
-			"shadow_solution": {
-
-			}
+			"shadow_solution": {}
 		},
 		"id": "generated_event_walk_shelter_4_to_5",
 		"limitations": {
@@ -23163,9 +23894,7 @@
 			"region": "Channels",
 			"slot_id": "generated_event_walk_shelter_4_to_5"
 		},
-		"zone_transition": {
-
-		}
+		"zone_transition": {}
 	},
 	"source": {
 		"complexity_tier": "hard",
@@ -23175,6 +23904,12 @@
 		"seed": 5271
 	},
 	"spatial_features": [],
+	"spec_integrity": {
+		"content_navigation_contract_id": "generated_content_navigation_v1",
+		"contract_id": "generated_spec_integrity_v1",
+		"party_spawn_clearance_contract_id": "generated_party_spawn_clearance_v1",
+		"spatial_socket_contract_id": "generated_spatial_feature_sockets_v1"
+	},
 	"spine_navigation_grid": {
 		"cell_size": 1.0,
 		"contract_id": "unified_grid_v1",
@@ -35587,9 +36322,7 @@
 			}
 		],
 		"optional_lesson_spine": [],
-		"optional_world_action_policy": {
-
-		},
+		"optional_world_action_policy": {},
 		"optional_world_actions": [],
 		"perception_lock": {
 			"hidden_from_each": "none",
@@ -35666,148 +36399,102 @@
 					"completion_phase": "bridged",
 					"consumer_addressing": "exact_cell",
 					"consumer_cell": [
-						78,
-						35
+						50,
+						19
 					],
 					"consumer_cell_role": "visual_midpoint",
 					"consumer_cells": [
 						[
-							78,
-							18
+							50,
+							3
 						],
 						[
-							78,
+							50,
+							4
+						],
+						[
+							50,
+							5
+						],
+						[
+							50,
+							6
+						],
+						[
+							50,
 							19
-						],
-						[
-							78,
-							20
-						],
-						[
-							78,
-							21
-						],
-						[
-							78,
-							22
-						],
-						[
-							78,
-							23
-						],
-						[
-							78,
-							24
-						],
-						[
-							78,
-							25
-						],
-						[
-							78,
-							26
-						],
-						[
-							78,
-							27
-						],
-						[
-							78,
-							28
-						],
-						[
-							78,
-							29
-						],
-						[
-							78,
-							30
-						],
-						[
-							78,
-							31
-						],
-						[
-							78,
-							32
-						],
-						[
-							78,
-							33
-						],
-						[
-							78,
-							34
-						],
-						[
-							78,
-							35
 						]
 					],
 					"consumer_cells_addressing": "exact_cut_set",
 					"consumer_derivation": "first_later_spine_disconnect_cut",
+					"consumer_navigation_level": 0,
 					"consumer_policy": "next_unresolved_spine_blocker",
 					"content_policy": "causal_producer",
 					"contract_id": "generated_branch_role_v1",
 					"cut_proof": "entry_exit_disconnected_when_removed",
 					"producer_cell": [
-						75,
-						39
+						47,
+						23
 					],
+					"producer_navigation_level": 0,
 					"produces_state": "branch_00_resolved",
 					"role": "mandatory_producer",
 					"runtime_handler": "branch_span_producer",
-					"spine_column": 76,
+					"spine_column": 48,
 					"starts_active": true,
 					"topology_effect": "unlock_next_spine_blocker",
 					"wait_for_completion": true
 				},
 				"cells": [
 					[
-						76,
-						36
+						48,
+						20
 					],
 					[
-						75,
-						37
+						49,
+						20
 					],
 					[
-						76,
-						37
+						47,
+						21
 					],
 					[
-						77,
-						37
+						48,
+						21
 					],
 					[
-						75,
-						38
+						49,
+						21
 					],
 					[
-						76,
-						38
+						47,
+						22
 					],
 					[
-						77,
-						38
+						48,
+						22
 					],
 					[
-						75,
-						39
+						49,
+						22
 					],
 					[
-						76,
-						39
+						47,
+						23
 					],
 					[
-						77,
-						39
+						48,
+						23
+					],
+					[
+						49,
+						23
 					]
 				],
 				"id": "branch_00",
 				"neck": [
-					76,
-					36
+					48,
+					20
 				],
 				"required_for_progress": true,
 				"role": "mandatory_producer"
@@ -35821,78 +36508,79 @@
 					"consumer_policy": "none",
 					"content_policy": "risk_scaled_physical_reward",
 					"contract_id": "generated_branch_role_v1",
+					"producer_navigation_level": 0,
 					"produces_state": "",
 					"role": "optional_risk_reward",
-					"spine_column": 176,
+					"spine_column": 154,
 					"starts_active": true,
 					"topology_effect": "none"
 				},
 				"cells": [
 					[
-						176,
-						20
-					],
-					[
-						175,
-						21
-					],
-					[
-						176,
-						21
-					],
-					[
-						175,
+						154,
 						22
 					],
 					[
-						176,
-						22
-					],
-					[
-						174,
+						153,
 						23
 					],
 					[
-						175,
+						154,
 						23
 					],
 					[
-						176,
-						23
-					],
-					[
-						177,
-						23
-					],
-					[
-						178,
-						23
-					],
-					[
-						174,
+						153,
 						24
 					],
 					[
-						175,
+						154,
 						24
 					],
 					[
-						176,
-						24
+						152,
+						25
 					],
 					[
-						177,
-						24
+						153,
+						25
 					],
 					[
-						178,
-						24
+						154,
+						25
+					],
+					[
+						155,
+						25
+					],
+					[
+						156,
+						25
+					],
+					[
+						152,
+						26
+					],
+					[
+						153,
+						26
+					],
+					[
+						154,
+						26
+					],
+					[
+						155,
+						26
+					],
+					[
+						156,
+						26
 					]
 				],
 				"id": "branch_01",
 				"neck": [
-					176,
-					20
+					154,
+					22
 				],
 				"required_for_progress": false,
 				"role": "optional_risk_reward"
@@ -35942,12 +36630,22 @@
 		]
 	},
 	"validation": {
+		"actionable_interaction_approaches": {
+			"actionable_node_count": 5,
+			"component_id": "entry_component:0:4:18",
+			"errors": [],
+			"valid": true
+		},
 		"area_theme": {
 			"errors": [],
 			"landmark_count": 0,
 			"valid": true
 		},
 		"bare_pair_solvable": true,
+		"integrity": {
+			"errors": [],
+			"valid": true
+		},
 		"mode_independence": {
 			"errors": [],
 			"runtime_paths": [],
@@ -35956,6 +36654,17 @@
 		"multi_solution": false,
 		"multi_solution_ok": true,
 		"multi_solution_required": false,
+		"party_spawn_clearance": {
+			"errors": [],
+			"party_anchor_count": 3,
+			"realized_content_placement_count": 9,
+			"valid": true
+		},
+		"realized_content_navigation": {
+			"errors": [],
+			"realized_content_placement_count": 9,
+			"valid": true
+		},
 		"shadow_solvable": true,
 		"solution_warnings": [],
 		"spatial_features": {
@@ -36087,7 +36796,5 @@
 		"region": "Channels",
 		"slot_id": "generated_event_walk_shelter_4_to_5"
 	},
-	"zone_transition": {
-
-	}
+	"zone_transition": {}
 }

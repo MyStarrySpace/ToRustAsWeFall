@@ -4,8 +4,9 @@ extends SceneTree
 ## OUT_DIR (scratchpad — NEVER the project tree). The audit eye reviews these for
 ## what SHOULDN'T be there, not for whether additions appeared.
 ##
-##   OUT_DIR=<scratchpad> ../Godot_v4.7-stable_win64.exe --path "." \
-##       --position 20000,20000 --resolution 1600x900 --script tools/capture_wash_ascent.gd
+## Isolated-display launch only; see tools/README.md:
+##   OUT_DIR=<scratchpad> godot --path "." --resolution 1600x900 \
+##       --script tools/capture_wash_ascent.gd
 
 func _init() -> void:
 	pass

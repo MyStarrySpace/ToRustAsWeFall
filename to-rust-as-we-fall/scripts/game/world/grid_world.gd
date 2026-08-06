@@ -56,13 +56,22 @@ var dynamic_blockers: Dictionary = {}  # Vector2i → obj_id
 # crossing is gameplay applied by the scene/chunk, not the pathfinder. ---
 var risk_cells: Dictionary = {}  # Vector2i -> {"penalty": float, "recoverable": bool}
 
+# Player-facing graph annotation for a vertex whose consequence is authored by a
+# mechanism rather than by path shape alone. It is keyed by (level, cell), so an
+# unsafe bowl floor never labels the safe deck stacked above it. This is presentation
+# data only: it does not alter walkability, cost, or command acceptance.
+var navigation_consequences: Dictionary = {}  # "level:x:z" -> String
+
 # --- Multi-level support (stacked floors). The grid stays a single 2D plane of cells; a LEVEL is
 # the same (x,z) plane lifted by level_height in world Y. A character's level is tracked in
 # GameState; grid_to_world(cell, level) places the cell at that floor's height. Ladders/ramps are
 # inter-level LINKS at a cell, registered here. Backward-compatible: level defaults to 0 → Y=0. ---
 var level_count := 1
 var level_height := 4.0               # world Y between stacked floors
-var inter_level_links: Dictionary = {}  # "x,z,from,to" -> {type, cost}
+## Directional traversal-edge records. Legacy co-located links retain their historical
+## "x,z,from,to" key so direct readers remain compatible; edges whose two endpoints have
+## different XZ cells use the extended key produced by _edge_key().
+var inter_level_links: Dictionary = {}
 ## Per-level walkable footprints. Stacked floors rarely share a footprint (the elevator's upper
 ## deck and lower deck overlap in X but live on different levels), so walkability is per (cell,
 ## level). A level ABSENT here is fully walkable — single-floor scenes never touch it, so they are
@@ -78,16 +87,99 @@ func level_for_y(y: float) -> int:
 		return 0
 	return clampi(int(round((y - origin.y) / level_height)), 0, level_count - 1)
 
+
+func set_navigation_consequence(cell: Vector2i, level: int, text: String) -> void:
+	var key := _navigation_consequence_key(cell, level)
+	var normalized := text.strip_edges()
+	if normalized.is_empty():
+		navigation_consequences.erase(key)
+	else:
+		navigation_consequences[key] = normalized
+
+
+func navigation_consequence(cell: Vector2i, level: int) -> String:
+	return str(navigation_consequences.get(
+		_navigation_consequence_key(cell, level), ""))
+
+
+func _navigation_consequence_key(cell: Vector2i, level: int) -> String:
+	return "%d:%d:%d" % [level, cell.x, cell.y]
+
 func _link_key(cell: Vector2i, from_level: int, to_level: int) -> String:
 	return "%d,%d,%d,%d" % [cell.x, cell.y, from_level, to_level]
+
+func _edge_key(
+		from_cell: Vector2i,
+		from_level: int,
+		to_cell: Vector2i,
+		to_level: int
+	) -> String:
+	# Keep the key used by existing same-cell ladder owners and direct readers.
+	if from_cell == to_cell:
+		return _link_key(from_cell, from_level, to_level)
+	return "%d,%d,%d>%d,%d,%d" % [
+		from_cell.x, from_cell.y, from_level,
+		to_cell.x, to_cell.y, to_level,
+	]
+
+func _default_link_cost(link_type: String) -> float:
+	return 2.0 if link_type == "ladder" else 1.3
+
+func _nav_node(cell: Vector2i, level: int) -> Dictionary:
+	return {"cell": cell, "level": level}
+
+func _store_inter_level_edge(
+		from_cell: Vector2i,
+		from_level: int,
+		to_cell: Vector2i,
+		to_level: int,
+		link_type: String,
+		cost: float,
+		metadata: Dictionary
+	) -> void:
+	var entry := metadata.duplicate(true)
+	entry.merge({
+		"kind": "inter_level",
+		"type": link_type,
+		"cost": cost,
+		"from_cell": from_cell,
+		"from_level": from_level,
+		"to_cell": to_cell,
+		"to_level": to_level,
+	}, true)
+	inter_level_links[_edge_key(from_cell, from_level, to_cell, to_level)] = entry
+
+## Register a general annotated traversal edge between two navigation vertices. Unlike the
+## legacy add_inter_level_link(), the endpoints need not share an XZ cell, so stairs, ramps,
+## offset ladders, and other authored connectors can retain their actual graph topology.
+func add_inter_level_edge(
+		from_cell: Vector2i,
+		from_level: int,
+		to_cell: Vector2i,
+		to_level: int,
+		link_type := "ladder",
+		link_cost := -1.0,
+		bidirectional := true,
+		metadata: Dictionary = {}
+	) -> void:
+	var resolved_type := str(link_type)
+	var resolved_cost := float(link_cost) if float(link_cost) >= 0.0 \
+		else _default_link_cost(resolved_type)
+	_store_inter_level_edge(
+		from_cell, from_level, to_cell, to_level,
+		resolved_type, resolved_cost, metadata)
+	if bidirectional:
+		_store_inter_level_edge(
+			to_cell, to_level, from_cell, from_level,
+			resolved_type, resolved_cost, metadata)
+	_invalidate_path_walkability()
 
 ## Register a ladder/ramp at a cell that lets a character move between two adjacent levels. Bidirectional
 ## by default — adds both directions. link_type: "ladder" (climb, costlier) or "ramp" (walk).
 func add_inter_level_link(cell: Vector2i, from_level: int, to_level: int, link_type := "ladder", bidirectional := true) -> void:
-	var cost := 2.0 if link_type == "ladder" else 1.3
-	inter_level_links[_link_key(cell, from_level, to_level)] = {"type": link_type, "cost": cost}
-	if bidirectional:
-		inter_level_links[_link_key(cell, to_level, from_level)] = {"type": link_type, "cost": cost}
+	add_inter_level_edge(
+		cell, from_level, cell, to_level,
+		str(link_type), -1.0, bidirectional)
 
 func can_traverse_link(cell: Vector2i, from_level: int, to_level: int) -> bool:
 	return inter_level_links.has(_link_key(cell, from_level, to_level))
@@ -95,8 +187,21 @@ func can_traverse_link(cell: Vector2i, from_level: int, to_level: int) -> bool:
 ## Remove a link (both directions) — for reversible set pieces (the sump's ledge falls when it
 ## drains). Absent keys are a no-op.
 func remove_inter_level_link(cell: Vector2i, from_level: int, to_level: int) -> void:
-	inter_level_links.erase(_link_key(cell, from_level, to_level))
-	inter_level_links.erase(_link_key(cell, to_level, from_level))
+	remove_inter_level_edge(cell, from_level, cell, to_level)
+
+## Remove both directions of a general traversal edge. Absent records are a no-op.
+func remove_inter_level_edge(
+		from_cell: Vector2i,
+		from_level: int,
+		to_cell: Vector2i,
+		to_level: int
+	) -> void:
+	var changed := inter_level_links.erase(
+		_edge_key(from_cell, from_level, to_cell, to_level))
+	changed = inter_level_links.erase(
+		_edge_key(to_cell, to_level, from_cell, from_level)) or changed
+	if changed:
+		_invalidate_path_walkability()
 
 func get_link_cost(cell: Vector2i, from_level: int, to_level: int) -> float:
 	return float(inter_level_links.get(_link_key(cell, from_level, to_level), {}).get("cost", 1.0))
@@ -104,10 +209,85 @@ func get_link_cost(cell: Vector2i, from_level: int, to_level: int) -> float:
 ## The levels a character at this cell+level can step to (via a ladder/ramp here).
 func links_from(cell: Vector2i, from_level: int) -> Array:
 	var out: Array = []
-	for to_level in range(level_count):
-		if to_level != from_level and can_traverse_link(cell, from_level, to_level):
+	for edge_v in link_edges_from(cell, from_level):
+		var to_level := int((edge_v as Dictionary).get("to_level", from_level))
+		if to_level != from_level and not out.has(to_level):
 			out.append(to_level)
+	out.sort()
 	return out
+
+## Full directional edge records leaving a navigation vertex. This is the endpoint-preserving
+## counterpart to legacy links_from(), which can report only destination levels.
+func link_edges_from(cell: Vector2i, from_level: int) -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	for entry_v in inter_level_links.values():
+		if not (entry_v is Dictionary):
+			continue
+		var entry := entry_v as Dictionary
+		if not entry.has("from_cell") or entry.get("from_cell") != cell \
+				or int(entry.get("from_level", -1)) != from_level:
+			continue
+		out.append(entry)
+	return out
+
+## Revalidate a retained plan edge against the current navigation graph. Connector edges
+## must still exist with the exact endpoints/type/action, and all edge kinds require currently
+## walkable endpoints. This lets an executor reject a route made stale by a topology mutation.
+func is_navigation_edge_available(
+	edge: Dictionary,
+	explored: Dictionary = {},
+	locked_doors: Dictionary = {}
+) -> bool:
+	if not edge.has("from_cell") or not edge.has("to_cell") \
+			or not (edge.get("from_cell") is Vector2i) \
+			or not (edge.get("to_cell") is Vector2i):
+		return false
+	var from_cell: Vector2i = edge["from_cell"]
+	var to_cell: Vector2i = edge["to_cell"]
+	var from_level := int(edge.get("from_level", -1))
+	var to_level := int(edge.get("to_level", -1))
+	if not _ml_vertex_walkable(from_cell, from_level, explored, locked_doors) \
+			or not _ml_vertex_walkable(to_cell, to_level, explored, locked_doors):
+		return false
+
+	var category := str(edge.get("category", "")).to_lower()
+	# A retained connector must still name the exact stored edge. Explicit category keeps an
+	# ordinary adjacent walk independent when the same vertex pair also has an authored edge.
+	var stored_v: Variant = inter_level_links.get(
+		_edge_key(from_cell, from_level, to_cell, to_level), null)
+	if category != "grid" and stored_v is Dictionary:
+		var stored := stored_v as Dictionary
+		if stored.get("from_cell") != from_cell \
+				or int(stored.get("from_level", -1)) != from_level \
+				or stored.get("to_cell") != to_cell \
+				or int(stored.get("to_level", -1)) != to_level:
+			return false
+		return str(edge.get("type", edge.get("kind", ""))).to_lower() \
+				== str(stored.get("type", "")).to_lower() \
+			and str(edge.get("action_id", "")) == str(stored.get("action_id", ""))
+	if category == "connector":
+		return false
+
+	# No authored connector record: only a legal one-cell planar edge remains available.
+	if str(edge.get("kind", "")).to_lower() != "walk" or from_level != to_level:
+		return false
+	var delta := to_cell - from_cell
+	var abs_x := absi(delta.x)
+	var abs_z := absi(delta.y)
+	if (abs_x == 0 and abs_z == 0) or abs_x > 1 or abs_z > 1:
+		return false
+	var is_diagonal := abs_x == 1 and abs_z == 1
+	var edge_type := str(edge.get("type", "diagonal" if is_diagonal else "cardinal")).to_lower()
+	if edge_type != ("diagonal" if is_diagonal else "cardinal"):
+		return false
+	if is_diagonal:
+		return _ml_vertex_walkable(
+			Vector2i(from_cell.x + delta.x, from_cell.y), from_level,
+			explored, locked_doors) \
+			and _ml_vertex_walkable(
+				Vector2i(from_cell.x, from_cell.y + delta.y), from_level,
+				explored, locked_doors)
+	return true
 
 # --- Per-level walkable footprints (stacked floors with different shapes) ---
 
@@ -226,8 +406,26 @@ static func from_data(data: Dictionary) -> GridWorld:
 			g.allow_cell_on_level(_arr_to_vec2i(cell), int(lc.get("level", 0)))
 	for link in data.get("links", []):
 		var l := link as Dictionary
-		g.add_inter_level_link(_arr_to_vec2i(l.get("cell", [0, 0])),
-			int(l.get("from", 0)), int(l.get("to", 1)), str(l.get("type", "ladder")))
+		var legacy_cell := _arr_to_vec2i(l.get("cell", [0, 0]))
+		var from_cell := _arr_to_vec2i(l.get("from_cell", legacy_cell))
+		var to_cell := _arr_to_vec2i(l.get("to_cell", legacy_cell))
+		var from_level := int(l.get("from_level", l.get("from", 0)))
+		var to_level := int(l.get("to_level", l.get("to", 1)))
+		# Preserve connector-specific execution annotations without making GridWorld
+		# interpret them. The returned plan promotes duration/action_id for consumers.
+		var metadata := l.duplicate(true)
+		for schema_key in [
+			"cell", "from_cell", "to_cell", "from", "to", "from_level", "to_level",
+			"type", "cost", "bidirectional", "metadata",
+		]:
+			metadata.erase(schema_key)
+		var nested_metadata: Variant = l.get("metadata", {})
+		if nested_metadata is Dictionary:
+			metadata.merge((nested_metadata as Dictionary).duplicate(true), true)
+		g.add_inter_level_edge(
+			from_cell, from_level, to_cell, to_level,
+			str(l.get("type", "ladder")), float(l.get("cost", -1.0)),
+			bool(l.get("bidirectional", true)), metadata)
 	return g
 
 static func _arr_to_vec3(raw: Variant) -> Vector3:
@@ -938,10 +1136,26 @@ func find_path(
 	cautious: bool = false,
 	roads: Dictionary = {},
 	locked_doors: Dictionary = {},
-	level: int = 0
+	level: int = 0,
+	allowed_cells: Dictionary = {}
 ) -> Array[Vector3]:
 	var perf_started := PerformanceTrace.begin()
 	_last_path_iterations = 0
+	# An optional allow-list is used by mechanism-owned movement that must stay on a
+	# particular permanent topology. It is intentionally stricter than ordinary
+	# walkability: the occupied start, destination, every entered cell, and both
+	# orthogonal support cells of a diagonal edge must all belong to the mask.
+	if not allowed_cells.is_empty():
+		# A constrained path may never use the legacy sparse-start bridge: cells
+		# outside this grid cannot belong to the topology the mask describes.
+		if not is_in_bounds(start.x, start.y) or not is_in_bounds(end.x, end.y):
+			PerformanceTrace.end(&"nav", &"grid.find_path", perf_started,
+				"outside_allowed_grid", 0)
+			return []
+		if not allowed_cells.has(start) or not allowed_cells.has(end):
+			PerformanceTrace.end(&"nav", &"grid.find_path", perf_started,
+				"outside_allowed_cells", 0)
+			return []
 	if start == end:
 		PerformanceTrace.end(&"nav", &"grid.find_path", perf_started, "same_cell", 1)
 		return [grid_to_world(end, level)]
@@ -1077,6 +1291,9 @@ func find_path(
 			var neighbor_index := neighbor_z * width + neighbor_x
 			if walkability_mask[neighbor_index] == 0:
 				continue
+			var neighbor_cell := Vector2i(neighbor_x, neighbor_z)
+			if not allowed_cells.is_empty() and not allowed_cells.has(neighbor_cell):
+				continue
 			if not locked_doors.is_empty() and int(grid[neighbor_z][neighbor_x]) == Tile.LOCKED_DOOR \
 					and bool(locked_doors.get(Vector2i(neighbor_x, neighbor_z), false)):
 				continue
@@ -1084,11 +1301,17 @@ func find_path(
 			# Diagonal corner-cutting prevention
 			var is_diagonal := dir.x != 0 and dir.y != 0
 			if is_diagonal:
+				var adjacent_a := Vector2i(current_x + dir.x, current_z)
+				var adjacent_b := Vector2i(current_x, current_z + dir.y)
 				var adjacent_a_index := current_z * width + current_x + dir.x
 				var adjacent_b_index := (current_z + dir.y) * width + current_x
 				if walkability_mask[adjacent_a_index] == 0:
 					continue
 				if walkability_mask[adjacent_b_index] == 0:
+					continue
+				if not allowed_cells.is_empty() \
+						and (not allowed_cells.has(adjacent_a) \
+							or not allowed_cells.has(adjacent_b)):
 					continue
 				if not locked_doors.is_empty() and (
 						(int(grid[current_z][current_x + dir.x]) == Tile.LOCKED_DOOR \
@@ -1209,69 +1432,117 @@ func _find_path_sparse_start(
 				seq += 1
 	return []
 
-## A* ACROSS floors: route from (start_cell, start_level) to (end_cell, end_level) using same-level
-## 8-dir moves PLUS ladder/ramp transitions at link cells. Returns an ordered list of
-## {cell: Vector2i, level: int} waypoints — a level change happens between two consecutive
-## waypoints that share a cell (the link). [] if unreachable. State space is (cell, level); grids
-## are small so this stays cheap. Used for player-directed cross-level moves.
+## Stable multi-level route contract. The richer planner below is authoritative; the legacy
+## waypoint-only API remains as a projection for generation and validation callers.
+const MULTI_LEVEL_PLAN_CONTRACT_ID := "multi_level_plan_v1"
+
+## Compatibility projection for older callers that consume only ordered graph vertices.
 func find_multi_level_path(
 	start_cell: Vector2i, start_level: int, end_cell: Vector2i, end_level: int,
 	explored: Dictionary = {}, locked_doors: Dictionary = {}
 ) -> Array:
+	var plan := find_multi_level_plan(
+		start_cell, start_level, end_cell, end_level, explored, locked_doors)
+	return (plan.get("nodes", []) as Array).duplicate(true) if not plan.is_empty() else []
+
+## Route through the graph of (cell, level) vertices while retaining every traversed edge.
+## `nodes[i] -> nodes[i + 1]` is described by `edges[i]`; connector edges may have
+## different XZ endpoints. Dijkstra ordering is intentional: arbitrary authored connectors
+## can be cheaper than their geometric distance, so an octile heuristic is not admissible.
+func find_multi_level_plan(
+	start_cell: Vector2i, start_level: int, end_cell: Vector2i, end_level: int,
+	explored: Dictionary = {}, locked_doors: Dictionary = {}
+) -> Dictionary:
 	var perf_started := PerformanceTrace.begin()
+	if not _ml_vertex_walkable(start_cell, start_level, explored, locked_doors) \
+			or not _ml_vertex_walkable(end_cell, end_level, explored, locked_doors):
+		PerformanceTrace.end(&"nav", &"grid.find_multi_level_plan", perf_started, "blocked", 0)
+		return {}
 	if start_cell == end_cell and start_level == end_level:
-		PerformanceTrace.end(&"nav", &"grid.find_multi_level_path", perf_started, "same_cell", 1)
-		return [{"cell": end_cell, "level": end_level}]
-	if not is_in_bounds(end_cell.x, end_cell.y) or not is_walkable(end_cell.x, end_cell.y, explored, locked_doors, end_level):
-		PerformanceTrace.end(&"nav", &"grid.find_multi_level_path", perf_started, "blocked", 0)
-		return []
+		PerformanceTrace.end(&"nav", &"grid.find_multi_level_plan", perf_started, "same_vertex", 1)
+		return {
+			"contract_id": MULTI_LEVEL_PLAN_CONTRACT_ID,
+			"nodes": [_nav_node(start_cell, start_level)],
+			"edges": [],
+			"total_cost": 0.0,
+		}
+
 	var dirs: Array[Vector2i] = [
 		Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1),
 		Vector2i(1, 1), Vector2i(1, -1), Vector2i(-1, 1), Vector2i(-1, -1),
 	]
 	var start_key := _ml_key(start_cell, start_level)
-	var open: Array = [start_key]
+	var open: Array[String] = [start_key]
+	var closed: Dictionary = {}
 	var came_from: Dictionary = {}
+	var came_edge: Dictionary = {}
 	var g: Dictionary = {start_key: 0.0}
-	var f: Dictionary = {start_key: _ml_h(start_cell, start_level, end_cell, end_level)}
 	var iters := 0
-	var max_iters := width * height * maxi(1, level_count) * 6
+	var max_iters := width * height * maxi(1, level_count) + 1
 	while not open.is_empty() and iters < max_iters:
 		iters += 1
 		var cur_key: String = open[0]
-		var best_f: float = f.get(cur_key, INF)
+		var best_g: float = float(g.get(cur_key, INF))
 		for i in range(1, open.size()):
-			var ff: float = f.get(open[i], INF)
-			if ff < best_f:
-				best_f = ff
-				cur_key = open[i]
-		var cur_cell: Vector2i = _ml_cell(cur_key)
-		var cur_level: int = _ml_level(cur_key)
-		if cur_cell == end_cell and cur_level == end_level:
-			var result := _ml_reconstruct(came_from, cur_key)
-			PerformanceTrace.end(&"nav", &"grid.find_multi_level_path", perf_started, "reached", iters)
-			return result
+			var candidate_key: String = open[i]
+			var candidate_g: float = float(g.get(candidate_key, INF))
+			if candidate_g < best_g:
+				best_g = candidate_g
+				cur_key = candidate_key
 		open.erase(cur_key)
-		var cur_g: float = g.get(cur_key, INF)
-		# Same-level 8-dir moves.
+		if closed.has(cur_key):
+			continue
+		closed[cur_key] = true
+		var cur_cell := _ml_cell(cur_key)
+		var cur_level := _ml_level(cur_key)
+		if cur_cell == end_cell and cur_level == end_level:
+			var result := _ml_reconstruct_plan(came_from, came_edge, cur_key, best_g)
+			PerformanceTrace.end(&"nav", &"grid.find_multi_level_plan", perf_started, "reached", iters)
+			return result
+
+		# Ordinary same-level 8-direction movement.
 		for dir in dirs:
-			var nb := cur_cell + dir
-			if not is_in_bounds(nb.x, nb.y) or not is_walkable(nb.x, nb.y, explored, locked_doors, cur_level):
+			var neighbor := cur_cell + dir
+			if not _ml_vertex_walkable(neighbor, cur_level, explored, locked_doors):
 				continue
-			var is_diag := dir.x != 0 and dir.y != 0
-			if is_diag:
-				if not is_walkable(cur_cell.x + dir.x, cur_cell.y, explored, locked_doors, cur_level):
-					continue
-				if not is_walkable(cur_cell.x, cur_cell.y + dir.y, explored, locked_doors, cur_level):
-					continue
-			_ml_relax(_ml_key(nb, cur_level), cur_key, cur_g + (1.414 if is_diag else 1.0),
-				nb, cur_level, end_cell, end_level, came_from, g, f, open)
-		# Ladder/ramp transitions at the current cell.
-		for to_level in links_from(cur_cell, cur_level):
-			_ml_relax(_ml_key(cur_cell, to_level), cur_key, cur_g + get_link_cost(cur_cell, cur_level, to_level),
-				cur_cell, to_level, end_cell, end_level, came_from, g, f, open)
-	PerformanceTrace.end(&"nav", &"grid.find_multi_level_path", perf_started, "no_path", iters)
-	return []
+			var is_diagonal := dir.x != 0 and dir.y != 0
+			if is_diagonal and (
+				not _ml_vertex_walkable(
+					Vector2i(cur_cell.x + dir.x, cur_cell.y), cur_level,
+					explored, locked_doors)
+				or not _ml_vertex_walkable(
+					Vector2i(cur_cell.x, cur_cell.y + dir.y), cur_level,
+					explored, locked_doors)
+			):
+				continue
+			var walk_cost := 1.414 if is_diagonal else 1.0
+			var walk_edge := _ml_plan_edge(
+				cur_cell, cur_level, neighbor, cur_level,
+				"walk", "diagonal" if is_diagonal else "cardinal",
+				walk_cost, 0.0, "", {})
+			_ml_relax(
+				_ml_key(neighbor, cur_level), cur_key, best_g + walk_cost,
+				walk_edge, came_from, came_edge, g, open, closed)
+
+		# Authored connector edges retain their real endpoints and execution annotations.
+		for link in link_edges_from(cur_cell, cur_level):
+			var from_link_cell: Vector2i = link.get("from_cell", cur_cell)
+			var from_link_level := int(link.get("from_level", cur_level))
+			var to_link_cell: Vector2i = link.get("to_cell", cur_cell)
+			var to_link_level := int(link.get("to_level", cur_level))
+			if not _ml_vertex_walkable(
+					from_link_cell, from_link_level, explored, locked_doors) \
+					or not _ml_vertex_walkable(
+						to_link_cell, to_link_level, explored, locked_doors):
+				continue
+			var link_edge := _ml_plan_edge_from_link(link)
+			var link_cost := float(link_edge.get("cost", 0.0))
+			_ml_relax(
+				_ml_key(to_link_cell, to_link_level), cur_key, best_g + link_cost,
+				link_edge, came_from, came_edge, g, open, closed)
+
+	PerformanceTrace.end(&"nav", &"grid.find_multi_level_plan", perf_started, "no_path", iters)
+	return {}
 
 func _ml_key(cell: Vector2i, level: int) -> String:
 	return "%d,%d,%d" % [cell.x, cell.y, level]
@@ -1283,28 +1554,104 @@ func _ml_cell(key: String) -> Vector2i:
 func _ml_level(key: String) -> int:
 	return int(key.split(",")[2])
 
-func _ml_h(cell: Vector2i, level: int, end_cell: Vector2i, end_level: int) -> float:
-	return _heuristic(cell, end_cell) + absf(level - end_level) * 1.5
+func _ml_vertex_walkable(
+	cell: Vector2i,
+	level: int,
+	explored: Dictionary,
+	locked_doors: Dictionary
+) -> bool:
+	return level >= 0 and level < level_count \
+		and is_in_bounds(cell.x, cell.y) \
+		and is_walkable(cell.x, cell.y, explored, locked_doors, level)
 
-func _ml_relax(nkey: String, from_key: String, tentative_g: float, cell: Vector2i, level: int,
-		end_cell: Vector2i, end_level: int, came_from: Dictionary, g: Dictionary, f: Dictionary, open: Array) -> void:
-	if tentative_g < float(g.get(nkey, INF)):
-		came_from[nkey] = from_key
-		g[nkey] = tentative_g
-		f[nkey] = tentative_g + _ml_h(cell, level, end_cell, end_level)
-		if not open.has(nkey):
-			open.append(nkey)
+func _ml_plan_edge(
+	from_cell: Vector2i,
+	from_level: int,
+	to_cell: Vector2i,
+	to_level: int,
+	kind: String,
+	type: String,
+	cost: float,
+	duration: float,
+	action_id: String,
+	metadata: Dictionary
+) -> Dictionary:
+	return {
+		"from_cell": from_cell,
+		"from_level": from_level,
+		"to_cell": to_cell,
+		"to_level": to_level,
+		"category": "grid" if kind == "walk" else "connector",
+		"kind": kind,
+		"type": type,
+		"cost": maxf(0.0, cost),
+		"duration": maxf(0.0, duration),
+		"action_id": action_id,
+		"metadata": metadata.duplicate(true),
+	}
 
-func _ml_reconstruct(came_from: Dictionary, current: String) -> Array:
-	var keys: Array = [current]
+func _ml_plan_edge_from_link(link: Dictionary) -> Dictionary:
+	var metadata := link.duplicate(true)
+	for schema_key in [
+		"from_cell", "from_level", "to_cell", "to_level", "kind", "type",
+		"cost", "duration", "action_id", "metadata",
+	]:
+		metadata.erase(schema_key)
+	var nested_metadata: Variant = link.get("metadata", {})
+	if nested_metadata is Dictionary:
+		metadata.merge((nested_metadata as Dictionary).duplicate(true), true)
+	var link_type := str(link.get("type", "link")).to_lower()
+	var edge := _ml_plan_edge(
+		link.get("from_cell", Vector2i.ZERO), int(link.get("from_level", 0)),
+		link.get("to_cell", Vector2i.ZERO), int(link.get("to_level", 0)),
+		"link" if link_type == "walk" else link_type,
+		link_type, float(link.get("cost", 1.0)),
+		float(link.get("duration", 0.0)), str(link.get("action_id", "")), metadata)
+	edge["category"] = "connector"
+	return edge
+
+func _ml_relax(
+	nkey: String,
+	from_key: String,
+	tentative_g: float,
+	edge: Dictionary,
+	came_from: Dictionary,
+	came_edge: Dictionary,
+	g: Dictionary,
+	open: Array[String],
+	closed: Dictionary
+) -> void:
+	if closed.has(nkey) or tentative_g >= float(g.get(nkey, INF)):
+		return
+	came_from[nkey] = from_key
+	came_edge[nkey] = edge
+	g[nkey] = tentative_g
+	if not open.has(nkey):
+		open.append(nkey)
+
+func _ml_reconstruct_plan(
+	came_from: Dictionary,
+	came_edge: Dictionary,
+	current: String,
+	total_cost: float
+) -> Dictionary:
+	var keys: Array[String] = [current]
+	var reversed_edges: Array[Dictionary] = []
 	while came_from.has(current):
+		reversed_edges.append((came_edge.get(current, {}) as Dictionary).duplicate(true))
 		current = came_from[current]
 		keys.append(current)
 	keys.reverse()
-	var out: Array = []
-	for k in keys:
-		out.append({"cell": _ml_cell(k), "level": _ml_level(k)})
-	return out
+	reversed_edges.reverse()
+	var nodes: Array[Dictionary] = []
+	for key in keys:
+		nodes.append(_nav_node(_ml_cell(key), _ml_level(key)))
+	return {
+		"contract_id": MULTI_LEVEL_PLAN_CONTRACT_ID,
+		"nodes": nodes,
+		"edges": reversed_edges,
+		"total_cost": total_cost,
+	}
 
 func _heuristic(a: Vector2i, b: Vector2i) -> float:
 	# Octile distance

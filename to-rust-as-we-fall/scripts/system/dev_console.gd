@@ -53,6 +53,11 @@ func toggle() -> void:
 	if visible and _input != null:
 		_input.clear()
 		_input.grab_focus()
+	elif _input != null and _input.has_focus():
+		# A hidden LineEdit must not remain the viewport's keyboard owner. Retaining that
+		# focus across a scene disposal leaves the next gameplay scene with stale GUI input
+		# ownership until another human pointer event happens to repair it.
+		_input.release_focus()
 
 ## The LineEdit consumes keys as text while focused, so the toggle key must be caught at its
 ## gui_input — otherwise ` types a literal backtick instead of closing the console.
@@ -71,7 +76,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		toggle()
 		get_viewport().set_input_as_handled()
 	elif visible and key.keycode == KEY_ESCAPE:
-		visible = false
+		toggle()
 		get_viewport().set_input_as_handled()
 
 func _on_submitted(text: String) -> void:

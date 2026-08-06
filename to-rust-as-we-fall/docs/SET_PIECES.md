@@ -64,7 +64,7 @@ duplicates an ENVIRONMENT_ELEMENTS entry (no new valve-rotations, no new riding)
    EFFECT: the watered terrace's flora swells — Scarpet spreads into medium-hide carpet, a Capbage
    fattens into a tight hide, Seefern brightens — while the de-watered terrace's cover WILTS behind
    you (cover is a spent ration, not a latch). Combat: route the ration onto the chokepoint where
-   an Aember cluster camps — dousing the cluster is its canonical counter; or swell a Gasafoetida
+   an Ferrule cluster camps — dousing the cluster is its canonical counter; or swell a Gasafoetida
    bed into a repellent hedge across a patrol lane. Grammar: the header paddle is two terraces
    upstream of the crossing it grows.
 
@@ -90,7 +90,7 @@ duplicates an ENVIRONMENT_ELEMENTS entry (no new valve-rotations, no new riding)
    shutter plates; one crank turns a whole COLUMN between OPEN / SLIT / SEALED. CONTROL: the crank
    at the column base. EFFECT: open = a crawlable cell-to-cell route THROUGH the facade lattice;
    slit = light bars that re-cut every sightline on the floor inside (stealth geometry changes
-   without anyone moving); sealed = the Aember breach-cells close (the ambusher camps the
+   without anyone moving); sealed = the Ferrule breach-cells close (the ambusher camps the
    chokepoint — seal its chokepoint away). Canon hook: Climbvine "tied between rotating surfaces"
    can couple two cranks so one turn sets two columns. Grammar: the crank column you need open is
    reachable only through the column a DIFFERENT crank opens. (Geometry note: the S_A/S_B
@@ -123,7 +123,7 @@ states (§11.1 heavy queueing + the door-trap shadow; §11.2 alignment paths + t
    firing of the SAME lantern is weaker (the window halves — receptor tolerance, GDD L809), and
    it never recovers. A decaying stun economy: order and spacing matter more than trigger-pulling.
    Traversal: freeze the crowd blocking a lane and slip through. Combat: two bursts back-to-back
-   OVERDRIVE an iron-seeker (Sapscrap swarmlet / Aember) into excitotoxic burnout — the canon
+   OVERDRIVE an iron-seeker (Sapscrap swarmlet / Ferrule) into excitotoxic burnout — the canon
    kill, fired past what it can survive (L809) — but only if you spent a virgin lantern on it.
    Grammar: the cords hang in the stall rows; the lanes they freeze are two stalls further on.
    Build: Flure-class lure object + a per-lantern decay counter (scheduler state, replay-safe).
@@ -368,7 +368,7 @@ rehearse.
 
 | Cure landmark (GDD) | Echo set piece | Location / Act | Easier because | Flora / fauna |
 | --- | --- | --- | --- | --- |
-| **Inflammashunt** §10.4.2 (3-route contradictory info; patience wins) | **Tending triage rows** — three planter rows carry POSTED claims about which irrigation line is safe; two of three agree only when cross-read; watering wrong swells a Gasafoetida hedge (repel burst, recoverable); waiting one beat lets Seefern brighten over the true line | Greenfields, Act 1 (pre-shelter-10) | 2 contradictions not 3; no hold timers; the patient option always legible | Seefern (light = truth tell), Gasafoetida (fire-reactive hedge); Aember at the chokepoint |
+| **Inflammashunt** §10.4.2 (3-route contradictory info; patience wins) | **Tending triage rows** — three planter rows carry POSTED claims about which irrigation line is safe; two of three agree only when cross-read; watering wrong swells a Gasafoetida hedge (repel burst, recoverable); waiting one beat lets Seefern brighten over the true line | Greenfields, Act 1 (pre-shelter-10) | 2 contradictions not 3; no hold timers; the patient option always legible | Seefern (light = truth tell), Gasafoetida (fire-reactive hedge); Ferrule at the chokepoint |
 | **Pattern Wrap** §10.4.3 (temporal overlays, cascading edits) | **Records replay bay** — a carrel replays 2–3 archived SNAPSHOTS of the hall's shelving; activating one ghosts that era's drawer layout (one at a time); the route needs two activations sequenced AND exactly ONE cascading pair: an edit made in era-1 visibly carries into era-2's layout (one edit, one propagation — teaching that overlays have consequences without the Wrap's four-timeline retroactive build) | Open Files, Act 1/2 seam | ONE propagation, not a cascade; 2–3 eras not 4 timelines; walking, not path-building | the drawer-canyon Naturalizer patrols the PRESENT only — overlays never hide you (teaches overlay ≠ safety) |
 | **Flow Aligner** §10.4.4 (fragment assembly, degrading Peris read, heavy carry) | **Flow-plate mosaic** — three mosaic plates re-slot at a junction kiosk; the assembled diagram names the ONE valve to open; only one plate is heavy; Peris's read is STABLE | Plumbing Power Project, Act 1 | no read-decay; 3 fragments; one heavy plate not all | the plates are IRON — carrying one draws the Sapscrap swarm (drop it to shed aggro; Flure pulls them off the carry line). Teaches iron-carry aggro before Act 2's Chelators |
 | **Outflow Expander** §10.4.5 (memorize the maze, run it blind, rising water) | **Lights-out stairwell** — walk one lit floor, then the breaker kills the lights and you walk it from memory; a Meeb flows slowly up the stair (sidestep-able, no wipe) | Honeycomb, Act 2 | ONE character, one short route; pursuit is slow, not a flood; **Peris can pre-plant Seefern = memory anchors you can buy back** (the difficulty dial is preparation, not reflex) | Seefern (pre-planted waypoints), Meeb (slow pursuer, canonical sidestep) |
@@ -420,7 +420,7 @@ shelters 21-22 + entrainment ferry / civic-pulse approach), Sunset Acres (iron-b
 sinkhole field; Zone 3 waste facility = Acid Core), Root Archive (reading hall / circadian crossing
 / artifact carry; the Hidden shelter above = Rest Cycle Module). Every echo above slots into a
 location the registers already own, one act (or more) before its landmark. magnet hoist's charge lever behind a drawer-stair
-climb; sluice header past an Aember chokepoint that the sluice itself can douse — but only after a
+climb; sluice header past an Ferrule chokepoint that the sluice itself can douse — but only after a
 chute ride commits you to the wrong wing; shutter-crank columns interleaved so each opened column
 exposes the next crank plus one slit-state sightline change. Every pair alternates one piece's
 CONTROL with another piece's EFFECT, per the verbatim rule above.

@@ -10,9 +10,9 @@ help = "Read the shared surge, but expect the coil to break. At the first break,
 default_character = "endo"
 party_ids = PackedStringArray("aster", "peris", "endo")
 spawns = {
-"aster": Vector3(3, 0.5, 0),
-"endo": Vector3(2, 0.5, -1.2),
-"peris": Vector3(2, 0.5, 1.2)
+"aster": Vector3(3, 0, 0),
+"endo": Vector3(2, 0, -1.2),
+"peris": Vector3(2, 0, 1.2)
 }
 environment_model = "res://resources/models/channels/channels.glb"
 time_state = {
@@ -23,7 +23,7 @@ time_state = {
 }
 params = {
 "chunk_end_x": 84.0,
-"climb_pos": Vector3(5, 0.5, 2.5),
+"climb_pos": Vector3(5, 0, 2.5),
 "enemy_specs": [{
 "id": "ch_roamer",
 "kind": "roam",
@@ -71,7 +71,7 @@ params = {
 "pos": Vector3(54, 0.5, 2.8),
 "target": "ch_sentry"
 }],
-"return_landing": Vector3(83, 0.5, 0),
+"return_landing": Vector3(83, 0, 0),
 "sections": [{
 "disable": "override",
 "phase": 0.0,
@@ -131,5 +131,5 @@ params = {
 "x0": 74.0,
 "x1": 79.0
 }],
-"start_pos": Vector3(3, 0.5, 0)
+"start_pos": Vector3(3, 0, 0)
 }

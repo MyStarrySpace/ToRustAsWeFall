@@ -1,5 +1,28 @@
 # Asset Tools
 
+## Display-backed capture and playthrough tools
+
+Do not raw-launch a GUI Godot binary for an automated capture, movie render,
+test, persona run, or approval playthrough on a Windows desktop. Godot clamps
+ordinary top-level startup positions back onto a monitor before a tool script
+runs, so `--position 20000,20000` and a later `OffscreenWindow.park()` can still
+flash the game in the bottom-right corner. `Start-Process -WindowStyle Hidden`
+only hides the console wrapper; it does not isolate the GUI engine it starts.
+
+Required automated gameplay validation must run from the repository root via
+`scripts/test-gate.ps1`. That launcher creates the reviewed never-shown native
+owner before starting the GUI engine, passes the owner with `--wid`, and audits
+the render window for its whole lifetime. Standalone screenshot scripts under
+`tools/capture_*.gd`, `tools/cap_*.gd`, and automated movie scripts have no
+equivalent Windows launcher yet. Run them on an isolated display host (for
+example Linux/Xvfb), not directly on a person's Windows desktop.
+
+`tools/record_playthrough.ps1` is an attended human-recording tool and therefore
+opens a visible game window. On Windows it requires `-AllowVisibleWindow`.
+`tools/render_playthrough.ps1` also fails closed on Windows unless that explicit
+visible-window opt-in is supplied; neither PowerShell script is valid automated
+test or persona evidence.
+
 ## Blockbench-ready generated assets
 
 New unique 3D visuals must follow [`docs/ASSET_AUTHORING_STANDARD.md`](../docs/ASSET_AUTHORING_STANDARD.md). The Cleanstreets exporter turns tooling-only construction scenes into UV-mapped `.obj + .mtl + .png` model kits used by thin Godot gameplay wrappers:

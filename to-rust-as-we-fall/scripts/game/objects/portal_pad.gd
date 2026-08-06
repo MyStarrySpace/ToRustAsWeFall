@@ -31,6 +31,7 @@ const HOP_PHASE_RESERVED := "reserved"
 const HOP_POSITION_EPSILON := 0.35
 const SOURCE_POSITION_EPSILON := 0.5
 const TRIGGER_RECEIPT_POSITION_EPSILON := 0.05
+const INTERACTION_NAVIGATION_REGION_CONTRACT := "portal_pad_interaction_region/v1"
 
 @export var glow_color := Color(0.55, 0.42, 0.98)
 @export var glow_radius := 0.5
@@ -80,6 +81,7 @@ func configure(gs, world_pos: Vector3, dest_world: Vector3, radius := 1.2,
 	super.set_pre_trigger_validator(_validate_portal_trigger)
 	_ensure_authority_record()
 	_restore_authoritative_runtime()
+	_refresh_interaction_navigation_region()
 
 ## Configure in GameState data coordinates while allowing the pad, destination, ghosts, and hover fan to
 ## render through a later-installed coord map. The canonical destination never becomes a warped world point,
@@ -97,12 +99,82 @@ func configure_data(gs, source_data: Vector3, dest_data: Vector3, radius := 1.2,
 	set_meta("flat_authored_position", source_data)
 	if _gs != null and _gs.coord_map != null:
 		position = _gs.coord_map.to_world(source_data)
+	_refresh_interaction_navigation_region()
 
 func get_data_source() -> Vector3:
 	return _source_data if _data_authored else position
 
 func get_data_destination() -> Vector3:
 	return _dest_data if _data_authored else _destination_data()
+
+
+## The visible pad accepts a small AREA, not one approximate snapped point. Publish
+## every walkable graph vertex whose centre satisfies that same source predicate so
+## click-to-interact, Rally, and the portal preflight share one navigation truth.
+## Only the source's authored level participates: an overlapping deck at the same
+## XZ is a different graph vertex and cannot activate this portal remotely.
+func get_interaction_navigation_region() -> Dictionary:
+	_refresh_interaction_navigation_region()
+	if not has_meta("interaction_navigation_region"):
+		return {}
+	var region_v: Variant = get_meta("interaction_navigation_region")
+	return (region_v as Dictionary).duplicate(true) \
+		if region_v is Dictionary else {}
+
+
+func _refresh_interaction_navigation_region() -> void:
+	if _gs == null or _gs.grid == null:
+		remove_meta("interaction_navigation_region")
+		return
+	var grid = _gs.grid
+	var source := get_data_source()
+	var source_level := int(grid.level_for_y(source.y)) \
+		if grid.has_method("level_for_y") else 0
+	var source_cell: Vector2i = grid.world_to_grid(source)
+	var acceptance_radius := interaction_radius + SOURCE_POSITION_EPSILON
+	var graph_cell_size := maxf(0.001, float(grid.cell_size))
+	var search_radius := ceili(acceptance_radius / graph_cell_size) + 1
+	var region_vertices: Array = []
+	var approach_vertex: Dictionary = {}
+	var approach_distance := INF
+	for dz in range(-search_radius, search_radius + 1):
+		for dx in range(-search_radius, search_radius + 1):
+			var cell := source_cell + Vector2i(dx, dz)
+			if not grid.is_in_bounds(cell.x, cell.y) \
+					or not grid.is_walkable(cell.x, cell.y, {}, {}, source_level):
+				continue
+			var graph_position: Vector3 = grid.grid_to_world(cell, source_level)
+			var distance := _planar_distance(graph_position, source)
+			if distance > acceptance_radius + 0.0001:
+				continue
+			var vertex := {"cell": cell, "level": source_level}
+			region_vertices.append(vertex)
+			# The authored source cell is the portal edge's canonical endpoint. Keep
+			# nearby accepted vertices for Rally/arrival membership, but do not make
+			# shortest-path selection stop early on the hazardous near edge of a pad.
+			if cell == source_cell:
+				approach_vertex = vertex.duplicate(true)
+				approach_distance = -1.0
+			elif approach_distance >= 0.0 \
+					and (approach_vertex.is_empty() \
+						or distance < approach_distance - 0.0001):
+				approach_vertex = vertex.duplicate(true)
+				approach_distance = distance
+	if region_vertices.is_empty():
+		remove_meta("interaction_navigation_region")
+		return
+	var region := {
+		"contract_id": INTERACTION_NAVIGATION_REGION_CONTRACT,
+		"source_data": GameEvent.v3_to_arr(source),
+		"interaction_radius": interaction_radius,
+		"acceptance_radius": acceptance_radius,
+		"arrival_policy": "primary_then_nearest",
+		"approach_vertex": approach_vertex,
+		"region_vertices": region_vertices,
+	}
+	if grid.has_method("get_path_walkability_revision"):
+		region["graph_revision"] = int(grid.get_path_walkability_revision())
+	set_meta("interaction_navigation_region", region)
 
 func _destination_world() -> Vector3:
 	if _data_authored and _gs != null and _gs.coord_map != null:
@@ -133,7 +205,23 @@ func _snap_arrival_world(world: Vector3) -> Vector3:
 	data = _gs.grid.grid_to_world(cell, level)
 	return _gs.coord_map.to_world(data) if _gs.coord_map != null else data
 
+## Portal meshes sit above the deck so their rings remain visible, but a character's
+## authoritative position is its feet on a navigation node. Preserve the authored XZ
+## endpoint while deriving Y from the destination's exact `(cell, level)` identity.
+func _destination_graph_floor_data(data: Vector3) -> Vector3:
+	if _gs == null or _gs.grid == null:
+		return data
+	var level: int = _gs.grid.level_for_y(data.y)
+	var cell: Vector2i = _gs.grid.nearest_walkable_cell(
+		_gs.grid.world_to_grid(data), level)
+	if not _gs.grid.is_in_bounds(cell.x, cell.y) \
+			or not _gs.grid.is_walkable(cell.x, cell.y, {}, {}, level):
+		return data
+	var graph_position: Vector3 = _gs.grid.grid_to_world(cell, level)
+	return Vector3(data.x, graph_position.y, data.z)
+
 func _ready() -> void:
+	_refresh_interaction_navigation_region()
 	if get_node_or_null("CollisionShape3D") == null:
 		var cs := CollisionShape3D.new()
 		cs.name = "CollisionShape3D"
@@ -172,8 +260,6 @@ func _wire_outline() -> void:
 	var target := mgr.outline_meshes(self, str(name) + "Outline", [_glow], "portal", maxf(1.0, interaction_radius))
 	if target == null:
 		return
-	if target is Node3D and _glow is Node3D:
-		(target as Node3D).global_position = (_glow as Node3D).global_position
 	if target.has_method("set_interaction_delegate"):
 		target.call("set_interaction_delegate", self)
 	set_outline_target(target)
@@ -412,8 +498,8 @@ func _hop_next() -> void:
 	var serial := int(saved.get("hop_serial", 0)) + 1
 	var source_data: Vector3 = _gs.get_position(who) \
 		if _gs.characters.has(who) else get_data_source()
-	var destination_data := _v3_from_value(saved.get(
-		"destination_data", GameEvent.v3_to_arr(_destination_data())))
+	var destination_data := _destination_graph_floor_data(_v3_from_value(saved.get(
+		"destination_data", GameEvent.v3_to_arr(_destination_data()))))
 	var reservation := {
 		"phase": HOP_PHASE_RESERVED,
 		"serial": serial,
@@ -457,7 +543,7 @@ func _resume_reserved_hop(saved: Dictionary, reservation: Dictionary) -> void:
 		_gs.command_stop(who)
 		# Portal semantics remain an instantaneous topology hop. Only the far-side
 		# pad-clear is ordinary movement.
-		_gs.snap_character_to(who, destination_data)
+		_gs.snap_character_to(who, destination_data, false)
 		_gs.command_move_to_pos(who, arrival_data)
 		stepped_through.emit(who, destination_data)
 
@@ -564,7 +650,28 @@ func _body_parked_at_source(who: String) -> bool:
 	if _gs.has_method("is_narratively_available") \
 			and not bool(_gs.is_narratively_available(who)):
 		return false
-	return _planar_distance(_gs.get_position(who), get_data_source()) \
+	var current: Vector3 = _gs.get_position(who)
+	if _gs.grid != null:
+		# A portal source is a graph region of exact `(cell, level)` vertices. Planar
+		# distance alone lets a character on an overlapping deck activate the pad
+		# below, which is indistinguishable from an unannounced teleport. Use the same
+		# published region that click routing and Rally consume.
+		var region := get_interaction_navigation_region()
+		var vertices_v: Variant = region.get("region_vertices", [])
+		if not vertices_v is Array:
+			return false
+		var current_cell: Vector2i = _gs.grid.world_to_grid(current)
+		var current_level := int(_gs.get_character_level(who)) \
+			if _gs.has_method("get_character_level") else int(_gs.grid.level_for_y(current.y))
+		for vertex_v in vertices_v as Array:
+			if not vertex_v is Dictionary:
+				continue
+			var vertex := vertex_v as Dictionary
+			if vertex.get("cell", Vector2i(-1, -1)) == current_cell \
+					and int(vertex.get("level", -1)) == current_level:
+				return true
+		return false
+	return _planar_distance(current, get_data_source()) \
 		<= interaction_radius + SOURCE_POSITION_EPSILON
 
 

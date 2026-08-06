@@ -3,7 +3,8 @@ extends SceneTree
 ## Verify the screen-space outline + glow inside a CHUNK preview (other than the tutorial rooms). Loads
 ## fragment_preview.tscn directly onto a chunk, runs past intro, force-highlights every OutlineSurfaceTarget
 ## (one queued for the glow), and screenshots the game camera. Pick the chunk with the CHUNK env var:
-##   CHUNK=flora_garden ../Godot_v4.7-stable_win64.exe --path "." --script res://tools/capture_chunk_outline.gd
+## Isolated-display launch only; see tools/README.md:
+##   CHUNK=flora_garden godot --path "." --script res://tools/capture_chunk_outline.gd
 ## Writes chunk_outline_<id>.png.
 
 func _init() -> void:

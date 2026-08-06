@@ -1440,7 +1440,7 @@ func get_default_character() -> String:
 
 func get_spawn_positions() -> Dictionary:
 	# The party wakes on the BASE (the entry-shelter floor), west of the doorway into chamber 0.
-	var s := Vector3(-BASE_N * CELL * 0.5, 0.5, 0.0)
+	var s := Vector3(-BASE_N * CELL * 0.5, 0.0, 0.0)
 	return {
 		"aster": s + Vector3(-0.5, 0.0, -1.0),
 		"peris": s + Vector3(0.4, 0.0, 0.0),

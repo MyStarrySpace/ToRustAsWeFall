@@ -3683,6 +3683,22 @@ func _endo_entry_destination() -> Vector3:
 	return _grid.grid_to_world(target_cell, LEVEL_LOWER)
 
 
+## The authored PartyRest marker centers the shelter composition, but ordinary
+## navigation can only settle Endo on a graph node. The delivery receipt must
+## use that same resolved node; comparing a cell-center arrival to the decorative
+## marker with a smaller radius made the water handoff impossible.
+func _endo_delivery_destination() -> Vector3:
+	var authored := _junction_anchor_position(
+		"PartyRest",
+		Vector3(JUNCTION_POS.x - SHELTER_SIZE.x / 2.0 + 1.0, BELOW_Y + 0.5, 0)
+	)
+	if _grid == null:
+		return authored
+	var target_cell := _grid.nearest_walkable_cell(
+		_grid.world_to_grid(authored), LEVEL_LOWER)
+	return _grid.grid_to_world(target_cell, LEVEL_LOWER)
+
+
 func _endo_entry_authority_state() -> Dictionary:
 	if _game_state == null:
 		return {}
@@ -3956,9 +3972,7 @@ func _start_endo_delivery() -> void:
 	# The hand item is GameState truth from this point onward. The mesh merely follows
 	# that hand, so a mid-route save reloads Endo carrying the same physical container.
 	_sync_endo_drink_presenter()
-	var party_pos := _junction_anchor_position(
-		"PartyRest", Vector3(JUNCTION_POS.x - SHELTER_SIZE.x / 2.0 + 1.0, BELOW_Y + 0.5, 0)
-	)
+	var party_pos := _endo_delivery_destination()
 	_show_marker(party_pos + Vector3(0, 1.0, 0), "WATER")
 	if _horizontal_distance(
 			_game_state.get_position("endo"), party_pos) <= ENDO_DRINK_DELIVERY_RADIUS:
@@ -3971,9 +3985,7 @@ func _on_endo_delivered(id: String) -> void:
 			or not _game_state.characters.has("endo") or _game_state.is_moving("endo") \
 			or not _endo_holds_drink():
 		return
-	var party_pos := _junction_anchor_position(
-		"PartyRest", Vector3(JUNCTION_POS.x - SHELTER_SIZE.x / 2.0 + 1.0, BELOW_Y + 0.5, 0)
-	)
+	var party_pos := _endo_delivery_destination()
 	if _horizontal_distance(
 			_game_state.get_position("endo"), party_pos) > ENDO_DRINK_DELIVERY_RADIUS:
 		return
@@ -4201,13 +4213,15 @@ func _spawn_enemy(id: String, pos: Vector3, parent: Node3D, activate_now := true
 	return enemy
 
 func _queue_below_enemy_setup(
-		enemy: Enemy, mode: String, data: Dictionary, wake_radius: float, distracted := true) -> void:
+		enemy: Enemy, mode: String, data: Dictionary, wake_radius: float, distracted := true,
+		wake_cohort := "") -> void:
 	_below_dormant_enemy_setups.append({
 		"enemy": enemy,
 		"mode": mode,
 		"data": data,
 		"wake_radius": wake_radius,
 		"distracted": distracted,
+		"wake_cohort": wake_cohort,
 	})
 
 ## Streaming may construct and reveal the lower ecology while the party is still on the bridge, but it does not
@@ -4239,8 +4253,12 @@ func _update_below_fauna_activation(force := false) -> void:
 			_below_activation_cells[character_id] = cell
 	if lower_party.is_empty() or not cells_changed:
 		return
-	var remaining: Array[Dictionary] = []
-	var waking: Array[Dictionary] = []
+	# A linked pack is one readable simulation cohort. If the party crosses any
+	# member's authored wake boundary, register the entire named cohort in the
+	# same detection batch; waking only the nearer body leaves the visible
+	# two-body Flure link lying about which pack is currently alive.
+	var individually_waking := {}
+	var waking_cohorts := {}
 	for setup in _below_dormant_enemy_setups:
 		# A test/focused chunk transition can free the below chunk between
 		# proximity samples. Keep the Variant untyped until validity is known;
@@ -4256,11 +4274,24 @@ func _update_below_fauna_activation(force := false) -> void:
 				wake = true
 				break
 		if wake:
+			individually_waking[enemy.get_instance_id()] = true
+			var wake_cohort := str(setup.get("wake_cohort", ""))
+			if not wake_cohort.is_empty():
+				waking_cohorts[wake_cohort] = true
+	if individually_waking.is_empty():
+		return
+	var remaining: Array[Dictionary] = []
+	var waking: Array[Dictionary] = []
+	for setup in _below_dormant_enemy_setups:
+		var enemy = setup.get("enemy")
+		if not is_instance_valid(enemy):
+			continue
+		var wake_cohort := str(setup.get("wake_cohort", ""))
+		if individually_waking.has(enemy.get_instance_id()) \
+				or (not wake_cohort.is_empty() and waking_cohorts.has(wake_cohort)):
 			waking.append(setup)
 		else:
 			remaining.append(setup)
-	if waking.is_empty():
-		return
 	_game_state.begin_detection_update_batch()
 	for setup in waking:
 		_activate_below_enemy_setup(setup)
@@ -8173,7 +8204,8 @@ func _below_step_enemy_route_beat(parent: Node3D, beat_i: int, enemies_dormant: 
 			# Wake the two-body beat as one readable cohort before either member
 			# reaches detection distance; the farther partner sits ~17.5m from the
 			# approach seam.
-			_queue_below_enemy_setup(enemy, "roam", roam_data, 19.0, false)
+			_queue_below_enemy_setup(
+				enemy, "roam", roam_data, 19.0, false, "route_beat_%d" % beat_i)
 		else:
 			_activate_below_enemy_setup({
 				"enemy": enemy,

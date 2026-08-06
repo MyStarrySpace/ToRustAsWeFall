@@ -24,18 +24,8 @@
 			{
 				"category": "flora",
 				"cell": [
-					-1,
-					0
-				],
-				"kind": "capbage",
-				"level": 0,
-				"support": "implemented"
-			},
-			{
-				"category": "flora",
-				"cell": [
 					7,
-					0
+					1
 				],
 				"kind": "scarpet",
 				"level": 1,
@@ -55,7 +45,7 @@
 				"category": "flora",
 				"cell": [
 					22,
-					0
+					1
 				],
 				"kind": "scarpet",
 				"level": 1,
@@ -65,7 +55,7 @@
 				"category": "flora",
 				"cell": [
 					44,
-					0
+					1
 				],
 				"kind": "scarpet",
 				"level": 1,
@@ -75,7 +65,7 @@
 				"category": "flora",
 				"cell": [
 					52,
-					0
+					1
 				],
 				"kind": "scarpet",
 				"level": 1,
@@ -85,7 +75,7 @@
 				"category": "flora",
 				"cell": [
 					59,
-					0
+					1
 				],
 				"kind": "scarpet",
 				"level": 1,
@@ -435,37 +425,44 @@
 				{
 					"action": "activate",
 					"activation_policy": "interact_at_producer",
-					"before_node": "node_04",
+					"before_node": "node_01",
+					"before_nodes": [
+						"node_01"
+					],
 					"branch_id": "branch_00",
 					"cannot_bypass_unresolved": true,
 					"consumer_cell": [
-						55.0,
+						19.0,
 						6.0
 					],
 					"consumer_cells": [
 						[
-							55.0,
+							19.0,
 							3.0
 						],
 						[
-							55.0,
+							19.0,
 							4.0
 						],
 						[
-							55.0,
+							19.0,
 							5.0
 						],
 						[
-							55.0,
+							19.0,
 							6.0
+						],
+						[
+							19.0,
+							7.0
 						]
 					],
 					"expected_phase": "bridged",
 					"id": "activate_branch_00_span",
 					"kind": "mandatory_branch_interaction",
 					"producer_cell": [
-						51.0,
-						11.0
+						15.0,
+						10.0
 					],
 					"produces_state": "branch_00_resolved",
 					"required_for_progress": true,
@@ -519,6 +516,96 @@
 					"t": 0.0
 				},
 				{
+					"approach_id": "activate_branch_00_span",
+					"blocked": false,
+					"borrows_from": "",
+					"branch_action": {
+						"action": "activate",
+						"activation_policy": "interact_at_producer",
+						"before_node": "node_01",
+						"before_nodes": [
+							"node_01"
+						],
+						"branch_id": "branch_00",
+						"cannot_bypass_unresolved": true,
+						"consumer_cell": [
+							19.0,
+							6.0
+						],
+						"consumer_cells": [
+							[
+								19.0,
+								3.0
+							],
+							[
+								19.0,
+								4.0
+							],
+							[
+								19.0,
+								5.0
+							],
+							[
+								19.0,
+								6.0
+							],
+							[
+								19.0,
+								7.0
+							]
+						],
+						"expected_phase": "bridged",
+						"id": "activate_branch_00_span",
+						"kind": "mandatory_branch_interaction",
+						"producer_cell": [
+							15.0,
+							10.0
+						],
+						"produces_state": "branch_00_resolved",
+						"required_for_progress": true,
+						"role": "mandatory_producer",
+						"runtime_handler": "branch_span_producer",
+						"solution_order": 0.0,
+						"target": "branch_00",
+						"wait_for_completion": true
+					},
+					"caption": "SIDE BRANCH — EXTEND DOWNSTREAM SPAN",
+					"characters": {
+						"aster": [
+							5.0,
+							3.05
+						],
+						"endo": [
+							5.42,
+							3.38
+						],
+						"myke": [
+							5.0,
+							3.72
+						],
+						"oli": [
+							4.58,
+							3.92
+						],
+						"peris": [
+							4.58,
+							3.38
+						],
+						"tyreg": [
+							5.42,
+							3.92
+						]
+					},
+					"expert": false,
+					"kind": "mandatory_branch_interaction",
+					"min_stage": 0,
+					"node": "node_01",
+					"risk": "safe",
+					"role": "mandatory_producer",
+					"stage_ahead": false,
+					"t": 1.0
+				},
+				{
 					"approach_id": "traverse",
 					"blocked": false,
 					"borrows_from": "",
@@ -556,7 +643,7 @@
 					"risk": "safe",
 					"role": "route_pressure",
 					"stage_ahead": false,
-					"t": 1.0
+					"t": 2.0
 				},
 				{
 					"approach_id": "carry_physical_payload",
@@ -596,7 +683,7 @@
 					"risk": "safe",
 					"role": "danger",
 					"stage_ahead": false,
-					"t": 2.0
+					"t": 3.0
 				},
 				{
 					"approach_id": "skip_optional_interaction",
@@ -635,89 +722,6 @@
 					"node": "node_03",
 					"risk": "safe",
 					"role": "foraging",
-					"stage_ahead": false,
-					"t": 3.0
-				},
-				{
-					"approach_id": "activate_branch_00_span",
-					"blocked": false,
-					"borrows_from": "",
-					"branch_action": {
-						"action": "activate",
-						"activation_policy": "interact_at_producer",
-						"before_node": "node_04",
-						"branch_id": "branch_00",
-						"cannot_bypass_unresolved": true,
-						"consumer_cell": [
-							55.0,
-							6.0
-						],
-						"consumer_cells": [
-							[
-								55.0,
-								3.0
-							],
-							[
-								55.0,
-								4.0
-							],
-							[
-								55.0,
-								5.0
-							],
-							[
-								55.0,
-								6.0
-							]
-						],
-						"expected_phase": "bridged",
-						"id": "activate_branch_00_span",
-						"kind": "mandatory_branch_interaction",
-						"producer_cell": [
-							51.0,
-							11.0
-						],
-						"produces_state": "branch_00_resolved",
-						"required_for_progress": true,
-						"role": "mandatory_producer",
-						"runtime_handler": "branch_span_producer",
-						"solution_order": 0.0,
-						"target": "branch_00",
-						"wait_for_completion": true
-					},
-					"caption": "SIDE BRANCH — EXTEND DOWNSTREAM SPAN",
-					"characters": {
-						"aster": [
-							23.0,
-							3.55
-						],
-						"endo": [
-							23.42,
-							3.88
-						],
-						"myke": [
-							23.0,
-							4.22
-						],
-						"oli": [
-							22.58,
-							4.42
-						],
-						"peris": [
-							22.58,
-							3.88
-						],
-						"tyreg": [
-							23.42,
-							4.42
-						]
-					},
-					"expert": false,
-					"kind": "mandatory_branch_interaction",
-					"min_stage": 0,
-					"node": "node_04",
-					"risk": "safe",
-					"role": "mandatory_producer",
 					"stage_ahead": false,
 					"t": 4.0
 				},
@@ -1209,37 +1213,44 @@
 				{
 					"action": "activate",
 					"activation_policy": "interact_at_producer",
-					"before_node": "node_04",
+					"before_node": "node_01",
+					"before_nodes": [
+						"node_01"
+					],
 					"branch_id": "branch_00",
 					"cannot_bypass_unresolved": true,
 					"consumer_cell": [
-						55.0,
+						19.0,
 						6.0
 					],
 					"consumer_cells": [
 						[
-							55.0,
+							19.0,
 							3.0
 						],
 						[
-							55.0,
+							19.0,
 							4.0
 						],
 						[
-							55.0,
+							19.0,
 							5.0
 						],
 						[
-							55.0,
+							19.0,
 							6.0
+						],
+						[
+							19.0,
+							7.0
 						]
 					],
 					"expected_phase": "bridged",
 					"id": "activate_branch_00_span",
 					"kind": "mandatory_branch_interaction",
 					"producer_cell": [
-						51.0,
-						11.0
+						15.0,
+						10.0
 					],
 					"produces_state": "branch_00_resolved",
 					"required_for_progress": true,
@@ -1277,6 +1288,80 @@
 					"t": 0.0
 				},
 				{
+					"approach_id": "activate_branch_00_span",
+					"blocked": false,
+					"borrows_from": "",
+					"branch_action": {
+						"action": "activate",
+						"activation_policy": "interact_at_producer",
+						"before_node": "node_01",
+						"before_nodes": [
+							"node_01"
+						],
+						"branch_id": "branch_00",
+						"cannot_bypass_unresolved": true,
+						"consumer_cell": [
+							19.0,
+							6.0
+						],
+						"consumer_cells": [
+							[
+								19.0,
+								3.0
+							],
+							[
+								19.0,
+								4.0
+							],
+							[
+								19.0,
+								5.0
+							],
+							[
+								19.0,
+								6.0
+							],
+							[
+								19.0,
+								7.0
+							]
+						],
+						"expected_phase": "bridged",
+						"id": "activate_branch_00_span",
+						"kind": "mandatory_branch_interaction",
+						"producer_cell": [
+							15.0,
+							10.0
+						],
+						"produces_state": "branch_00_resolved",
+						"required_for_progress": true,
+						"role": "mandatory_producer",
+						"runtime_handler": "branch_span_producer",
+						"solution_order": 0.0,
+						"target": "branch_00",
+						"wait_for_completion": true
+					},
+					"caption": "SIDE BRANCH — EXTEND DOWNSTREAM SPAN",
+					"characters": {
+						"aster": [
+							5.0,
+							3.05
+						],
+						"peris": [
+							4.58,
+							3.38
+						]
+					},
+					"expert": false,
+					"kind": "mandatory_branch_interaction",
+					"min_stage": 0,
+					"node": "node_01",
+					"risk": "safe",
+					"role": "mandatory_producer",
+					"stage_ahead": false,
+					"t": 1.0
+				},
+				{
 					"approach_id": "traverse",
 					"blocked": false,
 					"borrows_from": "",
@@ -1298,7 +1383,7 @@
 					"risk": "safe",
 					"role": "route_pressure",
 					"stage_ahead": false,
-					"t": 1.0
+					"t": 2.0
 				},
 				{
 					"approach_id": "carry_physical_payload",
@@ -1322,7 +1407,7 @@
 					"risk": "safe",
 					"role": "danger",
 					"stage_ahead": false,
-					"t": 2.0
+					"t": 3.0
 				},
 				{
 					"approach_id": "skip_optional_interaction",
@@ -1345,73 +1430,6 @@
 					"node": "node_03",
 					"risk": "safe",
 					"role": "foraging",
-					"stage_ahead": false,
-					"t": 3.0
-				},
-				{
-					"approach_id": "activate_branch_00_span",
-					"blocked": false,
-					"borrows_from": "",
-					"branch_action": {
-						"action": "activate",
-						"activation_policy": "interact_at_producer",
-						"before_node": "node_04",
-						"branch_id": "branch_00",
-						"cannot_bypass_unresolved": true,
-						"consumer_cell": [
-							55.0,
-							6.0
-						],
-						"consumer_cells": [
-							[
-								55.0,
-								3.0
-							],
-							[
-								55.0,
-								4.0
-							],
-							[
-								55.0,
-								5.0
-							],
-							[
-								55.0,
-								6.0
-							]
-						],
-						"expected_phase": "bridged",
-						"id": "activate_branch_00_span",
-						"kind": "mandatory_branch_interaction",
-						"producer_cell": [
-							51.0,
-							11.0
-						],
-						"produces_state": "branch_00_resolved",
-						"required_for_progress": true,
-						"role": "mandatory_producer",
-						"runtime_handler": "branch_span_producer",
-						"solution_order": 0.0,
-						"target": "branch_00",
-						"wait_for_completion": true
-					},
-					"caption": "SIDE BRANCH — EXTEND DOWNSTREAM SPAN",
-					"characters": {
-						"aster": [
-							23.0,
-							3.55
-						],
-						"peris": [
-							22.58,
-							3.88
-						]
-					},
-					"expert": false,
-					"kind": "mandatory_branch_interaction",
-					"min_stage": 0,
-					"node": "node_04",
-					"risk": "safe",
-					"role": "mandatory_producer",
 					"stage_ahead": false,
 					"t": 4.0
 				},

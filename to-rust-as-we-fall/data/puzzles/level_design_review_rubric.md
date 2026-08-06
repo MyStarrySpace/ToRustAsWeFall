@@ -34,6 +34,8 @@ If the answer to any of these is `no`, the design needs revision even if the tot
 - Is there one primary insight or decision the beat is about?
 - Can the intended causal model and meaningful leverage point be stated clearly?
 - Does failure teach something visible or actionable?
+- Does every player-facing state change or forced movement visibly identify its cause, active
+  effect, and resulting destination/state?
 - Can a model error be distinguished from a control, timing, camera, or visibility error?
 - Is the critical path readable without relying on tooltips or outside explanation?
 - Does the beat support the campaign fantasy of guiding a vulnerable, specialized party through a dangerous expedition?
@@ -75,6 +77,8 @@ Score notes:
 - Does the world answer actions with clear feedback?
 - Can the player tell whether something changed, failed, opened, closed, armed, or became unsafe?
 - Can the player trace an important consequence back to its action or prior state?
+- For forced movement, is there a warning before commitment, a directional cue and involuntary
+  motion read during transit, and an arrival/aftermath cue at the named destination?
 
 Score notes:
 
@@ -186,6 +190,9 @@ Score notes:
 - Do replay artifacts record both a stable content fingerprint and the applied pressure projection?
 - Does every active gameplay state-machine phase become authoritative at commitment and survive
   save/load/replay, rather than existing only in a scene animation until completion?
+- Do player-facing consequences carry portable presentation receipts, while intentionally silent
+  bookkeeping declares a specific reason?
+- Does live presenter coverage sample warning, active, and arrival phases rather than only endpoints?
 
 Score notes:
 
@@ -281,6 +288,7 @@ Copy this into a design note or PR comment:
 - `first_read`: pass / fail
 - `one_primary_insight`: pass / fail
 - `failure_teaches`: pass / fail
+- `consequence_provenance_legible`: pass / fail
 - `critical_path_legible`: pass / fail
 - `campaign_fantasy_supported`: pass / fail
 

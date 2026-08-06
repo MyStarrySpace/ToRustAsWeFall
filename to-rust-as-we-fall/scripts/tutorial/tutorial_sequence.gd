@@ -5,7 +5,6 @@ extends Node3D
 ## Shared scheduler, GameState, UI, camera, and scene helpers for tutorials.
 
 const INTERACTABLE_SCENE := preload("res://scenes/game/interactable.tscn")
-const ItemData = preload("res://scripts/game/objects/item_data.gd")
 const EXPLORATION_RADIUS_SCALE := 1.35
 const EXPLORATION_MIN_RADIUS := 1.6
 const EXPLORATION_FOCUS_HEIGHT := 0.9
@@ -14,6 +13,15 @@ const CHROMATIC_ABERRATION_SHADER := preload("res://resources/chromatic_aberrati
 const SCREEN_EFFECT_SCENE := preload("res://scenes/ui/screen_effect.tscn")
 const SEQUENCE_ANIMATION_PLAYER_SCENE := preload("res://scenes/ui/sequence_animation_player.tscn")
 const TOUCH_MODE_CONTROLLER_SCENE := preload("res://scenes/ui/touch_mode_controller.tscn")
+const CONSEQUENCE_PRESENTATION_CONTROLLER_SCRIPT := preload(
+	"res://scripts/game/world/consequence_presentation_controller.gd"
+)
+const CHARACTER_STATE_PRESENTATION_CONTROLLER_SCRIPT := preload(
+	"res://scripts/game/world/character_state_presentation_controller.gd"
+)
+const PARTY_ITEM_CONTROLLER_SCRIPT := preload(
+	"res://scripts/game/items/party_item_controller.gd"
+)
 const PORTABLE_CONTINUATION_VERSION := 1
 const PORTABLE_CONTINUATION_EPSILON := 0.000001
 const PREVIEW_CAMERA_STATE_KEYS: Array[String] = [
@@ -51,6 +59,9 @@ var _detection_ring_manager: DetectionRingManager = null
 var _downed_body_manager                # DownedBodyManager: fallen members become clickable carry targets
 var _outline_mask_manager               # OutlineMaskManager: screen-space object outlines for all targets
 var _selection_controller               # SelectionController: RTS left-click / marquee character select
+var _consequence_presentation_controller # warning/carry/arrival presentation for authoritative effects
+var _character_state_presentation_controller # concealment and future persistent portrait state cues
+var _party_item_controller              # shared GameState item adapter + world presenters
 var _playthrough_recorder               # normal-play deterministic tape / movie replay autoload
 var _story_beat_runner := StoryBeatRunner.new()
 var _current_step := ""
@@ -197,6 +208,40 @@ func _ready() -> void:
 	combat_feedback.name = "CombatFeedbackManager"
 	add_child(combat_feedback)
 	combat_feedback.setup(_game_state, self)
+	# One reusable cause/effect presenter for every scene built on this host. Kit objects publish
+	# portable warning receipts and GameState carries the same receipt through forced traversals;
+	# preview chunks no longer own a parallel camera/HUD implementation.
+	_consequence_presentation_controller = CONSEQUENCE_PRESENTATION_CONTROLLER_SCRIPT.new()
+	_consequence_presentation_controller.name = "ConsequencePresentationController"
+	add_child(_consequence_presentation_controller)
+	var consequence_opts := {
+		"message_sink": Callable(self, "show_preview_message"),
+		"begin_focus": Callable(self, "_begin_exploration_focus"),
+		"finish_focus": Callable(self, "_finish_exploration_focus"),
+		"focus_active_query": Callable(self, "_consequence_focus_active"),
+		# The shared HUD is created later by _init_ui/_setup_ui, so resolve it at
+		# presentation time instead of permanently caching startup null.
+		"portrait_presenter_query": Callable(self, "_chunk_host_hud"),
+	}
+	if has_method("can_party_perceive_feedback_link"):
+		consequence_opts["visibility_query"] = Callable(
+			self, "can_party_perceive_feedback_link")
+	_consequence_presentation_controller.setup(
+		_game_state, self, _camera, _ui_scheduler, consequence_opts)
+	# Item mutation/presentation is a game controller, not a preview implementation detail. Campaign
+	# scenes start with the compact presenter; richer hosts may reconfigure this same instance.
+	_party_item_controller = PARTY_ITEM_CONTROLLER_SCRIPT.new()
+	_party_item_controller.name = "PartyItemController"
+	add_child(_party_item_controller)
+	_party_item_controller.setup(_game_state, self, {
+		"mode": "minimal",
+		"present_all_items": false,
+		"message_sink": Callable(self, "show_preview_message"),
+		"note_sink": Callable(self, "show_preview_note"),
+		"status_sink": Callable(self, "set_preview_character_status"),
+		"character_position_resolver": Callable(self, "get_preview_character_position"),
+		"character_node_resolver": Callable(self, "_find_character_node"),
+	})
 	# One scene-level reveal-ring layer: hold-SHIFT shows every live enemy's
 	# ACTUAL detection boundary (outer + the conceal-medium inner band),
 	# warped through the scene's coord map — render what you simulate; the
@@ -211,6 +256,16 @@ func _ready() -> void:
 	var ui_started := PerformanceTrace.begin()
 	_init_ui()
 	PerformanceTrace.end(&"draw", &"sequence.ready.ui", ui_started, name, 1)
+	# Persistent character state is a shared scene presentation concern. Create
+	# the controller only after the subclass has built its GameHUD; it still uses
+	# a lazy resolver so streamed/replaced HUD presenters rebind safely.
+	_character_state_presentation_controller = \
+		CHARACTER_STATE_PRESENTATION_CONTROLLER_SCRIPT.new()
+	_character_state_presentation_controller.name = \
+		"CharacterStatePresentationController"
+	add_child(_character_state_presentation_controller)
+	_character_state_presentation_controller.setup(
+		_game_state, Callable(self, "_chunk_host_hud"))
 	# One scene-level RTS selection controller (left-click / marquee character select), feeding the HUD
 	# selection set — same once-per-scene pattern as the PathRenderManager. It resolves the HUD + active
 	# player lazily from the sequence (both are created by the subclass _ready, after this base _ready).
@@ -323,6 +378,10 @@ func _process(delta: float) -> void:
 	var scene_started := PerformanceTrace.begin()
 	_on_process(gameplay_delta, spd)
 	PerformanceTrace.end(&"update", &"sequence.scene_process", scene_started, name, 1)
+	# GameState advances in this parent callback, after fixed physics may already have
+	# sampled the previous tick. Project Player presenters before subclass bridge code
+	# or rendering can observe the frame, eliminating a one-frame transform split.
+	_sync_authoritative_character_presenters()
 	PerformanceTrace.end(&"update", &"sequence.process", perf_started, name, 1)
 
 func _exit_tree() -> void:
@@ -469,7 +528,22 @@ func headless_get_state() -> Dictionary:
 	}
 
 func _headless_sync_runtime(_delta: float) -> void:
-	pass
+	# Deterministic headless advances bypass SceneTree's physics clock. Exercise the
+	# same presenter seam after every scheduler step so transform assertions sample
+	# the frame that would be drawn, rather than a stale boot or endpoint node.
+	_sync_authoritative_character_presenters()
+	if is_instance_valid(_character_state_presentation_controller):
+		_character_state_presentation_controller.sync_presentation()
+
+
+func _sync_authoritative_character_presenters() -> void:
+	if _game_state == null:
+		return
+	for char_id_v in _game_state.characters.keys():
+		var char_id := str(char_id_v)
+		var node := _find_character_node(char_id)
+		if is_instance_valid(node) and node.has_method("_sync_authoritative_transform"):
+			node.call("_sync_authoritative_transform")
 
 func _headless_sync_scheduler_visuals() -> void:
 	for node in find_children("*", "", true, false):
@@ -808,6 +882,10 @@ func _teardown_sequence() -> void:
 	_thought_fade_active = false
 	_perception_target = null
 	_outline_feedback_manager = null
+	if is_instance_valid(_consequence_presentation_controller):
+		_consequence_presentation_controller.clear_transient_presentation()
+	if is_instance_valid(_character_state_presentation_controller):
+		_character_state_presentation_controller.shutdown()
 
 	if _camera:
 		_camera.target = null
@@ -831,6 +909,9 @@ func _teardown_sequence() -> void:
 	_path_render_manager = null
 	_outline_mask_manager = null
 	_selection_controller = null
+	_consequence_presentation_controller = null
+	_character_state_presentation_controller = null
+	_party_item_controller = null
 	_playthrough_recorder = null
 	_dialogue = null
 	_tutorial_prompt = null
@@ -883,6 +964,8 @@ func _build_persistent_scheduler_snapshot() -> Dictionary:
 	return snapshot
 
 func apply_save_snapshot(data: Dictionary) -> void:
+	if is_instance_valid(_consequence_presentation_controller):
+		_consequence_presentation_controller.begin_authority_restore()
 	# Presenters rebuild from GameState below and may need the saved sequence phase to decide whether an
 	# authoritative mechanism completion should advance or stay dormant. Restore these scalar owners
 	# before invoking any attachment hooks.
@@ -902,6 +985,8 @@ func apply_save_snapshot(data: Dictionary) -> void:
 	_restore_dialogue_presenter_from_snapshot(data.get("dialogue", {}))
 	_notify_dialogue_presenters_after_load()
 	_restore_portable_continuation(data.get("portable_continuation", {}))
+	if is_instance_valid(_consequence_presentation_controller):
+		_consequence_presentation_controller.end_authority_restore()
 
 
 func _restore_dialogue_presenter_from_snapshot(snapshot: Variant) -> void:
@@ -964,7 +1049,9 @@ func _notify_authoritative_presenters_after_load() -> void:
 
 func get_game_state_character_node(char_id: String) -> Node3D:
 	var cached = _game_state_character_nodes.get(char_id)
-	if cached is Node3D and is_instance_valid(cached):
+	# A streamed presenter may already be freed while its stable-id entry remains.
+	# Validity must be checked before GDScript's `is` operator touches the Object.
+	if is_instance_valid(cached) and cached is Node3D:
 		return cached as Node3D
 	_game_state_character_nodes.erase(char_id)
 	for node in find_children("*", "", true, false):
@@ -1623,7 +1710,12 @@ func _apply_party_control(nodes: Dictionary, selected_ids: Array, active_id: Str
 		if node == null:
 			continue
 		var is_active: bool = str(cid) == active_id
-		if node.has_method("set_move_enabled"):
+		# Changing selection gates which controller may accept the next command; it
+		# must not cancel an order already issued to the character being deselected.
+		# Player's legacy set_move_enabled(false) is an explicit stop operation.
+		if node.has_method("restore_move_input_enabled"):
+			node.call("restore_move_input_enabled", is_active)
+		elif node.has_method("set_move_enabled"):
 			node.call("set_move_enabled", is_active)
 		if "group_move" in node:
 			node.set("group_move", group_control and is_active)
@@ -2505,13 +2597,26 @@ func get_preview_character_position(char_id: String) -> Vector3:
 
 func set_preview_character_position(char_id: String, pos: Vector3) -> void:
 	if _game_state != null and _game_state.characters.has(char_id):
+		if _game_state.is_external_traversal_active(char_id):
+			_game_state.cancel_external_traversal(char_id, &"fixture_placement")
 		_game_state.command_stop(char_id)
-		_game_state.characters[char_id]["position"] = pos
 		if _game_state.grid != null:
-			_game_state.characters[char_id]["grid_cell"] = _game_state.grid.world_to_grid(pos)
+			var target_level := int(_game_state.grid.level_for_y(pos.y)) \
+				if int(_game_state.grid.level_count) > 1 \
+				else int(_game_state.get_character_level(char_id))
+			# Normalize full XYZ through the selected graph floor even when this is
+			# a same-level placement.
+			_game_state.set_character_level(char_id, target_level)
+			pos.y = _game_state.grid.grid_to_world(
+				_game_state.grid.world_to_grid(pos), target_level).y
+		_game_state.snap_character_to(char_id, pos, false)
 	var node := _find_character_node(char_id)
 	if node != null:
-		node.global_position = pos
+		# Test/preview placement is still authoritative placement: the live node
+		# must present GameState's complete render-space XYZ, never preserve or
+		# invent a transform independently.
+		node.global_position = _game_state.get_render_position(char_id) \
+			if _game_state != null and _game_state.characters.has(char_id) else pos
 
 func get_preview_character_move_speed(char_id: String, running := false) -> float:
 	var node := _find_character_node(char_id)
@@ -2568,6 +2673,40 @@ func show_preview_message(text: String, duration := 2.0) -> void:
 	if hud != null and hud.has_method("show_message"):
 		hud.call("show_message", text, duration)
 
+
+## Compatibility names retained for existing chunks. Ownership lives in the scene-level
+## ConsequencePresentationController, so these now work identically in campaign and preview hosts.
+func emphasize_preview_target(
+		target_node: Node3D,
+		duration := 0.9,
+		pause_gameplay := false,
+		opts: Dictionary = {}
+	) -> bool:
+	if not is_instance_valid(_consequence_presentation_controller):
+		return false
+	return bool(_consequence_presentation_controller.emphasize_target(
+		target_node, duration, pause_gameplay, opts))
+
+
+func cancel_preview_emphasis() -> void:
+	if is_instance_valid(_consequence_presentation_controller):
+		_consequence_presentation_controller.cancel_emphasis()
+
+
+func shake_preview_camera(intensity := 0.12, decay := 7.0) -> void:
+	if is_instance_valid(_consequence_presentation_controller):
+		_consequence_presentation_controller.shake_camera(intensity, decay)
+
+
+func get_consequence_presentation_state() -> Dictionary:
+	if not is_instance_valid(_consequence_presentation_controller):
+		return {}
+	return _consequence_presentation_controller.get_presentation_state()
+
+
+func _consequence_focus_active() -> bool:
+	return _exploration_focus_active
+
 func show_preview_note(text: String, duration := 3.0) -> void:
 	# No dedicated note band on the base HUD; surface it as a transient thought/message.
 	if _tutorial_prompt != null and _tutorial_prompt.has_method("show_prompt"):
@@ -2587,165 +2726,72 @@ func get_preview_routing_mode() -> String:
 		return str(get("_routing_mode"))
 	return "safe"
 
-# --- Inventory / items (route through GameState; draw a minimal world view) ---
-
-var _chunk_item_nodes: Dictionary = {}
+# --- Inventory / items (one shared controller; GameState remains authority) ---
 
 func spawn_preview_item(item_type: String, position: Vector3, properties: Dictionary = {}) -> String:
-	if _game_state == null:
-		return ""
-	var item_properties := properties.duplicate(true)
-	# This survives GameState serialization so a fresh scene can reconstruct the same presenter
-	# without guessing which items happened to have been spawned through this convenience method.
-	item_properties["tutorial_item_presenter"] = true
-	var item_id := _game_state.spawn_item(item_type, position, item_properties)
-	_ensure_chunk_item_node(item_id)
-	return item_id
+	return _party_item_controller.spawn_item(item_type, position, properties) \
+		if is_instance_valid(_party_item_controller) else ""
 
 func remove_preview_item(item_id: String) -> void:
-	if _game_state == null:
-		return
-	_game_state.remove_item(item_id)
-	if _chunk_item_nodes.has(item_id):
-		var node: Node3D = _chunk_item_nodes[item_id]
-		if is_instance_valid(node):
-			node.queue_free()
-		_chunk_item_nodes.erase(item_id)
+	if is_instance_valid(_party_item_controller):
+		_party_item_controller.remove_item(item_id)
 
 func pick_up_preview_item(char_id: String, item_id: String) -> bool:
-	return _game_state != null and _game_state.pick_up_item(char_id, item_id)
+	return is_instance_valid(_party_item_controller) \
+		and bool(_party_item_controller.pick_up_item(char_id, item_id))
 
 func drop_preview_item(char_id: String, item_id: String) -> bool:
-	return _game_state != null and _game_state.drop_item(char_id, item_id)
+	return is_instance_valid(_party_item_controller) \
+		and bool(_party_item_controller.drop_item(char_id, item_id))
 
 func transfer_preview_item(from_id: String, to_id: String, item_id: String) -> bool:
-	return _game_state != null and _game_state.transfer_item(from_id, to_id, item_id)
+	return is_instance_valid(_party_item_controller) \
+		and bool(_party_item_controller.transfer_item(from_id, to_id, item_id))
 
 func endocytose_preview_item(char_id: String, item_id: String) -> bool:
-	return _game_state != null and _game_state.endocytose_item(char_id, item_id)
+	return is_instance_valid(_party_item_controller) \
+		and bool(_party_item_controller.endocytose_item(char_id, item_id))
 
 func exocytose_preview_item(char_id: String, item_id: String) -> bool:
-	return _game_state != null and _game_state.exocytose_item(char_id, item_id)
+	return is_instance_valid(_party_item_controller) \
+		and bool(_party_item_controller.exocytose_item(char_id, item_id))
 
 func get_preview_hand_items(char_id: String) -> Array:
-	return _game_state.get_hand_items(char_id) if _game_state != null else []
+	return _party_item_controller.get_hand_items(char_id) \
+		if is_instance_valid(_party_item_controller) else []
 
 func get_preview_hand_slots(char_id: String) -> Array:
-	return _game_state.get_hand_slots(char_id) if _game_state != null else []
+	return _party_item_controller.get_hand_slots(char_id) \
+		if is_instance_valid(_party_item_controller) else []
 
 func get_preview_internal_items(char_id: String) -> Array:
-	return _game_state.get_internal_items(char_id) if _game_state != null else []
+	return _party_item_controller.get_internal_items(char_id) \
+		if is_instance_valid(_party_item_controller) else []
 
 func get_preview_collection_items() -> Array:
-	return _game_state.collection.duplicate() if _game_state != null else []
+	return _party_item_controller.get_collection_items() \
+		if is_instance_valid(_party_item_controller) else []
 
 func get_preview_item_state(item_id: String) -> Dictionary:
-	if _game_state == null or not _game_state.items.has(item_id):
-		return {}
-	return (_game_state.items[item_id] as Dictionary).duplicate(true)
+	return _party_item_controller.get_item_state(item_id) \
+		if is_instance_valid(_party_item_controller) else {}
 
 func get_preview_item_display_name(item_id: String, char_id := "") -> String:
-	if _game_state == null or not _game_state.items.has(item_id):
-		return item_id
-	var item: Dictionary = _game_state.items[item_id]
-	var properties: Dictionary = item.get("properties", {})
-	var display_names: Dictionary = properties.get("display_names_by_character", {})
-	if char_id != "" and display_names.has(char_id):
-		return str(display_names.get(char_id, item_id))
-	if properties.has("display_name"):
-		return str(properties.get("display_name", item_id))
-	return ItemData.get_display_name(str(item.get("type", item_id)))
-
-## A small ground/hand visual for a chunk-spawned item, so picking it up reads on screen.
-func _ensure_chunk_item_node(item_id: String) -> void:
-	if _chunk_item_nodes.has(item_id) or _game_state == null or not _game_state.items.has(item_id):
-		return
-	var item: Dictionary = _game_state.items[item_id]
-	var properties: Dictionary = item.get("properties", {})
-	var node := MeshInstance3D.new()
-	node.name = "ChunkItem_%s" % item_id
-	var sphere := SphereMesh.new()
-	sphere.radius = 0.22
-	sphere.height = 0.44
-	node.mesh = sphere
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = _tutorial_item_visual_color(
-		properties.get("visual_color", Color(0.78, 0.78, 0.82)))
-	mat.emission_enabled = true
-	mat.emission = (mat.albedo_color as Color).lightened(0.1)
-	mat.emission_energy_multiplier = 0.24
-	node.material_override = mat
-	var pos: Vector3 = item.get("position", Vector3.ZERO)
-	add_child(node)
-	node.global_position = Vector3(pos.x, pos.y + 0.42, pos.z)
-	_chunk_item_nodes[item_id] = node
+	return _party_item_controller.get_item_display_name(item_id, char_id) \
+		if is_instance_valid(_party_item_controller) else item_id
 
 
-func _tutorial_item_visual_color(value: Variant) -> Color:
-	if value is Color:
-		return value as Color
-	if value is Array:
-		var channels := value as Array
-		if channels.size() >= 3:
-			return Color(
-				float(channels[0]), float(channels[1]), float(channels[2]),
-				float(channels[3]) if channels.size() >= 4 else 1.0)
-	# JSON round-trips Variant Colors as "(r, g, b, a)". Parse that explicit form instead
-	# of passing it to Color.from_string(), where it is treated as an invalid named color.
-	if value is String:
-		var encoded := str(value).strip_edges()
-		if encoded.begins_with("(") and encoded.ends_with(")"):
-			var parts := encoded.trim_prefix("(").trim_suffix(")").split(",")
-			if parts.size() >= 3:
-				return Color(
-					float(parts[0]), float(parts[1]), float(parts[2]),
-					float(parts[3]) if parts.size() >= 4 else 1.0)
-	return Color(0.78, 0.78, 0.82)
+## Chunks that reveal an authoritative world pickup use the controller-owned item
+## presenter as their visible outline/click surface. Ensuring the presenter is a
+## view operation only; item location and availability remain GameState authority.
+func get_preview_item_presenter(item_id: String) -> Node3D:
+	return _party_item_controller.ensure_presenter_node(item_id) \
+		if is_instance_valid(_party_item_controller) else null
 
 
-## Project the minimal tutorial item visuals from GameState every frame. The number of these items in
-## a tutorial scene is tiny, and this closes a much more important truthfulness gap: the old sphere
-## stayed at its spawn point after the actual item entered a hand, and stale future spheres survived
-## snapshot rollback. Items not marked for this presenter remain owned by their authored scene views.
 func _refresh_chunk_item_presenters() -> void:
-	if _game_state == null:
-		return
-	for item_id_v in _chunk_item_nodes.keys().duplicate():
-		var item_id := str(item_id_v)
-		if _game_state.items.has(item_id):
-			continue
-		var stale_node: Node3D = _chunk_item_nodes.get(item_id) as Node3D
-		if is_instance_valid(stale_node):
-			stale_node.queue_free()
-		_chunk_item_nodes.erase(item_id)
-	for item_id_v in _game_state.items.keys():
-		var item_id := str(item_id_v)
-		var item: Dictionary = _game_state.items[item_id]
-		var properties: Dictionary = item.get("properties", {})
-		if not bool(properties.get("tutorial_item_presenter", false)):
-			continue
-		_ensure_chunk_item_node(item_id)
-		var node: Node3D = _chunk_item_nodes.get(item_id) as Node3D
-		if not is_instance_valid(node):
-			continue
-		var location := str(item.get("location", "ground"))
-		match location:
-			"ground":
-				node.visible = true
-				var pos: Vector3 = item.get("position", Vector3.ZERO)
-				var visual_y := float(properties.get("ground_visual_y", 0.42))
-				node.global_position = Vector3(pos.x, pos.y + visual_y, pos.z)
-			"hand":
-				var holder := str(item.get("holder", ""))
-				var holder_node := _find_character_node(holder)
-				node.visible = holder_node != null
-				if holder_node != null:
-					node.global_position = holder_node.global_position + Vector3(0.38, 1.05, 0.1)
-			_:
-				# Internalized/collected items remain authoritative inventory without pretending to
-				# be loose world geometry.
-				node.visible = false
-
+	if is_instance_valid(_party_item_controller):
+		_party_item_controller.refresh_presenters()
 ## Register a chunk interactable with the scene's input/feedback wiring (the preview host's
 ## register_preview_interactable equivalent): give it the dialogue box + active character,
 ## inject the gameplay scheduler so dwell rides it, and bind hover/outline feedback so it

@@ -6,6 +6,7 @@ extends CanvasLayer
 
 const HUD_CONTRACT_ID := "shared_game_hud_v1"
 const HUD_SCRIPT_PATH := "res://scripts/ui/game_hud.gd"
+const PLAYER_HUD_PRESENTER_GROUP := &"player_observation_hud_presenters"
 const InputGlyphScene := preload("res://scenes/ui/input_glyph.tscn")
 const ControlButtonScene := preload("res://scenes/ui/hud_control_button.tscn")
 const StatRowScene := preload("res://scenes/ui/hud_stat_row.tscn")
@@ -74,7 +75,7 @@ var _atp_pip_subdivisions := 1
 
 # Character portraits
 @onready var _portrait_section: HBoxContainer = $BottomMargin/BottomPanel/BottomRow/PortraitSection
-var _portraits: Dictionary = {}  # id -> {card, style, name_label, display_name, color, stat_bars, alert, status}
+var _portraits: Dictionary = {}  # id -> card/base status/auxiliary presentation state
 var _portrait_damage_tweens: Dictionary = {}
 var _selected_characters: Array[String] = []
 var _active_portrait := ""
@@ -87,6 +88,7 @@ var _game_state_char_id := ""
 var _auto_toggle_running := true
 
 func _ready() -> void:
+	add_to_group(PLAYER_HUD_PRESENTER_GROUP)
 	_bind_authored_layout()
 
 func _process(delta: float) -> void:
@@ -304,6 +306,11 @@ func add_portrait(id: String, display_name: String, color: Color) -> void:
 	var name_label := card.get_node("Content/NameLabel") as Label
 	name_label.text = display_name.to_upper()
 	name_label.add_theme_color_override("font_color", color)
+	# Auxiliary state is deliberately separate from both the base portrait status
+	# and causal consequence badge. Concealment can therefore say HIDDEN while a
+	# character remains resting/downed/holding without overwriting either truth.
+	var state_badge := card.get_node("Content/StateBadge") as Label
+	var consequence_badge := card.get_node("Content/ConsequenceBadge") as Label
 	var hold_button := card.get_node("Content/HoldButton") as Button
 	hold_button.name = "HoldBadge_%s" % id
 	hold_button.pressed.connect(_on_portrait_hold_pressed.bind(id))
@@ -330,6 +337,10 @@ func add_portrait(id: String, display_name: String, color: Color) -> void:
 		"card": card,
 		"style": style,
 		"name_label": name_label,
+		"state_badge": state_badge,
+		"auxiliary_statuses": {},
+		"consequence_badge": consequence_badge,
+		"consequence_presentation": {},
 		"display_name": display_name,
 		"color": color,
 		"stat_bars": stat_bars,
@@ -435,6 +446,98 @@ func get_selected_ids() -> Array:
 func get_portrait_ids() -> Array:
 	return _portraits.keys()
 
+
+## Presentation-only portrait snapshot for automated players and accessibility tooling. Values
+## come from the controls a player can see, not GameState, and are normalized so this surface does
+## not leak hidden caps or mechanism data.
+func get_player_observation() -> Dictionary:
+	var selected := get_selected_ids()
+	var portraits := {}
+	var visible_hands: Array[String] = []
+	if _hands_section != null:
+		for chip_v in _hands_section.get_children():
+			if not (chip_v is CanvasItem) \
+					or not (chip_v as CanvasItem).is_visible_in_tree():
+				continue
+			var label_v: Node = (chip_v as Node).get_node_or_null("Label")
+			if not (label_v is Label):
+				continue
+			var hand_label := str((label_v as Label).text).strip_edges()
+			if hand_label != "" and not visible_hands.has(hand_label):
+				visible_hands.append(hand_label)
+	for raw_id in _portraits.keys():
+		var id := str(raw_id)
+		var portrait: Dictionary = _portraits[id]
+		var card: Control = portrait.get("card", null)
+		if card == null or not card.is_visible_in_tree():
+			continue
+		var name_label: Label = portrait.get("name_label", null)
+		if name_label == null or not name_label.is_visible_in_tree():
+			continue
+		var bars: Dictionary = portrait.get("stat_bars", {})
+		var visible_bars := {}
+		for raw_stat in ["hp", "sta", "atp"]:
+			var stat := str(raw_stat)
+			var info: Dictionary = bars.get(stat, {})
+			var ratio := 0.0
+			if str(info.get("type", "")) == "bar":
+				var bar: ProgressBar = info.get("bar", null)
+				if bar != null and bar.max_value > 0.0:
+					ratio = float(bar.value / bar.max_value)
+			elif str(info.get("type", "")) == "pips":
+				var pip_info: Dictionary = info.get("pip_info", {})
+				var maximum := float(pip_info.get("max", 0.0))
+				if maximum > 0.0:
+					ratio = float(pip_info.get("value", 0.0)) / maximum
+			visible_bars[stat] = snappedf(clampf(ratio, 0.0, 1.0), 0.01)
+		var hold: Dictionary = portrait.get("hold_info", {})
+		var public_hold := {}
+		if not hold.is_empty():
+			public_hold = {
+				"kind": str(hold.get("kind", "")),
+				"label": str(hold.get("label", "")),
+				"locked": bool(portrait.get("hold_locked", false)),
+			}
+		var public_consequence := {}
+		var presented_statuses := _portrait_rendered_auxiliary_statuses(
+			card,
+			portrait.get("state_badge", null),
+			portrait.get("auxiliary_statuses", {}) as Dictionary
+		)
+		var consequence_badge: Label = portrait.get("consequence_badge", null)
+		var consequence: Dictionary = portrait.get("consequence_presentation", {})
+		if _portrait_consequence_render_visible(card, consequence_badge) \
+				and not consequence.is_empty():
+			public_consequence = {
+				"phase": str(consequence.get("phase", "")),
+				"label": str(consequence.get("label", "")),
+				"destination_label": str(consequence.get("destination_label", "")),
+				"text": str(consequence_badge.text).strip_edges(),
+				"progress": clampf(float(consequence.get("progress", 0.0)), 0.0, 1.0),
+				"visible": true,
+				"render_visible": true,
+			}
+		portraits[id] = {
+			"label": str(name_label.text).strip_edges(),
+			"selected": selected.has(id),
+			"active": id == _active_portrait,
+			"bars": visible_bars,
+			"status": str(portrait.get("status", "")),
+			"statuses": presented_statuses,
+			"alert": bool(portrait.get("alert", false)),
+			"hold": public_hold,
+			"consequence": public_consequence,
+		}
+	return {
+		"portraits": portraits,
+		"hands": visible_hands,
+		"run_label": _run_button_label(),
+		"routing_label": str(_routing_button.text) if _routing_button != null else "",
+		"message": str(_message_label.text).strip_edges()
+			if _message_label != null and _message_label.is_visible_in_tree()
+				and _message_label.modulate.a > 0.01 else "",
+	}
+
 func set_portrait_stat(id: String, stat_name: String, value: float) -> void:
 	if not _portraits.has(id):
 		return
@@ -505,6 +608,210 @@ func set_portrait_status(id: String, status: String) -> void:
 		set_portrait_hold_state(id, {})
 	else:
 		_refresh_portrait_hold_badge(id)
+
+
+## Add or replace one presentation-only state cue without changing the base
+## status. The stable key lets independent scene controllers coexist and clear
+## only their own cue.
+func set_portrait_auxiliary_status(
+		id: String, presentation_key: String, status: String
+	) -> bool:
+	if not _portraits.has(id):
+		return false
+	var key := presentation_key.strip_edges()
+	var rendered_status := status.strip_edges().to_upper()
+	if key == "" or rendered_status == "":
+		return false
+	var portrait: Dictionary = _portraits[id]
+	var statuses: Dictionary = (
+		portrait.get("auxiliary_statuses", {}) as Dictionary
+	).duplicate()
+	statuses[key] = rendered_status
+	portrait["auxiliary_statuses"] = statuses
+	_portraits[id] = portrait
+	_refresh_portrait_auxiliary_status_badge(id)
+	return true
+
+
+func clear_portrait_auxiliary_status(id: String, presentation_key: String) -> bool:
+	if not _portraits.has(id):
+		return false
+	var portrait: Dictionary = _portraits[id]
+	var statuses: Dictionary = (
+		portrait.get("auxiliary_statuses", {}) as Dictionary
+	).duplicate()
+	var key := presentation_key.strip_edges()
+	if key == "" or not statuses.has(key):
+		return false
+	statuses.erase(key)
+	portrait["auxiliary_statuses"] = statuses
+	_portraits[id] = portrait
+	_refresh_portrait_auxiliary_status_badge(id)
+	return true
+
+
+func _refresh_portrait_auxiliary_status_badge(id: String) -> void:
+	if not _portraits.has(id):
+		return
+	var portrait: Dictionary = _portraits[id]
+	var badge: Label = portrait.get("state_badge", null)
+	if badge == null:
+		return
+	var statuses := _sorted_unique_auxiliary_statuses(
+		portrait.get("auxiliary_statuses", {}) as Dictionary)
+	badge.text = " // ".join(statuses)
+	badge.tooltip_text = badge.text
+	badge.visible = not statuses.is_empty()
+	if statuses.has("HIDDEN"):
+		badge.add_theme_color_override("font_color", Color(0.35, 0.82, 1.0))
+	elif statuses.has("COVERED"):
+		badge.add_theme_color_override("font_color", Color(0.95, 0.78, 0.28))
+	else:
+		badge.add_theme_color_override("font_color", Color(0.72, 0.76, 0.82))
+
+
+func _sorted_unique_auxiliary_statuses(statuses: Dictionary) -> Array[String]:
+	var result: Array[String] = []
+	for status_v in statuses.values():
+		var status := str(status_v).strip_edges().to_upper()
+		if status != "" and not result.has(status):
+			result.append(status)
+	result.sort()
+	return result
+
+
+func _portrait_rendered_auxiliary_statuses(
+		card: Control, badge: Label, statuses: Dictionary
+	) -> Array[String]:
+	var result := _sorted_unique_auxiliary_statuses(statuses)
+	if result.is_empty() or not _portrait_auxiliary_status_render_visible(
+			card, badge) or str(badge.text) != " // ".join(result):
+		return []
+	return result
+
+
+func _portrait_auxiliary_status_render_visible(
+		card: Control, badge: Label
+	) -> bool:
+	if DisplayServer.get_name() == "headless" or card == null or badge == null \
+			or not card.is_visible_in_tree() or not badge.is_visible_in_tree() \
+			or str(badge.text).strip_edges() == "":
+		return false
+	var viewport := get_viewport()
+	var badge_rect := badge.get_global_rect()
+	if viewport == null or badge_rect.size.x <= 0.0 or badge_rect.size.y <= 0.0 \
+			or not viewport.get_visible_rect().encloses(badge_rect):
+		return false
+	var ancestor: Node = badge
+	while ancestor != null:
+		if ancestor is CanvasItem:
+			var canvas_item := ancestor as CanvasItem
+			if canvas_item.modulate.a <= 0.01 \
+					or canvas_item.self_modulate.a <= 0.01:
+				return false
+		if ancestor is Control:
+			var control := ancestor as Control
+			if control.clip_contents \
+					and not control.get_global_rect().encloses(badge_rect):
+				return false
+		if ancestor == self:
+			break
+		ancestor = ancestor.get_parent()
+	return true
+
+
+## Render a causal movement/state receipt on the affected portrait. This is a presentation-only
+## surface: callers provide an already-authoritative receipt, and the HUD never feeds it back into
+## GameState. Matching event IDs make delayed cleanup incapable of erasing a newer consequence.
+func set_portrait_consequence_presentation(id: String, presentation: Dictionary) -> bool:
+	if not _portraits.has(id):
+		return false
+	var portrait: Dictionary = _portraits[id]
+	var badge: Label = portrait.get("consequence_badge", null)
+	if badge == null:
+		return false
+	var event_id := str(presentation.get("event_id", "")).strip_edges()
+	var presentation_key := str(presentation.get(
+		"presentation_key", "")).strip_edges()
+	var phase := str(presentation.get("phase", "")).strip_edges().to_lower()
+	var label := str(presentation.get("label", "")).strip_edges()
+	var destination := str(presentation.get("destination_label", "")).strip_edges()
+	if event_id == "" or presentation_key == "" or phase == "" or label == "":
+		return false
+	var text := label.to_upper()
+	if phase == "arrival":
+		text = "ARRIVED // %s" % label.to_upper()
+	elif phase == "cancelled":
+		text = "CANCELLED // %s" % label.to_upper()
+	if destination != "":
+		text += " // " + destination.to_upper()
+	var progress := clampf(float(presentation.get("progress", 0.0)), 0.0, 1.0)
+	if phase in ["warning", "active"]:
+		text += " // %d%%" % int(round(progress * 100.0))
+	badge.text = text
+	badge.tooltip_text = text
+	badge.add_theme_color_override("font_color",
+		Color(0.38, 0.9, 0.64) if phase == "arrival" else (
+			Color(1.0, 0.34, 0.22) if phase == "cancelled" else Color(0.25, 0.72, 1.0)))
+	badge.visible = true
+	portrait["consequence_presentation"] = {
+		"presentation_key": presentation_key,
+		"event_id": event_id,
+		"phase": phase,
+		"label": label,
+		"destination_label": destination,
+		"progress": progress,
+	}
+	_portraits[id] = portrait
+	return badge.is_visible_in_tree()
+
+
+func clear_portrait_consequence_presentation(id: String,
+		presentation_key := "") -> bool:
+	if not _portraits.has(id):
+		return false
+	var portrait: Dictionary = _portraits[id]
+	var current: Dictionary = portrait.get("consequence_presentation", {})
+	if presentation_key != "" and str(current.get(
+			"presentation_key", "")) != presentation_key:
+		return false
+	var badge: Label = portrait.get("consequence_badge", null)
+	if badge != null:
+		badge.visible = false
+		badge.text = ""
+		badge.tooltip_text = ""
+	portrait["consequence_presentation"] = {}
+	_portraits[id] = portrait
+	return true
+
+
+func get_portrait_consequence_presentation(id: String,
+		presentation_key := "") -> Dictionary:
+	if not _portraits.has(id):
+		return {}
+	var portrait: Dictionary = _portraits[id]
+	var current: Dictionary = portrait.get("consequence_presentation", {})
+	if current.is_empty() or (presentation_key != "" \
+			and str(current.get("presentation_key", "")) != presentation_key):
+		return {}
+	var badge: Label = portrait.get("consequence_badge", null)
+	var result := current.duplicate(true)
+	result["text"] = str(badge.text).strip_edges() if badge != null else ""
+	var card: Control = portrait.get("card", null)
+	result["visible"] = _portrait_consequence_render_visible(card, badge)
+	result["render_visible"] = bool(result["visible"])
+	return result
+
+
+func _portrait_consequence_render_visible(card: Control, badge: Label) -> bool:
+	if DisplayServer.get_name() == "headless" or card == null or badge == null \
+			or not card.is_visible_in_tree() or not badge.is_visible_in_tree() \
+			or badge.modulate.a <= 0.01 or str(badge.text).strip_edges() == "":
+		return false
+	var viewport := get_viewport()
+	return viewport != null and viewport.get_visible_rect().intersects(
+		badge.get_global_rect()) and badge.get_global_rect().size.x > 0.0 \
+		and badge.get_global_rect().size.y > 0.0
 
 ## Report or clear the character's current positional work. This is generic on purpose: chunks can
 ## provide {control_id, kind, label, ...} for plates today and future held/channelled jobs tomorrow.

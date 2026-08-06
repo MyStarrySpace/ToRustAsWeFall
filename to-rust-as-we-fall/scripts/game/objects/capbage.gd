@@ -19,17 +19,25 @@ var _head: MeshInstance3D
 var _concealment_origin := Vector3.INF
 
 ## Configure BEFORE adding to the tree (interaction_radius is read in _ready).
-func configure(gs, world_pos: Vector3, radius := 1.4) -> void:
+##
+## Authored Capbages traditionally use one radius for both clicking and bodily
+## concealment. Generated content may pass a fourth, tighter radius because its
+## broad leaf-head click hull is not evidence that a neighboring graph cell is
+## physically inside the plant.
+func configure(
+		gs, world_pos: Vector3, radius := 1.4, body_conceal_radius := -1.0
+	) -> void:
 	_gs = gs
 	position = world_pos
 	interaction_radius = radius
-	conceal_radius = radius
+	conceal_radius = radius if body_conceal_radius <= 0.0 else body_conceal_radius
 	interactable_type = InteractableType.INSPECTION
 	one_shot = false
 	description = "Tuck into the Capbage"
 	tutorial_label = "HIDE"
 
 func _ready() -> void:
+	add_to_group(&"capbage_hide_sources")
 	juice_profile = "plant"   # flora rustle on hover + trigger (InteractableJuice)
 	if get_node_or_null("CollisionShape3D") == null:
 		var cs := CollisionShape3D.new()
@@ -67,8 +75,6 @@ func _wire_outline() -> void:
 	var target := mgr.outline_meshes(self, str(name) + "Outline", [_head], "capbage", maxf(1.0, interaction_radius))
 	if target == null:
 		return
-	if target is Node3D and _head is Node3D:
-		(target as Node3D).global_position = (_head as Node3D).global_position
 	if target.has_method("set_interaction_delegate"):
 		target.call("set_interaction_delegate", self)
 	set_outline_target(target)

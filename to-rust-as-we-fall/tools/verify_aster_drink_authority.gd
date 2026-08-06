@@ -70,10 +70,14 @@ func _run() -> void:
 		"ATP remains unchanged at action commitment")
 	check(not source._drink_machine.is_interaction_enabled(),
 		"machine cannot duplicate a drink while endocytosis owns the action")
-	check(source._chunk_item_nodes.has(item_id),
+	check(_has_presenter(source, item_id),
 		"dispensed lysate has a visible world/hand presenter")
+	check(_presenter_has_color(source, item_id, source.DRINK_VISUAL_COLOR),
+		"dispensed lysate presenter carries its authored cyan visual cue")
 
 	source.headless_advance(0.75, 0.05)
+	check(_presenter_is_pulsing(source, item_id),
+		"in-flight endocytosis visibly pulses the held lysate")
 	var midpoint_snapshot := _json_round_trip(source.build_save_snapshot())
 	var saved_endocytosis := (midpoint_snapshot.get("game_state", {}) as Dictionary).get(
 		"endocytosing", {}) as Dictionary
@@ -92,7 +96,7 @@ func _run() -> void:
 			and is_equal_approx(gs.get_stat("aster", "atp"), source.ATP_MAX),
 		"deadline consumes the item and applies its canonical digest reward once")
 	check(not gs.items.has(item_id) and item_id not in gs.get_hand_items("aster")
-			and not source._chunk_item_nodes.has(item_id),
+			and not _has_presenter(source, item_id),
 		"completion removes both canonical lysate and its hand presenter")
 	check(str(source.headless_get_state().get("drink_phase", ""))
 			== source.DRINK_PHASE_CONSUMED,
@@ -106,8 +110,11 @@ func _run() -> void:
 			and source._game_state.is_endocytosing("aster")
 			and is_equal_approx(source._game_state.get_stat("aster", "atp"), source.ATP_START),
 		"same-presenter rewind retracts the consumed future to the midpoint")
-	check(source._drink_item_id == item_id and source._chunk_item_nodes.has(item_id),
+	check(source._drink_item_id == item_id and _has_presenter(source, item_id),
 		"same-presenter rewind reconstructs the exact in-hand lysate presenter")
+	check(_presenter_has_color(source, item_id, source.DRINK_VISUAL_COLOR)
+			and _presenter_is_pulsing(source, item_id),
+		"same-presenter rewind reconstructs the cyan pulse at the saved scheduler tick")
 	var projection_before: Dictionary = source._game_state.serialize()
 	source.on_game_state_snapshot_restored()
 	var projection_after: Dictionary = source._game_state.serialize()
@@ -132,8 +139,11 @@ func _run() -> void:
 		fresh.apply_save_snapshot(midpoint_snapshot)
 		check(not fresh._has_drunk and fresh._game_state.is_endocytosing("aster")
 				and fresh._drink_item_id == item_id
-				and fresh._chunk_item_nodes.has(item_id),
+				and _has_presenter(fresh, item_id),
 			"fresh presenter reconstructs the saved hand item and midpoint action")
+		check(_presenter_has_color(fresh, item_id, fresh.DRINK_VISUAL_COLOR)
+				and _presenter_is_pulsing(fresh, item_id),
+			"fresh presenter reconstructs the cyan pulse at the saved scheduler tick")
 		fresh.headless_advance(1.15, 0.05)
 		check(not fresh._has_drunk and fresh._game_state.is_endocytosing("aster"),
 			"fresh presenter cannot finish early")
@@ -239,6 +249,34 @@ func _erase_drink_authority(snapshot: Dictionary, key: String) -> void:
 func _json_round_trip(snapshot: Dictionary) -> Dictionary:
 	var parsed: Variant = JSON.parse_string(JSON.stringify(snapshot))
 	return parsed as Dictionary if parsed is Dictionary else {}
+
+
+func _has_presenter(sequence: Node, item_id: String) -> bool:
+	return is_instance_valid(sequence._party_item_controller) \
+		and bool(sequence._party_item_controller.has_presenter(item_id))
+
+
+func _presenter_has_color(sequence: Node, item_id: String, expected: Color) -> bool:
+	if not _has_presenter(sequence, item_id):
+		return false
+	var root_node := sequence._party_item_controller.get_presenter_node(item_id) as Node3D
+	if root_node == null:
+		return false
+	var meshes := root_node.find_children("*", "MeshInstance3D", true, false)
+	var mesh := meshes[0] as MeshInstance3D if not meshes.is_empty() else null
+	if mesh == null:
+		return false
+	var material := mesh.material_override as StandardMaterial3D
+	return material != null and material.albedo_color.is_equal_approx(expected)
+
+
+func _presenter_is_pulsing(sequence: Node, item_id: String) -> bool:
+	if not _has_presenter(sequence, item_id):
+		return false
+	var root_node := sequence._party_item_controller.get_presenter_node(item_id) as Node3D
+	return root_node != null and absf(root_node.scale.x - 1.0) > EPSILON \
+		and is_equal_approx(root_node.scale.x, root_node.scale.y) \
+		and is_equal_approx(root_node.scale.x, root_node.scale.z)
 
 
 func _discard(node: Node) -> void:

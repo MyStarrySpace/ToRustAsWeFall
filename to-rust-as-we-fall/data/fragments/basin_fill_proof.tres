@@ -6,13 +6,13 @@
 script = ExtResource("1_bfp")
 id = "basin_fill_proof"
 title = "Balancing Basin — Fill Proof"
-help = "Cross the basin to the south balcony shelter. The rota drowns the floor on a schedule — MID raises the float road; HIGH strips everything but the decks. The fill takes whatever it catches."
+help = "Start on the west CURRENT RETURN shelf. Get everyone to the south balcony shelter. Climb either north DECK ACCESS ladder before the basin rises. LOW opens the bowl floor; MID raises the center float road; HIGH leaves only the decks. A missed rise sweeps you back to the shelf you started on. A stranded LOW bowl member can climb the marked south recovery ladder back to the balcony."
 default_character = "aster"
 party_ids = PackedStringArray("aster", "peris", "endo")
 spawns = {
-"aster": Vector3(2.25, 0.5, 2.25),
-"endo": Vector3(2.25, 0.5, 3.75),
-"peris": Vector3(3.75, 0.5, 2.25)
+"aster": Vector3(-0.75, 0, 2.25),
+"endo": Vector3(-0.75, 0, 5.25),
+"peris": Vector3(-0.75, 0, 3.75)
 }
 floors = Array[Dictionary]([{
 "color": Color(0.16, 0.19, 0.21, 1),
@@ -20,8 +20,8 @@ floors = Array[Dictionary]([{
 "size": Vector3(18, 0.1, 9)
 }, {
 "color": Color(0.24, 0.26, 0.24, 1),
-"pos": Vector3(-0.75, -0.05, 4.5),
-"size": Vector3(1.5, 0.1, 3)
+"pos": Vector3(-0.75, -0.05, 3.75),
+"size": Vector3(1.5, 0.1, 4.5)
 }, {
 "color": Color(0.24, 0.26, 0.24, 1),
 "pos": Vector3(18.75, -0.05, 4.5),
@@ -52,17 +52,215 @@ walls = Array[Dictionary]([{
 "pos": Vector3(15, 0.55, 9.2),
 "size": Vector3(6, 1.1, 0.4)
 }, {
-"color": Color(0.2, 0.22, 0.26, 1),
-"emission": Color(0.3, 0.6, 0.65, 1),
-"energy": 0.3,
-"pos": Vector3(0.75, 1.3, -1.6),
-"size": Vector3(0.3, 2.7, 0.3)
+"color": Color(0.62, 0.68, 0.78, 1),
+"emission": Color(0.18, 0.7, 0.45, 1),
+"energy": 0.45,
+"pos": Vector3(0.51, 1.45, -0.75),
+"size": Vector3(0.09, 2.9, 0.09)
 }, {
-"color": Color(0.2, 0.22, 0.26, 1),
-"emission": Color(0.3, 0.6, 0.65, 1),
-"energy": 0.3,
-"pos": Vector3(17.25, 1.3, -1.6),
-"size": Vector3(0.3, 2.7, 0.3)
+"color": Color(0.62, 0.68, 0.78, 1),
+"emission": Color(0.18, 0.7, 0.45, 1),
+"energy": 0.45,
+"pos": Vector3(0.99, 1.45, -0.75),
+"size": Vector3(0.09, 2.9, 0.09)
+}, {
+"color": Color(0.62, 0.68, 0.78, 1),
+"emission": Color(0.18, 0.7, 0.45, 1),
+"energy": 0.45,
+"pos": Vector3(0.75, 0.45, -0.75),
+"size": Vector3(0.56, 0.07, 0.09)
+}, {
+"color": Color(0.62, 0.68, 0.78, 1),
+"emission": Color(0.18, 0.7, 0.45, 1),
+"energy": 0.45,
+"pos": Vector3(0.75, 0.95, -0.75),
+"size": Vector3(0.56, 0.07, 0.09)
+}, {
+"color": Color(0.62, 0.68, 0.78, 1),
+"emission": Color(0.18, 0.7, 0.45, 1),
+"energy": 0.45,
+"pos": Vector3(0.75, 1.45, -0.75),
+"size": Vector3(0.56, 0.07, 0.09)
+}, {
+"color": Color(0.62, 0.68, 0.78, 1),
+"emission": Color(0.18, 0.7, 0.45, 1),
+"energy": 0.45,
+"pos": Vector3(0.75, 1.95, -0.75),
+"size": Vector3(0.56, 0.07, 0.09)
+}, {
+"color": Color(0.62, 0.68, 0.78, 1),
+"emission": Color(0.18, 0.7, 0.45, 1),
+"energy": 0.45,
+"pos": Vector3(0.75, 2.45, -0.75),
+"size": Vector3(0.56, 0.07, 0.09)
+}, {
+"color": Color(0.2, 1, 0.55, 1),
+"emission": Color(0.2, 1, 0.55, 1),
+"energy": 1.1,
+"pos": Vector3(0.75, 3.05, -0.75),
+"size": Vector3(0.18, 0.22, 0.18)
+}, {
+"color": Color(0.62, 0.68, 0.78, 1),
+"emission": Color(0.18, 0.7, 0.45, 1),
+"energy": 0.45,
+"pos": Vector3(17.01, 1.45, -0.75),
+"size": Vector3(0.09, 2.9, 0.09)
+}, {
+"color": Color(0.62, 0.68, 0.78, 1),
+"emission": Color(0.18, 0.7, 0.45, 1),
+"energy": 0.45,
+"pos": Vector3(17.49, 1.45, -0.75),
+"size": Vector3(0.09, 2.9, 0.09)
+}, {
+"color": Color(0.62, 0.68, 0.78, 1),
+"emission": Color(0.18, 0.7, 0.45, 1),
+"energy": 0.45,
+"pos": Vector3(17.25, 0.45, -0.75),
+"size": Vector3(0.56, 0.07, 0.09)
+}, {
+"color": Color(0.62, 0.68, 0.78, 1),
+"emission": Color(0.18, 0.7, 0.45, 1),
+"energy": 0.45,
+"pos": Vector3(17.25, 0.95, -0.75),
+"size": Vector3(0.56, 0.07, 0.09)
+}, {
+"color": Color(0.62, 0.68, 0.78, 1),
+"emission": Color(0.18, 0.7, 0.45, 1),
+"energy": 0.45,
+"pos": Vector3(17.25, 1.45, -0.75),
+"size": Vector3(0.56, 0.07, 0.09)
+}, {
+"color": Color(0.62, 0.68, 0.78, 1),
+"emission": Color(0.18, 0.7, 0.45, 1),
+"energy": 0.45,
+"pos": Vector3(17.25, 1.95, -0.75),
+"size": Vector3(0.56, 0.07, 0.09)
+}, {
+"color": Color(0.62, 0.68, 0.78, 1),
+"emission": Color(0.18, 0.7, 0.45, 1),
+"energy": 0.45,
+"pos": Vector3(17.25, 2.45, -0.75),
+"size": Vector3(0.56, 0.07, 0.09)
+}, {
+"color": Color(0.2, 1, 0.55, 1),
+"emission": Color(0.2, 1, 0.55, 1),
+"energy": 1.1,
+"pos": Vector3(17.25, 3.05, -0.75),
+"size": Vector3(0.18, 0.22, 0.18)
+}, {
+"color": Color(0.62, 0.68, 0.78, 1),
+"emission": Color(0.18, 0.7, 0.45, 1),
+"energy": 0.45,
+"pos": Vector3(6.39, 0.225, 8.5),
+"size": Vector3(0.09, 0.62, 0.18)
+}, {
+"color": Color(0.62, 0.68, 0.78, 1),
+"emission": Color(0.18, 0.7, 0.45, 1),
+"energy": 0.45,
+"pos": Vector3(7.11, 0.225, 8.5),
+"size": Vector3(0.09, 0.62, 0.18)
+}, {
+"color": Color(0.62, 0.68, 0.78, 1),
+"emission": Color(0.18, 0.7, 0.45, 1),
+"energy": 0.45,
+"pos": Vector3(6.39, 0.675, 9),
+"size": Vector3(0.09, 0.62, 0.18)
+}, {
+"color": Color(0.62, 0.68, 0.78, 1),
+"emission": Color(0.18, 0.7, 0.45, 1),
+"energy": 0.45,
+"pos": Vector3(7.11, 0.675, 9),
+"size": Vector3(0.09, 0.62, 0.18)
+}, {
+"color": Color(0.62, 0.68, 0.78, 1),
+"emission": Color(0.18, 0.7, 0.45, 1),
+"energy": 0.45,
+"pos": Vector3(6.39, 1.125, 9.5),
+"size": Vector3(0.09, 0.62, 0.18)
+}, {
+"color": Color(0.62, 0.68, 0.78, 1),
+"emission": Color(0.18, 0.7, 0.45, 1),
+"energy": 0.45,
+"pos": Vector3(7.11, 1.125, 9.5),
+"size": Vector3(0.09, 0.62, 0.18)
+}, {
+"color": Color(0.62, 0.68, 0.78, 1),
+"emission": Color(0.18, 0.7, 0.45, 1),
+"energy": 0.45,
+"pos": Vector3(6.39, 1.575, 10),
+"size": Vector3(0.09, 0.62, 0.18)
+}, {
+"color": Color(0.62, 0.68, 0.78, 1),
+"emission": Color(0.18, 0.7, 0.45, 1),
+"energy": 0.45,
+"pos": Vector3(7.11, 1.575, 10),
+"size": Vector3(0.09, 0.62, 0.18)
+}, {
+"color": Color(0.62, 0.68, 0.78, 1),
+"emission": Color(0.18, 0.7, 0.45, 1),
+"energy": 0.45,
+"pos": Vector3(6.39, 2.025, 10.5),
+"size": Vector3(0.09, 0.62, 0.18)
+}, {
+"color": Color(0.62, 0.68, 0.78, 1),
+"emission": Color(0.18, 0.7, 0.45, 1),
+"energy": 0.45,
+"pos": Vector3(7.11, 2.025, 10.5),
+"size": Vector3(0.09, 0.62, 0.18)
+}, {
+"color": Color(0.62, 0.68, 0.78, 1),
+"emission": Color(0.18, 0.7, 0.45, 1),
+"energy": 0.45,
+"pos": Vector3(6.39, 2.475, 11),
+"size": Vector3(0.09, 0.62, 0.18)
+}, {
+"color": Color(0.62, 0.68, 0.78, 1),
+"emission": Color(0.18, 0.7, 0.45, 1),
+"energy": 0.45,
+"pos": Vector3(7.11, 2.475, 11),
+"size": Vector3(0.09, 0.62, 0.18)
+}, {
+"color": Color(0.62, 0.68, 0.78, 1),
+"emission": Color(0.18, 0.7, 0.45, 1),
+"energy": 0.45,
+"pos": Vector3(6.75, 0.25, 8.5),
+"size": Vector3(0.82, 0.07, 0.18)
+}, {
+"color": Color(0.62, 0.68, 0.78, 1),
+"emission": Color(0.18, 0.7, 0.45, 1),
+"energy": 0.45,
+"pos": Vector3(6.75, 0.7, 9),
+"size": Vector3(0.82, 0.07, 0.18)
+}, {
+"color": Color(0.62, 0.68, 0.78, 1),
+"emission": Color(0.18, 0.7, 0.45, 1),
+"energy": 0.45,
+"pos": Vector3(6.75, 1.15, 9.5),
+"size": Vector3(0.82, 0.07, 0.18)
+}, {
+"color": Color(0.62, 0.68, 0.78, 1),
+"emission": Color(0.18, 0.7, 0.45, 1),
+"energy": 0.45,
+"pos": Vector3(6.75, 1.6, 10),
+"size": Vector3(0.82, 0.07, 0.18)
+}, {
+"color": Color(0.62, 0.68, 0.78, 1),
+"emission": Color(0.18, 0.7, 0.45, 1),
+"energy": 0.45,
+"pos": Vector3(6.75, 2.05, 10.5),
+"size": Vector3(0.82, 0.07, 0.18)
+}, {
+"color": Color(0.62, 0.68, 0.78, 1),
+"emission": Color(0.18, 0.7, 0.45, 1),
+"energy": 0.45,
+"pos": Vector3(6.75, 2.5, 11),
+"size": Vector3(0.82, 0.07, 0.18)
+}, {
+"color": Color(0.2, 1, 0.55, 1),
+"emission": Color(0.2, 1, 0.55, 1),
+"energy": 1.1,
+"pos": Vector3(6.75, 3.05, 11.15),
+"size": Vector3(0.18, 0.22, 0.18)
 }])
 lights = Array[Dictionary]([{
 "color": Color(0.75, 0.85, 0.9, 1),
@@ -79,44 +277,60 @@ lights = Array[Dictionary]([{
 "energy": 0.9,
 "pos": Vector3(9, 4.5, -1.5),
 "range": 9.0
+}, {
+"color": Color(0.35, 1, 0.62, 1),
+"energy": 0.65,
+"pos": Vector3(6.75, 3.1, 10.2),
+"range": 5.0
 }])
 labels = Array[Dictionary]([{
 "color": Color(0.5, 0.62, 0.6, 1),
-"pos": Vector3(18.75, 1.6, 4.5),
-"text": "OUTFALL"
+"pos": Vector3(-0.75, 1.6, 3.75),
+"text": "START / CURRENT RETURN"
+}, {
+"color": Color(0.45, 0.9, 0.65, 1),
+"pos": Vector3(0.75, 3.45, -0.75),
+"text": "DECK ACCESS"
+}, {
+"color": Color(0.45, 0.9, 0.65, 1),
+"pos": Vector3(17.25, 3.45, -0.75),
+"text": "DECK ACCESS"
+}, {
+"color": Color(0.45, 0.9, 0.65, 1),
+"pos": Vector3(6.75, 3.6, 10.2),
+"text": "DECK ACCESS // LOW RECOVERY"
 }])
 objects = Array[Dictionary]([{
 "dwellers": [{
 "home": Vector3(6, 0, 6.75),
 "id": "dweller_a",
 "radius": 1.0,
-"refuge": Vector3(-0.75, 0, 3.75)
+"refuge": Vector3(0.75, 0, -0.75)
 }, {
 "home": Vector3(12.75, 0, 6.75),
 "id": "dweller_b",
 "radius": 1.8,
-"refuge": Vector3(-0.75, 0, 5.25)
+"refuge": Vector3(17.25, 0, -0.75)
 }],
 "float_cells": [[7, 2], [7, 3], [7, 4], [7, 5], [7, 6], [7, 7], [7, 8], [8, 2], [8, 3], [8, 4], [8, 5], [8, 6], [8, 7], [8, 8]],
 "float_level": 1,
-"float_y": [0.12, 2.58, 3.3],
 "floor_max": Vector2(17.5, 8.5),
 "floor_min": Vector2(0.5, 0.5),
 "name": "Basin",
-"outfall": Vector3(18.75, 0, 3.75),
+"outfall": Vector3(-0.75, 0, 3.75),
 "plane_size": Vector2(18, 9),
 "pos": Vector3(9, 0, 4.5),
 "rota": [{
-"dwell": 8.0,
+"dwell": 18.0,
 "level": 0
 }, {
-"dwell": 7.0,
+"dwell": 9.0,
 "level": 1
 }, {
 "dwell": 4.0,
 "level": 0
 }, {
-"dwell": 7.0,
+"dwell": 9.0,
 "level": 1
 }, {
 "dwell": 14.0,
@@ -125,10 +339,12 @@ objects = Array[Dictionary]([{
 "dwell": 5.0,
 "level": 2
 }, {
-"dwell": 7.0,
+"dwell": 9.0,
 "level": 1
 }],
-"safe_cells": [[1, 4], [1, 5], [14, 4], [14, 5], [2, 1], [13, 1]],
+"recovery_cells": [[1, 3], [1, 4], [1, 5]],
+"recovery_level": 0,
+"safe_cells": [[1, 3], [1, 4], [1, 5], [14, 4], [14, 5], [2, 1], [13, 1]],
 "sweep": {
 "enemy_damage": 999.0,
 "party_hp": 5.0,
@@ -137,8 +353,33 @@ objects = Array[Dictionary]([{
 },
 "tag": "bf",
 "telegraph_lead": 4.0,
-"type": "basin",
-"water_y": [-0.5, 2.45, 3.05]
+"platform_motion_lead": 2.0,
+"type": "rising_water_crossing",
+"water_states": [{
+"catches_floats": false,
+"catches_floor": false,
+"float_y": 0.12,
+"floats_walkable": false,
+"floor_walkable": true,
+"name": "LOW",
+"water_y": -0.5
+}, {
+"catches_floats": false,
+"catches_floor": true,
+"float_y": 2.58,
+"floats_walkable": true,
+"floor_walkable": false,
+"name": "MID",
+"water_y": 2.45
+}, {
+"catches_floats": true,
+"catches_floor": true,
+"float_y": 3.3,
+"floats_walkable": false,
+"floor_walkable": false,
+"name": "HIGH",
+"water_y": 3.05
+}]
 }, {
 "detect": 2.5,
 "id": "dweller_a",
@@ -147,7 +388,7 @@ objects = Array[Dictionary]([{
 "radius": 1
 },
 "speed": 2.4,
-"targets": ["aster", "peris", "endo"],
+"targets": [],
 "type": "enemy"
 }, {
 "detect": 2.5,
@@ -157,7 +398,7 @@ objects = Array[Dictionary]([{
 "radius": 1.5
 },
 "speed": 1.8,
-"targets": ["aster", "peris", "endo"],
+"targets": [],
 "type": "enemy"
 }, {
 "basin_tag": "bf",
@@ -169,10 +410,10 @@ objects = Array[Dictionary]([{
 }, {
 "basin_tag": "bf",
 "cooldown": 10.0,
-"desc": "Log the rota — the party holds at the mouth and crosses on the beat",
+"desc": "Select the group, climb to the upper deck, then arm the next MID crossing",
 "dest": Vector3(9, 2.7, 12.75),
-"label": "LOG THE ROTA",
-"lip": Vector3(8.25, 2.7, -0.75),
+"label": "UPPER DECK > ARM NEXT MID",
+"lip": Vector3(8.25, 2.7, -2.25),
 "name": "FlowReadConsole",
 "pos": Vector3(6.75, 2.7, -0.9),
 "radius": 1.4,
@@ -194,7 +435,7 @@ grid = {
 "contract_id": "unified_grid_v1",
 "height": 12,
 "level_cells": [{
-"cells": [[1, 4], [1, 5], [14, 4], [14, 5], [2, 1], [13, 1]],
+"cells": [[1, 3], [1, 4], [1, 5], [14, 4], [14, 5], [2, 1], [13, 1]],
 "level": 0
 }],
 "level_count": 2,
@@ -222,9 +463,18 @@ grid = {
 "from": 0,
 "to": 1,
 "type": "ladder"
+}, {
+"action_id": "basin_south_recovery_ladder",
+"bidirectional": true,
+"from_cell": [6, 7],
+"from_level": 0,
+"route_label": "DECK ACCESS // LOW RECOVERY",
+"to_cell": [6, 9],
+"to_level": 1,
+"type": "ladder"
 }],
 "origin": [-3.0, 0.0, -3.0],
-"walkable_cells": [[1, 4], [1, 5], [14, 4], [14, 5], [7, 8], [8, 8]],
+"walkable_cells": [[1, 3], [1, 4], [1, 5], [14, 4], [14, 5], [7, 8], [8, 8]],
 "walkable_regions": [{
 "max": [17.5, 8.5],
 "min": [0.5, 0.5]
@@ -239,20 +489,26 @@ grid = {
 }
 time_state = {
 "day": 2,
-"note_default": "The basin breathes on a rota. Watch the water — the floats are the road at MID.",
 "routing_mode": "safe",
+"show_default_note": false,
 "time": 0.45
 }
 params = {
 "anchors": {
 "balcony": Vector3(9, 2.7, 12.75),
 "bowl_center": Vector3(9, 0.5, 4.5),
+"failure_bowl": Vector3(2.25, 0.5, 2.25),
 "chart": Vector3(15.75, 2.7, -1.9),
 "east_stair": Vector3(17.25, 0.5, -0.75),
 "float_entry": Vector3(8.25, 2.7, -0.75),
 "read_console": Vector3(6.75, 2.7, -0.9),
-"shelf": Vector3(18.75, 0.5, 4.5),
-"west_pocket": Vector3(-0.75, 0.5, 4.5),
+"shelf": Vector3(-0.75, 0.5, 3.75),
+"start_return": Vector3(-0.75, 0.5, 3.75),
+"low_recovery_landing": Vector3(6.75, 0, 8.25),
+"south_recovery_deck": Vector3(6.75, 2.7, 11.25),
+"south_recovery_ladder": Vector3(6.75, 1.35, 9.75),
+"east_stash": Vector3(18.75, 0.5, 4.5),
+"west_pocket": Vector3(-0.75, 0.5, 3.75),
 "west_stair": Vector3(0.75, 0.5, -0.75)
 },
 "restart_on_wipe": true

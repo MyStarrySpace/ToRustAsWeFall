@@ -206,6 +206,29 @@ These are starting hypotheses for puzzle structures, not recipes or guaranteed t
 - A deterministic result is not automatically legible; the replay must expose the relevant causal
   path and state transition.
 
+### Observable Consequence Contract
+
+Every player-facing authoritative state change must remain attributable while it unfolds. A
+mechanically correct mutation with no visible provenance is a puzzle failure, not merely missing
+polish.
+
+- Before commitment, a predictable consequence exposes its source, affected state, and timing.
+- During commitment, the visible subject and a directional cause-to-effect cue follow the same
+  authoritative progress. Forced movement must not reuse the self-propelled walk read.
+- On completion, the destination or changed state pulses and the cause remains inspectable long
+  enough to answer "what moved or changed me, and why did I end here?"
+- Offscreen subjects receive a coalesced portrait or HUD fallback; this supplements rather than
+  replaces the world-space cue.
+- Authority carries a portable presentation receipt (`event_id`, cause, effect, cue, subjects,
+  endpoints, telegraph/commit ticks, and destination label). Presenters consume that receipt; they
+  do not guess causality from object names or traversal IDs.
+- Restore, cache repair, registration, and derived bookkeeping may be silent only when explicitly
+  classified as bookkeeping with a named `silent_reason`.
+
+Tests must sample the warning, active consequence, and arrival/aftermath phases in a live presenter,
+including at least one representative failure path. Endpoint and transform parity alone do not prove
+that the consequence is legible.
+
 ## Playtest Questions
 
 For each failure, pause, surprise, and success, record:
@@ -229,6 +252,7 @@ A puzzle is systems-ready when:
 - its load-bearing relationships are consistently represented;
 - a plausible novice model exists;
 - representative failure visibly corrects a misconception;
+- every player-facing state change exposes its cause before, during, and after commitment;
 - model error and execution error can be distinguished;
 - the leverage point produces a meaningful downstream change;
 - recovery permits a revised hypothesis at a proportional cost;

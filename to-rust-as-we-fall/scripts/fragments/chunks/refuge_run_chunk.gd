@@ -62,9 +62,11 @@ const VALID_SPOT_PHASES := ["ready", "sweeping", "safe", "failed"]
 const VALID_EXIT_REST_PHASES := ["locked", "ready", "committing", "rested"]
 
 const SPAWNS := {
-	"aster": Vector3(7.4, 0.5, 1.4),
-	"peris": Vector3(5.6, 0.5, 0.0),
-	"endo": Vector3(6.2, 0.5, -1.6),
+	# Character roots are feet transforms. The entry shelter pad is centred at
+	# ENTRY_SHELTER_POS.y + 0.03 with 0.08 m thickness, so its top is Y=0.52.
+	"aster": Vector3(7.4, 0.52, 1.4),
+	"peris": Vector3(5.6, 0.52, 0.0),
+	"endo": Vector3(6.2, 0.52, -1.6),
 }
 
 var _route_phase := "briefing"
@@ -1452,6 +1454,8 @@ func _build_refuge_shelter(
 			true,
 			2.5,
 			Interactable.InteractableType.HOLD_ACTION)
+		_exit_shelter_interactable.set_meta(
+			"interaction_activation_contract", "proximity_rest")
 		_exit_shelter_interactable.set_meta("authored_shelter_pad", pad)
 		_exit_shelter_interactable.set("description", "Rest the full party at the exit shelter")
 		_exit_shelter_interactable.set(

@@ -1,7 +1,7 @@
 extends CanvasLayer
 
 @onready var grid_map: GridMap
-@onready var editor: Node3D
+@onready var editor: Node
 
 var _palette_buttons: Array[Button] = []
 @onready var _info_label: Label = $InfoLabel
@@ -41,7 +41,14 @@ const ROTATION_LABELS: Array[String] = ["0°", "90°", "180°", "270°"]
 
 func _ready() -> void:
 	editor = get_parent()
-	grid_map = editor.get_node("GridMap")
+	# This authored HUD is also loaded directly by the scene-integrity gate. In that
+	# context its parent is the root Window rather than LevelEditor, so it has no
+	# GridMap or editor signals to bind. Treat the standalone load as an inert visual
+	# fixture instead of dereferencing a fake editor host every frame.
+	grid_map = editor.get_node_or_null("GridMap") as GridMap if editor != null else null
+	if grid_map == null:
+		set_process(false)
+		return
 
 	_bind_authored_ui()
 

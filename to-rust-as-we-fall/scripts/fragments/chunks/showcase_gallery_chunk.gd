@@ -36,9 +36,9 @@ const EXIT_POS := Vector3(80.0, 0.45, 0.0)
 const EXIT_X := 78.0
 
 const SPAWNS := {
-	"peris": Vector3(3.0, 0.5, 0.0),
-	"aster": Vector3(2.0, 0.5, 1.4),
-	"endo": Vector3(2.0, 0.5, -1.4),
+	"peris": Vector3(3.0, 0.0, 0.0),
+	"aster": Vector3(2.0, 0.0, 1.4),
+	"endo": Vector3(2.0, 0.0, -1.4),
 }
 
 # --- Bay 1: hiding. Pads sit north of the demo sentry's pace line; at the closest pass the

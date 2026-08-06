@@ -8,6 +8,7 @@ enum ActionType {
 	ADVANCE,
 	CALL,
 	CALL_CHUNK,
+	PHYSICAL_INTERACT,
 	SNAPSHOT_STATE,
 	REFRESH_ANCHORS,
 	ASSERT_PATH,
@@ -30,6 +31,7 @@ const ACTION_TELEPORT := "teleport"
 const ACTION_ADVANCE := "advance"
 const ACTION_CALL := "call"
 const ACTION_CALL_CHUNK := "call_chunk"
+const ACTION_PHYSICAL_INTERACT := "physical_interact"
 const ACTION_SNAPSHOT_STATE := "snapshot_state"
 const ACTION_REFRESH_ANCHORS := "refresh_anchors"
 const ACTION_ASSERT_PATH := "assert_path"
@@ -40,6 +42,7 @@ const ACTION_TYPE_NAMES := {
 	ActionType.ADVANCE: ACTION_ADVANCE,
 	ActionType.CALL: ACTION_CALL,
 	ActionType.CALL_CHUNK: ACTION_CALL_CHUNK,
+	ActionType.PHYSICAL_INTERACT: ACTION_PHYSICAL_INTERACT,
 	ActionType.SNAPSHOT_STATE: ACTION_SNAPSHOT_STATE,
 	ActionType.REFRESH_ANCHORS: ACTION_REFRESH_ANCHORS,
 	ActionType.ASSERT_PATH: ACTION_ASSERT_PATH,
@@ -51,6 +54,7 @@ const ACTION_NAME_TO_TYPE := {
 	ACTION_ADVANCE: ActionType.ADVANCE,
 	ACTION_CALL: ActionType.CALL,
 	ACTION_CALL_CHUNK: ActionType.CALL_CHUNK,
+	ACTION_PHYSICAL_INTERACT: ActionType.PHYSICAL_INTERACT,
 	ACTION_SNAPSHOT_STATE: ActionType.SNAPSHOT_STATE,
 	ACTION_REFRESH_ANCHORS: ActionType.REFRESH_ANCHORS,
 	ACTION_ASSERT_PATH: ActionType.ASSERT_PATH,
@@ -93,6 +97,8 @@ const KEY_ANCHOR := "anchor"
 const KEY_ARGS := "args"
 const KEY_CATALOG_PATH := "catalog_path"
 const KEY_CHAR_ID := "char_id"
+const KEY_CLOCK := "clock"
+const KEY_DAY := "day"
 const KEY_DISPLAY_NAME := "display_name"
 const KEY_ERROR := "error"
 const KEY_EXPECTED := "expected"
@@ -111,6 +117,7 @@ const KEY_OK := "ok"
 const KEY_OP := "op"
 const KEY_PASSED := "passed"
 const KEY_PATH := "path"
+const KEY_PARTY := "party"
 const KEY_POSITION := "position"
 const KEY_SCENARIOS := "scenarios"
 const KEY_SCENE := "scene"
@@ -124,19 +131,28 @@ const KEY_SETUP := "setup"
 const KEY_SETTLE_FRAMES := "settle_frames"
 const KEY_SNAPSHOT := "snapshot"
 const KEY_SNAPSHOT_PATH := "snapshot_path"
+const KEY_SOURCE := "source"
+const KEY_SOURCE_PATH := "source_path"
 const KEY_STEP := "step"
 const KEY_STEPS := "steps"
 const KEY_SUCCESS := "success"
+const KEY_TARGET := "target"
+const KEY_TIME := "time"
 const KEY_VALUE := "value"
 
 const SCENARIO_SCENE_LOAD := "scene_load"
 const UNKNOWN_NAME := "unknown"
 
 const ERROR_ANCHOR_NOT_FOUND := "anchor_not_found"
+const ERROR_ACTION_REFUSED := "action_refused"
 const ERROR_ASSERT_FAILED := "assert_failed"
+const ERROR_CHARACTER_NOT_FOUND := "character_not_found"
+const ERROR_CHARACTER_TRANSFORM_MISMATCH := "character_transform_mismatch"
+const ERROR_GAME_STATE_NOT_FOUND := "game_state_not_found"
 const ERROR_INSTANTIATE_FAILED := "instantiate_failed"
 const ERROR_INVALID_ACTION := "invalid_action"
 const ERROR_INVALID_ANCHOR := "invalid_anchor"
+const ERROR_INVALID_CLOCK := "invalid_clock"
 const ERROR_MISSING_CHAR_ID := "missing_char_id"
 const ERROR_MISSING_METHOD := "missing_method"
 const ERROR_MISSING_METHOD_NAME := "missing_method_name"
@@ -144,9 +160,12 @@ const ERROR_MISSING_PATH := "missing_path"
 const ERROR_MISSING_POSITION := "missing_position"
 const ERROR_MISSING_SNAPSHOT := "missing_snapshot"
 const ERROR_MISSING_SNAPSHOT_KEY := "missing_snapshot_key"
+const ERROR_INVALID_PARTY := "invalid_party"
 const ERROR_PATH_NOT_FOUND := "path_not_found"
 const ERROR_SCENE_NOT_FOUND := "scene_not_found"
 const ERROR_SNAPSHOT_PATH_NOT_FOUND := "snapshot_path_not_found"
+const ERROR_SOURCE_NOT_FOUND := "source_not_found"
+const ERROR_SOURCE_NOT_INTERACTABLE := "source_not_interactable"
 const ERROR_STEP_FAILED := "step_failed"
 const ERROR_UNKNOWN_ACTION := "unknown_action"
 

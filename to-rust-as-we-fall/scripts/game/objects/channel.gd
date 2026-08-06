@@ -97,6 +97,9 @@ var _sweep_active := {}
 var _sweep_travel_speed := DEFAULT_SWEEP_TRAVEL_SPEED
 var _sweep_min_travel_duration := DEFAULT_SWEEP_MIN_TRAVEL_DURATION
 var _sweep_signal_gs = null
+## Portable cause/effect copy stamped onto each authoritative carry. The consequence presenter
+## consumes the same receipt in native play, Web, save/load, and replay; it never guesses from ids.
+var _sweep_presentation: Dictionary = {}
 
 ## dest: (id, pos) -> Vector3 landing point. opts: party_hp, enemy_stun, refractory,
 ## enemy_damage, travel_speed, min_travel_duration, enemy_resolver (id -> Enemy node, for the
@@ -123,6 +126,7 @@ func set_sweep(gs, party_ids: Array, dest: Callable, opts: Dictionary = {}) -> v
 	_sweep_enemy_resolver = opts.get("enemy_resolver", Callable())
 	_sweep_on_swept = opts.get("on_swept", Callable())
 	_sweep_on_enemy_swept = opts.get("on_enemy_swept", Callable())
+	_sweep_presentation = (opts.get("presentation_receipt", {}) as Dictionary).duplicate(true)
 	_sweep_enabled = true
 	_connect_sweep_signals()
 	# A sweep policy may be attached after a flooding channel was restored. Re-arm the saved poll
@@ -317,6 +321,8 @@ func _begin_sweep_traversal(id: String, origin: Vector3, target_kind: String, no
 		render_destination = _sweep_gs.coord_map.to_world(destination)
 	var traversal_id := _sweep_traversal_id(id)
 	var refractory_tick := now + _sweep_refractory_secs
+	var presentation_receipt := _sweep_presentation_receipt(
+		id, target_kind, render_origin, render_destination, now)
 	# A damage shield is consulted AT THE CATCH — the wave hits the body the
 	# moment the water takes it, and a Wrap that was live THEN protects the
 	# whole ride, however far downstream the landing is (sweep-to-start made
@@ -340,13 +346,15 @@ func _begin_sweep_traversal(id: String, origin: Vector3, target_kind: String, no
 		"enemy_damage": _sweep_enemy_damage,
 		"enemy_stun": _sweep_enemy_stun,
 		"refractory_tick": refractory_tick,
+		"presentation_receipt": presentation_receipt,
 	}
 	_sweep_active[id] = pending
 	_sweep_refractory[id] = refractory_tick
 	_publish_authoritative_state()
 
 	var accepted := bool(_sweep_gs.command_external_traversal(
-		id, traversal_id, destination, render_origin, render_destination, duration, &"locked"))
+		id, traversal_id, destination, render_origin, render_destination, duration, &"locked",
+		presentation_receipt))
 	# A save/load listener may reconstruct the just-published reservation synchronously. In that
 	# case the original command correctly refuses a second traversal; the exact owned traversal is
 	# nevertheless the accepted result.
@@ -368,6 +376,43 @@ func _begin_sweep_traversal(id: String, origin: Vector3, target_kind: String, no
 			_sweep_active[id] = pending
 			_publish_authoritative_state()
 	return true
+
+
+func _sweep_presentation_receipt(
+		id: String,
+		target_kind: String,
+		render_origin: Vector3,
+		render_destination: Vector3,
+		now: float
+	) -> Dictionary:
+	var receipt := _sweep_presentation.duplicate(true)
+	var cause_id := str(receipt.get("cause_id", "channel:%s" % _tag))
+	var event_prefix := str(receipt.get("event_id_prefix", "%s:sweep" % cause_id))
+	var telegraph_lead := maxf(0.0, float(receipt.get("telegraph_lead", 0.0)))
+	receipt.erase("event_id_prefix")
+	receipt.erase("telegraph_lead")
+	receipt["scope"] = "player_facing"
+	receipt["event_id"] = str(receipt.get("event_id", "%s:%.3f" % [event_prefix, now]))
+	receipt["cause_id"] = cause_id
+	receipt["cause_kind"] = str(receipt.get("cause_kind", "current"))
+	receipt["effect_kind"] = "forced_movement"
+	receipt["cue_kind"] = str(receipt.get("cue_kind", "current_carry"))
+	receipt["label"] = str(receipt.get("label", "SWEPT BY CURRENT"))
+	receipt["destination_label"] = str(receipt.get("destination_label", "DOWNSTREAM"))
+	receipt["subject_id"] = id
+	receipt["subject_kind"] = target_kind
+	receipt["subjects"] = [id]
+	var source_position_v: Variant = receipt.get("source_render_position", render_origin)
+	if source_position_v is Vector3:
+		receipt["source_render_position"] = _v3_to_portable(source_position_v as Vector3)
+	elif source_position_v is Array and (source_position_v as Array).size() == 3:
+		receipt["source_render_position"] = (source_position_v as Array).duplicate()
+	else:
+		receipt["source_render_position"] = _v3_to_portable(render_origin)
+	receipt["destination_render_position"] = _v3_to_portable(render_destination)
+	receipt["telegraph_tick"] = float(receipt.get("telegraph_tick", now - telegraph_lead))
+	receipt["commit_tick"] = now
+	return receipt
 
 
 ## Arrival is the impact boundary. Damage, stun, and bookkeeping all happen here, after the body is
@@ -938,6 +983,8 @@ func _portable_active_sweeps() -> Dictionary:
 			"enemy_stun": float(pending.get("enemy_stun", 0.0)),
 			"refractory_tick": float(pending.get(
 				"refractory_tick", _sweep_refractory.get(id, -1.0))),
+			"presentation_receipt": (pending.get(
+				"presentation_receipt", {}) as Dictionary).duplicate(true),
 		}
 		for key in [
 			"hp_before", "hp_after", "shield_before", "shield_after",
@@ -1012,6 +1059,11 @@ func _validated_active_sweeps(raw: Variant, contract: String) -> Variant:
 			if not is_finite(refractory_tick) or refractory_tick < started_tick:
 				return null
 			normalized["refractory_tick"] = refractory_tick
+			var presentation_v: Variant = pending.get("presentation_receipt", {})
+			if not (presentation_v is Dictionary):
+				return null
+			normalized["presentation_receipt"] = \
+				(presentation_v as Dictionary).duplicate(true)
 		if phase in [SWEEP_PHASE_PARTY_DAMAGE_COMMITTING, SWEEP_PHASE_PARTY_DOWNING_PENDING]:
 			for key in ["hp_before", "hp_after", "shield_before", "shield_after"]:
 				var number := float(pending.get(key, -1.0))
@@ -1159,6 +1211,11 @@ func _resume_reserved_sweep(id: String, pending: Dictionary) -> void:
 		if _sweep_gs.has_method("get_render_position") else _sweep_gs.get_position(id)
 	var render_destination := _portable_to_v3(pending.get("render_destination", []))
 	var traversal_id := StringName(str(pending.get("traversal_id", "")))
+	var presentation_receipt := (pending.get("presentation_receipt", {}) as Dictionary).duplicate(true)
+	if presentation_receipt.is_empty():
+		presentation_receipt = _sweep_presentation_receipt(
+			id, str(pending.get("target_kind", "enemy")), render_origin,
+			render_destination, float(pending.get("started_tick", now)))
 	var accepted := bool(_sweep_gs.command_external_traversal(
 		id,
 		traversal_id,
@@ -1166,7 +1223,8 @@ func _resume_reserved_sweep(id: String, pending: Dictionary) -> void:
 		render_origin,
 		render_destination,
 		maxf(MIN_CADENCE, impact_tick - now),
-		&"locked"))
+		&"locked",
+		presentation_receipt))
 	if accepted or _has_matching_external_traversal(id, String(traversal_id)):
 		if _sweep_active.has(id):
 			pending = _sweep_active[id]

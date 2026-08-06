@@ -6,7 +6,7 @@ extends RefCounted
 ## biome is realized purely through the generator's EXISTING `limitations.allowed` machinery (no new generation
 ## logic): `settings.biome` restricts content to that biome's lists. The roster/solver invariants are unaffected
 ## — specialist capabilities ride the party, and the bare pair's base capabilities don't depend on placed content.
-## All ids are canonical content_palette.json keys (fauna use the renamed roster: Sapscraps/Aembers/Flares/Redactors).
+## All ids are canonical content_palette.json keys (fauna use the renamed roster: Sapscraps/Ferrules/Flares/Redactors).
 
 const BIOME_SEQUENCE := ["channels", "stacks", "garden", "cleanstreets", "deadzone"]
 
@@ -52,7 +52,7 @@ const BIOMES := {
 	"channels": {
 		"display": "Plumbing Power Project",
 		"flora": ["scarpet", "flure", "capbage", "seefern"],
-		"enemies": ["hidras", "naturalizers", "redactors", "aembers", "flares"],
+		"enemies": ["hidras", "naturalizers", "redactors", "ferrules", "flares"],
 		"structures": ["shelter", "water_control", "pipe", "terminal", "shortcut_gate", "hide_slot"],
 		"theme": {
 			"source_area": "Plumbing Power Project / Channels",

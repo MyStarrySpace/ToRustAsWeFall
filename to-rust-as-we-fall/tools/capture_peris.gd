@@ -1,8 +1,8 @@
 extends SceneTree
 
 ## Dev capture: load the reframed Peris sim and screenshot the modeled room in place.
-## Run WITH a display:
-##   ../Godot_v4.6.1-stable_win64_console.exe --path "." --script res://tools/capture_peris.gd
+## Isolated-display launch only; see tools/README.md:
+##   godot --path "." --script res://tools/capture_peris.gd
 
 func _init() -> void:
 	DisplayServer.window_set_size(Vector2i(1280, 820))

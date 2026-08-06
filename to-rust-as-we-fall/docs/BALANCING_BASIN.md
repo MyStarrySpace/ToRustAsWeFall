@@ -40,8 +40,9 @@ effect across the whole room.
 The fill cycle is NON-UNIFORM: short window, short window, LONG window,
 repeat. Pure data (periods/durations/phases in the .tres), analytic
 next-onsets, identical at 1x and 10x, enrolled in
-`--test-puzzle-fast-forward-invariance`. Every fill telegraphs at
-onset − ~0.5s on its own scheduler tag (header groan + surface shiver).
+`--test-puzzle-fast-forward-invariance`. Every fill telegraphs four seconds before
+onset on its own scheduler tag (header groan + surface shiver, a world-space current
+route to the named return shelf, and an offscreen-safe status read).
 **One hazard, one predicate:** the flood check that drowns a dweller is the
 check that drowns a party member — taught by a SCHEDULED demonstration kill
 on a dweller during the first fill (P18), never left to the ecology.
@@ -104,9 +105,13 @@ exchange rate between them.
 
 ## Failure and pricing (P11, rule 14)
 
-A swept character travels WITH the inflow current to the outfall grate
-shelf — one section lost, never the run; lands mobile, bar debited, offset
-cells per member. `restart_on_wipe: true`. Round-trip pricing throughout:
+A swept character travels WITH the inflow current back to distinct safe graph
+vertices on the west `START / CURRENT RETURN` shelf where the party first arrived.
+The failure therefore loses understood progress; it never grants an otherwise
+unearned east-side advance or reveals a mystery destination. A directional current
+trail, involuntary carry pose, named destination, and arrival pulse remain visible
+through the authoritative traversal. The character lands mobile with the bar debited.
+`restart_on_wipe: true`. Round-trip pricing throughout:
 the gantry detour is climbed at one water level and returned under another;
 what you cross at MID you re-cross on the way back, and the rota has moved.
 
@@ -125,6 +130,9 @@ windows with a mid-water wait on a float — same hazard, same numbers,
 strictly harder, blessed with its own playthrough test (never latent).
 
 ## Kit inventory (rule 2 — compose; extend only where the verb is missing)
+
+The reusable water-state, moving-platform, route-adjustment, and generation model is documented in
+`docs/RISING_WATER_AND_MOVING_PLATFORM_ARCHETYPE.md`.
 
 EXISTS (compose as-is; provenance per the 2026-07-31 recon):
 - The **`sump`** (`scene_chunk.gd` `_spawn_sump`, data-spawnable) — the
@@ -149,11 +157,11 @@ KIT WORK (each proved in its own fragment BEFORE composition):
    class kit object marrying the sump's committed level state (float
    walkability, ledge links) with the Channel's body resolution (party
    swept + bitten, enemy drowned — one waterline predicate at commit).
-   The non-uniform rota needs NO new cadence code: short-short-LONG is a
-   PHASE LADDER — uniform windows on a shared cycle period, phased so the
-   dry gaps come out short/short/long (channels_wash_intro's trick, aimed
-   the other way) — or, equivalently, a dwell-list with prefix-sum
-   analytic next-onsets.
+   The non-uniform rota needs NO new cadence code. The proving fragment uses
+   an 18-second tutorial LOW so a first-time player can read and climb, then a
+   4-second pressure LOW and a 14-second mastery/recovery LOW. This is a PHASE
+   LADDER—or, equivalently, a dwell-list with prefix-sum analytic next-onsets—
+   not a hidden timing exception.
 2. **Aster's auto-perfect crossing** — extract wash_relay's FlowTerminal
    assist into a reusable "hold at lip, launch on the next dry beat" verb
    any crossing can consume, priced (stamina debit + cooldown).

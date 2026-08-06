@@ -3,181 +3,91 @@
 	"grid": {
 		"cell_world_size": 2.0,
 		"origin": [
-			0.0,
-			-3.0
+			2.5,
+			0.5
 		]
 	},
 	"level": {
 		"bounds_cells": {
-			"height": 4,
+			"height": 2,
 			"max": [
-				30,
-				3
+				35,
+				1
 			],
 			"min": [
 				0,
 				0
 			],
-			"width": 31
+			"width": 36
 		},
 		"content": [
 			{
 				"category": "flora",
 				"cell": [
-					-1,
-					0
-				],
-				"kind": "capbage",
-				"level": 0,
-				"support": "placeholder"
-			},
-			{
-				"category": "structures",
-				"cell": [
-					0,
-					0
-				],
-				"kind": "junction",
-				"level": 0,
-				"support": "implemented"
-			},
-			{
-				"category": "flora",
-				"cell": [
-					5,
-					1
-				],
-				"kind": "scarpet",
-				"level": 0,
-				"support": "implemented"
-			},
-			{
-				"category": "structures",
-				"cell": [
 					6,
-					2
+					0
 				],
-				"kind": "junction",
+				"kind": "scarpet",
 				"level": 0,
 				"support": "implemented"
 			},
 			{
 				"category": "flora",
-				"cell": [
-					11,
-					3
-				],
-				"kind": "capbage",
-				"level": 3,
-				"support": "placeholder"
-			},
-			{
-				"category": "flora",
-				"cell": [
-					11,
-					3
-				],
-				"kind": "scarpet",
-				"level": 3,
-				"support": "implemented"
-			},
-			{
-				"category": "enemies",
 				"cell": [
 					13,
-					3
-				],
-				"kind": "sapscraps",
-				"level": 3,
-				"support": "implemented"
-			},
-			{
-				"category": "structures",
-				"cell": [
-					12,
-					3
-				],
-				"kind": "forage_cache",
-				"level": 3,
-				"support": "implemented"
-			},
-			{
-				"category": "flora",
-				"cell": [
-					17,
 					0
-				],
-				"kind": "scarpet",
-				"level": 0,
-				"support": "implemented"
-			},
-			{
-				"category": "structures",
-				"cell": [
-					18,
-					0
-				],
-				"kind": "junction",
-				"level": 0,
-				"support": "implemented"
-			},
-			{
-				"category": "flora",
-				"cell": [
-					23,
-					1
 				],
 				"kind": "capbage",
-				"level": 2,
-				"support": "placeholder"
+				"level": 0,
+				"support": "implemented"
 			},
 			{
 				"category": "flora",
 				"cell": [
-					23,
+					13,
 					1
 				],
 				"kind": "scarpet",
-				"level": 2,
-				"support": "implemented"
-			},
-			{
-				"category": "enemies",
-				"cell": [
-					25,
-					2
-				],
-				"kind": "hidras",
-				"level": 2,
-				"support": "placeholder"
-			},
-			{
-				"category": "structures",
-				"cell": [
-					24,
-					2
-				],
-				"kind": "shortcut_gate",
-				"level": 2,
+				"level": 0,
 				"support": "implemented"
 			},
 			{
 				"category": "flora",
 				"cell": [
-					29,
-					2
+					20,
+					0
 				],
-				"kind": "gasafoetida",
+				"kind": "scarpet",
 				"level": 0,
-				"support": "placeholder"
+				"support": "implemented"
 			},
 			{
-				"category": "structures",
+				"category": "flora",
 				"cell": [
-					30,
-					3
+					27,
+					0
 				],
-				"kind": "shelter",
+				"kind": "capbage",
+				"level": 0,
+				"support": "implemented"
+			},
+			{
+				"category": "flora",
+				"cell": [
+					27,
+					1
+				],
+				"kind": "scarpet",
+				"level": 0,
+				"support": "implemented"
+			},
+			{
+				"category": "flora",
+				"cell": [
+					34,
+					0
+				],
+				"kind": "hushbloom",
 				"level": 0,
 				"support": "implemented"
 			}
@@ -187,7 +97,7 @@
 				"archetype_id": "11",
 				"cell": [
 					0,
-					0
+					1
 				],
 				"id": "entry",
 				"label": "Entry Boundary",
@@ -198,8 +108,8 @@
 			{
 				"archetype_id": "11",
 				"cell": [
-					6,
-					2
+					7,
+					1
 				],
 				"id": "node_01",
 				"label": "Entry Boundary",
@@ -208,21 +118,21 @@
 				"role": "boundary"
 			},
 			{
-				"archetype_id": "12",
+				"archetype_id": "16",
 				"cell": [
-					12,
-					3
+					14,
+					1
 				],
 				"id": "node_02",
-				"label": "Lysate forage cache · Organic Remains",
-				"level": 3,
+				"label": "Shelter-rest management · Full Rest",
+				"level": 0,
 				"optional": false,
-				"role": "foraging"
+				"role": "regroup"
 			},
 			{
 				"archetype_id": "11",
 				"cell": [
-					18,
+					21,
 					0
 				],
 				"id": "node_03",
@@ -232,22 +142,22 @@
 				"role": "regroup"
 			},
 			{
-				"archetype_id": "12",
+				"archetype_id": "16",
 				"cell": [
-					24,
-					2
+					28,
+					1
 				],
 				"id": "node_04",
-				"label": "Lysate forage cache · Rich Kill",
-				"level": 2,
+				"label": "Shelter-rest management · Contested Rest",
+				"level": 0,
 				"optional": false,
-				"role": "foraging"
+				"role": "regroup"
 			},
 			{
 				"archetype_id": "11",
 				"cell": [
-					30,
-					3
+					35,
+					1
 				],
 				"id": "exit_shelter",
 				"label": "Shelter Arrival",
@@ -261,110 +171,165 @@
 				"from": "entry",
 				"from_cell": [
 					0,
-					0
+					1
 				],
 				"id": "main_00_01",
 				"kind": "safe",
 				"to": "node_01",
 				"to_cell": [
-					6,
-					2
+					7,
+					1
 				]
 			},
 			{
 				"from": "node_01",
 				"from_cell": [
-					6,
-					2
+					7,
+					1
 				],
 				"id": "main_01_02",
 				"kind": "safe",
 				"to": "node_02",
 				"to_cell": [
-					12,
-					3
+					14,
+					1
 				]
 			},
 			{
 				"from": "node_02",
 				"from_cell": [
-					12,
-					3
+					14,
+					1
 				],
 				"id": "main_02_03",
 				"kind": "safe",
 				"to": "node_03",
 				"to_cell": [
-					18,
+					21,
 					0
 				]
 			},
 			{
 				"from": "node_03",
 				"from_cell": [
-					18,
+					21,
 					0
 				],
 				"id": "main_03_04",
 				"kind": "safe",
 				"to": "node_04",
 				"to_cell": [
-					24,
-					2
+					28,
+					1
 				]
 			},
 			{
 				"from": "node_04",
 				"from_cell": [
-					24,
-					2
+					28,
+					1
 				],
 				"id": "main_04_05",
 				"kind": "safe",
 				"to": "exit_shelter",
 				"to_cell": [
-					30,
-					3
-				]
-			},
-			{
-				"from": "entry",
-				"from_cell": [
-					0,
-					0
-				],
-				"id": "risky_direct",
-				"kind": "risky",
-				"to": "exit_shelter",
-				"to_cell": [
-					30,
-					3
-				]
-			},
-			{
-				"from": "node_04",
-				"from_cell": [
-					24,
-					2
-				],
-				"id": "return_shortcut",
-				"kind": "shortcut",
-				"to": "entry",
-				"to_cell": [
-					0,
-					0
+					35,
+					1
 				]
 			}
 		]
 	},
-	"multi_solution": true,
+	"multi_solution": false,
 	"progression_stage": 2,
 	"region": "Channels",
 	"schema": "trawf_stretch_replay_v1",
 	"solutions": [
 		{
 			"blocked_nodes": [],
-			"duration": 5.0,
+			"branch_action_count": 2,
+			"branch_actions": [
+				{
+					"action": "activate",
+					"activation_policy": "interact_at_producer",
+					"before_node": "node_02",
+					"before_nodes": [
+						"node_02"
+					],
+					"branch_id": "branch_00",
+					"cannot_bypass_unresolved": true,
+					"consumer_cell": [
+						19.0,
+						6.0
+					],
+					"consumer_cells": [
+						[
+							19.0,
+							4.0
+						],
+						[
+							19.0,
+							5.0
+						],
+						[
+							19.0,
+							6.0
+						]
+					],
+					"expected_phase": "bridged",
+					"id": "activate_branch_00_span",
+					"kind": "mandatory_branch_interaction",
+					"producer_cell": [
+						15.0,
+						11.0
+					],
+					"produces_state": "branch_00_resolved",
+					"required_for_progress": true,
+					"role": "mandatory_producer",
+					"runtime_handler": "branch_span_producer",
+					"solution_order": 0.0,
+					"target": "branch_00",
+					"wait_for_completion": true
+				},
+				{
+					"action": "activate",
+					"activation_policy": "interact_at_producer",
+					"before_node": "exit_shelter",
+					"before_nodes": [
+						"exit_shelter"
+					],
+					"branch_id": "branch_02",
+					"cannot_bypass_unresolved": true,
+					"consumer_cell": [
+						63.0,
+						5.0
+					],
+					"consumer_cells": [
+						[
+							63.0,
+							4.0
+						],
+						[
+							63.0,
+							5.0
+						]
+					],
+					"expected_phase": "bridged",
+					"id": "activate_branch_02_span",
+					"kind": "mandatory_branch_interaction",
+					"producer_cell": [
+						60.0,
+						11.0
+					],
+					"produces_state": "branch_02_resolved",
+					"required_for_progress": true,
+					"role": "mandatory_producer",
+					"runtime_handler": "branch_span_producer",
+					"solution_order": 1.0,
+					"target": "branch_02",
+					"wait_for_completion": true
+				}
+			],
+			"duration": 7.0,
 			"frames": [
 				{
 					"approach_id": "traverse",
@@ -374,31 +339,31 @@
 					"characters": {
 						"aster": [
 							0.0,
-							-0.45
+							0.05
 						],
 						"endo": [
 							0.42,
-							-0.12
+							0.38
 						],
 						"myke": [
 							0.0,
-							0.22
+							0.72
 						],
 						"oli": [
 							-0.42,
-							0.42
+							0.92
 						],
 						"peris": [
 							-0.42,
-							-0.12
+							0.38
 						],
 						"tyreg": [
 							0.42,
-							0.42
+							0.92
 						]
 					},
 					"expert": false,
-					"kind": "traverse",
+					"kind": "layout_traversal",
 					"min_stage": 0,
 					"node": "entry",
 					"risk": "safe",
@@ -407,39 +372,39 @@
 					"t": 0.0
 				},
 				{
-					"approach_id": "play_the_beat",
+					"approach_id": "traverse",
 					"blocked": false,
 					"borrows_from": "",
-					"caption": "node_01 — Adapt to the available party; preserve the state transition",
+					"caption": "node_01",
 					"characters": {
 						"aster": [
-							6.0,
-							1.05
+							6.5,
+							0.05
 						],
 						"endo": [
-							6.42,
-							1.38
+							6.92,
+							0.38
 						],
 						"myke": [
-							6.0,
-							1.72
+							6.5,
+							0.72
 						],
 						"oli": [
-							5.58,
-							1.92
+							6.08,
+							0.92
 						],
 						"peris": [
-							5.58,
-							1.38
+							6.08,
+							0.38
 						],
 						"tyreg": [
-							6.42,
-							1.92
+							6.92,
+							0.92
 						]
 					},
 					"expert": false,
-					"kind": "meta",
-					"min_stage": 1,
+					"kind": "layout_traversal",
+					"min_stage": 0,
 					"node": "node_01",
 					"risk": "safe",
 					"role": "boundary",
@@ -447,175 +412,335 @@
 					"t": 1.0
 				},
 				{
-					"approach_id": "guarded_forage",
+					"approach_id": "activate_branch_00_span",
 					"blocked": false,
 					"borrows_from": "",
-					"caption": "node_02 — A combat member covers the open while the party splits off to harvest the remains",
+					"branch_action": {
+						"action": "activate",
+						"activation_policy": "interact_at_producer",
+						"before_node": "node_02",
+						"before_nodes": [
+							"node_02"
+						],
+						"branch_id": "branch_00",
+						"cannot_bypass_unresolved": true,
+						"consumer_cell": [
+							19.0,
+							6.0
+						],
+						"consumer_cells": [
+							[
+								19.0,
+								4.0
+							],
+							[
+								19.0,
+								5.0
+							],
+							[
+								19.0,
+								6.0
+							]
+						],
+						"expected_phase": "bridged",
+						"id": "activate_branch_00_span",
+						"kind": "mandatory_branch_interaction",
+						"producer_cell": [
+							15.0,
+							11.0
+						],
+						"produces_state": "branch_00_resolved",
+						"required_for_progress": true,
+						"role": "mandatory_producer",
+						"runtime_handler": "branch_span_producer",
+						"solution_order": 0.0,
+						"target": "branch_00",
+						"wait_for_completion": true
+					},
+					"caption": "SIDE BRANCH — EXTEND DOWNSTREAM SPAN",
 					"characters": {
 						"aster": [
-							12.0,
-							2.55
+							5.0,
+							3.05
 						],
 						"endo": [
-							12.42,
-							2.88
+							5.42,
+							3.38
 						],
 						"myke": [
-							12.0,
-							3.22
+							5.0,
+							3.72
 						],
 						"oli": [
-							11.58,
-							3.42
+							4.58,
+							3.92
 						],
 						"peris": [
-							11.58,
-							2.88
+							4.58,
+							3.38
 						],
 						"tyreg": [
-							12.42,
-							3.42
+							5.42,
+							3.92
 						]
 					},
 					"expert": false,
-					"kind": "primary",
-					"min_stage": 1,
+					"kind": "mandatory_branch_interaction",
+					"min_stage": 0,
 					"node": "node_02",
-					"risk": "direct",
-					"role": "foraging",
+					"risk": "safe",
+					"role": "mandatory_producer",
 					"stage_ahead": false,
 					"t": 2.0
 				},
 				{
-					"approach_id": "play_the_beat",
+					"approach_id": "take_physical_lysate",
 					"blocked": false,
 					"borrows_from": "",
-					"caption": "node_03 — Adapt to the available party; preserve the state transition",
+					"caption": "node_02 — TAKE LYSATE",
 					"characters": {
 						"aster": [
-							18.0,
-							-0.45
+							13.5,
+							0.05
 						],
 						"endo": [
-							18.42,
-							-0.12
+							13.92,
+							0.38
 						],
 						"myke": [
-							18.0,
-							0.22
+							13.5,
+							0.72
 						],
 						"oli": [
-							17.58,
-							0.42
+							13.08,
+							0.92
 						],
 						"peris": [
-							17.58,
-							-0.12
+							13.08,
+							0.38
 						],
 						"tyreg": [
-							18.42,
-							0.42
+							13.92,
+							0.92
 						]
 					},
 					"expert": false,
-					"kind": "meta",
+					"kind": "resource_pickup",
 					"min_stage": 1,
-					"node": "node_03",
+					"node": "node_02",
 					"risk": "safe",
 					"role": "regroup",
 					"stage_ahead": false,
 					"t": 3.0
 				},
 				{
-					"approach_id": "guarded_forage",
+					"approach_id": "traverse",
 					"blocked": false,
 					"borrows_from": "",
-					"caption": "node_04 — A combat member covers the open while the party splits off to harvest the remains",
+					"caption": "node_03",
 					"characters": {
 						"aster": [
-							24.0,
-							1.05
+							20.5,
+							-0.45
 						],
 						"endo": [
-							24.42,
-							1.38
+							20.92,
+							-0.12
 						],
 						"myke": [
-							24.0,
-							1.72
+							20.5,
+							0.22
 						],
 						"oli": [
-							23.58,
-							1.92
+							20.08,
+							0.42
 						],
 						"peris": [
-							23.58,
-							1.38
+							20.08,
+							-0.12
 						],
 						"tyreg": [
-							24.42,
-							1.92
+							20.92,
+							0.42
 						]
 					},
 					"expert": false,
-					"kind": "primary",
-					"min_stage": 1,
-					"node": "node_04",
-					"risk": "direct",
-					"role": "foraging",
+					"kind": "layout_traversal",
+					"min_stage": 0,
+					"node": "node_03",
+					"risk": "safe",
+					"role": "regroup",
 					"stage_ahead": false,
 					"t": 4.0
 				},
 				{
-					"approach_id": "traverse",
+					"approach_id": "skip_optional_interaction",
 					"blocked": false,
 					"borrows_from": "",
-					"caption": "exit_shelter",
+					"caption": "node_04 — OPTIONAL CATCH LYSATE",
 					"characters": {
 						"aster": [
-							30.0,
-							2.55
+							27.5,
+							0.05
 						],
 						"endo": [
-							30.42,
-							2.88
+							27.92,
+							0.38
 						],
 						"myke": [
-							30.0,
-							3.22
+							27.5,
+							0.72
 						],
 						"oli": [
-							29.58,
-							3.42
+							27.08,
+							0.92
 						],
 						"peris": [
-							29.58,
-							2.88
+							27.08,
+							0.38
 						],
 						"tyreg": [
-							30.42,
-							3.42
+							27.92,
+							0.92
 						]
 					},
 					"expert": false,
-					"kind": "traverse",
+					"kind": "optional_layout_traversal",
 					"min_stage": 0,
+					"node": "node_04",
+					"risk": "safe",
+					"role": "regroup",
+					"stage_ahead": false,
+					"t": 5.0
+				},
+				{
+					"approach_id": "activate_branch_02_span",
+					"blocked": false,
+					"borrows_from": "",
+					"branch_action": {
+						"action": "activate",
+						"activation_policy": "interact_at_producer",
+						"before_node": "exit_shelter",
+						"before_nodes": [
+							"exit_shelter"
+						],
+						"branch_id": "branch_02",
+						"cannot_bypass_unresolved": true,
+						"consumer_cell": [
+							63.0,
+							5.0
+						],
+						"consumer_cells": [
+							[
+								63.0,
+								4.0
+							],
+							[
+								63.0,
+								5.0
+							]
+						],
+						"expected_phase": "bridged",
+						"id": "activate_branch_02_span",
+						"kind": "mandatory_branch_interaction",
+						"producer_cell": [
+							60.0,
+							11.0
+						],
+						"produces_state": "branch_02_resolved",
+						"required_for_progress": true,
+						"role": "mandatory_producer",
+						"runtime_handler": "branch_span_producer",
+						"solution_order": 1.0,
+						"target": "branch_02",
+						"wait_for_completion": true
+					},
+					"caption": "SIDE BRANCH — EXTEND DOWNSTREAM SPAN",
+					"characters": {
+						"aster": [
+							27.5,
+							3.05
+						],
+						"endo": [
+							27.92,
+							3.38
+						],
+						"myke": [
+							27.5,
+							3.72
+						],
+						"oli": [
+							27.08,
+							3.92
+						],
+						"peris": [
+							27.08,
+							3.38
+						],
+						"tyreg": [
+							27.92,
+							3.92
+						]
+					},
+					"expert": false,
+					"kind": "mandatory_branch_interaction",
+					"min_stage": 0,
+					"node": "exit_shelter",
+					"risk": "safe",
+					"role": "mandatory_producer",
+					"stage_ahead": false,
+					"t": 6.0
+				},
+				{
+					"approach_id": "canonical_shelter_arrival",
+					"blocked": false,
+					"borrows_from": "",
+					"caption": "exit_shelter — ENTER SHELTER",
+					"characters": {
+						"aster": [
+							35.0,
+							0.05
+						],
+						"endo": [
+							35.42,
+							0.38
+						],
+						"myke": [
+							35.0,
+							0.72
+						],
+						"oli": [
+							34.58,
+							0.92
+						],
+						"peris": [
+							34.58,
+							0.38
+						],
+						"tyreg": [
+							35.42,
+							0.92
+						]
+					},
+					"expert": false,
+					"kind": "shelter_arrival",
+					"min_stage": 1,
 					"node": "exit_shelter",
 					"risk": "safe",
 					"role": "shelter_arrival",
 					"stage_ahead": false,
-					"t": 5.0
+					"t": 7.0
 				}
 			],
 			"label": "Full party",
 			"loadout": "spotlight",
-			"max_stage_used": 1,
+			"max_stage_used": 0,
 			"node_approaches": [
 				{
 					"approach_id": "traverse",
 					"borrows_from": "",
 					"expert": false,
-					"kind": "traverse",
+					"kind": "layout_traversal",
 					"label": "",
 					"min_stage": 0,
 					"node": "entry",
@@ -624,60 +749,60 @@
 					"stage_ahead": false
 				},
 				{
-					"approach_id": "play_the_beat",
+					"approach_id": "traverse",
 					"borrows_from": "",
 					"expert": false,
-					"kind": "meta",
-					"label": "Adapt to the available party; preserve the state transition",
-					"min_stage": 1,
+					"kind": "layout_traversal",
+					"label": "",
+					"min_stage": 0,
 					"node": "node_01",
 					"party": "any",
 					"risk": "safe",
 					"stage_ahead": false
 				},
 				{
-					"approach_id": "guarded_forage",
+					"approach_id": "take_physical_lysate",
 					"borrows_from": "",
 					"expert": false,
-					"kind": "primary",
-					"label": "A combat member covers the open while the party splits off to harvest the remains",
+					"kind": "resource_pickup",
+					"label": "TAKE LYSATE",
 					"min_stage": 1,
 					"node": "node_02",
-					"party": "specialist",
-					"risk": "direct",
-					"stage_ahead": false
-				},
-				{
-					"approach_id": "play_the_beat",
-					"borrows_from": "",
-					"expert": false,
-					"kind": "meta",
-					"label": "Adapt to the available party; preserve the state transition",
-					"min_stage": 1,
-					"node": "node_03",
 					"party": "any",
 					"risk": "safe",
-					"stage_ahead": false
-				},
-				{
-					"approach_id": "guarded_forage",
-					"borrows_from": "",
-					"expert": false,
-					"kind": "primary",
-					"label": "A combat member covers the open while the party splits off to harvest the remains",
-					"min_stage": 1,
-					"node": "node_04",
-					"party": "specialist",
-					"risk": "direct",
 					"stage_ahead": false
 				},
 				{
 					"approach_id": "traverse",
 					"borrows_from": "",
 					"expert": false,
-					"kind": "traverse",
+					"kind": "layout_traversal",
 					"label": "",
 					"min_stage": 0,
+					"node": "node_03",
+					"party": "any",
+					"risk": "safe",
+					"stage_ahead": false
+				},
+				{
+					"approach_id": "skip_optional_interaction",
+					"borrows_from": "",
+					"expert": false,
+					"kind": "optional_layout_traversal",
+					"label": "OPTIONAL CATCH LYSATE",
+					"min_stage": 0,
+					"node": "node_04",
+					"party": "any",
+					"risk": "safe",
+					"stage_ahead": false
+				},
+				{
+					"approach_id": "canonical_shelter_arrival",
+					"borrows_from": "",
+					"expert": false,
+					"kind": "shelter_arrival",
+					"label": "ENTER SHELTER",
+					"min_stage": 1,
 					"node": "exit_shelter",
 					"party": "any",
 					"risk": "safe",
@@ -697,7 +822,90 @@
 		},
 		{
 			"blocked_nodes": [],
-			"duration": 5.0,
+			"branch_action_count": 2,
+			"branch_actions": [
+				{
+					"action": "activate",
+					"activation_policy": "interact_at_producer",
+					"before_node": "node_02",
+					"before_nodes": [
+						"node_02"
+					],
+					"branch_id": "branch_00",
+					"cannot_bypass_unresolved": true,
+					"consumer_cell": [
+						19.0,
+						6.0
+					],
+					"consumer_cells": [
+						[
+							19.0,
+							4.0
+						],
+						[
+							19.0,
+							5.0
+						],
+						[
+							19.0,
+							6.0
+						]
+					],
+					"expected_phase": "bridged",
+					"id": "activate_branch_00_span",
+					"kind": "mandatory_branch_interaction",
+					"producer_cell": [
+						15.0,
+						11.0
+					],
+					"produces_state": "branch_00_resolved",
+					"required_for_progress": true,
+					"role": "mandatory_producer",
+					"runtime_handler": "branch_span_producer",
+					"solution_order": 0.0,
+					"target": "branch_00",
+					"wait_for_completion": true
+				},
+				{
+					"action": "activate",
+					"activation_policy": "interact_at_producer",
+					"before_node": "exit_shelter",
+					"before_nodes": [
+						"exit_shelter"
+					],
+					"branch_id": "branch_02",
+					"cannot_bypass_unresolved": true,
+					"consumer_cell": [
+						63.0,
+						5.0
+					],
+					"consumer_cells": [
+						[
+							63.0,
+							4.0
+						],
+						[
+							63.0,
+							5.0
+						]
+					],
+					"expected_phase": "bridged",
+					"id": "activate_branch_02_span",
+					"kind": "mandatory_branch_interaction",
+					"producer_cell": [
+						60.0,
+						11.0
+					],
+					"produces_state": "branch_02_resolved",
+					"required_for_progress": true,
+					"role": "mandatory_producer",
+					"runtime_handler": "branch_span_producer",
+					"solution_order": 1.0,
+					"target": "branch_02",
+					"wait_for_completion": true
+				}
+			],
+			"duration": 7.0,
 			"frames": [
 				{
 					"approach_id": "traverse",
@@ -707,15 +915,15 @@
 					"characters": {
 						"aster": [
 							0.0,
-							-0.45
+							0.05
 						],
 						"peris": [
 							-0.42,
-							-0.12
+							0.38
 						]
 					},
 					"expert": false,
-					"kind": "traverse",
+					"kind": "layout_traversal",
 					"min_stage": 0,
 					"node": "entry",
 					"risk": "safe",
@@ -724,23 +932,23 @@
 					"t": 0.0
 				},
 				{
-					"approach_id": "play_the_beat",
+					"approach_id": "traverse",
 					"blocked": false,
 					"borrows_from": "",
-					"caption": "node_01 — Adapt to the available party; preserve the state transition",
+					"caption": "node_01",
 					"characters": {
 						"aster": [
-							6.0,
-							1.05
+							6.5,
+							0.05
 						],
 						"peris": [
-							5.58,
-							1.38
+							6.08,
+							0.38
 						]
 					},
 					"expert": false,
-					"kind": "meta",
-					"min_stage": 1,
+					"kind": "layout_traversal",
+					"min_stage": 0,
 					"node": "node_01",
 					"risk": "safe",
 					"role": "boundary",
@@ -748,111 +956,239 @@
 					"t": 1.0
 				},
 				{
-					"approach_id": "masked_forage",
+					"approach_id": "activate_branch_00_span",
 					"blocked": false,
 					"borrows_from": "",
-					"caption": "node_02 — Peris works the caches under scarpet cover while Aster times the dwell into a patrol's blind window",
+					"branch_action": {
+						"action": "activate",
+						"activation_policy": "interact_at_producer",
+						"before_node": "node_02",
+						"before_nodes": [
+							"node_02"
+						],
+						"branch_id": "branch_00",
+						"cannot_bypass_unresolved": true,
+						"consumer_cell": [
+							19.0,
+							6.0
+						],
+						"consumer_cells": [
+							[
+								19.0,
+								4.0
+							],
+							[
+								19.0,
+								5.0
+							],
+							[
+								19.0,
+								6.0
+							]
+						],
+						"expected_phase": "bridged",
+						"id": "activate_branch_00_span",
+						"kind": "mandatory_branch_interaction",
+						"producer_cell": [
+							15.0,
+							11.0
+						],
+						"produces_state": "branch_00_resolved",
+						"required_for_progress": true,
+						"role": "mandatory_producer",
+						"runtime_handler": "branch_span_producer",
+						"solution_order": 0.0,
+						"target": "branch_00",
+						"wait_for_completion": true
+					},
+					"caption": "SIDE BRANCH — EXTEND DOWNSTREAM SPAN",
 					"characters": {
 						"aster": [
-							12.0,
-							2.55
+							5.0,
+							3.05
 						],
 						"peris": [
-							11.58,
-							2.88
+							4.58,
+							3.38
 						]
 					},
 					"expert": false,
-					"kind": "shadow",
-					"min_stage": 1,
+					"kind": "mandatory_branch_interaction",
+					"min_stage": 0,
 					"node": "node_02",
 					"risk": "safe",
-					"role": "foraging",
+					"role": "mandatory_producer",
 					"stage_ahead": false,
 					"t": 2.0
 				},
 				{
-					"approach_id": "play_the_beat",
+					"approach_id": "take_physical_lysate",
 					"blocked": false,
 					"borrows_from": "",
-					"caption": "node_03 — Adapt to the available party; preserve the state transition",
+					"caption": "node_02 — TAKE LYSATE",
 					"characters": {
 						"aster": [
-							18.0,
-							-0.45
+							13.5,
+							0.05
 						],
 						"peris": [
-							17.58,
-							-0.12
+							13.08,
+							0.38
 						]
 					},
 					"expert": false,
-					"kind": "meta",
+					"kind": "resource_pickup",
 					"min_stage": 1,
-					"node": "node_03",
+					"node": "node_02",
 					"risk": "safe",
 					"role": "regroup",
 					"stage_ahead": false,
 					"t": 3.0
 				},
 				{
-					"approach_id": "masked_forage",
+					"approach_id": "traverse",
 					"blocked": false,
 					"borrows_from": "",
-					"caption": "node_04 — Peris works the caches under scarpet cover while Aster times the dwell into a patrol's blind window",
+					"caption": "node_03",
 					"characters": {
 						"aster": [
-							24.0,
-							1.05
+							20.5,
+							-0.45
 						],
 						"peris": [
-							23.58,
-							1.38
+							20.08,
+							-0.12
 						]
 					},
 					"expert": false,
-					"kind": "shadow",
-					"min_stage": 1,
-					"node": "node_04",
+					"kind": "layout_traversal",
+					"min_stage": 0,
+					"node": "node_03",
 					"risk": "safe",
-					"role": "foraging",
+					"role": "regroup",
 					"stage_ahead": false,
 					"t": 4.0
 				},
 				{
-					"approach_id": "traverse",
+					"approach_id": "skip_optional_interaction",
 					"blocked": false,
 					"borrows_from": "",
-					"caption": "exit_shelter",
+					"caption": "node_04 — OPTIONAL CATCH LYSATE",
 					"characters": {
 						"aster": [
-							30.0,
-							2.55
+							27.5,
+							0.05
 						],
 						"peris": [
-							29.58,
-							2.88
+							27.08,
+							0.38
 						]
 					},
 					"expert": false,
-					"kind": "traverse",
+					"kind": "optional_layout_traversal",
 					"min_stage": 0,
+					"node": "node_04",
+					"risk": "safe",
+					"role": "regroup",
+					"stage_ahead": false,
+					"t": 5.0
+				},
+				{
+					"approach_id": "activate_branch_02_span",
+					"blocked": false,
+					"borrows_from": "",
+					"branch_action": {
+						"action": "activate",
+						"activation_policy": "interact_at_producer",
+						"before_node": "exit_shelter",
+						"before_nodes": [
+							"exit_shelter"
+						],
+						"branch_id": "branch_02",
+						"cannot_bypass_unresolved": true,
+						"consumer_cell": [
+							63.0,
+							5.0
+						],
+						"consumer_cells": [
+							[
+								63.0,
+								4.0
+							],
+							[
+								63.0,
+								5.0
+							]
+						],
+						"expected_phase": "bridged",
+						"id": "activate_branch_02_span",
+						"kind": "mandatory_branch_interaction",
+						"producer_cell": [
+							60.0,
+							11.0
+						],
+						"produces_state": "branch_02_resolved",
+						"required_for_progress": true,
+						"role": "mandatory_producer",
+						"runtime_handler": "branch_span_producer",
+						"solution_order": 1.0,
+						"target": "branch_02",
+						"wait_for_completion": true
+					},
+					"caption": "SIDE BRANCH — EXTEND DOWNSTREAM SPAN",
+					"characters": {
+						"aster": [
+							27.5,
+							3.05
+						],
+						"peris": [
+							27.08,
+							3.38
+						]
+					},
+					"expert": false,
+					"kind": "mandatory_branch_interaction",
+					"min_stage": 0,
+					"node": "exit_shelter",
+					"risk": "safe",
+					"role": "mandatory_producer",
+					"stage_ahead": false,
+					"t": 6.0
+				},
+				{
+					"approach_id": "canonical_shelter_arrival",
+					"blocked": false,
+					"borrows_from": "",
+					"caption": "exit_shelter — ENTER SHELTER",
+					"characters": {
+						"aster": [
+							35.0,
+							0.05
+						],
+						"peris": [
+							34.58,
+							0.38
+						]
+					},
+					"expert": false,
+					"kind": "shelter_arrival",
+					"min_stage": 1,
 					"node": "exit_shelter",
 					"risk": "safe",
 					"role": "shelter_arrival",
 					"stage_ahead": false,
-					"t": 5.0
+					"t": 7.0
 				}
 			],
 			"label": "Aster + Peris (shadow)",
 			"loadout": "shadow",
-			"max_stage_used": 1,
+			"max_stage_used": 0,
 			"node_approaches": [
 				{
 					"approach_id": "traverse",
 					"borrows_from": "",
 					"expert": false,
-					"kind": "traverse",
+					"kind": "layout_traversal",
 					"label": "",
 					"min_stage": 0,
 					"node": "entry",
@@ -861,50 +1197,26 @@
 					"stage_ahead": false
 				},
 				{
-					"approach_id": "play_the_beat",
+					"approach_id": "traverse",
 					"borrows_from": "",
 					"expert": false,
-					"kind": "meta",
-					"label": "Adapt to the available party; preserve the state transition",
-					"min_stage": 1,
+					"kind": "layout_traversal",
+					"label": "",
+					"min_stage": 0,
 					"node": "node_01",
 					"party": "any",
 					"risk": "safe",
 					"stage_ahead": false
 				},
 				{
-					"approach_id": "masked_forage",
+					"approach_id": "take_physical_lysate",
 					"borrows_from": "",
 					"expert": false,
-					"kind": "shadow",
-					"label": "Peris works the caches under scarpet cover while Aster times the dwell into a patrol's blind window",
+					"kind": "resource_pickup",
+					"label": "TAKE LYSATE",
 					"min_stage": 1,
 					"node": "node_02",
-					"party": "aster_peris",
-					"risk": "safe",
-					"stage_ahead": false
-				},
-				{
-					"approach_id": "play_the_beat",
-					"borrows_from": "",
-					"expert": false,
-					"kind": "meta",
-					"label": "Adapt to the available party; preserve the state transition",
-					"min_stage": 1,
-					"node": "node_03",
 					"party": "any",
-					"risk": "safe",
-					"stage_ahead": false
-				},
-				{
-					"approach_id": "masked_forage",
-					"borrows_from": "",
-					"expert": false,
-					"kind": "shadow",
-					"label": "Peris works the caches under scarpet cover while Aster times the dwell into a patrol's blind window",
-					"min_stage": 1,
-					"node": "node_04",
-					"party": "aster_peris",
 					"risk": "safe",
 					"stage_ahead": false
 				},
@@ -912,9 +1224,33 @@
 					"approach_id": "traverse",
 					"borrows_from": "",
 					"expert": false,
-					"kind": "traverse",
+					"kind": "layout_traversal",
 					"label": "",
 					"min_stage": 0,
+					"node": "node_03",
+					"party": "any",
+					"risk": "safe",
+					"stage_ahead": false
+				},
+				{
+					"approach_id": "skip_optional_interaction",
+					"borrows_from": "",
+					"expert": false,
+					"kind": "optional_layout_traversal",
+					"label": "OPTIONAL CATCH LYSATE",
+					"min_stage": 0,
+					"node": "node_04",
+					"party": "any",
+					"risk": "safe",
+					"stage_ahead": false
+				},
+				{
+					"approach_id": "canonical_shelter_arrival",
+					"borrows_from": "",
+					"expert": false,
+					"kind": "shelter_arrival",
+					"label": "ENTER SHELTER",
+					"min_stage": 1,
 					"node": "exit_shelter",
 					"party": "any",
 					"risk": "safe",

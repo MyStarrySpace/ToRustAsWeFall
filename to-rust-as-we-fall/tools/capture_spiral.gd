@@ -2,8 +2,9 @@ extends SceneTree
 
 ## Dev capture: build ONLY the generated_stretch chunk (which now warps its own tiled floor + node dressing onto
 ## a helix) and screenshot it from above + at a 3/4 angle so the spiral reads. Loading the chunk directly (not the
-## whole fragment_preview scene) avoids preloading every other chunk script. Run WITH a display (not --headless):
-##   ../Godot_v4.7-stable_win64.exe --path "." --script res://tools/capture_spiral.gd -- --seed=7
+## whole fragment_preview scene) avoids preloading every other chunk script. Isolated-display launch only
+## (not --headless); see tools/README.md:
+##   godot --path "." --script res://tools/capture_spiral.gd -- --seed=7
 
 func _init() -> void:
 	DisplayServer.window_set_size(Vector2i(1360, 900))

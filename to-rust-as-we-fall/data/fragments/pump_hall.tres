@@ -10,9 +10,9 @@ help = "Three rooms, three watchers. Read the amber walks — spotted means atta
 default_character = "peris"
 party_ids = PackedStringArray("aster", "peris", "endo")
 spawns = {
-"aster": Vector3(4.65, 0.5, -0.25),
-"endo": Vector3(4.65, 0.5, 1.75),
-"peris": Vector3(5.65, 0.5, 0.75)
+"aster": Vector3(4.65, 0, -0.25),
+"endo": Vector3(4.65, 0, 1.75),
+"peris": Vector3(5.65, 0, 0.75)
 }
 floors = Array[Dictionary]([{
 "color": Color(0.1, 0.11, 0.13, 1),

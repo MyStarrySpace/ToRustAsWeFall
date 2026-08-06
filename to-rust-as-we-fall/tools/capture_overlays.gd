@@ -2,7 +2,7 @@ extends SceneTree
 
 ## Visual capture harness: boots a sim WINDOWED, forces the ground overlays into their visible
 ## states (hover grid under the cursor, a committed move's ribbon + dest marker), and saves
-## viewport PNGs for eyeballing. Run WITH a display:
+## viewport PNGs for eyeballing. Isolated-display launch only; see tools/README.md:
 ##   godot --path . -s tools/capture_overlays.gd -- <scene> <out_prefix>
 
 func _init():
@@ -37,8 +37,8 @@ func _run(scene_path: String, prefix: String) -> void:
 		var screen := cam.unproject_position(Vector3(hover_world.x, 0.2, hover_world.z))
 		var motion := InputEventMouseMotion.new()
 		motion.position = screen
+		motion.global_position = screen
 		Input.parse_input_event(motion)
-		Input.warp_mouse(screen)
 	for i in range(10):
 		await process_frame
 	_snap(prefix + "_hover.png")
@@ -69,8 +69,8 @@ func _run(scene_path: String, prefix: String) -> void:
 		var screen2: Vector2 = cam.unproject_position(Vector3(hover_world2.x, 0.2, hover_world2.z))
 		var motion2 := InputEventMouseMotion.new()
 		motion2.position = screen2
+		motion2.global_position = screen2
 		Input.parse_input_event(motion2)
-		Input.warp_mouse(screen2)
 		for i in range(10):
 			await process_frame
 		_snap(prefix + "_hover_enabled.png")

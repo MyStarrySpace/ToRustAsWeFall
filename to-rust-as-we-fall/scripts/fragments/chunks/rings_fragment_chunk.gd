@@ -32,9 +32,9 @@ const CLIENT_BLOOM_POS := Vector3(12.5, 0.0, -7.2)
 const PROPAGATION_POS := Vector3(34.0, 0.0, 8.0)
 const FORGET_ME_NOT_POS := Vector3(56.0, 0.0, 10.5)
 const SPAWNS := {
-	"aster": Vector3(5.0, 0.5, 0.0),
-	"peris": Vector3(3.2, 0.5, 1.7),
-	"endo": Vector3(1.4, 0.5, -1.7),
+	"aster": Vector3(5.0, 0.0, 0.0),
+	"peris": Vector3(3.2, 0.0, 1.7),
+	"endo": Vector3(1.4, 0.0, -1.7),
 }
 
 var _marco_interactable
@@ -365,7 +365,7 @@ func _propagation_doorframe(position: Vector3) -> void:
 
 
 func _update_flora_pulse() -> void:
-	var pulse := 0.25 + 0.12 * sin(Time.get_ticks_msec() * 0.003)
+	var pulse := 0.25 + 0.12 * sin(Time.get_ticks_msec() * 0.003) # @rendering_only
 	for material in _flora_materials:
 		if material != null:
 			material.emission_energy_multiplier = 0.34 + pulse

@@ -10,9 +10,9 @@ help = "The keeper owns the lane — there is no gap in that walk, and every ope
 default_character = "peris"
 party_ids = PackedStringArray("aster", "peris", "endo")
 spawns = {
-"aster": Vector3(1.9, 0.5, -1.0),
-"endo": Vector3(1.9, 0.5, 1.0),
-"peris": Vector3(3.1, 0.5, 0.0)
+"aster": Vector3(1.9, 0, -1.0),
+"endo": Vector3(1.9, 0, 1.0),
+"peris": Vector3(3.1, 0, 0.0)
 }
 floors = Array[Dictionary]([{
 "color": Color(0.1, 0.11, 0.13, 1),

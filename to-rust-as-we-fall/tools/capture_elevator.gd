@@ -1,8 +1,8 @@
 extends SceneTree
 
 ## Dev capture: load the real elevator scene and screenshot the car in place.
-## Run WITH a display (not --headless):
-##   ../Godot_v4.6.1-stable_win64_console.exe --path "." --script res://tools/capture_elevator.gd
+## Isolated-display launch only (not --headless); see tools/README.md:
+##   godot --path "." --script res://tools/capture_elevator.gd
 
 func _init() -> void:
 	DisplayServer.window_set_size(Vector2i(1280, 820))

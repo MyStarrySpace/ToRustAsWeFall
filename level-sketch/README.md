@@ -68,15 +68,24 @@ new stretches, from the game project run `tools/export_stretch_replays.gd` and c
 From the repo root (where the Godot binary lives):
 
 ```bash
-# Desktop (for testing)
+# Attended desktop preview (intentionally visible; not automated evidence)
 ./Godot_v4.6.1-stable_win64.exe --path level-sketch
 
 # Headless data-layer tests
 ./Godot_v4.6.1-stable_win64_console.exe --headless --path level-sketch -- --test
 
-# Dev preview screenshot (writes level-sketch/preview.png, gitignored)
+# Dev preview screenshot on an isolated display host only
+# (writes level-sketch/preview.png, gitignored)
 ./Godot_v4.6.1-stable_win64.exe --path level-sketch --rendering-driver opengl3 -- --shot
 ```
+
+On Windows, do not use the screenshot command as background automation on a
+person's desktop. A raw GUI launch can be clamped onto a monitor before project
+code runs. The playable project's required automated tests use the reviewed
+hidden-owner boundary in `scripts/test-gate.ps1`; this separate sketch project
+has not been wired to that boundary. Its desktop preview is for attended manual
+use, and its screenshot mode must run on an isolated display host such as
+Linux/Xvfb.
 
 ## Export to Android
 

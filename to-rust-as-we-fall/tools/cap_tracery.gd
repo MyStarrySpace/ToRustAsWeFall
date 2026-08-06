@@ -1,7 +1,8 @@
 extends SceneTree
 
 ## Eyeball the Beacon Hill tracery rib-merge mode. MODE=junction|sdf, OUT_DIR=<scratchpad>.
-##   MODE=junction ../Godot_v4.7-stable_win64.exe --path "." --script res://tools/cap_tracery.gd
+## Isolated-display launch only; see tools/README.md:
+##   MODE=junction godot --path "." --script res://tools/cap_tracery.gd
 
 func _init() -> void:
 	var Base = load("res://scripts/generation/base_shape_builder.gd")

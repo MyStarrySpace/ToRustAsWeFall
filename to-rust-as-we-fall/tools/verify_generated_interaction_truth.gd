@@ -7,7 +7,17 @@ extends SceneTree
 ## generated links use the preview host's shared party-perception union.
 
 const CHUNK_SCENE := preload("res://scenes/fragments/chunks/generated_stretch_chunk.tscn")
+const PREVIEW_SCENE := preload("res://scenes/fragments/fragment_preview.tscn")
 const CHUNK_SCRIPT_PATH := "res://scripts/fragments/chunks/generated_stretch_chunk.gd"
+const StretchGeneratorScript := preload(
+	"res://scripts/generation/stretch_generator.gd"
+)
+const AgentPlayerInputDriverScript := preload(
+	"res://tools/agent_player_input_driver.gd"
+)
+const PlayerObservationControllerScript := preload(
+	"res://scripts/testing/player_observation_controller.gd"
+)
 const RUNTIME_REGISTRY := preload(
 	"res://scripts/generation/generated_node_runtime_registry.gd"
 )
@@ -63,6 +73,17 @@ func _run() -> void:
 		and not chunk_source.contains("Flure.new("),
 		"generated chunk cannot construct portal, crawl, or flure mechanics from prose"
 	)
+	var visual_listener_index := chunk_source.find(
+		'interactable.call("set_outline_target", target)'
+	)
+	var consequence_listener_index := chunk_source.find(
+		'interactable.interacted.connect(\n\t\tCallable(self, "_on_generated_node_interacted")'
+	)
+	check(
+		visual_listener_index >= 0
+		and consequence_listener_index > visual_listener_index,
+		"generated sources bind their exact visual result listener before semantic consequence"
+	)
 	var spec := _load_spec()
 	var probe := _mutate_truth_probe(spec)
 	check(not probe.is_empty(), "teaching fixture exposes physical and layout-only probe nodes")
@@ -70,6 +91,10 @@ func _run() -> void:
 		_finish()
 		return
 
+	# STRUCTURAL FIXTURE QUARANTINE. This stub phase is allowed to construct and
+	# restore exact state so it can reject proxy/legacy wiring. It is disposed
+	# before the measured player boundary begins; none of its objects, receipts,
+	# state, or callbacks can satisfy a Windowed input/observation assertion.
 	var pair := await _boot_pair(spec)
 	var host: PerceptionHost = pair.host
 	var chunk: Node = pair.chunk
@@ -106,6 +131,7 @@ func _run() -> void:
 	)
 
 	var interaction_map := chunk.get("_node_interactables") as Dictionary
+	var target_map := chunk.get("_node_targets") as Dictionary
 	var section_states := chunk.get("_generated_section_states") as Dictionary
 	check(
 		not interaction_map.has(layout_node_id)
@@ -128,6 +154,41 @@ func _run() -> void:
 	check(
 		not section_states.has("node_04"),
 		"authored hydraulic spillway does not receive a second generic node transition"
+	)
+	var physical_pick_target := target_map.get(physical_node_id, null) as StaticBody3D
+	var physical_pick_shape := (
+		physical_pick_target.get_node_or_null("CollisionShape3D") as CollisionShape3D
+		if physical_pick_target != null else null
+	)
+	var physical_pick_box := (
+		physical_pick_shape.shape as BoxShape3D
+		if physical_pick_shape != null and physical_pick_shape.shape is BoxShape3D
+		else null
+	)
+	check(
+		physical_pick_box != null
+		and physical_pick_box.size.x <= 1.3501
+		and physical_pick_box.size.y <= 0.6201
+		and physical_pick_box.size.z <= 1.1201,
+		"physical generated pickups use a cradle-local click surface, not the room footprint"
+	)
+	var physical_marker := (
+		(chunk.get("_node_markers") as Dictionary).get(physical_node_id, null)
+		as MeshInstance3D
+	)
+	check(
+		physical_pick_target != null
+		and physical_marker != null
+		and absf(physical_pick_target.global_position.x - physical_marker.global_position.x)
+			<= 0.001
+		and absf(physical_pick_target.global_position.z - physical_marker.global_position.z)
+			<= 0.001
+		and absf(
+			physical_pick_target.global_position.y
+			- physical_marker.global_position.y
+			- 0.17
+		) <= 0.001,
+		"physical generated pickup click surface is centered on its visible cradle"
 	)
 
 	var exact_state: Dictionary = chunk.call(
@@ -225,61 +286,101 @@ func _run() -> void:
 		and (chunk.call("get_generated_section_state", layout_node_id) as Dictionary).is_empty(),
 		"legacy nested/completed keys cannot resurrect presentation without an exact runtime binding"
 	)
-
-	check(
-		_trigger_chunk_source(
-			host,
-			chunk,
-			chunk.get("_hydraulic_first_control") as Node,
-			"aster"
-		),
-		"authored hydraulic prerequisite is established before testing its physical source"
-	)
-	var raw_state := chunk.get("_generated_section_states") as Dictionary
-	var target: Node3D = (raw_state[physical_node_id] as Dictionary).get(
-		"target", null
-	) as Node3D
-	var target_scale_before := target.scale if target != null else Vector3.ZERO
-	var activated := _trigger_chunk_source(
-		host,
-		chunk,
-		interaction_map.get(physical_node_id, null) as Node,
-		"aster"
-	)
-	var completed: Dictionary = chunk.call(
-		"get_generated_section_state", physical_node_id
-	)
-	check(
-		activated
-		and (chunk.get("_completed_nodes") as Array).has(physical_node_id)
-		and str(completed.get("state", "")) == "complete"
-		and not str(chunk.call("get_preview_state").get("last_outcome", "")).begins_with(
-			"nested_prepared:"
-		),
-		"one real pickup interaction completes a legacy-nested payload node"
-	)
-	check(
-		target != null and target.scale.is_equal_approx(target_scale_before),
-		"completion leaves the exact feedback endpoint's geometry unchanged"
-	)
-	var item_id := str(
-		(chunk.get("_generated_resource_item_by_node") as Dictionary).get(
-			physical_node_id, ""
-		)
-	)
-	check(
-		item_id != ""
-		and (host.game_state.get_hand_items("aster") as Array).has(item_id),
-		"the one interaction's consequence is the exact physical item in the exact actor's hand"
-	)
 	check(
 		not (chunk.call("_generated_runtime_authority_state") as Dictionary).has(
 			"prepared_nested_nodes"
 		),
-		"post-interaction authority remains free of the ignored legacy key"
+		"structural restore authority remains free of the ignored legacy key"
 	)
 
 	host.queue_free()
+	for _frame in range(2):
+		await process_frame
+
+	# MEASURED PLAYER BOUNDARY. The quarantined stub above no longer exists. This
+	# phase may choose only rendered affordances, issue viewport-local shipped
+	# input, and accept only PlayerObservation output captured after real draws.
+	check(
+		DisplayServer.get_name() != "headless",
+		"generated interaction truth requires a real Windowed framebuffer"
+	)
+	if DisplayServer.get_name() == "headless":
+		_finish()
+		return
+	var player_spec := StretchGeneratorScript.canonicalize_spec(
+		spec.duplicate(true)
+	)
+	check(
+		bool(StretchGeneratorScript.validate_actionable_interaction_approaches(
+			player_spec).get("valid", false)),
+		"measured preview fixture has typed reachable interaction approaches"
+	)
+	var player_pair := await _boot_player_preview(player_spec)
+	var player_preview: Node = player_pair.get("preview", null)
+	var driver: Node = player_pair.get("driver", null)
+	var observer: Node = player_pair.get("observer", null)
+	check(
+		player_preview != null and driver != null and observer != null,
+		"real fragment preview boots with shipped input and presentation-only observation"
+	)
+	if player_preview == null or driver == null or observer == null:
+		if player_preview != null:
+			player_preview.queue_free()
+		_finish()
+		return
+
+	# The authored opening camera emphasis is itself visible production feedback.
+	# Let it finish on real frames before asking the player surface for a click.
+	await _wait_rendered_seconds(2.35)
+	var sluice_run := await _drive_observed_interaction(
+		player_preview, driver, observer, "OPEN FIRST SLUICE", 14.0
+	)
+	check(
+		bool(sluice_run.get("source_affordance_visible_before_click", false))
+		and bool(sluice_run.get("exact_pointer_receipt", false))
+		and bool(sluice_run.get("exact_visible_success", false)),
+		"authored hydraulic prerequisite is reached and opened through its rendered pointer surface"
+	)
+	# Opening the sluice focuses the actual cistern consequence. Wait for that
+	# visible camera beat rather than advancing the scheduler through a test seam.
+	await _wait_rendered_seconds(1.55)
+	var physical_action := str(probe.get("physical_action", "TAKE LYSATE"))
+	var pickup_run := await _drive_observed_interaction(
+		player_preview, driver, observer, physical_action, 18.0
+	)
+	var success_cue: Dictionary = pickup_run.get("success_cue", {})
+	var pickup_receipt: Dictionary = pickup_run.get("receipt", {})
+	var before_observation: Dictionary = pickup_run.get("before_observation", {})
+	var success_observation: Dictionary = pickup_run.get("success_observation", {})
+	var source_token := str(pickup_run.get("source_token", ""))
+	check(
+		bool(pickup_run.get("source_affordance_visible_before_click", false)),
+		"generated pickup is visibly enabled before the player clicks it"
+	)
+	check(
+		bool(pickup_run.get("exact_pointer_receipt", false))
+		and bool(pickup_receipt.get("accepted", false))
+		and str(pickup_receipt.get("expected_target_token", "")) == source_token,
+		"generated pickup has one exact shipped RMB receipt bound to its observed token"
+	)
+	check(
+		bool(pickup_run.get("exact_visible_success", false))
+		and str(success_cue.get("source_token", "")) == source_token
+		and str(success_cue.get("result", "")) == "success"
+		and bool(success_cue.get("visible", false)),
+		"PlayerObservation captures a newer framebuffer-visible success on the exact source token"
+	)
+	check(
+		_find_affordance_by_token(success_observation, source_token).is_empty(),
+		"the retained exact-token success stays visible after the one-shot affordance disables"
+	)
+	check(
+		not _observation_hands_contain(before_observation, "LYSATE")
+		and _observation_hands_contain(success_observation, "LYSATE"),
+		"the same observed interaction visibly puts the exact lysate consequence in Aster's hand"
+	)
+
+	player_preview.queue_free()
 	await process_frame
 	_finish()
 
@@ -298,6 +399,7 @@ func _mutate_truth_probe(spec: Dictionary) -> Dictionary:
 	var spec_id := str(spec.get("id", ""))
 	var nodes: Array = spec.get("nodes", [])
 	var physical_node_id := ""
+	var physical_action := ""
 	var layout_node_id := ""
 	for index in range(nodes.size()):
 		if not (nodes[index] is Dictionary):
@@ -312,6 +414,11 @@ func _mutate_truth_probe(spec: Dictionary) -> Dictionary:
 			]
 		):
 			physical_node_id = str(node.get("id", ""))
+			physical_action = str(
+				(node.get("playable_section", {}) as Dictionary).get(
+					"action", "TAKE LYSATE"
+				)
+			)
 			node["nested_archetypes"] = [{
 				"id": "legacy_nested_probe",
 				"ref": "legacy:nested:probe",
@@ -379,6 +486,7 @@ func _mutate_truth_probe(spec: Dictionary) -> Dictionary:
 		return {}
 	return {
 		"physical_node_id": physical_node_id,
+		"physical_action": physical_action,
 		"layout_node_id": layout_node_id,
 	}
 
@@ -407,19 +515,388 @@ func _boot_pair(spec: Dictionary) -> Dictionary:
 	return {"host": host, "chunk": chunk}
 
 
-func _trigger_chunk_source(
-	host: PerceptionHost, chunk: Node, source: Node, actor: String
-) -> bool:
-	if source == null or not is_instance_valid(source):
-		return false
-	var source_position: Variant = chunk.call(
-		"_generated_interaction_data_position", source
+func _boot_player_preview(spec: Dictionary) -> Dictionary:
+	var preview: Node = PREVIEW_SCENE.instantiate()
+	if preview == null:
+		return {}
+	preview.set("preview_menu", false)
+	preview.set("preview_chunk", "generated_stretch")
+	preview.set("scene_title_override", "Generated Interaction Truth")
+	preview.set("preview_chunk_config", {
+		"spec": spec.duplicate(true),
+		"spiral": false,
+		"branches": false,
+		"game_mode": "neutral",
+		"food_test": "neutral",
+	})
+	root.add_child(preview)
+	for _frame in range(10):
+		await process_frame
+	await RenderingServer.frame_post_draw
+
+	# Evidence instrumentation quarantine: this empty log is attached before the
+	# observation/input baseline. It records commands already produced by the real
+	# player boundary and never chooses, executes, or observes a gameplay action.
+	var game_state: Variant = preview.get("_game_state")
+	if game_state == null:
+		preview.queue_free()
+		await process_frame
+		return {}
+	if game_state.event_log == null:
+		game_state.event_log = EventLog.new()
+	var driver: Node = AgentPlayerInputDriverScript.new()
+	driver.name = "AgentPlayerInputDriver"
+	preview.add_child(driver)
+	driver.call("setup", preview)
+	var observer: Node = PlayerObservationControllerScript.new()
+	observer.name = "PlayerObservationController"
+	preview.add_child(observer)
+	observer.call("setup", preview)
+	await process_frame
+	await RenderingServer.frame_post_draw
+	return {"preview": preview, "driver": driver, "observer": observer}
+
+
+func _drive_observed_interaction(
+	_preview: Node,
+	driver: Node,
+	observer: Node,
+	expected_verb: String,
+	timeout_seconds: float
+	) -> Dictionary:
+	var discovery := await _find_visible_affordance_with_recovery(
+		driver, observer, expected_verb
 	)
-	if not (source_position is Vector3):
+	var before_observation: Dictionary = discovery.get("observation", {})
+	var affordance: Dictionary = discovery.get("affordance", {})
+	if affordance.is_empty():
+		print("  INFO  no observed affordance containing '%s'; visible=%s" % [
+			expected_verb,
+			str(_visible_interaction_verbs(before_observation)),
+		])
+		return {"before_observation": before_observation}
+	var source_token := str(affordance.get("token", ""))
+	var baseline_result := _find_target_result(before_observation, source_token)
+	var baseline_serial := int(baseline_result.get("presentation_serial", 0))
+
+	var selection_v: Variant = await driver.call("select_single", "aster")
+	var selection := selection_v as Dictionary if selection_v is Dictionary else {}
+	if not bool(selection.get("accepted", false)):
+		return {
+			"source_affordance_visible_before_click": true,
+			"source_token": source_token,
+			"before_observation": before_observation,
+		}
+	var selected_observation := await _capture_rendered_observation(observer)
+	var revalidated := _find_affordance_by_token(
+		selected_observation, source_token
+	)
+	if revalidated.is_empty():
+		return {
+			"source_affordance_visible_before_click": true,
+			"source_token": source_token,
+			"before_observation": before_observation,
+		}
+	var screen := revalidated.get("screen", []) as Array
+	if screen.size() != 2:
+		return {
+			"source_affordance_visible_before_click": true,
+			"source_token": source_token,
+			"before_observation": selected_observation,
+		}
+	var point := Vector2(float(screen[0]), float(screen[1]))
+	driver.call("clear_receipts")
+	var receipt_v: Variant = await driver.call(
+		"interact_selected_screen", "aster", point
+	)
+	var receipt := receipt_v as Dictionary if receipt_v is Dictionary else {}
+	# Capture one actually drawn frame before pointer hygiene or a timed walk can
+	# advance far enough to expire a short exact-target result.
+	var immediate := await _capture_rendered_observation(observer)
+	if bool(receipt.get("input_issued", false)) and driver.has_method("park_pointer"):
+		await driver.call("park_pointer")
+	var observed := await _wait_for_visible_target_result(
+		observer,
+		source_token,
+		baseline_serial,
+		immediate,
+		timeout_seconds
+	)
+	var success_cue: Dictionary = observed.get("success_cue", {})
+	var success_observation: Dictionary = observed.get(
+		"observation", immediate
+	)
+	if driver.has_method("finalize_interaction_receipt"):
+		receipt = driver.call(
+			"finalize_interaction_receipt",
+			receipt,
+			success_cue,
+			"The exact target did not render a successful interaction receipt.",
+			source_token,
+			baseline_serial
+		)
+	var event_kinds: Array = receipt.get("new_event_kinds", [])
+	var exact_pointer_receipt := (
+		_exact_pointer_receipt_matches(
+			receipt,
+			point,
+			get_root().get_visible_rect(),
+			true
+		)
+		and bool(receipt.get("accepted", false))
+		and event_kinds.has("trigger_interactable")
+	)
+	return {
+		"source_affordance_visible_before_click": true,
+		"source_token": source_token,
+		"before_observation": selected_observation,
+		"success_observation": success_observation,
+		"success_cue": success_cue,
+		"receipt": receipt,
+		"exact_pointer_receipt": exact_pointer_receipt,
+		"exact_visible_success": (
+			str(success_cue.get("source_token", "")) == source_token
+			and int(success_cue.get("presentation_serial", 0)) > baseline_serial
+			and str(success_cue.get("result", "")) == "success"
+			and bool(success_cue.get("visible", false))
+		),
+	}
+
+
+func _find_visible_affordance_with_recovery(
+	driver: Node, observer: Node, expected_verb: String
+	) -> Dictionary:
+	var latest: Dictionary = {}
+	for attempt in range(9):
+		latest = await _capture_rendered_observation(observer)
+		var affordance := _find_affordance_by_verb(latest, expected_verb)
+		if not affordance.is_empty():
+			return {"observation": latest, "affordance": affordance}
+		match attempt:
+			0:
+				await driver.call("recenter")
+			1:
+				await driver.call("zoom_out", 8)
+			2, 3, 4:
+				await driver.call("press_key", KEY_D, 8)
+			5, 6:
+				await driver.call("press_key", KEY_W, 6)
+			7:
+				await driver.call("press_key", KEY_S, 12)
+	return {"observation": latest, "affordance": {}}
+
+
+func _wait_for_visible_target_result(
+	observer: Node,
+	source_token: String,
+	baseline_serial: int,
+	immediate: Dictionary,
+	timeout_seconds: float
+	) -> Dictionary:
+	var latest := immediate
+	var elapsed := 0.0
+	while elapsed <= timeout_seconds:
+		var cue := _find_target_result(latest, source_token)
+		if int(cue.get("presentation_serial", 0)) > baseline_serial \
+				and str(cue.get("result", "")) == "success" \
+				and bool(cue.get("visible", false)):
+			return {"observation": latest, "success_cue": cue}
+		var step := minf(0.08, timeout_seconds - elapsed)
+		if step <= 0.0:
+			break
+		await create_timer(step, true, false, false).timeout
+		await RenderingServer.frame_post_draw
+		var snapshot_v: Variant = observer.call("snapshot")
+		if snapshot_v is Dictionary:
+			latest = snapshot_v as Dictionary
+		elapsed += step
+	return {"observation": latest, "success_cue": {}}
+
+
+func _capture_rendered_observation(observer: Node) -> Dictionary:
+	await process_frame
+	await RenderingServer.frame_post_draw
+	var snapshot_v: Variant = observer.call("snapshot")
+	return snapshot_v as Dictionary if snapshot_v is Dictionary else {}
+
+
+func _wait_rendered_seconds(duration: float) -> void:
+	var remaining := maxf(0.0, duration)
+	while remaining > 0.0001:
+		var step := minf(0.1, remaining)
+		await create_timer(step, true, false, false).timeout
+		await RenderingServer.frame_post_draw
+		remaining -= step
+
+
+func _find_affordance_by_verb(
+	observation: Dictionary, expected_verb: String
+	) -> Dictionary:
+	var expected := expected_verb.strip_edges().to_upper()
+	for affordance_v in _observation_affordances(observation):
+		var affordance := affordance_v as Dictionary
+		if str(affordance.get("kind", "")) == "interact" \
+				and str(affordance.get("verb", "")).to_upper().contains(expected):
+			return affordance.duplicate(true)
+	return {}
+
+
+func _find_affordance_by_token(
+	observation: Dictionary, source_token: String
+	) -> Dictionary:
+	for affordance_v in _observation_affordances(observation):
+		var affordance := affordance_v as Dictionary
+		if str(affordance.get("kind", "")) == "interact" \
+				and str(affordance.get("token", "")) == source_token:
+			return affordance.duplicate(true)
+	return {}
+
+
+func _observation_affordances(observation: Dictionary) -> Array:
+	var state_v: Variant = observation.get("state", {})
+	return (state_v as Dictionary).get("affordances", []) as Array \
+		if state_v is Dictionary else []
+
+
+func _visible_interaction_verbs(observation: Dictionary) -> Array[String]:
+	var verbs: Array[String] = []
+	for affordance_v in _observation_affordances(observation):
+		var affordance := affordance_v as Dictionary
+		if str(affordance.get("kind", "")) == "interact":
+			verbs.append(str(affordance.get("verb", "")))
+	return verbs
+
+
+func _find_target_result(
+	observation: Dictionary, source_token: String
+	) -> Dictionary:
+	var state_v: Variant = observation.get("state", {})
+	if not (state_v is Dictionary):
+		return {}
+	var newest: Dictionary = {}
+	for cue_v in (state_v as Dictionary).get("cues", []):
+		if not (cue_v is Dictionary):
+			continue
+		var cue := cue_v as Dictionary
+		if str(cue.get("kind", "")) != "interaction_result" \
+				or str(cue.get("source_token", "")) != source_token:
+			continue
+		if int(cue.get("presentation_serial", 0)) \
+				> int(newest.get("presentation_serial", 0)):
+			newest = cue.duplicate(true)
+	return newest
+
+
+## Independent fail-closed proof for one ordinary shipped RMB click at the
+## revalidated, viewport-local observation point. Semantic acceptance remains
+## bound separately to the newer exact-token PlayerObservation result.
+static func _exact_pointer_receipt_matches(
+		receipt: Dictionary,
+		expected_point: Vector2,
+		viewport_rect: Rect2,
+		require_fresh_ledger := false
+	) -> bool:
+	if not expected_point.is_finite() or not viewport_rect.has_point(expected_point):
 		return false
-	host.game_state.snap_character_to(actor, source_position as Vector3)
-	source.set("active_character", actor)
-	return bool(source.call("_trigger", false))
+	if str(receipt.get("kind", "")) != "interact":
+		return false
+	var screen_point_v: Variant = receipt.get("screen_point", null)
+	if typeof(screen_point_v) != TYPE_VECTOR2 \
+			or screen_point_v != expected_point:
+		return false
+	var issued_v: Variant = receipt.get("input_issued", null)
+	if typeof(issued_v) != TYPE_BOOL or not bool(issued_v):
+		return false
+	var before_v: Variant = receipt.get("input_sequence_before", null)
+	var after_v: Variant = receipt.get("input_sequence_after", null)
+	var count_v: Variant = receipt.get("input_event_count", null)
+	if typeof(before_v) != TYPE_INT or typeof(after_v) != TYPE_INT \
+			or typeof(count_v) != TYPE_INT:
+		return false
+	var before := int(before_v)
+	var after := int(after_v)
+	if require_fresh_ledger and before != 0:
+		return false
+	if int(count_v) != 3 or after != before + 3:
+		return false
+	var events_v: Variant = receipt.get("input_events", null)
+	if not (events_v is Array) or (events_v as Array).size() != 3:
+		return false
+	var events := events_v as Array
+	for index in range(events.size()):
+		var event_v: Variant = events[index]
+		if not (event_v is Dictionary):
+			return false
+		var event := event_v as Dictionary
+		var sequence_v: Variant = event.get("sequence", null)
+		var event_issued_v: Variant = event.get("issued", null)
+		if typeof(sequence_v) != TYPE_INT \
+				or int(sequence_v) != before + index + 1:
+			return false
+		if typeof(event_issued_v) != TYPE_BOOL or not bool(event_issued_v):
+			return false
+		if not _receipt_position_matches(event.get("position", null), expected_point):
+			return false
+	var motion := events[0] as Dictionary
+	var motion_mask_v: Variant = motion.get("button_mask", null)
+	if str(motion.get("kind", "")) != "pointer_move" \
+			or typeof(motion_mask_v) != TYPE_INT or int(motion_mask_v) != 0:
+		return false
+	if not _exact_pointer_button_event(events[1] as Dictionary, true):
+		return false
+	return _exact_pointer_button_event(events[2] as Dictionary, false)
+
+
+static func _exact_pointer_button_event(
+		event: Dictionary, expected_pressed: bool
+	) -> bool:
+	if str(event.get("kind", "")) != "pointer_button":
+		return false
+	var button_v: Variant = event.get("button", null)
+	var pressed_v: Variant = event.get("pressed", null)
+	var shift_v: Variant = event.get("shift", null)
+	var double_click_v: Variant = event.get("double_click", null)
+	var mask_v: Variant = event.get("button_mask", null)
+	if typeof(button_v) != TYPE_INT or int(button_v) != MOUSE_BUTTON_RIGHT:
+		return false
+	if typeof(pressed_v) != TYPE_BOOL or bool(pressed_v) != expected_pressed:
+		return false
+	if typeof(shift_v) != TYPE_BOOL or bool(shift_v):
+		return false
+	if typeof(double_click_v) != TYPE_BOOL or bool(double_click_v):
+		return false
+	var expected_mask := MOUSE_BUTTON_MASK_RIGHT if expected_pressed else 0
+	return typeof(mask_v) == TYPE_INT and int(mask_v) == expected_mask
+
+
+static func _receipt_position_matches(position_v: Variant, expected: Vector2) -> bool:
+	if not (position_v is Array) or (position_v as Array).size() != 2:
+		return false
+	var position := position_v as Array
+	var x_v: Variant = position[0]
+	var y_v: Variant = position[1]
+	if typeof(x_v) not in [TYPE_INT, TYPE_FLOAT] \
+			or typeof(y_v) not in [TYPE_INT, TYPE_FLOAT]:
+		return false
+	var x := float(x_v)
+	var y := float(y_v)
+	return is_finite(x) and is_finite(y) \
+		and x == expected.x and y == expected.y
+
+
+func _observation_hands_contain(
+	observation: Dictionary, expected_fragment: String
+	) -> bool:
+	var state_v: Variant = observation.get("state", {})
+	if not (state_v is Dictionary):
+		return false
+	var hud_v: Variant = (state_v as Dictionary).get("hud", {})
+	if not (hud_v is Dictionary):
+		return false
+	for label_v in (hud_v as Dictionary).get("hands", []):
+		if str(label_v).to_upper().contains(expected_fragment.to_upper()):
+			return true
+	return false
 
 
 func _count_forged_mechanism_nodes(root_node: Node) -> int:

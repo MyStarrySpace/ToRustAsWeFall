@@ -78,11 +78,12 @@
 					"display_name": "Hesitate And Let It Close",
 					"outcome": "failure",
 					"script": [
+						{"type": "snapshot_state", "key": "before_commitment"},
 						{"type": "select_character", "char_id": "aster"},
 						{"type": "teleport", "char_id": "aster", "anchor": "enemy_probe"},
-						{"type": "advance", "seconds": 3.0},
-						{"type": "assert_path", "path": "enemy.standard.target", "op": "==", "value": "aster"},
-						{"type": "assert_path", "path": "enemy.standard.distance_to_target", "op": "<=", "value": 1.0}
+						{"type": "advance", "seconds": 6.0},
+						{"type": "assert_path", "path": "event_counts.enemy_hits", "op": ">", "snapshot": "before_commitment", "snapshot_path": "event_counts.enemy_hits"},
+						{"type": "assert_path", "path": "character_hp.aster", "op": "<", "snapshot": "before_commitment", "snapshot_path": "character_hp.aster"}
 					]
 				},
 				{
@@ -109,11 +110,12 @@
 					"display_name": "Hesitate And Let It Close",
 					"outcome": "failure",
 					"script": [
+						{"type": "snapshot_state", "key": "before_commitment"},
 						{"type": "select_character", "char_id": "peris"},
 						{"type": "teleport", "char_id": "peris", "anchor": "chain_probe"},
-						{"type": "advance", "seconds": 3.0},
-						{"type": "assert_path", "path": "enemy.chain.target", "op": "==", "value": "peris"},
-						{"type": "assert_path", "path": "enemy.chain.distance_to_target", "op": "<=", "value": 1.0}
+						{"type": "advance", "seconds": 6.0},
+						{"type": "assert_path", "path": "event_counts.enemy_hits", "op": ">", "snapshot": "before_commitment", "snapshot_path": "event_counts.enemy_hits"},
+						{"type": "assert_path", "path": "character_hp.peris", "op": "<", "snapshot": "before_commitment", "snapshot_path": "character_hp.peris"}
 					]
 				},
 				{
@@ -311,14 +313,19 @@
 			"scenarios": [
 				{
 					"id": "timeout_failure",
-					"display_name": "Timeout Failure",
+					"display_name": "Standing In Current Gets Swept",
 					"outcome": "failure",
 					"script": [
 						{"type": "call", "method": "start_channels_window_puzzle", "args": ["window_one"]},
-						{"type": "call", "method": "activate_channels_window_lure", "args": ["window_one"]},
-						{"type": "advance", "seconds": 13.6},
-						{"type": "assert_path", "path": "channels_window_lanes.window_one.phase", "op": "==", "value": "failed"},
-						{"type": "assert_path", "path": "channels_window_lanes.window_one.last_outcome", "op": "==", "value": "window_closed"}
+						{"type": "physical_interact", "char_id": "peris", "source_path": "_channels_window_lanes.window_one.interactable"},
+						{"type": "assert_path", "path": "current_step", "op": "==", "value": "channels_window_one_cross"},
+						{"type": "teleport", "char_id": "aster", "anchor": "channels_window_one_stage", "offset": [0.70, 0.0, -3.90]},
+						{"type": "teleport", "char_id": "peris", "anchor": "channels_window_one_goal", "offset": [-1.0, 0.0, 0.8]},
+						{"type": "teleport", "char_id": "endo", "anchor": "channels_window_one_goal", "offset": [1.0, 0.0, -0.8]},
+						{"type": "advance", "seconds": 6.1},
+						{"type": "assert_path", "path": "channels_window_lanes.window_one.phase", "op": "==", "value": "reset"},
+						{"type": "assert_path", "path": "current_step", "op": "==", "value": "channels_window_one_reset"},
+						{"type": "assert_path", "path": "channels_window_lanes.window_one.channels.0.sweep_refractory", "op": "contains", "value": "aster"}
 					]
 				},
 				{
@@ -327,9 +334,12 @@
 					"outcome": "success",
 					"script": [
 						{"type": "call", "method": "start_channels_window_puzzle", "args": ["window_one"]},
-						{"type": "call", "method": "activate_channels_window_lure", "args": ["window_one"]},
+						{"type": "physical_interact", "char_id": "peris", "source_path": "_channels_window_lanes.window_one.interactable"},
+						{"type": "assert_path", "path": "current_step", "op": "==", "value": "channels_window_one_cross"},
 						{"type": "teleport", "char_id": "aster", "anchor": "channels_window_one_goal"},
-						{"type": "advance", "seconds": 0.2},
+						{"type": "teleport", "char_id": "peris", "anchor": "channels_window_one_goal", "offset": [-1.0, 0.0, 0.8]},
+						{"type": "teleport", "char_id": "endo", "anchor": "channels_window_one_goal", "offset": [1.0, 0.0, -0.8]},
+						{"type": "advance", "seconds": 7.0},
 						{"type": "assert_path", "path": "channels_window_lanes.window_one.last_outcome", "op": "==", "value": "success"},
 						{"type": "assert_path", "path": "current_step", "op": "==", "value": "channels_to_flure"}
 					]
@@ -345,14 +355,19 @@
 			"scenarios": [
 				{
 					"id": "timeout_failure",
-					"display_name": "Timeout Failure",
+					"display_name": "Standing In Current Gets Swept",
 					"outcome": "failure",
 					"script": [
 						{"type": "call", "method": "start_channels_window_puzzle", "args": ["window_two"]},
-						{"type": "call", "method": "activate_channels_window_lure", "args": ["window_two"]},
-						{"type": "advance", "seconds": 9.6},
-						{"type": "assert_path", "path": "channels_window_lanes.window_two.phase", "op": "==", "value": "failed"},
-						{"type": "assert_path", "path": "channels_window_lanes.window_two.last_outcome", "op": "==", "value": "window_closed"}
+						{"type": "physical_interact", "char_id": "peris", "source_path": "_channels_window_lanes.window_two.interactable"},
+						{"type": "assert_path", "path": "current_step", "op": "==", "value": "channels_window_two_cross"},
+						{"type": "teleport", "char_id": "aster", "anchor": "channels_window_two_stage", "offset": [2.38, 0.0, 2.87]},
+						{"type": "teleport", "char_id": "peris", "anchor": "channels_window_two_goal", "offset": [-1.0, 0.0, 0.8]},
+						{"type": "teleport", "char_id": "endo", "anchor": "channels_window_two_goal", "offset": [1.0, 0.0, -0.8]},
+						{"type": "advance", "seconds": 6.1},
+						{"type": "assert_path", "path": "channels_window_lanes.window_two.phase", "op": "==", "value": "reset"},
+						{"type": "assert_path", "path": "current_step", "op": "==", "value": "channels_window_two_reset"},
+						{"type": "assert_path", "path": "channels_window_lanes.window_two.channels.0.sweep_refractory", "op": "contains", "value": "aster"}
 					]
 				},
 				{
@@ -361,9 +376,12 @@
 					"outcome": "success",
 					"script": [
 						{"type": "call", "method": "start_channels_window_puzzle", "args": ["window_two"]},
-						{"type": "call", "method": "activate_channels_window_lure", "args": ["window_two"]},
+						{"type": "physical_interact", "char_id": "peris", "source_path": "_channels_window_lanes.window_two.interactable"},
+						{"type": "assert_path", "path": "current_step", "op": "==", "value": "channels_window_two_cross"},
 						{"type": "teleport", "char_id": "aster", "anchor": "channels_window_two_goal"},
-						{"type": "advance", "seconds": 0.2},
+						{"type": "teleport", "char_id": "peris", "anchor": "channels_window_two_goal", "offset": [-1.0, 0.0, 0.8]},
+						{"type": "teleport", "char_id": "endo", "anchor": "channels_window_two_goal", "offset": [1.0, 0.0, -0.8]},
+						{"type": "advance", "seconds": 7.0},
 						{"type": "assert_path", "path": "channels_window_lanes.window_two.last_outcome", "op": "==", "value": "success"},
 						{"type": "assert_path", "path": "current_step", "op": "==", "value": "channels_to_encounter"}
 					]
@@ -566,11 +584,11 @@
 					"id": "all_feeds_then_unsigned_commit",
 					"display_name": "All Feeds Then Unsigned Commit",
 					"script": [
-						{"type": "call", "method": "trigger_stacks_bank", "args": ["bank_a"]},
-						{"type": "call", "method": "trigger_stacks_bank", "args": ["bank_b"]},
-						{"type": "call", "method": "trigger_stacks_bank", "args": ["bank_c"]},
+						{"type": "physical_interact", "char_id": "aster", "source_path": "_stacks_bank_interactables.bank_a"},
+						{"type": "physical_interact", "char_id": "aster", "source_path": "_stacks_bank_interactables.bank_b"},
+						{"type": "physical_interact", "char_id": "aster", "source_path": "_stacks_bank_interactables.bank_c"},
 						{"type": "assert_path", "path": "stacks.bank_resolved", "op": "==", "value": false},
-						{"type": "call", "method": "trigger_stacks_bank", "args": ["bank_b"]},
+						{"type": "physical_interact", "char_id": "aster", "source_path": "_stacks_bank_interactables.bank_b"},
 						{"type": "advance", "seconds": 0.3},
 						{"type": "assert_path", "path": "stacks.bank_resolved", "op": "==", "value": true},
 						{"type": "assert_path", "path": "current_step", "op": "==", "value": "stacks_shelter"}
@@ -592,10 +610,15 @@
 					"id": "records_never_gate_the_route",
 					"display_name": "Records Never Gate The Route",
 					"script": [
-						{"type": "call", "method": "trigger_stacks_terminal"},
-						{"type": "call", "method": "trigger_stacks_archive"},
-						{"type": "call", "method": "trigger_stacks_signal"},
-						{"type": "assert_path", "path": "stacks.optional_record_count", "op": "==", "value": 3},
+						{"type": "snapshot_state", "key": "before_terminal"},
+						{"type": "physical_interact", "char_id": "aster", "source_path": "_stacks_terminal_interactable"},
+						{"type": "assert_path", "path": "stacks.optional_record_count", "op": ">", "snapshot": "before_terminal", "snapshot_path": "stacks.optional_record_count"},
+						{"type": "snapshot_state", "key": "before_workspace"},
+						{"type": "physical_interact", "char_id": "aster", "source_path": "_stacks_workspace_interactable"},
+						{"type": "assert_path", "path": "stacks.optional_record_count", "op": ">", "snapshot": "before_workspace", "snapshot_path": "stacks.optional_record_count"},
+						{"type": "snapshot_state", "key": "before_signal"},
+						{"type": "physical_interact", "char_id": "aster", "source_path": "_stacks_signal_interactable"},
+						{"type": "assert_path", "path": "stacks.optional_record_count", "op": ">", "snapshot": "before_signal", "snapshot_path": "stacks.optional_record_count"},
 						{"type": "assert_path", "path": "stacks.bank_resolved", "op": "==", "value": false},
 						{"type": "assert_path", "path": "current_step", "op": "==", "value": "stacks_bank_audit"}
 					]
@@ -619,9 +642,9 @@
 						{"type": "teleport", "char_id": "aster", "anchor": "stacks_shelter"},
 						{"type": "teleport", "char_id": "peris", "anchor": "stacks_shelter", "offset": [-1.0, 0.0, 1.0]},
 						{"type": "teleport", "char_id": "endo", "anchor": "stacks_shelter", "offset": [1.0, 0.0, -1.0]},
-						{"type": "call", "method": "trigger_stacks_shelter_rest", "args": [false]},
+						{"type": "physical_interact", "char_id": "peris", "source_path": "_stacks_shelter_interactable"},
 						{"type": "assert_path", "path": "stacks.anxiety_seen", "op": "==", "value": true},
-						{"type": "assert_path", "path": "current_step", "op": "==", "value": "stacks_explore"}
+						{"type": "assert_path", "path": "current_step", "op": "==", "value": "stacks_shelter"}
 					]
 				}
 			]
@@ -640,12 +663,14 @@
 					"id": "ambient_reads_do_not_gate_marco",
 					"display_name": "Ambient Reads Do Not Gate Marco",
 					"script": [
-						{"type": "call", "method": "trigger_rings_trace", "args": ["doorvine"]},
-						{"type": "call", "method": "trigger_rings_trace", "args": ["client_bloom"]},
-						{"type": "call", "method": "trigger_rings_trace", "args": ["forget_me_not"]},
+						{"type": "physical_interact", "char_id": "peris", "source_path": "_rings_trace_interactables.doorvine"},
+						{"type": "physical_interact", "char_id": "peris", "source_path": "_rings_trace_interactables.client_bloom"},
+						{"type": "physical_interact", "char_id": "peris", "source_path": "_rings_trace_interactables.forget_me_not"},
 						{"type": "assert_path", "path": "rings.trace_count", "op": "==", "value": 3},
 						{"type": "assert_path", "path": "current_step", "op": "==", "value": "rings_client"},
-						{"type": "call", "method": "trigger_rings_client", "args": [false]},
+						{"type": "teleport", "char_id": "peris", "anchor": "rings_marco", "offset": [-1.0, 0.0, 0.0]},
+						{"type": "teleport", "char_id": "endo", "anchor": "rings_marco", "offset": [1.0, 0.0, 0.0]},
+						{"type": "physical_interact", "char_id": "peris", "party": ["peris", "endo"], "source_path": "_rings_client_interactable"},
 						{"type": "assert_path", "path": "rings.client_seen", "op": "==", "value": true},
 						{"type": "assert_path", "path": "current_step", "op": "==", "value": "endo_departs"}
 					]
@@ -754,29 +779,28 @@
 						{"type": "assert_path", "path": "enabled_overlays", "op": "contains", "value": "aster"},
 						{"type": "assert_path", "path": "enabled_overlays", "op": "contains", "value": "peris"},
 						{"type": "assert_path", "path": "enabled_overlays", "op": "contains", "value": "endo"},
-						{"type": "teleport", "char_id": "aster", "anchor": "west_shelter"},
-						{"type": "call", "method": "headless_call_chunk", "args": ["depart_range"]},
+						{"type": "physical_interact", "char_id": "aster", "source_path": "chunk._departure_interactable"},
 						{"type": "assert_path", "path": "chunk.route_phase", "op": "==", "value": "departed"},
-						{"type": "teleport", "char_id": "aster", "anchor": "scout_perch"},
-						{"type": "call", "method": "headless_call_chunk", "args": ["survey_route"]},
+						{"type": "physical_interact", "char_id": "aster", "source_path": "chunk._scout_interactable"},
 						{"type": "assert_path", "path": "chunk.scouted", "op": "==", "value": true},
-						{"type": "select_character", "char_id": "peris"},
-						{"type": "teleport", "char_id": "peris", "anchor": "lure_spindle"},
-						{"type": "call", "method": "headless_call_chunk", "args": ["activate_range_lure"]},
+						{"type": "physical_interact", "char_id": "peris", "source_path": "chunk._echo_interactable"},
+						{"type": "assert_path", "path": "chunk.echo_tuned", "op": "==", "value": true},
+						{"type": "physical_interact", "char_id": "peris", "source_path": "chunk._lure_interactable"},
 						{"type": "assert_path", "path": "chunk.lure_active", "op": "==", "value": true},
-						{"type": "select_character", "char_id": "endo"},
-						{"type": "teleport", "char_id": "endo", "anchor": "mid_seam"},
-						{"type": "call", "method": "headless_call_chunk", "args": ["cross_seam"]},
+						{"type": "physical_interact", "char_id": "endo", "source_path": "chunk._seam_interactable"},
+						{"type": "advance", "seconds": 4.2},
 						{"type": "assert_path", "path": "chunk.seam_crossed", "op": "==", "value": true},
 						{"type": "assert_path", "path": "chunk.mid_seam_damage", "op": "<=", "value": 6.0},
 						{"type": "assert_path", "path": "character_stats.endo.hp", "op": ">=", "value": 94.0},
 						{"type": "teleport", "char_id": "endo", "anchor": "hide_slit"},
-						{"type": "call", "method": "headless_call_chunk", "args": ["commit_hide"]},
-						{"type": "assert_path", "path": "chunk.hide_phase", "op": "==", "value": "hide"},
-						{"type": "advance", "seconds": 5.7},
+						{"type": "advance", "seconds": 4.2},
+						{"type": "physical_interact", "char_id": "endo", "source_path": "chunk._hide_interactable"},
 						{"type": "assert_path", "path": "chunk.hide_phase", "op": "==", "value": "run"},
-						{"type": "teleport", "char_id": "endo", "anchor": "east_shelter"},
-						{"type": "advance", "seconds": 0.2},
+						{"type": "teleport", "char_id": "aster", "anchor": "east_shelter", "offset": [-1.0, 0.0, 0.8]},
+						{"type": "teleport", "char_id": "peris", "anchor": "east_shelter", "offset": [1.0, 0.0, 0.8]},
+						{"type": "teleport", "char_id": "endo", "anchor": "east_shelter", "offset": [0.0, 0.0, -0.8]},
+						{"type": "call", "method": "headless_set_preview_time", "args": [1, 0.6]},
+						{"type": "physical_interact", "char_id": "aster", "party": ["aster", "peris", "endo"], "clock": {"day": 1, "time": 0.6}, "source_path": "chunk._east_shelter_interactable"},
 						{"type": "assert_path", "path": "chunk.shelter_reached", "op": "==", "value": true},
 						{"type": "assert_path", "path": "chunk.route_phase", "op": "==", "value": "complete"},
 						{"type": "assert_path", "path": "chunk.last_outcome", "op": "==", "value": "success"},
@@ -788,18 +812,19 @@
 					"display_name": "Greedy Shortcut Burns The Margin",
 					"outcome": "failure",
 					"script": [
-						{"type": "teleport", "char_id": "aster", "anchor": "west_shelter"},
-						{"type": "call", "method": "headless_call_chunk", "args": ["depart_range"]},
-						{"type": "select_character", "char_id": "endo"},
+						{"type": "physical_interact", "char_id": "aster", "source_path": "chunk._departure_interactable"},
 						{"type": "call", "method": "headless_set_routing_mode", "args": ["direct"]},
-						{"type": "teleport", "char_id": "endo", "anchor": "short_bloom"},
-						{"type": "call", "method": "headless_call_chunk", "args": ["cross_seam"]},
-						{"type": "assert_path", "path": "chunk.mid_seam_damage", "op": ">=", "value": 30.0},
-						{"type": "assert_path", "path": "character_stats.endo.hp", "op": "<=", "value": 70.0},
-						{"type": "teleport", "char_id": "endo", "anchor": "hide_slit"},
-						{"type": "call", "method": "headless_call_chunk", "args": ["commit_hide"]},
+						{"type": "physical_interact", "char_id": "endo", "source_path": "chunk._direct_interactable"},
+						{"type": "assert_path", "path": "chunk.direct_hazard.cadence_rearm_source", "op": "==", "value": "survival_range_direct_commit"},
+						{"type": "assert_path", "path": "chunk.direct_hazard.cadence_rearm_cue", "op": "==", "value": "rust_bloom_phase_lock"},
+						{"type": "assert_path", "path": "chunk.direct_hazard.next_bite_in", "op": ">=", "value": 0.999},
+						{"type": "assert_path", "path": "chunk.direct_hazard.next_bite_in", "op": "<=", "value": 1.001},
+						{"type": "advance", "seconds": 2.2},
+						{"type": "assert_path", "path": "chunk.mid_seam_damage", "op": "==", "value": 6.0},
+						{"type": "assert_path", "path": "character_stats.endo.hp", "op": "==", "value": 94.0},
+						{"type": "physical_interact", "char_id": "endo", "source_path": "chunk._hide_interactable"},
 						{"type": "assert_path", "path": "chunk.route_phase", "op": "==", "value": "failed"},
-						{"type": "assert_path", "path": "chunk.last_outcome", "op": "==", "value": "hide_without_window"},
+						{"type": "assert_path", "path": "chunk.last_outcome", "op": "==", "value": "swarm_still_blocks_release"},
 						{"type": "assert_path", "path": "current_step", "op": "==", "value": "survival_range_failed"}
 					]
 				}
@@ -844,35 +869,48 @@
 						{"type": "call_chunk", "method": "reset_preview_state"},
 						{"type": "call_chunk", "method": "run_generated_golden_path"},
 						{"type": "assert_path", "path": "chunk.shelter_rested", "op": "==", "value": true},
+						{"type": "assert_path", "path": "chunk.route_phase", "op": "==", "value": "shelter_cutscene"},
+						{"type": "assert_path", "path": "chunk.shelter_cutscene.phase", "op": "==", "value": "playing"},
+						{"type": "advance", "seconds": 20.0},
 						{"type": "assert_path", "path": "chunk.route_phase", "op": "==", "value": "complete"},
+						{"type": "assert_path", "path": "chunk.shelter_cutscene.phase", "op": "==", "value": "complete"},
+						{"type": "assert_path", "path": "chunk.shelter_cutscene.completion_count", "op": "==", "value": 1},
+						{"type": "assert_path", "path": "chunk.shelter_cutscene.completed_tick", "op": ">=", "value": 0.0},
+						{"type": "assert_path", "path": "chunk.completion_ready", "op": "==", "value": true},
 						{"type": "assert_path", "path": "chunk.first_shelter_beat_fired", "op": "==", "value": true},
-						{"type": "assert_path", "path": "chunk.shortcut_unlocked", "op": "==", "value": true}
+						{"type": "assert_path", "path": "chunk.borrowed_current_diverted", "op": "==", "value": false},
+						{"type": "assert_path", "path": "chunk.main_current_restored", "op": "==", "value": true},
+						{"type": "assert_path", "path": "chunk.hydraulic_exit_unlocked", "op": "==", "value": true}
 					]
 				},
 				{
 					"id": "risky_route_recovers",
-					"display_name": "Risky Route Recovers",
+					"display_name": "Shadow Party Also Reaches Shelter",
 					"outcome": "success",
 					"script": [
 						{"type": "call_chunk", "method": "reset_preview_state"},
-						{"type": "call_chunk", "method": "run_generated_risky_recovery"},
+						{"type": "call_chunk", "method": "run_generated_shadow_path"},
+						{"type": "assert_path", "path": "chunk.shelter_rested", "op": "==", "value": true},
+						{"type": "assert_path", "path": "chunk.route_choice", "op": "==", "value": "shadow_path"},
+						{"type": "assert_path", "path": "chunk.shelter_cutscene.phase", "op": "==", "value": "playing"},
+						{"type": "advance", "seconds": 20.0},
 						{"type": "assert_path", "path": "chunk.route_phase", "op": "==", "value": "complete"},
 						{"type": "assert_path", "path": "chunk.shelter_rested", "op": "==", "value": true},
-						{"type": "assert_path", "path": "chunk.risky_damage_total", "op": ">", "value": 0.0},
+						{"type": "assert_path", "path": "chunk.shelter_cutscene.completion_count", "op": "==", "value": 1},
 						{"type": "assert_path", "path": "chunk.last_outcome", "op": "==", "value": "success"}
 					]
 				},
 				{
 					"id": "stranded_short_of_shelter",
-					"display_name": "Stranded Short Of Shelter",
+					"display_name": "Waiting At Entry Does Not Reach Shelter",
 					"outcome": "failure",
 					"script": [
 						{"type": "call_chunk", "method": "reset_preview_state"},
-						{"type": "call_chunk", "method": "run_generated_failed_traversal"},
-						{"type": "assert_path", "path": "chunk.route_phase", "op": "==", "value": "failed"},
+						{"type": "advance", "seconds": 5.0},
+						{"type": "assert_path", "path": "chunk.route_phase", "op": "==", "value": "unstarted"},
 						{"type": "assert_path", "path": "chunk.shelter_rested", "op": "==", "value": false},
-						{"type": "assert_path", "path": "chunk.last_outcome", "op": "==", "value": "stranded"},
-						{"type": "assert_path", "path": "chunk.risky_damage_total", "op": ">", "value": 0.0}
+						{"type": "assert_path", "path": "chunk.last_outcome", "op": "==", "value": "ready"},
+						{"type": "assert_path", "path": "chunk.first_shelter_beat_fired", "op": "==", "value": false}
 					]
 				}
 			]
@@ -965,9 +1003,9 @@
 					"outcome": "success",
 					"script": [
 						{"type": "call_chunk", "method": "reset_preview_state"},
-						{"type": "call_chunk", "method": "choose_route", "args": ["north"]},
-						{"type": "select_character", "char_id": "aster"},
-						{"type": "call_chunk", "method": "activate_slit_lure"},
+						{"type": "teleport", "char_id": "aster", "anchor": "conceal_patch"},
+						{"type": "advance", "seconds": 0.2},
+						{"type": "physical_interact", "char_id": "aster", "target": "slit_flure"},
 						{"type": "teleport", "char_id": "aster", "anchor": "hide_slit"},
 						{"type": "advance", "seconds": 0.5},
 						{"type": "assert_path", "path": "chunk.slit_phase", "op": "==", "value": "window"},
@@ -982,10 +1020,10 @@
 					"outcome": "failure",
 					"script": [
 						{"type": "call_chunk", "method": "reset_preview_state"},
-						{"type": "call_chunk", "method": "choose_route", "args": ["north"]},
-						{"type": "select_character", "char_id": "aster"},
+						{"type": "teleport", "char_id": "aster", "anchor": "conceal_patch"},
+						{"type": "advance", "seconds": 0.2},
 						{"type": "teleport", "char_id": "aster", "anchor": "converge"},
-						{"type": "call_chunk", "method": "activate_slit_lure"},
+						{"type": "physical_interact", "char_id": "aster", "target": "slit_flure"},
 						{"type": "advance", "seconds": 6.5},
 						{"type": "assert_path", "path": "chunk.slit_phase", "op": "==", "value": "failed"},
 						{"type": "assert_path", "path": "chunk.route_phase", "op": "==", "value": "failed"}
@@ -997,15 +1035,16 @@
 					"outcome": "success",
 					"script": [
 						{"type": "call_chunk", "method": "reset_preview_state"},
-						{"type": "call_chunk", "method": "choose_route", "args": ["north"]},
-						{"type": "call_chunk", "method": "activate_slit_lure"},
+						{"type": "teleport", "char_id": "aster", "anchor": "conceal_patch"},
+						{"type": "advance", "seconds": 0.2},
+						{"type": "physical_interact", "char_id": "aster", "target": "slit_flure"},
 						{"type": "teleport", "char_id": "aster", "anchor": "hide_slit"},
 						{"type": "advance", "seconds": 6.5},
 						{"type": "assert_path", "path": "chunk.slit_phase", "op": "==", "value": "safe"},
 						{"type": "teleport", "char_id": "aster", "anchor": "hide_spot"},
 						{"type": "teleport", "char_id": "peris", "anchor": "hide_spot"},
 						{"type": "teleport", "char_id": "endo", "anchor": "hide_spot"},
-						{"type": "call_chunk", "method": "activate_spot_sweep"},
+						{"type": "physical_interact", "char_id": "aster", "target": "spot_sweep"},
 						{"type": "advance", "seconds": 0.5},
 						{"type": "assert_path", "path": "chunk.spot_phase", "op": "==", "value": "sweeping"},
 						{"type": "advance", "seconds": 6.0},
@@ -1018,15 +1057,16 @@
 					"outcome": "failure",
 					"script": [
 						{"type": "call_chunk", "method": "reset_preview_state"},
-						{"type": "call_chunk", "method": "choose_route", "args": ["north"]},
-						{"type": "call_chunk", "method": "activate_slit_lure"},
+						{"type": "teleport", "char_id": "aster", "anchor": "conceal_patch"},
+						{"type": "advance", "seconds": 0.2},
+						{"type": "physical_interact", "char_id": "aster", "target": "slit_flure"},
 						{"type": "teleport", "char_id": "aster", "anchor": "hide_slit"},
 						{"type": "advance", "seconds": 6.5},
 						{"type": "assert_path", "path": "chunk.slit_phase", "op": "==", "value": "safe"},
 						{"type": "teleport", "char_id": "aster", "anchor": "hide_spot"},
 						{"type": "teleport", "char_id": "peris", "anchor": "hide_spot"},
 						{"type": "teleport", "char_id": "endo", "anchor": "hide_spot"},
-						{"type": "call_chunk", "method": "activate_spot_sweep"},
+						{"type": "physical_interact", "char_id": "aster", "target": "spot_sweep"},
 						{"type": "advance", "seconds": 1.0},
 						{"type": "assert_path", "path": "chunk.spot_phase", "op": "==", "value": "sweeping"},
 						{"type": "teleport", "char_id": "aster", "anchor": "converge"},
@@ -1052,7 +1092,8 @@
 					"outcome": "success",
 					"script": [
 						{"type": "call_chunk", "method": "reset_preview_state"},
-						{"type": "call_chunk", "method": "choose_route", "args": ["north"]},
+						{"type": "teleport", "char_id": "aster", "anchor": "conceal_patch"},
+						{"type": "advance", "seconds": 0.2},
 						{"type": "assert_path", "path": "chunk.route_choice", "op": "==", "value": "north"},
 						{"type": "assert_path", "path": "chunk.hazard_taken", "op": "==", "value": false}
 					]
@@ -1063,7 +1104,8 @@
 					"outcome": "teaching",
 					"script": [
 						{"type": "call_chunk", "method": "reset_preview_state"},
-						{"type": "call_chunk", "method": "choose_route", "args": ["south"]},
+						{"type": "teleport", "char_id": "aster", "anchor": "risky_bloom"},
+						{"type": "advance", "seconds": 0.2},
 						{"type": "assert_path", "path": "chunk.route_choice", "op": "==", "value": "south"},
 						{"type": "teleport", "char_id": "aster", "anchor": "risky_bloom"},
 						{"type": "advance", "seconds": 1.1},
@@ -1076,23 +1118,23 @@
 					"outcome": "success",
 					"script": [
 						{"type": "call_chunk", "method": "reset_preview_state"},
-						{"type": "call_chunk", "method": "choose_route", "args": ["north"]},
-						{"type": "select_character", "char_id": "aster"},
-						{"type": "call_chunk", "method": "activate_slit_lure"},
+						{"type": "teleport", "char_id": "aster", "anchor": "conceal_patch"},
+						{"type": "advance", "seconds": 0.2},
+						{"type": "physical_interact", "char_id": "aster", "target": "slit_flure"},
 						{"type": "teleport", "char_id": "aster", "anchor": "hide_slit"},
 						{"type": "advance", "seconds": 6.5},
 						{"type": "assert_path", "path": "chunk.slit_phase", "op": "==", "value": "safe"},
 						{"type": "teleport", "char_id": "aster", "anchor": "hide_spot"},
 						{"type": "teleport", "char_id": "peris", "anchor": "hide_spot"},
 						{"type": "teleport", "char_id": "endo", "anchor": "hide_spot"},
-						{"type": "call_chunk", "method": "activate_spot_sweep"},
+						{"type": "physical_interact", "char_id": "aster", "target": "spot_sweep"},
 						{"type": "advance", "seconds": 6.5},
 						{"type": "assert_path", "path": "chunk.spot_phase", "op": "==", "value": "safe"},
 						{"type": "teleport", "char_id": "aster", "anchor": "exit_shelter"},
 						{"type": "teleport", "char_id": "peris", "anchor": "exit_shelter"},
 						{"type": "teleport", "char_id": "endo", "anchor": "exit_shelter"},
 						{"type": "advance", "seconds": 0.3},
-						{"type": "call_chunk", "method": "reach_exit"},
+						{"type": "physical_interact", "char_id": "aster", "target": "exit_shelter"},
 						{"type": "assert_path", "path": "chunk.route_phase", "op": "==", "value": "complete"},
 						{"type": "assert_path", "path": "chunk.shelter_reached", "op": "==", "value": true}
 					]

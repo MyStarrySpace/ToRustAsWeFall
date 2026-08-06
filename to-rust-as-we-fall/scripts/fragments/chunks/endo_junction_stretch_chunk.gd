@@ -64,9 +64,9 @@ const VALID_ROUTE_PHASES := [
 ]
 
 const SPAWNS := {
-	"aster": Vector3(4.8, 0.5, 1.6),
-	"peris": Vector3(3.1, 0.5, -0.2),
-	"endo": Vector3(3.7, 0.5, -2.4),
+	"aster": Vector3(4.8, 0.0, 1.6),
+	"peris": Vector3(3.1, 0.0, -0.2),
+	"endo": Vector3(3.7, 0.0, -2.4),
 }
 
 var _junction_interactable
@@ -477,9 +477,11 @@ func reach_shelter(source: Node = null) -> bool:
 	var blocked := preflight.get("blocked", []) as Array
 	if not blocked.is_empty():
 		_show_message(str(blocked[0]), 1.7)
+		_rearm_endo_control(source)
 		return false
 	var gs = _get_game_state()
 	if gs == null:
+		_rearm_endo_control(source)
 		return false
 
 	# Publish the enclosing transaction before GameState emits any batch-rest feedback. A snapshot
@@ -986,6 +988,24 @@ func _configure_endo_control(control: Node, action_id: String, callback: Callabl
 	control.set_pre_trigger_validator(
 		_validate_endo_control_trigger.bind(action_id, control))
 	control.interacted.connect(callback.bind(control))
+	if action_id == "shelter":
+		control.interaction_rejected.connect(
+			_on_endo_shelter_interaction_rejected.bind(control))
+
+
+## The shared target pulse makes a rejection spatially visible. The shelter also
+## names the first failed party precondition so the player can change a specific
+## prediction instead of guessing why the red pulse appeared.
+func _on_endo_shelter_interaction_rejected(
+		source: Node, _required_character: String, expected_source: Node
+	) -> void:
+	if not is_instance_valid(source) or source != expected_source \
+			or source != _shelter_interactable:
+		return
+	var blocked := _preflight_endo_shelter_rest().get("blocked", []) as Array
+	var reason := str(blocked[0]) if not blocked.is_empty() \
+		else "Shelter 1 cannot accept the party yet."
+	_show_message(reason, 2.4)
 
 
 func _validate_endo_control_trigger(

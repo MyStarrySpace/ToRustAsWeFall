@@ -170,8 +170,6 @@ func _wire_outline() -> void:
 	var target := mgr.outline_meshes(self, str(name) + "Outline", meshes, "flure", maxf(1.0, interaction_radius))
 	if target == null:
 		return
-	if target is Node3D and _glow is Node3D:
-		(target as Node3D).global_position = (_glow as Node3D).global_position
 	if target.has_method("set_interaction_delegate"):
 		target.call("set_interaction_delegate", self)
 	set_outline_target(target)

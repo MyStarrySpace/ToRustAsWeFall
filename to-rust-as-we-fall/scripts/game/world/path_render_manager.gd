@@ -1,6 +1,9 @@
 class_name PathRenderManager
 extends Node3D
 
+const ROUTE_PREVIEW_ANNOTATION_SCENE := preload(
+	"res://scenes/ui/route_preview_annotation.tscn")
+
 ## Scene-level movement-path rendering. Add ONE of these per scene, point it at the GameState, and
 ## it draws a path ribbon for EVERY registered character that is moving (or has a queued move) —
 ## player, party member, NPC, escort — anchored to that character's node and tinted by it.
@@ -30,6 +33,9 @@ var _node_cache_scan_count := 0
 var _path_feedback_source: Node   # optional chunk contract: get_paused_path_feedback(char_id)
 var _feedback_roots := {}         # char_id -> Node3D containing cached risk ribbons + timing labels
 var _feedback_hashes := {}        # char_id -> hash of the last returned feedback payload
+var _route_preview_annotation_layer: CanvasLayer
+var _route_preview_annotation: Label
+var _route_preview_annotation_owner: Node
 
 const GHOST_ALPHA := 0.45         # BG3-style faded destination preview (unshaded full-colour so it reads in the dark)
 const FEEDBACK_WIDTH := 0.52       # sits around the ordinary route ribbon instead of hiding it
@@ -39,13 +45,52 @@ const FEEDBACK_RESAMPLE := 0.5
 const FEEDBACK_RESAMPLE_MAX_STEPS := 128
 const NODE_RESCAN_INTERVAL_FRAMES := 30
 
+func _ready() -> void:
+	_ensure_route_preview_annotation()
+
 func setup(state: GameState, root: Node = null) -> void:
+	_ensure_route_preview_annotation()
 	var next_root := root if root != null else get_parent()
 	if game_state != state or search_root != next_root:
 		_clear_managed_state()
 		_path_feedback_source = null
 	game_state = state
 	search_root = next_root
+
+## The cursor-adjacent route consequence is movement presentation, so it lives beside the shared
+## ribbons and destination markers rather than below an arbitrary Player body. `owner` prevents an
+## inactive sibling Player from clearing the active controller's cue during its own hover update.
+func present_route_preview_annotation(owner: Node, screen_pos: Vector2, text: String) -> void:
+	_ensure_route_preview_annotation()
+	if owner == null or not is_instance_valid(owner) or text.is_empty() or text == "NO ROUTE":
+		clear_route_preview_annotation(owner)
+		return
+	_route_preview_annotation_owner = owner
+	_route_preview_annotation.text = text
+	_route_preview_annotation.position = screen_pos + Vector2(18.0, 18.0)
+	_route_preview_annotation.visible = true
+
+func clear_route_preview_annotation(owner: Node = null) -> void:
+	if owner != null and is_instance_valid(_route_preview_annotation_owner) \
+			and _route_preview_annotation_owner != owner:
+		return
+	_route_preview_annotation_owner = null
+	if _route_preview_annotation != null and is_instance_valid(_route_preview_annotation):
+		_route_preview_annotation.text = ""
+		_route_preview_annotation.visible = false
+
+func get_route_preview_annotation_layer() -> CanvasLayer:
+	_ensure_route_preview_annotation()
+	return _route_preview_annotation_layer
+
+func _ensure_route_preview_annotation() -> void:
+	if _route_preview_annotation_layer != null \
+			and is_instance_valid(_route_preview_annotation_layer):
+		return
+	_route_preview_annotation_layer = ROUTE_PREVIEW_ANNOTATION_SCENE.instantiate() as CanvasLayer
+	add_child(_route_preview_annotation_layer)
+	_route_preview_annotation = _route_preview_annotation_layer.get_node_or_null(
+		"RoutePreviewAnnotation") as Label
 
 ## Bind the active chunk as an OPTIONAL, read-only path-feedback provider. A chunk that has no
 ## get_paused_path_feedback() method simply produces no overlays. Rebinding on a chunk reload clears
@@ -57,6 +102,9 @@ func set_path_feedback_source(source: Node) -> void:
 	_clear_all_path_feedback()
 
 func _process(_delta: float) -> void:
+	if _route_preview_annotation_owner != null \
+			and not is_instance_valid(_route_preview_annotation_owner):
+		clear_route_preview_annotation()
 	if Engine.is_editor_hint() or game_state == null:
 		return
 	var perf_started := PerformanceTrace.begin()
@@ -182,6 +230,7 @@ func _retire_owned_visual(candidate: Variant) -> void:
 ## from the previous scene is still valid to Godot, so merely clearing freed entries is insufficient:
 ## retire all old visuals and reset the entire ownership/cache generation at the rebind boundary.
 func _clear_managed_state() -> void:
+	clear_route_preview_annotation()
 	var ids := {}
 	for raw_id in _renderers:
 		ids[str(raw_id)] = true

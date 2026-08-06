@@ -1114,9 +1114,7 @@
 			"walk_step_index": 1
 		}
 	],
-	"area_theme": {
-
-	},
+	"area_theme": {},
 	"biome": "",
 	"budget": {
 		"archetype_depth": 5,
@@ -1133,30 +1131,25 @@
 		"chain": [],
 		"chain_count": 9,
 		"element_coverage": {
-			"complete": true,
-			"contract_id": "trawf_element_coverage_v1",
-			"covered_count": 3,
+			"complete": false,
+			"contract_id": "trawf_element_coverage_v2",
+			"coverage_scope": "realized_runtime_content",
+			"covered_count": 1,
 			"elements": {
 				"barrier": {
-					"covered": true,
+					"covered": false,
 					"required_by": [
 						"3"
 					],
-					"supplied_by": [
-						"node_04",
-						"node_05"
-					]
+					"supplied_by": []
 				},
 				"carry": {
-					"covered": true,
+					"covered": false,
 					"required_by": [
 						"10",
 						"3"
 					],
-					"supplied_by": [
-						"node_07",
-						"node_08"
-					]
+					"supplied_by": []
 				},
 				"cover": {
 					"covered": true,
@@ -1166,7 +1159,6 @@
 						"3"
 					],
 					"supplied_by": [
-						"entry",
 						"node_01",
 						"node_02",
 						"node_03",
@@ -1184,7 +1176,10 @@
 				"carry",
 				"cover"
 			],
-			"uncovered": []
+			"uncovered": [
+				"barrier",
+				"carry"
+			]
 		},
 		"has_nested": false,
 		"host_nodes": [],
@@ -1691,6 +1686,7 @@
 		"walk_element_count": 9
 	},
 	"graybox": {
+		"actionable_interaction_approach_count": 5,
 		"bounds": {
 			"center": [
 				90.25,
@@ -1713,7 +1709,7 @@
 				39.0
 			]
 		},
-		"content_placement_count": 10,
+		"content_placement_count": 9,
 		"contract_id": "generated_stretch_graybox_v1",
 		"elevation_count": 3,
 		"elevation_indices": [
@@ -1728,6 +1724,7 @@
 		"navigation_edge_count": 14,
 		"navigation_node_count": 12,
 		"node_surface_count": 12,
+		"realized_content_navigation_count": 9,
 		"roompiece_catalog": "trawf_roompiece_catalog_v1",
 		"route_surface_count": 14,
 		"source": {
@@ -1736,6 +1733,7 @@
 			"spec_id": "generated_sample_setpiece_containment"
 		},
 		"spatial_feature_count": 0,
+		"spawn_excluded_content_count": 1,
 		"supports_click_to_move": true,
 		"supports_multiple_elevations": true,
 		"supports_outline_targets": true,
@@ -1785,24 +1783,20 @@
 				{
 					"action": "activate",
 					"activation_policy": "interact_at_producer",
-					"before_node": "node_04",
+					"before_node": "node_07",
+					"before_nodes": [
+						"node_06",
+						"node_07"
+					],
 					"branch_id": "branch_00",
 					"cannot_bypass_unresolved": true,
 					"consumer_cell": [
-						56,
+						90,
 						37
 					],
 					"consumer_cells": [
 						[
-							56,
-							35
-						],
-						[
-							56,
-							36
-						],
-						[
-							56,
+							90,
 							37
 						]
 					],
@@ -1810,7 +1804,7 @@
 					"id": "activate_branch_00_span",
 					"kind": "mandatory_branch_interaction",
 					"producer_cell": [
-						53,
+						87,
 						42
 					],
 					"produces_state": "branch_00_resolved",
@@ -1998,24 +1992,20 @@
 					{
 						"action": "activate",
 						"activation_policy": "interact_at_producer",
-						"before_node": "node_04",
+						"before_node": "node_07",
+						"before_nodes": [
+							"node_06",
+							"node_07"
+						],
 						"branch_id": "branch_00",
 						"cannot_bypass_unresolved": true,
 						"consumer_cell": [
-							56,
+							90,
 							37
 						],
 						"consumer_cells": [
 							[
-								56,
-								35
-							],
-							[
-								56,
-								36
-							],
-							[
-								56,
+								90,
 								37
 							]
 						],
@@ -2023,7 +2013,7 @@
 						"id": "activate_branch_00_span",
 						"kind": "mandatory_branch_interaction",
 						"producer_cell": [
-							53,
+							87,
 							42
 						],
 						"produces_state": "branch_00_resolved",
@@ -2227,24 +2217,20 @@
 					{
 						"action": "activate",
 						"activation_policy": "interact_at_producer",
-						"before_node": "node_04",
+						"before_node": "node_07",
+						"before_nodes": [
+							"node_06",
+							"node_07"
+						],
 						"branch_id": "branch_00",
 						"cannot_bypass_unresolved": true,
 						"consumer_cell": [
-							56,
+							90,
 							37
 						],
 						"consumer_cells": [
 							[
-								56,
-								35
-							],
-							[
-								56,
-								36
-							],
-							[
-								56,
+								90,
 								37
 							]
 						],
@@ -2252,7 +2238,7 @@
 						"id": "activate_branch_00_span",
 						"kind": "mandatory_branch_interaction",
 						"producer_cell": [
-							53,
+							87,
 							42
 						],
 						"produces_state": "branch_00_resolved",
@@ -2337,99 +2323,90 @@
 					"completion_phase": "bridged",
 					"consumer_addressing": "exact_cell",
 					"consumer_cell": [
-						56,
+						90,
 						37
 					],
 					"consumer_cell_role": "visual_midpoint",
 					"consumer_cells": [
 						[
-							56,
-							35
-						],
-						[
-							56,
-							36
-						],
-						[
-							56,
+							90,
 							37
 						]
 					],
 					"consumer_cells_addressing": "exact_cut_set",
 					"consumer_derivation": "first_later_spine_disconnect_cut",
+					"consumer_navigation_level": 0,
 					"consumer_policy": "next_unresolved_spine_blocker",
 					"content_policy": "causal_producer",
 					"contract_id": "generated_branch_role_v1",
 					"cut_proof": "entry_exit_disconnected_when_removed",
 					"producer_cell": [
-						53,
+						87,
 						42
 					],
+					"producer_navigation_level": 0,
 					"produces_state": "branch_00_resolved",
 					"role": "mandatory_producer",
 					"runtime_handler": "branch_span_producer",
-					"spine_column": 54,
+					"spine_column": 88,
 					"starts_active": true,
 					"topology_effect": "unlock_next_spine_blocker",
 					"wait_for_completion": true
 				},
 				"cells": [
 					[
-						54,
+						88,
 						38
 					],
 					[
-						53,
+						88,
 						39
 					],
 					[
-						54,
+						89,
 						39
 					],
 					[
-						55,
-						39
-					],
-					[
-						53,
+						87,
 						40
 					],
 					[
-						54,
+						88,
 						40
 					],
 					[
-						55,
+						89,
 						40
 					],
 					[
-						53,
+						87,
 						41
 					],
 					[
-						54,
+						88,
 						41
 					],
 					[
-						55,
+						89,
 						41
 					],
 					[
-						53,
+						87,
 						42
 					],
 					[
-						54,
+						88,
 						42
 					],
 					[
-						55,
+						89,
 						42
 					]
 				],
 				"id": "branch_00",
+				"navigation_level": 0,
 				"neck": [
-					54,
+					88,
 					38
 				],
 				"normal_route_optional": false,
@@ -2446,18 +2423,23 @@
 					"consumer_policy": "none",
 					"content_policy": "risk_scaled_physical_reward",
 					"contract_id": "generated_branch_role_v1",
+					"producer_navigation_level": 0,
 					"produces_state": "",
 					"role": "optional_risk_reward",
-					"spine_column": 129,
+					"spine_column": 128,
 					"starts_active": true,
 					"topology_effect": "none"
 				},
 				"cells": [
 					[
-						129,
+						128,
 						6
 					],
 					[
+						126,
+						7
+					],
+					[
 						127,
 						7
 					],
@@ -2466,12 +2448,20 @@
 						7
 					],
 					[
+						126,
+						8
+					],
+					[
 						127,
 						8
 					],
 					[
 						128,
 						8
+					],
+					[
+						126,
+						9
 					],
 					[
 						127,
@@ -2483,8 +2473,9 @@
 					]
 				],
 				"id": "branch_01",
+				"navigation_level": 0,
 				"neck": [
-					129,
+					128,
 					6
 				],
 				"normal_route_optional": true,
@@ -2735,7 +2726,7 @@
 						6
 					],
 					[
-						129,
+						128,
 						6
 					],
 					[
@@ -2760,6 +2751,10 @@
 					],
 					[
 						117,
+						7
+					],
+					[
+						126,
 						7
 					],
 					[
@@ -2795,6 +2790,10 @@
 						8
 					],
 					[
+						126,
+						8
+					],
+					[
 						127,
 						8
 					],
@@ -2824,6 +2823,10 @@
 					],
 					[
 						117,
+						9
+					],
+					[
+						126,
 						9
 					],
 					[
@@ -4187,55 +4190,51 @@
 						37
 					],
 					[
-						54,
+						88,
 						38
 					],
 					[
-						53,
+						88,
 						39
 					],
 					[
-						54,
+						89,
 						39
 					],
 					[
-						55,
-						39
-					],
-					[
-						53,
+						87,
 						40
 					],
 					[
-						54,
+						88,
 						40
 					],
 					[
-						55,
+						89,
 						40
 					],
 					[
-						53,
+						87,
 						41
 					],
 					[
-						54,
+						88,
 						41
 					],
 					[
-						55,
+						89,
 						41
 					],
 					[
-						53,
+						87,
 						42
 					],
 					[
-						54,
+						88,
 						42
 					],
 					[
-						55,
+						89,
 						42
 					]
 				],
@@ -12466,7 +12465,7 @@
 				6
 			],
 			[
-				129,
+				128,
 				6
 			],
 			[
@@ -12511,6 +12510,10 @@
 			],
 			[
 				117,
+				7
+			],
+			[
+				126,
 				7
 			],
 			[
@@ -12566,6 +12569,10 @@
 				8
 			],
 			[
+				126,
+				8
+			],
+			[
 				127,
 				8
 			],
@@ -12615,6 +12622,10 @@
 			],
 			[
 				117,
+				9
+			],
+			[
+				126,
 				9
 			],
 			[
@@ -15358,10 +15369,6 @@
 				37
 			],
 			[
-				54,
-				38
-			],
-			[
 				66,
 				38
 			],
@@ -15406,6 +15413,10 @@
 				38
 			],
 			[
+				88,
+				38
+			],
+			[
 				99,
 				38
 			],
@@ -15420,18 +15431,6 @@
 			[
 				102,
 				38
-			],
-			[
-				53,
-				39
-			],
-			[
-				54,
-				39
-			],
-			[
-				55,
-				39
 			],
 			[
 				67,
@@ -15474,39 +15473,47 @@
 				39
 			],
 			[
-				53,
+				88,
+				39
+			],
+			[
+				89,
+				39
+			],
+			[
+				87,
 				40
 			],
 			[
-				54,
+				88,
 				40
 			],
 			[
-				55,
+				89,
 				40
 			],
 			[
-				53,
+				87,
 				41
 			],
 			[
-				54,
+				88,
 				41
 			],
 			[
-				55,
+				89,
 				41
 			],
 			[
-				53,
+				87,
 				42
 			],
 			[
-				54,
+				88,
 				42
 			],
 			[
-				55,
+				89,
 				42
 			]
 		],
@@ -15514,7 +15521,6 @@
 	},
 	"nodes": [
 		{
-			"action_verb": "",
 			"approach_position": [
 				1.13999998569489,
 				0.449999988079071,
@@ -15534,33 +15540,7 @@
 			"chain_output": "",
 			"chain_output_ref": "",
 			"composition_role": "",
-			"content_placements": [
-				{
-					"category": "flora",
-					"id": "capbage",
-					"label": "capbage",
-					"local_offset": [
-						-1.24000000953674,
-						0.699999988079071,
-						-0.839999973773956
-					],
-					"position": [
-						0.259999990463257,
-						1.14999997615814,
-						0.660000026226044
-					],
-					"role": "cover",
-					"rotation_y_degrees": -11.0,
-					"shape": "plant_cluster",
-					"size": [
-						1.20000004768372,
-						1.39999997615814,
-						1.20000004768372
-					],
-					"socket_id": "",
-					"support": "implemented"
-				}
-			],
+			"content_placements": [],
 			"elevation_index": 0,
 			"elevation_meters": -0.0000000119209289661804,
 			"enemies": [],
@@ -15570,9 +15550,7 @@
 				0.140000000596046,
 				3.0
 			],
-			"flora": [
-				"capbage"
-			],
+			"flora": [],
 			"footprint": [
 				3.0,
 				0.140000000596046,
@@ -15580,9 +15558,7 @@
 			],
 			"id": "entry",
 			"label": "Entry Boundary",
-			"layout_step": {
-
-			},
+			"layout_step": {},
 			"link_ref": "",
 			"nested_archetypes": [],
 			"nested_depth": 0,
@@ -15604,9 +15580,7 @@
 			"runtime_handler": "",
 			"runtime_progression_required": false,
 			"runtime_support": "layout_only",
-			"shadow_solution": {
-
-			},
+			"shadow_solution": {},
 			"spatial_affordances": [],
 			"stage": 1,
 			"structures": [
@@ -15623,7 +15597,6 @@
 			"walk_transition": ""
 		},
 		{
-			"action_verb": "",
 			"ambient_flora": [
 				"capbage",
 				"capbage",
@@ -15705,14 +15678,93 @@
 					"id": "scarpet",
 					"label": "scarpet",
 					"local_offset": [
-						-1.55999994277954,
-						0.0799999982118607,
-						-0.560000002384186
+						-2.0,
+						0.0800000429153442,
+						-1.0
 					],
+					"navigation": {
+						"binding_id": "scarpet_concealment_v1",
+						"component_id": "entry_component:0:4:19",
+						"content_vertex": {
+							"cell": [
+								19,
+								35
+							],
+							"level": 2
+						},
+						"contract_id": "generated_content_navigation_v1",
+						"kind": "occupiable",
+						"radius": 1.65,
+						"reachable_region": [
+							{
+								"cell": [
+									19,
+									35
+								],
+								"level": 2
+							},
+							{
+								"cell": [
+									19,
+									34
+								],
+								"level": 2
+							},
+							{
+								"cell": [
+									18,
+									35
+								],
+								"level": 2
+							},
+							{
+								"cell": [
+									20,
+									35
+								],
+								"level": 2
+							},
+							{
+								"cell": [
+									19,
+									36
+								],
+								"level": 2
+							},
+							{
+								"cell": [
+									18,
+									34
+								],
+								"level": 2
+							},
+							{
+								"cell": [
+									20,
+									34
+								],
+								"level": 2
+							},
+							{
+								"cell": [
+									18,
+									36
+								],
+								"level": 2
+							},
+							{
+								"cell": [
+									20,
+									36
+								],
+								"level": 2
+							}
+						]
+					},
 					"position": [
-						16.9400005340576,
+						16.5,
 						1.97000002861023,
-						16.9400005340576
+						16.5
 					],
 					"role": "cover",
 					"rotation_y_degrees": 0.0,
@@ -15794,7 +15846,6 @@
 			"walk_transition": "next_step"
 		},
 		{
-			"action_verb": "",
 			"ambient_flora": [
 				"capbage",
 				"capbage",
@@ -15876,14 +15927,93 @@
 					"id": "scarpet",
 					"label": "scarpet",
 					"local_offset": [
-						-1.24000000953674,
-						0.0799999982118607,
-						-0.839999973773956
+						-1.0,
+						0.0800000429153442,
+						-1.0
 					],
+					"navigation": {
+						"binding_id": "scarpet_concealment_v1",
+						"component_id": "entry_component:0:4:19",
+						"content_vertex": {
+							"cell": [
+								35,
+								35
+							],
+							"level": 2
+						},
+						"contract_id": "generated_content_navigation_v1",
+						"kind": "occupiable",
+						"radius": 1.65,
+						"reachable_region": [
+							{
+								"cell": [
+									35,
+									35
+								],
+								"level": 2
+							},
+							{
+								"cell": [
+									35,
+									34
+								],
+								"level": 2
+							},
+							{
+								"cell": [
+									34,
+									35
+								],
+								"level": 2
+							},
+							{
+								"cell": [
+									36,
+									35
+								],
+								"level": 2
+							},
+							{
+								"cell": [
+									35,
+									36
+								],
+								"level": 2
+							},
+							{
+								"cell": [
+									34,
+									34
+								],
+								"level": 2
+							},
+							{
+								"cell": [
+									36,
+									34
+								],
+								"level": 2
+							},
+							{
+								"cell": [
+									34,
+									36
+								],
+								"level": 2
+							},
+							{
+								"cell": [
+									36,
+									36
+								],
+								"level": 2
+							}
+						]
+					},
 					"position": [
-						32.2599983215332,
+						32.5,
 						1.97000002861023,
-						16.6599998474121
+						16.5
 					],
 					"role": "cover",
 					"rotation_y_degrees": 11.0,
@@ -15974,8 +16104,8 @@
 			],
 			"approach_position": [
 				50.5,
-				1.88999998569489,
-				18.5200004577637
+				1.89000010490417,
+				18.5
 			],
 			"approaches": [],
 			"archetype_id": "",
@@ -15997,14 +16127,72 @@
 					"id": "scarpet",
 					"label": "scarpet",
 					"local_offset": [
-						-1.55999994277954,
-						0.0799999982118607,
-						-0.839999973773956
+						-2.0,
+						0.0800000429153442,
+						-1.0
 					],
+					"navigation": {
+						"binding_id": "scarpet_concealment_v1",
+						"component_id": "entry_component:0:4:19",
+						"content_vertex": {
+							"cell": [
+								51,
+								35
+							],
+							"level": 2
+						},
+						"contract_id": "generated_content_navigation_v1",
+						"kind": "occupiable",
+						"radius": 1.65,
+						"reachable_region": [
+							{
+								"cell": [
+									51,
+									35
+								],
+								"level": 2
+							},
+							{
+								"cell": [
+									50,
+									35
+								],
+								"level": 2
+							},
+							{
+								"cell": [
+									52,
+									35
+								],
+								"level": 2
+							},
+							{
+								"cell": [
+									51,
+									36
+								],
+								"level": 2
+							},
+							{
+								"cell": [
+									50,
+									36
+								],
+								"level": 2
+							},
+							{
+								"cell": [
+									52,
+									36
+								],
+								"level": 2
+							}
+						]
+					},
 					"position": [
-						48.939998626709,
+						48.5,
 						1.97000002861023,
-						16.6599998474121
+						16.5
 					],
 					"role": "cover",
 					"rotation_y_degrees": -11.0,
@@ -16037,6 +16225,79 @@
 				3.0
 			],
 			"id": "node_03",
+			"interaction_approach": {
+				"acceptance_radius": 1.95,
+				"approach_vertex": {
+					"cell": [
+						53,
+						37
+					],
+					"level": 2
+				},
+				"component_anchor": {
+					"cell": [
+						4,
+						19
+					],
+					"level": 0
+				},
+				"component_id": "entry_component:0:4:19",
+				"contract_id": "generated_interaction_approach_v1",
+				"handler_id": "physical_lysate_pickup_v1",
+				"interaction_radius": 1.8,
+				"region_vertices": [
+					{
+						"cell": [
+							53,
+							37
+						],
+						"level": 2
+					},
+					{
+						"cell": [
+							53,
+							36
+						],
+						"level": 2
+					},
+					{
+						"cell": [
+							52,
+							37
+						],
+						"level": 2
+					},
+					{
+						"cell": [
+							54,
+							37
+						],
+						"level": 2
+					},
+					{
+						"cell": [
+							52,
+							36
+						],
+						"level": 2
+					},
+					{
+						"cell": [
+							54,
+							36
+						],
+						"level": 2
+					}
+				],
+				"required_from_node_id": "entry",
+				"required_from_vertex": {
+					"cell": [
+						4,
+						19
+					],
+					"level": 0
+				}
+			},
 			"label": "Risk cache · 2 ATP lysate",
 			"layout_step": {
 				"lane": 2,
@@ -16088,9 +16349,7 @@
 			"runtime_handler": "physical_lysate_pickup_v1",
 			"runtime_progression_required": false,
 			"runtime_support": "implemented",
-			"shadow_solution": {
-
-			},
+			"shadow_solution": {},
 			"spatial_affordances": [],
 			"stage": 1,
 			"structures": [
@@ -16120,7 +16379,6 @@
 			"walk_transition": "next_step"
 		},
 		{
-			"action_verb": "",
 			"ambient_flora": [
 				"scarpet",
 				"scarpet",
@@ -16203,14 +16461,93 @@
 					"id": "scarpet",
 					"label": "scarpet",
 					"local_offset": [
-						-1.87999999523163,
-						0.0799999982118607,
-						-1.39999997615814
+						-2.0,
+						0.0800000429153442,
+						-1.0
 					],
+					"navigation": {
+						"binding_id": "scarpet_concealment_v1",
+						"component_id": "entry_component:0:4:19",
+						"content_vertex": {
+							"cell": [
+								67,
+								36
+							],
+							"level": 2
+						},
+						"contract_id": "generated_content_navigation_v1",
+						"kind": "occupiable",
+						"radius": 1.65,
+						"reachable_region": [
+							{
+								"cell": [
+									67,
+									36
+								],
+								"level": 2
+							},
+							{
+								"cell": [
+									67,
+									35
+								],
+								"level": 2
+							},
+							{
+								"cell": [
+									66,
+									36
+								],
+								"level": 2
+							},
+							{
+								"cell": [
+									68,
+									36
+								],
+								"level": 2
+							},
+							{
+								"cell": [
+									67,
+									37
+								],
+								"level": 2
+							},
+							{
+								"cell": [
+									66,
+									35
+								],
+								"level": 2
+							},
+							{
+								"cell": [
+									68,
+									35
+								],
+								"level": 2
+							},
+							{
+								"cell": [
+									66,
+									37
+								],
+								"level": 2
+							},
+							{
+								"cell": [
+									68,
+									37
+								],
+								"level": 2
+							}
+						]
+					},
 					"position": [
-						64.620002746582,
+						64.5,
 						1.97000002861023,
-						17.1000003814697
+						17.5
 					],
 					"role": "cover",
 					"rotation_y_degrees": 22.0,
@@ -16330,8 +16667,8 @@
 			],
 			"approach_position": [
 				82.5,
-				1.88999998569489,
-				20.2000007629395
+				1.89000010490417,
+				20.5
 			],
 			"approaches": [
 				{
@@ -16404,14 +16741,79 @@
 					"id": "scarpet",
 					"label": "scarpet",
 					"local_offset": [
-						-1.87999999523163,
-						0.0799999982118607,
-						-1.39999997615814
+						-2.0,
+						0.0800000429153442,
+						-1.0
 					],
+					"navigation": {
+						"binding_id": "scarpet_concealment_v1",
+						"component_id": "entry_component:0:4:19",
+						"content_vertex": {
+							"cell": [
+								83,
+								36
+							],
+							"level": 2
+						},
+						"contract_id": "generated_content_navigation_v1",
+						"kind": "occupiable",
+						"radius": 1.65,
+						"reachable_region": [
+							{
+								"cell": [
+									83,
+									36
+								],
+								"level": 2
+							},
+							{
+								"cell": [
+									83,
+									35
+								],
+								"level": 2
+							},
+							{
+								"cell": [
+									84,
+									36
+								],
+								"level": 2
+							},
+							{
+								"cell": [
+									83,
+									37
+								],
+								"level": 2
+							},
+							{
+								"cell": [
+									84,
+									35
+								],
+								"level": 2
+							},
+							{
+								"cell": [
+									82,
+									37
+								],
+								"level": 2
+							},
+							{
+								"cell": [
+									84,
+									37
+								],
+								"level": 2
+							}
+						]
+					},
 					"position": [
-						80.620002746582,
+						80.5,
 						1.97000002861023,
-						17.1000003814697
+						17.5
 					],
 					"role": "cover",
 					"rotation_y_degrees": 33.0,
@@ -16446,6 +16848,79 @@
 				5.0
 			],
 			"id": "node_05",
+			"interaction_approach": {
+				"acceptance_radius": 1.95,
+				"approach_vertex": {
+					"cell": [
+						85,
+						39
+					],
+					"level": 2
+				},
+				"component_anchor": {
+					"cell": [
+						4,
+						19
+					],
+					"level": 0
+				},
+				"component_id": "entry_component:0:4:19",
+				"contract_id": "generated_interaction_approach_v1",
+				"handler_id": "physical_lysate_pickup_v1",
+				"interaction_radius": 1.8,
+				"region_vertices": [
+					{
+						"cell": [
+							85,
+							39
+						],
+						"level": 2
+					},
+					{
+						"cell": [
+							85,
+							38
+						],
+						"level": 2
+					},
+					{
+						"cell": [
+							84,
+							39
+						],
+						"level": 2
+					},
+					{
+						"cell": [
+							86,
+							39
+						],
+						"level": 2
+					},
+					{
+						"cell": [
+							84,
+							38
+						],
+						"level": 2
+					},
+					{
+						"cell": [
+							86,
+							38
+						],
+						"level": 2
+					}
+				],
+				"required_from_node_id": "entry",
+				"required_from_vertex": {
+					"cell": [
+						4,
+						19
+					],
+					"level": 0
+				}
+			},
 			"label": "Redirected enemy aggression · Kill Enemy",
 			"layout_step": {
 				"lane": 2,
@@ -16569,8 +17044,8 @@
 			],
 			"approach_position": [
 				98.5,
-				1.88999998569489,
-				19.8600006103516
+				1.89000010490417,
+				19.5
 			],
 			"approaches": [],
 			"archetype_id": "",
@@ -16592,14 +17067,79 @@
 					"id": "scarpet",
 					"label": "scarpet",
 					"local_offset": [
-						-1.55999994277954,
-						0.0799999982118607,
-						-1.12000000476837
+						-2.0,
+						0.0800000429153442,
+						-1.0
 					],
+					"navigation": {
+						"binding_id": "scarpet_concealment_v1",
+						"component_id": "entry_component:0:4:19",
+						"content_vertex": {
+							"cell": [
+								99,
+								36
+							],
+							"level": 2
+						},
+						"contract_id": "generated_content_navigation_v1",
+						"kind": "occupiable",
+						"radius": 1.65,
+						"reachable_region": [
+							{
+								"cell": [
+									99,
+									36
+								],
+								"level": 2
+							},
+							{
+								"cell": [
+									99,
+									35
+								],
+								"level": 2
+							},
+							{
+								"cell": [
+									100,
+									36
+								],
+								"level": 2
+							},
+							{
+								"cell": [
+									99,
+									37
+								],
+								"level": 2
+							},
+							{
+								"cell": [
+									100,
+									35
+								],
+								"level": 2
+							},
+							{
+								"cell": [
+									98,
+									37
+								],
+								"level": 2
+							},
+							{
+								"cell": [
+									100,
+									37
+								],
+								"level": 2
+							}
+						]
+					},
 					"position": [
-						96.9400024414063,
+						96.5,
 						1.97000002861023,
-						17.3799991607666
+						17.5
 					],
 					"role": "cover",
 					"rotation_y_degrees": -11.0,
@@ -16632,6 +17172,79 @@
 				4.0
 			],
 			"id": "node_06",
+			"interaction_approach": {
+				"acceptance_radius": 1.95,
+				"approach_vertex": {
+					"cell": [
+						101,
+						38
+					],
+					"level": 2
+				},
+				"component_anchor": {
+					"cell": [
+						4,
+						19
+					],
+					"level": 0
+				},
+				"component_id": "entry_component:0:4:19",
+				"contract_id": "generated_interaction_approach_v1",
+				"handler_id": "physical_lysate_pickup_v1",
+				"interaction_radius": 1.8,
+				"region_vertices": [
+					{
+						"cell": [
+							101,
+							38
+						],
+						"level": 2
+					},
+					{
+						"cell": [
+							101,
+							37
+						],
+						"level": 2
+					},
+					{
+						"cell": [
+							100,
+							38
+						],
+						"level": 2
+					},
+					{
+						"cell": [
+							102,
+							38
+						],
+						"level": 2
+					},
+					{
+						"cell": [
+							100,
+							37
+						],
+						"level": 2
+					},
+					{
+						"cell": [
+							102,
+							37
+						],
+						"level": 2
+					}
+				],
+				"required_from_node_id": "node_05",
+				"required_from_vertex": {
+					"cell": [
+						85,
+						39
+					],
+					"level": 2
+				}
+			},
 			"label": "Lysate reserve",
 			"layout_step": {
 				"lane": 2,
@@ -16683,9 +17296,7 @@
 			"runtime_handler": "physical_lysate_pickup_v1",
 			"runtime_progression_required": false,
 			"runtime_support": "implemented",
-			"shadow_solution": {
-
-			},
+			"shadow_solution": {},
 			"spatial_affordances": [],
 			"stage": 1,
 			"structures": [
@@ -16715,7 +17326,6 @@
 			"walk_transition": "step_terminal"
 		},
 		{
-			"action_verb": "",
 			"ambient_flora": [
 				"seefern",
 				"seefern",
@@ -16811,14 +17421,58 @@
 					"id": "scarpet",
 					"label": "scarpet",
 					"local_offset": [
-						-1.55999994277954,
-						0.0799999982118607,
-						-0.839999973773956
+						-2.0,
+						0.0799999833106995,
+						-1.0
 					],
+					"navigation": {
+						"binding_id": "scarpet_concealment_v1",
+						"component_id": "entry_component:0:4:19",
+						"content_vertex": {
+							"cell": [
+								115,
+								3
+							],
+							"level": 0
+						},
+						"contract_id": "generated_content_navigation_v1",
+						"kind": "occupiable",
+						"radius": 1.65,
+						"reachable_region": [
+							{
+								"cell": [
+									115,
+									3
+								],
+								"level": 0
+							},
+							{
+								"cell": [
+									116,
+									3
+								],
+								"level": 0
+							},
+							{
+								"cell": [
+									115,
+									4
+								],
+								"level": 0
+							},
+							{
+								"cell": [
+									116,
+									4
+								],
+								"level": 0
+							}
+						]
+					},
 					"position": [
-						112.940002441406,
+						112.5,
 						0.529999971389771,
-						-15.3400001525879
+						-15.5
 					],
 					"role": "cover",
 					"rotation_y_degrees": 44.0,
@@ -16897,7 +17551,6 @@
 			"walk_transition": "tag_jump"
 		},
 		{
-			"action_verb": "",
 			"ambient_flora": [
 				"seefern",
 				"capbage",
@@ -16993,14 +17646,93 @@
 					"id": "scarpet",
 					"label": "scarpet",
 					"local_offset": [
-						-1.24000000953674,
-						0.0799999982118607,
-						-0.280000001192093
+						-1.0,
+						0.0800000429153442,
+						0.0
 					],
+					"navigation": {
+						"binding_id": "scarpet_concealment_v1",
+						"component_id": "entry_component:0:4:19",
+						"content_vertex": {
+							"cell": [
+								131,
+								19
+							],
+							"level": 2
+						},
+						"contract_id": "generated_content_navigation_v1",
+						"kind": "occupiable",
+						"radius": 1.65,
+						"reachable_region": [
+							{
+								"cell": [
+									131,
+									19
+								],
+								"level": 2
+							},
+							{
+								"cell": [
+									131,
+									18
+								],
+								"level": 2
+							},
+							{
+								"cell": [
+									130,
+									19
+								],
+								"level": 2
+							},
+							{
+								"cell": [
+									132,
+									19
+								],
+								"level": 2
+							},
+							{
+								"cell": [
+									131,
+									20
+								],
+								"level": 2
+							},
+							{
+								"cell": [
+									130,
+									18
+								],
+								"level": 2
+							},
+							{
+								"cell": [
+									132,
+									18
+								],
+								"level": 2
+							},
+							{
+								"cell": [
+									130,
+									20
+								],
+								"level": 2
+							},
+							{
+								"cell": [
+									132,
+									20
+								],
+								"level": 2
+							}
+						]
+					},
 					"position": [
-						128.259994506836,
+						128.5,
 						1.97000002861023,
-						0.219999998807907
+						0.5
 					],
 					"role": "cover",
 					"rotation_y_degrees": 55.0,
@@ -17088,8 +17820,8 @@
 			],
 			"approach_position": [
 				145.5,
-				1.16999995708466,
-				-13.4799995422363
+				1.17000007629395,
+				-13.5
 			],
 			"approaches": [],
 			"archetype_id": "",
@@ -17111,14 +17843,72 @@
 					"id": "scarpet",
 					"label": "scarpet",
 					"local_offset": [
-						-1.24000000953674,
-						0.0799999982118607,
-						-0.839999973773956
+						-1.0,
+						0.0800000429153442,
+						-1.0
 					],
+					"navigation": {
+						"binding_id": "scarpet_concealment_v1",
+						"component_id": "entry_component:0:4:19",
+						"content_vertex": {
+							"cell": [
+								147,
+								3
+							],
+							"level": 1
+						},
+						"contract_id": "generated_content_navigation_v1",
+						"kind": "occupiable",
+						"radius": 1.65,
+						"reachable_region": [
+							{
+								"cell": [
+									147,
+									3
+								],
+								"level": 1
+							},
+							{
+								"cell": [
+									146,
+									3
+								],
+								"level": 1
+							},
+							{
+								"cell": [
+									148,
+									3
+								],
+								"level": 1
+							},
+							{
+								"cell": [
+									147,
+									4
+								],
+								"level": 1
+							},
+							{
+								"cell": [
+									146,
+									4
+								],
+								"level": 1
+							},
+							{
+								"cell": [
+									148,
+									4
+								],
+								"level": 1
+							}
+						]
+					},
 					"position": [
-						144.259994506836,
+						144.5,
 						1.25,
-						-15.3400001525879
+						-15.5
 					],
 					"role": "cover",
 					"rotation_y_degrees": -11.0,
@@ -17151,6 +17941,93 @@
 				3.0
 			],
 			"id": "node_09",
+			"interaction_approach": {
+				"acceptance_radius": 1.95,
+				"approach_vertex": {
+					"cell": [
+						148,
+						5
+					],
+					"level": 1
+				},
+				"component_anchor": {
+					"cell": [
+						4,
+						19
+					],
+					"level": 0
+				},
+				"component_id": "entry_component:0:4:19",
+				"contract_id": "generated_interaction_approach_v1",
+				"handler_id": "physical_lysate_pickup_v1",
+				"interaction_radius": 1.8,
+				"region_vertices": [
+					{
+						"cell": [
+							148,
+							5
+						],
+						"level": 1
+					},
+					{
+						"cell": [
+							148,
+							4
+						],
+						"level": 1
+					},
+					{
+						"cell": [
+							147,
+							5
+						],
+						"level": 1
+					},
+					{
+						"cell": [
+							149,
+							5
+						],
+						"level": 1
+					},
+					{
+						"cell": [
+							148,
+							6
+						],
+						"level": 1
+					},
+					{
+						"cell": [
+							147,
+							4
+						],
+						"level": 1
+					},
+					{
+						"cell": [
+							149,
+							4
+						],
+						"level": 1
+					},
+					{
+						"cell": [
+							147,
+							6
+						],
+						"level": 1
+					}
+				],
+				"required_from_node_id": "node_05",
+				"required_from_vertex": {
+					"cell": [
+						85,
+						39
+					],
+					"level": 2
+				}
+			},
 			"label": "Lysate reserve",
 			"layout_step": {
 				"lane": 0,
@@ -17202,9 +18079,7 @@
 			"runtime_handler": "physical_lysate_pickup_v1",
 			"runtime_progression_required": false,
 			"runtime_support": "implemented",
-			"shadow_solution": {
-
-			},
+			"shadow_solution": {},
 			"spatial_affordances": [],
 			"stage": 1,
 			"structures": [
@@ -17234,7 +18109,6 @@
 			"walk_transition": ""
 		},
 		{
-			"action_verb": "",
 			"ambient_flora": [
 				"seefern",
 				"scarpet",
@@ -17332,9 +18206,7 @@
 			],
 			"id": "node_10",
 			"label": "Distract the patrol · Loud Action",
-			"layout_step": {
-
-			},
+			"layout_step": {},
 			"link_ref": "walk_06",
 			"nested_archetypes": [],
 			"nested_depth": 0,
@@ -17400,9 +18272,9 @@
 		{
 			"action_verb": "ENTER SHELTER",
 			"approach_position": [
-				178.020004272461,
+				178.5,
 				0.449999988079071,
-				0.740000009536743
+				0.5
 			],
 			"approaches": [],
 			"archetype_id": "11",
@@ -17438,10 +18310,88 @@
 				2.0
 			],
 			"id": "exit_shelter",
-			"label": "Shelter Arrival",
-			"layout_step": {
-
+			"interaction_approach": {
+				"acceptance_radius": 1.95,
+				"approach_vertex": {
+					"cell": [
+						181,
+						19
+					],
+					"level": 0
+				},
+				"component_anchor": {
+					"cell": [
+						4,
+						19
+					],
+					"level": 0
+				},
+				"component_id": "entry_component:0:4:19",
+				"contract_id": "generated_interaction_approach_v1",
+				"handler_id": "canonical_shelter_arrival_v1",
+				"interaction_radius": 1.8,
+				"region_vertices": [
+					{
+						"cell": [
+							181,
+							19
+						],
+						"level": 0
+					},
+					{
+						"cell": [
+							180,
+							19
+						],
+						"level": 0
+					},
+					{
+						"cell": [
+							182,
+							19
+						],
+						"level": 0
+					},
+					{
+						"cell": [
+							181,
+							20
+						],
+						"level": 0
+					},
+					{
+						"cell": [
+							180,
+							18
+						],
+						"level": 0
+					},
+					{
+						"cell": [
+							180,
+							20
+						],
+						"level": 0
+					},
+					{
+						"cell": [
+							182,
+							20
+						],
+						"level": 0
+					}
+				],
+				"required_from_node_id": "node_05",
+				"required_from_vertex": {
+					"cell": [
+						85,
+						39
+					],
+					"level": 2
+				}
 			},
+			"label": "Shelter Arrival",
+			"layout_step": {},
 			"link_ref": "",
 			"nested_archetypes": [],
 			"nested_depth": 0,
@@ -17487,9 +18437,7 @@
 			"runtime_handler": "canonical_shelter_arrival_v1",
 			"runtime_progression_required": true,
 			"runtime_support": "implemented",
-			"shadow_solution": {
-
-			},
+			"shadow_solution": {},
 			"spatial_affordances": [],
 			"stage": 1,
 			"structures": [
@@ -21363,9 +22311,7 @@
 					3,
 					3
 				],
-				"spatial_affordance": {
-
-				},
+				"spatial_affordance": {},
 				"spatial_feature_kind": ""
 			},
 			{
@@ -21381,9 +22327,7 @@
 					4,
 					2
 				],
-				"spatial_affordance": {
-
-				},
+				"spatial_affordance": {},
 				"spatial_feature_kind": ""
 			},
 			{
@@ -21399,9 +22343,7 @@
 					3,
 					3
 				],
-				"spatial_affordance": {
-
-				},
+				"spatial_affordance": {},
 				"spatial_feature_kind": ""
 			},
 			{
@@ -21417,9 +22359,7 @@
 					4,
 					3
 				],
-				"spatial_affordance": {
-
-				},
+				"spatial_affordance": {},
 				"spatial_feature_kind": ""
 			},
 			{
@@ -21523,9 +22463,7 @@
 					4,
 					4
 				],
-				"spatial_affordance": {
-
-				},
+				"spatial_affordance": {},
 				"spatial_feature_kind": ""
 			},
 			{
@@ -21541,9 +22479,7 @@
 					4,
 					3
 				],
-				"spatial_affordance": {
-
-				},
+				"spatial_affordance": {},
 				"spatial_feature_kind": ""
 			},
 			{
@@ -21559,9 +22495,7 @@
 					3,
 					1
 				],
-				"spatial_affordance": {
-
-				},
+				"spatial_affordance": {},
 				"spatial_feature_kind": ""
 			},
 			{
@@ -21577,9 +22511,7 @@
 					3,
 					3
 				],
-				"spatial_affordance": {
-
-				},
+				"spatial_affordance": {},
 				"spatial_feature_kind": ""
 			},
 			{
@@ -21631,9 +22563,7 @@
 					4,
 					2
 				],
-				"spatial_affordance": {
-
-				},
+				"spatial_affordance": {},
 				"spatial_feature_kind": ""
 			}
 		],
@@ -22519,9 +23449,7 @@
 	],
 	"schema": "trawf_generated_stretch_spec_v1",
 	"settings": {
-		"area_theme": {
-
-		},
+		"area_theme": {},
 		"biome": "",
 		"budget": {
 			"archetype_depth": 5,
@@ -22534,7 +23462,17 @@
 			"resource_beats": 2,
 			"structures_slots": 6
 		},
-		"budget_overridden_keys": [],
+		"budget_overridden_keys": [
+			"archetype_depth",
+			"branch_count",
+			"enemy_slots",
+			"flora_slots",
+			"node_count",
+			"optional_node_count",
+			"pressure_budget",
+			"resource_beats",
+			"structures_slots"
+		],
 		"budget_tier_floor": {
 			"archetype_depth": 5,
 			"branch_count": 3,
@@ -22566,9 +23504,7 @@
 				"step_count": 9,
 				"transition_chance": 0.5
 			},
-			"shadow_solution": {
-
-			}
+			"shadow_solution": {}
 		},
 		"id": "generated_sample_setpiece_containment",
 		"limitations": {
@@ -22625,7 +23561,7 @@
 		"roster": [],
 		"seed": 9043,
 		"spatial_profile": {
-			"slot_pitch": 16
+			"slot_pitch": 16.0
 		},
 		"stage_depth_steps": 0,
 		"systems_profile": {
@@ -22654,9 +23590,7 @@
 			"exit_shelter_id": "shelter_5",
 			"region": "Containment Vault"
 		},
-		"zone_transition": {
-
-		}
+		"zone_transition": {}
 	},
 	"source": {
 		"complexity_tier": "setpiece",
@@ -22666,6 +23600,12 @@
 		"seed": 9043
 	},
 	"spatial_features": [],
+	"spec_integrity": {
+		"content_navigation_contract_id": "generated_content_navigation_v1",
+		"contract_id": "generated_spec_integrity_v1",
+		"party_spawn_clearance_contract_id": "generated_party_spawn_clearance_v1",
+		"spatial_socket_contract_id": "generated_spatial_feature_sockets_v1"
+	},
 	"spine_navigation_grid": {
 		"cell_size": 1.0,
 		"contract_id": "unified_grid_v1",
@@ -35761,9 +36701,7 @@
 			}
 		],
 		"optional_lesson_spine": [],
-		"optional_world_action_policy": {
-
-		},
+		"optional_world_action_policy": {},
 		"optional_world_actions": [],
 		"perception_lock": {
 			"hidden_from_each": "none",
@@ -35860,99 +36798,89 @@
 					"completion_phase": "bridged",
 					"consumer_addressing": "exact_cell",
 					"consumer_cell": [
-						56,
+						90,
 						37
 					],
 					"consumer_cell_role": "visual_midpoint",
 					"consumer_cells": [
 						[
-							56,
-							35
-						],
-						[
-							56,
-							36
-						],
-						[
-							56,
+							90,
 							37
 						]
 					],
 					"consumer_cells_addressing": "exact_cut_set",
 					"consumer_derivation": "first_later_spine_disconnect_cut",
+					"consumer_navigation_level": 0,
 					"consumer_policy": "next_unresolved_spine_blocker",
 					"content_policy": "causal_producer",
 					"contract_id": "generated_branch_role_v1",
 					"cut_proof": "entry_exit_disconnected_when_removed",
 					"producer_cell": [
-						53,
+						87,
 						42
 					],
+					"producer_navigation_level": 0,
 					"produces_state": "branch_00_resolved",
 					"role": "mandatory_producer",
 					"runtime_handler": "branch_span_producer",
-					"spine_column": 54,
+					"spine_column": 88,
 					"starts_active": true,
 					"topology_effect": "unlock_next_spine_blocker",
 					"wait_for_completion": true
 				},
 				"cells": [
 					[
-						54,
+						88,
 						38
 					],
 					[
-						53,
+						88,
 						39
 					],
 					[
-						54,
+						89,
 						39
 					],
 					[
-						55,
-						39
-					],
-					[
-						53,
+						87,
 						40
 					],
 					[
-						54,
+						88,
 						40
 					],
 					[
-						55,
+						89,
 						40
 					],
 					[
-						53,
+						87,
 						41
 					],
 					[
-						54,
+						88,
 						41
 					],
 					[
-						55,
+						89,
 						41
 					],
 					[
-						53,
+						87,
 						42
 					],
 					[
-						54,
+						88,
 						42
 					],
 					[
-						55,
+						89,
 						42
 					]
 				],
 				"id": "branch_00",
 				"neck": [
-					54,
+					88,
 					38
 				],
 				"required_for_progress": true,
@@ -35967,18 +36895,23 @@
 					"consumer_policy": "none",
 					"content_policy": "risk_scaled_physical_reward",
 					"contract_id": "generated_branch_role_v1",
+					"producer_navigation_level": 0,
 					"produces_state": "",
 					"role": "optional_risk_reward",
-					"spine_column": 129,
+					"spine_column": 128,
 					"starts_active": true,
 					"topology_effect": "none"
 				},
 				"cells": [
 					[
-						129,
+						128,
 						6
 					],
 					[
+						126,
+						7
+					],
+					[
 						127,
 						7
 					],
@@ -35987,12 +36920,20 @@
 						7
 					],
 					[
+						126,
+						8
+					],
+					[
 						127,
 						8
 					],
 					[
 						128,
 						8
+					],
+					[
+						126,
+						9
 					],
 					[
 						127,
@@ -36005,7 +36946,7 @@
 				],
 				"id": "branch_01",
 				"neck": [
-					129,
+					128,
 					6
 				],
 				"required_for_progress": false,
@@ -36068,12 +37009,22 @@
 		]
 	},
 	"validation": {
+		"actionable_interaction_approaches": {
+			"actionable_node_count": 5,
+			"component_id": "entry_component:0:4:19",
+			"errors": [],
+			"valid": true
+		},
 		"area_theme": {
 			"errors": [],
 			"landmark_count": 0,
 			"valid": true
 		},
 		"bare_pair_solvable": true,
+		"integrity": {
+			"errors": [],
+			"valid": true
+		},
 		"mode_independence": {
 			"errors": [],
 			"runtime_paths": [],
@@ -36082,6 +37033,17 @@
 		"multi_solution": false,
 		"multi_solution_ok": true,
 		"multi_solution_required": false,
+		"party_spawn_clearance": {
+			"errors": [],
+			"party_anchor_count": 3,
+			"realized_content_placement_count": 9,
+			"valid": true
+		},
+		"realized_content_navigation": {
+			"errors": [],
+			"realized_content_placement_count": 9,
+			"valid": true
+		},
 		"shadow_solvable": true,
 		"solution_warnings": [],
 		"spatial_features": {
@@ -36213,7 +37175,5 @@
 		"region": "Containment Vault",
 		"slot_id": "generated_sample_setpiece_containment"
 	},
-	"zone_transition": {
-
-	}
+	"zone_transition": {}
 }

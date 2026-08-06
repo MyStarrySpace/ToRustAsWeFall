@@ -10,6 +10,11 @@ const CanonicalCharacterAbilityScript := preload(
 
 signal character_arrived(id: String)
 signal movement_started(id: String)  # a movement committed for id (derived event, like character_arrived)
+signal movement_cancelled(id: String) # a committed ordinary path ended before its authored arrival
+## An accepted navigation command replaced its active planar route because its
+## locomotion pace changed. Presentation uses this derived signal to name the
+## replan even when the new geometric suffix is exactly the same length.
+signal navigation_route_replanned(id: String, state: Dictionary)
 signal external_traversal_started(id: String, state: Dictionary)
 signal external_traversal_finished(id: String, traversal_id: StringName)
 signal external_traversal_cancelled(id: String, traversal_id: StringName, reason: StringName)
@@ -80,12 +85,17 @@ var _coop_last_nodes := 0
 ## appends to the flushed file GridWorld writes (user://pathfind.log) so it survives a hard crash.
 static var _pf_debug: bool = OS.has_environment("PATHFIND_DEBUG")
 
-## In-flight cross-level (multi-floor) moves: char_id → ordered Array of
-## per-level segments {level: int, cells: Array[Vector2i]}. The character walks
-## segment[0] to its last cell (a ladder/ramp), transitions floors there, then
-## walks the next segment. Derived from one KIND_MOVE_CROSS_LEVEL command, never
-## serialized — replay re-runs the command and reproduces every transition.
+## In-flight graph plans: char_id -> ordered Array of per-level segments. Each segment retains the
+## typed edge that enters it plus execution flags, so an authored LADDER/RAMP never degrades into an
+## instantaneous `set_level`. The edge is executed by the scheduler-authoritative traversal machine;
+## both the remaining plan and active edge survive save/load and deterministic replay.
 var _cross_level_plan: Dictionary = {}
+
+## Scheduler callbacks are allowed to outlive the movement record that created them (for example,
+## when a Rally replaces a path while the scheduler is already dispatching a due batch).  The
+## callback must therefore identify its own movement instead of completing whichever replacement
+## happens to be stored under the same character id.
+var _next_movement_epoch := 1
 
 ## Authoritative mechanism-owned movement. Unlike an ordinary path, its simulation/data endpoints
 ## may differ from its visible endpoints (a generated helix climb is vertical in the rendered world
@@ -356,6 +366,55 @@ func unregister_character(id: String) -> void:
 
 # --- Movement Commands ---
 
+## Presentation provenance travels with player-facing authority instead of being inferred later
+## from a traversal id or a surprising endpoint. Empty remains backward-compatible for direct
+## navigation and legacy internal traversals; new forced consequences use the player_facing scope.
+## Bookkeeping that intentionally has no cue must name its silent reason explicitly.
+func _validated_presentation_receipt(value: Dictionary) -> Dictionary:
+	if value.is_empty():
+		return {}
+	var portable := value.duplicate(true)
+	var scope := str(value.get("scope", ""))
+	if scope not in ["player_facing", "direct_input", "bookkeeping"]:
+		return {}
+	if scope == "bookkeeping":
+		return portable if not str(value.get("silent_reason", "")).is_empty() else {}
+	if scope == "direct_input":
+		return portable
+	for required_key in [
+		"event_id", "cause_id", "cause_kind", "effect_kind", "cue_kind",
+	]:
+		if str(value.get(required_key, "")).is_empty():
+			return {}
+	# A visible mechanism can carry its own telegraph. Such receipts keep causal
+	# provenance and world motion without manufacturing explanatory UI copy.
+	if bool(value.get("show_label", true)) and str(value.get("label", "")).is_empty():
+		return {}
+	if str(value.get("effect_kind", "")) == "forced_movement" \
+			and str(value.get("destination_label", "")).is_empty():
+		return {}
+	if str(value.get("effect_kind", "")) == "forced_movement" \
+			and str(value.get("subject_id", "")).is_empty():
+		return {}
+	for tick_key in ["telegraph_tick", "commit_tick"]:
+		if value.has(tick_key) and not is_finite(float(value[tick_key])):
+			return {}
+	for position_key in ["source_render_position", "destination_render_position"]:
+		var position_v: Variant = value.get(position_key, null)
+		var position: Array = []
+		if position_v is Vector3:
+			position = GameEvent.v3_to_arr(position_v as Vector3)
+		elif position_v is Array:
+			position = (position_v as Array).duplicate()
+		if position.size() != 3:
+			return {}
+		for component in position:
+			if not is_finite(float(component)):
+				return {}
+		portable[position_key] = [
+			float(position[0]), float(position[1]), float(position[2])]
+	return portable
+
 ## Commit a mechanism-owned traversal. The event records both coordinate spaces and the complete
 ## time interval; once accepted, the rider is immediately owned by this state machine rather than
 ## standing at the origin until a delayed teleport. `locked` is the sole policy today: ordinary
@@ -368,7 +427,8 @@ func command_external_traversal(
 		render_origin: Vector3,
 		render_destination: Vector3,
 		duration: float,
-		interrupt_policy: StringName = &"locked"
+		interrupt_policy: StringName = &"locked",
+		presentation_receipt: Dictionary = {}
 	) -> bool:
 	var data_origin := get_position(id) if characters.has(id) else Vector3.ZERO
 	return command_external_path_traversal(
@@ -377,7 +437,8 @@ func command_external_traversal(
 		[data_origin, data_destination],
 		[render_origin, render_destination],
 		duration,
-		interrupt_policy)
+		interrupt_policy,
+		presentation_receipt)
 
 
 ## Path-preserving mechanism traversal. A crawl/rail/river may cross grid-forbidden space along
@@ -389,7 +450,8 @@ func command_external_path_traversal(
 		data_path_value: Array,
 		render_path_value: Array,
 		duration: float,
-		interrupt_policy: StringName = &"locked"
+		interrupt_policy: StringName = &"locked",
+		presentation_receipt: Dictionary = {}
 	) -> bool:
 	if not characters.has(id) or scheduler == null or duration <= 0.0:
 		return false
@@ -408,6 +470,9 @@ func command_external_path_traversal(
 	var start_tick := float(scheduler.get_current_tick())
 	var data_path_payload := _external_path_to_payload(data_path)
 	var render_path_payload := _external_path_to_payload(render_path)
+	var portable_presentation := _validated_presentation_receipt(presentation_receipt)
+	if not presentation_receipt.is_empty() and portable_presentation.is_empty():
+		return false
 	var payload := {
 		"id": id,
 		"traversal_id": traversal_id,
@@ -421,6 +486,7 @@ func command_external_path_traversal(
 		"end_tick": start_tick + duration,
 		"progress_start": 0.0,
 		"interrupt_policy": interrupt_policy,
+		"presentation_receipt": portable_presentation,
 	}
 	_emit(GameEvent.KIND_BEGIN_EXTERNAL_TRAVERSAL, payload)
 	return _apply_external_traversal(payload)
@@ -483,6 +549,11 @@ func _apply_external_traversal(payload: Dictionary) -> bool:
 	var render_path := _external_path_from_payload(
 		payload.get("render_path", []), render_origin, render_destination)
 	var traversal_id := StringName(str(payload.get("traversal_id", "")))
+	var presentation_receipt := _validated_presentation_receipt(
+		payload.get("presentation_receipt", {}) as Dictionary)
+	if not (payload.get("presentation_receipt", {}) as Dictionary).is_empty() \
+			and presentation_receipt.is_empty():
+		return false
 	if String(traversal_id).is_empty() or data_path.size() < 2 \
 			or render_path.size() != data_path.size():
 		return false
@@ -491,7 +562,11 @@ func _apply_external_traversal(payload: Dictionary) -> bool:
 	render_origin = render_path[0]
 	render_destination = render_path[render_path.size() - 1]
 
-	_cross_level_plan.erase(id)
+	# A typed navigation edge uses this same authoritative traversal engine, but its remaining
+	# graph plan must survive until the edge lands and the next planar segment begins.
+	var preserves_graph_plan := bool(payload.get("preserve_cross_level_plan", false))
+	if not preserves_graph_plan:
+		_cross_level_plan.erase(id)
 	_cancel_movement(id)
 	_stop_rest(id)
 	cancel_field_restore(id)
@@ -525,6 +600,9 @@ func _apply_external_traversal(payload: Dictionary) -> bool:
 		"end_tick": end_tick,
 		"progress_start": progress_start,
 		"interrupt_policy": policy,
+		"preserve_cross_level_plan": preserves_graph_plan,
+		"navigation_edge": (payload.get("navigation_edge", {}) as Dictionary).duplicate(true),
+		"presentation_receipt": presentation_receipt,
 		"handle": handle,
 	}
 	movement_started.emit(id)
@@ -569,6 +647,10 @@ func _apply_cancel_external_traversal(payload: Dictionary) -> bool:
 	if scheduler != null:
 		scheduler.cancel(int(state.get("handle", 0)))
 	_external_traversals.erase(id)
+	# An interrupted typed edge invalidates the remainder of its route. Otherwise the generic
+	# arrival signal below would resume the plan from a point midway through the traversal.
+	if bool(state.get("preserve_cross_level_plan", false)):
+		_cross_level_plan.erase(id)
 	characters[id]["position"] = pinned
 	if grid != null:
 		characters[id]["grid_cell"] = grid.world_to_grid(pinned)
@@ -894,6 +976,24 @@ func command_move_to_pos(id: String, pos: Vector3) -> bool:
 	_emit(GameEvent.KIND_MOVE_TO_POS, {"id": id, "pos": GameEvent.v3_to_arr(pos)})
 	return _do_move_to_pos(id, pos)
 
+## Commit the stable graph identity produced by hover resolution. Keeping `(cell, level)` together
+## prevents two stacked surfaces at the same XZ from aliasing between preview and RMB dispatch.
+## The ordinary command kinds remain the replay wire format; this is the typed routing boundary.
+func command_move_to_navigation_location(id: String, location: Dictionary) -> bool:
+	if not characters.has(id) or grid == null or location.is_empty():
+		return false
+	var cell_value: Variant = location.get("cell", null)
+	if not cell_value is Vector2i:
+		return false
+	var cell := cell_value as Vector2i
+	var level := int(location.get("level", get_character_level(id)))
+	if level < 0 or level >= grid.level_count \
+			or not grid.is_walkable(cell.x, cell.y, {}, {}, level):
+		return false
+	if level == get_character_level(id):
+		return command_move_to_cell(id, cell)
+	return command_move_cross_level(id, cell, level)
+
 ## Pathfind to a cell on a (possibly different) floor, routing over ladders/ramps.
 ## On the same floor this is just command_move_to_cell. Across floors it walks to the
 ## ladder cell on the current floor, transitions there, then continues — one logged
@@ -921,62 +1021,176 @@ func _do_move_cross_level(id: String, end_cell: Vector2i, end_level: int) -> boo
 	var cur_cell := grid.nearest_walkable_cell(grid.world_to_grid(cur_pos), cur_level)
 	if cur_level == end_level:
 		return _do_move_to_cell(id, end_cell)  # same floor — ordinary cooperative move
-	var path: Array = grid.find_multi_level_path(cur_cell, cur_level, end_cell, end_level)
-	if path.is_empty():
+	var navigation_plan: Dictionary = grid.find_multi_level_plan(
+		cur_cell, cur_level, end_cell, end_level)
+	var nodes: Array = navigation_plan.get("nodes", [])
+	if nodes.is_empty():
 		return false  # no ladder/ramp route between these floors
-	# Split the route into per-floor segments. A floor change sits between two consecutive
-	# waypoints that share the link cell, so the link cell ends one segment and begins the next.
-	var segments: Array = []
-	var seg := {"level": int(path[0]["level"]), "cells": ([] as Array)}
-	for wp in path:
-		if int(wp["level"]) != int(seg["level"]):
-			segments.append(seg)
-			seg = {"level": int(wp["level"]), "cells": ([] as Array)}
-		(seg["cells"] as Array).append(wp["cell"])
-	segments.append(seg)
+	var segments := _navigation_segments_from_plan(navigation_plan)
+	if segments.is_empty():
+		return false
 	_cross_level_plan[id] = segments
-	# The executor advances on each arrival; connect once (survives replay's fresh GameState).
+	# The executor advances on ordinary movement and typed-edge arrivals; connect once (survives
+	# replay and snapshot restoration on a fresh GameState).
 	if not character_arrived.is_connected(_on_cross_level_arrival):
 		character_arrived.connect(_on_cross_level_arrival)
-	# Walk the first segment to its last cell (the ladder, or the destination if single-floor-after-all).
-	var seg0_cells: Array = segments[0]["cells"]
-	var seg0_last: Vector2i = seg0_cells[seg0_cells.size() - 1]
-	if seg0_last == cur_cell:
-		# Already standing on the ladder cell: a zero-length walk fires no arrival, so waiting
-		# on one would strand the character (a body parked ON a ladder could never climb —
-		# every re-command computed the same dead first segment). Advance the plan NOW.
-		_on_cross_level_arrival(id)
-		return true
-	return _do_move_to_cell(id, seg0_last)
+	_advance_cross_level_plan(id)
+	return _cross_level_plan.has(id) or is_moving(id) \
+		or (grid.world_to_grid(get_position(id)) == end_cell \
+			and get_character_level(id) == end_level)
 
-## On arrival, advance the cross-level plan: drop the finished segment, and if more remain,
-## transition to the next floor (no separate log entry) and walk that segment. The final
-## arrival leaves the plan empty and propagates as the genuine destination arrival.
+## Convert a node+edge plan into planar legs. The edge entering a leg remains attached to that leg;
+## this is the information the old waypoint-only reconstruction discarded.
+func _navigation_segments_from_plan(navigation_plan: Dictionary) -> Array:
+	var nodes: Array = navigation_plan.get("nodes", [])
+	var edges: Array = navigation_plan.get("edges", [])
+	if nodes.is_empty() or edges.size() != maxi(0, nodes.size() - 1):
+		return []
+	var first := nodes[0] as Dictionary
+	var segments: Array = [{
+		"level": int(first.get("level", 0)),
+		"cells": [first.get("cell", Vector2i.ZERO)],
+		"entry_edge": {},
+		"entry_traversed": true,
+		"started": false,
+	}]
+	for edge_index in range(edges.size()):
+		var edge := (edges[edge_index] as Dictionary).duplicate(true)
+		var next_node := nodes[edge_index + 1] as Dictionary
+		var next_level := int(next_node.get("level", 0))
+		var next_cell: Vector2i = next_node.get("cell", Vector2i.ZERO)
+		var edge_kind := str(edge.get("kind", edge.get("type", "walk"))).to_lower()
+		var is_traversal := edge_kind != "walk" \
+			or int(edge.get("from_level", next_level)) != int(edge.get("to_level", next_level))
+		if is_traversal:
+			segments.append({
+				"level": next_level,
+				"cells": [next_cell],
+				"entry_edge": edge,
+				"entry_traversed": false,
+				"started": false,
+			})
+		else:
+			((segments[segments.size() - 1] as Dictionary)["cells"] as Array).append(next_cell)
+	return segments
+
+## Every arrival is interpreted against explicit per-leg phase flags. A planar leg is completed and
+## removed; its successor first executes the retained entry edge, then begins its planar cells. This
+## prevents an edge's arrival signal from accidentally consuming the leg that still follows it.
 func _on_cross_level_arrival(id: String) -> void:
+	_advance_cross_level_plan(id)
+
+
+func _advance_cross_level_plan(id: String) -> void:
 	if not _cross_level_plan.has(id):
 		return
 	var segments: Array = _cross_level_plan[id]
-	segments.pop_front()  # the segment we just finished
-	if segments.is_empty():
-		_cross_level_plan.erase(id)
+	while not segments.is_empty():
+		var segment := segments[0] as Dictionary
+		# An arrival after a started planar leg completes exactly that leg.
+		if bool(segment.get("started", false)):
+			segments.pop_front()
+			_cross_level_plan[id] = segments
+			continue
+
+		var entry_edge := segment.get("entry_edge", {}) as Dictionary
+		if not entry_edge.is_empty() and not bool(segment.get("entry_traversed", false)):
+			segment["entry_traversed"] = true
+			segments[0] = segment
+			_cross_level_plan[id] = segments
+			if not _begin_navigation_edge_traversal(id, entry_edge):
+				_cross_level_plan.erase(id)
+			return
+
+		var cells: Array = segment.get("cells", [])
+		if cells.is_empty():
+			segments.pop_front()
+			_cross_level_plan[id] = segments
+			continue
+		var segment_level := int(segment.get("level", get_character_level(id)))
+		if get_character_level(id) != segment_level:
+			push_warning("GameState: graph leg for %s expected level %d, found %d" % [
+				id, segment_level, get_character_level(id)])
+			_cross_level_plan.erase(id)
+			return
+		var segment_last: Vector2i = cells[cells.size() - 1]
+		if grid != null and grid.world_to_grid(get_position(id)) == segment_last:
+			segments.pop_front()
+			_cross_level_plan[id] = segments
+			continue
+		segment["started"] = true
+		segments[0] = segment
+		_cross_level_plan[id] = segments
+		if not _do_move_to_cell(id, segment_last):
+			_cross_level_plan.erase(id)
 		return
-	var next_seg: Dictionary = segments[0]
-	_apply_set_level(id, int(next_seg["level"]))  # floor change at the shared ladder cell
-	var cells: Array = next_seg["cells"]
-	var seg_last: Vector2i = cells[cells.size() - 1]
-	# A chained link can make the NEXT segment zero-length too (the ladder IS its destination):
-	# same rule — no walk means no arrival, so the plan advances inline.
-	if grid != null and grid.world_to_grid(get_position(id)) == seg_last:
-		_on_cross_level_arrival(id)
-		return
-	_do_move_to_cell(id, seg_last)
+	_cross_level_plan.erase(id)
+
+
+## Execute an annotated graph edge as authoritative scheduler state. The parent cross-level command
+## is already logged, so this derived phase deliberately calls the application path directly instead
+## of emitting a second player command into the replay log.
+func _begin_navigation_edge_traversal(id: String, edge_value: Dictionary) -> bool:
+	if grid == null or scheduler == null or not characters.has(id):
+		return false
+	var edge := edge_value.duplicate(true)
+	if grid.has_method("is_navigation_edge_available") \
+			and not bool(grid.call("is_navigation_edge_available", edge)):
+		return false
+	var from_cell: Vector2i = edge.get("from_cell", grid.world_to_grid(get_position(id)))
+	var to_cell: Vector2i = edge.get("to_cell", from_cell)
+	var from_level := int(edge.get("from_level", get_character_level(id)))
+	var to_level := int(edge.get("to_level", from_level))
+	if get_character_level(id) != from_level \
+			or grid.world_to_grid(get_position(id)) != from_cell \
+			or not grid.is_walkable(to_cell.x, to_cell.y, {}, {}, to_level):
+		return false
+	var data_origin := get_position(id)
+	var data_destination := grid.grid_to_world(to_cell, to_level)
+	var render_origin := get_render_position(id)
+	var render_destination: Vector3 = data_destination
+	if coord_map != null:
+		render_destination = coord_map.to_world(data_destination)
+	var duration := float(edge.get("duration", 0.0))
+	if duration <= 0.0:
+		var edge_kind := str(edge.get("kind", edge.get("type", "link"))).to_lower()
+		var distance := data_origin.distance_to(data_destination)
+		var traversal_speed := WALK_SPEED * (0.75 if edge_kind == "ladder" else 1.0)
+		duration = maxf(0.2, distance / maxf(0.1, traversal_speed))
+	edge["duration"] = duration
+	var edge_kind := str(edge.get("kind", edge.get("type", "link"))).to_lower()
+	var traversal_id := StringName("nav/%s/%d,%d,%d/%d,%d,%d" % [
+		edge_kind,
+		from_cell.x, from_cell.y, from_level,
+		to_cell.x, to_cell.y, to_level,
+	])
+	var start_tick := float(scheduler.get_current_tick())
+	var data_path: Array[Vector3] = [data_origin, data_destination]
+	var render_path: Array[Vector3] = [render_origin, render_destination]
+	return _apply_external_traversal({
+		"id": id,
+		"traversal_id": traversal_id,
+		"data_origin": GameEvent.v3_to_arr(data_origin),
+		"data_destination": GameEvent.v3_to_arr(data_destination),
+		"render_origin": GameEvent.v3_to_arr(render_origin),
+		"render_destination": GameEvent.v3_to_arr(render_destination),
+		"data_path": _external_path_to_payload(data_path),
+		"render_path": _external_path_to_payload(render_path),
+		"start_tick": start_tick,
+		"end_tick": start_tick + duration,
+		"progress_start": 0.0,
+		"interrupt_policy": &"locked",
+		"preserve_cross_level_plan": true,
+		"navigation_edge": edge,
+	})
 
 # Internal move without its own log entry.
 func _do_move_to_pos(
 		id: String,
 		pos: Vector3,
 		allow_group_start_wait := false,
-		already_prepared := false
+		already_prepared := false,
+		route_cell_constraint: Dictionary = {}
 	) -> bool:
 	if not can_accept_move_command(id):
 		return false
@@ -994,14 +1208,18 @@ func _do_move_to_pos(
 			var target_level := grid.level_for_y(pos.y)
 			var target_cell := grid.nearest_walkable_cell(grid.world_to_grid(pos), target_level)
 			if target_level != get_character_level(id):
+				if not route_cell_constraint.is_empty():
+					return false
 				return _do_move_cross_level(id, target_cell, target_level)
 			return _do_move_to_cell(
-				id, target_cell, allow_group_start_wait, already_prepared)
+				id, target_cell, allow_group_start_wait, already_prepared,
+				route_cell_constraint)
 		return _do_move_to_cell(
 			id,
 			grid.nearest_walkable_cell(grid.world_to_grid(pos), get_character_level(id)),
 			allow_group_start_wait,
-			already_prepared)
+			already_prepared,
+			route_cell_constraint)
 	var current_pos := get_position(id)
 	var target := Vector3(pos.x, pos.y, pos.z)
 	if not already_prepared:
@@ -1047,18 +1265,25 @@ func _do_stop(id: String) -> void:
 	_cancel_movement(id)
 	_reserve_parked(id, ch.grid_cell)
 
-## Teleport a character's DATA position to a world point with no animation — cancels any move, snaps
-## the position (keeping the character's own Y/level) + grid cell, re-parks, recomputes detection.
-## Commits an enemy's attack-lunge end-point so its next move doesn't snap back to where it began.
-func snap_character_to(id: String, pos: Vector3) -> void:
+## Teleport a character's DATA position to a world point with no animation. Ordinary
+## combat/AI snaps preserve the current floor Y; authored spawn/reset placement passes
+## preserve_y=false so the supplied full-XYZ feet transform becomes authoritative.
+## The optional flag is serialized on the existing event kind for compatible replay.
+func snap_character_to(id: String, pos: Vector3, preserve_y := true) -> void:
 	_warn_if_off_frame("snap_character_to(%s)" % id, pos)
 	if not characters.has(id) or is_external_traversal_active(id):
 		return
-	_emit(GameEvent.KIND_SNAP_POSITION, {"id": id, "pos": GameEvent.v3_to_arr(pos)})
+	_emit(GameEvent.KIND_SNAP_POSITION, {
+		"id": id,
+		"pos": GameEvent.v3_to_arr(pos),
+		"preserve_y": preserve_y,
+	})
 	var ch: Dictionary = characters[id]
 	_cancel_movement(id)
-	ch.position = Vector3(pos.x, ch.position.y, pos.z)
+	ch.position = Vector3(pos.x, ch.position.y if preserve_y else pos.y, pos.z)
 	if grid:
+		if not preserve_y:
+			ch.level = grid.level_for_y(pos.y)
 		ch.grid_cell = grid.world_to_grid(ch.position)
 	_reserve_parked(id, ch.grid_cell)
 	# _cancel_movement recomputed detection at the PRE-teleport position — its stale in-range events would
@@ -1072,9 +1297,12 @@ func change_move_speed(id: String, new_speed: float) -> void:
 	if not characters.has(id):
 		return
 	var ch: Dictionary = characters[id]
+	var previous_speed := float(ch.get("move_speed", new_speed))
 	ch.move_speed = new_speed
 	if ch.movement == null:
 		return
+	var route_cell_constraint := (ch.movement as Dictionary).get(
+		"route_cell_constraint", {}) as Dictionary
 	var current_pos := get_position(id)
 	var dest: Vector3 = ch.movement.path[ch.movement.path.size() - 1]
 	_cancel_movement(id)
@@ -1085,30 +1313,77 @@ func change_move_speed(id: String, new_speed: float) -> void:
 		# than reverting to a plain, overlap-prone straight path.
 		var dest_cell := grid.world_to_grid(dest)
 		var current_cell := grid.world_to_grid(current_pos)
-		if _begin_cooperative_move(id, current_pos, current_cell, dest_cell, new_speed):
+		if _begin_cooperative_move(
+				id, current_pos, current_cell, dest_cell, new_speed, false,
+				route_cell_constraint):
+			_emit_navigation_route_replanned(
+				id, previous_speed, new_speed, "pace_change")
+			return
+		if not route_cell_constraint.is_empty():
+			# A constrained mechanism route may refuse a speed replan, but it may never
+			# silently continue on an unrestricted straight line.
+			_reserve_parked(id, current_cell)
 			return
 	_start_movement(id, _resolve_world_path(current_pos, dest))
+	_emit_navigation_route_replanned(id, previous_speed, new_speed, "pace_change")
+
+
+func _emit_navigation_route_replanned(
+		id: String, previous_speed: float, next_speed: float, reason: String
+	) -> void:
+	if not is_navigation_route_active(id):
+		return
+	navigation_route_replanned.emit(id, {
+		"contract": "navigation_route_replan/v1",
+		"reason": reason,
+		"previous_speed": previous_speed,
+		"next_speed": next_speed,
+	})
 
 func _resolve_world_path(current_pos: Vector3, target: Vector3) -> Array[Vector3]:
 	# Gridless straight line — grid scenes never reach here (_do_move_to_pos routes on cells).
 	return [current_pos, target]
 
-## READ-ONLY: the path a click-to-move WOULD take for `id` to reach `target_pos`, computed without
-## issuing or logging anything — pure UI, like the hover grid. It mirrors the real routing (a nav-graph
-## corridor / straight line when gridless; a plain A* route on a grid), so a hover preview matches what
-## the click commits. Touches no movement, no reservations, no EventLog. Returns [] if unreachable.
-func compute_preview_path(id: String, target_pos: Vector3) -> Array[Vector3]:
+## Resolve a surface hit to the stable navigation identity used by both preview and commit. World Y
+## selects the stacked level before XZ is quantized, so an upper landing can never become its lower
+## same-XZ cell merely because the pointer paused there.
+func resolve_navigation_location(id: String, target_pos: Vector3, snap_radius := 3) -> Dictionary:
+	if not characters.has(id) or grid == null or not target_pos.is_finite():
+		return {}
+	var level := grid.level_for_y(target_pos.y) if grid.level_count > 1 \
+		else get_character_level(id)
+	var requested_cell := grid.world_to_grid(target_pos)
+	var cell := grid.nearest_walkable_cell(requested_cell, level, snap_radius)
+	if not grid.is_in_bounds(cell.x, cell.y) \
+			or not grid.is_walkable(cell.x, cell.y, {}, {}, level):
+		return {}
+	return {
+		"cell": cell,
+		"level": level,
+		"data_position": grid.grid_to_world(cell, level),
+		"graph_revision": grid.get_path_walkability_revision(),
+	}
+
+
+## READ-ONLY typed preview. Besides renderable points it returns the exact `(cell, level)` destination,
+## graph revision, and retained node+edge plan. It touches no movement, reservations, or EventLog.
+func compute_preview_navigation(id: String, target_pos: Vector3) -> Dictionary:
 	var perf_started := PerformanceTrace.begin()
 	if not characters.has(id):
-		PerformanceTrace.end(&"nav", &"game_state.compute_preview_path", perf_started, id, 0)
-		return []
+		PerformanceTrace.end(&"nav", &"game_state.compute_preview_navigation", perf_started, id, 0)
+		return {}
 	if _pf_debug:
 		GridWorld._pf_trace("[preview] compute_preview_path '%s' -> %v" % [id, target_pos])
 	var current := get_position(id)
 	if grid != null:
+		var location := resolve_navigation_location(id, target_pos)
+		if location.is_empty():
+			PerformanceTrace.end(&"nav", &"game_state.compute_preview_navigation", perf_started, id, 0)
+			return {}
 		var level := get_character_level(id)
+		var target_level := int(location["level"])
 		var start_cell := grid.world_to_grid(current)
-		var end_cell := grid.world_to_grid(target_pos)
+		var end_cell: Vector2i = location["cell"]
 		# The preview is a COSMETIC hint, recomputed per hovered cell — so it uses the cheap 2D find_path,
 		# NOT the cooperative space-time A*. The cooperative search expands (cell, tick) wait-states and, for
 		# a far target, explores toward its node cap (≈80ms/hover on the channels — the reported freeze). The
@@ -1116,20 +1391,56 @@ func compute_preview_path(id: String, target_pos: Vector3) -> Array[Vector3]:
 		# dim preview just shows the spatial route, which matches the commit whenever no reservation forces a
 		# detour. Speed over perfect fidelity for a hover hint.
 		var out: Array[Vector3] = [current]
-		# find_path returns WORLD positions (one per cell) already on the right level.
-		var waypoints: Array[Vector3] = grid.find_path(start_cell, end_cell, {}, route_cautious, {}, {}, level)
-		if waypoints.is_empty():
-			PerformanceTrace.end(&"nav", &"game_state.compute_preview_path", perf_started, id, 0)
-			return []
-		out = [current]
-		out.append_array(waypoints)
+		var navigation_plan: Dictionary = {}
+		if target_level != level:
+			navigation_plan = grid.find_multi_level_plan(
+				start_cell, level, end_cell, target_level)
+			var nodes: Array = navigation_plan.get("nodes", [])
+			if nodes.is_empty():
+				PerformanceTrace.end(&"nav", &"game_state.compute_preview_navigation", perf_started, id, 0)
+				return {}
+			# Node zero is the occupied start cell. Every following node remains level-aware, including
+			# the paired bottom/top points of a ladder edge.
+			for node_index in range(1, nodes.size()):
+				var node := nodes[node_index] as Dictionary
+				out.append(grid.grid_to_world(
+					node.get("cell", Vector2i.ZERO), int(node.get("level", level))))
+		else:
+			# find_path returns WORLD positions (one per cell) already on the right level.
+			var waypoints: Array[Vector3] = grid.find_path(
+				start_cell, end_cell, {}, route_cautious, {}, {}, level)
+			if waypoints.is_empty() and start_cell != end_cell:
+				PerformanceTrace.end(&"nav", &"game_state.compute_preview_navigation", perf_started, id, 0)
+				return {}
+			out.append_array(waypoints)
+			if out.size() == 1:
+				out.append(location["data_position"] as Vector3)
 		if _pf_debug:
 			GridWorld._pf_trace("[preview] returning %d pts" % out.size())
-		PerformanceTrace.end(&"nav", &"game_state.compute_preview_path", perf_started, id, out.size())
-		return out
+		PerformanceTrace.end(&"nav", &"game_state.compute_preview_navigation", perf_started, id, out.size())
+		return {
+			"location": location,
+			"path": out,
+			"plan": navigation_plan,
+			"graph_revision": int(location["graph_revision"]),
+		}
 	var direct := _resolve_world_path(current, target_pos)
-	PerformanceTrace.end(&"nav", &"game_state.compute_preview_path", perf_started, id, direct.size())
-	return direct
+	PerformanceTrace.end(&"nav", &"game_state.compute_preview_navigation", perf_started, id, direct.size())
+	return {
+		"location": {"data_position": target_pos, "level": get_character_level(id)},
+		"path": direct,
+		"graph_revision": -1,
+	}
+
+
+## Compatibility projection for existing ribbon/debug callers.
+func compute_preview_path(id: String, target_pos: Vector3) -> Array[Vector3]:
+	var preview := compute_preview_navigation(id, target_pos)
+	var out: Array[Vector3] = []
+	for point_v in (preview.get("path", []) as Array):
+		if point_v is Vector3:
+			out.append(point_v as Vector3)
+	return out
 
 ## READ-ONLY per-member route preview: the path EACH party member WOULD take to its own spread
 ## destination on a party move. Mirrors party_move_to_pos's spread EXACTLY — distinct grid cells via
@@ -1241,6 +1552,216 @@ func is_moving(id: String) -> bool:
 	if not characters.has(id):
 		return false
 	return characters[id].movement != null or is_external_traversal_active(id)
+
+
+## True while any part of an accepted navigation command still owns the character.
+## A typed multi-level plan briefly has no planar movement between an arrival and the
+## next ladder/ramp phase; consumers must not mistake that route handoff for a stop.
+func is_navigation_route_active(id: String) -> bool:
+	if not characters.has(id):
+		return false
+	return _cross_level_plan.has(id) or is_moving(id)
+
+
+## Final data-space endpoint of the complete accepted navigation command. Unlike
+## `get_destination()`, this does not collapse a multi-level route to its current
+## planar leg or typed edge. Malformed retained plans fail closed instead of exposing
+## a plausible-but-wrong intermediate destination.
+func get_navigation_route_destination(id: String) -> Vector3:
+	if not characters.has(id):
+		return Vector3.INF
+	if not _cross_level_plan.has(id):
+		return get_destination(id)
+	if grid == null:
+		return Vector3.INF
+	var segments_value: Variant = _cross_level_plan.get(id, null)
+	if not (segments_value is Array) or (segments_value as Array).is_empty():
+		return Vector3.INF
+	var final_segment_value: Variant = (segments_value as Array).back()
+	if not (final_segment_value is Dictionary):
+		return Vector3.INF
+	var final_segment := final_segment_value as Dictionary
+	var cells_value: Variant = final_segment.get("cells", null)
+	if not (cells_value is Array) or (cells_value as Array).is_empty():
+		return Vector3.INF
+	var final_cell_value: Variant = (cells_value as Array).back()
+	if not (final_cell_value is Vector2i):
+		return Vector3.INF
+	var final_level := int(final_segment.get("level", -1))
+	if final_level < 0 or final_level >= grid.level_count:
+		return Vector3.INF
+	return grid.grid_to_world(final_cell_value as Vector2i, final_level)
+
+
+## Read-only dependency query for moving-platform and topology mechanisms. It intentionally exposes
+## cells rather than the private movement record so mechanisms can invalidate routes without
+## mutating path internals or guessing from render transforms.
+func navigation_route_intersects_cells(
+		id: String, cells: Dictionary, levels: Array[int] = []
+	) -> bool:
+	if not characters.has(id) or grid == null or cells.is_empty():
+		return false
+	var movement_v: Variant = (characters[id] as Dictionary).get("movement", null)
+	if movement_v is Dictionary:
+		for point_v in ((movement_v as Dictionary).get("path", []) as Array):
+			if not (point_v is Vector3):
+				continue
+			var point := point_v as Vector3
+			var level := grid.level_for_y(point.y)
+			if cells.has(grid.world_to_grid(point)) and (levels.is_empty() or levels.has(level)):
+				return true
+	if _cross_level_plan.has(id):
+		for segment_v in (_cross_level_plan[id] as Array):
+			var segment := segment_v as Dictionary
+			var level := int(segment.get("level", -1))
+			if not levels.is_empty() and not levels.has(level):
+				continue
+			for cell_v in (segment.get("cells", []) as Array):
+				if cell_v is Vector2i and cells.has(cell_v as Vector2i):
+					return true
+	return false
+
+
+## Remaining data-space length of the currently accepted navigation route.
+## Presentation uses this derived readback for a truthful progress cue on curved
+## and multi-segment paths; it never mutates or replans the command.
+func get_navigation_route_remaining_distance(id: String) -> float:
+	if not characters.has(id):
+		return -1.0
+	var remaining := _active_navigation_phase_remaining_distance(id)
+	if not _cross_level_plan.has(id) or grid == null:
+		return remaining
+	var segments_v: Variant = _cross_level_plan.get(id, null)
+	if not (segments_v is Array):
+		return -1.0
+	var segments := segments_v as Array
+	for segment_index in range(segments.size()):
+		var segment_v: Variant = segments[segment_index]
+		if not (segment_v is Dictionary):
+			return -1.0
+		var segment := segment_v as Dictionary
+		# The current ordinary movement already contains the whole started leg.
+		if segment_index == 0 and bool(segment.get("started", false)):
+			continue
+		var entry_edge := segment.get("entry_edge", {}) as Dictionary
+		var active_entry := segment_index == 0 \
+			and not bool(segment.get("started", false)) \
+			and bool(segment.get("entry_traversed", false)) \
+			and is_external_traversal_active(id)
+		if not entry_edge.is_empty() \
+				and not bool(segment.get("entry_traversed", false)):
+			remaining += _navigation_edge_data_distance(entry_edge)
+		elif not entry_edge.is_empty() and segment_index > 0:
+			remaining += _navigation_edge_data_distance(entry_edge)
+		# An active typed edge is already included above; its destination is the
+		# first cell of this planar leg, so only subsequent cell-to-cell travel
+		# remains. The same is true for a future edge.
+		var cells := segment.get("cells", []) as Array
+		var segment_level := int(segment.get("level", get_character_level(id)))
+		for cell_index in range(1, cells.size()):
+			if not (cells[cell_index - 1] is Vector2i) \
+					or not (cells[cell_index] is Vector2i):
+				return -1.0
+			remaining += grid.grid_to_world(
+				cells[cell_index - 1] as Vector2i, segment_level).distance_to(
+				grid.grid_to_world(cells[cell_index] as Vector2i, segment_level))
+		if segment_index == 0 and entry_edge.is_empty() and not active_entry \
+				and not bool(segment.get("started", false)) and not cells.is_empty() \
+				and cells[0] is Vector2i:
+			remaining += get_position(id).distance_to(
+				grid.grid_to_world(cells[0] as Vector2i, segment_level))
+	return maxf(0.0, remaining)
+
+
+## Read-only presentation fact for an explicit timed zero-distance segment in
+## the current navigation plan. Cooperative pathfinding represents yielding as
+## duplicate waypoints with increasing arrival ticks; exposing only the finite
+## remaining duration lets the HUD explain a stationary party member without
+## leaking path cells or becoming movement authority.
+func get_navigation_wait_state(id: String) -> Dictionary:
+	if not characters.has(id) or scheduler == null \
+			or is_external_traversal_active(id):
+		return {}
+	var movement_v: Variant = characters[id].get("movement", null)
+	if not (movement_v is Dictionary):
+		return {}
+	var movement := movement_v as Dictionary
+	var path := movement.get("path", []) as Array
+	var ticks := movement.get("arrival_ticks", []) as Array
+	if path.size() < 2 or ticks.size() != path.size():
+		return {}
+	var now := float(scheduler.get_current_tick())
+	for point_index in range(1, ticks.size()):
+		var segment_start := float(ticks[point_index - 1])
+		var segment_end := float(ticks[point_index])
+		if now < segment_start - 0.000001:
+			break
+		if now > segment_end + 0.000001:
+			continue
+		var from_v: Variant = path[point_index - 1]
+		var to_v: Variant = path[point_index]
+		if not (from_v is Vector3) or not (to_v is Vector3) \
+				or (from_v as Vector3).distance_to(to_v as Vector3) >= 0.001 \
+				or segment_end - segment_start <= 0.0001:
+			return {}
+		var remaining := maxf(0.0, segment_end - now)
+		if remaining <= 0.0001:
+			return {}
+		return {
+			"contract": "navigation_wait_state/v1",
+			"active": true,
+			"kind": "cooperative_hold",
+			"reason": "Waiting for party route clearance",
+			"remaining_seconds": remaining,
+			"total_seconds": segment_end - segment_start,
+		}
+	return {}
+
+
+func _active_navigation_phase_remaining_distance(id: String) -> float:
+	if is_external_traversal_active(id):
+		var state := get_external_traversal_state(id)
+		var path := state.get("data_path", []) as Array
+		var total := 0.0
+		for point_index in range(1, path.size()):
+			if path[point_index - 1] is Vector3 and path[point_index] is Vector3:
+				total += (path[point_index - 1] as Vector3).distance_to(
+					path[point_index] as Vector3)
+		return total * (1.0 - clampf(float(state.get("progress", 0.0)), 0.0, 1.0))
+	var movement_v: Variant = characters[id].get("movement", null)
+	if not (movement_v is Dictionary):
+		return 0.0
+	var movement := movement_v as Dictionary
+	var path := movement.get("path", []) as Array
+	var ticks := movement.get("arrival_ticks", []) as Array
+	if path.size() < 2 or ticks.size() != path.size() or scheduler == null:
+		return maxf(0.0, get_position(id).distance_to(get_destination(id)))
+	var now := float(scheduler.get_current_tick())
+	var first_future := -1
+	for point_index in range(1, ticks.size()):
+		if float(ticks[point_index]) > now + 0.000001:
+			first_future = point_index
+			break
+	if first_future < 0:
+		return 0.0
+	var remaining := get_position(id).distance_to(path[first_future] as Vector3)
+	for point_index in range(first_future + 1, path.size()):
+		remaining += (path[point_index - 1] as Vector3).distance_to(
+			path[point_index] as Vector3)
+	return maxf(0.0, remaining)
+
+
+func _navigation_edge_data_distance(edge: Dictionary) -> float:
+	if grid == null:
+		return 0.0
+	var from_cell_v: Variant = edge.get("from_cell", null)
+	var to_cell_v: Variant = edge.get("to_cell", null)
+	if not (from_cell_v is Vector2i) or not (to_cell_v is Vector2i):
+		return 0.0
+	var from_level := int(edge.get("from_level", 0))
+	var to_level := int(edge.get("to_level", from_level))
+	return grid.grid_to_world(from_cell_v as Vector2i, from_level).distance_to(
+		grid.grid_to_world(to_cell_v as Vector2i, to_level))
 
 ## The final waypoint of the character's current (or queued) move, in DATA space; Vector3.INF when the
 ## character isn't moving. The path/marker renderers read this to mark where a move ENDS for ANY character
@@ -1805,10 +2326,16 @@ func _serialize_character_movements() -> Dictionary:
 			remaining_path.append(GameEvent.v3_to_arr(path[i] as Vector3))
 			relative_ticks.append(arrival - now)
 		if remaining_path.size() >= 2:
-			result[id] = {
+			var serialized_movement := {
 				"path": remaining_path,
 				"relative_arrival_ticks": relative_ticks,
 			}
+			var route_cell_constraint_v: Variant = movement.get("route_cell_constraint", {})
+			if route_cell_constraint_v is Dictionary \
+					and not (route_cell_constraint_v as Dictionary).is_empty():
+				serialized_movement["route_cell_constraint"] = \
+					(route_cell_constraint_v as Dictionary).duplicate(true)
+			result[id] = serialized_movement
 	return result
 
 
@@ -1832,8 +2359,21 @@ func _restore_character_movements(saved: Dictionary) -> void:
 			path.append(GameEvent.arr_to_v3(point_v))
 		for relative_v in relative:
 			ticks.append(now + maxf(0.0, float(relative_v)))
+		var route_cell_constraint_v: Variant = state.get("route_cell_constraint", {})
+		if not route_cell_constraint_v is Dictionary:
+			continue
+		var route_cell_constraint := route_cell_constraint_v as Dictionary
+		if not route_cell_constraint.is_empty():
+			var canonical := _normalize_rally_route_cell_constraint(route_cell_constraint)
+			if canonical.is_empty() \
+					or not _rally_route_constraint_is_canonical_wire(
+						route_cell_constraint, canonical):
+				continue
+			route_cell_constraint = canonical
+			if not _world_path_obeys_route_cell_constraint(path, canonical):
+				continue
 		characters[id]["position"] = path[0]
-		_start_movement(id, path, ticks)
+		_start_movement(id, path, ticks, route_cell_constraint)
 
 
 func _serialize_cross_level_plans() -> Dictionary:
@@ -1845,9 +2385,38 @@ func _serialize_cross_level_plans() -> Dictionary:
 			var cells: Array = []
 			for cell_v in (segment.get("cells", []) as Array):
 				cells.append(GameEvent.v2i_to_arr(cell_v as Vector2i))
-			encoded_segments.append({"level": int(segment.get("level", 0)), "cells": cells})
+			encoded_segments.append({
+				"level": int(segment.get("level", 0)),
+				"cells": cells,
+				"entry_edge": _serialize_navigation_edge(
+					segment.get("entry_edge", {}) as Dictionary),
+				"entry_traversed": bool(segment.get("entry_traversed", false)),
+				"started": bool(segment.get("started", false)),
+			})
 		result[str(id_v)] = encoded_segments
 	return result
+
+
+func _serialize_navigation_edge(edge: Dictionary) -> Dictionary:
+	if edge.is_empty():
+		return {}
+	var out := edge.duplicate(true)
+	if out.get("from_cell", null) is Vector2i:
+		out["from_cell"] = GameEvent.v2i_to_arr(out["from_cell"] as Vector2i)
+	if out.get("to_cell", null) is Vector2i:
+		out["to_cell"] = GameEvent.v2i_to_arr(out["to_cell"] as Vector2i)
+	return out
+
+
+func _restore_navigation_edge(encoded: Dictionary) -> Dictionary:
+	if encoded.is_empty():
+		return {}
+	var out := encoded.duplicate(true)
+	if out.get("from_cell", null) is Array:
+		out["from_cell"] = GameEvent.arr_to_v2i(out["from_cell"] as Array)
+	if out.get("to_cell", null) is Array:
+		out["to_cell"] = GameEvent.arr_to_v2i(out["to_cell"] as Array)
+	return out
 
 
 func _restore_cross_level_plans(saved: Dictionary) -> void:
@@ -1857,12 +2426,25 @@ func _restore_cross_level_plans(saved: Dictionary) -> void:
 		if not characters.has(id):
 			continue
 		var segments: Array = []
+		var segment_index := 0
 		for segment_v in (saved[id_v] as Array):
 			var encoded := segment_v as Dictionary
 			var cells: Array[Vector2i] = []
 			for cell_v in (encoded.get("cells", []) as Array):
 				cells.append(GameEvent.arr_to_v2i(cell_v))
-			segments.append({"level": int(encoded.get("level", 0)), "cells": cells})
+			# Legacy snapshots predate typed edge phases. Their first saved segment was necessarily
+			# already walking; preserve that one useful execution fact rather than restarting it.
+			var has_phase_flags := encoded.has("started")
+			segments.append({
+				"level": int(encoded.get("level", 0)),
+				"cells": cells,
+				"entry_edge": _restore_navigation_edge(
+					encoded.get("entry_edge", {}) as Dictionary),
+				"entry_traversed": bool(encoded.get("entry_traversed", true)),
+				"started": bool(encoded.get("started", segment_index == 0)) \
+					if has_phase_flags else segment_index == 0,
+			})
+			segment_index += 1
 		if not segments.is_empty():
 			_cross_level_plan[id] = segments
 	if not _cross_level_plan.is_empty() and not character_arrived.is_connected(_on_cross_level_arrival):
@@ -2296,6 +2878,7 @@ func _serialize_resting() -> Dictionary:
 		result[str(char_id_v)] = {
 			"pip_seconds": float(state.get("pip_seconds", REST_SECONDS_PER_PIP)),
 			"remaining_to_tick": maxf(0.0, float(state.get("next_tick", now)) - now),
+			"night_skip_on_tick": bool(state.get("night_skip_on_tick", false)),
 		}
 	return result
 
@@ -2311,6 +2894,7 @@ func _restore_resting(saved: Dictionary) -> void:
 		_resting[char_id] = {
 			"pip_seconds": float(encoded.get("pip_seconds", REST_SECONDS_PER_PIP)),
 			"next_tick": 0.0,
+			"night_skip_on_tick": bool(encoded.get("night_skip_on_tick", false)),
 		}
 		var remaining := float(encoded.get("remaining_to_tick", 1.0))
 		_schedule_rest_tick(char_id, remaining if remaining > 0.0 else 1.0)
@@ -2488,6 +3072,12 @@ func _serialize_external_traversals() -> Dictionary:
 			"progress_start": float(readback.get("progress", 0.0)),
 			"remaining": float(readback.get("remaining", 0.0)),
 			"interrupt_policy": state.get("interrupt_policy", &"locked"),
+			"preserve_cross_level_plan": bool(
+				state.get("preserve_cross_level_plan", false)),
+			"navigation_edge": _serialize_navigation_edge(
+				state.get("navigation_edge", {}) as Dictionary),
+			"presentation_receipt": (state.get(
+				"presentation_receipt", {}) as Dictionary).duplicate(true),
 			"original_start_tick": float(state.get("start_tick", 0.0)),
 			"original_end_tick": float(state.get("end_tick", 0.0)),
 		}
@@ -2522,6 +3112,12 @@ func _restore_external_traversals(saved: Dictionary) -> void:
 			"end_tick": now + remaining,
 			"progress_start": float(state.get("progress_start", 0.0)),
 			"interrupt_policy": state.get("interrupt_policy", &"locked"),
+			"preserve_cross_level_plan": bool(
+				state.get("preserve_cross_level_plan", false)),
+			"navigation_edge": _restore_navigation_edge(
+				state.get("navigation_edge", {}) as Dictionary),
+			"presentation_receipt": (state.get(
+				"presentation_receipt", {}) as Dictionary).duplicate(true),
 		}
 		_apply_external_traversal(payload)
 
@@ -2625,7 +3221,12 @@ func _restore_damage_shields(serialized: Dictionary) -> void:
 ## (one absolute tick per waypoint, monotonic, arrival_ticks[0] == now), the
 ## character follows that exact timing — letting cooperative paths embed waits.
 ## Otherwise timing is uniform constant-speed, identical to the prior behavior.
-func _start_movement(id: String, full_path: Array[Vector3], arrival_ticks: Array[float] = []) -> void:
+func _start_movement(
+		id: String,
+		full_path: Array[Vector3],
+		arrival_ticks: Array[float] = [],
+		route_cell_constraint: Dictionary = {}
+	) -> void:
 	var ch: Dictionary = characters[id]
 	var cum_dist := _compute_cum_dist(full_path)
 	var total_dist: float = cum_dist[cum_dist.size() - 1]
@@ -2648,9 +3249,11 @@ func _start_movement(id: String, full_path: Array[Vector3], arrival_ticks: Array
 			ticks.append(start_tick + d / speed)
 	var final_tick: float = ticks[ticks.size() - 1]
 	var duration := final_tick - start_tick
+	var movement_epoch := _next_movement_epoch
+	_next_movement_epoch += 1
 	var handle := scheduler.schedule_at(
 		final_tick,
-		_on_arrival.bind(id),
+		_on_arrival.bind(id, movement_epoch),
 		"movement_" + id
 	)
 	ch.movement = {
@@ -2661,7 +3264,10 @@ func _start_movement(id: String, full_path: Array[Vector3], arrival_ticks: Array
 		"start_tick": start_tick,
 		"duration": duration,
 		"handle": handle,
+		"epoch": movement_epoch,
 	}
+	if not route_cell_constraint.is_empty():
+		ch.movement["route_cell_constraint"] = route_cell_constraint.duplicate(true)
 	_reserve_path(id, full_path, ticks)
 	movement_started.emit(id)
 	# Resume stamina drain on movement.
@@ -2676,20 +3282,24 @@ func _cancel_movement(id: String) -> void:
 	if not characters.has(id):
 		return
 	var ch: Dictionary = characters[id]
+	var cancelled := ch.movement != null
 	if ch.movement != null:
 		if scheduler:
 			scheduler.cancel(ch.movement.handle)
 		ch.movement = null
+	if cancelled:
+		movement_cancelled.emit(id)
 	_clear_reservations(id)
 	_recompute_all_detection_predictions(id)
 	_recompute_physics_predictions()
 	_recompute_pendulum_predictions()
 
-func _on_arrival(id: String) -> void:
+func _on_arrival(id: String, movement_epoch: int) -> void:
 	if not characters.has(id):
 		return
 	var ch: Dictionary = characters[id]
-	if ch.movement == null:
+	if ch.movement == null \
+			or int((ch.movement as Dictionary).get("epoch", -1)) != movement_epoch:
 		return
 	var dest: Vector3 = ch.movement.path[ch.movement.path.size() - 1]
 	ch.position = dest
@@ -3007,7 +3617,8 @@ func _plan_cooperative(
 		exclude_id: String,
 		level: int = 0,
 		max_nodes: int = _COOP_MAX_NODES,
-		allow_group_start_wait := false
+		allow_group_start_wait := false,
+		allowed_cells: Dictionary = {}
 	) -> Dictionary:
 	var perf_started := PerformanceTrace.begin()
 	_coop_last_nodes = 0
@@ -3015,6 +3626,11 @@ func _plan_cooperative(
 		GridWorld._pf_trace("[coop A*] start %v -> %v (budget %d, for '%s')" % [start, end, max_nodes, exclude_id])
 	if not grid:
 		PerformanceTrace.end(&"nav", &"game_state.plan_cooperative", perf_started, "no_grid", 0)
+		return {}
+	if not allowed_cells.is_empty() \
+			and (not allowed_cells.has(start) or not allowed_cells.has(end)):
+		PerformanceTrace.end(&"nav", &"game_state.plan_cooperative", perf_started,
+			"outside_allowed_cells", 0)
 		return {}
 	if start == end:
 		PerformanceTrace.end(&"nav", &"game_state.plan_cooperative", perf_started, exclude_id, 1)
@@ -3041,7 +3657,8 @@ func _plan_cooperative(
 	# First solve the ordinary 2D problem. Besides being the common fast path,
 	# an empty result is the geometric-unreachability proof that the old BFS
 	# computed separately. This avoids traversing reachable space twice.
-	var spatial_path := grid.find_path(start, end, {}, route_cautious, {}, {}, level)
+	var spatial_path := grid.find_path(
+		start, end, {}, route_cautious, {}, {}, level, allowed_cells)
 	if spatial_path.is_empty():
 		PerformanceTrace.end(&"nav", &"game_state.plan_cooperative", perf_started, "unreachable", 0)
 		return {}
@@ -3122,11 +3739,19 @@ func _plan_cooperative(
 				var ncell_index := ncell.y * grid.width + ncell.x
 				if walkability_mask[ncell_index] == 0:
 					continue
+				if not allowed_cells.is_empty() and not allowed_cells.has(ncell):
+					continue
 				if is_diag:
+					var adjacent_a := Vector2i(ccell.x + dir.x, ccell.y)
+					var adjacent_b := Vector2i(ccell.x, ccell.y + dir.y)
 					var adjacent_a_index := ccell.y * grid.width + ccell.x + dir.x
 					var adjacent_b_index := (ccell.y + dir.y) * grid.width + ccell.x
 					if walkability_mask[adjacent_a_index] == 0 \
 							or walkability_mask[adjacent_b_index] == 0:
+						continue
+					if not allowed_cells.is_empty() \
+							and (not allowed_cells.has(adjacent_a) \
+								or not allowed_cells.has(adjacent_b)):
 						continue
 			# Cautious (safe) routing: never enter a non-recoverable risky cell; a recoverable one
 			# costs extra so the plan detours when a detour exists. Penalty is scaled to time units
@@ -3328,6 +3953,49 @@ func _effective_detection_range(detector_outer: float, target_concealment: int) 
 		return detector_outer * DETECTION_INNER_FACTOR
 	return detector_outer
 
+## Defensive delivery-time truth for a predicted detection. Predictions are intentionally solved
+## ahead of time, but spatial concealment can change at an analytic terrain boundary before the
+## queued event is delivered. Consumers must never treat the old schedule as permission to acquire.
+func is_detection_pair_currently_visible(detector_id: String, target_id: String) -> bool:
+	if not _detection_pair_live_range_valid(detector_id, target_id):
+		return false
+	if not _has_detection_los(detector_id, target_id):
+		return false
+	if is_at_shelter(target_id) or is_dodging(target_id):
+		return false
+	return true
+
+## Read-only diagnostic used by live-scene regressions to prove a prediction was genuinely armed
+## before a spatial state transition. A negative value means no current prediction owns the pair.
+func get_detection_prediction_tick(detector_id: String, target_id: String) -> float:
+	var pair: Dictionary = _detection_active_pairs.get(
+		_detection_pair_tag(detector_id, target_id), {})
+	return float(pair.get("tick", -1.0))
+
+func _detection_pair_live_range_valid(detector_id: String, target_id: String) -> bool:
+	if not characters.has(detector_id) or not characters.has(target_id):
+		return false
+	var detector_stats: Dictionary = characters[detector_id].stats
+	if not bool(detector_stats.get("detection_enabled", true)):
+		return false
+	if detector_stats.has("detection_targets") \
+			and target_id not in _detection_target_ids(detector_id):
+		return false
+	if is_external_traversal_active(detector_id) or is_external_traversal_active(target_id):
+		return false
+	var detector_pos := get_position(detector_id)
+	var target_pos := get_position(target_id)
+	if absf(detector_pos.y - target_pos.y) > DETECTION_VERTICAL_BAND:
+		return false
+	var effective_range := _effective_detection_range(
+		_detector_outer_range(detector_id), get_character_concealment(target_id))
+	if effective_range <= 0.0:
+		return false
+	return Vector2(
+		detector_pos.x - target_pos.x,
+		detector_pos.z - target_pos.z
+	).length() <= effective_range + 0.0001
+
 # --- Predictive Detection ---
 
 ## Detection predictions are scheduled under a PER-PAIR tag, so a single character's move only
@@ -3401,7 +4069,11 @@ func _recompute_all_detection_predictions(only_id: String = "") -> void:
 			var scheduled_detector := detector_id
 			var scheduled_target := target_id
 			var tag := _detection_pair_tag(detector_id, target_id)
-			_detection_active_pairs[tag] = {"a": detector_id, "b": target_id}
+			_detection_active_pairs[tag] = {
+				"a": detector_id,
+				"b": target_id,
+				"tick": detection_tick,
+			}
 			_performance_counters["detection_events_scheduled"] = int(
 				_performance_counters["detection_events_scheduled"]) + 1
 			scheduler.schedule_at(detection_tick,
@@ -3418,6 +4090,11 @@ func _on_detection_event(detector_id: String, target_id: String, recheck_hops: i
 	if not bool(detector_stats.get("detection_enabled", true)):
 		return
 	if detector_stats.has("detection_targets") and target_id not in _detection_target_ids(detector_id):
+		return
+	# The event's scheduled tick proves only what the pair's old movement/concealment plan predicted.
+	# Re-read the live analytic positions and effective range before any acquisition side effect. This
+	# rejects a stale event when the target crossed into Candid/full cover after the event was armed.
+	if not _detection_pair_live_range_valid(detector_id, target_id):
 		return
 	# Line of sight: a wall between detector and target blocks the spot (enemies can't see through walls).
 	# A blocked spot is NOT the last word while the pair is still in motion: the range-crossing event fires
@@ -3468,7 +4145,11 @@ func _arm_detection_los_recheck(detector_id: String, target_id: String, hops: in
 	if not (is_moving(detector_id) or is_moving(target_id)):
 		return
 	var tag := _detection_pair_tag(detector_id, target_id)
-	_detection_active_pairs[tag] = {"a": detector_id, "b": target_id}
+	_detection_active_pairs[tag] = {
+		"a": detector_id,
+		"b": target_id,
+		"tick": float(scheduler.get_current_tick()) + DETECTION_LOS_RECHECK_INTERVAL,
+	}
 	scheduler.schedule_after(DETECTION_LOS_RECHECK_INTERVAL,
 		func(): _recheck_detection_after_los_block(detector_id, target_id, hops + 1),
 		tag)
@@ -3582,6 +4263,123 @@ func _get_movement_segments(id: String) -> Array[Dictionary]:
 		"velocity": Vector3.ZERO,
 	})
 	return segments
+
+## Exact scheduler ticks at which the current committed movement plan touches an axis-aligned XZ
+## region boundary. Spatial terrain systems use these ticks to invalidate derived state at the
+## physical boundary rather than waiting for a polling cadence. This is read-only and deterministic:
+## it solves against the same piecewise-linear movement segments used by predictive detection.
+func predict_axis_aligned_region_boundary_ticks(
+		id: String,
+		center_xz: Vector2,
+		half_size: Vector2
+	) -> Array[float]:
+	var candidates: Array[float] = []
+	if not characters.has(id) or scheduler == null \
+			or half_size.x < 0.0 or half_size.y < 0.0:
+		return candidates
+	var now := float(scheduler.get_current_tick())
+	var min_x := center_xz.x - half_size.x
+	var max_x := center_xz.x + half_size.x
+	var min_z := center_xz.y - half_size.y
+	var max_z := center_xz.y + half_size.y
+	for segment in _get_movement_segments(id):
+		var start_tick := float(segment.get("start_tick", now))
+		var end_tick := float(segment.get("end_tick", now))
+		if end_tick <= now + 0.000001:
+			continue
+		var start_pos := segment.get("start_pos", Vector3.ZERO) as Vector3
+		var velocity := segment.get("velocity", Vector3.ZERO) as Vector3
+		if absf(velocity.x) > 0.000001:
+			for boundary_x in [min_x, max_x]:
+				var tick_x := start_tick + (float(boundary_x) - start_pos.x) / velocity.x
+				if tick_x <= now + 0.000001 or tick_x > end_tick + 0.000001:
+					continue
+				var cross_z := start_pos.z + velocity.z * (tick_x - start_tick)
+				if cross_z >= min_z - 0.0001 and cross_z <= max_z + 0.0001:
+					candidates.append(tick_x)
+		if absf(velocity.z) > 0.000001:
+			for boundary_z in [min_z, max_z]:
+				var tick_z := start_tick + (float(boundary_z) - start_pos.z) / velocity.z
+				if tick_z <= now + 0.000001 or tick_z > end_tick + 0.000001:
+					continue
+				var cross_x := start_pos.x + velocity.x * (tick_z - start_tick)
+				if cross_x >= min_x - 0.0001 and cross_x <= max_x + 0.0001:
+					candidates.append(tick_z)
+	candidates.sort()
+	var unique_ticks: Array[float] = []
+	for candidate in candidates:
+		if unique_ticks.is_empty() \
+				or absf(candidate - unique_ticks[unique_ticks.size() - 1]) > 0.00001:
+			unique_ticks.append(candidate)
+	return unique_ticks
+
+## Exact positive-duration intervals where the current finite movement plan occupies an axis-aligned
+## XZ region. Unlike a point sample, this catches a thin hazard crossed entirely between cadence
+## ticks. The trailing parked segment is intentionally excluded; stationary exposure remains owned
+## by the hazard's fixed cadence.
+func predict_axis_aligned_region_occupancy_intervals(
+		id: String,
+		center_xz: Vector2,
+		half_size: Vector2
+	) -> Array[Dictionary]:
+	var intervals: Array[Dictionary] = []
+	if not characters.has(id) or scheduler == null \
+			or half_size.x < 0.0 or half_size.y < 0.0:
+		return intervals
+	var now := float(scheduler.get_current_tick())
+	var min_x := center_xz.x - half_size.x
+	var max_x := center_xz.x + half_size.x
+	var min_z := center_xz.y - half_size.y
+	var max_z := center_xz.y + half_size.y
+	for segment in _get_movement_segments(id):
+		var segment_start := float(segment.get("start_tick", now))
+		var segment_end := float(segment.get("end_tick", now))
+		# `_get_movement_segments` appends a practically-infinite parked segment. It is not travel.
+		if segment_end >= 1e11 or segment_end <= now + 0.000001:
+			continue
+		var clipped_start := maxf(now, segment_start)
+		var duration := segment_end - clipped_start
+		if duration <= 0.000001:
+			continue
+		var velocity := segment.get("velocity", Vector3.ZERO) as Vector3
+		var origin := (segment.get("start_pos", Vector3.ZERO) as Vector3) \
+			+ velocity * (clipped_start - segment_start)
+		var local_enter := 0.0
+		var local_exit := duration
+		var intersects := true
+		if absf(velocity.x) <= 0.000001:
+			intersects = origin.x >= min_x and origin.x <= max_x
+		else:
+			var x0 := (min_x - origin.x) / velocity.x
+			var x1 := (max_x - origin.x) / velocity.x
+			local_enter = maxf(local_enter, minf(x0, x1))
+			local_exit = minf(local_exit, maxf(x0, x1))
+		if intersects:
+			if absf(velocity.z) <= 0.000001:
+				intersects = origin.z >= min_z and origin.z <= max_z
+			else:
+				var z0 := (min_z - origin.z) / velocity.z
+				var z1 := (max_z - origin.z) / velocity.z
+				local_enter = maxf(local_enter, minf(z0, z1))
+				local_exit = minf(local_exit, maxf(z0, z1))
+		local_enter = maxf(0.0, local_enter)
+		local_exit = minf(duration, local_exit)
+		if not intersects or local_exit <= local_enter + 0.000001:
+			continue
+		var absolute_start := clipped_start + local_enter
+		var absolute_end := clipped_start + local_exit
+		if not intervals.is_empty() \
+				and float(intervals[intervals.size() - 1].get("end_tick", -1.0)) \
+					>= absolute_start - 0.00001:
+			intervals[intervals.size() - 1]["end_tick"] = maxf(
+				float(intervals[intervals.size() - 1].get("end_tick", absolute_end)),
+				absolute_end)
+		else:
+			intervals.append({
+				"start_tick": absolute_start,
+				"end_tick": absolute_end,
+			})
+	return intervals
 
 ## ANALYTIC WAITING — the reason the scheduler architecture exists. Position is a pure function of the
 ## tick, so "when is `id` first within `radius` of `point`?" is SOLVED from its current movement plan, not
@@ -4637,6 +5435,9 @@ const REST_HP_PER_SEC := 1.0          # GDD: rest heals 1 HP/sec
 const REST_STAMINA_PER_SEC := 4.0     # sleep refreshes stamina fast (free — the ATP pays for the HP)
 const REST_SECONDS_PER_PIP := 25.0    # one ATP pip buys 25s of resting (~50 HP night = 2 pips)
 const REVIVE_SECONDS := 10.0          # downed at shelter + conscious ally nearby -> auto revive
+## A shelter revive must remain visibly RESTING for at least one scheduler beat
+## before the all-resting night transition consumes the state at dawn.
+const REVIVE_REST_VISIBLE_SECONDS := 1.0
 const REVIVE_ALLY_RADIUS := 3.0
 const REVIVE_HP := 1.0
 const NIGHT_SKIP_MAX_HEAL := 50.0     # a full night of sleep heals up to this much
@@ -4943,7 +5744,11 @@ func _apply_atomic_restful_night_skip(members: Array[String], next_atp: Dictiona
 	night_skipped.emit(game_day)
 
 
-func _do_rest(char_id: String) -> bool:
+func _do_rest(
+		char_id: String,
+		check_night_skip := true,
+		first_tick_delay := 1.0
+	) -> bool:
 	if not scheduler or not characters.has(char_id):
 		return false
 	if _resting.has(char_id) or is_downed(char_id) or is_knocked_down(char_id) \
@@ -4962,10 +5767,17 @@ func _do_rest(char_id: String) -> bool:
 		return false  # too low to sleep - the Rain World gate
 	_do_stop(char_id)
 	_apply_stat_delta(char_id, "atp", -1.0)
-	_resting[char_id] = {"pip_seconds": REST_SECONDS_PER_PIP, "next_tick": 0.0}
+	_resting[char_id] = {
+		"pip_seconds": REST_SECONDS_PER_PIP,
+		"next_tick": 0.0,
+		# The revive path owns this one-shot flag. Other sleepers must not consume
+		# its visible beat merely because their recurring ticks share the same time.
+		"night_skip_on_tick": not check_night_skip,
+	}
 	rest_started.emit(char_id)
-	_schedule_rest_tick(char_id)
-	_check_night_skip()
+	_schedule_rest_tick(char_id, first_tick_delay)
+	if check_night_skip:
+		_check_night_skip()
 	return true
 
 func command_stop_rest(char_id: String) -> bool:
@@ -5008,7 +5820,14 @@ func _on_rest_tick(char_id: String) -> void:
 			return
 		_apply_stat_delta(char_id, "atp", -1.0)
 		state["pip_seconds"] = REST_SECONDS_PER_PIP
+	var check_night_after_visible_tick := bool(
+		state.get("night_skip_on_tick", false))
+	state["night_skip_on_tick"] = false
 	_resting[char_id] = state
+	if check_night_after_visible_tick:
+		_check_night_skip()
+		if not _resting.has(char_id):
+			return
 	_schedule_rest_tick(char_id)
 
 ## Derived stat mutation for scheduler-driven effects: replay re-derives these from the logged
@@ -5177,8 +5996,11 @@ func _apply_revive(char_id: String) -> void:
 	characters[char_id].stats["hp"] = REVIVE_HP
 	characters[char_id].stats["narrative_available"] = true
 	stat_changed.emit(char_id, "hp", REVIVE_HP)
+	# Auto-rest is the canonical consequence of presence recovery. Start it
+	# before announcing the revive so presentation consumers observe one coherent
+	# "recovered and resting" receipt, then let the first rest tick consider dawn.
+	_do_rest(char_id, false, REVIVE_REST_VISIBLE_SECONDS)
 	character_revived.emit(char_id)
-	_do_rest(char_id)
 
 # --- Night skip --------------------------------------------------------------
 
@@ -6084,7 +6906,10 @@ func _dispatch(kind: StringName, payload: Dictionary) -> void:
 		GameEvent.KIND_SET_LEVEL:
 			set_character_level(String(payload["id"]), int(payload["level"]))
 		GameEvent.KIND_SNAP_POSITION:
-			snap_character_to(String(payload["id"]), GameEvent.arr_to_v3(payload["pos"]))
+			snap_character_to(
+				String(payload["id"]),
+				GameEvent.arr_to_v3(payload["pos"]),
+				bool(payload.get("preserve_y", true)))
 		GameEvent.KIND_MOVE_CROSS_LEVEL:
 			command_move_cross_level(
 				String(payload["id"]),
@@ -6194,9 +7019,16 @@ func _dispatch(kind: StringName, payload: Dictionary) -> void:
 		GameEvent.KIND_RALLY_MEMBERS:
 			# Formation slots were resolved when the command was recorded. Apply those exact
 			# destinations instead of recomputing from the replay's current selection/occupancy.
-			_apply_rally_destinations(
-				payload.get("members", []),
-				GameEvent.arr_to_path(payload.get("destinations", [])))
+			# A present route-cell constraint is part of the authoritative command. Malformed
+			# replay data fails closed instead of silently degrading to an unrestricted Rally.
+			var rally_constraint_v: Variant = payload.get("route_cell_constraint", {})
+			if rally_constraint_v is Dictionary:
+				_apply_rally_destinations(
+					payload.get("members", []),
+					GameEvent.arr_to_path(payload.get("destinations", [])),
+					rally_constraint_v as Dictionary)
+			else:
+				push_warning("Rally event has a malformed route_cell_constraint")
 		GameEvent.KIND_START_SPLIT:
 			start_split(payload.get("members", []))
 		GameEvent.KIND_END_SPLIT:
@@ -6223,6 +7055,14 @@ func _dispatch(kind: StringName, payload: Dictionary) -> void:
 ## Ordered party roster.
 # Lateral spacing between members on a gridless party move (no cell spread available).
 const _PARTY_GRIDLESS_SPACING := 1.0
+## Optional serializable allow-list carried only by a Rally that needs to stay on a mechanism's
+## permanent topology. Ordinary Rally and every later unrelated command omit it.
+const RALLY_ALLOWED_CELLS_SCHEMA := "rally_allowed_cells_v1"
+## Portable, node-free contract published by a visible world surface when a held
+## Rally means "place the whole roster inside this authored region" rather than
+## "spread around this one floor hit".  The region contains exact typed graph
+## vertices; paths into it still use the ordinary full navigation graph.
+const RALLY_FORMATION_REGION_CONTRACT := "rally_formation_region/v1"
 
 var party: Array[String] = []
 ## Scripted split members ignored by party_move.
@@ -6296,14 +7136,96 @@ func party_move_to_pos(pos: Vector3) -> int:
 	return _apply_rally_destinations(members, destinations)
 
 ## Move an explicit ordered set of characters into a deterministic formation around `target`.
-## This deliberately does NOT read or mutate `party`: the caller owns availability/lock filtering,
-## and a rally must not change the current portrait selection. `anchor_id` only reserves the target's
-## centre slot (and selects a ring formation when gridless); it never removes that id from member_ids.
+## This deliberately does NOT read or mutate `party`: the caller owns the intended roster and any
+## presentation-layer hold locks, while this command verifies that every supplied member is currently
+## movement-available. A rally must not change portrait selection. `anchor_id` reserves the target's
+## centre slot (and selects a ring formation when gridless). When that id is also a supplied member,
+## it owns the centre destination and remains in the event; it is never removed from member_ids.
 ##
 ## The command records both the canonical member ids and their fully resolved destinations. Replay
 ## applies those destinations directly, so later selection, occupancy, or formation-rule changes cannot
 ## alter an already-recorded rally.
-func command_rally_members(member_ids: Array, target: Vector3, anchor_id := "") -> int:
+func command_rally_members(
+		member_ids: Array,
+		target: Vector3,
+		anchor_id := "",
+		route_cell_constraint: Dictionary = {}
+	) -> int:
+	var preflight := compute_rally_preflight(
+		member_ids, target, str(anchor_id), route_cell_constraint)
+	# Rally is one transaction, not N best-effort singleton moves. This read-only preflight occurs
+	# before the EventLog boundary and before group preparation releases any old reservation. A busy,
+	# missing, or graph-unreachable member therefore refuses the whole verb with no event and no
+	# movement, instead of silently letting the remaining portraits leave without them.
+	if not bool(preflight.get("accepted", false)):
+		return 0
+	var members: Array[String] = []
+	for raw_id in preflight.get("members", []):
+		members.append(str(raw_id))
+	var destinations: Array[Vector3] = []
+	for destination_v in preflight.get("destinations", []):
+		if destination_v is Vector3:
+			destinations.append(destination_v as Vector3)
+	var canonical_constraint := preflight.get(
+		"route_cell_constraint", {}) as Dictionary
+	var payload := {
+		"members": members.duplicate(),
+		"target": GameEvent.v3_to_arr(target),
+		"anchor_id": str(anchor_id),
+		"destinations": GameEvent.path_to_arr(destinations),
+	}
+	if not canonical_constraint.is_empty():
+		payload["route_cell_constraint"] = canonical_constraint.duplicate(true)
+	_emit(GameEvent.KIND_RALLY_MEMBERS, payload)
+	return _apply_rally_destinations(members, destinations, canonical_constraint)
+
+
+## Commit one visible semantic-region Rally as the same atomic rally_members
+## event used by ordinary ground Rally.  The portable region is validated again
+## at release; only its already-resolved destinations are authoritative during
+## replay, so no scene node or later graph query can change a recorded command.
+func command_rally_members_to_region(
+		member_ids: Array,
+		formation_region: Dictionary
+	) -> int:
+	var preflight := compute_rally_region_preflight(
+		member_ids, formation_region)
+	if not bool(preflight.get("accepted", false)):
+		return 0
+	var members: Array[String] = []
+	for raw_id in preflight.get("members", []):
+		members.append(str(raw_id))
+	var destinations: Array[Vector3] = []
+	for destination_v in preflight.get("destinations", []):
+		if destination_v is Vector3:
+			destinations.append(destination_v as Vector3)
+	var canonical_region := (
+		preflight.get("formation_region", {}) as Dictionary).duplicate(true)
+	var assigned_cells := (
+		preflight.get("assigned_cells", []) as Array).duplicate(true)
+	var target_v: Variant = preflight.get("target", Vector3.INF)
+	var target := target_v as Vector3 \
+		if target_v is Vector3 else Vector3.INF
+	var payload := {
+		"members": members.duplicate(),
+		"target": GameEvent.v3_to_arr(target),
+		"anchor_id": "",
+		"destinations": GameEvent.path_to_arr(destinations),
+		"formation_region": canonical_region,
+		"formation_region_slots": assigned_cells,
+	}
+	_emit(GameEvent.KIND_RALLY_MEMBERS, payload)
+	return _apply_rally_destinations(members, destinations)
+
+
+## Read-only preview for a semantic formation surface.  Unlike
+## route_cell_constraint, this restricts only the final parking slots: members
+## may begin outside and traverse the normal connected graph (including typed
+## ladder edges) to enter the region.
+func compute_rally_region_preflight(
+		member_ids: Array,
+		formation_region: Dictionary
+	) -> Dictionary:
 	var members: Array[String] = []
 	var seen_members: Dictionary = {}
 	for raw_id in member_ids:
@@ -6312,14 +7234,453 @@ func command_rally_members(member_ids: Array, target: Vector3, anchor_id := "") 
 			continue
 		seen_members[id] = true
 		members.append(id)
-	var destinations: Array[Vector3] = compute_rally_destinations(members, target, str(anchor_id))
-	_emit(GameEvent.KIND_RALLY_MEMBERS, {
-		"members": members.duplicate(),
-		"target": GameEvent.v3_to_arr(target),
-		"anchor_id": str(anchor_id),
-		"destinations": GameEvent.path_to_arr(destinations),
-	})
-	return _apply_rally_destinations(members, destinations)
+	if members.is_empty():
+		return _rally_preflight_refusal(
+			members, [], "empty_roster", [], "NO VISIBLE PARTY")
+	var canonical_region := _normalize_rally_formation_region(
+		formation_region)
+	if canonical_region.is_empty():
+		return _rally_preflight_refusal(
+			members, [], "invalid_formation_region", members,
+			"RALLY REGION CHANGED")
+	var cells := canonical_region.get("cells", []) as Array
+	if cells.size() < members.size():
+		var insufficient := _rally_preflight_refusal(
+			members, [], "formation_region_too_small", members,
+			"NO COMPLETE FORMATION")
+		insufficient["formation_region"] = canonical_region.duplicate(true)
+		return insufficient
+	var approach := GameEvent.arr_to_v2i(
+		canonical_region.get("approach_cell", []) as Array)
+	var ordered_cells: Array[Vector2i] = []
+	for cell_v in cells:
+		ordered_cells.append(GameEvent.arr_to_v2i(cell_v as Array))
+	ordered_cells.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
+		var da := a - approach
+		var db := b - approach
+		var distance_a := da.x * da.x + da.y * da.y
+		var distance_b := db.x * db.x + db.y * db.y
+		if distance_a != distance_b:
+			return distance_a < distance_b
+		return a.x < b.x if a.y == b.y else a.y < b.y
+	)
+	var level := int(canonical_region.get("authored_level", -1))
+	var destinations: Array[Vector3] = []
+	var assigned_cells: Array = []
+	for member_index in range(members.size()):
+		var assigned_cell := ordered_cells[member_index]
+		destinations.append(grid.grid_to_world(assigned_cell, level))
+		assigned_cells.append(GameEvent.v2i_to_arr(assigned_cell))
+	var report := _rally_preflight_report_for_destinations(
+		members, destinations)
+	report["members"] = members.duplicate()
+	report["destinations"] = destinations.duplicate()
+	report["formation_region"] = canonical_region.duplicate(true)
+	report["assigned_cells"] = assigned_cells
+	report["target"] = grid.grid_to_world(approach, level)
+	report["anchor_id"] = ""
+	return report
+
+
+## Resolve the visible region's causal centre without exposing scene identity.
+## SelectionController stores this point in its immutable pointer receipt; the
+## command still validates the full typed region at preview and release.
+func get_rally_formation_region_target(
+		formation_region: Dictionary
+	) -> Vector3:
+	var canonical := _normalize_rally_formation_region(formation_region)
+	if canonical.is_empty():
+		return Vector3.INF
+	return grid.grid_to_world(
+		GameEvent.arr_to_v2i(canonical.get("approach_cell", []) as Array),
+		int(canonical.get("authored_level", -1)))
+
+
+## Read-only public preview of the exact atomic Rally transaction. UI controllers use this same
+## result for the held-command READY cue and formation paths; command_rally_members consumes it
+## again at release. That keeps a green cue from advertising an Aster-only route that another
+## visible portrait cannot actually traverse.
+func compute_rally_preflight(
+		member_ids: Array,
+		target: Vector3,
+		anchor_id := "",
+		route_cell_constraint: Dictionary = {}
+	) -> Dictionary:
+	var members: Array[String] = []
+	var seen_members: Dictionary = {}
+	for raw_id in member_ids:
+		var id := str(raw_id)
+		if seen_members.has(id):
+			continue
+		seen_members[id] = true
+		members.append(id)
+	if members.is_empty():
+		return _rally_preflight_refusal(
+			members, [], "empty_roster", [], "NO VISIBLE PARTY")
+	if not target.is_finite():
+		return _rally_preflight_refusal(
+			members, [], "invalid_target", members, "NO RALLY TARGET")
+	var canonical_constraint := _normalize_rally_route_cell_constraint(
+		route_cell_constraint)
+	if not route_cell_constraint.is_empty() and canonical_constraint.is_empty():
+		return _rally_preflight_refusal(
+			members, [], "invalid_route_constraint", members,
+			"ROUTE DATA CHANGED")
+	var destinations: Array[Vector3] = compute_rally_destinations(
+		members, target, str(anchor_id))
+	var report := _rally_preflight_report_for_destinations(
+		members, destinations, canonical_constraint)
+	report["members"] = members.duplicate()
+	report["destinations"] = destinations.duplicate()
+	report["target"] = target
+	report["anchor_id"] = str(anchor_id)
+	report["route_cell_constraint"] = canonical_constraint.duplicate(true)
+	return report
+
+
+## Read-only transaction guard for command_rally_members. Formation destinations have already been
+## resolved, so checking each exact endpoint also guarantees that preview and commit use the same
+## target level and typed ladder/ramp graph. Cooperative reservations are handled during application;
+## this guard rejects permanent graph failures before any participant is prepared or logged.
+func _rally_preflight_accepts(
+		member_ids: Array[String],
+		destinations: Array[Vector3],
+		route_cell_constraint: Dictionary = {}
+	) -> bool:
+	return bool(_rally_preflight_report_for_destinations(
+		member_ids, destinations, route_cell_constraint).get("accepted", false))
+
+
+func _rally_preflight_report_for_destinations(
+		member_ids: Array[String],
+		destinations: Array[Vector3],
+		route_cell_constraint: Dictionary = {}
+	) -> Dictionary:
+	if member_ids.is_empty() or member_ids.size() != destinations.size():
+		return _rally_preflight_refusal(
+			member_ids, destinations, "formation_mismatch", member_ids,
+			"NO COMPLETE FORMATION")
+	var allowed_cells: Dictionary = {}
+	var constrained_level := -1
+	if not route_cell_constraint.is_empty():
+		var canonical := _normalize_rally_route_cell_constraint(route_cell_constraint)
+		# Application/replay accepts only the canonical sorted, de-duplicated wire form.
+		if canonical.is_empty() \
+				or not _rally_route_constraint_is_canonical_wire(
+					route_cell_constraint, canonical):
+			return _rally_preflight_refusal(
+				member_ids, destinations, "invalid_route_constraint", member_ids,
+				"ROUTE DATA CHANGED")
+		allowed_cells = _rally_route_allowed_cell_set(canonical)
+		constrained_level = int(canonical.get("level", -1))
+		if grid == null or allowed_cells.is_empty():
+			return _rally_preflight_refusal(
+				member_ids, destinations, "invalid_route_constraint", member_ids,
+				"ROUTE DATA CHANGED")
+	# The accepted report owns the exact render paths as well as the destinations.
+	# Selection must never run a second, independently interpreted route query and
+	# downgrade an accepted atomic command to BLOCKED (or advertise READY for a
+	# route different from the one that release validates).
+	var preview_paths: Array = []
+	for member_index in range(member_ids.size()):
+		var id := str(member_ids[member_index])
+		var destination: Vector3 = destinations[member_index]
+		if not characters.has(id):
+			return _rally_preflight_refusal(
+				member_ids, destinations, "missing_member", [id],
+				"%s IS NOT PRESENT" % id.to_upper())
+		if not destination.is_finite():
+			return _rally_preflight_refusal(
+				member_ids, destinations, "invalid_destination", [id],
+				"NO FORMATION SLOT FOR %s" % id.to_upper())
+		if not can_accept_move_command(id):
+			return _rally_preflight_refusal(
+				member_ids, destinations, "member_unavailable", [id],
+				"%s IS NOT READY" % id.to_upper())
+		if grid != null:
+			if not allowed_cells.is_empty():
+				# Validate the occupied cell before the ordinary nearest-walkable start snap.
+				# A body outside the mechanism's topology may not glide onto it for free.
+				var start_cell := grid.world_to_grid(get_position(id))
+				var destination_cell := grid.world_to_grid(destination)
+				if get_character_level(id) != constrained_level \
+						or grid.level_for_y(destination.y) != constrained_level \
+						or not allowed_cells.has(start_cell) \
+						or not allowed_cells.has(destination_cell) \
+						or not grid.is_walkable(
+							start_cell.x, start_cell.y, {}, {}, constrained_level) \
+						or not grid.is_walkable(
+							destination_cell.x, destination_cell.y, {}, {}, constrained_level):
+					return _rally_preflight_refusal(
+						member_ids, destinations, "constrained_endpoint_invalid", [id],
+						"%s IS OUTSIDE THE ROUTE" % id.to_upper())
+				var constrained_path := grid.find_path(
+					start_cell, destination_cell, {}, route_cautious, {}, {},
+					constrained_level, allowed_cells)
+				if constrained_path.is_empty():
+					return _rally_preflight_refusal(
+						member_ids, destinations, "route_missing", [id],
+						"NO COMPLETE ROUTE FOR %s" % id.to_upper())
+				var constrained_preview: Array[Vector3] = [get_position(id)]
+				constrained_preview.append_array(constrained_path)
+				preview_paths.append(constrained_preview)
+			else:
+				var navigation := compute_preview_navigation(id, destination)
+				if navigation.is_empty():
+					return _rally_preflight_refusal(
+						member_ids, destinations, "route_missing", [id],
+						"NO COMPLETE ROUTE FOR %s" % id.to_upper())
+				var member_preview: Array[Vector3] = []
+				for point_v in (navigation.get("path", []) as Array):
+					if point_v is Vector3:
+						member_preview.append(point_v as Vector3)
+				if member_preview.size() < 2:
+					return _rally_preflight_refusal(
+						member_ids, destinations, "route_missing", [id],
+						"NO COMPLETE ROUTE FOR %s" % id.to_upper())
+				preview_paths.append(member_preview)
+		else:
+			preview_paths.append([get_position(id), destination])
+	return {
+		"accepted": true,
+		"reason_code": "accepted",
+		"blocked_members": [],
+		"reason": "",
+		"paths": preview_paths,
+	}
+
+
+func _rally_preflight_refusal(
+		member_ids: Array,
+		destinations: Array,
+		reason_code: String,
+		blocked_members: Array,
+		reason: String
+	) -> Dictionary:
+	var members: Array[String] = []
+	for raw_id in member_ids:
+		members.append(str(raw_id))
+	var blocked: Array[String] = []
+	for raw_id in blocked_members:
+		blocked.append(str(raw_id))
+	return {
+		"accepted": false,
+		"members": members,
+		"destinations": destinations.duplicate(),
+		"reason_code": reason_code,
+		"blocked_members": blocked,
+		"reason": reason,
+		"paths": [],
+		"route_cell_constraint": {},
+	}
+
+
+## Canonical JSON-safe validation for a surface-published formation region.
+## Every accepted slot is an exact walkable vertex on one authored level, the
+## approach vertex belongs to that set, and all slots are mutually connected
+## inside the set.  A stale graph revision fails closed instead of letting the
+## pointer silently fall through to an approximate ground spread.
+func _normalize_rally_formation_region(raw: Dictionary) -> Dictionary:
+	if grid == null or str(raw.get("contract_id", "")) \
+			!= RALLY_FORMATION_REGION_CONTRACT:
+		return {}
+	var semantic_id := str(raw.get("semantic_id", "")).strip_edges()
+	var level_v: Variant = raw.get("authored_level", null)
+	var revision_v: Variant = raw.get("graph_revision", null)
+	var approach_v: Variant = raw.get("approach_cell", null)
+	var cells_v: Variant = raw.get("cells", null)
+	if semantic_id.is_empty() \
+			or not _rally_constraint_integral_number(level_v) \
+			or not _rally_constraint_integral_number(revision_v) \
+			or not (approach_v is Array) \
+			or (approach_v as Array).size() != 2 \
+			or not (cells_v is Array) or (cells_v as Array).is_empty():
+		return {}
+	var level := int(level_v)
+	if level < 0 or level >= grid.level_count:
+		return {}
+	var current_revision := int(grid.get_path_walkability_revision()) \
+		if grid.has_method("get_path_walkability_revision") else 0
+	if int(revision_v) != current_revision:
+		return {}
+	for coordinate_v in approach_v as Array:
+		if not _rally_constraint_integral_number(coordinate_v):
+			return {}
+	var approach := GameEvent.arr_to_v2i(approach_v as Array)
+	var cells: Array[Vector2i] = []
+	var seen: Dictionary = {}
+	for cell_v in cells_v as Array:
+		if not (cell_v is Array) or (cell_v as Array).size() != 2:
+			return {}
+		for coordinate_v in cell_v as Array:
+			if not _rally_constraint_integral_number(coordinate_v):
+				return {}
+		var cell := GameEvent.arr_to_v2i(cell_v as Array)
+		if seen.has(cell) or not grid.is_in_bounds(cell.x, cell.y) \
+				or not grid.is_walkable(cell.x, cell.y, {}, {}, level):
+			return {}
+		seen[cell] = true
+		cells.append(cell)
+	if not seen.has(approach):
+		return {}
+	cells.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
+		return a.x < b.x if a.y == b.y else a.y < b.y
+	)
+	var slot_policy := str(raw.get("slot_policy", "connected_region"))
+	if slot_policy not in ["connected_region", "exact_hide_slots"]:
+		return {}
+	# Ordinary regions represent connected parking points, not a loose radius.
+	# Exact hide slots are intentionally different: each vertex is the bodily
+	# interior of a distinct Capbage and routes may cross the normal graph between
+	# plants. They remain unique, walkable, revision-bound final destinations.
+	var allowed_cells: Dictionary = {}
+	for cell in cells:
+		allowed_cells[cell] = true
+	if slot_policy == "connected_region":
+		for cell in cells:
+			if cell == approach:
+				continue
+			var local_path := grid.find_path(
+				approach, cell, {}, route_cautious, {}, {}, level, allowed_cells)
+			if local_path.is_empty():
+				return {}
+	var encoded_cells: Array = []
+	for cell in cells:
+		encoded_cells.append(GameEvent.v2i_to_arr(cell))
+	return {
+		"contract_id": RALLY_FORMATION_REGION_CONTRACT,
+		"semantic_id": semantic_id,
+		"label": str(raw.get("label", "RALLY PARTY HERE")).strip_edges(),
+		"slot_policy": slot_policy,
+		"authored_level": level,
+		"graph_revision": current_revision,
+		"approach_cell": GameEvent.v2i_to_arr(approach),
+		"cells": encoded_cells,
+	}
+
+
+## Canonicalize the optional Rally route allow-list to deterministic JSON-safe data. Callers may
+## supply cells in any order; EventLog and replay see one sorted/deduplicated representation.
+func _normalize_rally_route_cell_constraint(raw: Dictionary) -> Dictionary:
+	if raw.is_empty():
+		return {}
+	if str(raw.get("schema", "")) != RALLY_ALLOWED_CELLS_SCHEMA or grid == null:
+		return {}
+	var level_v: Variant = raw.get("level", null)
+	var cells_v: Variant = raw.get("cells", null)
+	if not _rally_constraint_integral_number(level_v) or not cells_v is Array:
+		return {}
+	var level := int(level_v)
+	if level < 0 or level >= grid.level_count or (cells_v as Array).is_empty():
+		return {}
+	var cells: Array[Vector2i] = []
+	var seen: Dictionary = {}
+	for cell_v in cells_v as Array:
+		if not cell_v is Array or (cell_v as Array).size() != 2:
+			return {}
+		var x_v: Variant = (cell_v as Array)[0]
+		var z_v: Variant = (cell_v as Array)[1]
+		if not _rally_constraint_integral_number(x_v) \
+				or not _rally_constraint_integral_number(z_v):
+			return {}
+		var cell := Vector2i(int(x_v), int(z_v))
+		if not grid.is_in_bounds(cell.x, cell.y):
+			return {}
+		if not seen.has(cell):
+			seen[cell] = true
+			cells.append(cell)
+	cells.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
+		return a.x < b.x if a.y == b.y else a.y < b.y)
+	var encoded_cells: Array = []
+	for cell in cells:
+		encoded_cells.append(GameEvent.v2i_to_arr(cell))
+	return {
+		"schema": RALLY_ALLOWED_CELLS_SCHEMA,
+		"level": level,
+		"cells": encoded_cells,
+	}
+
+
+func _rally_constraint_integral_number(value: Variant) -> bool:
+	return typeof(value) in [TYPE_INT, TYPE_FLOAT] \
+		and is_finite(float(value)) \
+		and float(value) == floorf(float(value))
+
+
+## JSON decodes numeric fields as floats on some paths. Preserve strict canonical ordering,
+## duplicate elimination, key shape, and integral values without rejecting a valid 1 -> 1.0
+## round trip solely for its Variant numeric representation.
+func _rally_route_constraint_is_canonical_wire(
+		raw: Dictionary,
+		canonical: Dictionary
+	) -> bool:
+	if raw.size() != 3 or not raw.has("schema") or not raw.has("level") \
+			or not raw.has("cells"):
+		return false
+	if str(raw.get("schema", "")) != str(canonical.get("schema", "")) \
+			or not _rally_constraint_integral_number(raw.get("level", null)) \
+			or int(raw.get("level", -1)) != int(canonical.get("level", -2)):
+		return false
+	var raw_cells_v: Variant = raw.get("cells", null)
+	var canonical_cells := canonical.get("cells", []) as Array
+	if not raw_cells_v is Array or (raw_cells_v as Array).size() != canonical_cells.size():
+		return false
+	for cell_index in range(canonical_cells.size()):
+		var raw_cell_v: Variant = (raw_cells_v as Array)[cell_index]
+		var canonical_cell := canonical_cells[cell_index] as Array
+		if not raw_cell_v is Array or (raw_cell_v as Array).size() != 2:
+			return false
+		var raw_x: Variant = (raw_cell_v as Array)[0]
+		var raw_z: Variant = (raw_cell_v as Array)[1]
+		if not _rally_constraint_integral_number(raw_x) \
+				or not _rally_constraint_integral_number(raw_z) \
+				or int(raw_x) != int(canonical_cell[0]) \
+				or int(raw_z) != int(canonical_cell[1]):
+			return false
+	return true
+
+
+func _rally_route_allowed_cell_set(canonical_constraint: Dictionary) -> Dictionary:
+	var allowed: Dictionary = {}
+	for cell_v in canonical_constraint.get("cells", []) as Array:
+		if cell_v is Array and (cell_v as Array).size() == 2:
+			allowed[GameEvent.arr_to_v2i(cell_v as Array)] = true
+	return allowed
+
+
+## Validate the exact geometry a planner is about to commit. Consecutive cell centres may be
+## cardinal, diagonal, or repeated for a wait. A diagonal's two orthogonal supercover supports are
+## part of the route even though they are not emitted as waypoints, so both must be allowed.
+func _world_path_obeys_route_cell_constraint(
+		world_path: Array,
+		canonical_constraint: Dictionary
+	) -> bool:
+	if canonical_constraint.is_empty():
+		return true
+	if grid == null or world_path.is_empty():
+		return false
+	var allowed_cells := _rally_route_allowed_cell_set(canonical_constraint)
+	var constrained_level := int(canonical_constraint.get("level", -1))
+	var previous_cell := Vector2i.ZERO
+	var has_previous := false
+	for point_v in world_path:
+		if not point_v is Vector3 or not (point_v as Vector3).is_finite() \
+				or grid.level_for_y((point_v as Vector3).y) != constrained_level:
+			return false
+		var cell := grid.world_to_grid(point_v as Vector3)
+		if not allowed_cells.has(cell):
+			return false
+		if has_previous:
+			var delta := cell - previous_cell
+			if absi(delta.x) > 1 or absi(delta.y) > 1:
+				return false
+			if delta.x != 0 and delta.y != 0:
+				if not allowed_cells.has(previous_cell + Vector2i(delta.x, 0)) \
+						or not allowed_cells.has(previous_cell + Vector2i(0, delta.y)):
+					return false
+		previous_cell = cell
+		has_previous = true
+	return true
 
 ## Pure/read-only formation resolver shared by command previews. Returns one destination per supplied
 ## id, in the same order, without filtering or de-duplicating the caller's list.
@@ -6327,39 +7688,63 @@ func compute_rally_destinations(member_ids: Array, target: Vector3, anchor_id :=
 	var perf_started := PerformanceTrace.begin()
 	var destinations: Array[Vector3] = []
 	var count := member_ids.size()
+	var anchor_member := str(anchor_id)
+	var has_member_anchor := anchor_member != "" and member_ids.has(anchor_member)
 	if count == 0:
 		PerformanceTrace.end(&"nav", &"game_state.compute_rally_destinations", perf_started, "empty", 0)
 		return destinations
 	if grid != null:
 		var target_cell := grid.world_to_grid(target)
+		var target_level := grid.level_for_y(target.y)
+		# A formation is a connected set of graph vertices, not merely N cells
+		# that each happen to be walkable. Resolve one walkable component anchor
+		# beneath the pointer, then keep every lateral slot in that same component.
+		# Without this guard a ladder-edge Rally could place its second portrait on
+		# a nearby but disconnected platform and reject the whole atomic command.
+		var component_anchor := _nearest_free_cell(
+			target_cell, {}, route_cautious, target_level)
 		var taken: Dictionary = {}
-		if str(anchor_id) != "":
+		if anchor_member != "":
 			taken[target_cell] = true
-		var lateral_step := Vector2i.ZERO if str(anchor_id) != "" \
+		var lateral_step := Vector2i.ZERO if anchor_member != "" \
 			else _party_formation_lateral_step(member_ids, target_cell)
+		var surrounding_index := 0
 		for member_index in range(member_ids.size()):
-			var raw_id = member_ids[member_index]
-			var id := str(raw_id)
-			var level := get_character_level(id) if characters.has(id) else grid.level_for_y(target.y)
+			var member_id := str(member_ids[member_index])
+			if has_member_anchor and member_id == anchor_member:
+				# The release point can acquire a party body while the pointer is held.
+				# Keep that body in the transaction and at its visible centre.
+				destinations.append(target)
+				continue
 			# A cautious rally must keep every formation pill out of a known hazard,
 			# not merely route the centre member around it.  The old resolver chose
 			# adjacent walkable cells without consulting risk, so a safe target on
 			# the edge of an iron field could place the second unit inside the field.
 			var preferred_cell := target_cell + lateral_step \
-				* _party_formation_lateral_offset(member_index)
-			var cell := _nearest_free_cell(preferred_cell, taken, route_cautious, level)
+				* _party_formation_lateral_offset(surrounding_index)
+			var cell := _nearest_free_cell(
+				preferred_cell, taken, route_cautious, target_level,
+				component_anchor, true)
 			taken[cell] = true
-			destinations.append(grid.grid_to_world(cell, level))
+			destinations.append(grid.grid_to_world(cell, target_level))
+			surrounding_index += 1
 		PerformanceTrace.end(&"nav", &"game_state.compute_rally_destinations", perf_started, str(anchor_id), count)
 		return destinations
 
-	if str(anchor_id) != "":
-		# With a character at the centre, every mover gets a genuine surrounding slot — including
-		# the one-member case, which a centred lateral fan would otherwise stack onto the anchor.
-		for i in range(count):
-			var angle := -PI * 0.5 + TAU * float(i) / float(count)
+	if anchor_member != "":
+		var surrounding_count := count - 1 if has_member_anchor else count
+		var surrounding_index := 0
+		# An external anchor reserves the centre for another body. A member anchor owns it and only
+		# the remaining Rally members occupy the surrounding ring.
+		for raw_id in member_ids:
+			if has_member_anchor and str(raw_id) == anchor_member:
+				destinations.append(target)
+				continue
+			var angle := -PI * 0.5 + TAU * float(surrounding_index) \
+				/ float(maxi(1, surrounding_count))
 			var offset := Vector3(cos(angle), 0.0, sin(angle)) * _PARTY_GRIDLESS_SPACING
 			destinations.append(target + offset)
+			surrounding_index += 1
 	else:
 		for i in range(count):
 			var lateral := (float(i) - float(count - 1) / 2.0) * _PARTY_GRIDLESS_SPACING
@@ -6368,9 +7753,20 @@ func compute_rally_destinations(member_ids: Array, target: Vector3, anchor_id :=
 	return destinations
 
 ## Replay entry point: destinations are already final data-space positions and must not be spread again.
-func _apply_rally_destinations(member_ids: Array, destinations: Array[Vector3]) -> int:
+func _apply_rally_destinations(
+		member_ids: Array,
+		destinations: Array[Vector3],
+		route_cell_constraint: Dictionary = {}
+	) -> int:
 	if member_ids.size() != destinations.size():
 		push_warning("Rally event has %d members but %d destinations" % [member_ids.size(), destinations.size()])
+		return 0
+	var canonical_constraint := _normalize_rally_route_cell_constraint(route_cell_constraint)
+	if not route_cell_constraint.is_empty() \
+			and (canonical_constraint.is_empty() \
+				or not _rally_route_constraint_is_canonical_wire(
+					route_cell_constraint, canonical_constraint)):
+		push_warning("Rally event has a malformed or noncanonical route_cell_constraint")
 		return 0
 	# Treat malformed or legacy duplicate-member payloads exactly like the canonical
 	# command boundary: the first occurrence wins. Planning the same character twice
@@ -6388,6 +7784,12 @@ func _apply_rally_destinations(member_ids: Array, destinations: Array[Vector3]) 
 		unique_destinations.append(destinations[i])
 	member_ids = unique_members
 	destinations = unique_destinations
+	# Revalidate a constrained event before cancelling a single old path/reservation. This protects
+	# replay and direct application from partial movement if topology changed or the payload was forged.
+	if not canonical_constraint.is_empty() \
+			and not _rally_preflight_accepts(
+				unique_members, unique_destinations, canonical_constraint):
+		return 0
 	# A Rally is one simultaneous intent. Retire every participating member's OLD
 	# path/parked reservation before planning the first new route; otherwise that
 	# first planner treats siblings who are about to leave as permanent blockers.
@@ -6439,7 +7841,8 @@ func _apply_rally_destinations(member_ids: Array, destinations: Array[Vector3]) 
 			_prepare_explicit_move(id)
 		var is_prepared := prepared.has(id)
 		var allow_start_wait := is_prepared and planned_prepared > 0
-		if _do_move_to_pos(id, destinations[i], allow_start_wait, is_prepared):
+		if _do_move_to_pos(
+				id, destinations[i], allow_start_wait, is_prepared, canonical_constraint):
 			moved_count += 1
 			if is_prepared:
 				planned_prepared += 1
@@ -6501,12 +7904,14 @@ func _prepare_group_replan(member_ids: Array) -> Dictionary:
 func _assign_party_cells(members: Array, target: Vector2i) -> Dictionary:
 	var assigned: Dictionary = {}
 	var taken: Dictionary = {}
+	var component_anchor := _nearest_free_cell(target, taken)
 	var lateral_step := _party_formation_lateral_step(members, target)
 	for member_index in range(members.size()):
 		var id = members[member_index]
 		var preferred_cell := target + lateral_step \
 			* _party_formation_lateral_offset(member_index)
-		var cell := _nearest_free_cell(preferred_cell, taken)
+		var cell := _nearest_free_cell(
+			preferred_cell, taken, false, 0, component_anchor, true)
 		assigned[id] = cell
 		taken[cell] = true
 	return assigned
@@ -6545,9 +7950,17 @@ func _party_formation_lateral_offset(member_index: int) -> int:
 
 ## Outward ring search from target for the closest walkable cell not already
 ## taken by another member. Deterministic tie-break by distance then coordinate.
-func _nearest_free_cell(target: Vector2i, taken: Dictionary, avoid_risk := false, level := 0) -> Vector2i:
-	if grid.is_in_bounds(target.x, target.y) and grid.is_walkable(target.x, target.y, {}, {}, level) \
-			and not taken.has(target) and (not avoid_risk or not grid.is_cell_risky(target)):
+func _nearest_free_cell(
+		target: Vector2i,
+		taken: Dictionary,
+		avoid_risk := false,
+		level := 0,
+		component_anchor := Vector2i.ZERO,
+		require_component := false
+	) -> Vector2i:
+	if _formation_cell_is_eligible(
+			target, taken, avoid_risk, level,
+			component_anchor, require_component):
 		return target
 	# Search the whole reachable extent (capped) so a large party on a big map
 	# never falsely stacks just because a free cell sits past a fixed radius.
@@ -6560,8 +7973,9 @@ func _nearest_free_cell(target: Vector2i, taken: Dictionary, avoid_risk := false
 				if maxi(absi(dx), absi(dz)) != radius:
 					continue
 				var c := target + Vector2i(dx, dz)
-				if taken.has(c) or not grid.is_in_bounds(c.x, c.y) or not grid.is_walkable(c.x, c.y, {}, {}, level) \
-						or (avoid_risk and grid.is_cell_risky(c)):
+				if not _formation_cell_is_eligible(
+						c, taken, avoid_risk, level,
+						component_anchor, require_component):
 					continue
 				if not found or _ring_closer(c, best, target):
 					best = c
@@ -6571,6 +7985,28 @@ func _nearest_free_cell(target: Vector2i, taken: Dictionary, avoid_risk := false
 	# No free cell anywhere in range (fewer walkable cells than members) —
 	# stacking on the target is then physically unavoidable.
 	return target
+
+
+func _formation_cell_is_eligible(
+		cell: Vector2i,
+		taken: Dictionary,
+		avoid_risk: bool,
+		level: int,
+		component_anchor: Vector2i,
+		require_component: bool
+	) -> bool:
+	if taken.has(cell) or not grid.is_in_bounds(cell.x, cell.y) \
+			or not grid.is_walkable(cell.x, cell.y, {}, {}, level) \
+			or (avoid_risk and grid.is_cell_risky(cell)):
+		return false
+	if not require_component or cell == component_anchor:
+		return true
+	if not grid.is_in_bounds(component_anchor.x, component_anchor.y) \
+			or not grid.is_walkable(
+				component_anchor.x, component_anchor.y, {}, {}, level):
+		return false
+	return not grid.find_path(
+		component_anchor, cell, {}, avoid_risk, {}, {}, level).is_empty()
 
 func _ring_closer(c: Vector2i, best: Vector2i, target: Vector2i) -> bool:
 	var dc := c - target
@@ -6601,7 +8037,8 @@ func _do_move_to_cell(
 		id: String,
 		cell: Vector2i,
 		allow_group_start_wait := false,
-		already_prepared := false
+		already_prepared := false,
+		route_cell_constraint: Dictionary = {}
 	) -> bool:
 	if not grid or not can_accept_move_command(id):
 		return false
@@ -6614,7 +8051,8 @@ func _do_move_to_cell(
 	characters[id].position = current_pos
 	characters[id].grid_cell = current_cell
 	var moved := _begin_cooperative_move(
-		id, current_pos, current_cell, cell, speed, allow_group_start_wait)
+		id, current_pos, current_cell, cell, speed, allow_group_start_wait,
+		route_cell_constraint)
 	if not already_prepared:
 		end_detection_update_batch()
 	return moved
@@ -6644,10 +8082,28 @@ func _begin_cooperative_move(
 		current_cell: Vector2i,
 		dest_cell: Vector2i,
 		speed: float,
-		allow_group_start_wait := false
+		allow_group_start_wait := false,
+		route_cell_constraint: Dictionary = {}
 	) -> bool:
 	var perf_started := PerformanceTrace.begin()
 	var level := get_character_level(id)  # keep waypoints on the character's current floor
+	var allowed_cells: Dictionary = {}
+	if not route_cell_constraint.is_empty():
+		var canonical := _normalize_rally_route_cell_constraint(route_cell_constraint)
+		if canonical.is_empty() \
+				or not _rally_route_constraint_is_canonical_wire(
+					route_cell_constraint, canonical) \
+				or int(canonical.get("level", -1)) != level:
+			PerformanceTrace.end(&"nav", &"game_state.begin_move", perf_started, "bad_constraint", 0)
+			return false
+		route_cell_constraint = canonical
+		allowed_cells = _rally_route_allowed_cell_set(canonical)
+		# Check the raw occupied start before nearest_walkable_cell can repair it.
+		if not allowed_cells.has(current_cell) or not allowed_cells.has(dest_cell) \
+				or not grid.is_walkable(current_cell.x, current_cell.y, {}, {}, level) \
+				or not grid.is_walkable(dest_cell.x, dest_cell.y, {}, {}, level):
+			PerformanceTrace.end(&"nav", &"game_state.begin_move", perf_started, "outside_constraint", 0)
+			return false
 	# A character parked off the carved footprint still routes: snap the START to the nearest walkable
 	# cell (the glide from current_pos to the first cell center walks it onto the mesh).
 	current_cell = grid.nearest_walkable_cell(current_cell, level)
@@ -6656,13 +8112,19 @@ func _begin_cooperative_move(
 		# snap the destination too — a plain A* to an unwalkable cell scans the whole reachable
 		# region before failing (the residual spike)
 		var dest_snapped := grid.nearest_walkable_cell(dest_cell, level)
-		var plain := grid.find_path(current_cell, dest_snapped, {}, route_cautious, {}, {}, level)
+		var plain := grid.find_path(
+			current_cell, dest_snapped, {}, route_cautious, {}, {}, level, allowed_cells)
 		if plain.is_empty():
 			PerformanceTrace.end(&"nav", &"game_state.begin_move", perf_started, id, 0)
 			return false
 		var plain_full: Array[Vector3] = [current_pos]
 		plain_full.append_array(plain)
-		_start_movement(id, plain_full)
+		if not _world_path_obeys_route_cell_constraint(
+				plain_full, route_cell_constraint):
+			PerformanceTrace.end(&"nav", &"game_state.begin_move", perf_started,
+				"constraint_path_mismatch", 0)
+			return false
+		_start_movement(id, plain_full, [], route_cell_constraint)
 		PerformanceTrace.end(&"nav", &"game_state.begin_move", perf_started, id, plain_full.size())
 		return true
 	_performance_counters["cooperative_plans"] = int(_performance_counters["cooperative_plans"]) + 1
@@ -6674,20 +8136,32 @@ func _begin_cooperative_move(
 		id,
 		level,
 		_COOP_MAX_NODES,
-		allow_group_start_wait)
+		allow_group_start_wait,
+		allowed_cells)
 	if not plan.is_empty() and not plan.cells.is_empty():
 		var built := _build_timed_world_path(current_pos, plan.cells, plan.ticks, speed, level)
-		_start_movement(id, built.path, built.ticks)
+		if not _world_path_obeys_route_cell_constraint(
+				built.path, route_cell_constraint):
+			PerformanceTrace.end(&"nav", &"game_state.begin_move", perf_started,
+				"constraint_path_mismatch", 0)
+			return false
+		_start_movement(id, built.path, built.ticks, route_cell_constraint)
 		PerformanceTrace.end(&"nav", &"game_state.begin_move", perf_started, id, built.path.size())
 		return true
-	var path := grid.find_path(current_cell, dest_cell, {}, route_cautious, {}, {}, level)
+	var path := grid.find_path(
+		current_cell, dest_cell, {}, route_cautious, {}, {}, level, allowed_cells)
 	if path.is_empty():
 		_reserve_parked(id, current_cell)
 		PerformanceTrace.end(&"nav", &"game_state.begin_move", perf_started, id, 0)
 		return false
 	var full_path: Array[Vector3] = [current_pos]
 	full_path.append_array(path)
-	_start_movement(id, full_path)
+	if not _world_path_obeys_route_cell_constraint(full_path, route_cell_constraint):
+		_reserve_parked(id, current_cell)
+		PerformanceTrace.end(&"nav", &"game_state.begin_move", perf_started,
+			"constraint_path_mismatch", 0)
+		return false
+	_start_movement(id, full_path, [], route_cell_constraint)
 	PerformanceTrace.end(&"nav", &"game_state.begin_move", perf_started, id, full_path.size())
 	return true
 

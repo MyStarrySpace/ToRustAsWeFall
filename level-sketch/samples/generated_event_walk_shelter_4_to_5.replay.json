@@ -3,221 +3,111 @@
 	"grid": {
 		"cell_world_size": 2.0,
 		"origin": [
-			0.0,
-			-6.40000009536743
+			1.5,
+			-13.5
 		]
 	},
 	"level": {
 		"bounds_cells": {
-			"height": 4,
+			"height": 17,
 			"max": [
-				54,
-				3
+				121,
+				16
 			],
 			"min": [
 				0,
 				0
 			],
-			"width": 55
+			"width": 122
 		},
 		"content": [
 			{
 				"category": "flora",
 				"cell": [
-					-1,
-					3
-				],
-				"kind": "flure",
-				"level": 0,
-				"support": "implemented"
-			},
-			{
-				"category": "structures",
-				"cell": [
-					0,
-					4
-				],
-				"kind": "barrier",
-				"level": 0,
-				"support": "implemented"
-			},
-			{
-				"category": "flora",
-				"cell": [
-					5,
-					1
-				],
-				"kind": "flure",
-				"level": 0,
-				"support": "implemented"
-			},
-			{
-				"category": "structures",
-				"cell": [
-					6,
-					2
-				],
-				"kind": "forage_cache",
-				"level": 0,
-				"support": "implemented"
-			},
-			{
-				"category": "flora",
-				"cell": [
-					11,
-					1
+					15,
+					7
 				],
 				"kind": "hushbloom",
 				"level": 1,
 				"support": "implemented"
 			},
 			{
-				"category": "structures",
+				"category": "flora",
 				"cell": [
-					12,
-					2
+					22,
+					-1
 				],
-				"kind": "terminal",
-				"level": 1,
-				"support": "implemented"
-			},
-			{
-				"category": "structures",
-				"cell": [
-					18,
-					0
-				],
-				"kind": "pipe",
+				"kind": "scarpet",
 				"level": 0,
 				"support": "implemented"
 			},
 			{
-				"category": "structures",
-				"cell": [
-					24,
-					2
-				],
-				"kind": "barrier",
-				"level": 1,
-				"support": "implemented"
-			},
-			{
 				"category": "flora",
-				"cell": [
-					29,
-					3
-				],
-				"kind": "scarpet",
-				"level": 2,
-				"support": "implemented"
-			},
-			{
-				"category": "enemies",
-				"cell": [
-					31,
-					3
-				],
-				"kind": "sapscraps",
-				"level": 2,
-				"support": "implemented"
-			},
-			{
-				"category": "structures",
 				"cell": [
 					30,
-					4
-				],
-				"kind": "barrier",
-				"level": 2,
-				"support": "implemented"
-			},
-			{
-				"category": "flora",
-				"cell": [
-					35,
-					3
+					15
 				],
 				"kind": "scarpet",
-				"level": 2,
-				"support": "implemented"
-			},
-			{
-				"category": "structures",
-				"cell": [
-					36,
-					4
-				],
-				"kind": "carry_gear",
-				"level": 2,
+				"level": 1,
 				"support": "implemented"
 			},
 			{
 				"category": "flora",
 				"cell": [
-					41,
-					1
+					37,
+					8
 				],
-				"kind": "flure",
-				"level": 0,
-				"support": "implemented"
-			},
-			{
-				"category": "enemies",
-				"cell": [
-					43,
-					1
-				],
-				"kind": "naturalizers",
-				"level": 0,
-				"support": "implemented"
-			},
-			{
-				"category": "structures",
-				"cell": [
-					42,
-					2
-				],
-				"kind": "pipe",
-				"level": 0,
+				"kind": "scarpet",
+				"level": 1,
 				"support": "implemented"
 			},
 			{
 				"category": "flora",
 				"cell": [
-					47,
-					1
+					45,
+					7
 				],
-				"kind": "seefern",
-				"level": 2,
-				"support": "implemented"
-			},
-			{
-				"category": "structures",
-				"cell": [
-					48,
-					2
-				],
-				"kind": "shortcut_gate",
-				"level": 2,
+				"kind": "scarpet",
+				"level": 1,
 				"support": "implemented"
 			},
 			{
 				"category": "flora",
 				"cell": [
-					53,
-					3
+					52,
+					15
 				],
-				"kind": "seefern",
-				"level": 0,
+				"kind": "scarpet",
+				"level": 1,
 				"support": "implemented"
 			},
 			{
-				"category": "structures",
+				"category": "flora",
 				"cell": [
-					54,
-					4
+					97,
+					8
 				],
-				"kind": "shelter",
+				"kind": "scarpet",
+				"level": 1,
+				"support": "implemented"
+			},
+			{
+				"category": "flora",
+				"cell": [
+					105,
+					8
+				],
+				"kind": "scarpet",
+				"level": 1,
+				"support": "implemented"
+			},
+			{
+				"category": "flora",
+				"cell": [
+					112,
+					7
+				],
+				"kind": "scarpet",
 				"level": 0,
 				"support": "implemented"
 			}
@@ -227,7 +117,7 @@
 				"archetype_id": "11",
 				"cell": [
 					0,
-					3
+					8
 				],
 				"id": "entry",
 				"label": "Entry Boundary",
@@ -238,8 +128,8 @@
 			{
 				"archetype_id": "2",
 				"cell": [
-					6,
-					2
+					8,
+					0
 				],
 				"id": "node_01",
 				"label": "Plant as tool · Flure Iron Decoy",
@@ -250,8 +140,8 @@
 			{
 				"archetype_id": "2",
 				"cell": [
-					12,
-					2
+					15,
+					8
 				],
 				"id": "node_02",
 				"label": "Plant as tool · Hushbloom Stun",
@@ -260,82 +150,166 @@
 				"role": "guidance"
 			},
 			{
-				"archetype_id": "2",
+				"archetype_id": "",
 				"cell": [
-					18,
+					23,
 					0
 				],
 				"id": "node_03",
-				"label": "Plant as tool · Climbvine Traversal",
+				"label": "Risk cache · 3 ATP lysate",
 				"level": 0,
 				"optional": true,
-				"role": "route_pressure"
+				"role": "foraging"
+			},
+			{
+				"archetype_id": "1",
+				"cell": [
+					31,
+					16
+				],
+				"id": "node_04",
+				"label": "Redirected enemy aggression · Destroy Barrier",
+				"level": 1,
+				"optional": false,
+				"role": "guidance"
+			},
+			{
+				"archetype_id": "1",
+				"cell": [
+					38,
+					8
+				],
+				"id": "node_05",
+				"label": "Redirected enemy aggression · Kill Enemy",
+				"level": 1,
+				"optional": false,
+				"role": "foraging"
+			},
+			{
+				"archetype_id": "",
+				"cell": [
+					45,
+					8
+				],
+				"id": "node_06",
+				"label": "Lysate reserve",
+				"level": 1,
+				"optional": true,
+				"role": "foraging"
+			},
+			{
+				"archetype_id": "3",
+				"cell": [
+					53,
+					16
+				],
+				"id": "node_07",
+				"label": "Carry the heavy thing · Cure Component",
+				"level": 1,
+				"optional": false,
+				"role": "mixed"
+			},
+			{
+				"archetype_id": "4",
+				"cell": [
+					61,
+					1
+				],
+				"id": "node_08",
+				"label": "Distract the patrol · Loud Action",
+				"level": 1,
+				"optional": false,
+				"role": "setpiece"
+			},
+			{
+				"archetype_id": "6",
+				"cell": [
+					68,
+					8
+				],
+				"id": "node_09",
+				"label": "Pattern reconstruction · Area Map",
+				"level": 0,
+				"optional": false,
+				"role": "guidance"
+			},
+			{
+				"archetype_id": "6",
+				"cell": [
+					75,
+					7
+				],
+				"id": "node_10",
+				"label": "Pattern reconstruction · Flow Diagram",
+				"level": 1,
+				"optional": false,
+				"role": "resource"
 			},
 			{
 				"archetype_id": "2",
 				"cell": [
-					24,
-					2
+					83,
+					8
 				],
-				"id": "node_04",
+				"id": "node_11",
+				"label": "Plant as tool · Climbvine Traversal",
+				"level": 1,
+				"optional": false,
+				"role": "shortcut"
+			},
+			{
+				"archetype_id": "2",
+				"cell": [
+					91,
+					8
+				],
+				"id": "node_12",
 				"label": "Plant as tool · Resolution Roots Stabilize",
+				"level": 1,
+				"optional": false,
+				"role": "setpiece"
+			},
+			{
+				"archetype_id": "1",
+				"cell": [
+					98,
+					8
+				],
+				"id": "node_13",
+				"label": "Redirected enemy aggression · Reveal Plant",
+				"level": 1,
+				"optional": false,
+				"role": "route_pressure"
+			},
+			{
+				"archetype_id": "1",
+				"cell": [
+					106,
+					8
+				],
+				"id": "node_14",
+				"label": "Redirected enemy aggression · Reveal Terminal",
 				"level": 1,
 				"optional": false,
 				"role": "danger"
 			},
 			{
-				"archetype_id": "1",
-				"cell": [
-					30,
-					3
-				],
-				"id": "node_05",
-				"label": "Redirected enemy aggression · Destroy Barrier",
-				"level": 2,
-				"optional": false,
-				"role": "guidance"
-			},
-			{
 				"archetype_id": "3",
 				"cell": [
-					36,
-					3
+					113,
+					8
 				],
-				"id": "node_06",
-				"label": "Carry the heavy thing · Cure Component",
-				"level": 2,
-				"optional": true,
-				"role": "foraging"
-			},
-			{
-				"archetype_id": "4",
-				"cell": [
-					42,
-					2
-				],
-				"id": "node_07",
-				"label": "Distract the patrol · Loud Action",
+				"id": "node_15",
+				"label": "Carry the heavy thing · Puzzle Piece",
 				"level": 0,
 				"optional": false,
-				"role": "danger"
-			},
-			{
-				"archetype_id": "6",
-				"cell": [
-					48,
-					2
-				],
-				"id": "node_08",
-				"label": "Pattern reconstruction · Area Map",
-				"level": 2,
-				"optional": false,
-				"role": "setpiece"
+				"role": "mixed"
 			},
 			{
 				"archetype_id": "11",
 				"cell": [
-					54,
-					3
+					121,
+					8
 				],
 				"id": "exit_shelter",
 				"label": "Shelter Arrival",
@@ -349,194 +323,318 @@
 				"from": "entry",
 				"from_cell": [
 					0,
-					3
+					8
 				],
 				"id": "main_00_01",
 				"kind": "safe",
 				"to": "node_01",
 				"to_cell": [
-					6,
-					2
+					8,
+					0
 				]
 			},
 			{
 				"from": "node_01",
 				"from_cell": [
-					6,
-					2
+					8,
+					0
 				],
 				"id": "main_01_02",
 				"kind": "safe",
 				"to": "node_02",
 				"to_cell": [
-					12,
-					2
+					15,
+					8
 				]
 			},
 			{
 				"from": "node_02",
 				"from_cell": [
-					12,
-					2
+					15,
+					8
 				],
-				"id": "main_02_03",
-				"kind": "safe",
+				"id": "risky_optional_02_03",
+				"kind": "risky",
 				"to": "node_03",
 				"to_cell": [
-					18,
+					23,
 					0
 				]
 			},
 			{
 				"from": "node_03",
 				"from_cell": [
-					18,
+					23,
 					0
 				],
 				"id": "main_03_04",
 				"kind": "safe",
 				"to": "node_04",
 				"to_cell": [
-					24,
-					2
+					31,
+					16
 				]
 			},
 			{
 				"from": "node_04",
 				"from_cell": [
-					24,
-					2
+					31,
+					16
 				],
 				"id": "main_04_05",
 				"kind": "safe",
 				"to": "node_05",
 				"to_cell": [
-					30,
-					3
+					38,
+					8
 				]
 			},
 			{
 				"from": "node_05",
 				"from_cell": [
-					30,
-					3
+					38,
+					8
 				],
 				"id": "main_05_06",
 				"kind": "safe",
 				"to": "node_06",
 				"to_cell": [
-					36,
-					3
+					45,
+					8
 				]
 			},
 			{
 				"from": "node_06",
 				"from_cell": [
-					36,
-					3
+					45,
+					8
 				],
 				"id": "main_06_07",
 				"kind": "safe",
 				"to": "node_07",
 				"to_cell": [
-					42,
-					2
+					53,
+					16
 				]
 			},
 			{
 				"from": "node_07",
 				"from_cell": [
-					42,
-					2
+					53,
+					16
 				],
 				"id": "main_07_08",
 				"kind": "safe",
 				"to": "node_08",
 				"to_cell": [
-					48,
-					2
+					61,
+					1
 				]
 			},
 			{
 				"from": "node_08",
 				"from_cell": [
-					48,
-					2
+					61,
+					1
 				],
 				"id": "main_08_09",
 				"kind": "safe",
+				"to": "node_09",
+				"to_cell": [
+					68,
+					8
+				]
+			},
+			{
+				"from": "node_09",
+				"from_cell": [
+					68,
+					8
+				],
+				"id": "main_09_10",
+				"kind": "safe",
+				"to": "node_10",
+				"to_cell": [
+					75,
+					7
+				]
+			},
+			{
+				"from": "node_10",
+				"from_cell": [
+					75,
+					7
+				],
+				"id": "main_10_11",
+				"kind": "safe",
+				"to": "node_11",
+				"to_cell": [
+					83,
+					8
+				]
+			},
+			{
+				"from": "node_11",
+				"from_cell": [
+					83,
+					8
+				],
+				"id": "main_11_12",
+				"kind": "safe",
+				"to": "node_12",
+				"to_cell": [
+					91,
+					8
+				]
+			},
+			{
+				"from": "node_12",
+				"from_cell": [
+					91,
+					8
+				],
+				"id": "main_12_13",
+				"kind": "safe",
+				"to": "node_13",
+				"to_cell": [
+					98,
+					8
+				]
+			},
+			{
+				"from": "node_13",
+				"from_cell": [
+					98,
+					8
+				],
+				"id": "main_13_14",
+				"kind": "safe",
+				"to": "node_14",
+				"to_cell": [
+					106,
+					8
+				]
+			},
+			{
+				"from": "node_14",
+				"from_cell": [
+					106,
+					8
+				],
+				"id": "main_14_15",
+				"kind": "safe",
+				"to": "node_15",
+				"to_cell": [
+					113,
+					8
+				]
+			},
+			{
+				"from": "node_15",
+				"from_cell": [
+					113,
+					8
+				],
+				"id": "main_15_16",
+				"kind": "safe",
 				"to": "exit_shelter",
 				"to_cell": [
-					54,
-					3
+					121,
+					8
 				]
 			},
 			{
 				"from": "node_02",
 				"from_cell": [
-					12,
-					2
+					15,
+					8
 				],
 				"id": "optional_bypass_02_04",
 				"kind": "safe",
 				"to": "node_04",
 				"to_cell": [
-					24,
-					2
+					31,
+					16
 				]
 			},
 			{
 				"from": "node_05",
 				"from_cell": [
-					30,
-					3
+					38,
+					8
 				],
 				"id": "optional_bypass_05_07",
 				"kind": "safe",
 				"to": "node_07",
 				"to_cell": [
-					42,
-					2
-				]
-			},
-			{
-				"from": "entry",
-				"from_cell": [
-					0,
-					3
-				],
-				"id": "risky_direct",
-				"kind": "risky",
-				"to": "exit_shelter",
-				"to_cell": [
-					54,
-					3
-				]
-			},
-			{
-				"from": "node_08",
-				"from_cell": [
-					48,
-					2
-				],
-				"id": "return_shortcut",
-				"kind": "shortcut",
-				"to": "entry",
-				"to_cell": [
-					0,
-					3
+					53,
+					16
 				]
 			}
 		]
 	},
-	"multi_solution": true,
+	"multi_solution": false,
 	"progression_stage": 4,
 	"region": "Channels",
 	"schema": "trawf_stretch_replay_v1",
 	"solutions": [
 		{
 			"blocked_nodes": [],
-			"duration": 9.0,
+			"branch_action_count": 1,
+			"branch_actions": [
+				{
+					"action": "activate",
+					"activation_policy": "interact_at_producer",
+					"before_node": "node_04",
+					"before_nodes": [
+						"node_03",
+						"node_04"
+					],
+					"branch_id": "branch_00",
+					"cannot_bypass_unresolved": true,
+					"consumer_cell": [
+						50.0,
+						19.0
+					],
+					"consumer_cells": [
+						[
+							50.0,
+							3.0
+						],
+						[
+							50.0,
+							4.0
+						],
+						[
+							50.0,
+							5.0
+						],
+						[
+							50.0,
+							6.0
+						],
+						[
+							50.0,
+							19.0
+						]
+					],
+					"expected_phase": "bridged",
+					"id": "activate_branch_00_span",
+					"kind": "mandatory_branch_interaction",
+					"producer_cell": [
+						47.0,
+						23.0
+					],
+					"produces_state": "branch_00_resolved",
+					"required_for_progress": true,
+					"role": "mandatory_producer",
+					"runtime_handler": "branch_span_producer",
+					"solution_order": 0.0,
+					"target": "branch_00",
+					"wait_for_completion": true
+				}
+			],
+			"duration": 17.0,
 			"frames": [
 				{
 					"approach_id": "traverse",
@@ -546,31 +644,31 @@
 					"characters": {
 						"aster": [
 							0.0,
-							2.75000004768371
+							7.55
 						],
 						"endo": [
 							0.42,
-							3.08000004768371
+							7.88
 						],
 						"myke": [
 							0.0,
-							3.42000004768372
+							8.22
 						],
 						"oli": [
 							-0.42,
-							3.62000004768371
+							8.42
 						],
 						"peris": [
 							-0.42,
-							3.08000004768371
+							7.88
 						],
 						"tyreg": [
 							0.42,
-							3.62000004768371
+							8.42
 						]
 					},
 					"expert": false,
-					"kind": "traverse",
+					"kind": "layout_traversal",
 					"min_stage": 0,
 					"node": "entry",
 					"risk": "safe",
@@ -579,322 +677,373 @@
 					"t": 0.0
 				},
 				{
-					"approach_id": "force_clear",
+					"approach_id": "take_physical_lysate",
 					"blocked": false,
 					"borrows_from": "",
-					"caption": "node_01 — Force the obstacle open with raw impact",
+					"caption": "node_01 — TAKE LYSATE",
 					"characters": {
 						"aster": [
-							6.0,
-							1.15000002384186
+							7.5,
+							-0.45
 						],
 						"endo": [
-							6.42,
-							1.48000002384186
+							7.92,
+							-0.12
 						],
 						"myke": [
-							6.0,
-							1.82000002384186
+							7.5,
+							0.22
 						],
 						"oli": [
-							5.58,
-							2.02000002384186
+							7.08,
+							0.42
 						],
 						"peris": [
-							5.58,
-							1.48000002384186
+							7.08,
+							-0.12
 						],
 						"tyreg": [
-							6.42,
-							2.02000002384186
+							7.92,
+							0.42
 						]
 					},
 					"expert": false,
-					"kind": "primary",
+					"kind": "resource_pickup",
 					"min_stage": 1,
 					"node": "node_01",
-					"risk": "direct",
+					"risk": "safe",
 					"role": "foraging",
 					"stage_ahead": false,
 					"t": 1.0
 				},
 				{
-					"approach_id": "force_clear",
+					"approach_id": "traverse",
 					"blocked": false,
 					"borrows_from": "",
-					"caption": "node_02 — Force the obstacle open with raw impact",
+					"caption": "node_02",
 					"characters": {
 						"aster": [
-							12.0,
-							1.15000002384186
+							15.0,
+							7.05
 						],
 						"endo": [
-							12.42,
-							1.48000002384186
+							15.42,
+							7.38
 						],
 						"myke": [
-							12.0,
-							1.82000002384186
+							15.0,
+							7.72
 						],
 						"oli": [
-							11.58,
-							2.02000002384186
+							14.58,
+							7.92
 						],
 						"peris": [
-							11.58,
-							1.48000002384186
+							14.58,
+							7.38
 						],
 						"tyreg": [
-							12.42,
-							2.02000002384186
+							15.42,
+							7.92
 						]
 					},
 					"expert": false,
-					"kind": "primary",
-					"min_stage": 1,
+					"kind": "layout_traversal",
+					"min_stage": 0,
 					"node": "node_02",
-					"risk": "direct",
+					"risk": "safe",
 					"role": "guidance",
 					"stage_ahead": false,
 					"t": 2.0
 				},
 				{
-					"approach_id": "force_clear",
+					"approach_id": "skip_optional_interaction",
 					"blocked": false,
 					"borrows_from": "",
-					"caption": "node_03 — Force the obstacle open with raw impact",
+					"caption": "node_03 — OPTIONAL TAKE LYSATE",
 					"characters": {
 						"aster": [
-							18.0,
+							23.0,
 							-0.45
 						],
 						"endo": [
-							18.42,
+							23.42,
 							-0.12
 						],
 						"myke": [
-							18.0,
+							23.0,
 							0.22
 						],
 						"oli": [
-							17.58,
+							22.58,
 							0.42
 						],
 						"peris": [
-							17.58,
+							22.58,
 							-0.12
 						],
 						"tyreg": [
-							18.42,
+							23.42,
 							0.42
 						]
 					},
 					"expert": false,
-					"kind": "primary",
-					"min_stage": 1,
+					"kind": "optional_layout_traversal",
+					"min_stage": 0,
 					"node": "node_03",
-					"risk": "direct",
-					"role": "route_pressure",
+					"risk": "safe",
+					"role": "foraging",
 					"stage_ahead": false,
 					"t": 3.0
 				},
 				{
-					"approach_id": "force_clear",
+					"approach_id": "activate_branch_00_span",
 					"blocked": false,
 					"borrows_from": "",
-					"caption": "node_04 — Force the obstacle open with raw impact",
+					"branch_action": {
+						"action": "activate",
+						"activation_policy": "interact_at_producer",
+						"before_node": "node_04",
+						"before_nodes": [
+							"node_03",
+							"node_04"
+						],
+						"branch_id": "branch_00",
+						"cannot_bypass_unresolved": true,
+						"consumer_cell": [
+							50.0,
+							19.0
+						],
+						"consumer_cells": [
+							[
+								50.0,
+								3.0
+							],
+							[
+								50.0,
+								4.0
+							],
+							[
+								50.0,
+								5.0
+							],
+							[
+								50.0,
+								6.0
+							],
+							[
+								50.0,
+								19.0
+							]
+						],
+						"expected_phase": "bridged",
+						"id": "activate_branch_00_span",
+						"kind": "mandatory_branch_interaction",
+						"producer_cell": [
+							47.0,
+							23.0
+						],
+						"produces_state": "branch_00_resolved",
+						"required_for_progress": true,
+						"role": "mandatory_producer",
+						"runtime_handler": "branch_span_producer",
+						"solution_order": 0.0,
+						"target": "branch_00",
+						"wait_for_completion": true
+					},
+					"caption": "SIDE BRANCH — EXTEND DOWNSTREAM SPAN",
 					"characters": {
 						"aster": [
-							24.0,
-							1.15000002384186
+							21.5,
+							9.05
 						],
 						"endo": [
-							24.42,
-							1.48000002384186
+							21.92,
+							9.38
 						],
 						"myke": [
-							24.0,
-							1.82000002384186
+							21.5,
+							9.72
 						],
 						"oli": [
-							23.58,
-							2.02000002384186
+							21.08,
+							9.92
 						],
 						"peris": [
-							23.58,
-							1.48000002384186
+							21.08,
+							9.38
 						],
 						"tyreg": [
-							24.42,
-							2.02000002384186
+							21.92,
+							9.92
 						]
 					},
 					"expert": false,
-					"kind": "primary",
-					"min_stage": 1,
+					"kind": "mandatory_branch_interaction",
+					"min_stage": 0,
 					"node": "node_04",
-					"risk": "direct",
-					"role": "danger",
+					"risk": "safe",
+					"role": "mandatory_producer",
 					"stage_ahead": false,
 					"t": 4.0
 				},
 				{
-					"approach_id": "redirect_combat",
+					"approach_id": "traverse",
 					"blocked": false,
 					"borrows_from": "",
-					"caption": "node_05 — Bait a combat specialist's charge into the target",
+					"caption": "node_04",
 					"characters": {
 						"aster": [
-							30.0,
-							2.75000004768371
+							30.5,
+							15.05
 						],
 						"endo": [
-							30.42,
-							3.08000004768371
+							30.92,
+							15.38
 						],
 						"myke": [
-							30.0,
-							3.42000004768372
+							30.5,
+							15.72
 						],
 						"oli": [
-							29.58,
-							3.62000004768371
+							30.08,
+							15.92
 						],
 						"peris": [
-							29.58,
-							3.08000004768371
+							30.08,
+							15.38
 						],
 						"tyreg": [
-							30.42,
-							3.62000004768371
+							30.92,
+							15.92
 						]
 					},
 					"expert": false,
-					"kind": "primary",
-					"min_stage": 2,
-					"node": "node_05",
-					"risk": "direct",
+					"kind": "layout_traversal",
+					"min_stage": 0,
+					"node": "node_04",
+					"risk": "safe",
 					"role": "guidance",
 					"stage_ahead": false,
 					"t": 5.0
 				},
 				{
-					"approach_id": "guarded_escort",
+					"approach_id": "take_physical_lysate",
 					"blocked": false,
 					"borrows_from": "",
-					"caption": "node_06 — A combat specialist guards the carrier across the open",
+					"caption": "node_05 — TAKE LYSATE",
 					"characters": {
 						"aster": [
-							36.0,
-							2.75000004768371
+							38.0,
+							7.55
 						],
 						"endo": [
-							36.42,
-							3.08000004768371
+							38.42,
+							7.88
 						],
 						"myke": [
-							36.0,
-							3.42000004768372
+							38.0,
+							8.22
 						],
 						"oli": [
-							35.58,
-							3.62000004768371
+							37.58,
+							8.42
 						],
 						"peris": [
-							35.58,
-							3.08000004768371
+							37.58,
+							7.88
 						],
 						"tyreg": [
-							36.42,
-							3.62000004768371
+							38.42,
+							8.42
 						]
 					},
 					"expert": false,
-					"kind": "primary",
+					"kind": "resource_pickup",
 					"min_stage": 2,
-					"node": "node_06",
-					"risk": "direct",
+					"node": "node_05",
+					"risk": "safe",
 					"role": "foraging",
 					"stage_ahead": false,
 					"t": 6.0
 				},
 				{
-					"approach_id": "loud_draw",
+					"approach_id": "skip_optional_interaction",
 					"blocked": false,
 					"borrows_from": "",
-					"caption": "node_07 — Draw the patrol with a loud combat action",
+					"caption": "node_06 — OPTIONAL TAKE LYSATE",
 					"characters": {
 						"aster": [
-							42.0,
-							1.15000002384186
+							45.0,
+							7.05
 						],
 						"endo": [
-							42.42,
-							1.48000002384186
+							45.42,
+							7.38
 						],
 						"myke": [
-							42.0,
-							1.82000002384186
+							45.0,
+							7.72
 						],
 						"oli": [
-							41.58,
-							2.02000002384186
+							44.58,
+							7.92
 						],
 						"peris": [
-							41.58,
-							1.48000002384186
+							44.58,
+							7.38
 						],
 						"tyreg": [
-							42.42,
-							2.02000002384186
+							45.42,
+							7.92
 						]
 					},
 					"expert": false,
-					"kind": "primary",
-					"min_stage": 3,
-					"node": "node_07",
-					"risk": "direct",
-					"role": "danger",
+					"kind": "optional_layout_traversal",
+					"min_stage": 0,
+					"node": "node_06",
+					"risk": "safe",
+					"role": "foraging",
 					"stage_ahead": false,
 					"t": 7.0
 				},
 				{
-					"approach_id": "combat_retrieval",
+					"approach_id": "traverse",
 					"blocked": false,
 					"borrows_from": "",
-					"caption": "node_08 — Fight through to retrieve the scattered fragments",
+					"caption": "node_07",
 					"characters": {
 						"aster": [
-							48.0,
-							1.15000002384186
+							53.0,
+							15.05
 						],
 						"endo": [
-							48.42,
-							1.48000002384186
+							53.42,
+							15.38
 						],
 						"myke": [
-							48.0,
-							1.82000002384186
+							53.0,
+							15.72
 						],
 						"oli": [
-							47.58,
-							2.02000002384186
+							52.58,
+							15.92
 						],
 						"peris": [
-							47.58,
-							1.48000002384186
+							52.58,
+							15.38
 						],
 						"tyreg": [
-							48.42,
-							2.02000002384186
+							53.42,
+							15.92
 						]
 					},
 					"expert": false,
-					"kind": "primary",
-					"min_stage": 3,
-					"node": "node_08",
-					"risk": "direct",
-					"role": "setpiece",
+					"kind": "layout_traversal",
+					"min_stage": 0,
+					"node": "node_07",
+					"risk": "safe",
+					"role": "mixed",
 					"stage_ahead": false,
 					"t": 8.0
 				},
@@ -902,52 +1051,372 @@
 					"approach_id": "traverse",
 					"blocked": false,
 					"borrows_from": "",
-					"caption": "exit_shelter",
+					"caption": "node_08",
 					"characters": {
 						"aster": [
-							54.0,
-							2.75000004768371
+							60.5,
+							0.05
 						],
 						"endo": [
-							54.42,
-							3.08000004768371
+							60.92,
+							0.38
 						],
 						"myke": [
-							54.0,
-							3.42000004768372
+							60.5,
+							0.72
 						],
 						"oli": [
-							53.58,
-							3.62000004768371
+							60.08,
+							0.92
 						],
 						"peris": [
-							53.58,
-							3.08000004768371
+							60.08,
+							0.38
 						],
 						"tyreg": [
-							54.42,
-							3.62000004768371
+							60.92,
+							0.92
 						]
 					},
 					"expert": false,
-					"kind": "traverse",
+					"kind": "layout_traversal",
 					"min_stage": 0,
+					"node": "node_08",
+					"risk": "safe",
+					"role": "setpiece",
+					"stage_ahead": false,
+					"t": 9.0
+				},
+				{
+					"approach_id": "traverse",
+					"blocked": false,
+					"borrows_from": "",
+					"caption": "node_09",
+					"characters": {
+						"aster": [
+							67.5,
+							7.55
+						],
+						"endo": [
+							67.92,
+							7.88
+						],
+						"myke": [
+							67.5,
+							8.22
+						],
+						"oli": [
+							67.08,
+							8.42
+						],
+						"peris": [
+							67.08,
+							7.88
+						],
+						"tyreg": [
+							67.92,
+							8.42
+						]
+					},
+					"expert": false,
+					"kind": "layout_traversal",
+					"min_stage": 0,
+					"node": "node_09",
+					"risk": "safe",
+					"role": "guidance",
+					"stage_ahead": false,
+					"t": 10.0
+				},
+				{
+					"approach_id": "traverse",
+					"blocked": false,
+					"borrows_from": "",
+					"caption": "node_10",
+					"characters": {
+						"aster": [
+							75.0,
+							6.55
+						],
+						"endo": [
+							75.42,
+							6.88
+						],
+						"myke": [
+							75.0,
+							7.22
+						],
+						"oli": [
+							74.58,
+							7.42
+						],
+						"peris": [
+							74.58,
+							6.88
+						],
+						"tyreg": [
+							75.42,
+							7.42
+						]
+					},
+					"expert": false,
+					"kind": "layout_traversal",
+					"min_stage": 0,
+					"node": "node_10",
+					"risk": "safe",
+					"role": "resource",
+					"stage_ahead": false,
+					"t": 11.0
+				},
+				{
+					"approach_id": "traverse",
+					"blocked": false,
+					"borrows_from": "",
+					"caption": "node_11",
+					"characters": {
+						"aster": [
+							82.5,
+							7.55
+						],
+						"endo": [
+							82.92,
+							7.88
+						],
+						"myke": [
+							82.5,
+							8.22
+						],
+						"oli": [
+							82.08,
+							8.42
+						],
+						"peris": [
+							82.08,
+							7.88
+						],
+						"tyreg": [
+							82.92,
+							8.42
+						]
+					},
+					"expert": false,
+					"kind": "layout_traversal",
+					"min_stage": 0,
+					"node": "node_11",
+					"risk": "safe",
+					"role": "shortcut",
+					"stage_ahead": false,
+					"t": 12.0
+				},
+				{
+					"approach_id": "traverse",
+					"blocked": false,
+					"borrows_from": "",
+					"caption": "node_12",
+					"characters": {
+						"aster": [
+							90.5,
+							7.05
+						],
+						"endo": [
+							90.92,
+							7.38
+						],
+						"myke": [
+							90.5,
+							7.72
+						],
+						"oli": [
+							90.08,
+							7.92
+						],
+						"peris": [
+							90.08,
+							7.38
+						],
+						"tyreg": [
+							90.92,
+							7.92
+						]
+					},
+					"expert": false,
+					"kind": "layout_traversal",
+					"min_stage": 0,
+					"node": "node_12",
+					"risk": "safe",
+					"role": "setpiece",
+					"stage_ahead": false,
+					"t": 13.0
+				},
+				{
+					"approach_id": "traverse",
+					"blocked": false,
+					"borrows_from": "",
+					"caption": "node_13",
+					"characters": {
+						"aster": [
+							98.0,
+							7.55
+						],
+						"endo": [
+							98.42,
+							7.88
+						],
+						"myke": [
+							98.0,
+							8.22
+						],
+						"oli": [
+							97.58,
+							8.42
+						],
+						"peris": [
+							97.58,
+							7.88
+						],
+						"tyreg": [
+							98.42,
+							8.42
+						]
+					},
+					"expert": false,
+					"kind": "layout_traversal",
+					"min_stage": 0,
+					"node": "node_13",
+					"risk": "safe",
+					"role": "route_pressure",
+					"stage_ahead": false,
+					"t": 14.0
+				},
+				{
+					"approach_id": "traverse",
+					"blocked": false,
+					"borrows_from": "",
+					"caption": "node_14",
+					"characters": {
+						"aster": [
+							105.5,
+							7.55
+						],
+						"endo": [
+							105.92,
+							7.88
+						],
+						"myke": [
+							105.5,
+							8.22
+						],
+						"oli": [
+							105.08,
+							8.42
+						],
+						"peris": [
+							105.08,
+							7.88
+						],
+						"tyreg": [
+							105.92,
+							8.42
+						]
+					},
+					"expert": false,
+					"kind": "layout_traversal",
+					"min_stage": 0,
+					"node": "node_14",
+					"risk": "safe",
+					"role": "danger",
+					"stage_ahead": false,
+					"t": 15.0
+				},
+				{
+					"approach_id": "traverse",
+					"blocked": false,
+					"borrows_from": "",
+					"caption": "node_15",
+					"characters": {
+						"aster": [
+							113.0,
+							7.05
+						],
+						"endo": [
+							113.42,
+							7.38
+						],
+						"myke": [
+							113.0,
+							7.72
+						],
+						"oli": [
+							112.58,
+							7.92
+						],
+						"peris": [
+							112.58,
+							7.38
+						],
+						"tyreg": [
+							113.42,
+							7.92
+						]
+					},
+					"expert": false,
+					"kind": "layout_traversal",
+					"min_stage": 0,
+					"node": "node_15",
+					"risk": "safe",
+					"role": "mixed",
+					"stage_ahead": false,
+					"t": 16.0
+				},
+				{
+					"approach_id": "canonical_shelter_arrival",
+					"blocked": false,
+					"borrows_from": "",
+					"caption": "exit_shelter — ENTER SHELTER",
+					"characters": {
+						"aster": [
+							120.5,
+							7.05
+						],
+						"endo": [
+							120.92,
+							7.38
+						],
+						"myke": [
+							120.5,
+							7.72
+						],
+						"oli": [
+							120.08,
+							7.92
+						],
+						"peris": [
+							120.08,
+							7.38
+						],
+						"tyreg": [
+							120.92,
+							7.92
+						]
+					},
+					"expert": false,
+					"kind": "shelter_arrival",
+					"min_stage": 1,
 					"node": "exit_shelter",
 					"risk": "safe",
 					"role": "shelter_arrival",
 					"stage_ahead": false,
-					"t": 9.0
+					"t": 17.0
 				}
 			],
 			"label": "Full party",
 			"loadout": "spotlight",
-			"max_stage_used": 3,
+			"max_stage_used": 0,
 			"node_approaches": [
 				{
 					"approach_id": "traverse",
 					"borrows_from": "",
 					"expert": false,
-					"kind": "traverse",
+					"kind": "layout_traversal",
 					"label": "",
 					"min_stage": 0,
 					"node": "entry",
@@ -956,108 +1425,192 @@
 					"stage_ahead": false
 				},
 				{
-					"approach_id": "force_clear",
+					"approach_id": "take_physical_lysate",
 					"borrows_from": "",
 					"expert": false,
-					"kind": "primary",
-					"label": "Force the obstacle open with raw impact",
+					"kind": "resource_pickup",
+					"label": "TAKE LYSATE",
 					"min_stage": 1,
 					"node": "node_01",
-					"party": "specialist",
-					"risk": "direct",
-					"stage_ahead": false
-				},
-				{
-					"approach_id": "force_clear",
-					"borrows_from": "",
-					"expert": false,
-					"kind": "primary",
-					"label": "Force the obstacle open with raw impact",
-					"min_stage": 1,
-					"node": "node_02",
-					"party": "specialist",
-					"risk": "direct",
-					"stage_ahead": false
-				},
-				{
-					"approach_id": "force_clear",
-					"borrows_from": "",
-					"expert": false,
-					"kind": "primary",
-					"label": "Force the obstacle open with raw impact",
-					"min_stage": 1,
-					"node": "node_03",
-					"party": "specialist",
-					"risk": "direct",
-					"stage_ahead": false
-				},
-				{
-					"approach_id": "force_clear",
-					"borrows_from": "",
-					"expert": false,
-					"kind": "primary",
-					"label": "Force the obstacle open with raw impact",
-					"min_stage": 1,
-					"node": "node_04",
-					"party": "specialist",
-					"risk": "direct",
-					"stage_ahead": false
-				},
-				{
-					"approach_id": "redirect_combat",
-					"borrows_from": "",
-					"expert": false,
-					"kind": "primary",
-					"label": "Bait a combat specialist's charge into the target",
-					"min_stage": 2,
-					"node": "node_05",
-					"party": "specialist",
-					"risk": "direct",
-					"stage_ahead": false
-				},
-				{
-					"approach_id": "guarded_escort",
-					"borrows_from": "",
-					"expert": false,
-					"kind": "primary",
-					"label": "A combat specialist guards the carrier across the open",
-					"min_stage": 2,
-					"node": "node_06",
-					"party": "specialist",
-					"risk": "direct",
-					"stage_ahead": false
-				},
-				{
-					"approach_id": "loud_draw",
-					"borrows_from": "",
-					"expert": false,
-					"kind": "primary",
-					"label": "Draw the patrol with a loud combat action",
-					"min_stage": 3,
-					"node": "node_07",
-					"party": "specialist",
-					"risk": "direct",
-					"stage_ahead": false
-				},
-				{
-					"approach_id": "combat_retrieval",
-					"borrows_from": "",
-					"expert": false,
-					"kind": "primary",
-					"label": "Fight through to retrieve the scattered fragments",
-					"min_stage": 3,
-					"node": "node_08",
-					"party": "specialist",
-					"risk": "direct",
+					"party": "any",
+					"risk": "safe",
 					"stage_ahead": false
 				},
 				{
 					"approach_id": "traverse",
 					"borrows_from": "",
 					"expert": false,
-					"kind": "traverse",
+					"kind": "layout_traversal",
 					"label": "",
 					"min_stage": 0,
+					"node": "node_02",
+					"party": "any",
+					"risk": "safe",
+					"stage_ahead": false
+				},
+				{
+					"approach_id": "skip_optional_interaction",
+					"borrows_from": "",
+					"expert": false,
+					"kind": "optional_layout_traversal",
+					"label": "OPTIONAL TAKE LYSATE",
+					"min_stage": 0,
+					"node": "node_03",
+					"party": "any",
+					"risk": "safe",
+					"stage_ahead": false
+				},
+				{
+					"approach_id": "traverse",
+					"borrows_from": "",
+					"expert": false,
+					"kind": "layout_traversal",
+					"label": "",
+					"min_stage": 0,
+					"node": "node_04",
+					"party": "any",
+					"risk": "safe",
+					"stage_ahead": false
+				},
+				{
+					"approach_id": "take_physical_lysate",
+					"borrows_from": "",
+					"expert": false,
+					"kind": "resource_pickup",
+					"label": "TAKE LYSATE",
+					"min_stage": 2,
+					"node": "node_05",
+					"party": "any",
+					"risk": "safe",
+					"stage_ahead": false
+				},
+				{
+					"approach_id": "skip_optional_interaction",
+					"borrows_from": "",
+					"expert": false,
+					"kind": "optional_layout_traversal",
+					"label": "OPTIONAL TAKE LYSATE",
+					"min_stage": 0,
+					"node": "node_06",
+					"party": "any",
+					"risk": "safe",
+					"stage_ahead": false
+				},
+				{
+					"approach_id": "traverse",
+					"borrows_from": "",
+					"expert": false,
+					"kind": "layout_traversal",
+					"label": "",
+					"min_stage": 0,
+					"node": "node_07",
+					"party": "any",
+					"risk": "safe",
+					"stage_ahead": false
+				},
+				{
+					"approach_id": "traverse",
+					"borrows_from": "",
+					"expert": false,
+					"kind": "layout_traversal",
+					"label": "",
+					"min_stage": 0,
+					"node": "node_08",
+					"party": "any",
+					"risk": "safe",
+					"stage_ahead": false
+				},
+				{
+					"approach_id": "traverse",
+					"borrows_from": "",
+					"expert": false,
+					"kind": "layout_traversal",
+					"label": "",
+					"min_stage": 0,
+					"node": "node_09",
+					"party": "any",
+					"risk": "safe",
+					"stage_ahead": false
+				},
+				{
+					"approach_id": "traverse",
+					"borrows_from": "",
+					"expert": false,
+					"kind": "layout_traversal",
+					"label": "",
+					"min_stage": 0,
+					"node": "node_10",
+					"party": "any",
+					"risk": "safe",
+					"stage_ahead": false
+				},
+				{
+					"approach_id": "traverse",
+					"borrows_from": "",
+					"expert": false,
+					"kind": "layout_traversal",
+					"label": "",
+					"min_stage": 0,
+					"node": "node_11",
+					"party": "any",
+					"risk": "safe",
+					"stage_ahead": false
+				},
+				{
+					"approach_id": "traverse",
+					"borrows_from": "",
+					"expert": false,
+					"kind": "layout_traversal",
+					"label": "",
+					"min_stage": 0,
+					"node": "node_12",
+					"party": "any",
+					"risk": "safe",
+					"stage_ahead": false
+				},
+				{
+					"approach_id": "traverse",
+					"borrows_from": "",
+					"expert": false,
+					"kind": "layout_traversal",
+					"label": "",
+					"min_stage": 0,
+					"node": "node_13",
+					"party": "any",
+					"risk": "safe",
+					"stage_ahead": false
+				},
+				{
+					"approach_id": "traverse",
+					"borrows_from": "",
+					"expert": false,
+					"kind": "layout_traversal",
+					"label": "",
+					"min_stage": 0,
+					"node": "node_14",
+					"party": "any",
+					"risk": "safe",
+					"stage_ahead": false
+				},
+				{
+					"approach_id": "traverse",
+					"borrows_from": "",
+					"expert": false,
+					"kind": "layout_traversal",
+					"label": "",
+					"min_stage": 0,
+					"node": "node_15",
+					"party": "any",
+					"risk": "safe",
+					"stage_ahead": false
+				},
+				{
+					"approach_id": "canonical_shelter_arrival",
+					"borrows_from": "",
+					"expert": false,
+					"kind": "shelter_arrival",
+					"label": "ENTER SHELTER",
+					"min_stage": 1,
 					"node": "exit_shelter",
 					"party": "any",
 					"risk": "safe",
@@ -1077,7 +1630,61 @@
 		},
 		{
 			"blocked_nodes": [],
-			"duration": 9.0,
+			"branch_action_count": 1,
+			"branch_actions": [
+				{
+					"action": "activate",
+					"activation_policy": "interact_at_producer",
+					"before_node": "node_04",
+					"before_nodes": [
+						"node_03",
+						"node_04"
+					],
+					"branch_id": "branch_00",
+					"cannot_bypass_unresolved": true,
+					"consumer_cell": [
+						50.0,
+						19.0
+					],
+					"consumer_cells": [
+						[
+							50.0,
+							3.0
+						],
+						[
+							50.0,
+							4.0
+						],
+						[
+							50.0,
+							5.0
+						],
+						[
+							50.0,
+							6.0
+						],
+						[
+							50.0,
+							19.0
+						]
+					],
+					"expected_phase": "bridged",
+					"id": "activate_branch_00_span",
+					"kind": "mandatory_branch_interaction",
+					"producer_cell": [
+						47.0,
+						23.0
+					],
+					"produces_state": "branch_00_resolved",
+					"required_for_progress": true,
+					"role": "mandatory_producer",
+					"runtime_handler": "branch_span_producer",
+					"solution_order": 0.0,
+					"target": "branch_00",
+					"wait_for_completion": true
+				}
+			],
+			"duration": 17.0,
 			"frames": [
 				{
 					"approach_id": "traverse",
@@ -1087,15 +1694,15 @@
 					"characters": {
 						"aster": [
 							0.0,
-							2.75000004768371
+							7.55
 						],
 						"peris": [
 							-0.42,
-							3.08000004768371
+							7.88
 						]
 					},
 					"expert": false,
-					"kind": "traverse",
+					"kind": "layout_traversal",
 					"min_stage": 0,
 					"node": "entry",
 					"risk": "safe",
@@ -1104,47 +1711,47 @@
 					"t": 0.0
 				},
 				{
-					"approach_id": "flora_chain_trap",
-					"blocked": false,
-					"borrows_from": "10",
-					"caption": "node_01 — Peris chains a flure lure into a staged flora trap, a self-contained mini danger-zone that herds the enemy instead of a single tend  ⟐ expert: later-stage technique",
-					"characters": {
-						"aster": [
-							6.0,
-							1.15000002384186
-						],
-						"peris": [
-							5.58,
-							1.48000002384186
-						]
-					},
-					"expert": true,
-					"kind": "shadow_expert",
-					"min_stage": 5,
-					"node": "node_01",
-					"risk": "risky",
-					"role": "foraging",
-					"stage_ahead": true,
-					"t": 1.0
-				},
-				{
-					"approach_id": "flora_finesse",
+					"approach_id": "take_physical_lysate",
 					"blocked": false,
 					"borrows_from": "",
-					"caption": "node_02 — Peris grows or tends the plant tool; Aster confirms the target",
+					"caption": "node_01 — TAKE LYSATE",
 					"characters": {
 						"aster": [
-							12.0,
-							1.15000002384186
+							7.5,
+							-0.45
 						],
 						"peris": [
-							11.58,
-							1.48000002384186
+							7.08,
+							-0.12
 						]
 					},
 					"expert": false,
-					"kind": "shadow",
+					"kind": "resource_pickup",
 					"min_stage": 1,
+					"node": "node_01",
+					"risk": "safe",
+					"role": "foraging",
+					"stage_ahead": false,
+					"t": 1.0
+				},
+				{
+					"approach_id": "traverse",
+					"blocked": false,
+					"borrows_from": "",
+					"caption": "node_02",
+					"characters": {
+						"aster": [
+							15.0,
+							7.05
+						],
+						"peris": [
+							14.58,
+							7.38
+						]
+					},
+					"expert": false,
+					"kind": "layout_traversal",
+					"min_stage": 0,
 					"node": "node_02",
 					"risk": "safe",
 					"role": "guidance",
@@ -1152,146 +1759,197 @@
 					"t": 2.0
 				},
 				{
-					"approach_id": "flora_finesse",
+					"approach_id": "skip_optional_interaction",
 					"blocked": false,
 					"borrows_from": "",
-					"caption": "node_03 — Peris grows or tends the plant tool; Aster confirms the target",
+					"caption": "node_03 — OPTIONAL TAKE LYSATE",
 					"characters": {
 						"aster": [
-							18.0,
+							23.0,
 							-0.45
 						],
 						"peris": [
-							17.58,
+							22.58,
 							-0.12
 						]
 					},
 					"expert": false,
-					"kind": "shadow",
-					"min_stage": 1,
+					"kind": "optional_layout_traversal",
+					"min_stage": 0,
 					"node": "node_03",
 					"risk": "safe",
-					"role": "route_pressure",
+					"role": "foraging",
 					"stage_ahead": false,
 					"t": 3.0
 				},
 				{
-					"approach_id": "flora_finesse",
+					"approach_id": "activate_branch_00_span",
 					"blocked": false,
 					"borrows_from": "",
-					"caption": "node_04 — Peris grows or tends the plant tool; Aster confirms the target",
+					"branch_action": {
+						"action": "activate",
+						"activation_policy": "interact_at_producer",
+						"before_node": "node_04",
+						"before_nodes": [
+							"node_03",
+							"node_04"
+						],
+						"branch_id": "branch_00",
+						"cannot_bypass_unresolved": true,
+						"consumer_cell": [
+							50.0,
+							19.0
+						],
+						"consumer_cells": [
+							[
+								50.0,
+								3.0
+							],
+							[
+								50.0,
+								4.0
+							],
+							[
+								50.0,
+								5.0
+							],
+							[
+								50.0,
+								6.0
+							],
+							[
+								50.0,
+								19.0
+							]
+						],
+						"expected_phase": "bridged",
+						"id": "activate_branch_00_span",
+						"kind": "mandatory_branch_interaction",
+						"producer_cell": [
+							47.0,
+							23.0
+						],
+						"produces_state": "branch_00_resolved",
+						"required_for_progress": true,
+						"role": "mandatory_producer",
+						"runtime_handler": "branch_span_producer",
+						"solution_order": 0.0,
+						"target": "branch_00",
+						"wait_for_completion": true
+					},
+					"caption": "SIDE BRANCH — EXTEND DOWNSTREAM SPAN",
 					"characters": {
 						"aster": [
-							24.0,
-							1.15000002384186
+							21.5,
+							9.05
 						],
 						"peris": [
-							23.58,
-							1.48000002384186
+							21.08,
+							9.38
 						]
 					},
 					"expert": false,
-					"kind": "shadow",
-					"min_stage": 1,
+					"kind": "mandatory_branch_interaction",
+					"min_stage": 0,
 					"node": "node_04",
 					"risk": "safe",
-					"role": "danger",
+					"role": "mandatory_producer",
 					"stage_ahead": false,
 					"t": 4.0
 				},
 				{
-					"approach_id": "overlay_cover",
+					"approach_id": "traverse",
 					"blocked": false,
 					"borrows_from": "",
-					"caption": "node_05 — Aster times the enemy charge on the overlay while Peris holds scarpet cover",
+					"caption": "node_04",
 					"characters": {
 						"aster": [
-							30.0,
-							2.75000004768371
+							30.5,
+							15.05
 						],
 						"peris": [
-							29.58,
-							3.08000004768371
+							30.08,
+							15.38
 						]
 					},
 					"expert": false,
-					"kind": "shadow",
-					"min_stage": 2,
-					"node": "node_05",
-					"risk": "risky",
+					"kind": "layout_traversal",
+					"min_stage": 0,
+					"node": "node_04",
+					"risk": "safe",
 					"role": "guidance",
 					"stage_ahead": false,
 					"t": 5.0
 				},
 				{
-					"approach_id": "split_carry",
+					"approach_id": "take_physical_lysate",
 					"blocked": false,
-					"borrows_from": "5",
-					"caption": "node_06 — Split the carry: Peris drags the load while Aster runs a parallel data lane that holds the hazard's attention  ⟐ expert technique",
+					"borrows_from": "",
+					"caption": "node_05 — TAKE LYSATE",
 					"characters": {
 						"aster": [
-							36.0,
-							2.75000004768371
+							38.0,
+							7.55
 						],
 						"peris": [
-							35.58,
-							3.08000004768371
+							37.58,
+							7.88
 						]
 					},
-					"expert": true,
-					"kind": "shadow_expert",
-					"min_stage": 3,
-					"node": "node_06",
-					"risk": "risky",
+					"expert": false,
+					"kind": "resource_pickup",
+					"min_stage": 2,
+					"node": "node_05",
+					"risk": "safe",
 					"role": "foraging",
 					"stage_ahead": false,
 					"t": 6.0
 				},
 				{
-					"approach_id": "false_pattern_spoof",
+					"approach_id": "skip_optional_interaction",
 					"blocked": false,
-					"borrows_from": "6",
-					"caption": "node_07 — Aster forges a false flow-diagram on the patrol's overlay; the patrol reroutes itself, so the blind spot is manufactured, not waited for  ⟐ expert technique",
+					"borrows_from": "",
+					"caption": "node_06 — OPTIONAL TAKE LYSATE",
 					"characters": {
 						"aster": [
-							42.0,
-							1.15000002384186
+							45.0,
+							7.05
 						],
 						"peris": [
-							41.58,
-							1.48000002384186
+							44.58,
+							7.38
 						]
 					},
-					"expert": true,
-					"kind": "shadow_expert",
-					"min_stage": 3,
-					"node": "node_07",
-					"risk": "risky",
-					"role": "danger",
+					"expert": false,
+					"kind": "optional_layout_traversal",
+					"min_stage": 0,
+					"node": "node_06",
+					"risk": "safe",
+					"role": "foraging",
 					"stage_ahead": false,
 					"t": 7.0
 				},
 				{
-					"approach_id": "terminal_cache_recall",
+					"approach_id": "traverse",
 					"blocked": false,
-					"borrows_from": "8",
-					"caption": "node_08 — Skip the scavenger hunt: Aster pulls the missing fragment from an AST terminal's cached records, reconstructing the whole from the network  ⟐ expert technique",
+					"borrows_from": "",
+					"caption": "node_07",
 					"characters": {
 						"aster": [
-							48.0,
-							1.15000002384186
+							53.0,
+							15.05
 						],
 						"peris": [
-							47.58,
-							1.48000002384186
+							52.58,
+							15.38
 						]
 					},
-					"expert": true,
-					"kind": "shadow_expert",
-					"min_stage": 3,
-					"node": "node_08",
-					"risk": "risky",
-					"role": "setpiece",
+					"expert": false,
+					"kind": "layout_traversal",
+					"min_stage": 0,
+					"node": "node_07",
+					"risk": "safe",
+					"role": "mixed",
 					"stage_ahead": false,
 					"t": 8.0
 				},
@@ -1299,36 +1957,228 @@
 					"approach_id": "traverse",
 					"blocked": false,
 					"borrows_from": "",
-					"caption": "exit_shelter",
+					"caption": "node_08",
 					"characters": {
 						"aster": [
-							54.0,
-							2.75000004768371
+							60.5,
+							0.05
 						],
 						"peris": [
-							53.58,
-							3.08000004768371
+							60.08,
+							0.38
 						]
 					},
 					"expert": false,
-					"kind": "traverse",
+					"kind": "layout_traversal",
 					"min_stage": 0,
+					"node": "node_08",
+					"risk": "safe",
+					"role": "setpiece",
+					"stage_ahead": false,
+					"t": 9.0
+				},
+				{
+					"approach_id": "traverse",
+					"blocked": false,
+					"borrows_from": "",
+					"caption": "node_09",
+					"characters": {
+						"aster": [
+							67.5,
+							7.55
+						],
+						"peris": [
+							67.08,
+							7.88
+						]
+					},
+					"expert": false,
+					"kind": "layout_traversal",
+					"min_stage": 0,
+					"node": "node_09",
+					"risk": "safe",
+					"role": "guidance",
+					"stage_ahead": false,
+					"t": 10.0
+				},
+				{
+					"approach_id": "traverse",
+					"blocked": false,
+					"borrows_from": "",
+					"caption": "node_10",
+					"characters": {
+						"aster": [
+							75.0,
+							6.55
+						],
+						"peris": [
+							74.58,
+							6.88
+						]
+					},
+					"expert": false,
+					"kind": "layout_traversal",
+					"min_stage": 0,
+					"node": "node_10",
+					"risk": "safe",
+					"role": "resource",
+					"stage_ahead": false,
+					"t": 11.0
+				},
+				{
+					"approach_id": "traverse",
+					"blocked": false,
+					"borrows_from": "",
+					"caption": "node_11",
+					"characters": {
+						"aster": [
+							82.5,
+							7.55
+						],
+						"peris": [
+							82.08,
+							7.88
+						]
+					},
+					"expert": false,
+					"kind": "layout_traversal",
+					"min_stage": 0,
+					"node": "node_11",
+					"risk": "safe",
+					"role": "shortcut",
+					"stage_ahead": false,
+					"t": 12.0
+				},
+				{
+					"approach_id": "traverse",
+					"blocked": false,
+					"borrows_from": "",
+					"caption": "node_12",
+					"characters": {
+						"aster": [
+							90.5,
+							7.05
+						],
+						"peris": [
+							90.08,
+							7.38
+						]
+					},
+					"expert": false,
+					"kind": "layout_traversal",
+					"min_stage": 0,
+					"node": "node_12",
+					"risk": "safe",
+					"role": "setpiece",
+					"stage_ahead": false,
+					"t": 13.0
+				},
+				{
+					"approach_id": "traverse",
+					"blocked": false,
+					"borrows_from": "",
+					"caption": "node_13",
+					"characters": {
+						"aster": [
+							98.0,
+							7.55
+						],
+						"peris": [
+							97.58,
+							7.88
+						]
+					},
+					"expert": false,
+					"kind": "layout_traversal",
+					"min_stage": 0,
+					"node": "node_13",
+					"risk": "safe",
+					"role": "route_pressure",
+					"stage_ahead": false,
+					"t": 14.0
+				},
+				{
+					"approach_id": "traverse",
+					"blocked": false,
+					"borrows_from": "",
+					"caption": "node_14",
+					"characters": {
+						"aster": [
+							105.5,
+							7.55
+						],
+						"peris": [
+							105.08,
+							7.88
+						]
+					},
+					"expert": false,
+					"kind": "layout_traversal",
+					"min_stage": 0,
+					"node": "node_14",
+					"risk": "safe",
+					"role": "danger",
+					"stage_ahead": false,
+					"t": 15.0
+				},
+				{
+					"approach_id": "traverse",
+					"blocked": false,
+					"borrows_from": "",
+					"caption": "node_15",
+					"characters": {
+						"aster": [
+							113.0,
+							7.05
+						],
+						"peris": [
+							112.58,
+							7.38
+						]
+					},
+					"expert": false,
+					"kind": "layout_traversal",
+					"min_stage": 0,
+					"node": "node_15",
+					"risk": "safe",
+					"role": "mixed",
+					"stage_ahead": false,
+					"t": 16.0
+				},
+				{
+					"approach_id": "canonical_shelter_arrival",
+					"blocked": false,
+					"borrows_from": "",
+					"caption": "exit_shelter — ENTER SHELTER",
+					"characters": {
+						"aster": [
+							120.5,
+							7.05
+						],
+						"peris": [
+							120.08,
+							7.38
+						]
+					},
+					"expert": false,
+					"kind": "shelter_arrival",
+					"min_stage": 1,
 					"node": "exit_shelter",
 					"risk": "safe",
 					"role": "shelter_arrival",
 					"stage_ahead": false,
-					"t": 9.0
+					"t": 17.0
 				}
 			],
 			"label": "Aster + Peris (shadow)",
 			"loadout": "shadow",
-			"max_stage_used": 5,
+			"max_stage_used": 0,
 			"node_approaches": [
 				{
 					"approach_id": "traverse",
 					"borrows_from": "",
 					"expert": false,
-					"kind": "traverse",
+					"kind": "layout_traversal",
 					"label": "",
 					"min_stage": 0,
 					"node": "entry",
@@ -1337,108 +2187,192 @@
 					"stage_ahead": false
 				},
 				{
-					"approach_id": "flora_chain_trap",
-					"borrows_from": "10",
-					"expert": true,
-					"kind": "shadow_expert",
-					"label": "Peris chains a flure lure into a staged flora trap, a self-contained mini danger-zone that herds the enemy instead of a single tend",
-					"min_stage": 5,
+					"approach_id": "take_physical_lysate",
+					"borrows_from": "",
+					"expert": false,
+					"kind": "resource_pickup",
+					"label": "TAKE LYSATE",
+					"min_stage": 1,
 					"node": "node_01",
-					"party": "aster_peris",
-					"risk": "risky",
-					"stage_ahead": true
-				},
-				{
-					"approach_id": "flora_finesse",
-					"borrows_from": "",
-					"expert": false,
-					"kind": "shadow",
-					"label": "Peris grows or tends the plant tool; Aster confirms the target",
-					"min_stage": 1,
-					"node": "node_02",
-					"party": "aster_peris",
+					"party": "any",
 					"risk": "safe",
-					"stage_ahead": false
-				},
-				{
-					"approach_id": "flora_finesse",
-					"borrows_from": "",
-					"expert": false,
-					"kind": "shadow",
-					"label": "Peris grows or tends the plant tool; Aster confirms the target",
-					"min_stage": 1,
-					"node": "node_03",
-					"party": "aster_peris",
-					"risk": "safe",
-					"stage_ahead": false
-				},
-				{
-					"approach_id": "flora_finesse",
-					"borrows_from": "",
-					"expert": false,
-					"kind": "shadow",
-					"label": "Peris grows or tends the plant tool; Aster confirms the target",
-					"min_stage": 1,
-					"node": "node_04",
-					"party": "aster_peris",
-					"risk": "safe",
-					"stage_ahead": false
-				},
-				{
-					"approach_id": "overlay_cover",
-					"borrows_from": "",
-					"expert": false,
-					"kind": "shadow",
-					"label": "Aster times the enemy charge on the overlay while Peris holds scarpet cover",
-					"min_stage": 2,
-					"node": "node_05",
-					"party": "aster_peris",
-					"risk": "risky",
-					"stage_ahead": false
-				},
-				{
-					"approach_id": "split_carry",
-					"borrows_from": "5",
-					"expert": true,
-					"kind": "shadow_expert",
-					"label": "Split the carry: Peris drags the load while Aster runs a parallel data lane that holds the hazard's attention",
-					"min_stage": 3,
-					"node": "node_06",
-					"party": "aster_peris",
-					"risk": "risky",
-					"stage_ahead": false
-				},
-				{
-					"approach_id": "false_pattern_spoof",
-					"borrows_from": "6",
-					"expert": true,
-					"kind": "shadow_expert",
-					"label": "Aster forges a false flow-diagram on the patrol's overlay; the patrol reroutes itself, so the blind spot is manufactured, not waited for",
-					"min_stage": 3,
-					"node": "node_07",
-					"party": "aster_peris",
-					"risk": "risky",
-					"stage_ahead": false
-				},
-				{
-					"approach_id": "terminal_cache_recall",
-					"borrows_from": "8",
-					"expert": true,
-					"kind": "shadow_expert",
-					"label": "Skip the scavenger hunt: Aster pulls the missing fragment from an AST terminal's cached records, reconstructing the whole from the network",
-					"min_stage": 3,
-					"node": "node_08",
-					"party": "aster_peris",
-					"risk": "risky",
 					"stage_ahead": false
 				},
 				{
 					"approach_id": "traverse",
 					"borrows_from": "",
 					"expert": false,
-					"kind": "traverse",
+					"kind": "layout_traversal",
 					"label": "",
 					"min_stage": 0,
+					"node": "node_02",
+					"party": "any",
+					"risk": "safe",
+					"stage_ahead": false
+				},
+				{
+					"approach_id": "skip_optional_interaction",
+					"borrows_from": "",
+					"expert": false,
+					"kind": "optional_layout_traversal",
+					"label": "OPTIONAL TAKE LYSATE",
+					"min_stage": 0,
+					"node": "node_03",
+					"party": "any",
+					"risk": "safe",
+					"stage_ahead": false
+				},
+				{
+					"approach_id": "traverse",
+					"borrows_from": "",
+					"expert": false,
+					"kind": "layout_traversal",
+					"label": "",
+					"min_stage": 0,
+					"node": "node_04",
+					"party": "any",
+					"risk": "safe",
+					"stage_ahead": false
+				},
+				{
+					"approach_id": "take_physical_lysate",
+					"borrows_from": "",
+					"expert": false,
+					"kind": "resource_pickup",
+					"label": "TAKE LYSATE",
+					"min_stage": 2,
+					"node": "node_05",
+					"party": "any",
+					"risk": "safe",
+					"stage_ahead": false
+				},
+				{
+					"approach_id": "skip_optional_interaction",
+					"borrows_from": "",
+					"expert": false,
+					"kind": "optional_layout_traversal",
+					"label": "OPTIONAL TAKE LYSATE",
+					"min_stage": 0,
+					"node": "node_06",
+					"party": "any",
+					"risk": "safe",
+					"stage_ahead": false
+				},
+				{
+					"approach_id": "traverse",
+					"borrows_from": "",
+					"expert": false,
+					"kind": "layout_traversal",
+					"label": "",
+					"min_stage": 0,
+					"node": "node_07",
+					"party": "any",
+					"risk": "safe",
+					"stage_ahead": false
+				},
+				{
+					"approach_id": "traverse",
+					"borrows_from": "",
+					"expert": false,
+					"kind": "layout_traversal",
+					"label": "",
+					"min_stage": 0,
+					"node": "node_08",
+					"party": "any",
+					"risk": "safe",
+					"stage_ahead": false
+				},
+				{
+					"approach_id": "traverse",
+					"borrows_from": "",
+					"expert": false,
+					"kind": "layout_traversal",
+					"label": "",
+					"min_stage": 0,
+					"node": "node_09",
+					"party": "any",
+					"risk": "safe",
+					"stage_ahead": false
+				},
+				{
+					"approach_id": "traverse",
+					"borrows_from": "",
+					"expert": false,
+					"kind": "layout_traversal",
+					"label": "",
+					"min_stage": 0,
+					"node": "node_10",
+					"party": "any",
+					"risk": "safe",
+					"stage_ahead": false
+				},
+				{
+					"approach_id": "traverse",
+					"borrows_from": "",
+					"expert": false,
+					"kind": "layout_traversal",
+					"label": "",
+					"min_stage": 0,
+					"node": "node_11",
+					"party": "any",
+					"risk": "safe",
+					"stage_ahead": false
+				},
+				{
+					"approach_id": "traverse",
+					"borrows_from": "",
+					"expert": false,
+					"kind": "layout_traversal",
+					"label": "",
+					"min_stage": 0,
+					"node": "node_12",
+					"party": "any",
+					"risk": "safe",
+					"stage_ahead": false
+				},
+				{
+					"approach_id": "traverse",
+					"borrows_from": "",
+					"expert": false,
+					"kind": "layout_traversal",
+					"label": "",
+					"min_stage": 0,
+					"node": "node_13",
+					"party": "any",
+					"risk": "safe",
+					"stage_ahead": false
+				},
+				{
+					"approach_id": "traverse",
+					"borrows_from": "",
+					"expert": false,
+					"kind": "layout_traversal",
+					"label": "",
+					"min_stage": 0,
+					"node": "node_14",
+					"party": "any",
+					"risk": "safe",
+					"stage_ahead": false
+				},
+				{
+					"approach_id": "traverse",
+					"borrows_from": "",
+					"expert": false,
+					"kind": "layout_traversal",
+					"label": "",
+					"min_stage": 0,
+					"node": "node_15",
+					"party": "any",
+					"risk": "safe",
+					"stage_ahead": false
+				},
+				{
+					"approach_id": "canonical_shelter_arrival",
+					"borrows_from": "",
+					"expert": false,
+					"kind": "shelter_arrival",
+					"label": "ENTER SHELTER",
+					"min_stage": 1,
 					"node": "exit_shelter",
 					"party": "any",
 					"risk": "safe",
@@ -1450,7 +2384,7 @@
 				"peris"
 			],
 			"solvable": true,
-			"uses_future_technique": true
+			"uses_future_technique": false
 		}
 	],
 	"spec_id": "generated_event_walk_shelter_4_to_5",

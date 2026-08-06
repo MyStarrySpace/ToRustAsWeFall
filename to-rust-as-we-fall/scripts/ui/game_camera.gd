@@ -19,6 +19,11 @@ var _view_yaw := 0.0
 var _view_zoom := 1.0
 var _zoom_min := CAMERA_ZOOM_MIN
 var _zoom_max := CAMERA_ZOOM_MAX
+## Optional presentation map for warped levels. `follow_offset` is interpreted in
+## the map's local basis at the active focus point (the lock position while locked,
+## otherwise the followed target), so an outward three-quarter view stays outward
+## while a helix turns instead of looking end-on through stacked decks.
+var _follow_basis_map = null
 @export var follow_speed := 4.0
 @export var pan_speed := 0.03
 ## Edge-scroll fires only when the cursor is hard against the screen edge. A wide margin (this was 40)
@@ -34,6 +39,12 @@ var _pan_enabled := true
 ## Ambient desktop cursor state is not deterministic. Autonomous recordings/replays disable
 ## mouse-owned camera navigation while retaining keyboard, touch, scripted focus, and recentering.
 var _mouse_camera_controls_enabled := true
+## Edge scrolling follows delivered viewport input, never the ambient desktop cursor.
+## This matters for unfocused/off-desktop test windows, but it is also the honest
+## production rule: the camera may react only after this game receives a mouse event.
+## Initializing to the viewport centre keeps a newly opened window stationary until
+## the player actually moves the pointer.
+var _camera_pointer_position := Vector2.ZERO
 var _playthrough_input_policy_source: Node
 # Optional world-space clamp on the look-at point (X/Z), so pan/edge-scroll can't
 # push the view outside a confined room (e.g. the elevator). Inactive by default.
@@ -85,10 +96,15 @@ var _cam_last_dist := 1.0
 signal pan_hint_triggered(direction: Vector2)
 
 func _ready() -> void:
+	var viewport := get_viewport()
+	if viewport != null:
+		_camera_pointer_position = viewport.get_visible_rect().get_center()
 	sync_playthrough_input_policy()
 	_update_immediate()
 
 func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventMouse:
+		_camera_pointer_position = (event as InputEventMouse).position
 	if event is InputEventMouse and not _mouse_camera_controls_enabled:
 		_panning = false
 		return
@@ -256,6 +272,10 @@ func _update_cam_gesture() -> void:
 ## geometry, which is especially disorienting on a helix.
 func apply_follow_profile(profile: Dictionary, snap_immediately := true) -> void:
 	follow_offset = profile.get("follow_offset", follow_offset) as Vector3
+	var follow_basis_map_v: Variant = profile.get("follow_basis_map", null)
+	_follow_basis_map = follow_basis_map_v if follow_basis_map_v != null \
+			and follow_basis_map_v.has_method("to_data") \
+			and follow_basis_map_v.has_method("to_basis") else null
 	var requested_min := float(profile.get("min_zoom", CAMERA_ZOOM_MIN))
 	var requested_max := float(profile.get("max_zoom", CAMERA_ZOOM_MAX))
 	_zoom_min = maxf(0.05, minf(requested_min, requested_max))
@@ -270,7 +290,24 @@ func apply_follow_profile(profile: Dictionary, snap_immediately := true) -> void
 
 
 func _view_offset() -> Vector3:
-	return Basis(Vector3.UP, _view_yaw) * (follow_offset * _view_zoom)
+	var offset := Basis(Vector3.UP, _view_yaw) * (follow_offset * _view_zoom)
+	if _follow_basis_map == null:
+		return offset
+	var basis_world_position := Vector3.INF
+	if _locked:
+		basis_world_position = _lock_position
+	elif target != null and is_instance_valid(target):
+		basis_world_position = target.global_position
+	if not basis_world_position.is_finite():
+		return offset
+	var data_position_v: Variant = _follow_basis_map.call(
+		"to_data", basis_world_position)
+	if not (data_position_v is Vector3) \
+			or not (data_position_v as Vector3).is_finite():
+		return offset
+	var basis_v: Variant = _follow_basis_map.call(
+		"to_basis", data_position_v as Vector3)
+	return (basis_v as Basis) * offset if basis_v is Basis else offset
 
 func _process(delta: float) -> void:
 	if _ortho_orbit_active and not _locked:
@@ -319,7 +356,10 @@ func _process(delta: float) -> void:
 	if _mouse_camera_controls_enabled and _pan_enabled and not _panning and edge_scroll_margin > 0.0:
 		var vp := get_viewport()
 		if vp:
-			var mouse := vp.get_mouse_position()
+			# Do not poll the viewport's ambient mouse state here. In an unfocused native
+			# window that state can reflect the host desktop cursor (or an off-window
+			# sentinel), silently panning gameplay without an input event.
+			var mouse := _camera_pointer_position
 			var size := vp.get_visible_rect().size
 			var edge_pan := Vector3.ZERO
 			var right := global_transform.basis.x.normalized()
@@ -377,6 +417,15 @@ func _process(delta: float) -> void:
 	look_at(global_position - _view_offset(), Vector3.UP)
 
 func _update_immediate() -> void:
+	# `lock_to()` changes the camera's framing authority immediately, so an explicit
+	# immediate update must honor that authority too. This is used when a scripted
+	# focus (and the headless input test that exercises the same framing) needs a
+	# screen-space projection before the normal eased follow has elapsed.
+	if _locked:
+		var off: Vector3 = _lock_offset_override if _lock_offset_override != null else _view_offset()
+		global_position = _lock_position + off
+		look_at(_lock_position, Vector3.UP)
+		return
 	if target:
 		var look := _clamp_look(target.global_position)
 		global_position = look + _view_offset()
@@ -412,6 +461,7 @@ func capture_view_state() -> Dictionary:
 		"pan_offset": _pan_offset,
 		"view_yaw": _view_yaw,
 		"view_zoom": _view_zoom,
+		"follow_basis_map": _follow_basis_map,
 		"global_transform": global_transform,
 		"locked": _locked,
 		"lock_position": _lock_position,
@@ -433,6 +483,11 @@ func restore_view_state(state: Dictionary) -> void:
 	_pan_offset = state.get("pan_offset", Vector3.ZERO) as Vector3
 	_view_yaw = float(state.get("view_yaw", _view_yaw))
 	_view_zoom = float(state.get("view_zoom", _view_zoom))
+	var follow_basis_map_v: Variant = state.get(
+		"follow_basis_map", _follow_basis_map)
+	_follow_basis_map = follow_basis_map_v if follow_basis_map_v != null \
+			and follow_basis_map_v.has_method("to_data") \
+			and follow_basis_map_v.has_method("to_basis") else null
 	# A focus shot is presentation-only. Restore the exact prior transform so leaving an
 	# inspection cannot produce a one-frame zoom/position jump before normal follow resumes.
 	if state.has("global_transform"):
