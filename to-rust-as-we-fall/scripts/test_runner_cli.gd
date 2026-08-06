@@ -25881,8 +25881,9 @@ func _test_cooperative_pathfinding() -> void:
 	_assert_true(anchored_payload_destinations10bb[1].distance_to(anchored_target10bb) < 0.001,
 		"Replay data preserves the matching anchor as the stationary centre member")
 
-	# --- 10c. An unavailable requested member rejects Rally before the event/mutation boundary.
-	# The free member must not begin a route simply because its sibling is downed.
+	# --- 10c. An unavailable requested member blocks ONLY THEMSELF (director ruling, 2026-08-06).
+	# The free member still rallies; the downed one is reported so presentation can mark them in the
+	# world. Freezing the whole party because one member is unavailable read as a dead click.
 	var grid10c_unavailable := GridWorld.new()
 	grid10c_unavailable.create_room(9, 5, true)
 	var sched10c_unavailable := EventScheduler.new()
@@ -25898,17 +25899,30 @@ func _test_cooperative_pathfinding() -> void:
 	var unavailable_event_count := gs10c_unavailable.event_log.size()
 	var unavailable_free_position := gs10c_unavailable.get_position("free")
 	gs10c_unavailable.reset_performance_counters()
+	var unavailable_blocked: Array = []
+	gs10c_unavailable.rally_member_blocked.connect(
+		func(id: String, _why: Dictionary) -> void: unavailable_blocked.append(id))
+	var unavailable_preflight := gs10c_unavailable.compute_rally_preflight(
+		["free", "busy"], grid10c_unavailable.grid_to_world(Vector2i(7, 2)))
+	_assert_true(bool(unavailable_preflight.get("accepted", false)),
+		"A rally one member cannot answer is still accepted for the members who can")
+	_assert_equals(str(unavailable_preflight.get("reason_code", "")), "accepted_partial",
+		"and it names itself a PARTIAL acceptance rather than a clean one")
+	_assert_equals((unavailable_preflight.get("blocked_members", []) as Array), ["busy"],
+		"naming exactly the member who could not come")
 	var unavailable_moved := gs10c_unavailable.command_rally_members(
 		["free", "busy"], grid10c_unavailable.grid_to_world(Vector2i(7, 2)))
-	_assert_equals(unavailable_moved, 0,
-		"One unavailable requested member refuses the whole Rally")
-	_assert_equals(gs10c_unavailable.event_log.size(), unavailable_event_count,
-		"Unavailable-member refusal occurs before the Rally event boundary")
-	_assert_true(not gs10c_unavailable.is_moving("free")
-		and gs10c_unavailable.get_position("free").distance_to(unavailable_free_position) < 0.001,
-		"Unavailable-member refusal leaves the otherwise-free member untouched")
-	_assert_equals(int(gs10c_unavailable.get_performance_counters().get("group_replans", 0)), 0,
-		"Unavailable-member refusal releases no group reservations")
+	_assert_equals(unavailable_moved, 1,
+		"the free member rallies; the downed one blocks only themselves")
+	_assert_equals(gs10c_unavailable.event_log.size(), unavailable_event_count + 1,
+		"a partial rally logs ONE rally event describing exactly who moved")
+	_assert_true(gs10c_unavailable.is_moving("free")
+		or gs10c_unavailable.get_position("free").distance_to(unavailable_free_position) > 0.001,
+		"the free member actually left")
+	_assert_true(not gs10c_unavailable.is_moving("busy"),
+		"and the blocked member did not")
+	_assert_equals(unavailable_blocked, ["busy"],
+		"the blocked member is announced so the world can mark them — a split is seen, never silent")
 
 	# --- 10d. Static graph reachability is also a whole-transaction precondition. Put one member
 	# beside the target and another behind a complete wall; the reachable member must remain parked.
@@ -25936,17 +25950,42 @@ func _test_cooperative_pathfinding() -> void:
 	var reachable_position10d := gs10d.get_position("reachable")
 	var stranded_position10d := gs10d.get_position("stranded")
 	gs10d.reset_performance_counters()
+	# A member the graph cannot deliver — the on-another-floor case the director reported — blocks
+	# only themselves. The reachable member goes.
+	var stranded_blocked: Array = []
+	gs10d.rally_member_blocked.connect(
+		func(id: String, _why: Dictionary) -> void: stranded_blocked.append(id))
 	var unreachable_moved10d := gs10d.command_rally_members(members10d, target10d)
-	_assert_equals(unreachable_moved10d, 0,
-		"One preflight-unreachable member refuses the whole Rally")
-	_assert_equals(gs10d.event_log.size(), unreachable_event_count,
-		"Unreachable-member refusal occurs before the Rally event boundary")
-	_assert_true(not gs10d.is_moving("reachable") and not gs10d.is_moving("stranded")
-		and gs10d.get_position("reachable").distance_to(reachable_position10d) < 0.001
+	_assert_equals(unreachable_moved10d, 1,
+		"a graph-unreachable member no longer refuses the whole Rally")
+	_assert_equals(gs10d.event_log.size(), unreachable_event_count + 1,
+		"the partial rally is logged as one event")
+	_assert_true(gs10d.is_moving("reachable")
+		or gs10d.get_position("reachable").distance_to(reachable_position10d) > 0.001,
+		"the routable member left")
+	_assert_true(not gs10d.is_moving("stranded")
 		and gs10d.get_position("stranded").distance_to(stranded_position10d) < 0.001,
-		"Unreachable-member refusal mutates no member position or movement")
-	_assert_equals(int(gs10d.get_performance_counters().get("group_replans", 0)), 0,
-		"Unreachable-member refusal releases no group reservations")
+		"the stranded member stayed exactly where they were")
+	_assert_equals(stranded_blocked, ["stranded"],
+		"and was announced as blocked so an X can be shown over their head")
+
+	# A rally NOBODY can answer is still a clean refusal — nothing logged, nothing moved.
+	var none_grid := GridWorld.new()
+	none_grid.create_room(9, 5, true)
+	var none_gs := GameState.new()
+	none_gs.grid = none_grid
+	none_gs.scheduler = EventScheduler.new()
+	none_gs.event_log = EventLog.new()
+	none_gs.register_character("a", none_grid.grid_to_world(Vector2i(2, 2)), 2.0, {})
+	none_gs.register_character("b", none_grid.grid_to_world(Vector2i(3, 2)), 2.0, {})
+	none_gs.down_character("a")
+	none_gs.down_character("b")
+	var none_count := none_gs.event_log.size()
+	_assert_equals(none_gs.command_rally_members(
+		["a", "b"], none_grid.grid_to_world(Vector2i(7, 2))), 0,
+		"a rally nobody can answer is refused outright")
+	_assert_equals(none_gs.event_log.size(), none_count,
+		"and a fully refused rally still logs nothing")
 
 	# --- 10e. A temporal/cooperative allocation failure cannot turn an accepted Rally into a
 	# partial command. Reserve one exact formation endpoint to the horizon: the cooperative planner

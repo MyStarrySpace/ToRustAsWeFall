@@ -15,6 +15,10 @@ signal movement_cancelled(id: String) # a committed ordinary path ended before i
 ## locomotion pace changed. Presentation uses this derived signal to name the
 ## replan even when the new geometric suffix is exactly the same length.
 signal navigation_route_replanned(id: String, state: Dictionary)
+## A rally moved without this member because they could not reach the formation. Presentation binds
+## this to mark them in the WORLD (an X over their head) so a partial rally is never a silent split.
+## Derived like character_arrived — the rally event already records who actually moved.
+signal rally_member_blocked(id: String, reason: Dictionary)
 signal external_traversal_started(id: String, state: Dictionary)
 signal external_traversal_finished(id: String, traversal_id: StringName)
 signal external_traversal_cancelled(id: String, traversal_id: StringName, reason: StringName)
@@ -7400,12 +7404,19 @@ func command_rally_members(
 	) -> int:
 	var preflight := compute_rally_preflight(
 		member_ids, target, str(anchor_id), route_cell_constraint)
-	# Rally is one transaction, not N best-effort singleton moves. This read-only preflight occurs
-	# before the EventLog boundary and before group preparation releases any old reservation. A busy,
-	# missing, or graph-unreachable member therefore refuses the whole verb with no event and no
-	# movement, instead of silently letting the remaining portraits leave without them.
+	# A member who cannot reach the formation blocks only themselves (director ruling, 2026-08-06);
+	# the rally still commits for everyone who can answer it, and the event records exactly those.
+	# The blocked member is marked in the world instead, so the split is seen rather than silent.
 	if not bool(preflight.get("accepted", false)):
+		for raw_blocked in preflight.get("blocked_members", []):
+			rally_member_blocked.emit(
+				str(raw_blocked),
+				(preflight.get("blocked_reasons", {}) as Dictionary).get(str(raw_blocked), {}))
 		return 0
+	for raw_blocked in preflight.get("blocked_members", []):
+		rally_member_blocked.emit(
+			str(raw_blocked),
+			(preflight.get("blocked_reasons", {}) as Dictionary).get(str(raw_blocked), {}))
 	var members: Array[String] = []
 	for raw_id in preflight.get("members", []):
 		members.append(str(raw_id))
@@ -7577,8 +7588,14 @@ func compute_rally_preflight(
 		members, target, str(anchor_id))
 	var report := _rally_preflight_report_for_destinations(
 		members, destinations, canonical_constraint)
-	report["members"] = members.duplicate()
-	report["destinations"] = destinations.duplicate()
+	# `members` on an accepted report is the set that can actually answer the rally, which is not
+	# necessarily the roster that was asked. Keep the request separately rather than overwriting it.
+	report["requested_members"] = members.duplicate()
+	report["requested_destinations"] = destinations.duplicate()
+	if not report.has("members"):
+		report["members"] = members.duplicate()
+	if not report.has("destinations"):
+		report["destinations"] = destinations.duplicate()
 	report["target"] = target
 	report["anchor_id"] = str(anchor_id)
 	report["route_cell_constraint"] = canonical_constraint.duplicate(true)
@@ -7628,22 +7645,31 @@ func _rally_preflight_report_for_destinations(
 	# Selection must never run a second, independently interpreted route query and
 	# downgrade an accepted atomic command to BLOCKED (or advertise READY for a
 	# route different from the one that release validates).
+	# Director ruling (2026-08-06): a member who cannot reach the destination blocks ONLY THEMSELF.
+	# The members who can route, go. Freezing the whole party because one of them is on another floor
+	# reads as a dead click. The original worry behind the old all-or-nothing form was a party that
+	# splits SILENTLY — that is answered by the blocked member being visibly marked (an X over their
+	# head), not by refusing everyone.
 	var preview_paths: Array = []
+	var accepted_members: Array[String] = []
+	var accepted_destinations: Array[Vector3] = []
+	var blocked_members: Array[String] = []
+	var blocked_reasons: Dictionary = {}
+	var block := func(id: String, code: String, text: String) -> void:
+		blocked_members.append(id)
+		blocked_reasons[id] = {"reason_code": code, "reason": text}
 	for member_index in range(member_ids.size()):
 		var id := str(member_ids[member_index])
 		var destination: Vector3 = destinations[member_index]
 		if not characters.has(id):
-			return _rally_preflight_refusal(
-				member_ids, destinations, "missing_member", [id],
-				"%s IS NOT PRESENT" % id.to_upper())
+			block.call(id, "missing_member", "%s IS NOT PRESENT" % id.to_upper())
+			continue
 		if not destination.is_finite():
-			return _rally_preflight_refusal(
-				member_ids, destinations, "invalid_destination", [id],
-				"NO FORMATION SLOT FOR %s" % id.to_upper())
+			block.call(id, "invalid_destination", "NO FORMATION SLOT FOR %s" % id.to_upper())
+			continue
 		if not can_accept_move_command(id):
-			return _rally_preflight_refusal(
-				member_ids, destinations, "member_unavailable", [id],
-				"%s IS NOT READY" % id.to_upper())
+			block.call(id, "member_unavailable", "%s IS NOT READY" % id.to_upper())
+			continue
 		if grid != null:
 			if not allowed_cells.is_empty():
 				# Validate the occupied cell before the ordinary nearest-walkable start snap.
@@ -7658,40 +7684,49 @@ func _rally_preflight_report_for_destinations(
 							start_cell.x, start_cell.y, {}, {}, constrained_level) \
 						or not grid.is_walkable(
 							destination_cell.x, destination_cell.y, {}, {}, constrained_level):
-					return _rally_preflight_refusal(
-						member_ids, destinations, "constrained_endpoint_invalid", [id],
+					block.call(id, "constrained_endpoint_invalid",
 						"%s IS OUTSIDE THE ROUTE" % id.to_upper())
+					continue
 				var constrained_path := grid.find_path(
 					start_cell, destination_cell, {}, route_cautious, {}, {},
 					constrained_level, allowed_cells)
 				if constrained_path.is_empty():
-					return _rally_preflight_refusal(
-						member_ids, destinations, "route_missing", [id],
-						"NO COMPLETE ROUTE FOR %s" % id.to_upper())
+					block.call(id, "route_missing", "NO COMPLETE ROUTE FOR %s" % id.to_upper())
+					continue
 				var constrained_preview: Array[Vector3] = [get_position(id)]
 				constrained_preview.append_array(constrained_path)
 				preview_paths.append(constrained_preview)
 			else:
 				var navigation := compute_preview_navigation(id, destination)
-				if navigation.is_empty():
-					return _rally_preflight_refusal(
-						member_ids, destinations, "route_missing", [id],
-						"NO COMPLETE ROUTE FOR %s" % id.to_upper())
 				var member_preview: Array[Vector3] = []
 				for point_v in (navigation.get("path", []) as Array):
 					if point_v is Vector3:
 						member_preview.append(point_v as Vector3)
-				if member_preview.size() < 2:
-					return _rally_preflight_refusal(
-						member_ids, destinations, "route_missing", [id],
-						"NO COMPLETE ROUTE FOR %s" % id.to_upper())
+				if navigation.is_empty() or member_preview.size() < 2:
+					block.call(id, "route_missing", "NO COMPLETE ROUTE FOR %s" % id.to_upper())
+					continue
 				preview_paths.append(member_preview)
 		else:
 			preview_paths.append([get_position(id), destination])
+		accepted_members.append(id)
+		accepted_destinations.append(destination)
+	# Only a rally that NOBODY can answer is a refused rally.
+	if accepted_members.is_empty():
+		var worst := str(blocked_reasons.get(
+			blocked_members[0] if not blocked_members.is_empty() else "",
+			{}).get("reason_code", "route_missing"))
+		var worst_text := str(blocked_reasons.get(
+			blocked_members[0] if not blocked_members.is_empty() else "",
+			{}).get("reason", "NO COMPLETE PARTY ROUTE"))
+		return _rally_preflight_refusal(
+			member_ids, destinations, worst, blocked_members, worst_text)
 	return {
 		"accepted": true,
-		"reason_code": "accepted",
-		"blocked_members": [],
+		"reason_code": "accepted" if blocked_members.is_empty() else "accepted_partial",
+		"members": accepted_members.duplicate(),
+		"destinations": accepted_destinations.duplicate(),
+		"blocked_members": blocked_members.duplicate(),
+		"blocked_reasons": blocked_reasons.duplicate(true),
 		"reason": "",
 		"paths": preview_paths,
 	}
