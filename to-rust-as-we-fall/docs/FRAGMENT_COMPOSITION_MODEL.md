@@ -5,6 +5,30 @@
 does today. The verbatim section is the source of record — where the formalization and the statement
 disagree, the statement wins.
 
+**The thesis, in the director's words:**
+
+> Yeah, and I like to design with these principles, where we can prove the levels solvable yet
+> generate them to be interesting
+
+Those two goals normally trade against each other. Provable solvability is usually bought by
+constraining the generator until only safe things come out, and interestingness is usually bought by
+letting emergence happen and giving up on verifying it. This model gets both because it puts them at
+different layers:
+
+- **The proof lives at the PIECE level, where the count is small.** Each fragment is verified once, by
+  a human-scale proof, against its own declared assumptions (§5.6). Composition then checks entailment
+  between matched ports rather than re-proving the assembly, so proof cost does not grow with the
+  combinatorics.
+- **The interest lives at the ARRANGEMENT level, where the count is large.** The generator's freedom
+  is in which authored configuration goes where (§1b) — a space that grows combinatorially while every
+  element in it is already verified.
+- **Derived dimensions give variety INSIDE a piece without costing the proof.** A chase length solved
+  from the speed ladder (§1i) is a whole interval of levels covered by one theorem.
+
+The one honest exception is recorded in §5.6: local proofs do not compose on the detection channel, so
+a cheap global flood handles a closed list of leaking channels. The thesis holds with that named
+carve-out, and it is named precisely so nobody has to rediscover it the way we did the first time.
+
 Companions: `FRAGMENT_IDEAS.md` (the content register — what to build),
 `RISING_WATER_AND_MOVING_PLATFORM_ARCHETYPE.md` (one archetype's causal model),
 `BALANCING_BASIN.md` (the worked composition), `SYSTEMS_THINKING_PUZZLE_STANDARD.md` and
@@ -72,6 +96,11 @@ And, on what a depleted group is worth:
 
 > Though the depleted group might actually be an answer to an OPTIONAL route, and might be used as
 > bait, for example, without being strong enough to overwhelm the other enemy type
+
+And the thesis the whole model serves (also quoted at the head of this document):
+
+> Yeah, and I like to design with these principles, where we can prove the levels solvable yet
+> generate them to be interesting
 
 And, the worked example that makes a gap's extent computable:
 
