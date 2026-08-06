@@ -54,6 +54,15 @@ Ruling, on the objection that port balance is a non-local constraint and therefo
 
 > So that's why the wfc
 
+Ruling, on whether a killed enemy counts as absorbed, and on what the difficulty bound is actually
+bounding:
+
+> Yes killing an enemy counts as it being absorbed. And the bound comes in the fact that we don't want
+> to make it feel like a chore killing multiple enemies the same way if we could just kill one or a
+> whole group at once. And we discourage players from using a single-target solution to kill multiple
+> units because the rest of the units overwhelm the player or consume too much time, which is
+> discouraged by our day night mechanic
+
 Ruling, on the risk that a port-type vocabulary is either too coarse (everything matches everything —
 oatmeal) or too fine (nothing matches anything — a fixed jigsaw):
 
@@ -236,6 +245,59 @@ each slot, in context, count the admissible catalog members:
 Both warnings are §1a critic lines, not gates. The point is that the vocabulary can now be *tuned by
 observation* — author fragments, print the fanout table, adjust the bounds — rather than guessed at
 before anything exists.
+
+---
+
+## 1f. A kill is an absorption, and the bound is on REPETITION, not on bodies
+
+Killing an enemy absorbs it. Combat is therefore a first-class sink, and the earlier open question is
+closed — but the answer reshapes the bound rather than removing it.
+
+**Remember there is no player-attack verb.** Every kill in this game is environmental: drowning a pen
+at HIGH water, popping a Flare into a cluster, leading a Tangler into a Candid zone that unravels it,
+feeding something to a Meeb, baiting a Spiker's discharge. So a sink is always a *mechanism*, and how
+many bodies one activation takes is a property of that mechanism.
+
+**Every sink therefore declares a FANOUT** — how many bodies a single activation absorbs:
+
+| sink | fanout | why |
+|---|---|---|
+| lead one body into a Meeb | 1 | one food-cup, one body, repeat to do it again |
+| a Candid corridor unravelling a Tangler | 1 | one led body per trip |
+| drown the pen at HIGH | the whole pen | one water commit, every body below the line |
+| a Flare burst into a bunched group | the cluster | one trigger, area effect |
+
+**What is bounded is `ceil(demand / fanout)` — the number of times the player must perform the same
+act.** Not the body count. Five bodies against a fanout-5 sink is *one decision*; five bodies against
+a fanout-1 sink is the same act five times, which is the chore this ruling exists to prevent. The
+generator's failure mode is not "too many enemies" — it is **presenting a group and offering only a
+single-target answer.**
+
+**The discouragement is mechanical, not a prohibition.** A player who grinds a group down one at a
+time is not blocked: the remaining units overwhelm them, and the repetitions cost time the day/night
+clock is already charging for. That means the generator does not forbid the grind — it must
+*guarantee the better option exists* and that the grind is measurably, not just flavourfully, worse.
+This is the P17 crossover discipline the register already demands: prove the flip with a sweep, don't
+assert it.
+
+Three consequences for the check:
+
+1. **The scarce thing is not sinks — it is HIGH-FANOUT sinks.** Single-target absorption is
+   everywhere, because leading one body into a hazard is always available. Group absorption is the set
+   pieces: the drown, the burst, the corridor. §2.3's "sinks are the scarce kind" was half right; it
+   is the fanout that is scarce, and a catalog full of fanout-1 sinks will read as balanced and play
+   as a chore.
+2. **A grouped pressure output with no fanout-covering sink reachable is a warning** — *"presents 5,
+   best available answer takes 1 at a time"* — the encounter-level analogue of the slot-fanout smell
+   in §1e.
+3. **Peak still matters, for a different reason.** `peak` measures how many are on you at once, which
+   is the overwhelm that makes the grind punishing. `reps` measures the chore. They are separate
+   failures and both are bounded: a level can be low-peak and high-reps (tedious) or low-reps and
+   high-peak (brutal), and the stage profile wants a different answer for each.
+
+The day clock is what makes all of this self-pricing rather than something the generator has to
+police, which is why time must be charged honestly per repetition — see the unbuilt `cost` interval in
+§5.6, which is now load-bearing rather than a nicety.
 
 ---
 
@@ -618,24 +680,39 @@ play. Four predicates over the same assembled graph:
 
 One BFS per class per composition, memoised. O(cells) each, ≤ 4 classes.
 
-**What is bounded: peak concurrent unabsorbed pressure, per noun, walked in spine order.** Not the
-aggregate total — the total says nothing about how hot the level ever gets, and the player traverses
-in order. The spine order already exists and `stretch_solution_solver` already accumulates a
-`pressure` float along it, so "measured over a composition the player traverses in order" has a
-definite meaning today. Two numbers are bounded: `peak` (the maximum running net) and `final` (net at
-the exit — pressure leaked into whatever comes next).
+**What is bounded, per noun, walked in spine order.** Not the aggregate total — the total says nothing
+about how hot the level ever gets, and the player traverses in order. The spine order already exists
+and `stretch_solution_solver` already accumulates a `pressure` float along it, so "measured over a
+composition the player traverses in order" has a definite meaning today. **Three** numbers are bounded,
+and per §1f they are separate failures:
+
+| number | measures | the failure it catches |
+|---|---|---|
+| `peak` | maximum running net unabsorbed | overwhelm — how many are on you at once |
+| `reps` | `ceil(demand / fanout)` summed over sinks actually used | **chore** — the same act repeated |
+| `final` | net at the exit | leak into whatever comes next |
+
+`reps` is the one this game most needs, because a kill absorbs (§1f) and therefore *every* pressure
+surplus is technically clearable — the question is never whether the player can, it is whether doing
+so is one decision or the same decision five times. Every sink port carries a `fanout` field
+(`1` for lead-one-body-into-a-hazard, the pen size for a drown commit, the cluster for a Flare burst);
+absorption consumes `min(remaining, fanout)` per activation.
 
 **Curriculum mapping.** `STAGE_PROFILES` 1..6 is today entirely qualitative. The bound is its missing
 quantitative column, one table replacing hand-set numbers scattered across the generator:
 
-| stage | profile | peak | final |
-|---|---|---|---|
-| 1 | isolated_relation | 0 | 0 |
-| 2 | prediction_chain | 1 | 0 |
-| 3 | stock_and_delay | 2 | 1 |
-| 4 | feedback_and_scale | 3 | 1 |
-| 5 | leverage_and_topology | 4 | 2 |
-| 6 | transfer_under_degraded_perception | 6 | 3 |
+| stage | profile | peak | reps | final |
+|---|---|---|---|---|
+| 1 | isolated_relation | 0 | 1 | 0 |
+| 2 | prediction_chain | 1 | 1 | 0 |
+| 3 | stock_and_delay | 2 | 2 | 1 |
+| 4 | feedback_and_scale | 3 | 2 | 1 |
+| 5 | leverage_and_topology | 4 | 3 | 2 |
+| 6 | transfer_under_degraded_perception | 6 | 3 | 3 |
+
+`reps` stays low and rises slowly on purpose. It is a *chore* ceiling, not a difficulty ceiling —
+lategame levels should get harder by raising `peak` and by demanding better-aimed group absorption,
+never by asking for the same act six times.
 
 Stage 3 is where the number first goes above one, deliberately — "stock and delay" is exactly when
 unabsorbed pressure becomes a stock the player is meant to reason about. **These six pairs are a first
@@ -671,6 +748,10 @@ promotion they gate.
 [economy/dead-affordance] pedestal#4.lift_out supplies 1 x lift; no reachable consumer.
 
 [economy/unused-sink] drown_pen#6.fauna_in absorbs 1 x fauna_body; nothing upstream produces one.
+
+[economy/chore] fauna_body(sapscrap): 5 presented at site 4; the best reachable sink is
+  meeb_lane#5.fauna_in at fanout 1 — 5 repetitions of the same act against a stage-3 reps
+  bound of 2. Present a group answer, or present fewer.
 ```
 
 Broadcast checking is scope containment plus **value-band intersection**: for each provider, intersect
@@ -804,12 +885,13 @@ generation loop.
 2. **Is a delivered enemy ever *gating*?** A body you need for its weight on a plate is a `fauna_body`
    whose absence makes the level unfinishable. If yes, the same noun is both classes and `class` must
    be authored per port with no noun default — a real authoring cost, so his call.
-3. **Does killing an enemy count as absorption?** No fragment will ever declare a `fauna_body` input
-   meaning "the player fought it". If kills absorb, every level has an implicit unbounded sink and the
-   bound is about *concurrency* only, never net. If they do not, the ledger will systematically report
-   levels hot that play fine.
-4. **The six stage bounds in §5.5.** The shape (peak + final, per noun) is defensible; the numbers are
-   a guess at the feel.
+3. ~~**Does killing an enemy count as absorption?**~~ **SETTLED — yes, see §1f.** The consequence is
+   that the primary bound moved from bodies to *repetitions*: every sink declares a `fanout`, and what
+   is bounded is how many times the player must perform the same act. Remaining sub-question, minor:
+   what fanout does a partial group answer get — a Flare burst that catches three of five?
+4. **The stage bounds in §5.5.** The shape (peak + reps + final, per noun) is defensible; the numbers
+   are a guess at the feel, and `reps` in particular wants playtest calibration since it is a chore
+   ceiling rather than a difficulty one.
 5. **Does pressure leak across stretches?** Whether `final` net carries into the next descent segment
    or resets at the shelter changes what the `final` bound means, and touches the roguelite loop.
 6. **Depth budget.** §4.3 stands; 3 is recommended (the basin is 2), and it is now doing double duty as
