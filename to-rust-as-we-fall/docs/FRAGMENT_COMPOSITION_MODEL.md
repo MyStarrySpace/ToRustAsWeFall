@@ -42,6 +42,44 @@ And, on how the generators are to be used:
 > And these generators are for quick brainstorming, but I'll be working collaboratively to improve on
 > what gets made and in turn refine the generators
 
+Ruling, when asked whether configurations are authored enumerations *or* free variables a solver
+assigns:
+
+> So, the enumeration are free variables
+
+---
+
+## 1b. Ruling: a configuration is a finite-domain variable over authored values
+
+The either/or was a false choice and the director's ruling dissolves it. Every placement site in a
+composition carries a **variable** — which configuration this fragment takes — and the solver assigns
+it. The variable's **domain is the authored enumeration**: every value it can take is a
+configuration someone named and built.
+
+Both properties are preserved at once, and each one matters for a different reason:
+
+- **The solver gets real latitude.** Assignment is global: the polarity of the enemy port, whether
+  the center site is a body or a gap, and which direction a connection arrives from are all decided
+  by the composition as a whole, not fixed at authoring time.
+- **The output stays legible.** Every assigned value is a configuration the director recognizes,
+  so a proposal can be read, judged, and corrected. This is the §1a requirement — a generator whose
+  output can't be steered can't be refined.
+
+**This is the same algorithm the project already runs, one level up.** `stretch_wfc_layout.gd`
+already solves a variable per node-slot whose domain is an enumerated room-piece set, constrained by
+edge-socket compatibility. The configuration model is that, with a richer variable (configuration,
+not just piece + rotation) and a richer constraint (port compatibility *and* flow balance, not just
+boundary adjacency). It is not a new algorithm class to adopt; it is the existing one to extend.
+
+The one genuine complication: **balance is a non-local constraint.** Socket adjacency propagates
+between neighbours, which is what makes WFC's local propagation work. "Every exclusive output is
+consumed by exactly one reachable input" is a property of the whole assembly, so it cannot be
+enforced by neighbour-to-neighbour propagation alone. Options, in the order they should be tried:
+run placement by propagation and *then* solve flow over the assembled port graph; or treat balance
+as a repair pass that reassigns configurations to close leaks; or — per §1a — leave the leak in
+place at brainstorm time and let the critic report it. The last is the cheapest and, for a
+brainstorming tool, probably the right default.
+
 ---
 
 ## 1a. The generators are brainstorming tools, not autopilots
