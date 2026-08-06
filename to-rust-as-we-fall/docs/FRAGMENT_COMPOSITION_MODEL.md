@@ -30,6 +30,42 @@ And, immediately following:
 > just have inputs, some outputs, we  need to balance the system inputs and outputs when we connect
 > various puzzle pieces together
 
+Then, on configuration variability:
+
+> Right. And the cool thing about this fragment is that we can make the center piece a gap for
+> another fragment, or we can optionally have an enemy as an input from somewhere else coming in that
+> might be needed somewhere further on, so this puzzle also has a configuration with one enemy as
+> input, and the pieces connecting to that center piece can come in from different directions, etc.
+
+And, on how the generators are to be used:
+
+> And these generators are for quick brainstorming, but I'll be working collaboratively to improve on
+> what gets made and in turn refine the generators
+
+---
+
+## 1a. The generators are brainstorming tools, not autopilots
+
+The last statement sets the engineering priorities for everything below, so it is stated up front.
+The generator's output is a **draft the director edits**, and the director's edits are expected to
+flow **back into the generator**. That is a two-way loop, and it changes what "good" means:
+
+- **Legibility over opacity.** A generated composition must be readable and editable as authored
+  data — named fragments, named ports, an inspectable assembly — never an opaque blob only the
+  generator understands. If the director cannot see why a level came out the way it did, he cannot
+  correct it.
+- **The balance check is a CRITIC, not a gate.** At brainstorm time an unbalanced or unsolvable
+  proposal is useful information, not a failure: the generator should surface *"enemy output at the
+  center fragment is unmatched"* and still show the level. Hard rejection belongs at the promotion
+  step — when a draft is being adopted as real content — not at the proposal step.
+- **Variety and speed beat guaranteed correctness at proposal time.** Correctness gates on the way
+  out, not on the way in.
+- **Edits must be liftable.** When the director fixes a generated level by hand, there needs to be a
+  path for that fix to become a new fragment, a new configuration, a re-weighted rule, or a new port
+  type. A refinement that can only ever live in one output is a refinement the generator never
+  learns. This is the half of the loop most easily forgotten, and it should shape the data formats
+  from the start.
+
 ---
 
 ## 2. The model
