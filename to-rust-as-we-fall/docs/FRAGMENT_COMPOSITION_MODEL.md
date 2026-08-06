@@ -73,6 +73,13 @@ And, on what a depleted group is worth:
 > Though the depleted group might actually be an answer to an OPTIONAL route, and might be used as
 > bait, for example, without being strong enough to overwhelm the other enemy type
 
+And, the worked example that makes a gap's extent computable:
+
+> For example, one of the enemy types is slower than another so we want to kill off some of the faster
+> type, use them as bait, and then run past the slower type (char run speed > faster type speed >
+> slower type > walk) and we can calculate the length of level that needs to be made to ensure
+> characters can cross unscathed if being chased by the slower type but not the faster
+
 Ruling, on softlocks and on how a partial group answer must behave:
 
 > Puzzles shouldn't cause softlocks due to something necessary to solve the puzzle being unavailable.
@@ -440,6 +447,59 @@ unsolvable, so recovery cooldowns feed the `reps` count and the `cost` interval 
 different guards for different failures: P11 prices *the player's mistake* and returns them mobile;
 this invariant guarantees *the puzzle itself* stays solvable. A level can satisfy P11 and still
 softlock if its only group answer was spent, so both must hold.
+
+---
+
+## 1i. Speed is a designable quantity, and it SIZES the gap
+
+The speed ladder is a design invariant:
+
+> **char run speed > faster type speed > slower type speed > char walk speed**
+
+Every rung earns its place. Running outpaces both pursuers, so running is always *a* answer — but
+running is stamina-limited, and walking is slower than both, so the answer expires. The two enemy
+speeds sitting between run and walk is what makes a chase a decision instead of a reflex: over a
+short stretch you outrun anything, over a long one you outrun nothing, and the interesting lengths
+are the ones in between where you outrun *one* of them.
+
+**Which makes the level's length computable rather than authored.** Given the ladder plus the
+stamina bar, "how long must this stretch be so the party crosses unscathed ahead of the slower type
+but not the faster" is arithmetic:
+
+- The party runs while stamina lasts, covering `run_speed × stamina_duration`, then drops to walk.
+- Against a pursuer at `v`, the gap grows at `(run_speed − v)` during the run and shrinks at
+  `(v − walk_speed)` after it.
+- `L_safe(v)` is the longest stretch crossable before the gap closes. Because `v_faster > v_slower`,
+  `L_safe(faster) < L_safe(slower)`, and **any length in the open interval between them is exactly
+  the level the director described.**
+
+That interval is the fragment's extent bound. It is not a number someone guessed — it is *solved*
+from the speed table and the stamina bar, and it is precisely the kind of resizable gap the model
+started from (§1). It also answers §1e concretely for chase fragments: the flexible slot's admissible
+range has a closed-form.
+
+**The project already does this arithmetic by hand.** `FRAGMENT_IDEAS.md` #14 prices its sprint gaps
+"~90% of the 40wu bar" — a length derived from the stamina budget, computed once by a human. Deriving
+it makes an existing practice repeatable.
+
+**And it makes the fragment's guarantee provable rather than asserted.** "A party chased by the slower
+type crosses unscathed" stops being a hope and becomes a theorem given the numbers — which is exactly
+the local, cached, assumption-parameterised proof §5.6 is built around. The fragment's `assumes` block
+carries the speed ladder and the stamina bar; its `guarantees` block carries the crossing.
+
+**The maintenance win is the real prize, and the hazard if it is skipped.** Hand-authored chase
+lengths are silently invalidated the moment anyone tunes a run speed, a stamina drain, or a pursuit
+speed — the level still loads, still looks right, and no longer teaches what it was built to teach.
+Derived lengths re-solve. A speed change should re-size every chase gap in the catalog and report
+which fragments moved.
+
+**The canonical instantiation is already in the roster**, though the pairing is my reading rather than
+a roster-stated combo: **Meebs** are the slow pursuer — "inexorable, not fast" — and **Gnawers** are
+the pursuit pack. Canon also supplies the setup verb: a Meeb "eats other enemies too, so it doubles as
+a hazard you can lead things into", and the roster's own counter is to "feed it a Toxo and slip past".
+So leading Gnawers into a Meeb thins the fast type *and* occupies the slow one — the kill and the bait
+are the same act — and then the stretch is sized so the remaining Meeb cannot close before the exit.
+The director's example composes canon end to end; it invents nothing.
 
 ---
 
