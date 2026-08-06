@@ -47,6 +47,11 @@ assigns:
 
 > So, the enumeration are free variables
 
+Ruling, on the objection that port balance is a non-local constraint and therefore expensive:
+
+> Actually, the adjacency need not be local in terms of satisfying parameters. We just need to ensure
+> that the values be balanced overall, and stay within some bound based on difficulty
+
 ---
 
 ## 1b. Ruling: a configuration is a finite-domain variable over authored values
@@ -71,14 +76,53 @@ edge-socket compatibility. The configuration model is that, with a richer variab
 not just piece + rotation) and a richer constraint (port compatibility *and* flow balance, not just
 boundary adjacency). It is not a new algorithm class to adopt; it is the existing one to extend.
 
-The one genuine complication: **balance is a non-local constraint.** Socket adjacency propagates
-between neighbours, which is what makes WFC's local propagation work. "Every exclusive output is
-consumed by exactly one reachable input" is a property of the whole assembly, so it cannot be
-enforced by neighbour-to-neighbour propagation alone. Options, in the order they should be tried:
-run placement by propagation and *then* solve flow over the assembled port graph; or treat balance
-as a repair pass that reassigns configurations to close leaks; or — per §1a — leave the leak in
-place at brainstorm time and let the critic report it. The last is the cheapest and, for a
-brainstorming tool, probably the right default.
+---
+
+## 1c. Two layers: WFC solves adjacency, a budget solves balance
+
+An earlier draft of this document treated port balance as a constraint that had to be enforced
+*inside* the placement solver, and then worried that it could not be, because balance is a property
+of the whole assembly while socket adjacency propagates neighbour to neighbour. The director
+overruled the premise: satisfaction does not have to be adjacency-local at all. **The values need to
+balance overall and stay within a bound set by difficulty** — and that is a different kind of check
+entirely, run by a different layer.
+
+The separation, and the reason it works:
+
+| Layer | Solves | Scope | Machinery |
+|---|---|---|---|
+| **Placement** | what can physically sit next to what | local, neighbour-to-neighbour | WFC — `stretch_wfc_layout.gd`, already shipping |
+| **Economy** | do supply and demand balance, and by how much | global, whole-composition | aggregate over typed port quantities, bounded |
+
+**This is what WFC is for.** It is already the right tool for the local problem and it already solves
+it. Pushing balance into it was the error — it would have broken the propagation that makes WFC cheap,
+in order to answer a question WFC was never the right shape for. The economy layer sits above and
+reads the assembled result.
+
+**Adjacency becomes reachability.** A fragment's input does not have to be met by its neighbour. The
+enemy that walks off the center platform does not go to the piece next door; it joins the level's
+population and is absorbed by any reachable fragment downstream. What the economy layer checks is
+that supply of each port type meets demand across the composition, plus that the supplier is
+actually reachable from the consumer — not that they touch.
+
+**The check is asymmetric, and the asymmetry is the design.** These are not the same kind of failure:
+
+- A **deficit on a progress-gating input** is a bug. If a fragment needs a platform delivered from
+  above and nothing in the composition supplies one, the level cannot be finished. Hard error.
+- A **surplus of pressure** is difficulty, not a bug. Enemies produced and never absorbed are simply
+  threat left in play, and how much of that is allowed is exactly what the difficulty bound sets.
+
+So the bound is not a safety margin — it is the difficulty knob itself, and it is the same knob the
+curriculum ramp already turns. `stretch_systems_curriculum.gd` raises pressure with progression
+stage; expressing that as *"how much unabsorbed output may be in flight at once"* gives the ramp a
+single measurable quantity instead of a bundle of hand-set numbers. Early stages hold the running
+net near zero — produced pressure is absorbed almost immediately. Later stages permit large
+excursions, and the level runs hot.
+
+**Cost.** Aggregate arithmetic plus a reachability query, over an assembly WFC has already produced.
+No flow solve, no repair pass, no constraint propagation. It is also trivially explainable, which
+matters for §1a: the critic can say *"three enemies produced, one sink, net +2 against a stage-2
+bound of +1"* — a sentence the director can act on.
 
 ---
 
