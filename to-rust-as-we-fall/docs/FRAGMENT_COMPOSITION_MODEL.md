@@ -63,6 +63,11 @@ bounding:
 > units because the rest of the units overwhelm the player or consume too much time, which is
 > discouraged by our day night mechanic
 
+And, extending it — enemies absorbing each other:
+
+> Equivalently two enemies can fight each other, so can two groups of enemies, groups can overwhelm
+> individual or fewer enemies, etc. So that emergence can be used as a puzzle piece
+
 Ruling, on the risk that a port-type vocabulary is either too coarse (everything matches everything —
 oatmeal) or too fine (nothing matches anything — a fixed jigsaw):
 
@@ -298,6 +303,61 @@ Three consequences for the check:
 The day clock is what makes all of this self-pricing rather than something the generator has to
 police, which is why time must be charged honestly per repetition — see the unbuilt `cost` interval in
 §5.6, which is now load-bearing rather than a nicety.
+
+---
+
+## 1g. Pressure absorbs pressure — the ecology IS the sink catalog
+
+Two enemies can fight each other; so can two groups; a group overwhelms an individual or a smaller
+group. **A `fauna_body` output is therefore also a conditional sink for other `fauna_body` outputs**,
+and the player's verb becomes *routing pressure into pressure* rather than only routing pressure into
+a fixed hazard. This is the emergence the composition model exists to make usable.
+
+**This corrects §1f's scarcity claim.** High-fanout absorption is scarce *only while enemies cannot
+harm each other*. Once they can, every hostile population in the level is a potential sink for every
+other, and group-versus-group scales the fanout naturally — which is exactly the plentiful,
+high-fanout absorption §1f said the catalog was missing.
+
+**It composes canon rather than inventing it.** The roster already specifies who consumes whom:
+Meebs "eat other enemies too, so it doubles as a hazard you can lead things into"; a Flare's burst
+"hits friend and foe"; a Tangler led into a Candid zone is unravelled; a Spiker's completed discharge
+draws the Tanglers that hunt it, and a Tangler can be baited onto a Spiker; Toxos are what
+"everything healthy hunts". The interactions are written down. What is missing is the edge that lets
+them execute.
+
+**Build consequence, and it is the big one: the enemy-on-enemy strike edge stops being a combo
+enabler and becomes foundational.** `FRAGMENT_IDEAS.md` currently files it at tier 4 — "the shared
+unlock", gating ideas #4/#8/#9/#14 — and `enemy.gd`'s `_resolve_strike` drives party-only
+`_detection_targets`, so today every "the ecology kills something" play is topology, not mechanism.
+Under this ruling that edge is not one tier of combo cards; it is **the mechanism that makes the
+economy model's absorption side viable at all.** It should be re-ranked accordingly.
+
+**The contest must be legible, not a dice roll.** "Groups overwhelm fewer" gives a countable, readable
+variable, which is what keeps this inside the deterministic-information model: the player looks,
+counts, and predicts. A collision whose outcome cannot be read before committing is a coin flip, and
+a lost group is an expensive coin flip. The exact attrition curve is the director's to set (see the
+open question below); what the model requires is only that it be a *function of visible quantities*.
+
+Four consequences for the check:
+
+1. **A collision's fanout is what the encounter removes**, not a fixed number — group-versus-group
+   removes on both sides, so a single routing decision can clear far more than any set-piece sink.
+   This is the cheapest route to a low `reps` score, and therefore the most likely intended solve.
+2. **Mutual absorption requires mutual reachability**, on the `ground_fauna` predicate (same level, no
+   link traversal — §5.5). Two hostile populations on different floors do not cancel, however neatly
+   they cancel on paper.
+3. **Never double-count an absorption.** If population A cancels B, B is not also available to a drown
+   pen. The ledger tracks each body once.
+4. **The absorption is player-elective, so the two bounds read different cases.** `reps` is computed
+   against the *best available* answer — does a low-repetition solve exist? — while `peak` is computed
+   against the case where the player has not yet routed anything together. That asymmetry is already
+   how the §5.5 critic phrases the chore message ("the best reachable sink"); enemy-on-enemy simply
+   adds candidates to that set.
+
+**Open for the director:** the attrition curve. When a group of 4 meets a group of 1, the single body
+is removed — but how many of the 4 survive, and does the winning group carry damage forward into the
+next fragment? That answer sets whether a collision is a clean sink or a *transformer* that outputs a
+depleted group, which is a materially different puzzle piece.
 
 ---
 
