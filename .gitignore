@@ -88,3 +88,11 @@ tmp_*.log
 
 # Android export output
 to-rust-as-we-fall/build/
+
+# Codex session scratch (godot logs, shader caches, per-run user dirs) — never source
+.codex-tmp/
+.codex-remote-attachments/
+to-rust-as-we-fall/Godot/
+
+# Node harness deps (the playwright web-smoke rig; package.json IS tracked)
+node_modules/

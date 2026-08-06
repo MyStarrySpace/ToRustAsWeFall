@@ -1,0 +1,28 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="PackedScene" path="res://resources/models/fauna/ferrule/ferrule.gltf" id="1_ferrule"]
+
+[node name="FerruleVisual" type="Node3D"]
+metadata/asset_contract = "editable_3d_v1"
+metadata/editable_asset_root = "res://resources/models/fauna/ferrule"
+metadata/editable_master = "../blender/fauna/ferrule/ferrule.blend"
+metadata/export_helper = "../blender/fauna/ferrule/export_ferrule.py"
+metadata/visual_identity = "ferrule_slinky_v1"
+metadata/biota_category = "fauna"
+metadata/species = "ferrule"
+metadata/motion_model = "compress_release_latch"
+metadata/forward_axis = "+Z"
+
+[node name="Model" parent="." instance=ExtResource("1_ferrule")]
+
+[node name="FacingSocket" type="Marker3D" parent="."]
+position = Vector3(0, 0.24, 2.38)
+metadata/socket_role = "forward"
+
+[node name="ImpactSocket" type="Marker3D" parent="."]
+position = Vector3(0, 0.1, 2.25)
+metadata/socket_role = "mouth_latch"
+
+[node name="RearAnchorSocket" type="Marker3D" parent="."]
+position = Vector3(0, 0.25, -2.2)
+metadata/socket_role = "rear_anchor"

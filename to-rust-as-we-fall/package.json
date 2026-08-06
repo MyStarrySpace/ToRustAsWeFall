@@ -1,0 +1,12 @@
+{
+  "name": "to-rust-as-we-fall-web-tests",
+  "private": true,
+  "scripts": {
+    "postinstall": "node tests/web/mark-node-modules-godot-ignored.mjs",
+    "test:web:basin": "playwright test tests/web/basin-fill-proof.spec.mjs --repeat-each=2",
+    "test:web:persona-contract": "playwright test --config playwright.contract.config.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.61.0"
+  }
+}

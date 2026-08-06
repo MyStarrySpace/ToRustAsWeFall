@@ -1,0 +1,33 @@
+[gd_scene load_steps=2 format=3]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_movement_result"]
+bg_color = Color(0.035, 0.055, 0.075, 0.94)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.25, 0.72, 1, 0.95)
+corner_radius_top_left = 5
+corner_radius_top_right = 5
+corner_radius_bottom_right = 5
+corner_radius_bottom_left = 5
+
+[node name="MovementResultPresentationLayer" type="CanvasLayer"]
+layer = 85
+
+[node name="MovementResultPresentation" type="PanelContainer" parent="."]
+visible = false
+offset_left = 24.0
+offset_top = 210.0
+offset_right = 384.0
+offset_bottom = 254.0
+custom_minimum_size = Vector2(360, 44)
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_movement_result")
+
+[node name="MovementResultLabel" type="Label" parent="MovementResultPresentation"]
+layout_mode = 2
+mouse_filter = 2
+text = ""
+horizontal_alignment = 1
+vertical_alignment = 1
