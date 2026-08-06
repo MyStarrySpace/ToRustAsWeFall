@@ -550,3 +550,51 @@ shunt, and drop use saved external traversals too; its retired endpoint-snap hel
 **Still on the ledger:** only explicit restart-grade repositioning remains—the chase checkpoint
 resume (snap+restore, like the loader's) and Wash Relay's reset flow (2). These reset construction
 truth after an attempt; they are not player-facing puzzle consequences.
+
+## P-SHOWN: the world reports its own state (director ruling, 2026-08-06)
+
+> Also, let's make it so that instead of adding more and more to the GUI, anything that should be
+> communicated (like the rising water in the basin) should be visually shown, not told
+
+**The law:** the world is the primary channel for state. When something must be communicated, the
+default answer is an object, a surface, or a motion in the scene — not another row on the HUD. The
+GUI is not where new communication goes.
+
+This is P18-taught-by-scene's sibling, and the two must not be confused. P18 governs **teaching**:
+how a player learns a mechanic the first time. This governs **reporting**: how a player reads state
+they already understand, on the hundredth encounter as well as the first.
+
+**The exemplar already exists in our own design — the Balancing Basin's rota chart.** The schedule is
+not a panel that follows the camera; it is a physical chart hanging on the gantry over the inflow
+header, visible from the whole bowl floor and readable up close. Information is a *place you go*,
+priced in a detour and a stealth problem. Copy that shape. The rising water itself is the same idea
+with no reading required: the header groans, the surface shivers, the waterline climbs, the floats
+ride up, and the dwellers break for the stairs. Every one of those is the state reporting itself. A
+numeric water-level readout would be the failure — it would tell the player something the room is
+already saying louder.
+
+**The diagnostic question, and the reason this rule pays for itself:** before adding a HUD element,
+ask *what object in the world could carry this instead*. If the honest answer is "nothing could" —
+that is usually not a signal that the HUD needs a row. It is a signal that the level is missing a
+piece of infrastructure. GUI accretion is most often a symptom of under-built world, and the fix
+builds the world instead of the interface.
+
+**Three carve-outs, stated so the law does not become a trap:**
+
+1. **Offscreen state.** A pause-and-direct game lets the camera be somewhere else. `BALANCING_BASIN`
+   already specifies "an offscreen-safe status read" alongside its diegetic telegraph, and that is
+   correct. The world is primary; a minimal HUD fallback is legitimate *only* for state the camera
+   genuinely cannot be showing — and it must be DERIVED from the same authority, never a second
+   source of truth that can disagree with the room.
+2. **Accessibility.** The `Settings` layer exists because players differ. "Do not add to the GUI by
+   default" is not "never surface anything" — an option that makes an implicit read explicit is a
+   legitimate accessibility affordance, not a violation.
+3. **Pause-readability.** The tell must survive being read while paused, which favours PERSISTENT
+   world state (a waterline, a raised float, a lit chart) over transient effects (a one-shot flash,
+   a fading particle). A tell you can only catch in motion is not a tell in this game.
+
+**Enforcement.** `game_hud.gd` already exposes `get_hud_contract()` and auto-hides empty sections, so
+the surface is enumerable: a guard can assert the contract does not grow without a ruling, the same
+way `--test-canon-mechanics` lints the enforceable slice of the systems-thinking law. That is the
+cheap half; the rest is review discipline — every new HUD row should have to argue why no object in
+the world could carry it.
