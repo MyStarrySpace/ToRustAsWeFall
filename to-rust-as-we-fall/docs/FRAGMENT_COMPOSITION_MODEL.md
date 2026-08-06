@@ -106,6 +106,12 @@ And, on carry-swapping and the throw/handoff mechanic it calls for:
 > Dragging things onto enemies throws things at them (predicting their arrival location to ensure a
 > hit).
 
+And, on how a level blocks a throw, and on the reach limit:
+
+> So, we can make it deliberate that places can't be thrown across simply by obscuring LOs between two
+> players if that's intentional (needs to ahve a good reason to be). And yes, erfuse throwing outside
+> of reach
+
 *The mechanic gets its own spec doc. Its consequence for THIS model is recorded in §1j.*
 
 And the thesis the whole model serves (also quoted at the head of this document):
@@ -556,22 +562,50 @@ reachability **plus an LOS hop between any two party members**. A supply can now
 being handed forward across a sightline nobody can walk. That is a genuine widening, and it makes
 compositions balance that previously deadlocked.
 
-**Which is exactly why it needs guarding in three places:**
+**Both limits are now ruled, and each one reuses machinery that already exists.**
 
-1. **Carry-cost pricing.** The slow-carry archetype prices a puzzle in *trips* — two carry runs, the
-   second needing a re-lure. If a throw crosses the same distance for free, the price evaporates and
-   the puzzle with it. Where the walk IS the puzzle, the throw must be blocked or priced (weight,
-   stamina, a hand-slot cost, or simply no sightline), and a fragment that relies on carry cost must
-   say so in its signature.
-2. **A new softlock route (§1h).** Throwing an item somewhere no one can reach — across a chasm, onto
-   a ledge, into a hazard band — irreversibly removes a gating supply. This is the *misallocation*
-   failure §1h names, with a longer reach. The mitigation is the one §1h already prefers: reversibility.
-   A thrown item must be retrievable, or the throw must refuse targets outside the party's own
-   reachable set.
-3. **The critical path must not assume it.** Sightlines change as bodies move, so throw-reachability is
-   state-dependent in a way walk-reachability is not. A gating input satisfied *only* via a throw is
-   satisfied only in some configurations of the party. Treat throw-reachability as licensing optional
-   routes freely and critical-path gates only when the sightline is structural.
+**1. A level blocks a throw by OBSCURING THE SIGHTLINE — and the occluder must have a reason to be
+there.** This is the right lever precisely because it is *visible*. The player never meets an
+invisible rule saying "no handoff here"; they see the bulkhead, the pipe run, the partition, and the
+constraint reads off the geometry the way every other constraint in this game does. It also binds the
+throw to the architecture law (director, 2026-07-29): the blocker is something a real society built
+for a real purpose, never a designer's convenience wall. If a fragment needs the walk to stay
+expensive, it must *earn* the occluder in the fiction.
+
+**One occluder, three readings — which is the design method working.** The same wall that blocks a
+handoff also breaks a Spiker's line-of-sight connection, and also shapes what the perception overlays
+can surface. One piece of geometry, read three ways by three systems, none of them bolted on. That is
+the strongest argument for making sightline the lever rather than inventing a throw-range stat: a
+range number would be a fourth invisible rule, while an occluder is a thing the level already wanted.
+
+Consequently **carry-cost pricing is authored by sightline.** The slow-carry archetype prices a puzzle
+in *trips*; a free throw would evaporate that price and the puzzle with it. Where the walk IS the
+puzzle, the fragment declares an occluded sightline in its signature and the cost survives — enforced
+by the same geometry the stealth layer already reads.
+
+**2. A throw REFUSES targets outside reach**, which closes the softlock route (§1h) rather than
+mitigating it. An item can never be put somewhere nobody can retrieve it, because the throw will not
+go there. The refusal is nearly free: it reuses the `party` reachability BFS the economy layer already
+computes (§5.5).
+
+**The sharp caveat: reachable is not the same as retrievable, because reachability is DIRECTED
+(§1d).** A cell on the far side of a one-way drop *is* party-reachable — you can fall to it — but the
+thrower cannot get back without committing the whole party down the drop. The fragment register names
+this exact failure: *"a bank behind a one-way drop is write-only."* So the refusal check must run on
+the **round-trip** reachable set for anything gating, not the one-way set. A one-way throw target is
+legitimate for optional content and for deliberate commitment beats, but it must be *reported*, never
+silently allowed:
+
+```
+[throw/one-way-target] cell (14,3) level 0 is reachable from here but not back —
+  committing this item means committing the party. Gating items refuse; this one is optional.
+```
+
+**3. The critical path still must not assume a throw.** Sightlines change as bodies move, so
+throw-reachability is state-dependent in a way walk-reachability is not. A gating input satisfied
+*only* via a throw is satisfied only in some configurations of the party. Treat it as licensing
+optional routes freely, and critical-path gates only where the sightline is structural — i.e.
+guaranteed by the architecture rather than by where the party happens to be standing.
 
 **One genuinely positive interaction:** throwing is a partial answer to §1h's misallocation problem.
 An item put down in the wrong place can sometimes be thrown back rather than walked back, which is
