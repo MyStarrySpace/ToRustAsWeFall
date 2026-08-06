@@ -112,7 +112,8 @@ And, on how a level blocks a throw, and on the reach limit:
 > players if that's intentional (needs to ahve a good reason to be). And yes, erfuse throwing outside
 > of reach
 
-*The mechanic gets its own spec doc. Its consequence for THIS model is recorded in §1j.*
+*The mechanic's spec is `docs/THROW_HANDOFF.md` ("The Pass"). Its consequence for THIS model is
+recorded in §1j.*
 
 And the thesis the whole model serves (also quoted at the head of this document):
 
