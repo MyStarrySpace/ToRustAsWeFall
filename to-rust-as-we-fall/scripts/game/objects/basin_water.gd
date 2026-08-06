@@ -228,7 +228,11 @@ func catches_body_at(pos: Vector3, level: int) -> bool:
 	if level == 0 and _state_flag(_state, "catches_floor"):
 		return _in_floor_rect(cell) and not _safe_cells.has(cell)
 	if level == _float_level and _state_flag(_state, "catches_floats"):
-		return _float_cells.has(cell)
+		# A rider RIDES. The raft climbs with the water, so a body on it only drowns when the water
+		# actually closes over the deck — which the state's own geometry already says. Sweeping on
+		# the flag alone drowned riders through every authored rise, because every authored state
+		# keeps float_y above water_y (director report, 2026-08-06).
+		return _float_cells.has(cell) and _float_height(_state) <= _water_height(_state)
 	return false
 
 ## CrossingAssist stages a party across water-state changes. A hold vertex must therefore belong
@@ -592,10 +596,31 @@ func _resolve_catches() -> void:
 			if _gs.has_method("get_character_level") else 0
 		if not catches_body_at(_gs.get_position(id), level):
 			continue
-		if id in _party_ids:
-			_channel.request_sweep_body(id, "party")
-		elif _resolve_dweller(id) != null:
-			_channel.request_sweep_body(id, "enemy")
+		var kind := sweep_kind_for(id)
+		if kind != "":
+			_channel.request_sweep_body(id, kind)
+
+
+## What the flood does to this body if it is caught: "party", "enemy", or "" for nothing.
+## ONE HAZARD, ONE PREDICATE (BALANCING_BASIN) — the flood that drowns a dweller drowns anything
+## else standing in it. Eligibility must NOT depend on the chunk's enemy resolver recognising the
+## body: that made an enemy which wandered in, or one owned by another system, quietly immune, and
+## made the whole rule collapse to nothing in a scene with no resolver wired. The resolver's job is
+## eviction and return behaviour, not deciding who can drown. The only body the water spares is one
+## we can positively confirm is already dead — never sweep a corpse.
+func sweep_kind_for(id: String) -> String:
+	if id in _party_ids:
+		return "party"
+	var foe: Variant = _enemy_resolver.call(id) if _enemy_resolver.is_valid() else null
+	if foe != null and is_instance_valid(foe):
+		# Ask BOTH questions. Enemy.die() only transitions the FSM to "dead" and never zeroes hp, so
+		# a corpse still answers is_alive() with true — checking only that would sweep bodies the
+		# room has already finished with.
+		if foe.has_method("is_alive") and not bool(foe.call("is_alive")):
+			return ""
+		if foe.has_method("get_state") and str(foe.call("get_state")) == "dead":
+			return ""
+	return "enemy"
 
 func _wet_poll() -> void:
 	if not _running or not _state_has_catches(_state) or _scheduler == null:

@@ -747,6 +747,9 @@ func _ready() -> void:
 			"--test-canonical-location-names":
 				ran_test = true
 				_test_canonical_location_names()
+			"--test-basin-float-rider":
+				ran_test = true
+				_test_basin_float_rider_not_swept()
 			"--test-throw-item-analytic":
 				ran_test = true
 				_test_throw_item_analytic()
@@ -27856,6 +27859,93 @@ func _test_elevator_enemy_engagement() -> void:
 # three things that would silently break it: a lead solved by anything other than the closed form,
 # a see-over cell quietly becoming a delivery chute, and an outcome that drifts with the tick step.
 
+# A body standing ON a float rides it. Every authored state keeps the raft ABOVE the waterline
+# (basin_fill_proof: 0.12>-0.5, 2.58>2.45, 3.3>3.05; the four-state probe: 3.0>2.8), so a rider is
+# never actually underwater — yet catches_floats swept exactly the bodies standing on floats. The
+# catch must follow the geometry: you drown when the raft goes under, not when a flag says so.
+func _test_basin_float_rider_not_swept() -> void:
+	_test_name = "Basin Float Rider Not Swept"
+	var generator_script: Script = load(
+		"res://scripts/generation/rising_water_crossing_generator.gd")
+	var spec: Dictionary = generator_script.build({
+		"tag": "rider_probe",
+		"grid_origin": Vector3.ZERO,
+		"cell_size": 1.0,
+		"floor_min_cell": Vector2i(0, 0),
+		"floor_max_cell": Vector2i(6, 4),
+		"float_min_cell": Vector2i(2, 2),
+		"float_max_cell": Vector2i(4, 2),
+		"recovery_cells": [[0, 0], [0, 1], [0, 2]],
+		"water_states": [
+			{"name": "LOW", "water_y": -0.5, "float_y": 0.12,
+				"floor_walkable": true, "floats_walkable": false,
+				"catches_floor": false, "catches_floats": false},
+			{"name": "MID", "water_y": 2.45, "float_y": 2.58,
+				"floor_walkable": false, "floats_walkable": true,
+				"catches_floor": true, "catches_floats": false},
+			{"name": "HIGH", "water_y": 3.05, "float_y": 3.3,
+				"floor_walkable": false, "floats_walkable": false,
+				"catches_floor": true, "catches_floats": true},
+			{"name": "SWAMPED", "water_y": 4.0, "float_y": 3.4,
+				"floor_walkable": false, "floats_walkable": false,
+				"catches_floor": true, "catches_floats": true},
+		],
+		"rota": [{"level": 0, "dwell": 4.0}, {"level": 1, "dwell": 4.0},
+			{"level": 2, "dwell": 4.0}, {"level": 3, "dwell": 4.0}],
+	})
+	var grid := GridWorld.new()
+	grid.create_room(8, 6, true)
+	grid.set_level_count(2)
+	var gs := GameState.new()
+	gs.grid = grid
+	gs.scheduler = EventScheduler.new()
+	var basin: Node = load("res://scripts/game/objects/basin_water.gd").new()
+	add_child(basin)
+	basin.call("configure", gs, spec)
+	basin.call("start", gs.scheduler, gs)
+	var float_cell := Vector2i(3, 2)
+	var rider_pos := grid.grid_to_world(float_cell, 1)
+	var floor_pos := grid.grid_to_world(Vector2i(5, 3), 0)
+
+	# HIGH: the raft is at 3.3, the water at 3.05 — the rider is a quarter metre clear of it.
+	basin.call("request_state", 2, 0.05)
+	gs.scheduler.advance_ticks(0.2)
+	_assert_true(not bool(basin.call("catches_body_at", rider_pos, 1)),
+		"a body riding a raft that sits ABOVE the waterline is not swept by the rise")
+	_assert_true(bool(basin.call("catches_body_at", floor_pos, 0)),
+		"while a body standing in the drowned bowl still is")
+
+	# SWAMPED: the water finally goes over the raft (4.0 above 3.4). Now the rider drowns, so the
+	# flag keeps its meaning instead of being deleted.
+	basin.call("request_state", 3, 0.05)
+	gs.scheduler.advance_ticks(0.2)
+	_assert_true(bool(basin.call("catches_body_at", rider_pos, 1)),
+		"a rider IS caught once the water actually closes over the raft")
+
+	# ONE HAZARD, ONE PREDICATE. Sweep eligibility must not depend on the chunk's enemy resolver
+	# recognising the body — an enemy that wandered in, or one owned by another system, drowns the
+	# same as an authored dweller, and with no resolver wired at all the rule must not collapse.
+	basin.call("set_party_ids", ["aster", "peris"])
+	_assert_equals(str(basin.call("sweep_kind_for", "aster")), "party",
+		"a caught party member is swept as party")
+	_assert_equals(str(basin.call("sweep_kind_for", "dweller_a")), "enemy",
+		"an authored dweller is swept as an enemy")
+	_assert_equals(str(basin.call("sweep_kind_for", "wandered_in_gnawer")), "enemy",
+		"and so is an enemy the basin's resolver has never heard of")
+	var corpse := Enemy.new()
+	corpse.char_id = "downed_one"
+	add_child(corpse)
+	corpse.call("die")
+	basin.call("set_enemy_resolver", func(id: String) -> Variant:
+		return corpse if id == "downed_one" else null)
+	_assert_equals(str(basin.call("sweep_kind_for", "downed_one")), "",
+		"but a body we can confirm is already dead is never swept — the water takes no corpses")
+	_assert_equals(str(basin.call("sweep_kind_for", "wandered_in_gnawer")), "enemy",
+		"and an unknown body stays sweepable even once a resolver is wired")
+	corpse.free()
+	basin.free()
+
+
 func _test_throw_item_analytic() -> void:
 	_test_name = "Throw Item Analytic"
 	var sched := EventScheduler.new()
@@ -45436,9 +45526,11 @@ func _test_basin_fill_proof() -> void:
 	_assert_true(not grid.is_walkable(7, 4, {}, {}, 1), "HIGH: the float road is pinned (level 1)")
 	_assert_true(is_equal_approx(float(gs.get_stat("aster", "hp")), hp_aster) and
 		not gs.is_external_traversal_active("aster"), "HIGH: the balcony stander is untouched")
-	# a float-stander at the HIGH commit would be swept — prove via the shared predicate.
-	_assert_true(basin.catches_body_at(Vector3(9.75, 2.7, 5.25), 1),
-		"HIGH: the waterline predicate takes a float-stander")
+	# A float-stander RIDES the rise (director report, 2026-08-06). At HIGH the raft sits at 3.3 and
+	# the water at 3.05, so the rider is clear of it — the raft is pinned and stops being a road,
+	# which the walkability assert above already proves, but the water does not take them.
+	_assert_true(not basin.catches_body_at(Vector3(9.75, 2.7, 5.25), 1),
+		"HIGH: a float-stander rides the raft up rather than being swept")
 	_assert_true(not basin.catches_body_at(a["balcony"], 1),
 		"HIGH: the same predicate spares the balcony")
 	_assert_true(not basin.catches_body_at(a["shelf"], 0),
