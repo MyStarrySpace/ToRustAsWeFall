@@ -57,6 +57,11 @@ var characters: Dictionary = {}
 var physics_objects: Dictionary = {}
 var pendulums: Dictionary = {}
 var items: Dictionary = {}        # item_id → item dict
+## Which registered characters are PARTY. register_character gives every character (enemies
+## included) empty hands, and there is no faction concept anywhere else, so without this an
+## auto-catch would let an enemy pocket a thrown item. Derived state, set by the sequence at
+## registration — never logged, rebuilt identically on replay, like concealment and distraction.
+var party_ids: Dictionary = {}    # char_id → true
 var collection: Array[String] = [] # Permanently collected item IDs (cure components, etc.)
 ## Scene-scoped mechanisms, not serialized.
 var mechanisms: Dictionary = {}   # id (StringName) → Mechanism
@@ -4872,6 +4877,239 @@ func transfer_item(from_id: String, to_id: String, item_id: String) -> bool:
 	item_transferred.emit(from_id, to_id, item_id)
 	return true
 
+# --- The Pass: throwing an item hand-to-point (docs/THROW_HANDOFF.md) ---
+#
+# A throw moves an ITEM to a POINT. It never resolves against a body, carries no velocity and no
+# force, and cannot express "hit that thing" — the arriving object is inert. The whole outcome is
+# solved ONCE, in closed form, at the release tick, and the solved point is what gets logged, so
+# replay re-runs the landing from the record and never re-solves. Nothing about the result is ever
+# discovered by sampling, which is what keeps it identical at 1x and 10x.
+
+## Arm speed and arc ceiling, promoted from the constants throw_physics_object_to already hardcodes
+## rather than invented — a ~15 m envelope that falls off with height difference.
+const THROW_XZ_SPEED := 6.0
+const THROW_MAX_ARC := 2.5
+## How close a party member must be to the landing point to catch it out of the air.
+const THROW_CATCH_RADIUS := 1.2
+
+## Smallest positive flight time at which a projectile of XZ speed `speed` launched from `from_xz`
+## meets a target that is at `q_xz` now and moving at constant `vel_xz`. Solves
+##     (|u|^2 - v^2) t^2 + 2 (d.u) t + |d|^2 = 0,   d = q - p
+## exactly — no iteration, so there is no convergence tolerance that could drift between step sizes.
+## A parked target (u = 0) is not a special case: it reduces to t = |d| / v through the same path.
+## Returns -1.0 when the projectile can never catch it. Mirrors _solve_quadratic_detection's shape,
+## including its degenerate-`a` handling.
+static func _solve_quadratic_intercept(from_xz: Vector3, q_xz: Vector3, vel_xz: Vector3, speed: float) -> float:
+	var dx := q_xz.x - from_xz.x
+	var dz := q_xz.z - from_xz.z
+	var a := vel_xz.x * vel_xz.x + vel_xz.z * vel_xz.z - speed * speed
+	var b := 2.0 * (dx * vel_xz.x + dz * vel_xz.z)
+	var c := dx * dx + dz * dz
+	if c <= 1e-6:
+		return 0.0  # already underfoot
+	if absf(a) < 1e-8:
+		# Target recedes at exactly the arm speed: linear. Only closable if it is closing at all.
+		if b >= -1e-8:
+			return -1.0
+		return -c / b
+	var disc := b * b - 4.0 * a * c
+	if disc < 0.0:
+		return -1.0
+	var sqrt_disc := sqrt(disc)
+	var t1 := (-b - sqrt_disc) / (2.0 * a)
+	var t2 := (-b + sqrt_disc) / (2.0 * a)
+	var lo := minf(t1, t2)
+	var hi := maxf(t1, t2)
+	if lo > 1e-6:
+		return lo
+	if hi > 1e-6:
+		return hi
+	return -1.0
+
+## EVERYTHING IS THROWABLE — there is deliberately no allowlist and no per-item opt-out.
+## A verb that works on some items and not others is a rule the player has to memorise, and the
+## mental load costs more than the restriction saves. This is the same one-rule-no-exceptions law
+## the Capbage cache and endocytosis already follow: the cavity holds whatever you put in it, and
+## you learn through results. The safety that an allowlist was standing in for belongs one layer
+## down instead: there must never be a generic "run the item's effect where it lands" rule. What
+## arrives is an item on the floor. A fire fruit's damage is an ENDOCYTOSIS effect — it hurts the
+## character who eats it — and throwing one must never turn it into a grenade.
+
+## PURE READ — the preview. Returns {ok, reason, landing, level, flight, aim}. command_throw_item
+## runs exactly this and then delegates, so what the preview draws is what a commit executes.
+func solve_throw(from_id: String, item_id: String, target_kind: String, target_ref) -> Dictionary:
+	var fail := func(why: String) -> Dictionary:
+		return {"ok": false, "reason": why, "landing": Vector3.ZERO, "level": 0, "flight": 0.0, "aim": ""}
+	if not characters.has(from_id) or not items.has(item_id):
+		return fail.call("no such thrower or item")
+	var item: Dictionary = items[item_id]
+	if item.holder != from_id or item.location != "hand":
+		return fail.call("not in hand")
+	var from_pos := get_position(from_id)
+	var from_level := get_character_level(from_id)
+	var aim := ""
+	var to_level := from_level
+	var landing := Vector3.ZERO
+	var flight := 0.0
+	if target_kind == "char":
+		var target_id := String(target_ref)
+		if not characters.has(target_id):
+			return fail.call("no such target")
+		aim = target_id
+		to_level = get_character_level(target_id)
+		var now := float(scheduler.get_current_tick()) if scheduler else 0.0
+		var solved := false
+		for seg in _get_movement_segments(target_id):
+			var s0 := float(seg["start_tick"])
+			var s1 := float(seg["end_tick"])
+			if s1 <= now:
+				continue
+			var u: Vector3 = seg["velocity"]
+			# Extrapolate the segment's line to NOW so the projectile and the target share t=0.
+			var q0: Vector3 = seg["start_pos"] + u * (now - s0)
+			var t := _solve_quadratic_intercept(from_pos, q0, u, THROW_XZ_SPEED)
+			if t < 0.0:
+				continue
+			var land_tick := now + t
+			if land_tick < maxf(s0, now) - 1e-6 or land_tick > s1 + 1e-6:
+				continue
+			landing = q0 + u * t
+			flight = t
+			solved = true
+			break
+		if not solved:
+			return fail.call("cannot lead that target")
+	else:
+		var pt: Vector3 = target_ref
+		landing = Vector3(pt.x, 0.0, pt.z)
+		if target_kind == "point_on_level":
+			to_level = int(round(pt.y))
+		flight = Vector2(landing.x - from_pos.x, landing.z - from_pos.z).length() / THROW_XZ_SPEED
+	# The consistency check. A clamped flight time with an unclamped landing point would imply an
+	# unbounded arm — the projectile would teleport — so the arc ceiling refuses instead of lying.
+	if flight <= 1e-6:
+		return fail.call("already there")
+	if flight > THROW_MAX_ARC:
+		return fail.call("out of arc")
+	var implied := Vector2(landing.x - from_pos.x, landing.z - from_pos.z).length() / flight
+	if absf(implied - THROW_XZ_SPEED) > 0.25:
+		return fail.call("out of arc")
+	if absi(to_level - from_level) > 1:
+		return fail.call("too many floors")
+	# _get_movement_segments zeroes Y in every branch, so the solved point is on the y=0 plane
+	# structurally. Derive the real height from the destination floor instead of trusting it.
+	if grid:
+		var cell := grid.world_to_grid(landing)
+		landing.y = grid.grid_to_world(cell, to_level).y
+		if not grid.has_throw_line(from_pos, landing):
+			return fail.call("no line")
+		if not grid.is_walkable(cell.x, cell.y, {}, {}, to_level):
+			return fail.call("cannot land there")
+	return {"ok": true, "reason": "", "landing": landing, "level": to_level, "flight": flight, "aim": aim}
+
+## Solve, then delegate on success only. Emits nothing itself — throw_item does — so a refusal
+## never enters the log. Both the GUI and the CLI converge here, so they refuse identically.
+func command_throw_item(from_id: String, item_id: String, target_kind: String, target_ref) -> Dictionary:
+	var solved := solve_throw(from_id, item_id, target_kind, target_ref)
+	if not bool(solved["ok"]):
+		return solved
+	throw_item(item_id, from_id, solved["landing"], int(solved["level"]),
+		float(solved["flight"]), String(solved["aim"]))
+	return solved
+
+## Emit FIRST, then validate — the house pattern shared with throw_physics_object and transfer_item.
+## Validating first and emitting only on success makes live play and replay diverge the moment a
+## refusal is timing-dependent, which for this verb is the normal case.
+func throw_item(item_id: String, from_id: String, landing: Vector3, level: int,
+		flight: float, aim: String = "") -> void:
+	_emit(GameEvent.KIND_THROW_ITEM, {
+		"item_id": item_id,
+		"from": from_id,
+		"landing": GameEvent.v3_to_arr(landing),
+		"level": level,
+		"flight": flight,
+		"aim": aim,
+	})
+	if not items.has(item_id) or not characters.has(from_id):
+		return
+	var item: Dictionary = items[item_id]
+	var origin := get_position(from_id)
+	if characters.has(item.holder):
+		_clear_item_from_hands(characters[item.holder], item_id)
+	item.holder = ""
+	item.location = "airborne"
+	item.position = landing
+	var now := float(scheduler.get_current_tick()) if scheduler else 0.0
+	item["flight"] = {
+		"from": Vector3(origin.x, origin.y, origin.z),
+		"to": landing,
+		"start_tick": now,
+		"land_tick": now + flight,
+		"level": level,
+		"aim": aim,
+	}
+	if scheduler:
+		scheduler.schedule_after(flight, func(): _on_item_landing(item_id), "throw_item_" + item_id)
+
+## Derived, never a second logged event. The landing is a pure function of the logged throw plus the
+## logged movements plus the tick, so replay reproduces it from the one record. A second event here
+## would also fight event_log's monotonic-tick assert.
+func _on_item_landing(item_id: String) -> void:
+	if not items.has(item_id):
+		return
+	var item: Dictionary = items[item_id]
+	if item.location != "airborne":
+		return
+	var rec: Dictionary = item.get("flight", {})
+	var landing: Vector3 = rec.get("to", item.position)
+	item.location = "ground"
+	item.position = landing
+	item.erase("flight")
+	if grid:
+		item["grid_cell"] = grid.world_to_grid(landing)
+	# Auto-pickup is a CONVENIENCE layered on the ground landing, not a second outcome: the catcher
+	# must be PARTY (register_character hands enemies empty hands too), close enough, and have room.
+	var catcher := String(rec.get("aim", ""))
+	if catcher == "" or not party_ids.has(catcher) or not characters.has(catcher):
+		return
+	if get_position(catcher).distance_to(landing) > THROW_CATCH_RADIUS:
+		return
+	var slots := _find_free_hand_slots(catcher, _required_hand_slots(item))
+	if slots.is_empty():
+		return
+	var ch: Dictionary = characters[catcher]
+	for slot in slots:
+		ch.hands[int(slot)] = item_id
+	item.holder = catcher
+	item.location = "hand"
+
+## Where an item is right now. Airborne evaluates the parabola from the scheduler tick, so a view
+## that reads this is correct while paused, correct under hold-F, and correct after a save — the
+## same reason movement interpolates by tick instead of integrating delta.
+func get_item_position(item_id: String) -> Vector3:
+	if not items.has(item_id):
+		return Vector3.ZERO
+	var item: Dictionary = items[item_id]
+	if item.location == "hand" and characters.has(item.holder):
+		return get_position(item.holder)
+	if item.location != "airborne":
+		return item.position
+	var rec: Dictionary = item.get("flight", {})
+	if rec.is_empty() or not scheduler:
+		return item.position
+	var t0 := float(rec["start_tick"])
+	var t1 := float(rec["land_tick"])
+	var span := maxf(1e-6, t1 - t0)
+	var f := clampf((float(scheduler.get_current_tick()) - t0) / span, 0.0, 1.0)
+	var a: Vector3 = rec["from"]
+	var b: Vector3 = rec["to"]
+	var pos := a.lerp(b, f)
+	# y(t) = a.y + vy*t - 0.5*g*t^2, with vy chosen so y(span) == b.y. Apex is cosmetic.
+	var t := f * span
+	var vy := (b.y - a.y + 0.5 * PENDULUM_GRAVITY * span * span) / span
+	pos.y = a.y + vy * t - 0.5 * PENDULUM_GRAVITY * t * t
+	return pos
+
 func endocytose_item(char_id: String, item_id: String) -> bool:
 	_emit(GameEvent.KIND_ENDOCYTOSE_ITEM, {"char_id": char_id, "item_id": item_id})
 	if not characters.has(char_id) or not items.has(item_id) or not scheduler:
@@ -6928,6 +7166,15 @@ func _dispatch(kind: StringName, payload: Dictionary) -> void:
 			pick_up_item(String(payload["char_id"]), String(payload["item_id"]))
 		GameEvent.KIND_DROP_ITEM:
 			drop_item(String(payload["char_id"]), String(payload["item_id"]))
+		GameEvent.KIND_THROW_ITEM:
+			throw_item(
+				String(payload["item_id"]),
+				String(payload["from"]),
+				GameEvent.arr_to_v3(payload["landing"]),
+				int(payload.get("level", 0)),
+				float(payload["flight"]),
+				String(payload.get("aim", ""))
+			)
 		GameEvent.KIND_TRANSFER_ITEM:
 			transfer_item(
 				String(payload["from_id"]),

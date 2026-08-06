@@ -43,7 +43,7 @@ const KIND_REMOVE_ITEM := &"remove_item"
 const KIND_PICK_UP_ITEM := &"pick_up_item"
 const KIND_DROP_ITEM := &"drop_item"
 const KIND_TRANSFER_ITEM := &"transfer_item"
-
+const KIND_THROW_ITEM := &"throw_item"  # a hand-to-point lob; the SOLVED landing point is in the payload, so replay never re-solves
 const KIND_ENDOCYTOSE_ITEM := &"endocytose_item"
 const KIND_CANCEL_ENDOCYTOSIS := &"cancel_endocytosis"
 const KIND_EXOCYTOSE_ITEM := &"exocytose_item"
@@ -138,6 +138,7 @@ const ALL_KINDS: Array[StringName] = [
 	KIND_PICK_UP_ITEM,
 	KIND_DROP_ITEM,
 	KIND_TRANSFER_ITEM,
+	KIND_THROW_ITEM,
 	KIND_ENDOCYTOSE_ITEM,
 	KIND_CANCEL_ENDOCYTOSIS,
 	KIND_EXOCYTOSE_ITEM,

@@ -859,6 +859,36 @@ func has_line_of_sight(from_world: Vector3, to_world: Vector3) -> bool:
 			return false
 	return true
 
+# THROW traversal opacity. Seeded from is_opaque_cell, with one deliberate difference:
+# sight_transparent does NOT clear it. A see-over-but-impassable cell (canal, basin, pit, low kerb)
+# still stops a lob. Inheriting the sight marker would turn every such cell already authored into a
+# delivery chute with no author intent, and every future registration would silently gain the new
+# meaning. An author who wants a throw-over gap clears the blocker on that cell explicitly.
+func is_throw_blocking_cell(cell: Vector2i) -> bool:
+	if sight_blockers.has(cell):
+		return true
+	var tile := get_tile(cell.x, cell.y)
+	return tile == Tile.WALL or tile == Tile.LOCKED_DOOR
+
+## True if nothing blocks a thrown item's line between two world points (XZ only). Same deterministic
+## grid walk as has_line_of_sight — at least two samples per cell, endpoint cells skipped — but over
+## the throw predicate, so a canal you can see across is not a canal you can throw across.
+func has_throw_line(from_world: Vector3, to_world: Vector3) -> bool:
+	var a := world_to_grid(from_world)
+	var b := world_to_grid(to_world)
+	if a == b:
+		return true
+	var dist := Vector2(to_world.x - from_world.x, to_world.z - from_world.z).length()
+	var steps := maxi(2, int(ceil(dist / (cell_size * 0.5))))
+	for i in range(1, steps):
+		var f := float(i) / float(steps)
+		var cell := world_to_grid(Vector3(lerpf(from_world.x, to_world.x, f), 0.0, lerpf(from_world.z, to_world.z, f)))
+		if cell == a or cell == b:
+			continue
+		if is_throw_blocking_cell(cell):
+			return false
+	return true
+
 # --- Per-cell risk authoring + queries ---
 
 func set_cell_risk(cell: Vector2i, penalty := 20.0, recoverable := true) -> void:

@@ -747,6 +747,15 @@ func _ready() -> void:
 			"--test-canonical-location-names":
 				ran_test = true
 				_test_canonical_location_names()
+			"--test-throw-item-analytic":
+				ran_test = true
+				_test_throw_item_analytic()
+			"--test-throw-los-gate":
+				ran_test = true
+				_test_throw_los_gate()
+			"--test-throw-fast-forward-invariance":
+				ran_test = true
+				_test_throw_fast_forward_invariance()
 			"--test-hidden-detection":
 				ran_test = true
 				_test_hidden_detection()
@@ -27803,6 +27812,169 @@ func _test_elevator_enemy_engagement() -> void:
 	holder.queue_free()
 
 # --- Test: a hidden character is invisible to enemy detection (hide-spot foundation) ---
+# --- The Pass (docs/THROW_HANDOFF.md) ---
+# A throw moves an item to a POINT, solved once in closed form at the release tick. These guard the
+# three things that would silently break it: a lead solved by anything other than the closed form,
+# a see-over cell quietly becoming a delivery chute, and an outcome that drifts with the tick step.
+
+func _test_throw_item_analytic() -> void:
+	_test_name = "Throw Item Analytic"
+	var sched := EventScheduler.new()
+	var grid := GridWorld.new()
+	grid.create_room(40, 40)
+	var gs := GameState.new()
+	gs.scheduler = sched
+	gs.grid = grid
+	gs.register_character("aster", Vector3(4.0, 0.0, 4.0), 3.0)
+	gs.register_character("endo", Vector3(10.0, 0.0, 4.0), 3.0)
+	gs.party_ids["aster"] = true
+	gs.party_ids["endo"] = true
+	var it := gs.spawn_item("lysate", Vector3(4.0, 0.0, 4.0))
+	_assert_true(gs.pick_up_item("aster", it), "the thrower is holding the item")
+
+	# A PARKED target is not a special case — u = 0 reduces the quadratic to t = |d| / v.
+	var parked: Dictionary = gs.solve_throw("aster", it, "char", "endo")
+	_assert_true(bool(parked["ok"]), "a parked teammate 6 m away is solvable")
+	_assert_true(absf(float(parked["flight"]) - 1.0) < 0.02,
+		"6 m at the 6 m/s arm is a 1.0-tick flight (got %.3f)" % float(parked["flight"]))
+
+	# A MOVING target: check the closed form against its own definition rather than against itself —
+	# the projectile must cover exactly arm-speed x flight, and the point must be where the target
+	# actually arrives when the scheduler gets there.
+	gs.command_move_to_pos("endo", Vector3(22.0, 0.0, 4.0))
+	var lead: Dictionary = gs.solve_throw("aster", it, "char", "endo")
+	_assert_true(bool(lead["ok"]), "a receding teammate inside the envelope is solvable")
+	var t := float(lead["flight"])
+	var land: Vector3 = lead["landing"]
+	var from := gs.get_position("aster")
+	var travelled := Vector2(land.x - from.x, land.z - from.z).length()
+	_assert_true(absf(travelled - GameState.THROW_XZ_SPEED * t) < 0.05,
+		"the projectile covers exactly arm-speed x flight (%.3f vs %.3f)"
+			% [travelled, GameState.THROW_XZ_SPEED * t])
+	_assert_true(t > 1.0, "leading a receding target takes longer than hitting it parked (%.3f)" % t)
+	sched.advance_ticks(t)
+	var actual := gs.get_position("endo")
+	_assert_true(Vector2(actual.x - land.x, actual.z - land.z).length() < 0.2,
+		"the solved point is where the target actually arrives (off by %.3f)"
+			% Vector2(actual.x - land.x, actual.z - land.z).length())
+
+	# Refusals, each legible rather than a silent miss.
+	var sched2 := EventScheduler.new()
+	var grid2 := GridWorld.new()
+	grid2.create_room(60, 60)
+	var gs2 := GameState.new()
+	gs2.scheduler = sched2
+	gs2.grid = grid2
+	gs2.register_character("aster", Vector3(4.0, 0.0, 4.0), 3.0)
+	gs2.register_character("far", Vector3(40.0, 0.0, 4.0), 3.0)
+	gs2.register_character("sprinter", Vector3(10.0, 0.0, 4.0), 9.0)
+	var it2 := gs2.spawn_item("lysate", Vector3(4.0, 0.0, 4.0))
+	gs2.pick_up_item("aster", it2)
+	var far_solve: Dictionary = gs2.solve_throw("aster", it2, "char", "far")
+	_assert_equals(String(far_solve["reason"]), "out of arc",
+		"beyond the arc ceiling refuses rather than teleporting the item")
+	gs2.command_move_to_pos("sprinter", Vector3(58.0, 0.0, 4.0))
+	var chase: Dictionary = gs2.solve_throw("aster", it2, "char", "sprinter")
+	_assert_true(not bool(chase["ok"]),
+		"a target receding faster than the arm cannot be led (got: %s)" % String(chase["reason"]))
+
+	# EVERYTHING is throwable — no allowlist, no per-item opt-out, because a verb that works on some
+	# items and not others is a rule the player has to memorise. The safety lives one layer down: what
+	# lands is an item on the floor, never its effect. A fire fruit carries a damage figure (an
+	# ENDOCYTOSIS effect — it hurts whoever eats it), so it is the sharpest case: it must fly like
+	# anything else AND arrive without touching anybody.
+	gs2.register_character("catcher", Vector3(9.0, 0.0, 4.0), 3.0, {"hp": 100.0})
+	gs2.party_ids["catcher"] = true
+	var fruit := gs2.spawn_item("fire_fruit", Vector3(4.0, 0.0, 4.0))
+	_assert_true(gs2.pick_up_item("aster", fruit), "the thrower picks up a fire fruit")
+	var fruit_throw: Dictionary = gs2.command_throw_item("aster", fruit, "char", "catcher")
+	_assert_true(bool(fruit_throw["ok"]),
+		"a fire fruit throws like anything else (got: %s)" % String(fruit_throw["reason"]))
+	sched2.advance_ticks(float(fruit_throw["flight"]) + 0.5)
+	_assert_equals(gs2.get_stat("catcher", "hp"), 100.0,
+		"and it arrives INERT — a thrown item delivers the object, never its effect")
+	_assert_equals(String(gs2.items[fruit]["holder"]), "catcher",
+		"the catcher simply has a fire fruit in hand now")
+
+func _test_throw_los_gate() -> void:
+	_test_name = "Throw LOS Gate"
+	var sched := EventScheduler.new()
+	var grid := GridWorld.new()
+	grid.create_room(24, 24)
+	var gs := GameState.new()
+	gs.scheduler = sched
+	gs.grid = grid
+	gs.register_character("aster", Vector3(4.0, 0.0, 10.0), 3.0)
+	gs.register_character("endo", Vector3(10.0, 0.0, 10.0), 3.0)
+	gs.party_ids["aster"] = true
+	gs.party_ids["endo"] = true
+	var it := gs.spawn_item("lysate", Vector3(4.0, 0.0, 10.0))
+	gs.pick_up_item("aster", it)
+	_assert_true(bool(gs.solve_throw("aster", it, "char", "endo")["ok"]),
+		"a clear lane permits the pass")
+
+	var mid := gs.grid.world_to_grid(Vector3(7.0, 0.0, 10.0))
+	grid.add_sight_blocker(mid)
+	_assert_equals(String(gs.solve_throw("aster", it, "char", "endo")["reason"]), "no line",
+		"an occluder in the lane refuses the pass — the level's lever for blocking a handoff")
+	grid.clear_sight_blocker(mid)
+	_assert_true(bool(gs.solve_throw("aster", it, "char", "endo")["ok"]),
+		"clearing the occluder permits it again")
+
+	# A see-over-but-impassable cell (canal, basin, pit) passes SIGHT and must still stop a THROW.
+	# Inheriting sight_transparent would turn every such cell already authored into a delivery chute.
+	grid.set_tile(mid.x, mid.y, GridWorld.Tile.WALL)
+	grid.add_sight_transparent(mid)
+	var a_pos := gs.get_position("aster")
+	var b_pos := gs.get_position("endo")
+	_assert_true(grid.has_line_of_sight(a_pos, b_pos),
+		"a see-over cell does not block sight")
+	_assert_true(not grid.has_throw_line(a_pos, b_pos),
+		"but it DOES block a throw — the throw predicate does not inherit sight_transparent")
+	_assert_equals(String(gs.solve_throw("aster", it, "char", "endo")["reason"]), "no line",
+		"so the pass over a canal is refused")
+
+func _test_throw_fast_forward_invariance() -> void:
+	_test_name = "Throw Fast-Forward Invariance"
+	var signatures: Array = []
+	for step in [0.0166, 0.166]:
+		var sched := EventScheduler.new()
+		var grid := GridWorld.new()
+		grid.create_room(40, 40)
+		var gs := GameState.new()
+		gs.scheduler = sched
+		gs.grid = grid
+		gs.register_character("aster", Vector3(4.0, 0.0, 4.0), 3.0)
+		gs.register_character("endo", Vector3(9.0, 0.0, 4.0), 3.0)
+		gs.party_ids["aster"] = true
+		gs.party_ids["endo"] = true
+		var it := gs.spawn_item("lysate", Vector3(4.0, 0.0, 4.0))
+		gs.pick_up_item("aster", it)
+		gs.command_move_to_pos("endo", Vector3(14.0, 0.0, 4.0))
+		var res: Dictionary = gs.command_throw_item("aster", it, "char", "endo")
+		_assert_true(bool(res["ok"]), "the throw commits at step %.4f" % step)
+		var land_tick := float(sched.get_current_tick()) + float(res["flight"])
+		for _i in range(400):
+			if float(sched.get_current_tick()) >= land_tick + 1.0:
+				break
+			sched.advance_ticks(step)
+		var item: Dictionary = gs.items[it]
+		signatures.append({
+			"landing": Vector3(res["landing"]).snapped(Vector3.ONE * 0.001),
+			"flight": snappedf(float(res["flight"]), 0.001),
+			"location": String(item["location"]),
+			"holder": String(item["holder"]),
+		})
+	_assert_equals(signatures[0]["flight"], signatures[1]["flight"],
+		"the solved flight time is identical at a fine and a coarse tick step")
+	_assert_equals(signatures[0]["landing"], signatures[1]["landing"],
+		"the solved landing point is identical at a fine and a coarse tick step")
+	_assert_equals(signatures[0]["location"], signatures[1]["location"],
+		"the item ends in the same place (%s vs %s)"
+			% [signatures[0]["location"], signatures[1]["location"]])
+	_assert_equals(signatures[0]["holder"], signatures[1]["holder"],
+		"and in the same hands")
+
 func _test_hidden_detection() -> void:
 	_test_name = "Hidden From Detection"
 	var sched := EventScheduler.new()
@@ -51865,6 +52037,11 @@ func _test_event_log_mutation_audit() -> void:
 		# Computes a launch velocity then delegates to throw_physics_object, which
 		# emits the throw (with that velocity) — replay rides the delegated event.
 		"throw_physics_object_to",
+		# The Pass (docs/THROW_HANDOFF.md). solve_throw is the pure preview; get_item_position reads
+		# the parabola from the scheduler tick. command_throw_item solves the lead and delegates to
+		# throw_item, which emits the SOLVED point — so replay re-runs the landing from the record
+		# and never re-solves, the same shape as throw_physics_object_to above.
+		"solve_throw", "command_throw_item", "get_item_position",
 		"get_pendulum_omega", "get_pendulum_period", "get_pendulum_angle",
 		"get_pendulum_position", "get_pendulum_bob_velocity",
 		"is_dodging", "is_endocytosing",
