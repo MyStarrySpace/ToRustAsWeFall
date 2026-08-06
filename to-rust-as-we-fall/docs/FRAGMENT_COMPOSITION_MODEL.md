@@ -52,6 +52,16 @@ Ruling, on the objection that port balance is a non-local constraint and therefo
 > Actually, the adjacency need not be local in terms of satisfying parameters. We just need to ensure
 > that the values be balanced overall, and stay within some bound based on difficulty
 
+> So that's why the wfc
+
+And, on spatial orientation as a dimension of variance:
+
+> Also, we should make sure that we also consider spatial positioning with variants. Some mught have
+> the same archetype or strategy, but might be vertical (fragments like stairs, pedestals, ladders,
+> etc.) And some might be horizontal, and some of the authored puzzle parts might be horizontal or
+> vertical so that we can have things like connecting the platforms from above to an upwards piece
+> that drops the piece to below and has its own design fragments within it
+
 ---
 
 ## 1b. Ruling: a configuration is a finite-domain variable over authored values
@@ -123,6 +133,56 @@ excursions, and the level runs hot.
 No flow solve, no repair pass, no constraint propagation. It is also trivially explainable, which
 matters for §1a: the critic can say *"three enemies produced, one sink, net +2 against a stage-2
 bound of +1"* — a sentence the director can act on.
+
+---
+
+## 1d. Orientation is a configuration axis, and it already has a home in the grid
+
+A strategy and its spatial realization are different things. The same archetype — *deliver a surface
+so a blocker can clear off it* — can be realized horizontally (a bridge slid across) or vertically
+(a platform dropped from above onto a pedestal that lifts it). Stairs, pedestals, and ladders are
+vertical fragments; some authored pieces are deliberately either. **Orientation is therefore another
+axis of the configuration variable**, ranging over the same authored domain as everything else in
+§1b: the solver may choose the vertical realization of a fragment the way it chooses any other
+configuration.
+
+**The existing catalog split is already correct for this.** `archetype_catalog.json` carries pure
+semantics — `requires`, `uses`, `risk`, `approaches`, `min_stage`, `taught_by` — and contains *zero*
+dimensional fields (no `size`, `width`, `height`, `footprint`, `span`, `scale`). Orientation-free
+strategy at the archetype layer, orientation-bearing realization at the fragment layer, is the split
+that already exists; it just has not been named or used.
+
+**Vertical connection is already first-class in the data layer.** This is not new machinery to build:
+
+- The grid is a 2D plane stacked into levels by `grid.level_height`; `grid_to_world(cell, level)`
+  and `level_for_y(y)` convert both ways.
+- `add_inter_level_link(cell, from, to, "ladder"|"ramp")` registers a cell where a character may
+  change floors, with `can_traverse_link`, `get_link_cost`, and `links_from` to query it.
+- `find_multi_level_path(start_cell, start_level, end_cell, end_level)` is an A* over `(cell, level)`
+  and `command_move_cross_level` actually walks it, splitting the route into per-floor segments and
+  transitioning at the link cell.
+- `stretch_wfc_layout.solve(...)` already takes a `levels` argument, and `fragment_grammar.gd`'s
+  connector record already carries a `level` alongside `KIND_WALK` / `KIND_CLIMB`, with a `_shape_stair`
+  among its terminals.
+
+So a "from above" port is not a new concept needing invention — **it is an inter-level link**, and
+the game already routes bodies across those. The port layer should be defined in those terms rather
+than parallel to them.
+
+Three consequences that do need working out:
+
+1. **Gap extents are per-axis.** A horizontal fragment's resizable dimension lies in the plane; a
+   vertical one's lies across levels. A gap declares extent ranges per axis, and orientation selects
+   which axis is the one being negotiated.
+2. **Vertical flows can be one-way — so reachability is DIRECTED.** Gravity is not symmetric. A
+   platform dropped from above reaches what is below it; a body that drops down cannot necessarily
+   climb back. The economy layer's reachability query in §1c must therefore run on the directed
+   multi-level graph — which is exactly what `can_traverse_link` and `find_multi_level_path` already
+   express — and never on undirected adjacency. Getting this wrong would let the check certify a
+   supply that the player or the enemy can never actually get to.
+3. **The recursion is orientation-blind.** The upward piece that drops a platform "has its own design
+   fragments within it": a vertical fragment declares gaps and nests children exactly like a
+   horizontal one. Orientation changes the axis, not the model.
 
 ---
 
