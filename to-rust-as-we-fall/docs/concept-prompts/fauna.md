@@ -12,30 +12,32 @@ Attack telegraph · Hurt/death · Biological inspiration.** The attack telegraph
 fauna equivalent of a flora affordance — it is the thing the art must encode, because
 the player reads the tell before the strike.
 
-## The naming (director's ruling, 2026-07-27 — FINAL)
+## The naming (director rulings, 2026-07-27 and 2026-07-29 - FINAL)
 
-Four species were renamed onto the harm-naming scheme; the rename is now propagated
-through the whole corpus (code, data, docs, and the canon mirror):
+The fauna use the harm-naming scheme. The 2026-07-29 visual-design ruling renamed
+Aembers to Ferrules; that revision is now propagated through the whole corpus (code,
+data, docs, and the canon mirror):
 
 | Current (canonical) | Retired | Why |
 |---|---|---|
 | **Sapscraps** | Techos | *sap* (drains iron, saps infrastructure) + *scraps* (picked-clean detritus, scrap-sized swarm bodies) |
-| **Aembers** | Verdings | *amber* + *ember* — the resin-seep at a wound, and the glowing core you see coming |
+| **Ferrules** | Verdings, Aembers | *ferr-* (iron) + *ferrule* (a reinforcing ring or sleeve); the sound also faintly echoes *feral*, matching the abandoned service animal |
 | **Flares** | Neutros | the area burst is a flare; doubles as an inflammatory flare-up (neutrophil) |
 | **Redactors** | Nosomas | *redact* = erase-from-record — the information-suppression motif as a name |
 
 The other nine keep their names: Hidras, Crusts, Candids, Meebs, Gnawers, Spikers,
 Tanglers, Toxos, Naturalizers.
 
-`reference-docs/fauna_roster.md` deliberately **keeps** the retired names — it *is* the
-rename record. So do the project instruction files that teach the mapping. Everywhere
-else a retired name is a bug: `--test-canon-fauna-names` fails on one.
+**This file is the rename record** — the table above is the only place a retired name
+belongs. Everywhere else one is a bug: `--test-canon-fauna-names` fails on it.
 
-Note for anyone reading older art or docs: `fauna_image_prompts.md` and
-`enemy_ecosystem.md` were authored before the rename and have been migrated in place,
-so their species headings now read Sapscraps / Aembers / Flares / Redactors. The
-numbered duplicate copies in the director's Downloads folder (`… (1).md`) were left
-untouched as pre-rename history.
+The canon mirror is migrated too: `fauna_roster.md`, `fauna_image_prompts.md`,
+`enemy_ecosystem.md`, `design_archetypes.md` and the GDD all read Sapscraps / Ferrules /
+Flares / Redactors. Two deliberate exceptions, both design-process history — **do not
+"fix" either**: the concept-image prompt files under
+`reference-images/concept/fauna/` keep the name they were actually prompted with, and
+the numbered duplicates in the director's Downloads folder (`… (1).md`) are pre-rename
+copies left untouched.
 
 ## Where each species' art comes from
 
@@ -44,9 +46,9 @@ Use the canonical prompt for the species (`reference-docs/fauna_image_prompts.md
 belongs in `reference-images/concept/fauna/`.
 
 **Priority order for the build queue** — the wash relay's branch guards are
-**Sapscraps** (canon: only Sapscraps / Aembers / Hidras answer a Flure iron decoy), and
+**Sapscraps** (canon: only Sapscraps / Ferrules / Hidras answer a Flure iron decoy), and
 the in-game guard body is still a placeholder capsule, so Sapscraps art unblocks the
-creature-grammar hookup first. Aembers and Hidras follow (both appear in the Plumbing
+creature-grammar hookup first. Ferrules and Hidras follow (both appear in the Plumbing
 Power Project); the enforcement classes (Naturalizers, Redactors) matter for Tag Day
 and the lockout chase.
 
