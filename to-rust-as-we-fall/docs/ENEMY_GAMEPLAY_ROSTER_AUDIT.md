@@ -246,6 +246,14 @@ rename record; `--test-canon-fauna-names` fails on a retired name anywhere else.
 wires and similar infrastructure before it reveals and attacks. This identity is settled even
 though the camouflage/reveal portion is not implemented yet.
 
+**Director ruling: a Flare is stunned by its own burst and recovers; it is not consumed.** After the
+area burst there is a recovery period during which the Flare is inert, and then it can be set off
+again. The reason is a design invariant, not flavour: a burst that catches only part of a group must
+never strand the player with the remainder and no group answer. The cost of a second burst is the
+wait, which the day clock already charges for. This puts Flares on the same renewable-with-cooldown
+footing as every canonical tool — Hushbloom regenerates, a Gasafoetida cluster regrows its pods,
+a Capbage reopens. See `FRAGMENT_COMPOSITION_MODEL.md` §1h for the general invariant.
+
 **Director ruling: the Spiker is a delayed line-of-sight connection threat, not an instant-hit
 sniper.** It locks onto a target, visibly connects to that target, and deals damage only after the
 connection persists for the authored duration. Breaking line of sight immediately breaks the

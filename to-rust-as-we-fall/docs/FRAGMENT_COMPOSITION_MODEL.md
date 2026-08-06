@@ -68,6 +68,17 @@ And, extending it — enemies absorbing each other:
 > Equivalently two enemies can fight each other, so can two groups of enemies, groups can overwhelm
 > individual or fewer enemies, etc. So that emergence can be used as a puzzle piece
 
+And, on what a depleted group is worth:
+
+> Though the depleted group might actually be an answer to an OPTIONAL route, and might be used as
+> bait, for example, without being strong enough to overwhelm the other enemy type
+
+Ruling, on softlocks and on how a partial group answer must behave:
+
+> Puzzles shouldn't cause softlocks due to something necessary to solve the puzzle being unavailable.
+> Flares should probably have a period where they are stunned and need to recover after exploding, so
+> we can still try to eliminate the rest
+
 Ruling, on the risk that a port-type vocabulary is either too coarse (everything matches everything —
 oatmeal) or too fine (nothing matches anything — a fixed jigsaw):
 
@@ -354,10 +365,81 @@ Four consequences for the check:
    how the §5.5 critic phrases the chore message ("the best reachable sink"); enemy-on-enemy simply
    adds candidates to that set.
 
-**Open for the director:** the attrition curve. When a group of 4 meets a group of 1, the single body
-is removed — but how many of the 4 survive, and does the winning group carry damage forward into the
-next fragment? That answer sets whether a collision is a clean sink or a *transformer* that outputs a
-depleted group, which is a materially different puzzle piece.
+**A collision is a TRANSFORMER, and the depleted group it emits is a real puzzle piece.** The winning
+group carries its losses forward: what comes out is smaller and weaker than what went in. That
+remainder is not a consolation prize — it is a *different-capability* resource. It can still serve as
+**bait**, which needs one body, while no longer being strong enough to **overwhelm** another enemy
+type, which needs numbers. Spending a group is therefore a genuine trade, not a free win: you convert
+its high-threshold capability into a solved encounter and keep a low-threshold remainder.
+
+**So consumers declare a THRESHOLD, and populations carry a live count.**
+
+| use | threshold | still available to a depleted group? |
+|---|---|---|
+| bait / lure a hunter off a line | 1 body | yes |
+| feed a Meeb to buy a window | 1 body | yes |
+| overwhelm a smaller hostile group | more than the target's count | only if enough survived |
+| overwhelm an individual elite | the authored count for that species | usually not |
+
+**And this is what keeps §1h's softlock invariant intact under attrition.** Bodies do not regenerate
+the way a Flare or a Hushbloom does, so a population's count is a resource the player can
+*irreversibly* spend below a threshold. The rule that follows is sharp and checkable:
+
+> **A depletable population may gate an OPTIONAL route. It may never be the sole answer to a
+> critical-path gating input.**
+
+A critical-path gate must be satisfied either by a renewable supply (§1h) or by a threshold no play
+order can drop the player beneath. High-threshold uses — the showy "overwhelm that group with this
+one" plays — belong on optional routes, side caches, and shortcuts, exactly where losing the
+capability costs the player an opportunity rather than the run. That is also the honest place for
+them dramatically: pulling it off should feel like a prize you earned, not a toll you paid.
+
+---
+
+## 1h. No softlocks: sinks RECOVER, they are not spent
+
+**A puzzle must never become unsolvable because something needed to solve it is no longer available.**
+This is an invariant, not a preference, and it constrains the whole absorption side of the model.
+
+**The worked instance, and the general pattern: a Flare recovers.** A Flare that bursts is *stunned
+and recovers over a period*; it is not consumed. That single decision resolves the partial-group
+problem left open in §1f — a burst that catches three of five does not strand you with two bodies and
+no group answer, because the Flare comes back and you can set it off again on the remainder. The
+recovery period is the price, and it is paid in time, which the day clock is already charging for
+(§1f). Cost, never exhaustion.
+
+**This is the pattern the flora already follow, so it makes the fauna rhyme with them.** Hushbloom
+"regenerates over time after use"; a Gasafoetida cluster "regrows the pods over several minutes after
+ignition"; a Capbage reopens; Climbvine yields one vine per rest cycle; a Channel's cadence comes
+round again. Every canonical tool in this game is renewable-with-a-cooldown rather than expendable.
+Flares now join them.
+
+**The subtle failure is misallocation, not absence — and only one of the two is currently caught.**
+The economy check already errors on a gating deficit: a required supply that nothing in the
+composition provides (§5.5). It does *not* catch a supply that exists, is sufficient, and gets spent
+on the wrong thing — the player drops their one deck in the wrong gap and the level is dead with every
+ledger reading green. Absence is arithmetic; misallocation is ordering. Two acceptable answers, and a
+fragment must offer one:
+
+1. **Reversibility** — the act can be undone or the resource returns. Climbvine can be cut and
+   re-placed, a Capbage reopens, a Flare recovers, the water level comes back round. This is the
+   preferred answer because it costs time rather than the run.
+2. **Order-independence** — every allocation order a reasonable player might take still solves. Harder
+   to author and harder to prove, but legitimate for small puzzles.
+
+A fragment whose gating inputs are consumed irreversibly *and* order-dependent is a softlock waiting
+for a seed, and the catalog validator should refuse it.
+
+**Check consequences.** A sink port gains a `recovery` field (`renewable` with a cooldown, or
+`one_shot`); a supply port gains `reversible`. The validator goes red on a configuration that offers
+`one_shot` + irreversible as the sole answer to a gating input, and the §5.5 chore arithmetic changes
+too — a renewable fanout-3 sink against 5 bodies is **two repetitions plus a wait**, not an
+unsolvable, so recovery cooldowns feed the `reps` count and the `cost` interval together.
+
+**Note the interaction with fail-forward (P11).** A recoverable sink and a fail-forward recovery are
+different guards for different failures: P11 prices *the player's mistake* and returns them mobile;
+this invariant guarantees *the puzzle itself* stays solvable. A level can satisfy P11 and still
+softlock if its only group answer was spent, so both must hold.
 
 ---
 
@@ -945,10 +1027,12 @@ generation loop.
 2. **Is a delivered enemy ever *gating*?** A body you need for its weight on a plate is a `fauna_body`
    whose absence makes the level unfinishable. If yes, the same noun is both classes and `class` must
    be authored per port with no noun default — a real authoring cost, so his call.
-3. ~~**Does killing an enemy count as absorption?**~~ **SETTLED — yes, see §1f.** The consequence is
-   that the primary bound moved from bodies to *repetitions*: every sink declares a `fanout`, and what
-   is bounded is how many times the player must perform the same act. Remaining sub-question, minor:
-   what fanout does a partial group answer get — a Flare burst that catches three of five?
+3. ~~**Does killing an enemy count as absorption?**~~ **SETTLED — yes, see §1f**, and extended by §1g
+   (enemies absorb each other) and §1h (sinks recover). The consequence is that the primary bound
+   moved from bodies to *repetitions*: every sink declares a `fanout`, and what is bounded is how many
+   times the player must perform the same act. The partial-group sub-question is settled too — a
+   Flare that catches three of five recovers and takes the remaining two on a second burst, so a
+   partial answer costs a repetition and a wait, never the run.
 4. **The stage bounds in §5.5.** The shape (peak + reps + final, per noun) is defensible; the numbers
    are a guess at the feel, and `reps` in particular wants playtest calibration since it is a chore
    ceiling rather than a difficulty one.
