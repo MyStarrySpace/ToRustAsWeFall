@@ -30,17 +30,50 @@ coordinates the game itself published, movement worked immediately. Same button 
 Lesson kept deliberately: **verify a visual claim against the asset or the binding before reporting
 it.** A screenshot at a glance is a hypothesis, not evidence.
 
-## 2. Generated-stretch geometry renders SOLID BLACK on the web build
+## 2. Generated levels render BLACK — DIAGNOSED (three causes, two fixed)
 
-Every floor and wall of the generated stretch draws as a flat black silhouette against the
-background. Props and flora render in colour (green plants, the amber cache, character capsules), and
-the authored Peris room in the same build renders **fully lit and textured** — so this is specific to
-generated geometry under the GL Compatibility renderer that the web export uses, not a global
-lighting failure.
+Not web-specific: Forward+ and GL Compatibility are pixel-identical, so the browser was only showing
+what desktop already did. Chased by measuring the live scene rather than reading code — every
+code-reading hypothesis (triplanar-under-Compatibility, missing textures, fog of war, the perception
+overlay shaders, scene exposure) was wrong, and each died to one probe.
 
-The level is technically playable but unreadable: you cannot see floor edges, elevation, or where a
-walkable surface ends. Given P-SHOWN — the world is supposed to be the primary channel — a black
-level is the most complete possible failure of that law.
+**Cause 1 — the ground was being faded as a camera occluder. FIXED.** Camera occlusion picks
+occluders by AABB height against a minimum (the preview passes 2.0). A floor slab is 0.16 m thick and
+should never qualify, but the floor is committed as ONE merged surface, so on a warped spiral stretch
+its bounding box spans the whole descent — measured **14.88 m** — and passes the gate. Proven by
+painting the floor unshaded magenta: **dark purple while wrapped, pure (255,0,255) once exempt.** That
+same probe also disproved the "something dims the whole scene" theory: nothing does.
+
+**Cause 2 — the floors were wound inside-out. FIXED.** `_tri_auto` derives each face normal from its
+winding, and the top face was emitted `(A,C,B),(A,D,C)`. Measured on the live mesh: first vertices
+carried normals **(0.13, −0.96, −0.24)** — the surface you walk on pointed DOWN and was lit from
+behind. Now **(−0.13, 0.96, 0.24)**. Invisible to every test because the material disables culling, so
+the geometry still draws; it just never lights.
+
+**Cause 3 — a multiplication stack that bottoms out. NOT a bug; needs a tuning ruling.** With both
+fixes in, the floor is still black, and the arithmetic explains it exactly:
+
+| Measured | Value |
+| --- | --- |
+| Floor with its real material | `(0,0,1)` |
+| Same floor, texture removed (albedo only) | `(6,12,12)` |
+| Same albedo unshaded (what full light would give) | ≈ `(97,117,117)` |
+
+So the biome's capped lighting delivers only **~6%** of albedo, then the floor tint (0.38) and a dark
+tile (`deck_metal`, average `(51,54,62)` ≈ 0.2) multiply it down another 5×. 0.38 × 0.2 × 0.06 ≈
+**0.005** — visually black. Triplanar is innocent: disabling it changes nothing, because the texel it
+samples is dark either way.
+
+**Why cranking the lights never appeared to help** (and cost me two wrong conclusions):
+`_apply_preview_lighting()` is called from `_sync_preview_time_presentation()`, which fires on every
+preview clock update — so any environment override is overwritten within a frame or two. Lighting
+cannot be tested by setting it from outside; it has to be changed at the source.
+
+**The ruling needed:** how bright should a generated floor read? Reaching a legible dark floor (~25%)
+needs roughly an order of magnitude, taken from any mix of the biome's `ambient_energy_ceiling` /
+`directional_energy_ceiling`, the `floor_tint`, or a brighter tile. This is squarely a P-SHOWN
+question — a level the player cannot see is the most complete failure of "the world is the primary
+channel" available.
 
 ## 3. BLOCKING: the stretch cannot be completed — it demands a control it never offers
 
