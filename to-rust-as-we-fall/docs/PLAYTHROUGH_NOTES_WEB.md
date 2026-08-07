@@ -10,19 +10,25 @@ person, and it found things no headless test can see. Findings are ordered by se
 
 ---
 
-## 1. HUD/input mismatch: the HUD advertises the wrong mouse button
+## 1. ~~HUD/input mismatch~~ — RETRACTED, I misread the glyph
 
-The bottom-centre control read says **`Move`** beside a **LEFT** mouse-button glyph. Movement is
-committed with **RIGHT** click. Left-clicking open floor does nothing at all.
+**This finding was wrong and is withdrawn.** I reported that the HUD advertised LEFT-click for Move
+while the game required RIGHT. It does not. Verified three ways after the fact:
 
-This cost four separate attempts to discover, with selection confirmed working in between
-(`[MSG ] Selected: Aster`, `[MSG ] Selected: Peris` appear in the console while the party stays put).
-A new player would left-click the floor, see nothing happen, and reasonably conclude the game is
-broken before ever moving a character. Everything downstream of movement is unreachable until they
-guess the other button.
+- `project.godot` binds the `command` action to `button_index: 2` — right mouse.
+- The hint passes the literal fallback `"RMB"` (`fragment_preview_sequence.gd:2362`).
+- Cropping and enlarging the actual pixels: the glyph convention is that the **light** half marks the
+  active button (`mouse_left.svg` lights `M5 … H5Z`, the left half; `mouse_right.svg` lights
+  `M16.8 … 27`, the right half). The rendered glyph has its **right** half lit. It is the correct
+  right-mouse icon.
 
-Confirmed both ways: right-click on open floor moves and disperses the party correctly; left-click
-never produces a move event.
+I read a 20-pixel icon at a glance and asserted a blocking UI bug from it, which put a phantom item on
+the director's backlog. The real reason my early clicks did nothing is finding 3's lesson: I was
+clicking at *guessed screen coordinates* that were not valid ground targets. The moment I clicked
+coordinates the game itself published, movement worked immediately. Same button throughout.
+
+Lesson kept deliberately: **verify a visual claim against the asset or the binding before reporting
+it.** A screenshot at a glance is a hypothesis, not evidence.
 
 ## 2. Generated-stretch geometry renders SOLID BLACK on the web build
 
