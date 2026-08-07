@@ -1,0 +1,139 @@
+name: Game release gate
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: game-release-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GODOT_VERSION: 4.7-stable
+  GODOT_CPP_REV: 9ae37ac8b9b14df5284dc3d4bf87e7d8b3327503
+  EMSCRIPTEN_VERSION: 4.0.11
+  SCONS_VERSION: 4.4.0
+
+jobs:
+  release-gate:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 180
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Set up Node.js for browser gameplay tests
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: to-rust-as-we-fall/package-lock.json
+
+      - name: Set up Emscripten for the Web GDExtension
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: ${{ env.EMSCRIPTEN_VERSION }}
+          no-cache: true
+
+      - name: Install native and windowed-test dependencies
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes \
+            xvfb \
+            libasound2 \
+            libfontconfig1 \
+            libgl1 \
+            libglu1-mesa \
+            libpulse0 \
+            libudev1 \
+            libxcursor1 \
+            libxi6 \
+            libxinerama1 \
+            libxrandr2
+          python -m pip install "scons==${SCONS_VERSION}"
+
+      - name: Install Godot and export templates
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p .ci/godot .ci/export-templates
+          godot_archive="Godot_v${GODOT_VERSION}_linux.x86_64.zip"
+          template_archive="Godot_v${GODOT_VERSION}_export_templates.tpz"
+          release_base="https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}"
+          curl --fail --location --retry 3 \
+            "${release_base}/${godot_archive}" \
+            --output ".ci/${godot_archive}"
+          unzip -q ".ci/${godot_archive}" -d .ci/godot
+          godot_bin="$(find .ci/godot -maxdepth 1 -type f -name 'Godot*' | head -n 1)"
+          test -n "${godot_bin}"
+          chmod +x "${godot_bin}"
+          echo "GODOT_BIN=${GITHUB_WORKSPACE}/${godot_bin}" >> "${GITHUB_ENV}"
+
+          curl --fail --location --retry 3 \
+            "${release_base}/${template_archive}" \
+            --output ".ci/${template_archive}"
+          unzip -q ".ci/${template_archive}" -d .ci/export-templates
+          template_version="${GODOT_VERSION/-stable/.stable}"
+          template_home="${HOME}/.local/share/godot/export_templates/${template_version}"
+          mkdir -p "${template_home}"
+          cp -R .ci/export-templates/templates/. "${template_home}/"
+
+      - name: Build native runtime libraries from the pinned bindings
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git clone --filter=blob:none https://github.com/godotengine/godot-cpp.git godot-cpp
+          git -C godot-cpp checkout "${GODOT_CPP_REV}"
+          scons -C native platform=linux target=template_debug -j2
+          scons -C native platform=web target=template_release threads=no -j2
+
+      - name: Prove launcher exit-code propagation
+        shell: pwsh
+        run: ./scripts/test-gate.ps1 -SelfTest
+
+      - name: Run required headless suite
+        shell: pwsh
+        run: ./scripts/test-gate.ps1 -Tier Headless -TimeoutSeconds 7200
+
+      - name: Install pinned Playwright and its Chromium runtime
+        working-directory: to-rust-as-we-fall
+        shell: bash
+        run: |
+          set -euxo pipefail
+          npm ci --no-audit --no-fund
+          npx playwright install --with-deps chromium
+
+      - name: Run combined Windowed and Web persona release cohort
+        shell: bash
+        run: |
+          set -euxo pipefail
+          xvfb-run -a -s '-screen 0 1280x720x24' \
+            pwsh -NoProfile -Command \
+              '& ./scripts/test-gate.ps1 -Tier Windowed,Web -WebDependenciesReady -TimeoutSeconds 3600'
+
+      - name: Upload gate diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: game-release-gate-${{ github.run_id }}
+          if-no-files-found: warn
+          include-hidden-files: true
+          retention-days: 7
+          path: |
+            .test-gate/**/*.log
+            .test-gate/**/web-smoke.json
+            .test-gate/**/web-smoke.png
+            .test-gate/**/playwright/**
