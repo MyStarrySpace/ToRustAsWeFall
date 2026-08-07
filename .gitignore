@@ -96,3 +96,7 @@ to-rust-as-we-fall/Godot/
 
 # Node harness deps (the playwright web-smoke rig; package.json IS tracked)
 node_modules/
+
+# Browser-play driver scratch. Must live INSIDE to-rust-as-we-fall/ so node resolves
+# @playwright/test from its node_modules; the scratchpad dir cannot. Recipe: docs/TESTING.md.
+to-rust-as-we-fall/.playtmp/
