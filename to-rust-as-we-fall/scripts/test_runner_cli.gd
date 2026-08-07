@@ -11994,6 +11994,14 @@ func _generated_capbage_runtime_contract_audit(
 			if origin_v is Vector3 else Vector3.INF
 		var aster_cell := game_state.grid.world_to_grid(
 			game_state.get_position("aster"))
+		# A generated stretch boots with its spine CUT: every mandatory branch producer dynamic-blocks
+		# its consumer cells until the player works the terminal that bridges the gap. This Capbage
+		# sits beyond one of those cuts, so routing to it AT BOOT measures the gate, not the contract --
+		# a correctly gated level fails that way. Open every gate, measure the route the contract
+		# actually promises, then restore the cut exactly as it was.
+		var capbage_saved_blockers: Dictionary = game_state.grid.dynamic_blockers.duplicate(true)
+		for gated_cell in capbage_saved_blockers.keys():
+			game_state.grid.remove_dynamic_blocker(gated_cell)
 		var plan := game_state.grid.find_multi_level_plan(
 			aster_cell,
 			game_state.get_character_level("aster"),
@@ -12002,6 +12010,9 @@ func _generated_capbage_runtime_contract_audit(
 		var resolved := CharacterInteractionController \
 			.resolve_reachable_interaction_location(
 				game_state, "aster", contract)
+		for gated_cell in capbage_saved_blockers.keys():
+			game_state.grid.add_dynamic_blocker(
+				gated_cell, str(capbage_saved_blockers[gated_cell]))
 		var concealment_distance := Vector2(
 			approach_position.x - origin.x,
 			approach_position.z - origin.z).length() \
