@@ -78,6 +78,20 @@ Ruling, on the objection that port balance is a non-local constraint and therefo
 
 > So that's why the wfc
 
+Ruling, on data that is not driving generation:
+
+> Also, if we have this data, it should be used for generation or relegated to an Excel sheet
+> somewhere
+
+**A live instance, found the same day.** The generation authoring data exists in TWO places that can
+drift: `data/generation/stretch_seed_corpus.json` holds a `settings` block per seed, and every
+`data/generated_stretches/*.json` embeds *its own copy* of the settings it was generated from.
+`tools/regenerate_generated_stretch_specs.gd` reads the embedded copy, so editing the seed corpus
+changed nothing — the two disagreed silently until a regeneration failed and exposed it. Under this
+ruling one of them is the generator's input and the other should stop pretending to be: either the
+corpus feeds regeneration, or it is a record and lives somewhere that cannot be mistaken for input.
+Not yet resolved; flagged here so it is not rediscovered a third time.
+
 Ruling, on whether a killed enemy counts as absorbed, and on what the difficulty bound is actually
 bounding:
 
@@ -105,6 +119,27 @@ And, on carry-swapping and the throw/handoff mechanic it calls for:
 > to each other by dragging them in the GUI, causing them to throw them in the game once unpaused.
 > Dragging things onto enemies throws things at them (predicting their arrival location to ensure a
 > hit).
+
+And, a second worked fragment — sockets that gate a fragment's own controls:
+
+> Another example of a larger fragment type is one where multiple switches are used to rotate
+> something like a pipe to connect parts of a level to things required. For example, the contents of
+> the fragment could be the rotating pipe and three different rotator controls. Between the rotator
+> and each control is a socket for a fragment, so accessing the controls is blocked by other puzzles
+
+**What this example adds that the platform/enemy one did not: the gaps are on the paths to the
+fragment's OWN controls.** The first example's gaps were things the fragment needed *delivered* from
+outside. Here the fragment is self-contained in mechanism — one rotating pipe, three rotator controls
+— and every gap sits *between* the rotator and a control. So the nested fragments do not supply the
+puzzle; they **stand in the way of operating it**. That is the set-piece grammar (`SET_PIECES.md`:
+controls separated from effects) meeting the recursion: separating a control from its effect creates
+a space, and that space is exactly a typed gap.
+
+It also gives the depth budget (§5.3) a concrete shape. The parent guarantees "the pipe can be
+rotated to connect X to Y"; each child guarantees only "this control becomes reachable." The parent's
+availability is `after_own_gates` — it does not promise the controls are reachable from the start,
+only that the crossing opens once they are — which is precisely the two-valued field §5.3 introduced,
+and this fragment is the case that needs its permissive value.
 
 And, on how a level blocks a throw, and on the reach limit:
 
