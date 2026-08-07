@@ -747,6 +747,9 @@ func _ready() -> void:
 			"--test-canonical-location-names":
 				ran_test = true
 				_test_canonical_location_names()
+			"--test-generated-decision-density":
+				ran_test = true
+				_test_generated_decision_density()
 			"--test-basin-float-rider":
 				ran_test = true
 				_test_basin_float_rider_not_swept()
@@ -2122,6 +2125,11 @@ func _run_all_tests() -> void:
 	await _test_grid_port_robustness()
 	_test_ability_data()
 	_test_canon_fauna_names()
+	_test_generated_decision_density()
+	_test_basin_float_rider_not_swept()
+	_test_throw_item_analytic()
+	_test_throw_los_gate()
+	_test_throw_fast_forward_invariance()
 	await _test_wash_relay_prop_survey()
 	await _test_locomotion_juice()
 	await _test_wash_ascent()
@@ -27863,6 +27871,90 @@ func _test_elevator_enemy_engagement() -> void:
 # (basin_fill_proof: 0.12>-0.5, 2.58>2.45, 3.3>3.05; the four-state probe: 3.0>2.8), so a rider is
 # never actually underwater — yet catches_floats swept exactly the bodies standing on floats. The
 # catch must follow the geometry: you drown when the raft goes under, not when a flag says so.
+# Every other generation gate measures whether the output is LEGAL — bare-pair solvable, stage valid,
+# contract intact. None measures whether it is INTERESTING. This one reports the two cheapest proxies
+# and ratchets them so they cannot silently get worse.
+#
+#   DECISION DENSITY — the share of interior nodes that pose a choice (at least one approach that
+#   requires something). A node with no demands is length without a decision, which is what
+#   "10,000 bowls of oatmeal" looks like one level up from tile noise.
+#   ARCHETYPE SPREAD — how much of the 16-archetype vocabulary a stretch actually exercises.
+#
+# The numbers below are a RATCHET against measurements taken 2026-08-06, not an aesthetic ruling:
+# they are set to catch a collapse, not to encode a target. What counts as ENOUGH decision density —
+# and whether a teaching stretch is allowed to pose no question at all — is the director's call, and
+# the report prints the full table so that call can be made from evidence.
+func _test_generated_decision_density() -> void:
+	_test_name = "Generated Decision Density"
+	var terminal := {"entry": true, "exit_shelter": true, "exit": true, "start": true}
+	var dir := DirAccess.open("res://data/generated_stretches")
+	_assert_true(dir != null, "the generated-stretch corpus is readable")
+	if dir == null:
+		return
+	var total_interior := 0
+	var total_decision := 0
+	var zero_decision: Array[String] = []
+	var thin_vocabulary: Array[String] = []
+	var scanned := 0
+	dir.list_dir_begin()
+	var entry := dir.get_next()
+	while entry != "":
+		if not dir.current_is_dir() and entry.ends_with(".json"):
+			var parsed: Variant = JSON.parse_string(
+				FileAccess.get_file_as_string("res://data/generated_stretches/".path_join(entry)))
+			if parsed is Dictionary:
+				var nodes: Array = (parsed as Dictionary).get("nodes", [])
+				var interior := 0
+				var decision := 0
+				var archetypes := {}
+				for node_v in nodes:
+					if not (node_v is Dictionary):
+						continue
+					var node := node_v as Dictionary
+					if terminal.has(str(node.get("id", ""))):
+						continue
+					interior += 1
+					var arch := str(node.get("archetype_id", ""))
+					if arch != "":
+						archetypes[arch] = int(archetypes.get(arch, 0)) + 1
+					for approach_v in (node.get("approaches", []) as Array):
+						if approach_v is Dictionary \
+								and not ((approach_v as Dictionary).get("requires", []) as Array).is_empty():
+							decision += 1
+							break
+				if interior > 0:
+					scanned += 1
+					total_interior += interior
+					total_decision += decision
+					var density := float(decision) / float(interior)
+					print("  [density] %-46s interior=%2d decides=%2d %3d%%  archetypes=%d"
+						% [entry, interior, decision, int(round(density * 100.0)), archetypes.size()])
+					if decision == 0:
+						zero_decision.append(entry)
+					if archetypes.size() < 2:
+						thin_vocabulary.append(entry)
+		entry = dir.get_next()
+	dir.list_dir_end()
+	_assert_true(scanned >= 5, "the sweep actually read the corpus (%d specs)" % scanned)
+	var corpus := float(total_decision) / maxf(1.0, float(total_interior))
+	print("  [density] CORPUS %d/%d = %d%%   zero-decision specs: %d"
+		% [total_decision, total_interior, int(round(corpus * 100.0)), zero_decision.size()])
+	# Measured 79% on 2026-08-06. The floor is deliberately well below that: it catches the generator
+	# collapsing into traversal, and says nothing about what the right figure is.
+	_assert_true(corpus >= 0.65,
+		"corpus decision density has not collapsed (%d%%, floor 65%%)"
+			% int(round(corpus * 100.0)))
+	# Ratchet, not a target: one spec is zero-decision today
+	# (generated_teaching_channels_shelter_1_to_2 — four nodes whose approaches all require nothing,
+	# over a two-archetype alternation). Whether a teaching stretch may pose no question is OPEN;
+	# this only stops a second one appearing unnoticed.
+	_assert_true(zero_decision.size() <= 1,
+		"no NEW zero-decision stretch appeared (%d: %s)"
+			% [zero_decision.size(), ", ".join(zero_decision)])
+	_assert_true(thin_vocabulary.is_empty(),
+		"every stretch exercises at least two archetypes (%s)" % ", ".join(thin_vocabulary))
+
+
 func _test_basin_float_rider_not_swept() -> void:
 	_test_name = "Basin Float Rider Not Swept"
 	var generator_script: Script = load(
