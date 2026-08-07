@@ -870,7 +870,7 @@ is null. Then `page.evaluate(() => globalThis.__trawfE2E)` gives you:
 
 | Field | What it is |
 | --- | --- |
-| `player_observation.state.affordances` | **The play surface.** One entry per thing you can act on: `{kind, verb, consequence, screen:[x,y], token}`. `screen` is where to click. |
+| `player_observation.state.affordances` | **The play surface — for RIGHT NOW.** One entry per thing you can act on: `{kind, verb, consequence, screen:[x,y], token}`. `screen` is where to click. It lists only what is **currently on screen, unoccluded and unfogged** — never treat it as an inventory of what the level contains (see the warning below). |
 | `player_observation.state.visible_affordance_verbs` | The verb vocabulary currently available, e.g. `["HIDE","MOVE","TAKE LYSATE"]` |
 | `player_observation.state.cues` | Party bodies with screen positions, plus instruction text currently on screen |
 | `click_targets` | Named destinations the chunk exposes — e.g. `exit_shelter`, `upper_deck`, `bowl_center` |
@@ -889,6 +889,36 @@ Perceive → choose → act → verify, exactly like a player:
    critically `move_refusals` — an empty click is a refusal with a reason, not a mystery.
 4. `Space` pauses without stopping the UI lane, so pause, read, decide, unpause. Screenshot while
    paused if you need to look.
+5. **Move the camera.** The affordance list is a view frustum, not a level manifest. A player who
+   never pans finds nothing; so does a driver that never pans.
+
+### An empty verb list is a statement about the CAMERA, not about the level
+
+`_affordance_snapshot()` filters every candidate through `visible_rect.has_point`,
+`_render_point_visible`, and `_interaction_hit_is_player_visible` (fog). Anything off screen,
+occluded, or unexplored is *correctly* absent. So **"the affordance never appeared" is never evidence
+that a control does not exist**, and it is never evidence that a level is unbeatable.
+
+(Learned the hard way 2026-08-07, immediately after the guessed-pixels lesson above: fourteen steps
+of never panning the camera produced a confident "BLOCKING: the stretch demands an EXTEND terminal it
+never offers." The terminal was present, outlined, enabled, and **21 waypoints from the party spawn**.
+See `PLAYTHROUGH_NOTES_WEB.md` §3. Two wrong "the game is broken" calls in one session, both from
+trusting a partial view — hence this section.)
+
+**Ask the navigation resolver, not the affordance list.** Reachability is a data-layer question:
+
+```gdscript
+# Unwarp FIRST — on a spiral/warped stretch a node's global_position is VISUAL space, and comparing
+# it to grid cells produces nonsense (terminals appeared to sit at z=15/17 on an 80x13 board).
+var flat = node.get_meta("flat_authored_position")     # the production seam; else coord_map.to_data()
+var nav  = game_state.resolve_navigation_location(actor_id, flat)   # the service vertex
+var path = grid.find_multi_level_path(actor_cell, actor_level, nav.cell, nav.level)
+```
+
+`path.size() > 0` is the real answer to "can the player get to this control". To ask it of a whole
+level, flood-fill the walkable region from the spawn and check each interactable's service vertex
+against it; `grid.dynamic_blockers` names the gate that stops the frontier, which is how you tell a
+correct progression gate from a stranded one.
 
 ### What else the bridge is for
 

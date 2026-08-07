@@ -75,31 +75,51 @@ needs roughly an order of magnitude, taken from any mix of the biome's `ambient_
 question — a level the player cannot see is the most complete failure of "the world is the primary
 channel" available.
 
-## 3. BLOCKING: the stretch cannot be completed — it demands a control it never offers
+## 3. ~~BLOCKING: the stretch demands a control it never offers~~ — RETRACTED, my method was wrong
 
-Replayed properly off the observation bridge (`?e2e=1` → `player_observation.state.affordances`),
-choosing by VERB and clicking the published screen point, with `move_refusals` read after every act.
-Fourteen steps, thirty-odd distinct ground targets, the goal marker tracked the whole way.
-
-The game states the gate clearly and diegetically, through the refusal channel:
+**This finding was wrong and is withdrawn.** I reported that the stretch was uncompletable because
+the refusal channel demanded an EXTEND terminal that the game never offered:
 
 > `aster: The route crosses an open cut. Work the lit EXTEND terminal first.`
-> `aster: No route to that deck.`
 
-**But an EXTEND terminal is never offered.** Across all fourteen steps the available verb set stayed
-exactly `[MOVE, HIDE, TAKE LYSATE]`. No terminal, no extend, no branch-producer affordance ever
-appeared — and `click_targets.exit_shelter` stayed `visible:false` throughout. `branch_00` reports
-`blocked_cells (16,4) (16,5) (16,6)` with `bridge_collision_enabled: false`, i.e. the cut is in place
-and was never bridged.
+Across fourteen steps the published verb set stayed exactly `[MOVE, HIDE, TAKE LYSATE]`, so I
+concluded the composition had a **gating requirement with no reachable supplier**. It does not. The
+terminal is there, and the gating chain is well formed. Measured in a live scene:
 
-So the composition has a **gating requirement with no reachable supplier** — the exact failure the
-port model names as a hard error (a deficit on a progress-gating input), and the same family as the
-fail-open branch gate fixed earlier the same day. The player is told what to do and given no way to
-do it. Seed 80713, custom teaching profile.
+| Check | Result |
+| --- | --- |
+| Producer nodes present and visible | `BranchSpanProducer_branch_00`, `_branch_02` |
+| Terminal Interactable | label `EXTEND`, enabled, no `required_character`, radius 1.8 |
+| Outline target wired (so it highlights AND publishes) | yes, via `_wire_outline` |
+| Service vertex from the production resolver | cell **(15, 12)**, walkable |
+| Path from the party spawn | **21 waypoints — reachable** |
+| Triggered through the real one-shot receipt | `extending → bridged`, gap removed |
+| Reachable region after bridging | grows to x = 39, next gate is `generated_cistern_bridge_gap` |
+| Controls inside that region | `OPEN FIRST SLUICE` (enabled), `TEND`, `WAIT FOR CLEAR` (staged) |
 
-This is the finding that matters most from the session: every headless gate passes on this stretch —
-solvability, curriculum, spec integrity, replay — because they check the SPINE, and the spine is
-satisfiable. What is not satisfiable is the *player's* route to the control that opens it.
+So the chain reads: work the EXTEND terminal → the cut closes → the region opens to the cistern
+bridge → its sluice control is already reachable. That is exactly the shape the port model wants.
+
+**Why I got it wrong, and the lesson that matters more than the finding:** I played entirely off
+`player_observation.state.affordances`, and that list is *by design* only what is *currently on
+screen, unoccluded, and unfogged* — `_affordance_snapshot()` filters every candidate through
+`visible_rect.has_point`, `_render_point_visible`, and `_interaction_hit_is_player_visible`. It
+answers "what can I click this instant", never "what exists in this level". I never panned the
+camera or walked toward the terminal, so it never entered the list, and I read its absence as
+non-existence. **An empty verb list is a statement about the camera, not about the level.**
+
+Two things follow, both now in the method doc:
+- Exploration must drive the camera, not just consume the affordance list.
+- Reachability is a question for the *navigation resolver* (`resolve_navigation_location` +
+  `find_multi_level_path` on the unwarped position), never for the affordance list.
+
+One trap worth recording: this stretch is spiral-**warped**, so a node's `global_position` is in
+visual space and comparing it to grid cells is meaningless — it made the terminals look like they sat
+off-grid at z = 15/17 on an 80×13 board. The production path unwarps first, via the
+`flat_authored_position` meta or `coord_map.to_data()`. Measure through that seam or the numbers lie.
+
+Scope: verified on the default teaching stretch (`generated_teaching_channels_shelter_1_to_2`), the
+same family and mechanism as the browser run, not on seed 80713 specifically.
 
 ## 4. The instruction banner never goes away and covers the level
 
