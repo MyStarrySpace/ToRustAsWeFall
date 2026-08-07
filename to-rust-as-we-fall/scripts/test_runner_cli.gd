@@ -60582,19 +60582,20 @@ func _test_selection_controller() -> void:
 		"Atomic Rally preflight carries every READY-cue render path in the same report")
 	# Director ruling (2026-08-06): a rally refuses ONLY the members who cannot reach the
 	# destination. A party spread across floors was refused WHOLESALE by a pre-check that returned
-	# before the per-member preflight ever ran, so a legal rally read as a dead click.
+	# before the per-member preflight ever ran, so a legal rally read as a dead click. Standing on
+	# another deck is NOT by itself unreachable -- the grid routes a member up a typed ladder -- so
+	# the correct outcome here is that every member still answers.
 	gs.set_character_level("endo", 1)
 	var cross_level_preflight: Dictionary = gs.compute_rally_preflight(
 		rally_members, rally_cell_center, "aster")
 	_assert_true(bool(cross_level_preflight.get("accepted", false))
-			and (cross_level_preflight.get("blocked_members", []) as Array) == ["endo"]
-			and (cross_level_preflight.get("members", []) as Array) == ["aster", "peris"],
-		"A rally with one member on another floor accepts the two who can reach it (got accepted=%s blocked=%s)"
+			and (cross_level_preflight.get("blocked_members", []) as Array).is_empty(),
+		"A rally with one member on another floor is not refused wholesale (got accepted=%s blocked=%s)"
 			% [str(cross_level_preflight.get("accepted", false)),
 				str(cross_level_preflight.get("blocked_members", []))])
 	var cross_level_log_before := gs.event_log.size()
-	_assert_equals(sel._commit_rally(rally_cell_center, "aster"), 2,
-		"Rally commits the members who can reach the destination instead of refusing the party")
+	_assert_equals(sel._commit_rally(rally_cell_center, "aster"), 3,
+		"Rally commits across floors instead of refusing the whole party")
 	_assert_equals(gs.event_log.size(), cross_level_log_before + 1,
 		"The partial rally still records exactly one rally event")
 	gs.set_character_level("endo", 0)

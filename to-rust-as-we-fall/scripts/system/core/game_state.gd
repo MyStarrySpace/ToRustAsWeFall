@@ -7697,12 +7697,6 @@ func _rally_preflight_report_for_destinations(
 				constrained_preview.append_array(constrained_path)
 				preview_paths.append(constrained_preview)
 			else:
-				# Party rally does not walk between floors -- cross-level movement is wired for a single
-				# clicked character, not a party formation. A member standing on another deck therefore
-				# cannot answer this rally, and blocks ONLY themselves; the rest still go.
-				if grid.level_for_y(destination.y) != get_character_level(id):
-					block.call(id, "different_level", "%s IS ON ANOTHER DECK" % id.to_upper())
-					continue
 				var navigation := compute_preview_navigation(id, destination)
 				var member_preview: Array[Vector3] = []
 				for point_v in (navigation.get("path", []) as Array):
