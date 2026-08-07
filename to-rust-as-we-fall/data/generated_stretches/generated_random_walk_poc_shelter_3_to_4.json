@@ -352,7 +352,7 @@
 					"min_stage": 2.0,
 					"party": "specialist",
 					"requires": [
-						"combat"
+						"redirect"
 					],
 					"risk": "direct",
 					"taught_by": "",
@@ -471,7 +471,7 @@
 					"min_stage": 2.0,
 					"party": "specialist",
 					"requires": [
-						"combat"
+						"redirect"
 					],
 					"risk": "direct",
 					"taught_by": "",
@@ -592,7 +592,7 @@
 					"min_stage": 3.0,
 					"party": "specialist",
 					"requires": [
-						"combat"
+						"redirect"
 					],
 					"risk": "direct",
 					"taught_by": "",
@@ -723,7 +723,7 @@
 					"min_stage": 3.0,
 					"party": "specialist",
 					"requires": [
-						"combat"
+						"redirect"
 					],
 					"risk": "direct",
 					"taught_by": "",
@@ -814,7 +814,7 @@
 					"min_stage": 3.0,
 					"party": "specialist",
 					"requires": [
-						"combat"
+						"redirect"
 					],
 					"risk": "direct",
 					"taught_by": "",
@@ -6882,7 +6882,7 @@
 					"min_stage": 2.0,
 					"party": "specialist",
 					"requires": [
-						"combat"
+						"redirect"
 					],
 					"risk": "direct",
 					"taught_by": "",
@@ -7142,7 +7142,7 @@
 					"min_stage": 2.0,
 					"party": "specialist",
 					"requires": [
-						"combat"
+						"redirect"
 					],
 					"risk": "direct",
 					"taught_by": "",
@@ -7395,7 +7395,7 @@
 					"min_stage": 3.0,
 					"party": "specialist",
 					"requires": [
-						"combat"
+						"redirect"
 					],
 					"risk": "direct",
 					"taught_by": "",
@@ -7560,7 +7560,7 @@
 					"min_stage": 3.0,
 					"party": "specialist",
 					"requires": [
-						"combat"
+						"redirect"
 					],
 					"risk": "direct",
 					"taught_by": "",
@@ -7682,7 +7682,7 @@
 					"min_stage": 3.0,
 					"party": "specialist",
 					"requires": [
-						"combat"
+						"redirect"
 					],
 					"risk": "direct",
 					"taught_by": "",
@@ -11045,8 +11045,7 @@
 					"2",
 					"3",
 					"4",
-					"6",
-					"11"
+					"6"
 				],
 				"enemies": [
 					"sapscraps",

@@ -3258,6 +3258,16 @@ static func _choose_archetype_chain(catalog, settings: Dictionary, budget: Dicti
 	var allowed := _category_limitations(limitations, "allowed", "archetypes")
 	var blocked := _category_limitations(limitations, "blocked", "archetypes")
 	var available := _filter_archetypes_by_stage(catalog, _available_values(catalog, "archetypes", allowed, blocked), int(settings.get("progression_stage", 99)))
+	# Procedural eligibility was only ever consulted while building `preferred`, and the fill loop
+	# falls back to `available` whenever that runs dry — so a story-mode archetype could still be
+	# generated through the back door. Filter the pool itself: blocked must mean unreachable by any
+	# path, not merely unpreferred.
+	var procedural: Array[String] = []
+	for candidate_v in available:
+		if SystemsCurriculumScript.is_procedurally_eligible(str(candidate_v)):
+			procedural.append(str(candidate_v))
+	if not procedural.is_empty():
+		available = procedural
 	var composition: Dictionary = settings.get("composition", {})
 	var composition_chain: Array = composition.get("chain", [])
 	var target_count := maxi(required.size(), maxi(composition_chain.size(), int(budget.get("archetype_depth", 2))))
@@ -3672,6 +3682,11 @@ static func _choose_next_walk_archetype(
 	var weighted := []
 	for raw_id in available:
 		var id := str(raw_id)
+		# The random-walk chain builder is the OTHER path into a stretch, and it never consulted
+		# procedural eligibility — so a story-mode archetype kept arriving here even after being
+		# blocked in the pooled builder. Blocked has to mean unreachable on every path.
+		if not SystemsCurriculumScript.is_procedurally_eligible(id):
+			continue
 		if (force_different or not allow_revisit) and id == current_id and available.size() > 1:
 			continue
 		if int(visit_counts.get(id, 0)) >= max_occurrences and available.size() > 1:

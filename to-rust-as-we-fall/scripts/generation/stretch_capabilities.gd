@@ -36,9 +36,9 @@ const CHARACTER_REGISTRY := {
 	},
 	"myke": {
 		"name": "Myke", "cell_type": "microglia", "class_code": "MCG", "recruit": 3,
-		"capabilities": ["combat", "impact", "force", "carry", "physical", "tend", "class_other"],
+		"capabilities": ["redirect", "impact", "force", "carry", "physical", "tend", "class_other"],
 		"abilities": {
-			"inflame": {"name": "Inflame", "grants": "combat", "runtime_status": "authored_fragment"},
+			"inflame": {"name": "Inflame", "grants": "redirect", "runtime_status": "authored_fragment"},
 		},
 	},
 	"oli": {
@@ -51,9 +51,9 @@ const CHARACTER_REGISTRY := {
 	},
 	"tyreg": {
 		"name": "Tyreg", "cell_type": "T-regulatory", "class_code": "TRG", "recruit": 5,
-		"capabilities": ["combat", "force", "scan", "timing", "class_tmc"],
+		"capabilities": ["redirect", "force", "scan", "timing", "class_tmc"],
 		"abilities": {
-			"suppress": {"name": "Suppress", "grants": "combat", "runtime_status": "authored_fragment"},
+			"suppress": {"name": "Suppress", "grants": "redirect", "runtime_status": "authored_fragment"},
 		},
 	},
 }

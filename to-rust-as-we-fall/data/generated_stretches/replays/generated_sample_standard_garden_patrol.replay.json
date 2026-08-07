@@ -135,7 +135,7 @@
 				"label": "Plant as tool · Flure Iron Decoy",
 				"level": 0,
 				"optional": false,
-				"role": "shortcut"
+				"role": "guidance"
 			},
 			{
 				"archetype_id": "11",
@@ -871,7 +871,7 @@
 					"min_stage": 0,
 					"node": "node_06",
 					"risk": "safe",
-					"role": "shortcut",
+					"role": "guidance",
 					"stage_ahead": false,
 					"t": 7.0
 				},
@@ -1501,7 +1501,7 @@
 					"min_stage": 0,
 					"node": "node_06",
 					"risk": "safe",
-					"role": "shortcut",
+					"role": "guidance",
 					"stage_ahead": false,
 					"t": 7.0
 				},

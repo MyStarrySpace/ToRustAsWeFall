@@ -74,6 +74,16 @@
 			{
 				"category": "flora",
 				"cell": [
+					64,
+					0
+				],
+				"kind": "scarpet",
+				"level": 0,
+				"support": "implemented"
+			},
+			{
+				"category": "flora",
+				"cell": [
 					72,
 					8
 				],
@@ -187,19 +197,19 @@
 				"label": "Pattern reconstruction · Area Map",
 				"level": 1,
 				"optional": false,
-				"role": "guidance"
+				"role": "foraging"
 			},
 			{
-				"archetype_id": "6",
+				"archetype_id": "10",
 				"cell": [
 					64,
 					0
 				],
 				"id": "node_08",
-				"label": "Pattern reconstruction · Flow Diagram",
+				"label": "Danger zone · Naturalizer Patrol",
 				"level": 0,
 				"optional": false,
-				"role": "foraging"
+				"role": "danger"
 			},
 			{
 				"archetype_id": "",
@@ -220,7 +230,7 @@
 					9
 				],
 				"id": "node_10",
-				"label": "Danger zone · Naturalizer Patrol",
+				"label": "Danger zone · Atmospheric",
 				"level": 2,
 				"optional": false,
 				"role": "setpiece"
@@ -451,7 +461,7 @@
 					"activation_policy": "interact_at_producer",
 					"affected_node_ids": [
 						"node_06",
-						"node_08"
+						"node_07"
 					],
 					"before_node": "node_04",
 					"before_nodes": [
@@ -672,7 +682,7 @@
 						"activation_policy": "interact_at_producer",
 						"affected_node_ids": [
 							"node_06",
-							"node_08"
+							"node_07"
 						],
 						"before_node": "node_04",
 						"before_nodes": [
@@ -878,10 +888,10 @@
 					"t": 7.0
 				},
 				{
-					"approach_id": "traverse",
+					"approach_id": "take_physical_lysate",
 					"blocked": false,
 					"borrows_from": "",
-					"caption": "node_07",
+					"caption": "node_07 — TAKE LYSATE",
 					"characters": {
 						"aster": [
 							56.0,
@@ -909,19 +919,19 @@
 						]
 					},
 					"expert": false,
-					"kind": "layout_traversal",
-					"min_stage": 0,
+					"kind": "resource_pickup",
+					"min_stage": 3,
 					"node": "node_07",
 					"risk": "safe",
-					"role": "guidance",
+					"role": "foraging",
 					"stage_ahead": false,
 					"t": 8.0
 				},
 				{
-					"approach_id": "take_physical_lysate",
+					"approach_id": "traverse",
 					"blocked": false,
 					"borrows_from": "",
-					"caption": "node_08 — TAKE LYSATE",
+					"caption": "node_08",
 					"characters": {
 						"aster": [
 							64.0,
@@ -949,11 +959,11 @@
 						]
 					},
 					"expert": false,
-					"kind": "resource_pickup",
-					"min_stage": 3,
+					"kind": "layout_traversal",
+					"min_stage": 0,
 					"node": "node_08",
 					"risk": "safe",
-					"role": "foraging",
+					"role": "danger",
 					"stage_ahead": false,
 					"t": 9.0
 				},
@@ -1167,24 +1177,24 @@
 					"stage_ahead": false
 				},
 				{
-					"approach_id": "traverse",
-					"borrows_from": "",
-					"expert": false,
-					"kind": "layout_traversal",
-					"label": "",
-					"min_stage": 0,
-					"node": "node_07",
-					"party": "any",
-					"risk": "safe",
-					"stage_ahead": false
-				},
-				{
 					"approach_id": "take_physical_lysate",
 					"borrows_from": "",
 					"expert": false,
 					"kind": "resource_pickup",
 					"label": "TAKE LYSATE",
 					"min_stage": 3,
+					"node": "node_07",
+					"party": "any",
+					"risk": "safe",
+					"stage_ahead": false
+				},
+				{
+					"approach_id": "traverse",
+					"borrows_from": "",
+					"expert": false,
+					"kind": "layout_traversal",
+					"label": "",
+					"min_stage": 0,
 					"node": "node_08",
 					"party": "any",
 					"risk": "safe",
@@ -1247,7 +1257,7 @@
 					"activation_policy": "interact_at_producer",
 					"affected_node_ids": [
 						"node_06",
-						"node_08"
+						"node_07"
 					],
 					"before_node": "node_04",
 					"before_nodes": [
@@ -1404,7 +1414,7 @@
 						"activation_policy": "interact_at_producer",
 						"affected_node_ids": [
 							"node_06",
-							"node_08"
+							"node_07"
 						],
 						"before_node": "node_04",
 						"before_nodes": [
@@ -1546,10 +1556,10 @@
 					"t": 7.0
 				},
 				{
-					"approach_id": "traverse",
+					"approach_id": "take_physical_lysate",
 					"blocked": false,
 					"borrows_from": "",
-					"caption": "node_07",
+					"caption": "node_07 — TAKE LYSATE",
 					"characters": {
 						"aster": [
 							56.0,
@@ -1561,19 +1571,19 @@
 						]
 					},
 					"expert": false,
-					"kind": "layout_traversal",
-					"min_stage": 0,
+					"kind": "resource_pickup",
+					"min_stage": 3,
 					"node": "node_07",
 					"risk": "safe",
-					"role": "guidance",
+					"role": "foraging",
 					"stage_ahead": false,
 					"t": 8.0
 				},
 				{
-					"approach_id": "take_physical_lysate",
+					"approach_id": "traverse",
 					"blocked": false,
 					"borrows_from": "",
-					"caption": "node_08 — TAKE LYSATE",
+					"caption": "node_08",
 					"characters": {
 						"aster": [
 							64.0,
@@ -1585,11 +1595,11 @@
 						]
 					},
 					"expert": false,
-					"kind": "resource_pickup",
-					"min_stage": 3,
+					"kind": "layout_traversal",
+					"min_stage": 0,
 					"node": "node_08",
 					"risk": "safe",
-					"role": "foraging",
+					"role": "danger",
 					"stage_ahead": false,
 					"t": 9.0
 				},
@@ -1755,24 +1765,24 @@
 					"stage_ahead": false
 				},
 				{
-					"approach_id": "traverse",
-					"borrows_from": "",
-					"expert": false,
-					"kind": "layout_traversal",
-					"label": "",
-					"min_stage": 0,
-					"node": "node_07",
-					"party": "any",
-					"risk": "safe",
-					"stage_ahead": false
-				},
-				{
 					"approach_id": "take_physical_lysate",
 					"borrows_from": "",
 					"expert": false,
 					"kind": "resource_pickup",
 					"label": "TAKE LYSATE",
 					"min_stage": 3,
+					"node": "node_07",
+					"party": "any",
+					"risk": "safe",
+					"stage_ahead": false
+				},
+				{
+					"approach_id": "traverse",
+					"borrows_from": "",
+					"expert": false,
+					"kind": "layout_traversal",
+					"label": "",
+					"min_stage": 0,
 					"node": "node_08",
 					"party": "any",
 					"risk": "safe",

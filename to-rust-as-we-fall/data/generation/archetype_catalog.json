@@ -78,7 +78,7 @@
           "kind": "primary",
           "party": "specialist",
           "requires": [
-            "combat"
+            "redirect"
           ],
           "uses": [
             "kill_enemy",
@@ -281,7 +281,7 @@
           "kind": "primary",
           "party": "specialist",
           "requires": [
-            "combat"
+            "redirect"
           ],
           "uses": [
             "critical_resource"
@@ -410,7 +410,7 @@
           "kind": "primary",
           "party": "specialist",
           "requires": [
-            "combat"
+            "redirect"
           ],
           "uses": [
             "loud_action"
@@ -588,7 +588,7 @@
           "kind": "primary",
           "party": "specialist",
           "requires": [
-            "combat"
+            "redirect"
           ],
           "uses": [
             "combat_retrieval"
@@ -659,7 +659,7 @@
           "kind": "primary",
           "party": "specialist",
           "requires": [
-            "combat"
+            "redirect"
           ],
           "uses": [
             "extract_objective"
@@ -882,7 +882,7 @@
           "kind": "primary",
           "party": "specialist",
           "requires": [
-            "combat"
+            "redirect"
           ],
           "uses": [
             "multi_route_converging"
@@ -1021,7 +1021,7 @@
           "kind": "primary",
           "party": "specialist",
           "requires": [
-            "combat"
+            "redirect"
           ],
           "uses": [
             "rich_kill"
@@ -1092,7 +1092,7 @@
           "kind": "primary",
           "party": "specialist",
           "requires": [
-            "combat"
+            "redirect"
           ],
           "uses": [
             "trigger_flare_burst"
@@ -1176,7 +1176,7 @@
           "kind": "primary",
           "party": "specialist",
           "requires": [
-            "combat"
+            "redirect"
           ],
           "uses": [
             "mixed_families"

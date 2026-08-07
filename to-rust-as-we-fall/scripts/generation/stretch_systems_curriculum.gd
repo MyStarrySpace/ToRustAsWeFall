@@ -24,6 +24,7 @@ const HYDRAULIC_CAPTURED_ROUTE_TRAVEL_SECONDS := 2.6
 ## can still use it outside this generator.
 const PROCEDURALLY_BLOCKED_ARCHETYPES := {
 	"9": "Expectation subversion needs an authored, typed convention handshake.",
+	"11": "Narrative beats belong to story mode; procedural generation does not author story.",
 }
 
 const STAGE_PROFILES := {

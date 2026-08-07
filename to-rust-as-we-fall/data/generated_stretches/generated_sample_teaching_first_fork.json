@@ -188,7 +188,7 @@
 					"min_stage": 2.0,
 					"party": "specialist",
 					"requires": [
-						"combat"
+						"redirect"
 					],
 					"risk": "direct",
 					"taught_by": "",
@@ -2579,7 +2579,7 @@
 					"min_stage": 2.0,
 					"party": "specialist",
 					"requires": [
-						"combat"
+						"redirect"
 					],
 					"risk": "direct",
 					"taught_by": "",
@@ -3058,7 +3058,7 @@
 					"min_stage": 2.0,
 					"party": "specialist",
 					"requires": [
-						"combat"
+						"redirect"
 					],
 					"risk": "direct",
 					"taught_by": "",
@@ -4455,8 +4455,7 @@
 					"6",
 					"7",
 					"8",
-					"10",
-					"11"
+					"10"
 				],
 				"enemies": [
 					"sapscraps",

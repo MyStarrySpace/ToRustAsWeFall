@@ -82,7 +82,7 @@
 					"min_stage": 1.0,
 					"party": "specialist",
 					"requires": [
-						"combat"
+						"redirect"
 					],
 					"risk": "direct",
 					"taught_by": "",
@@ -162,7 +162,7 @@
 					"min_stage": 4.0,
 					"party": "specialist",
 					"requires": [
-						"combat"
+						"redirect"
 					],
 					"risk": "direct",
 					"taught_by": "",
@@ -258,7 +258,7 @@
 					"min_stage": 4.0,
 					"party": "specialist",
 					"requires": [
-						"combat"
+						"redirect"
 					],
 					"risk": "direct",
 					"taught_by": "",
@@ -7476,7 +7476,7 @@
 					"min_stage": 1.0,
 					"party": "specialist",
 					"requires": [
-						"combat"
+						"redirect"
 					],
 					"risk": "direct",
 					"taught_by": "",
@@ -7834,7 +7834,7 @@
 					"min_stage": 4.0,
 					"party": "specialist",
 					"requires": [
-						"combat"
+						"redirect"
 					],
 					"risk": "direct",
 					"taught_by": "",
@@ -8248,7 +8248,7 @@
 					"min_stage": 4.0,
 					"party": "specialist",
 					"requires": [
-						"combat"
+						"redirect"
 					],
 					"risk": "direct",
 					"taught_by": "",
@@ -8905,7 +8905,7 @@
 					"min_stage": 1.0,
 					"party": "specialist",
 					"requires": [
-						"combat"
+						"redirect"
 					],
 					"risk": "direct",
 					"taught_by": "",
@@ -9235,7 +9235,7 @@
 					"min_stage": 4.0,
 					"party": "specialist",
 					"requires": [
-						"combat"
+						"redirect"
 					],
 					"risk": "direct",
 					"taught_by": "",
@@ -12346,7 +12346,6 @@
 		"limitations": {
 			"allowed": {
 				"archetypes": [
-					"11",
 					"12",
 					"13",
 					"14",

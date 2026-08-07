@@ -95,7 +95,7 @@
 					"min_stage": 5.0,
 					"party": "specialist",
 					"requires": [
-						"combat"
+						"redirect"
 					],
 					"risk": "direct",
 					"taught_by": "",
@@ -202,7 +202,7 @@
 					"min_stage": 2.0,
 					"party": "specialist",
 					"requires": [
-						"combat"
+						"redirect"
 					],
 					"risk": "direct",
 					"taught_by": "",
@@ -336,7 +336,7 @@
 					"min_stage": 2.0,
 					"party": "specialist",
 					"requires": [
-						"combat"
+						"redirect"
 					],
 					"risk": "direct",
 					"taught_by": "",
@@ -457,7 +457,7 @@
 					"min_stage": 3.0,
 					"party": "specialist",
 					"requires": [
-						"combat"
+						"redirect"
 					],
 					"risk": "direct",
 					"taught_by": "",
@@ -588,7 +588,7 @@
 					"min_stage": 3.0,
 					"party": "specialist",
 					"requires": [
-						"combat"
+						"redirect"
 					],
 					"risk": "direct",
 					"taught_by": "",
@@ -662,91 +662,108 @@
 		},
 		{
 			"all_variants": [
-				"area_map",
-				"flow_diagram",
-				"document",
-				"image_symbol",
-				"combat_retrieval",
-				"memory_pressure",
-				"carry_vulnerability",
-				"hidden_overlay"
+				"iron_based",
+				"naturalizer_patrol",
+				"atmospheric",
+				"mixed",
+				"single_route_shadow",
+				"multi_route_converging",
+				"sequence_locked"
 			],
 			"approaches": [
 				{
-					"id": "combat_retrieval",
+					"id": "specialist_team",
 					"kind": "primary",
-					"label": "Fight through to retrieve the scattered fragments",
-					"min_stage": 3.0,
+					"label": "Bring a combat or Endo specialist team into the zone",
+					"min_stage": 5.0,
 					"party": "specialist",
 					"requires": [
-						"combat"
+						"redirect"
 					],
 					"risk": "direct",
 					"taught_by": "",
 					"uses": [
-						"combat_retrieval"
+						"multi_route_converging"
 					]
 				},
 				{
-					"id": "scan_preserve",
-					"kind": "shadow",
-					"label": "Aster reads the hidden overlay structure; Peris preserves the relational context",
+					"borrows_from": "4",
+					"expert": true,
+					"id": "convergence_thinning",
+					"kind": "shadow_expert",
+					"label": "Thin the convergence instead of slow-carrying it: a flure lure plus an electrical decoy peel the patrols apart, opening a fast lane Aster times to the gap",
 					"min_stage": 3.0,
 					"party": "aster_peris",
 					"requires": [
-						"scan",
-						"flora"
+						"electrical",
+						"flora",
+						"timing"
 					],
-					"risk": "safe",
-					"taught_by": "overlay_reading",
+					"risk": "risky",
+					"taught_by": "convergence_thinning",
+					"uses": []
+				},
+				{
+					"id": "aster_peris_comp",
+					"kind": "shadow",
+					"label": "Aster/Peris composition: overlay timing, scarpet cover, slow carries",
+					"min_stage": 5.0,
+					"party": "aster_peris",
+					"requires": [
+						"overlay",
+						"cover",
+						"carry"
+					],
+					"risk": "risky",
+					"taught_by": "danger_zone_composition",
 					"uses": [
-						"hidden_overlay",
-						"memory_pressure"
+						"single_route_shadow"
 					]
 				}
 			],
 			"atp_reward": 0,
 			"chain_index": 5,
-			"chain_label": "locate fragments",
+			"chain_label": "sub-puzzle composition",
 			"compatible_node_roles": [
-				"guidance",
-				"resource",
+				"setpiece",
 				"mixed",
-				"setpiece"
+				"danger"
 			],
 			"composition_mode": "archetype_random_walk",
 			"composition_role": "random_walk_element",
 			"exploit_target": "",
-			"id": "6",
-			"kind": "puzzle",
+			"id": "10",
+			"kind": "meta",
 			"link_ref": "walk_05",
-			"name": "Pattern reconstruction",
+			"name": "Danger zone",
 			"pressure_cost": 0,
 			"shadow_solution": {
 				"aster_peris": true,
-				"notes": "Aster finds hidden structure; Peris preserves relational or flora context."
+				"notes": "Major danger zones must define an Aster/Peris composition."
 			},
 			"spatial_affordances": [],
-			"stage": 3,
-			"step_count": 5,
+			"stage": 5,
+			"step_count": 4,
 			"survival_kind": "",
 			"systems_dimensions": [
 				"relation",
 				"stock",
-				"threshold",
+				"flow",
+				"delay",
+				"feedback",
+				"local_global",
 				"topology",
-				"diagnosis",
 				"leverage",
 				"transfer"
 			],
 			"tags": [
-				"fragments",
-				"memory",
-				"map",
-				"assembly"
+				"danger_zone",
+				"cure_component",
+				"container",
+				"nested"
 			],
-			"variant": "combat_retrieval",
-			"walk_element": "locate fragments",
+			"variant": "naturalizer_patrol",
+			"walk_element": "sub-puzzle composition",
 			"walk_index": 5,
 			"walk_ref": "walk_05",
 			"walk_step_index": 1
@@ -769,7 +786,7 @@
 					"min_stage": 5.0,
 					"party": "specialist",
 					"requires": [
-						"combat"
+						"redirect"
 					],
 					"risk": "direct",
 					"taught_by": "",
@@ -814,7 +831,7 @@
 			],
 			"atp_reward": 0,
 			"chain_index": 6,
-			"chain_label": "sub-puzzle composition",
+			"chain_label": "retrieve component",
 			"compatible_node_roles": [
 				"setpiece",
 				"mixed",
@@ -854,76 +871,197 @@
 				"nested"
 			],
 			"variant": "naturalizer_patrol",
-			"walk_element": "sub-puzzle composition",
+			"walk_element": "retrieve component",
 			"walk_index": 6,
 			"walk_ref": "walk_06",
-			"walk_step_index": 1
+			"walk_step_index": 2
 		},
 		{
 			"all_variants": [
-				"area_map",
-				"flow_diagram",
-				"document",
-				"image_symbol",
-				"combat_retrieval",
-				"memory_pressure",
-				"carry_vulnerability",
-				"hidden_overlay"
+				"nk_patrol",
+				"naturalizer_patrol",
+				"chelator_presence",
+				"pass_through",
+				"terminal_access",
+				"plant_objective",
+				"extract_objective"
 			],
 			"approaches": [
 				{
-					"id": "combat_retrieval",
+					"id": "force_window",
 					"kind": "primary",
-					"label": "Fight through to retrieve the scattered fragments",
-					"min_stage": 3.0,
+					"label": "Force the window open with raw pressure",
+					"min_stage": 4.0,
 					"party": "specialist",
 					"requires": [
-						"combat"
+						"redirect"
 					],
-					"risk": "direct",
+					"risk": "risky",
 					"taught_by": "",
 					"uses": [
-						"combat_retrieval"
+						"extract_objective"
 					]
 				},
 				{
-					"id": "scan_preserve",
-					"kind": "shadow",
-					"label": "Aster reads the hidden overlay structure; Peris preserves the relational context",
-					"min_stage": 3.0,
+					"borrows_from": "9",
+					"expert": true,
+					"id": "compliant_tag_spoof",
+					"kind": "shadow_expert",
+					"label": "Walk into the scan on purpose: Aster floods a spoofed-compliant tag signature so the patrol clears you at the checkpoint",
+					"min_stage": 6.0,
 					"party": "aster_peris",
 					"requires": [
-						"scan",
-						"flora"
+						"signal",
+						"electrical",
+						"timing"
+					],
+					"risk": "risky",
+					"taught_by": "compliant_tag_spoof",
+					"uses": []
+				},
+				{
+					"id": "read_and_cover",
+					"kind": "shadow",
+					"label": "Aster reads the patrol timing; Peris creates or extends cover",
+					"min_stage": 4.0,
+					"party": "aster_peris",
+					"requires": [
+						"timing",
+						"cover"
 					],
 					"risk": "safe",
-					"taught_by": "overlay_reading",
+					"taught_by": "patrol_timing",
 					"uses": [
-						"hidden_overlay",
-						"memory_pressure"
+						"pass_through",
+						"terminal_access"
 					]
 				}
 			],
 			"atp_reward": 0,
 			"chain_index": 7,
-			"chain_label": "retrieve fragments",
+			"chain_label": "observe patrol",
+			"compatible_node_roles": [
+				"route_pressure",
+				"danger",
+				"mixed"
+			],
+			"composition_mode": "archetype_random_walk",
+			"composition_role": "random_walk_element",
+			"exploit_target": "",
+			"id": "7",
+			"kind": "survival",
+			"link_ref": "walk_07",
+			"name": "Stealth-and-time",
+			"pressure_cost": 0,
+			"shadow_solution": {
+				"aster_peris": true,
+				"notes": "Aster reads timing; Peris creates or extends cover."
+			},
+			"spatial_affordances": [],
+			"stage": 4,
+			"step_count": 5,
+			"survival_kind": "",
+			"systems_dimensions": [
+				"relation",
+				"flow",
+				"delay",
+				"threshold",
+				"leverage",
+				"transfer"
+			],
+			"tags": [
+				"stealth",
+				"timing",
+				"patrol_gap",
+				"pressure"
+			],
+			"variant": "chelator_presence",
+			"walk_element": "observe patrol",
+			"walk_index": 7,
+			"walk_ref": "walk_07",
+			"walk_step_index": 0
+		},
+		{
+			"all_variants": [
+				"ast_terminal",
+				"pct_client",
+				"ent_barrier",
+				"tmc_enforcement",
+				"door",
+				"information",
+				"resource",
+				"npc_cooperation"
+			],
+			"approaches": [
+				{
+					"id": "other_class_bearer",
+					"kind": "primary",
+					"label": "Bring the gate's required class (ENT/TMC) to the interaction",
+					"min_stage": 3.0,
+					"party": "specialist",
+					"requires": [
+						"class_other"
+					],
+					"risk": "safe",
+					"taught_by": "",
+					"uses": [
+						"ent_barrier",
+						"tmc_enforcement"
+					]
+				},
+				{
+					"borrows_from": "2",
+					"expert": true,
+					"id": "grown_gate_bypass",
+					"kind": "shadow_expert",
+					"label": "Beat the gate with botany: a grown seefern reveals the gate's maintenance seam and scarpet cover lets Peris work it open, no class bearer",
+					"min_stage": 1.0,
+					"party": "aster_peris",
+					"requires": [
+						"terminal",
+						"reveal",
+						"cover"
+					],
+					"risk": "risky",
+					"taught_by": "grown_gate_bypass",
+					"uses": []
+				},
+				{
+					"id": "ast_or_environment",
+					"kind": "shadow",
+					"label": "Aster's AST access clears early gates; otherwise route around environmentally",
+					"min_stage": 3.0,
+					"party": "aster_peris",
+					"requires": [
+						"terminal"
+					],
+					"risk": "safe",
+					"taught_by": "class_access",
+					"uses": [
+						"ast_terminal",
+						"information"
+					]
+				}
+			],
+			"atp_reward": 0,
+			"chain_index": 8,
+			"chain_label": "encounter gate",
 			"compatible_node_roles": [
 				"guidance",
-				"resource",
-				"mixed",
+				"shortcut",
 				"setpiece"
 			],
 			"composition_mode": "archetype_random_walk",
 			"composition_role": "random_walk_element",
 			"exploit_target": "",
-			"id": "6",
+			"id": "8",
 			"kind": "puzzle",
-			"link_ref": "walk_07",
-			"name": "Pattern reconstruction",
+			"link_ref": "walk_08",
+			"name": "Class-gated interaction",
 			"pressure_cost": 0,
 			"shadow_solution": {
 				"aster_peris": true,
-				"notes": "Aster finds hidden structure; Peris preserves relational or flora context."
+				"notes": "Aster/PCT coverage handles most early class gates; other classes need environmental alternatives."
 			},
 			"spatial_affordances": [],
 			"stage": 3,
@@ -931,132 +1069,22 @@
 			"survival_kind": "",
 			"systems_dimensions": [
 				"relation",
-				"stock",
 				"threshold",
-				"topology",
-				"diagnosis",
-				"leverage",
-				"transfer"
-			],
-			"tags": [
-				"fragments",
-				"memory",
-				"map",
-				"assembly"
-			],
-			"variant": "area_map",
-			"walk_element": "retrieve fragments",
-			"walk_index": 7,
-			"walk_ref": "walk_07",
-			"walk_step_index": 2
-		},
-		{
-			"all_variants": [
-				"iron_based",
-				"naturalizer_patrol",
-				"atmospheric",
-				"mixed",
-				"single_route_shadow",
-				"multi_route_converging",
-				"sequence_locked"
-			],
-			"approaches": [
-				{
-					"id": "specialist_team",
-					"kind": "primary",
-					"label": "Bring a combat or Endo specialist team into the zone",
-					"min_stage": 5.0,
-					"party": "specialist",
-					"requires": [
-						"combat"
-					],
-					"risk": "direct",
-					"taught_by": "",
-					"uses": [
-						"multi_route_converging"
-					]
-				},
-				{
-					"borrows_from": "4",
-					"expert": true,
-					"id": "convergence_thinning",
-					"kind": "shadow_expert",
-					"label": "Thin the convergence instead of slow-carrying it: a flure lure plus an electrical decoy peel the patrols apart, opening a fast lane Aster times to the gap",
-					"min_stage": 3.0,
-					"party": "aster_peris",
-					"requires": [
-						"electrical",
-						"flora",
-						"timing"
-					],
-					"risk": "risky",
-					"taught_by": "convergence_thinning",
-					"uses": []
-				},
-				{
-					"id": "aster_peris_comp",
-					"kind": "shadow",
-					"label": "Aster/Peris composition: overlay timing, scarpet cover, slow carries",
-					"min_stage": 5.0,
-					"party": "aster_peris",
-					"requires": [
-						"overlay",
-						"cover",
-						"carry"
-					],
-					"risk": "risky",
-					"taught_by": "danger_zone_composition",
-					"uses": [
-						"single_route_shadow"
-					]
-				}
-			],
-			"atp_reward": 0,
-			"chain_index": 8,
-			"chain_label": "retrieve component",
-			"compatible_node_roles": [
-				"setpiece",
-				"mixed",
-				"danger"
-			],
-			"composition_mode": "archetype_random_walk",
-			"composition_role": "random_walk_element",
-			"exploit_target": "",
-			"id": "10",
-			"kind": "meta",
-			"link_ref": "walk_08",
-			"name": "Danger zone",
-			"pressure_cost": 0,
-			"shadow_solution": {
-				"aster_peris": true,
-				"notes": "Major danger zones must define an Aster/Peris composition."
-			},
-			"spatial_affordances": [],
-			"stage": 5,
-			"step_count": 4,
-			"survival_kind": "",
-			"systems_dimensions": [
-				"relation",
-				"stock",
-				"flow",
-				"delay",
-				"feedback",
 				"local_global",
-				"topology",
 				"leverage",
 				"transfer"
 			],
 			"tags": [
-				"danger_zone",
-				"cure_component",
-				"container",
-				"nested"
+				"class",
+				"terminal",
+				"authority",
+				"gate"
 			],
-			"variant": "iron_based",
-			"walk_element": "retrieve component",
+			"variant": "door",
+			"walk_element": "encounter gate",
 			"walk_index": 8,
 			"walk_ref": "walk_08",
-			"walk_step_index": 2
+			"walk_step_index": 0
 		}
 	],
 	"area_theme": {},
@@ -1109,6 +1137,7 @@
 						"node_03",
 						"node_04",
 						"node_06",
+						"node_08",
 						"node_09",
 						"node_10"
 					]
@@ -1181,37 +1210,37 @@
 					"from": "walk_04",
 					"from_archetype": "6",
 					"from_step": 0,
-					"reason": "restart",
+					"reason": "tag_jump",
 					"to": "walk_05",
-					"to_archetype": "6",
+					"to_archetype": "10",
 					"to_step": 1
 				},
 				{
 					"from": "walk_05",
-					"from_archetype": "6",
+					"from_archetype": "10",
 					"from_step": 1,
-					"reason": "step_terminal",
+					"reason": "restart",
 					"to": "walk_06",
 					"to_archetype": "10",
-					"to_step": 1
+					"to_step": 2
 				},
 				{
 					"from": "walk_06",
 					"from_archetype": "10",
-					"from_step": 1,
-					"reason": "tag_jump",
+					"from_step": 2,
+					"reason": "step_terminal",
 					"to": "walk_07",
-					"to_archetype": "6",
-					"to_step": 2
+					"to_archetype": "7",
+					"to_step": 0
 				},
 				{
 					"from": "walk_07",
-					"from_archetype": "6",
-					"from_step": 2,
+					"from_archetype": "7",
+					"from_step": 0,
 					"reason": "tag_jump",
 					"to": "walk_08",
-					"to_archetype": "10",
-					"to_step": 2
+					"to_archetype": "8",
+					"to_step": 0
 				}
 			],
 			"element_count": 9,
@@ -1295,7 +1324,9 @@
 				"1",
 				"3",
 				"4",
-				"6"
+				"6",
+				"7",
+				"8"
 			],
 			"visits": [
 				{
@@ -1442,7 +1473,7 @@
 						"turn": -1,
 						"x": 5
 					},
-					"next_archetype_id": "6",
+					"next_archetype_id": "10",
 					"next_step_index": 1,
 					"node_role_hint": "guidance",
 					"position": [
@@ -1459,42 +1490,9 @@
 						"map",
 						"assembly"
 					],
-					"transition_reason": "restart",
+					"transition_reason": "tag_jump",
 					"variant": "memory_pressure",
 					"walk_index": 4
-				},
-				{
-					"archetype_id": "6",
-					"archetype_name": "Pattern reconstruction",
-					"element": "locate fragments",
-					"element_label": "locate fragments",
-					"id": "6",
-					"kind": "puzzle",
-					"layout_step": {
-						"lane": -1,
-						"turn": 1,
-						"x": 6
-					},
-					"next_archetype_id": "10",
-					"next_step_index": 1,
-					"node_role_hint": "resource",
-					"position": [
-						72.0,
-						0.45,
-						-3.2
-					],
-					"ref": "walk_05",
-					"step_count": 5,
-					"step_index": 1,
-					"tags": [
-						"fragments",
-						"memory",
-						"map",
-						"assembly"
-					],
-					"transition_reason": "step_terminal",
-					"variant": "combat_retrieval",
-					"walk_index": 5
 				},
 				{
 					"archetype_id": "10",
@@ -1505,18 +1503,18 @@
 					"kind": "meta",
 					"layout_step": {
 						"lane": -1,
-						"turn": 0,
-						"x": 7
+						"turn": 1,
+						"x": 6
 					},
-					"next_archetype_id": "6",
+					"next_archetype_id": "10",
 					"next_step_index": 2,
 					"node_role_hint": "guidance",
 					"position": [
-						84.0,
+						72.0,
 						0.45,
 						-3.2
 					],
-					"ref": "walk_06",
+					"ref": "walk_05",
 					"step_count": 4,
 					"step_index": 1,
 					"tags": [
@@ -1525,42 +1523,9 @@
 						"container",
 						"nested"
 					],
-					"transition_reason": "tag_jump",
+					"transition_reason": "restart",
 					"variant": "naturalizer_patrol",
-					"walk_index": 6
-				},
-				{
-					"archetype_id": "6",
-					"archetype_name": "Pattern reconstruction",
-					"element": "retrieve fragments",
-					"element_label": "retrieve fragments",
-					"id": "6",
-					"kind": "puzzle",
-					"layout_step": {
-						"lane": -2,
-						"turn": -1,
-						"x": 8
-					},
-					"next_archetype_id": "10",
-					"next_step_index": 2,
-					"node_role_hint": "foraging",
-					"position": [
-						96.0,
-						0.45,
-						-6.4
-					],
-					"ref": "walk_07",
-					"step_count": 5,
-					"step_index": 2,
-					"tags": [
-						"fragments",
-						"memory",
-						"map",
-						"assembly"
-					],
-					"transition_reason": "tag_jump",
-					"variant": "area_map",
-					"walk_index": 7
+					"walk_index": 5
 				},
 				{
 					"archetype_id": "10",
@@ -1570,17 +1535,19 @@
 					"id": "10",
 					"kind": "meta",
 					"layout_step": {
-						"lane": -2,
+						"lane": -1,
 						"turn": 0,
-						"x": 9
+						"x": 7
 					},
+					"next_archetype_id": "7",
+					"next_step_index": 0,
 					"node_role_hint": "foraging",
 					"position": [
-						108.0,
+						84.0,
 						0.45,
-						-6.4
+						-3.2
 					],
-					"ref": "walk_08",
+					"ref": "walk_06",
 					"step_count": 4,
 					"step_index": 2,
 					"tags": [
@@ -1589,7 +1556,71 @@
 						"container",
 						"nested"
 					],
-					"variant": "iron_based",
+					"transition_reason": "step_terminal",
+					"variant": "naturalizer_patrol",
+					"walk_index": 6
+				},
+				{
+					"archetype_id": "7",
+					"archetype_name": "Stealth-and-time",
+					"element": "observe patrol",
+					"element_label": "observe patrol",
+					"id": "7",
+					"kind": "survival",
+					"layout_step": {
+						"lane": -2,
+						"turn": -1,
+						"x": 8
+					},
+					"next_archetype_id": "8",
+					"next_step_index": 0,
+					"node_role_hint": "danger",
+					"position": [
+						96.0,
+						0.45,
+						-6.4
+					],
+					"ref": "walk_07",
+					"step_count": 5,
+					"step_index": 0,
+					"tags": [
+						"stealth",
+						"timing",
+						"patrol_gap",
+						"pressure"
+					],
+					"transition_reason": "tag_jump",
+					"variant": "chelator_presence",
+					"walk_index": 7
+				},
+				{
+					"archetype_id": "8",
+					"archetype_name": "Class-gated interaction",
+					"element": "encounter gate",
+					"element_label": "encounter gate",
+					"id": "8",
+					"kind": "puzzle",
+					"layout_step": {
+						"lane": -2,
+						"turn": 0,
+						"x": 9
+					},
+					"node_role_hint": "setpiece",
+					"position": [
+						108.0,
+						0.45,
+						-6.4
+					],
+					"ref": "walk_08",
+					"step_count": 5,
+					"step_index": 0,
+					"tags": [
+						"class",
+						"terminal",
+						"authority",
+						"gate"
+					],
+					"variant": "door",
 					"walk_index": 8
 				}
 			]
@@ -1603,12 +1634,21 @@
 				"ordered": true,
 				"technique": "convergence_thinning",
 				"to": "10",
-				"to_index": 8
+				"to_index": 6
+			},
+			{
+				"approach": "overlay_combustion",
+				"from": "7",
+				"from_index": 7,
+				"ordered": false,
+				"technique": "charge_window_prediction",
+				"to": "1",
+				"to_index": 1
 			},
 			{
 				"approach": "false_pattern_spoof",
 				"from": "6",
-				"from_index": 7,
+				"from_index": 4,
 				"ordered": false,
 				"technique": "false_pattern_spoof",
 				"to": "4",
@@ -1621,7 +1661,7 @@
 				"ordered": true,
 				"technique": "convergence_thinning",
 				"to": "10",
-				"to_index": 8
+				"to_index": 6
 			},
 			{
 				"approach": "convergence_thinning",
@@ -1630,11 +1670,11 @@
 				"ordered": true,
 				"technique": "convergence_thinning",
 				"to": "10",
-				"to_index": 8
+				"to_index": 6
 			}
 		],
 		"uses_random_walk": true,
-		"walk_archetype_count": 5,
+		"walk_archetype_count": 7,
 		"walk_element_count": 9
 	},
 	"graybox": {
@@ -1661,7 +1701,7 @@
 				39.0
 			]
 		},
-		"content_placement_count": 7,
+		"content_placement_count": 8,
 		"contract_id": "generated_stretch_graybox_v1",
 		"elevation_count": 3,
 		"elevation_indices": [
@@ -1676,7 +1716,7 @@
 		"navigation_edge_count": 14,
 		"navigation_node_count": 12,
 		"node_surface_count": 12,
-		"realized_content_navigation_count": 7,
+		"realized_content_navigation_count": 8,
 		"roompiece_catalog": "trawf_roompiece_catalog_v1",
 		"route_surface_count": 14,
 		"source": {
@@ -1715,7 +1755,7 @@
 				{
 					"approach_id": "take_physical_lysate",
 					"kind": "resource_pickup",
-					"node": "node_08",
+					"node": "node_07",
 					"party": "any",
 					"requires": [],
 					"risk": "safe",
@@ -1737,7 +1777,7 @@
 					"activation_policy": "interact_at_producer",
 					"affected_node_ids": [
 						"node_06",
-						"node_08"
+						"node_07"
 					],
 					"before_node": "node_04",
 					"before_nodes": [
@@ -1882,17 +1922,6 @@
 						"uses": []
 					},
 					{
-						"approach_id": "traverse",
-						"blocked": false,
-						"kind": "layout_traversal",
-						"node": "node_07",
-						"party": "any",
-						"requires": [],
-						"risk": "safe",
-						"role": "guidance",
-						"runtime_handler": ""
-					},
-					{
 						"approach_id": "take_physical_lysate",
 						"blocked": false,
 						"borrows_from": "",
@@ -1901,7 +1930,7 @@
 						"kind": "resource_pickup",
 						"label": "TAKE LYSATE",
 						"min_stage": 3,
-						"node": "node_08",
+						"node": "node_07",
 						"node_pressure": 0.0,
 						"party": "any",
 						"requires": [],
@@ -1910,6 +1939,17 @@
 						"runtime_handler": "physical_lysate_pickup_v1",
 						"stage_ahead": false,
 						"uses": []
+					},
+					{
+						"approach_id": "traverse",
+						"blocked": false,
+						"kind": "layout_traversal",
+						"node": "node_08",
+						"party": "any",
+						"requires": [],
+						"risk": "safe",
+						"role": "danger",
+						"runtime_handler": ""
 					},
 					{
 						"approach_id": "skip_optional_interaction",
@@ -1965,7 +2005,7 @@
 						"activation_policy": "interact_at_producer",
 						"affected_node_ids": [
 							"node_06",
-							"node_08"
+							"node_07"
 						],
 						"before_node": "node_04",
 						"before_nodes": [
@@ -2126,17 +2166,6 @@
 						"uses": []
 					},
 					{
-						"approach_id": "traverse",
-						"blocked": false,
-						"kind": "layout_traversal",
-						"node": "node_07",
-						"party": "any",
-						"requires": [],
-						"risk": "safe",
-						"role": "guidance",
-						"runtime_handler": ""
-					},
-					{
 						"approach_id": "take_physical_lysate",
 						"blocked": false,
 						"borrows_from": "",
@@ -2145,7 +2174,7 @@
 						"kind": "resource_pickup",
 						"label": "TAKE LYSATE",
 						"min_stage": 3,
-						"node": "node_08",
+						"node": "node_07",
 						"node_pressure": 0.0,
 						"party": "any",
 						"requires": [],
@@ -2154,6 +2183,17 @@
 						"runtime_handler": "physical_lysate_pickup_v1",
 						"stage_ahead": false,
 						"uses": []
+					},
+					{
+						"approach_id": "traverse",
+						"blocked": false,
+						"kind": "layout_traversal",
+						"node": "node_08",
+						"party": "any",
+						"requires": [],
+						"risk": "safe",
+						"role": "danger",
+						"runtime_handler": ""
 					},
 					{
 						"approach_id": "skip_optional_interaction",
@@ -2209,7 +2249,7 @@
 						"activation_policy": "interact_at_producer",
 						"affected_node_ids": [
 							"node_06",
-							"node_08"
+							"node_07"
 						],
 						"before_node": "node_04",
 						"before_nodes": [
@@ -21298,7 +21338,7 @@
 					"min_stage": 5.0,
 					"party": "specialist",
 					"requires": [
-						"combat"
+						"redirect"
 					],
 					"risk": "direct",
 					"taught_by": "",
@@ -21526,7 +21566,7 @@
 					"min_stage": 2.0,
 					"party": "specialist",
 					"requires": [
-						"combat"
+						"redirect"
 					],
 					"risk": "direct",
 					"taught_by": "",
@@ -22061,7 +22101,7 @@
 					"min_stage": 2.0,
 					"party": "specialist",
 					"requires": [
-						"combat"
+						"redirect"
 					],
 					"risk": "direct",
 					"taught_by": "",
@@ -22314,7 +22354,7 @@
 					"min_stage": 3.0,
 					"party": "specialist",
 					"requires": [
-						"combat"
+						"redirect"
 					],
 					"risk": "direct",
 					"taught_by": "",
@@ -22457,7 +22497,7 @@
 			"walk_index": 3,
 			"walk_ref": "walk_03",
 			"walk_step_index": 0,
-			"walk_transition": "restart"
+			"walk_transition": "tag_jump"
 		},
 		{
 			"action_verb": "TAKE LYSATE",
@@ -22737,13 +22777,14 @@
 			},
 			"title": "Lysate reserve",
 			"variant": "",
-			"walk_element": "locate fragments",
+			"walk_element": "sub-puzzle composition",
 			"walk_index": 5,
 			"walk_ref": "walk_05",
 			"walk_step_index": 1,
-			"walk_transition": "step_terminal"
+			"walk_transition": "restart"
 		},
 		{
+			"action_verb": "TAKE LYSATE",
 			"ambient_flora": [
 				"capbage",
 				"seefern",
@@ -22752,8 +22793,8 @@
 			],
 			"approach_position": [
 				113.5,
-				1.16999995708466,
-				3.8600001335144
+				1.17000007629395,
+				3.5
 			],
 			"approaches": [
 				{
@@ -22763,132 +22804,7 @@
 					"min_stage": 3.0,
 					"party": "specialist",
 					"requires": [
-						"combat"
-					],
-					"risk": "direct",
-					"taught_by": "",
-					"uses": [
-						"combat_retrieval"
-					]
-				},
-				{
-					"id": "scan_preserve",
-					"kind": "shadow",
-					"label": "Aster reads the hidden overlay structure; Peris preserves the relational context",
-					"min_stage": 3.0,
-					"party": "aster_peris",
-					"requires": [
-						"scan",
-						"flora"
-					],
-					"risk": "safe",
-					"taught_by": "overlay_reading",
-					"uses": [
-						"hidden_overlay",
-						"memory_pressure"
-					]
-				}
-			],
-			"archetype_id": "6",
-			"archetype_name": "Pattern reconstruction",
-			"atp_reward": 0,
-			"branch_role": "",
-			"carry_payload": false,
-			"chain_cycle": 0,
-			"chain_index": 4,
-			"chain_input": "",
-			"chain_input_ref": "",
-			"chain_label": "discover fragments",
-			"chain_output": "",
-			"chain_output_ref": "",
-			"composition_role": "random_walk_element",
-			"content_placements": [],
-			"elevation_index": 1,
-			"elevation_meters": 0.719999957084656,
-			"enemies": [],
-			"exploit_target": "",
-			"floor_size": [
-				3.0,
-				0.140000000596046,
-				4.0
-			],
-			"flora": [
-				"seefern"
-			],
-			"footprint": [
-				3.0,
-				0.140000000596046,
-				4.0
-			],
-			"id": "node_07",
-			"label": "Pattern reconstruction · Area Map",
-			"layout_step": {
-				"lane": -1,
-				"turn": 0,
-				"x": 7
-			},
-			"link_ref": "walk_04",
-			"nested_archetypes": [],
-			"nested_depth": 0,
-			"optional": false,
-			"position": [
-				113.5,
-				1.16999995708466,
-				2.5
-			],
-			"pressure": 0,
-			"pressure_cost": 0,
-			"resource": false,
-			"resource_beat": false,
-			"resource_item_type": "generated_tool",
-			"resource_kind": "",
-			"reward_atp": 0,
-			"reward_kind": "",
-			"role": "guidance",
-			"runtime_handler": "",
-			"runtime_progression_required": false,
-			"runtime_support": "layout_only",
-			"shadow_solution": {
-				"aster_peris": true,
-				"notes": "Aster finds hidden structure; Peris preserves relational or flora context."
-			},
-			"spatial_affordances": [],
-			"stage": 3,
-			"structures": [
-				"terminal"
-			],
-			"surface_y": 1.16999995708466,
-			"survival_kind": "",
-			"title": "Pattern reconstruction · Area Map",
-			"variant": "area_map",
-			"walk_element": "discover fragments",
-			"walk_index": 4,
-			"walk_ref": "walk_04",
-			"walk_step_index": 0,
-			"walk_transition": "tag_jump"
-		},
-		{
-			"action_verb": "TAKE LYSATE",
-			"ambient_flora": [
-				"scarpet",
-				"scarpet",
-				"seefern",
-				"scarpet"
-			],
-			"approach_position": [
-				129.5,
-				0.449999988079071,
-				-15.5
-			],
-			"approaches": [
-				{
-					"id": "combat_retrieval",
-					"kind": "primary",
-					"label": "Fight through to retrieve the scattered fragments",
-					"min_stage": 3.0,
-					"party": "specialist",
-					"requires": [
-						"combat"
+						"redirect"
 					],
 					"risk": "direct",
 					"taught_by": "",
@@ -22920,23 +22836,23 @@
 			"branch_role": "",
 			"carry_payload": false,
 			"chain_cycle": 0,
-			"chain_index": 5,
+			"chain_index": 4,
 			"chain_input": "",
 			"chain_input_ref": "",
-			"chain_label": "locate fragments",
+			"chain_label": "discover fragments",
 			"chain_output": "",
 			"chain_output_ref": "",
 			"composition_role": "random_walk_element",
 			"content_placements": [],
-			"elevation_index": 0,
-			"elevation_meters": -0.0000000119209289661804,
+			"elevation_index": 1,
+			"elevation_meters": 0.719999957084656,
 			"enemies": [],
 			"evidence_hint": "the cache clears, one portrait shows held lysate, and ATP changes only after that carrier endocytoses",
 			"exploit_target": "",
 			"floor_size": [
 				3.0,
 				0.140000000596046,
-				1.0
+				4.0
 			],
 			"flora": [
 				"seefern"
@@ -22944,17 +22860,17 @@
 			"footprint": [
 				3.0,
 				0.140000000596046,
-				1.0
+				4.0
 			],
-			"id": "node_08",
+			"id": "node_07",
 			"interaction_approach": {
 				"acceptance_radius": 1.95,
 				"approach_vertex": {
 					"cell": [
-						132,
-						4
+						116,
+						23
 					],
-					"level": 0
+					"level": 1
 				},
 				"component_anchor": {
 					"cell": [
@@ -22970,66 +22886,59 @@
 				"region_vertices": [
 					{
 						"cell": [
-							132,
-							4
+							116,
+							23
 						],
-						"level": 0
+						"level": 1
 					},
 					{
 						"cell": [
-							132,
-							3
+							116,
+							22
 						],
-						"level": 0
+						"level": 1
 					},
 					{
 						"cell": [
-							131,
-							4
+							115,
+							23
 						],
-						"level": 0
+						"level": 1
 					},
 					{
 						"cell": [
-							133,
-							4
+							117,
+							23
 						],
-						"level": 0
+						"level": 1
 					},
 					{
 						"cell": [
-							132,
-							5
+							116,
+							24
 						],
-						"level": 0
+						"level": 1
 					},
 					{
 						"cell": [
-							131,
-							3
+							115,
+							22
 						],
-						"level": 0
+						"level": 1
 					},
 					{
 						"cell": [
-							133,
-							3
+							117,
+							22
 						],
-						"level": 0
+						"level": 1
 					},
 					{
 						"cell": [
-							131,
-							5
+							115,
+							24
 						],
-						"level": 0
-					},
-					{
-						"cell": [
-							133,
-							5
-						],
-						"level": 0
+						"level": 1
 					}
 				],
 				"required_from_node_id": "entry",
@@ -23041,13 +22950,13 @@
 					"level": 0
 				}
 			},
-			"label": "Pattern reconstruction · Flow Diagram",
+			"label": "Pattern reconstruction · Area Map",
 			"layout_step": {
-				"lane": -2,
-				"turn": -1,
-				"x": 8
+				"lane": -1,
+				"turn": 0,
+				"x": 7
 			},
-			"link_ref": "walk_05",
+			"link_ref": "walk_04",
 			"nested_archetypes": [],
 			"nested_depth": 0,
 			"optional": false,
@@ -23075,9 +22984,9 @@
 				"source_role": "finite lysate cache"
 			},
 			"position": [
-				129.5,
-				0.449999988079071,
-				-15.5
+				113.5,
+				1.16999995708466,
+				2.5
 			],
 			"prediction_hint": "claiming the cache occupies exactly one hand without changing ATP",
 			"pressure": 0,
@@ -23101,12 +23010,12 @@
 			"structures": [
 				"terminal"
 			],
-			"surface_y": 0.449999988079071,
+			"surface_y": 1.16999995708466,
 			"survival_kind": "",
 			"systems_beat": {
 				"beat": "apply",
 				"cause": "the party clears the cache window and a character with a free hand takes the lysate",
-				"changed_condition": "flow diagram",
+				"changed_condition": "area map",
 				"critical": true,
 				"effect": "the cache empties and that hand becomes occupied while ATP remains unchanged",
 				"evidence": "the cache clears, one portrait shows held lysate, and ATP changes only after that carrier endocytoses",
@@ -23116,9 +23025,258 @@
 				"prediction": "claiming the cache occupies exactly one hand without changing ATP",
 				"verb": "forage"
 			},
-			"title": "Pattern reconstruction · Flow Diagram",
-			"variant": "flow_diagram",
-			"walk_element": "locate fragments",
+			"title": "Pattern reconstruction · Area Map",
+			"variant": "area_map",
+			"walk_element": "discover fragments",
+			"walk_index": 4,
+			"walk_ref": "walk_04",
+			"walk_step_index": 0,
+			"walk_transition": "step_terminal"
+		},
+		{
+			"ambient_flora": [
+				"scarpet",
+				"scarpet",
+				"seefern",
+				"scarpet"
+			],
+			"approach_position": [
+				128.839996337891,
+				0.449999988079071,
+				-15.1599998474121
+			],
+			"approaches": [
+				{
+					"id": "specialist_team",
+					"kind": "primary",
+					"label": "Bring a combat or Endo specialist team into the zone",
+					"min_stage": 5.0,
+					"party": "specialist",
+					"requires": [
+						"redirect"
+					],
+					"risk": "direct",
+					"taught_by": "",
+					"uses": [
+						"multi_route_converging"
+					]
+				},
+				{
+					"borrows_from": "4",
+					"expert": true,
+					"id": "convergence_thinning",
+					"kind": "shadow_expert",
+					"label": "Thin the convergence instead of slow-carrying it: a flure lure plus an electrical decoy peel the patrols apart, opening a fast lane Aster times to the gap",
+					"min_stage": 3.0,
+					"party": "aster_peris",
+					"requires": [
+						"electrical",
+						"flora",
+						"timing"
+					],
+					"risk": "risky",
+					"taught_by": "convergence_thinning",
+					"uses": []
+				},
+				{
+					"id": "aster_peris_comp",
+					"kind": "shadow",
+					"label": "Aster/Peris composition: overlay timing, scarpet cover, slow carries",
+					"min_stage": 5.0,
+					"party": "aster_peris",
+					"requires": [
+						"overlay",
+						"cover",
+						"carry"
+					],
+					"risk": "risky",
+					"taught_by": "danger_zone_composition",
+					"uses": [
+						"single_route_shadow"
+					]
+				}
+			],
+			"archetype_id": "10",
+			"archetype_name": "Danger zone",
+			"atp_reward": 0,
+			"branch_role": "",
+			"carry_payload": false,
+			"chain_cycle": 0,
+			"chain_index": 5,
+			"chain_input": "",
+			"chain_input_ref": "",
+			"chain_label": "sub-puzzle composition",
+			"chain_output": "",
+			"chain_output_ref": "",
+			"composition_role": "random_walk_element",
+			"content_placements": [
+				{
+					"category": "flora",
+					"id": "scarpet",
+					"label": "scarpet",
+					"local_offset": [
+						-1.0,
+						0.0799999833106995,
+						0.0
+					],
+					"navigation": {
+						"binding_id": "scarpet_concealment_v1",
+						"component_id": "entry_component:0:4:20",
+						"content_vertex": {
+							"cell": [
+								131,
+								4
+							],
+							"level": 0
+						},
+						"contract_id": "generated_content_navigation_v1",
+						"kind": "occupiable",
+						"radius": 1.65,
+						"reachable_region": [
+							{
+								"cell": [
+									131,
+									4
+								],
+								"level": 0
+							},
+							{
+								"cell": [
+									131,
+									3
+								],
+								"level": 0
+							},
+							{
+								"cell": [
+									130,
+									4
+								],
+								"level": 0
+							},
+							{
+								"cell": [
+									132,
+									4
+								],
+								"level": 0
+							},
+							{
+								"cell": [
+									131,
+									5
+								],
+								"level": 0
+							},
+							{
+								"cell": [
+									130,
+									3
+								],
+								"level": 0
+							},
+							{
+								"cell": [
+									132,
+									3
+								],
+								"level": 0
+							},
+							{
+								"cell": [
+									130,
+									5
+								],
+								"level": 0
+							},
+							{
+								"cell": [
+									132,
+									5
+								],
+								"level": 0
+							}
+						]
+					},
+					"position": [
+						128.5,
+						0.529999971389771,
+						-15.5
+					],
+					"role": "cover",
+					"rotation_y_degrees": 55.0,
+					"shape": "mat",
+					"size": [
+						2.20000004768372,
+						0.159999996423721,
+						1.70000004768372
+					],
+					"socket_id": "",
+					"support": "implemented"
+				}
+			],
+			"elevation_index": 0,
+			"elevation_meters": -0.0000000119209289661804,
+			"enemies": [
+				"naturalizers",
+				"sapscraps"
+			],
+			"exploit_target": "",
+			"floor_size": [
+				3.0,
+				0.140000000596046,
+				1.0
+			],
+			"flora": [
+				"scarpet"
+			],
+			"footprint": [
+				3.0,
+				0.140000000596046,
+				1.0
+			],
+			"id": "node_08",
+			"label": "Danger zone · Naturalizer Patrol",
+			"layout_step": {
+				"lane": -2,
+				"turn": -1,
+				"x": 8
+			},
+			"link_ref": "walk_05",
+			"nested_archetypes": [],
+			"nested_depth": 0,
+			"optional": false,
+			"position": [
+				129.5,
+				0.449999988079071,
+				-15.5
+			],
+			"pressure": 1,
+			"pressure_cost": 0,
+			"resource": false,
+			"resource_beat": false,
+			"resource_item_type": "generated_tool",
+			"resource_kind": "",
+			"reward_atp": 0,
+			"reward_kind": "",
+			"role": "danger",
+			"runtime_handler": "",
+			"runtime_progression_required": false,
+			"runtime_support": "layout_only",
+			"shadow_solution": {
+				"aster_peris": true,
+				"notes": "Major danger zones must define an Aster/Peris composition."
+			},
+			"spatial_affordances": [],
+			"stage": 5,
+			"structures": [
+				"barrier"
+			],
+			"surface_y": 0.449999988079071,
+			"survival_kind": "",
+			"title": "Danger zone · Naturalizer Patrol",
+			"variant": "naturalizer_patrol",
+			"walk_element": "sub-puzzle composition",
 			"walk_index": 5,
 			"walk_ref": "walk_05",
 			"walk_step_index": 1,
@@ -23340,13 +23498,13 @@
 						"level": 1
 					}
 				],
-				"required_from_node_id": "node_08",
+				"required_from_node_id": "node_07",
 				"required_from_vertex": {
 					"cell": [
-						132,
-						4
+						116,
+						23
 					],
-					"level": 0
+					"level": 1
 				}
 			},
 			"label": "Lysate reserve",
@@ -23423,10 +23581,10 @@
 			},
 			"title": "Lysate reserve",
 			"variant": "",
-			"walk_element": "retrieve component",
+			"walk_element": "encounter gate",
 			"walk_index": 8,
 			"walk_ref": "walk_08",
-			"walk_step_index": 2,
+			"walk_step_index": 0,
 			"walk_transition": ""
 		},
 		{
@@ -23449,7 +23607,7 @@
 					"min_stage": 5.0,
 					"party": "specialist",
 					"requires": [
-						"combat"
+						"redirect"
 					],
 					"risk": "direct",
 					"taught_by": "",
@@ -23501,7 +23659,7 @@
 			"chain_index": 6,
 			"chain_input": "",
 			"chain_input_ref": "",
-			"chain_label": "sub-puzzle composition",
+			"chain_label": "retrieve component",
 			"chain_output": "",
 			"chain_output_ref": "",
 			"composition_role": "random_walk_element",
@@ -23632,7 +23790,7 @@
 				5.0
 			],
 			"id": "node_10",
-			"label": "Danger zone · Naturalizer Patrol",
+			"label": "Danger zone · Atmospheric",
 			"layout_step": {},
 			"link_ref": "walk_06",
 			"nested_archetypes": [],
@@ -23666,12 +23824,12 @@
 			],
 			"surface_y": 1.88999998569489,
 			"survival_kind": "",
-			"title": "Danger zone · Naturalizer Patrol",
-			"variant": "naturalizer_patrol",
-			"walk_element": "sub-puzzle composition",
+			"title": "Danger zone · Atmospheric",
+			"variant": "atmospheric",
+			"walk_element": "retrieve component",
 			"walk_index": 6,
 			"walk_ref": "walk_06",
-			"walk_step_index": 1,
+			"walk_step_index": 2,
 			"walk_transition": ""
 		},
 		{
@@ -23786,13 +23944,13 @@
 						"level": 0
 					}
 				],
-				"required_from_node_id": "node_08",
+				"required_from_node_id": "node_07",
 				"required_from_vertex": {
 					"cell": [
-						132,
-						4
+						116,
+						23
 					],
-					"level": 0
+					"level": 1
 				}
 			},
 			"label": "Shelter Arrival",
@@ -29768,8 +29926,7 @@
 					"6",
 					"7",
 					"8",
-					"10",
-					"11"
+					"10"
 				],
 				"enemies": [
 					"sapscraps",
@@ -48330,7 +48487,7 @@
 		"actionable_nodes": [
 			"node_03",
 			"node_06",
-			"node_08",
+			"node_07",
 			"node_09",
 			"exit_shelter"
 		],
@@ -48365,14 +48522,14 @@
 			{
 				"display": "hover_or_pause",
 				"effect_role": "carrier hand",
-				"from": "node_08:cause",
+				"from": "node_07:cause",
 				"kind": "intervention_effect",
-				"node": "node_08",
+				"node": "node_07",
 				"prediction": "Moves one physical lysate into a carrier's hand; ATP changes only after endocytosis",
 				"source_role": "finite lysate cache",
 				"state": "one physical lysate occupies one carrier hand until endocytosed",
 				"state_label": "CACHE FILLS HAND",
-				"to": "node_08:effect",
+				"to": "node_07:effect",
 				"visibility_policy": "party_visibility_union"
 			},
 			{
@@ -48395,7 +48552,7 @@
 				"archetype_name": "",
 				"cause": "the party clears the cache window and a character with a free hand takes the lysate",
 				"critical_node_ids": [
-					"node_08"
+					"node_07"
 				],
 				"delay": "pickup and endocytosis are separate decisions",
 				"dimensions": [
@@ -48420,7 +48577,7 @@
 				"node_ids": [
 					"node_03",
 					"node_06",
-					"node_08",
+					"node_07",
 					"node_09"
 				],
 				"polarity": "mixed",
@@ -48499,7 +48656,7 @@
 			"node_02",
 			"node_04",
 			"node_05",
-			"node_07",
+			"node_08",
 			"node_10"
 		],
 		"lesson_spine": [
@@ -48528,10 +48685,10 @@
 			{
 				"archetype_id": "6",
 				"beat": "apply",
-				"changed_condition": "flow diagram",
+				"changed_condition": "area map",
 				"critical": true,
 				"model_id": "runtime_physical_lysate_pickup_v1",
-				"node": "node_08",
+				"node": "node_07",
 				"prediction_required": false,
 				"runtime_handler": "physical_lysate_pickup_v1",
 				"verb": "forage"
@@ -48609,12 +48766,21 @@
 			"ordered": true,
 			"technique": "convergence_thinning",
 			"to": "10",
-			"to_index": 8
+			"to_index": 6
+		},
+		{
+			"approach": "overlay_combustion",
+			"from": "7",
+			"from_index": 7,
+			"ordered": false,
+			"technique": "charge_window_prediction",
+			"to": "1",
+			"to_index": 1
 		},
 		{
 			"approach": "false_pattern_spoof",
 			"from": "6",
-			"from_index": 7,
+			"from_index": 4,
 			"ordered": false,
 			"technique": "false_pattern_spoof",
 			"to": "4",
@@ -48627,7 +48793,7 @@
 			"ordered": true,
 			"technique": "convergence_thinning",
 			"to": "10",
-			"to_index": 8
+			"to_index": 6
 		},
 		{
 			"approach": "convergence_thinning",
@@ -48636,7 +48802,7 @@
 			"ordered": true,
 			"technique": "convergence_thinning",
 			"to": "10",
-			"to_index": 8
+			"to_index": 6
 		}
 	],
 	"themed_landmarks": [],
@@ -48936,12 +49102,12 @@
 		"party_spawn_clearance": {
 			"errors": [],
 			"party_anchor_count": 3,
-			"realized_content_placement_count": 7,
+			"realized_content_placement_count": 8,
 			"valid": true
 		},
 		"realized_content_navigation": {
 			"errors": [],
-			"realized_content_placement_count": 7,
+			"realized_content_placement_count": 8,
 			"valid": true
 		},
 		"shadow_solvable": true,

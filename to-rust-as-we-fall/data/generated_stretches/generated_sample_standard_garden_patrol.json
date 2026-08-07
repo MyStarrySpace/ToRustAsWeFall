@@ -75,7 +75,7 @@
 					"min_stage": 3.0,
 					"party": "specialist",
 					"requires": [
-						"combat"
+						"redirect"
 					],
 					"risk": "direct",
 					"taught_by": "",
@@ -205,7 +205,7 @@
 					"min_stage": 3.0,
 					"party": "specialist",
 					"requires": [
-						"combat"
+						"redirect"
 					],
 					"risk": "direct",
 					"taught_by": "",
@@ -334,7 +334,7 @@
 					"min_stage": 2.0,
 					"party": "specialist",
 					"requires": [
-						"combat"
+						"redirect"
 					],
 					"risk": "direct",
 					"taught_by": "",
@@ -469,7 +469,7 @@
 					"min_stage": 2.0,
 					"party": "specialist",
 					"requires": [
-						"combat"
+						"redirect"
 					],
 					"risk": "direct",
 					"taught_by": "",
@@ -721,109 +721,133 @@
 		},
 		{
 			"all_variants": [
-				"physical_wall",
-				"class_restricted_access",
-				"hazard_traversal",
-				"sequential",
-				"simultaneous",
-				"sustained",
-				"recovery"
+				"loud_action",
+				"false_scent",
+				"iron_signal",
+				"electrical_signature",
+				"terminal_task",
+				"plant_tending_task",
+				"aquatic_route"
 			],
 			"approaches": [
 				{
-					"id": "three_way_split",
+					"id": "loud_draw",
 					"kind": "primary",
-					"label": "A third member holds one side while two advance",
+					"label": "Draw the patrol with a loud combat action",
 					"min_stage": 3.0,
 					"party": "specialist",
 					"requires": [
-						"endo"
+						"redirect"
 					],
-					"risk": "safe",
+					"risk": "direct",
 					"taught_by": "",
 					"uses": [
-						"simultaneous"
+						"loud_action"
 					]
 				},
 				{
-					"borrows_from": "7",
+					"borrows_from": "6",
 					"expert": true,
-					"id": "synchronized_gap_split",
+					"id": "false_pattern_spoof",
 					"kind": "shadow_expert",
-					"label": "Tick-synchronized simultaneous split: Aster's timing read fires both halves into the same patrol gap from separate hide slots",
-					"min_stage": 4.0,
-					"party": "aster_peris",
-					"requires": [
-						"timing",
-						"cover",
-						"hide"
-					],
-					"risk": "risky",
-					"taught_by": "synchronized_gap_split",
-					"uses": []
-				},
-				{
-					"id": "pair_split",
-					"kind": "shadow",
-					"label": "Aster and Peris are the minimum viable split pair",
+					"label": "Aster forges a false flow-diagram on the patrol's overlay; the patrol reroutes itself, so the blind spot is manufactured, not waited for",
 					"min_stage": 3.0,
 					"party": "aster_peris",
 					"requires": [
-						"data",
+						"signal",
+						"overlay",
+						"scan"
+					],
+					"risk": "risky",
+					"taught_by": "false_pattern_spoof",
+					"uses": []
+				},
+				{
+					"id": "signal_split",
+					"kind": "shadow",
+					"label": "Aster throws an electrical/data signal while Peris works the flora task in the blind spot",
+					"min_stage": 3.0,
+					"party": "aster_peris",
+					"requires": [
+						"electrical",
 						"flora"
 					],
-					"risk": "direct",
-					"taught_by": "coordinated_split",
+					"risk": "safe",
+					"taught_by": "signal_decoy",
 					"uses": [
-						"sequential"
+						"electrical_signature",
+						"plant_tending_task"
 					]
 				}
 			],
 			"atp_reward": 0,
 			"chain_index": 5,
-			"chain_label": "encounter separation",
+			"chain_label": "position distractor",
 			"compatible_node_roles": [
+				"route_pressure",
+				"danger",
 				"mixed",
-				"setpiece",
 				"shortcut"
 			],
 			"composition_mode": "archetype_random_walk",
 			"composition_role": "random_walk_element",
 			"exploit_target": "",
-			"id": "5",
-			"kind": "hybrid",
+			"id": "4",
+			"kind": "puzzle",
 			"link_ref": "walk_05",
-			"name": "Two-character split",
+			"name": "Distract the patrol",
 			"pressure_cost": 0,
 			"shadow_solution": {
 				"aster_peris": true,
-				"notes": "Aster and Peris are the minimum viable split pair."
+				"notes": "Aster provides electrical/data distraction while Peris performs the physical or flora task."
 			},
-			"spatial_affordances": [],
+			"spatial_affordances": [
+				{
+					"emergent_inputs": [
+						"patrol perception",
+						"party split",
+						"task duration",
+						"intervention timing",
+						"route topology"
+					],
+					"failure_prediction": "Stacking the party at the task keeps the patrol's attention on the real objective.",
+					"feature_kind": "grated_platform",
+					"feature_variant": "split_perch",
+					"feedback": [
+						"the patrol response is visible across the open grate",
+						"the task socket remains readable from the distraction position"
+					],
+					"id": "grated_split_perch",
+					"leverage": "Position the distractor apart from the task socket, then act during the patrol response.",
+					"primary_insight": "A distraction changes which part of the exposed platform the patrol can safely contest.",
+					"priority": 80.0,
+					"socket_policy": "separate_distraction_from_task"
+				}
+			],
 			"stage": 3,
-			"step_count": 6,
+			"step_count": 8,
 			"survival_kind": "",
 			"systems_dimensions": [
 				"relation",
 				"stock",
+				"flow",
 				"delay",
-				"feedback",
+				"threshold",
 				"local_global",
-				"topology",
 				"leverage",
 				"transfer"
 			],
 			"tags": [
-				"split",
+				"patrol",
+				"distraction",
 				"coordination",
-				"interdependence",
-				"reunion"
+				"timing"
 			],
-			"variant": "class_restricted_access",
-			"walk_element": "encounter separation",
+			"variant": "false_scent",
+			"walk_element": "position distractor",
 			"walk_index": 5,
 			"walk_ref": "walk_05",
-			"walk_step_index": 0
+			"walk_step_index": 2
 		}
 	],
 	"area_theme": {},
@@ -940,8 +964,8 @@
 					"from_step": 0,
 					"reason": "tag_jump",
 					"to": "walk_05",
-					"to_archetype": "5",
-					"to_step": 0
+					"to_archetype": "4",
+					"to_step": 2
 				}
 			],
 			"element_count": 6,
@@ -1007,8 +1031,7 @@
 			"visited_archetypes": [
 				"4",
 				"1",
-				"2",
-				"5"
+				"2"
 			],
 			"visits": [
 				{
@@ -1155,8 +1178,8 @@
 						"turn": 1,
 						"x": 5
 					},
-					"next_archetype_id": "5",
-					"next_step_index": 0,
+					"next_archetype_id": "4",
+					"next_step_index": 2,
 					"node_role_hint": "foraging",
 					"position": [
 						60.0,
@@ -1177,33 +1200,33 @@
 					"walk_index": 4
 				},
 				{
-					"archetype_id": "5",
-					"archetype_name": "Two-character split",
-					"element": "encounter separation",
-					"element_label": "encounter separation",
-					"id": "5",
-					"kind": "hybrid",
+					"archetype_id": "4",
+					"archetype_name": "Distract the patrol",
+					"element": "position distractor",
+					"element_label": "position distractor",
+					"id": "4",
+					"kind": "puzzle",
 					"layout_step": {
 						"lane": 0,
 						"turn": 0,
 						"x": 6
 					},
-					"node_role_hint": "shortcut",
+					"node_role_hint": "guidance",
 					"position": [
 						72.0,
 						0.45,
 						0.0
 					],
 					"ref": "walk_05",
-					"step_count": 6,
-					"step_index": 0,
+					"step_count": 8,
+					"step_index": 2,
 					"tags": [
-						"split",
+						"patrol",
+						"distraction",
 						"coordination",
-						"interdependence",
-						"reunion"
+						"timing"
 					],
-					"variant": "class_restricted_access",
+					"variant": "false_scent",
 					"walk_index": 5
 				}
 			]
@@ -1211,7 +1234,7 @@
 		"runtime_bound_link_count": 0,
 		"teaching_chain": [],
 		"uses_random_walk": true,
-		"walk_archetype_count": 4,
+		"walk_archetype_count": 3,
 		"walk_element_count": 6
 	},
 	"graybox": {
@@ -1539,7 +1562,7 @@
 						"party": "any",
 						"requires": [],
 						"risk": "safe",
-						"role": "shortcut",
+						"role": "guidance",
 						"runtime_handler": ""
 					},
 					{
@@ -1814,7 +1837,7 @@
 						"party": "any",
 						"requires": [],
 						"risk": "safe",
-						"role": "shortcut",
+						"role": "guidance",
 						"runtime_handler": ""
 					},
 					{
@@ -6940,7 +6963,7 @@
 					"min_stage": 3.0,
 					"party": "specialist",
 					"requires": [
-						"combat"
+						"redirect"
 					],
 					"risk": "direct",
 					"taught_by": "",
@@ -7104,7 +7127,7 @@
 					"min_stage": 3.0,
 					"party": "specialist",
 					"requires": [
-						"combat"
+						"redirect"
 					],
 					"risk": "direct",
 					"taught_by": "",
@@ -7558,7 +7581,7 @@
 					"min_stage": 2.0,
 					"party": "specialist",
 					"requires": [
-						"combat"
+						"redirect"
 					],
 					"risk": "direct",
 					"taught_by": "",
@@ -7837,7 +7860,7 @@
 					"min_stage": 2.0,
 					"party": "specialist",
 					"requires": [
-						"combat"
+						"redirect"
 					],
 					"risk": "direct",
 					"taught_by": "",
@@ -8311,7 +8334,7 @@
 			"resource_kind": "",
 			"reward_atp": 0,
 			"reward_kind": "",
-			"role": "shortcut",
+			"role": "guidance",
 			"runtime_handler": "",
 			"runtime_progression_required": false,
 			"runtime_support": "layout_only",
@@ -11380,8 +11403,7 @@
 					"6",
 					"7",
 					"8",
-					"10",
-					"11"
+					"10"
 				],
 				"enemies": [
 					"sapscraps",

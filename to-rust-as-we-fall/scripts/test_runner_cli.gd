@@ -4119,7 +4119,7 @@ func _test_archetype_generation() -> void:
 				"flora": ["flure"],
 				"enemies": ["sapscraps"],
 				"structures": ["shelter", "forage_cache", "shortcut_gate"],
-				"archetypes": ["2", "11"]
+				"archetypes": ["2", "4"]
 			},
 			"blocked": {
 				"flora": ["scarpet"]
@@ -4128,7 +4128,7 @@ func _test_archetype_generation() -> void:
 				"flora": ["flure"],
 				"enemies": ["sapscraps"],
 				"structures": ["shelter"],
-				"archetypes": ["11"]
+				"archetypes": ["2"]
 			}
 		},
 	})
@@ -5153,7 +5153,11 @@ func _test_generated_multi_solution() -> void:
 	_assert_true((analysis.get("warnings", []) as Array).is_empty(),
 		"A runtime-solvable stretch produces no false shadow-broken warning")
 
-	# A narrative-only stretch has nothing to multi-solve; that is allowed, not a failure.
+	# PROCEDURAL GENERATION DOES NOT AUTHOR STORY (director ruling, 2026-08-06). Narrative beats
+	# belong to story mode, so a request for a narrative-only stretch must not come back as one —
+	# even when the caller names archetype 11 in both allowed AND required. This previously asserted
+	# the opposite ("narrative-only passes the tier gate"), which recorded what the generator did
+	# rather than what it should do.
 	var narrative_spec: Dictionary = StretchGeneratorScript.generate({
 		"id": "generated_narrative_only",
 		"seed": 7,
@@ -5164,9 +5168,18 @@ func _test_generated_multi_solution() -> void:
 			"required": {"archetypes": ["11"]},
 		},
 	})
-	var narrative_summary: Dictionary = narrative_spec.get("headless", {}).get("solution_summary", {})
-	_assert_equals(int(narrative_summary.get("choice_node_count", 0)), 0, "Narrative-only stretch has no puzzle choice nodes")
-	_assert_true(bool(narrative_summary.get("multi_solution_ok", false)), "Narrative-only stretch passes the tier gate")
+	var narrative_interior := 0
+	for node_v in (narrative_spec.get("nodes", []) as Array):
+		if not (node_v is Dictionary):
+			continue
+		var narrative_node := node_v as Dictionary
+		var narrative_id := str(narrative_node.get("id", ""))
+		if narrative_id == "entry" or narrative_id == "exit_shelter":
+			continue
+		if str(narrative_node.get("archetype_id", "")) == "11":
+			narrative_interior += 1
+	_assert_equals(narrative_interior, 0,
+		"a narrative beat is never generated into a stretch's interior, even when required by name")
 
 	# Catalog-only later-stage techniques remain design candidates, not claims about what any
 	# current generated-node handler can presently execute.
@@ -5218,7 +5231,7 @@ func _test_generated_multi_solution() -> void:
 	var synth_nodes := [
 		{"id": "entry", "role": "boundary", "approaches": []},
 		{"id": "n1", "role": "danger", "stage": 2, "approaches": [
-			{"id": "future_primary", "party": "specialist", "kind": "primary", "requires": ["combat"], "min_stage": 5},
+			{"id": "future_primary", "party": "specialist", "kind": "primary", "requires": ["redirect"], "min_stage": 5},
 			{"id": "pair_now", "party": "aster_peris", "kind": "shadow", "requires": ["overlay", "cover"], "min_stage": 2},
 		]},
 		{"id": "exit_shelter", "role": "shelter_arrival", "approaches": []},
@@ -11021,11 +11034,11 @@ func _test_character_roster() -> void:
 	var reg: Dictionary = StretchCapabilitiesScript.CHARACTER_REGISTRY
 	for cid in ["aster", "peris", "endo", "myke", "oli", "tyreg"]:
 		_assert_true(reg.has(cid), "Roster includes %s" % cid)
-	_assert_true((reg["myke"]["capabilities"] as Array).has("combat"), "Myke (microglia) provides combat")
+	_assert_true((reg["myke"]["capabilities"] as Array).has("redirect"), "Myke (microglia) provides redirect")
 	_assert_true((reg["tyreg"]["capabilities"] as Array).has("force"), "Tyreg (T-reg) provides ranged force")
 	_assert_true((reg["oli"]["capabilities"] as Array).has("insulation"), "Oli (oligodendrocyte) provides insulation")
 	var spec_caps: Dictionary = StretchCapabilitiesScript.specialist_capabilities()
-	_assert_true(spec_caps.has("combat") and spec_caps.has("barrier"), "Specialist caps include combat + barrier")
+	_assert_true(spec_caps.has("redirect") and spec_caps.has("barrier"), "Specialist caps include redirect + barrier")
 	_assert_true(not spec_caps.has("flora") and not spec_caps.has("overlay"), "Aster+Peris pair caps (flora/overlay) are NOT specialist")
 	_assert_true((reg["aster"]["abilities"] as Dictionary).has("emp") and (reg["peris"]["abilities"] as Dictionary).has("wrap"),
 		"The implemented early-game casts are registered (Aster EMP, Peris Wrap)")

@@ -76,7 +76,7 @@
         "progression_stage": 2,
         "limitations": {
           "required": {
-            "archetypes": ["11"],
+            "archetypes": ["2"],
             "flora": ["flure"],
             "structures": ["shelter"]
           }
@@ -130,7 +130,7 @@
         "progression_stage": 2,
         "limitations": {
           "allowed": {
-            "archetypes": ["1", "2", "3", "4", "5", "6", "7", "8", "10", "11"],
+            "archetypes": ["1", "2", "3", "4", "5", "6", "7", "8", "10"],
             "flora": ["seefern", "scarpet", "flure", "mother_flure", "hushbloom", "capbage", "gasafoetida"],
             "enemies": ["sapscraps", "naturalizers"]
           },
@@ -179,7 +179,7 @@
         "progression_stage": 3,
         "limitations": {
           "allowed": {
-            "archetypes": ["2", "3", "4", "6", "11"],
+            "archetypes": ["2", "3", "4", "6"],
             "flora": ["flure", "hushbloom", "scarpet"],
             "enemies": ["sapscraps", "naturalizers"],
             "structures": ["shelter", "forage_cache", "terminal", "carry_gear", "shortcut_gate", "pipe"]
@@ -240,7 +240,7 @@
         "progression_stage": 3,
         "limitations": {
           "allowed": {
-            "archetypes": ["1", "2", "3", "4", "5", "6", "7", "8", "10", "11"],
+            "archetypes": ["1", "2", "3", "4", "5", "6", "7", "8", "10"],
             "flora": ["seefern", "scarpet", "flure", "mother_flure", "hushbloom", "capbage", "gasafoetida"],
             "enemies": ["sapscraps", "naturalizers"]
           },
@@ -298,7 +298,7 @@
         "progression_stage": 4,
         "limitations": {
           "allowed": {
-            "archetypes": ["1", "2", "3", "4", "5", "6", "7", "8", "10", "11"],
+            "archetypes": ["1", "2", "3", "4", "5", "6", "7", "8", "10"],
             "flora": ["seefern", "scarpet", "flure", "mother_flure", "hushbloom", "capbage", "gasafoetida"],
             "enemies": ["sapscraps", "naturalizers"]
           },
@@ -350,7 +350,7 @@
         "progression_stage": 5,
         "limitations": {
           "allowed": {
-            "archetypes": ["1", "2", "3", "4", "5", "6", "7", "8", "10", "11"],
+            "archetypes": ["1", "2", "3", "4", "5", "6", "7", "8", "10"],
             "flora": ["seefern", "scarpet", "flure", "mother_flure", "hushbloom", "capbage", "gasafoetida"],
             "enemies": ["sapscraps", "naturalizers"]
           },

@@ -4,7 +4,7 @@
 		"cell_world_size": 2.0,
 		"origin": [
 			2.5,
-			0.5
+			1.5
 		]
 	},
 	"level": {
@@ -24,7 +24,17 @@
 			{
 				"category": "flora",
 				"cell": [
-					6,
+					13,
+					-1
+				],
+				"kind": "capbage",
+				"level": 0,
+				"support": "implemented"
+			},
+			{
+				"category": "flora",
+				"cell": [
+					13,
 					0
 				],
 				"kind": "scarpet",
@@ -37,6 +47,26 @@
 					20,
 					0
 				],
+				"kind": "hushbloom",
+				"level": 0,
+				"support": "implemented"
+			},
+			{
+				"category": "flora",
+				"cell": [
+					27,
+					-1
+				],
+				"kind": "capbage",
+				"level": 0,
+				"support": "implemented"
+			},
+			{
+				"category": "flora",
+				"cell": [
+					27,
+					0
+				],
 				"kind": "scarpet",
 				"level": 0,
 				"support": "implemented"
@@ -45,7 +75,7 @@
 				"category": "flora",
 				"cell": [
 					34,
-					0
+					-1
 				],
 				"kind": "hushbloom",
 				"level": 0,
@@ -57,7 +87,7 @@
 				"archetype_id": "11",
 				"cell": [
 					0,
-					1
+					0
 				],
 				"id": "entry",
 				"label": "Entry Boundary",
@@ -66,58 +96,58 @@
 				"role": "boundary"
 			},
 			{
-				"archetype_id": "11",
+				"archetype_id": "2",
 				"cell": [
 					7,
 					1
 				],
 				"id": "node_01",
-				"label": "Entry Boundary",
+				"label": "Plant as tool · Flure Iron Decoy",
 				"level": 0,
 				"optional": false,
-				"role": "boundary"
+				"role": "foraging"
 			},
 			{
-				"archetype_id": "15",
+				"archetype_id": "16",
 				"cell": [
 					14,
-					1
-				],
-				"id": "node_02",
-				"label": "Attrition-field crossing · Iron Bloom",
-				"level": 0,
-				"optional": false,
-				"role": "route_pressure"
-			},
-			{
-				"archetype_id": "11",
-				"cell": [
-					21,
 					0
 				],
-				"id": "node_03",
-				"label": "Narrative beat · Recognition",
+				"id": "node_02",
+				"label": "Shelter-rest management · Full Rest",
 				"level": 0,
 				"optional": false,
 				"role": "regroup"
 			},
 			{
-				"archetype_id": "15",
+				"archetype_id": "2",
 				"cell": [
-					28,
+					21,
 					1
 				],
-				"id": "node_04",
-				"label": "Attrition-field crossing · Atmospheric",
+				"id": "node_03",
+				"label": "Plant as tool · Hushbloom Stun",
 				"level": 0,
 				"optional": false,
 				"role": "route_pressure"
 			},
 			{
+				"archetype_id": "16",
+				"cell": [
+					28,
+					0
+				],
+				"id": "node_04",
+				"label": "Shelter-rest management · Contested Rest",
+				"level": 0,
+				"optional": false,
+				"role": "regroup"
+			},
+			{
 				"archetype_id": "11",
 				"cell": [
 					35,
-					1
+					0
 				],
 				"id": "exit_shelter",
 				"label": "Shelter Arrival",
@@ -131,7 +161,7 @@
 				"from": "entry",
 				"from_cell": [
 					0,
-					1
+					0
 				],
 				"id": "main_00_01",
 				"kind": "safe",
@@ -152,49 +182,49 @@
 				"to": "node_02",
 				"to_cell": [
 					14,
-					1
+					0
 				]
 			},
 			{
 				"from": "node_02",
 				"from_cell": [
 					14,
-					1
+					0
 				],
 				"id": "main_02_03",
 				"kind": "safe",
 				"to": "node_03",
 				"to_cell": [
 					21,
-					0
+					1
 				]
 			},
 			{
 				"from": "node_03",
 				"from_cell": [
 					21,
-					0
+					1
 				],
 				"id": "main_03_04",
 				"kind": "safe",
 				"to": "node_04",
 				"to_cell": [
 					28,
-					1
+					0
 				]
 			},
 			{
 				"from": "node_04",
 				"from_cell": [
 					28,
-					1
+					0
 				],
 				"id": "main_04_05",
 				"kind": "safe",
 				"to": "exit_shelter",
 				"to_cell": [
 					35,
-					1
+					0
 				]
 			}
 		]
@@ -212,19 +242,24 @@
 					"action": "activate",
 					"activation_policy": "interact_at_producer",
 					"affected_node_ids": [
-						"node_03"
+						"exit_shelter",
+						"node_04"
 					],
-					"before_node": "node_02",
+					"before_node": "node_01",
 					"before_nodes": [
-						"node_02"
+						"node_01"
 					],
 					"branch_id": "branch_00",
 					"cannot_bypass_unresolved": true,
 					"consumer_cell": [
 						19.0,
-						6.0
+						7.0
 					],
 					"consumer_cells": [
+						[
+							19.0,
+							3.0
+						],
 						[
 							19.0,
 							4.0
@@ -236,6 +271,10 @@
 						[
 							19.0,
 							6.0
+						],
+						[
+							19.0,
+							7.0
 						]
 					],
 					"expected_phase": "bridged",
@@ -243,7 +282,7 @@
 					"kind": "mandatory_branch_interaction",
 					"producer_cell": [
 						15.0,
-						11.0
+						12.0
 					],
 					"produces_state": "branch_00_resolved",
 					"required_for_progress": true,
@@ -267,28 +306,16 @@
 					"cannot_bypass_unresolved": true,
 					"consumer_cell": [
 						63.0,
-						8.0
+						4.0
 					],
 					"consumer_cells": [
 						[
 							63.0,
+							3.0
+						],
+						[
+							63.0,
 							4.0
-						],
-						[
-							63.0,
-							5.0
-						],
-						[
-							63.0,
-							6.0
-						],
-						[
-							63.0,
-							7.0
-						],
-						[
-							63.0,
-							8.0
 						]
 					],
 					"expected_phase": "bridged",
@@ -296,7 +323,7 @@
 					"kind": "mandatory_branch_interaction",
 					"producer_cell": [
 						60.0,
-						13.0
+						10.0
 					],
 					"produces_state": "branch_02_resolved",
 					"required_for_progress": true,
@@ -317,27 +344,27 @@
 					"characters": {
 						"aster": [
 							0.0,
-							0.05
+							-0.45
 						],
 						"endo": [
 							0.42,
-							0.38
+							-0.12
 						],
 						"myke": [
 							0.0,
-							0.72
+							0.22
 						],
 						"oli": [
 							-0.42,
-							0.92
+							0.42
 						],
 						"peris": [
 							-0.42,
-							0.38
+							-0.12
 						],
 						"tyreg": [
 							0.42,
-							0.92
+							0.42
 						]
 					},
 					"expert": false,
@@ -350,46 +377,6 @@
 					"t": 0.0
 				},
 				{
-					"approach_id": "traverse",
-					"blocked": false,
-					"borrows_from": "",
-					"caption": "node_01",
-					"characters": {
-						"aster": [
-							6.5,
-							0.05
-						],
-						"endo": [
-							6.92,
-							0.38
-						],
-						"myke": [
-							6.5,
-							0.72
-						],
-						"oli": [
-							6.08,
-							0.92
-						],
-						"peris": [
-							6.08,
-							0.38
-						],
-						"tyreg": [
-							6.92,
-							0.92
-						]
-					},
-					"expert": false,
-					"kind": "layout_traversal",
-					"min_stage": 0,
-					"node": "node_01",
-					"risk": "safe",
-					"role": "boundary",
-					"stage_ahead": false,
-					"t": 1.0
-				},
-				{
 					"approach_id": "activate_branch_00_span",
 					"blocked": false,
 					"borrows_from": "",
@@ -397,19 +384,24 @@
 						"action": "activate",
 						"activation_policy": "interact_at_producer",
 						"affected_node_ids": [
-							"node_03"
+							"exit_shelter",
+							"node_04"
 						],
-						"before_node": "node_02",
+						"before_node": "node_01",
 						"before_nodes": [
-							"node_02"
+							"node_01"
 						],
 						"branch_id": "branch_00",
 						"cannot_bypass_unresolved": true,
 						"consumer_cell": [
 							19.0,
-							6.0
+							7.0
 						],
 						"consumer_cells": [
+							[
+								19.0,
+								3.0
+							],
 							[
 								19.0,
 								4.0
@@ -421,6 +413,10 @@
 							[
 								19.0,
 								6.0
+							],
+							[
+								19.0,
+								7.0
 							]
 						],
 						"expected_phase": "bridged",
@@ -428,7 +424,7 @@
 						"kind": "mandatory_branch_interaction",
 						"producer_cell": [
 							15.0,
-							11.0
+							12.0
 						],
 						"produces_state": "branch_00_resolved",
 						"required_for_progress": true,
@@ -442,35 +438,75 @@
 					"characters": {
 						"aster": [
 							5.0,
-							3.05
+							3.55
 						],
 						"endo": [
 							5.42,
-							3.38
+							3.88
 						],
 						"myke": [
 							5.0,
-							3.72
+							4.22
 						],
 						"oli": [
 							4.58,
-							3.92
+							4.42
 						],
 						"peris": [
 							4.58,
-							3.38
+							3.88
 						],
 						"tyreg": [
 							5.42,
-							3.92
+							4.42
 						]
 					},
 					"expert": false,
 					"kind": "mandatory_branch_interaction",
 					"min_stage": 0,
-					"node": "node_02",
+					"node": "node_01",
 					"risk": "safe",
 					"role": "mandatory_producer",
+					"stage_ahead": false,
+					"t": 1.0
+				},
+				{
+					"approach_id": "take_physical_lysate",
+					"blocked": false,
+					"borrows_from": "",
+					"caption": "node_01 — TAKE LYSATE",
+					"characters": {
+						"aster": [
+							7.0,
+							0.05
+						],
+						"endo": [
+							7.42,
+							0.38
+						],
+						"myke": [
+							7.0,
+							0.72
+						],
+						"oli": [
+							6.58,
+							0.92
+						],
+						"peris": [
+							6.58,
+							0.38
+						],
+						"tyreg": [
+							7.42,
+							0.92
+						]
+					},
+					"expert": false,
+					"kind": "resource_pickup",
+					"min_stage": 1,
+					"node": "node_01",
+					"risk": "safe",
+					"role": "foraging",
 					"stage_ahead": false,
 					"t": 2.0
 				},
@@ -481,28 +517,28 @@
 					"caption": "node_02",
 					"characters": {
 						"aster": [
-							14.0,
-							0.55
+							13.5,
+							-0.45
 						],
 						"endo": [
-							14.42,
-							0.88
+							13.92,
+							-0.12
 						],
 						"myke": [
-							14.0,
-							1.22
+							13.5,
+							0.22
 						],
 						"oli": [
-							13.58,
-							1.42
+							13.08,
+							0.42
 						],
 						"peris": [
-							13.58,
-							0.88
+							13.08,
+							-0.12
 						],
 						"tyreg": [
-							14.42,
-							1.42
+							13.92,
+							0.42
 						]
 					},
 					"expert": false,
@@ -510,47 +546,47 @@
 					"min_stage": 0,
 					"node": "node_02",
 					"risk": "safe",
-					"role": "route_pressure",
+					"role": "regroup",
 					"stage_ahead": false,
 					"t": 3.0
 				},
 				{
-					"approach_id": "take_physical_lysate",
+					"approach_id": "traverse",
 					"blocked": false,
 					"borrows_from": "",
-					"caption": "node_03 — TAKE LYSATE",
+					"caption": "node_03",
 					"characters": {
 						"aster": [
-							20.5,
-							-0.45
+							21.0,
+							0.05
 						],
 						"endo": [
-							20.92,
-							-0.12
+							21.42,
+							0.38
 						],
 						"myke": [
-							20.5,
-							0.22
+							21.0,
+							0.72
 						],
 						"oli": [
-							20.08,
-							0.42
+							20.58,
+							0.92
 						],
 						"peris": [
-							20.08,
-							-0.12
+							20.58,
+							0.38
 						],
 						"tyreg": [
-							20.92,
-							0.42
+							21.42,
+							0.92
 						]
 					},
 					"expert": false,
-					"kind": "resource_pickup",
-					"min_stage": 1,
+					"kind": "layout_traversal",
+					"min_stage": 0,
 					"node": "node_03",
 					"risk": "safe",
-					"role": "regroup",
+					"role": "route_pressure",
 					"stage_ahead": false,
 					"t": 4.0
 				},
@@ -561,28 +597,28 @@
 					"caption": "node_04 — OPTIONAL CATCH LYSATE",
 					"characters": {
 						"aster": [
-							28.0,
-							0.55
+							27.5,
+							-0.45
 						],
 						"endo": [
-							28.42,
-							0.88
+							27.92,
+							-0.12
 						],
 						"myke": [
-							28.0,
-							1.22
+							27.5,
+							0.22
 						],
 						"oli": [
-							27.58,
-							1.42
+							27.08,
+							0.42
 						],
 						"peris": [
-							27.58,
-							0.88
+							27.08,
+							-0.12
 						],
 						"tyreg": [
-							28.42,
-							1.42
+							27.92,
+							0.42
 						]
 					},
 					"expert": false,
@@ -590,7 +626,7 @@
 					"min_stage": 0,
 					"node": "node_04",
 					"risk": "safe",
-					"role": "route_pressure",
+					"role": "regroup",
 					"stage_ahead": false,
 					"t": 5.0
 				},
@@ -612,28 +648,16 @@
 						"cannot_bypass_unresolved": true,
 						"consumer_cell": [
 							63.0,
-							8.0
+							4.0
 						],
 						"consumer_cells": [
 							[
 								63.0,
+								3.0
+							],
+							[
+								63.0,
 								4.0
-							],
-							[
-								63.0,
-								5.0
-							],
-							[
-								63.0,
-								6.0
-							],
-							[
-								63.0,
-								7.0
-							],
-							[
-								63.0,
-								8.0
 							]
 						],
 						"expected_phase": "bridged",
@@ -641,7 +665,7 @@
 						"kind": "mandatory_branch_interaction",
 						"producer_cell": [
 							60.0,
-							13.0
+							10.0
 						],
 						"produces_state": "branch_02_resolved",
 						"required_for_progress": true,
@@ -655,27 +679,27 @@
 					"characters": {
 						"aster": [
 							27.5,
-							4.05
+							2.55
 						],
 						"endo": [
 							27.92,
-							4.38
+							2.88
 						],
 						"myke": [
 							27.5,
-							4.72
+							3.22
 						],
 						"oli": [
 							27.08,
-							4.92
+							3.42
 						],
 						"peris": [
 							27.08,
-							4.38
+							2.88
 						],
 						"tyreg": [
 							27.92,
-							4.92
+							3.42
 						]
 					},
 					"expert": false,
@@ -695,27 +719,27 @@
 					"characters": {
 						"aster": [
 							35.0,
-							0.05
+							-0.45
 						],
 						"endo": [
 							35.42,
-							0.38
+							-0.12
 						],
 						"myke": [
 							35.0,
-							0.72
+							0.22
 						],
 						"oli": [
 							34.58,
-							0.92
+							0.42
 						],
 						"peris": [
 							34.58,
-							0.38
+							-0.12
 						],
 						"tyreg": [
 							35.42,
-							0.92
+							0.42
 						]
 					},
 					"expert": false,
@@ -745,12 +769,12 @@
 					"stage_ahead": false
 				},
 				{
-					"approach_id": "traverse",
+					"approach_id": "take_physical_lysate",
 					"borrows_from": "",
 					"expert": false,
-					"kind": "layout_traversal",
-					"label": "",
-					"min_stage": 0,
+					"kind": "resource_pickup",
+					"label": "TAKE LYSATE",
+					"min_stage": 1,
 					"node": "node_01",
 					"party": "any",
 					"risk": "safe",
@@ -769,12 +793,12 @@
 					"stage_ahead": false
 				},
 				{
-					"approach_id": "take_physical_lysate",
+					"approach_id": "traverse",
 					"borrows_from": "",
 					"expert": false,
-					"kind": "resource_pickup",
-					"label": "TAKE LYSATE",
-					"min_stage": 1,
+					"kind": "layout_traversal",
+					"label": "",
+					"min_stage": 0,
 					"node": "node_03",
 					"party": "any",
 					"risk": "safe",
@@ -824,19 +848,24 @@
 					"action": "activate",
 					"activation_policy": "interact_at_producer",
 					"affected_node_ids": [
-						"node_03"
+						"exit_shelter",
+						"node_04"
 					],
-					"before_node": "node_02",
+					"before_node": "node_01",
 					"before_nodes": [
-						"node_02"
+						"node_01"
 					],
 					"branch_id": "branch_00",
 					"cannot_bypass_unresolved": true,
 					"consumer_cell": [
 						19.0,
-						6.0
+						7.0
 					],
 					"consumer_cells": [
+						[
+							19.0,
+							3.0
+						],
 						[
 							19.0,
 							4.0
@@ -848,6 +877,10 @@
 						[
 							19.0,
 							6.0
+						],
+						[
+							19.0,
+							7.0
 						]
 					],
 					"expected_phase": "bridged",
@@ -855,7 +888,7 @@
 					"kind": "mandatory_branch_interaction",
 					"producer_cell": [
 						15.0,
-						11.0
+						12.0
 					],
 					"produces_state": "branch_00_resolved",
 					"required_for_progress": true,
@@ -879,28 +912,16 @@
 					"cannot_bypass_unresolved": true,
 					"consumer_cell": [
 						63.0,
-						8.0
+						4.0
 					],
 					"consumer_cells": [
 						[
 							63.0,
+							3.0
+						],
+						[
+							63.0,
 							4.0
-						],
-						[
-							63.0,
-							5.0
-						],
-						[
-							63.0,
-							6.0
-						],
-						[
-							63.0,
-							7.0
-						],
-						[
-							63.0,
-							8.0
 						]
 					],
 					"expected_phase": "bridged",
@@ -908,7 +929,7 @@
 					"kind": "mandatory_branch_interaction",
 					"producer_cell": [
 						60.0,
-						13.0
+						10.0
 					],
 					"produces_state": "branch_02_resolved",
 					"required_for_progress": true,
@@ -929,11 +950,11 @@
 					"characters": {
 						"aster": [
 							0.0,
-							0.05
+							-0.45
 						],
 						"peris": [
 							-0.42,
-							0.38
+							-0.12
 						]
 					},
 					"expert": false,
@@ -946,30 +967,6 @@
 					"t": 0.0
 				},
 				{
-					"approach_id": "traverse",
-					"blocked": false,
-					"borrows_from": "",
-					"caption": "node_01",
-					"characters": {
-						"aster": [
-							6.5,
-							0.05
-						],
-						"peris": [
-							6.08,
-							0.38
-						]
-					},
-					"expert": false,
-					"kind": "layout_traversal",
-					"min_stage": 0,
-					"node": "node_01",
-					"risk": "safe",
-					"role": "boundary",
-					"stage_ahead": false,
-					"t": 1.0
-				},
-				{
 					"approach_id": "activate_branch_00_span",
 					"blocked": false,
 					"borrows_from": "",
@@ -977,19 +974,24 @@
 						"action": "activate",
 						"activation_policy": "interact_at_producer",
 						"affected_node_ids": [
-							"node_03"
+							"exit_shelter",
+							"node_04"
 						],
-						"before_node": "node_02",
+						"before_node": "node_01",
 						"before_nodes": [
-							"node_02"
+							"node_01"
 						],
 						"branch_id": "branch_00",
 						"cannot_bypass_unresolved": true,
 						"consumer_cell": [
 							19.0,
-							6.0
+							7.0
 						],
 						"consumer_cells": [
+							[
+								19.0,
+								3.0
+							],
 							[
 								19.0,
 								4.0
@@ -1001,6 +1003,10 @@
 							[
 								19.0,
 								6.0
+							],
+							[
+								19.0,
+								7.0
 							]
 						],
 						"expected_phase": "bridged",
@@ -1008,7 +1014,7 @@
 						"kind": "mandatory_branch_interaction",
 						"producer_cell": [
 							15.0,
-							11.0
+							12.0
 						],
 						"produces_state": "branch_00_resolved",
 						"required_for_progress": true,
@@ -1022,19 +1028,43 @@
 					"characters": {
 						"aster": [
 							5.0,
-							3.05
+							3.55
 						],
 						"peris": [
 							4.58,
-							3.38
+							3.88
 						]
 					},
 					"expert": false,
 					"kind": "mandatory_branch_interaction",
 					"min_stage": 0,
-					"node": "node_02",
+					"node": "node_01",
 					"risk": "safe",
 					"role": "mandatory_producer",
+					"stage_ahead": false,
+					"t": 1.0
+				},
+				{
+					"approach_id": "take_physical_lysate",
+					"blocked": false,
+					"borrows_from": "",
+					"caption": "node_01 — TAKE LYSATE",
+					"characters": {
+						"aster": [
+							7.0,
+							0.05
+						],
+						"peris": [
+							6.58,
+							0.38
+						]
+					},
+					"expert": false,
+					"kind": "resource_pickup",
+					"min_stage": 1,
+					"node": "node_01",
+					"risk": "safe",
+					"role": "foraging",
 					"stage_ahead": false,
 					"t": 2.0
 				},
@@ -1045,12 +1075,12 @@
 					"caption": "node_02",
 					"characters": {
 						"aster": [
-							14.0,
-							0.55
+							13.5,
+							-0.45
 						],
 						"peris": [
-							13.58,
-							0.88
+							13.08,
+							-0.12
 						]
 					},
 					"expert": false,
@@ -1058,31 +1088,31 @@
 					"min_stage": 0,
 					"node": "node_02",
 					"risk": "safe",
-					"role": "route_pressure",
+					"role": "regroup",
 					"stage_ahead": false,
 					"t": 3.0
 				},
 				{
-					"approach_id": "take_physical_lysate",
+					"approach_id": "traverse",
 					"blocked": false,
 					"borrows_from": "",
-					"caption": "node_03 — TAKE LYSATE",
+					"caption": "node_03",
 					"characters": {
 						"aster": [
-							20.5,
-							-0.45
+							21.0,
+							0.05
 						],
 						"peris": [
-							20.08,
-							-0.12
+							20.58,
+							0.38
 						]
 					},
 					"expert": false,
-					"kind": "resource_pickup",
-					"min_stage": 1,
+					"kind": "layout_traversal",
+					"min_stage": 0,
 					"node": "node_03",
 					"risk": "safe",
-					"role": "regroup",
+					"role": "route_pressure",
 					"stage_ahead": false,
 					"t": 4.0
 				},
@@ -1093,12 +1123,12 @@
 					"caption": "node_04 — OPTIONAL CATCH LYSATE",
 					"characters": {
 						"aster": [
-							28.0,
-							0.55
+							27.5,
+							-0.45
 						],
 						"peris": [
-							27.58,
-							0.88
+							27.08,
+							-0.12
 						]
 					},
 					"expert": false,
@@ -1106,7 +1136,7 @@
 					"min_stage": 0,
 					"node": "node_04",
 					"risk": "safe",
-					"role": "route_pressure",
+					"role": "regroup",
 					"stage_ahead": false,
 					"t": 5.0
 				},
@@ -1128,28 +1158,16 @@
 						"cannot_bypass_unresolved": true,
 						"consumer_cell": [
 							63.0,
-							8.0
+							4.0
 						],
 						"consumer_cells": [
 							[
 								63.0,
+								3.0
+							],
+							[
+								63.0,
 								4.0
-							],
-							[
-								63.0,
-								5.0
-							],
-							[
-								63.0,
-								6.0
-							],
-							[
-								63.0,
-								7.0
-							],
-							[
-								63.0,
-								8.0
 							]
 						],
 						"expected_phase": "bridged",
@@ -1157,7 +1175,7 @@
 						"kind": "mandatory_branch_interaction",
 						"producer_cell": [
 							60.0,
-							13.0
+							10.0
 						],
 						"produces_state": "branch_02_resolved",
 						"required_for_progress": true,
@@ -1171,11 +1189,11 @@
 					"characters": {
 						"aster": [
 							27.5,
-							4.05
+							2.55
 						],
 						"peris": [
 							27.08,
-							4.38
+							2.88
 						]
 					},
 					"expert": false,
@@ -1195,11 +1213,11 @@
 					"characters": {
 						"aster": [
 							35.0,
-							0.05
+							-0.45
 						],
 						"peris": [
 							34.58,
-							0.38
+							-0.12
 						]
 					},
 					"expert": false,
@@ -1229,12 +1247,12 @@
 					"stage_ahead": false
 				},
 				{
-					"approach_id": "traverse",
+					"approach_id": "take_physical_lysate",
 					"borrows_from": "",
 					"expert": false,
-					"kind": "layout_traversal",
-					"label": "",
-					"min_stage": 0,
+					"kind": "resource_pickup",
+					"label": "TAKE LYSATE",
+					"min_stage": 1,
 					"node": "node_01",
 					"party": "any",
 					"risk": "safe",
@@ -1253,12 +1271,12 @@
 					"stage_ahead": false
 				},
 				{
-					"approach_id": "take_physical_lysate",
+					"approach_id": "traverse",
 					"borrows_from": "",
 					"expert": false,
-					"kind": "resource_pickup",
-					"label": "TAKE LYSATE",
-					"min_stage": 1,
+					"kind": "layout_traversal",
+					"label": "",
+					"min_stage": 0,
 					"node": "node_03",
 					"party": "any",
 					"risk": "safe",
