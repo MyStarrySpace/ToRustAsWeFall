@@ -2562,6 +2562,23 @@ func _runtime_handler_for_node(node: Dictionary) -> String:
 
 
 func _generated_interaction_data_position(source: Node) -> Vector3:
+	# The walk-to point and the readiness check must be the SAME contract. The authored/projected
+	# approach can land outside the contract's own acceptance region -- the shelter's sat a cell
+	# short of it -- and then the servicing actor arrives, settles, and is refused for not standing
+	# on an apron it was never sent to. When a typed approach contract exists, its approach vertex
+	# IS the walk-to point, so arrival and acceptance cannot disagree.
+	if source != null and source.has_meta("interaction_navigation_region"):
+		var region_v: Variant = source.get_meta("interaction_navigation_region")
+		var region_gs = _get_game_state()
+		if region_v is Dictionary and region_gs != null and region_gs.grid != null:
+			var vertex_v: Variant = (region_v as Dictionary).get("approach_vertex", null)
+			if vertex_v is Dictionary:
+				var vertex := vertex_v as Dictionary
+				var cell_v: Variant = vertex.get("cell", null)
+				if cell_v is Array and (cell_v as Array).size() >= 2:
+					return region_gs.grid.grid_to_world(
+						Vector2i(int((cell_v as Array)[0]), int((cell_v as Array)[1])),
+						int(vertex.get("level", 0)))
 	if source != null and source.has_meta("generated_interaction_data_position"):
 		var authored_position: Variant = source.get_meta(
 			"generated_interaction_data_position", Vector3.ZERO
