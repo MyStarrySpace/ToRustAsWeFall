@@ -854,3 +854,54 @@ Godot children use the same private never-input-desktop and exact-Job
 containment as release tests. A partial manual export is not valid freshness
 evidence; the command succeeds only when all nine spec/replay/mirror triples
 match exactly.
+
+## Playing the game for real (browser, real input) — READ THIS BEFORE DRIVING THE GAME
+
+**Never click at guessed pixel coordinates.** The game publishes exactly what a player can see and
+act on, with screen positions. Guessing coordinates wastes runs, produces false "the game is broken"
+conclusions, and is not playing — it is flailing. (Learned the hard way 2026-08-07: four failed runs
+concluding "movement doesn't work" when the real problem was the wrong mouse button and a target
+that was never under the cursor.)
+
+### The observation bridge
+
+Boot the web export with **`?e2e=1`** — without it the bridge does not exist and `globalThis.__trawfE2E`
+is null. Then `page.evaluate(() => globalThis.__trawfE2E)` gives you:
+
+| Field | What it is |
+| --- | --- |
+| `player_observation.state.affordances` | **The play surface.** One entry per thing you can act on: `{kind, verb, consequence, screen:[x,y], token}`. `screen` is where to click. |
+| `player_observation.state.visible_affordance_verbs` | The verb vocabulary currently available, e.g. `["HIDE","MOVE","TAKE LYSATE"]` |
+| `player_observation.state.cues` | Party bodies with screen positions, plus instruction text currently on screen |
+| `click_targets` | Named destinations the chunk exposes — e.g. `exit_shelter`, `upper_deck`, `bowl_center` |
+| `move_refusals` | **Why a move did not commit.** Check this before concluding movement is broken. |
+| `characters`, `selected_characters`, `active_character` | Who exists, who is selected |
+| `chunk` | Run state: `branch_span_states`, `blocked_nodes`, completion, route phase |
+| `paused`, `ready`, `stage` | Lifecycle |
+
+### The loop
+
+Perceive → choose → act → verify, exactly like a player:
+
+1. Read `affordances`; pick one by its **verb**, not by where you think it is.
+2. Click its `screen` point with the **RIGHT** button to commit a move/interaction.
+3. Re-read the bridge. Confirm the intent landed: `selected_characters`, `chunk` progress, and
+   critically `move_refusals` — an empty click is a refusal with a reason, not a mystery.
+4. `Space` pauses without stopping the UI lane, so pause, read, decide, unpause. Screenshot while
+   paused if you need to look.
+
+### What else the bridge is for
+
+It is not only a click oracle. It carries the timing a real decision needs and that a screenshot
+cannot show: **movement durations**, when a character would **enter an enemy's detection range**,
+and the **schedule of environmental hazards** (a channel's next onset, a basin's next commit). Those
+are the numbers a player is actually reasoning about, so a driver that ignores them is not playing
+the game either — it is walking through it with its eyes shut. Prefer reading a hazard's next onset
+over sampling frames until something happens; the analytic value is the authority and the frames are
+cosmetic.
+
+### Re-export or you are testing the past
+
+`build/web` never rebuilds itself. Export before every play session:
+`../Godot_v4.7-stable_win64_console.exe --headless --path "." --export-release "Web" build/web/index.html`
+A five-day-old export happily hides every fix made since, and the run will look like a regression.
