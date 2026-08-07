@@ -9318,41 +9318,53 @@ func _test_generated_food_modes() -> void:
 		# Earn access to the optional cache through the hydraulic teaching path.
 		# Its branch sits beyond the first mandatory span, so trying to walk there
 		# directly from the entry must fail by design.
+		# Walk the emitted golden-path PREFIX instead of a hand-counted schedule. The spec owns which
+		# producer gates which node and how many actions sit on each boundary, so a regeneration that
+		# moves a node must not silently invalidate this test: it moved branch_00's gate from node_02
+		# to node_01 and left the old constant demanding two actions on a boundary that now binds one,
+		# which is unsatisfiable. node_01 also became an actionable foraging node, and the route out of
+		# it refuses to commit until it is completed -- so the prefix must activate each node, not just
+		# walk past it. Counts are derived; nothing here is weakened.
 		var solution: Dictionary = chunk.get_solution_script()
 		var consumed_solution_actions := {}
-		var hydraulic_prelude_ready := bool(chunk.call(
-			"_headless_traverse_generated_route", "main_00_01"
-		))
-		var node_02_action_count := 0
-		if hydraulic_prelude_ready:
-			node_02_action_count = int(chunk.call(
+		var declared_actions_before := func(target_node: String) -> int:
+			var declared := 0
+			for group_v in [
+				solution.get("world_actions", []), solution.get("branch_actions", [])
+			]:
+				for action_v in group_v as Array:
+					if action_v is Dictionary 							and str((action_v as Dictionary).get("before_node", "")) == target_node:
+						declared += 1
+			return declared
+		var apply_boundary := func(target_node: String) -> bool:
+			var applied := int(chunk.call(
 				"_apply_solution_world_actions_before_node",
-				solution,
-				"node_02",
-				consumed_solution_actions
-			))
-			hydraulic_prelude_ready = node_02_action_count == 2
-		if hydraulic_prelude_ready:
+				solution, target_node, consumed_solution_actions))
+			return applied == int(declared_actions_before.call(target_node))
+		var hydraulic_prelude_ready := bool(apply_boundary.call("node_01"))
+		for leg in [
+			{"route": "main_00_01", "node": "node_01", "next_boundary": "node_02"},
+			{"route": "main_01_02", "node": "node_02", "next_boundary": "node_03"},
+			{"route": "main_02_03", "node": "", "next_boundary": ""},
+		]:
+			if not hydraulic_prelude_ready:
+				break
 			hydraulic_prelude_ready = bool(chunk.call(
-				"_headless_traverse_generated_route", "main_01_02"
-			))
-		if hydraulic_prelude_ready:
-			hydraulic_prelude_ready = bool(chunk.call(
-				"_headless_activate_generated_node", "node_02"
-			))
-		var node_03_action_count := 0
-		if hydraulic_prelude_ready:
-			node_03_action_count = int(chunk.call(
-				"_apply_solution_world_actions_before_node",
-				solution,
-				"node_03",
-				consumed_solution_actions
-			))
-			hydraulic_prelude_ready = node_03_action_count == 1
-		if hydraulic_prelude_ready:
-			hydraulic_prelude_ready = bool(chunk.call(
-				"_headless_traverse_generated_route", "main_02_03"
-			))
+				"_headless_traverse_generated_route", str((leg as Dictionary)["route"])))
+			# Only a node that actually BUILT an interactable can be activated; a layout-only node
+			# reports headless_missing_interactable, which is not a failure (the shipped golden-path
+			# driver ignores the return for exactly this reason). Require success only where there
+			# is something to service -- node_01 is such a node, and the route out of it will not
+			# commit until it is completed.
+			var leg_node := str((leg as Dictionary)["node"])
+			var node_interactables_v: Variant = chunk.get("_node_interactables")
+			var leg_is_serviceable := node_interactables_v is Dictionary 				and (node_interactables_v as Dictionary).has(leg_node)
+			if hydraulic_prelude_ready and leg_node != "" and leg_is_serviceable:
+				hydraulic_prelude_ready = bool(chunk.call(
+					"_headless_activate_generated_node", leg_node))
+			var next_boundary := str((leg as Dictionary)["next_boundary"])
+			if hydraulic_prelude_ready and next_boundary != "":
+				hydraulic_prelude_ready = bool(apply_boundary.call(next_boundary))
 		_assert_true(
 			hydraulic_prelude_ready,
 			"%s physically reaches the optional-cache decision point"
