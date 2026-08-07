@@ -598,3 +598,36 @@ the surface is enumerable: a guard can assert the contract does not grow without
 way `--test-canon-mechanics` lints the enforceable slice of the systems-thinking law. That is the
 cheap half; the rest is review discipline — every new HUD row should have to argue why no object in
 the world could carry it.
+
+### P-SHOWN addendum — the ONE ring that is legal, and where it lives (director, 2026-08-07)
+
+Two rulings arrived together and they are easier to hold as a pair.
+
+**No result ring on the object.** Verbatim: *"there should be no such ring."* `OutlineSurfaceTarget`
+currently mints a hand-built opaque annulus around a source on every completed interaction, tinted
+`INTERACTION_SUCCESS_TINT` (a saturated green nothing else in the game speaks). It violates the
+highlight law twice over — a fixed ring ignores the object's shape when *the mask Sobel IS the
+shape*, and it introduces a fourth colour vocabulary beside white-hover and character-tint-queued. It
+exists to dodge the GL Compatibility renderer that the Web export uses, where transparent and torus
+geometry produced no readable fragments. **A result belongs on the object's own silhouette through
+the mask.** If the mask does not composite under Compatibility, that is the bug to fix — otherwise
+web players and desktop players are being taught two different feedback languages.
+
+**A progress ring IS legal — over the CHARACTER, as billboard UI.** Verbatim:
+
+> Also, we can make it so that if there is something that takes a while to interact with, like in the
+> Inflammashunt puzzle, then we can draw a filling ring for progress OVER THE CHARACTER and AS A
+> UI/BILLBOARD ELEMENT. And fill a border around the character portrait if that fill ring is
+> offscreen
+
+Note what distinguishes it from the banned one, because the difference is the whole rule. The banned
+ring sits on the OBJECT and duplicates a shape the mask already draws better. This one sits on the
+CHARACTER and carries something no silhouette can express: *how far through a timed action they
+are*. It is billboard UI rather than world geometry, so it never pretends to be part of the scene and
+never fights the Compatibility renderer's geometry limits. And it answers §1a's offscreen carve-out
+in the best possible way — when the ring leaves frame the same fill migrates to that character's
+portrait border, so the state follows the character rather than being duplicated into a HUD row that
+says the same thing in words.
+
+Read together: **feedback about a THING goes on the thing's outline; feedback about a CHARACTER'S
+progress goes over that character, and degrades to their portrait when off-screen.**
