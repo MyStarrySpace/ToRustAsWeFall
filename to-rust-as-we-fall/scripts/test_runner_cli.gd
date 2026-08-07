@@ -42898,12 +42898,16 @@ func _test_wash_relay_helix_path_draws() -> void:
 		"the far hover is earned through the human pressure-transit route")
 	var t0 := Time.get_ticks_msec()
 	aster.call("_update_path_preview", far_world)
+	# The hover ribbon is produced SYNCHRONOUSLY by that call, so sample it NOW. Sampling after
+	# awaiting frames measured the per-frame hover pass instead: with no real cursor over the deck
+	# in a headless frame there is nothing hovered, so the ordinary pass clears the preview again
+	# and the ribbon read as empty even though the call had just drawn it.
+	var pp = aster.get("_path_preview")
+	var pts: Array = pp.call("_remaining_points") if pp != null else []
 	for i in range(3):
 		await get_tree().process_frame
 	var dt := Time.get_ticks_msec() - t0
-	var pp = aster.get("_path_preview")
 	_assert_true(pp != null and pp.game_state == gs, "the preview ribbon is on the live game_state (warps)")
-	var pts: Array = pp.call("_remaining_points") if pp != null else []
 	_assert_true(pts.size() >= 2, "the ribbon has a drawable polyline (%d pts)" % pts.size())
 	var on_helix := 0
 	var bad := 0
