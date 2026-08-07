@@ -10,7 +10,7 @@ person, and it found things no headless test can see. Findings are ordered by se
 
 ---
 
-## 1. HUD/input mismatch: the HUD advertises the wrong mouse button — BLOCKING for a new player
+## 1. HUD/input mismatch: the HUD advertises the wrong mouse button
 
 The bottom-centre control read says **`Move`** beside a **LEFT** mouse-button glyph. Movement is
 committed with **RIGHT** click. Left-clicking open floor does nothing at all.
@@ -36,17 +36,31 @@ The level is technically playable but unreadable: you cannot see floor edges, el
 walkable surface ends. Given P-SHOWN — the world is supposed to be the primary channel — a black
 level is the most complete possible failure of that law.
 
-## 3. Could not complete the stretch: the party never reaches the exit shelter
+## 3. BLOCKING: the stretch cannot be completed — it demands a control it never offers
 
-After ~3 minutes of real play with all three characters group-selected (portrait borders confirm the
-selection), the run state stayed at `route_phase: "unstarted"` with `completed_nodes: []`. Individual
-right-clicks on open floor move characters fine; right-clicks aimed at the shelter and along the
-route toward it did not advance the party there.
+Replayed properly off the observation bridge (`?e2e=1` → `player_observation.state.affordances`),
+choosing by VERB and clicking the published screen point, with `move_refusals` read after every act.
+Fourteen steps, thirty-odd distinct ground targets, the goal marker tracked the whole way.
 
-Not yet diagnosed. Two candidates: the shelter is an Interactable rather than floor, so a move aimed
-at it may need the click-to-walk-then-trigger path rather than a raw ground move; or group moves are
-refused where a single-character move succeeds. Worth noting the party DID split naturally during
-single-selection play, so per-character movement is healthy.
+The game states the gate clearly and diegetically, through the refusal channel:
+
+> `aster: The route crosses an open cut. Work the lit EXTEND terminal first.`
+> `aster: No route to that deck.`
+
+**But an EXTEND terminal is never offered.** Across all fourteen steps the available verb set stayed
+exactly `[MOVE, HIDE, TAKE LYSATE]`. No terminal, no extend, no branch-producer affordance ever
+appeared — and `click_targets.exit_shelter` stayed `visible:false` throughout. `branch_00` reports
+`blocked_cells (16,4) (16,5) (16,6)` with `bridge_collision_enabled: false`, i.e. the cut is in place
+and was never bridged.
+
+So the composition has a **gating requirement with no reachable supplier** — the exact failure the
+port model names as a hard error (a deficit on a progress-gating input), and the same family as the
+fail-open branch gate fixed earlier the same day. The player is told what to do and given no way to
+do it. Seed 80713, custom teaching profile.
+
+This is the finding that matters most from the session: every headless gate passes on this stretch —
+solvability, curriculum, spec integrity, replay — because they check the SPINE, and the spine is
+satisfiable. What is not satisfiable is the *player's* route to the control that opens it.
 
 ## 4. The instruction banner never goes away and covers the level
 
