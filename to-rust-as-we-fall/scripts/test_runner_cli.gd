@@ -5767,8 +5767,12 @@ func _test_biomes() -> void:
 		_assert_true(bool(spec.get("headless", {}).get("solution_summary", {}).get("bare_pair_solvable", false)),
 			"biome '%s' level is bare-pair solvable" % biome)
 
-	# Theme identity is a generation invariant, not a lucky landmark placement for the showcase seeds.
-	# Sweep enough topology/content deals to catch a biome whose compatible anchor can disappear intermittently.
+	# Theme identity is a generation invariant, but the district's authored BUILDING is not: a stretch
+	# need not contain one (director, 2026-08-07), so a channels run with no pump house is a legitimate
+	# stretch rather than a generation failure. Forcing it to place would only anchor it to whatever
+	# structure the seed happened to emit, which is a worse read than its absence. What must hold on
+	# every seed is the infrastructure pair's directed exchange, and a theme that validates whatever
+	# landmarks it did emit.
 	var theme_sweep_failures: Array[String] = []
 	for biome in expected_biomes:
 		for seed in range(12):
@@ -5781,12 +5785,14 @@ func _test_biomes() -> void:
 			if not bool(swept.get("success", false)):
 				theme_sweep_failures.append("%s/%d:%s" % [biome, seed, str(swept.get("error", "failed"))])
 				continue
-			if (swept.get("themed_landmarks", []) as Array).size() != 3 \
+			# 2 = the infrastructure pair alone; 3 = the pair plus the district's optional building.
+			var swept_landmarks: int = (swept.get("themed_landmarks", []) as Array).size()
+			if swept_landmarks < 2 or swept_landmarks > 3 \
 					or (swept.get("infrastructure_operations", []) as Array).size() != 1 \
 					or not bool(StretchGeneratorScript.validate_area_theme(swept).get("valid", false)):
 				theme_sweep_failures.append("%s/%d:invalid_landmark" % [biome, seed])
 	_assert_true(theme_sweep_failures.is_empty(),
-		"every district keeps its valid landmark and infrastructure pair across a %d-stretch seed sweep (failures: %s)"
+		"every district keeps its valid theme and infrastructure pair across a %d-stretch seed sweep (failures: %s)"
 		% [expected_biomes.size() * 12, str(theme_sweep_failures)])
 
 	# Deterministic + varied biome selection.
