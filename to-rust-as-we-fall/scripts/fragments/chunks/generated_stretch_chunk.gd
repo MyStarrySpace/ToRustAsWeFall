@@ -7589,6 +7589,16 @@ func _advance_hydraulic_scavenger_chain_for_headless() -> bool:
 		if gs.is_moving(character_id):
 			var movement_v: Variant = gs.characters[character_id].get("movement", null)
 			if not (movement_v is Dictionary):
+				# The scavenger RIDES the falling cargo, and a ride is EXTERNAL TRAVERSAL: is_moving()
+				# is true through is_external_traversal_active(), while planar movement is null. Treating
+				# that as a stall killed the whole cargo chain, so release_bridge never seated the span
+				# and every route past the cistern stayed cut. Advance the ride to its end instead.
+				if _bridge_cargo_phase == BRIDGE_CARGO_FALLING \
+						and _bridge_cargo_fall_end_tick >= 0.0:
+					if not _headless_advance_scheduler_to(_bridge_cargo_fall_end_tick):
+						return false
+					_update_hydraulic_cargo_sequence(0.0)
+					continue
 				return false
 			var movement := movement_v as Dictionary
 			var deadline := float(movement.get("start_tick", _hydraulic_sequence_tick())) \
