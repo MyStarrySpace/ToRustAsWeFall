@@ -45,8 +45,12 @@ func update_hold(pointer: Vector2, progress: float, cancelled := false,
 		_state = "cancelled"
 	elif _progress < 1.0:
 		_state = "charging"
+	elif not target_valid:
+		_state = "blocked"
 	else:
-		_state = "ready" if target_valid else "blocked"
+		# A rally the party can partly answer commits, so it is not BLOCKED -- but calling it
+		# RALLY ALL would lie about the member being left behind. Name them instead.
+		_state = "partial" if not _blocked_reason.is_empty() else "ready"
 	visible = true
 	queue_redraw()
 
@@ -134,6 +138,8 @@ func _presentation_text() -> String:
 			return "RALLY QUEUED  %d" % _member_count
 		"cancelled":
 			return "RALLY CANCELLED"
+		"partial":
+			return _blocked_reason
 		"blocked":
 			return _blocked_reason if not _blocked_reason.is_empty() \
 				else "NO COMPLETE PARTY ROUTE"

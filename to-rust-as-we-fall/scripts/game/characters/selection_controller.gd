@@ -737,9 +737,6 @@ func _commit_rally_for_members(
 	if not _rally_members_available(members):
 		_last_rally_refusal_reason = "A PARTY MEMBER IS NOT READY"
 		return 0
-	if not _rally_members_share_anchor_level(members, anchor_id):
-		_last_rally_refusal_reason = "THE PARTY IS ON DIFFERENT LEVELS"
-		return -1
 	if not formation_region.is_empty():
 		if not _game_state.has_method("compute_rally_region_preflight"):
 			_last_rally_refusal_reason = "RALLY REGION CHANGED"
@@ -824,15 +821,6 @@ func _rally_members_available(members: Array[String]) -> bool:
 			return false
 	return true
 
-func _rally_members_share_anchor_level(members: Array[String], anchor_id: String) -> bool:
-	if anchor_id == "" or _game_state == null or not _game_state.characters.has(anchor_id):
-		return true
-	var anchor_level := int(_game_state.get_character_level(anchor_id))
-	for id in members:
-		if not _game_state.characters.has(id) or int(_game_state.get_character_level(id)) != anchor_level:
-			return false
-	return true
-
 ## Once the hold crosses the configured threshold, replace the ambiguous cursor ring with the same
 ## destination formation and route computation that release will commit. The signature cache keeps
 ## stationary holds read-only and cheap instead of pathfinding every frame.
@@ -901,12 +889,6 @@ func _update_rally_preview_for_members(
 		_clear_rally_preview(false)
 		PerformanceTrace.end(&"nav", &"selection.rally_preview", perf_started, "unavailable", members.size())
 		return
-	if not _rally_members_share_anchor_level(members, anchor_id):
-		_rally_preview_valid = false
-		_rally_preview_reason = "THE PARTY IS ON DIFFERENT LEVELS"
-		_clear_rally_preview(false)
-		PerformanceTrace.end(&"nav", &"selection.rally_preview", perf_started, "invalid", members.size())
-		return
 	# On grid scenes the resolved formation cannot change while the pointer stays
 	# inside one cell. Key the cache by that causal destination, not raw ray-hit
 	# floats; camera/pointer jitter inside a cell used to rerun one A* per member.
@@ -924,6 +906,7 @@ func _update_rally_preview_for_members(
 	var raw_destinations: Variant = []
 	var raw_paths: Variant = []
 	var authoritative_preflight := false
+	var authoritative_members: Array[String] = []
 	if not formation_region.is_empty():
 		var region_preflight_v: Variant = _game_state.call(
 			"compute_rally_region_preflight", members, formation_region)
@@ -932,6 +915,8 @@ func _update_rally_preview_for_members(
 			authoritative_preflight = true
 			raw_destinations = region_preflight.get("destinations", [])
 			raw_paths = region_preflight.get("paths", [])
+			for accepted_id_v in (region_preflight.get("members", []) as Array):
+				authoritative_members.append(str(accepted_id_v))
 			_rally_preview_valid = bool(
 				region_preflight.get("accepted", false))
 			_rally_preview_reason = str(region_preflight.get(
@@ -945,12 +930,26 @@ func _update_rally_preview_for_members(
 			authoritative_preflight = true
 			raw_destinations = preflight.get("destinations", [])
 			raw_paths = preflight.get("paths", [])
+			for accepted_id_v in (preflight.get("members", []) as Array):
+				authoritative_members.append(str(accepted_id_v))
 			_rally_preview_valid = bool(preflight.get("accepted", false))
 			_rally_preview_reason = str(preflight.get(
 				"reason", "" if _rally_preview_valid else "NO COMPLETE PARTY ROUTE"))
+			# An accepted rally that leaves somebody behind must say so before release, not after.
+			var preview_blocked: Array = preflight.get("blocked_members", [])
+			if _rally_preview_valid and not preview_blocked.is_empty():
+				var left_behind: Array[String] = []
+				for blocked_id_v in preview_blocked:
+					left_behind.append(str(blocked_id_v).to_upper())
+				_rally_preview_reason = "RALLY WITHOUT %s" % "/".join(left_behind)
 	else:
 		raw_destinations = _game_state.call(
 			"compute_rally_destinations", members, target, anchor_id)
+	# A partial rally reports ONLY the members it accepted, so preview that formation. Indexing the
+	# requested roster against an accepted-subset destination list misaligns every path and trips the
+	# completeness guard below, which turned a legal partial rally red before release.
+	if authoritative_preflight and _rally_preview_valid 			and not authoritative_members.is_empty():
+		members = authoritative_members
 	if not (raw_destinations is Array) or raw_destinations.size() != members.size():
 		_rally_preview_valid = false
 		_rally_preview_reason = "NO COMPLETE FORMATION"

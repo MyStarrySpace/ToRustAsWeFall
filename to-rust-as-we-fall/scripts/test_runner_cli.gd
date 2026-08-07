@@ -60536,23 +60536,24 @@ func _test_selection_controller() -> void:
 		rally_grid.set_tile(blocked_cell.x, blocked_cell.y, GridWorld.Tile.WALL)
 	var blocked_preflight: Dictionary = gs.compute_rally_preflight(
 		rally_members, rally_cell_center)
-	_assert_true(not bool(blocked_preflight.get("accepted", true)) \
-			and str(blocked_preflight.get("reason_code", "")) == "route_missing" \
-			and (blocked_preflight.get("blocked_members", []) as Array) == ["endo"],
-		"Atomic Rally preflight identifies the exact portrait with no graph route")
+	_assert_true(bool(blocked_preflight.get("accepted", true))
+			and str(blocked_preflight.get("reason_code", "")) == "accepted_partial"
+			and (blocked_preflight.get("blocked_members", []) as Array) == ["endo"]
+			and (blocked_preflight.get("members", []) as Array) == ["aster", "peris"],
+		"Rally preflight names the one portrait with no graph route and keeps the rest")
 	sel._update_rally_preview(rally_cell_center)
 	sel._rally_indicator.update_hold(
 		Vector2(120.0, 120.0), 1.0, false,
 		sel._rally_preview_valid, sel._rally_preview_reason)
-	_assert_true(not sel._rally_preview_valid \
-			and sel._rally_indicator._state == "blocked" \
+	_assert_true(sel._rally_preview_valid
+			and sel._rally_indicator._state == "partial"
 			and sel._rally_indicator._presentation_text().contains("ENDO"),
-		"Matured Rally presents a red portrait-specific route block instead of READY")
+		"A matured partial Rally names who it will leave behind instead of claiming RALLY ALL")
 	var blocked_rally_log_before := gs.event_log.size()
-	_assert_equals(sel.headless_commit_rally(rally_cell_center), 0,
-		"Releasing the visibly blocked Rally refuses the whole party")
-	_assert_equals(gs.event_log.size(), blocked_rally_log_before,
-		"A visibly blocked Rally emits no hidden singleton movement events")
+	_assert_equals(sel.headless_commit_rally(rally_cell_center), 2,
+		"Releasing a partial Rally commits the members who can reach it")
+	_assert_equals(gs.event_log.size(), blocked_rally_log_before + 1,
+		"A partial Rally records exactly one rally event, not a hidden singleton per member")
 	sel._clear_rally_preview()
 	for restored_cell in [Vector2i(3, 2), Vector2i(5, 2),
 			Vector2i(4, 1), Vector2i(4, 3)]:
@@ -60567,6 +60568,30 @@ func _test_selection_controller() -> void:
 	_assert_true(bool(accepted_preflight.get("accepted", false)) \
 			and all_accepted_paths_renderable,
 		"Atomic Rally preflight carries every READY-cue render path in the same report")
+	# Director ruling (2026-08-06): a rally refuses ONLY the members who cannot reach the
+	# destination. A party spread across floors was refused WHOLESALE by a pre-check that returned
+	# before the per-member preflight ever ran, so a legal rally read as a dead click.
+	gs.set_character_level("endo", 1)
+	var cross_level_preflight: Dictionary = gs.compute_rally_preflight(
+		rally_members, rally_cell_center, "aster")
+	_assert_true(bool(cross_level_preflight.get("accepted", false))
+			and (cross_level_preflight.get("blocked_members", []) as Array) == ["endo"]
+			and (cross_level_preflight.get("members", []) as Array) == ["aster", "peris"],
+		"A rally with one member on another floor accepts the two who can reach it (got accepted=%s blocked=%s)"
+			% [str(cross_level_preflight.get("accepted", false)),
+				str(cross_level_preflight.get("blocked_members", []))])
+	var cross_level_log_before := gs.event_log.size()
+	_assert_equals(sel._commit_rally(rally_cell_center, "aster"), 2,
+		"Rally commits the members who can reach the destination instead of refusing the party")
+	_assert_equals(gs.event_log.size(), cross_level_log_before + 1,
+		"The partial rally still records exactly one rally event")
+	gs.set_character_level("endo", 0)
+	for cross_level_id in rally_members:
+		gs.command_stop(cross_level_id)
+	gs.snap_character_to("aster", rally_grid.grid_to_world(Vector2i(2, 2)))
+	gs.snap_character_to("peris", rally_grid.grid_to_world(Vector2i(2, 3)))
+	gs.snap_character_to("endo", rally_grid.grid_to_world(Vector2i(4, 2)))
+	sel._clear_rally_preview()
 	gs.refuse_compatibility_preview = true
 	gs.compatibility_preview_calls = 0
 	sel._clear_rally_preview()
