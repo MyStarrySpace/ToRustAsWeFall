@@ -1,9 +1,10 @@
 name: Game release gate
 
+# Manual only. The gate builds the linux and web native libraries, runs the headless suite, then
+# the windowed and web persona cohort under xvfb -- hours of Actions time per run. Locally the same
+# gate is free: ./scripts/test-gate.ps1 -Tier Headless (or -Tier Windowed,Web). Add pull_request /
+# push triggers here when the minutes are worth spending.
 on:
-  pull_request:
-  push:
-    branches: [master]
   workflow_dispatch:
 
 permissions:
