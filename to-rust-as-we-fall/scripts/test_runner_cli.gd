@@ -20363,7 +20363,17 @@ func _assert_outline_surface_target_contract(node: Node, label: String, expect_p
 	_assert_true(node is StaticBody3D, "%s is a pickable static body" % label)
 	if expect_pickable:
 		_assert_equals(int(node.get("collision_layer")), 4, "%s is on the pickable/interactable layer" % label)
-		_assert_true(bool(node.get("input_ray_pickable")), "%s can receive mouse hover and click input" % label)
+		# Pointer pickability now TRACKS the delegate's availability: an interactable that is not yet
+		# armed (or whose one-shot is spent) makes its visible target inert, so a bare "is pickable"
+		# assertion would only be testing which beat of the sequence happens to be running. Assert the
+		# wiring instead -- hover is enabled, and pickability agrees with what the delegate reports.
+		_assert_true(bool(node.get("hover_enabled")), "%s is wired for hover" % label)
+		var command_delegate: Node = node.call("get_interaction_delegate") 			if node.has_method("get_interaction_delegate") else null
+		var delegate_available := true
+		if command_delegate != null and is_instance_valid(command_delegate) 				and command_delegate.has_method("is_pointer_command_available"):
+			delegate_available = bool(command_delegate.call("is_pointer_command_available"))
+		_assert_equals(bool(node.get("input_ray_pickable")), delegate_available,
+			"%s pointer pickability tracks its delegate's availability" % label)
 	else:
 		_assert_equals(int(node.get("collision_layer")), 0, "%s does not participate in picking by default" % label)
 		_assert_true(not bool(node.get("input_ray_pickable")), "%s is not mouse pickable by default" % label)
