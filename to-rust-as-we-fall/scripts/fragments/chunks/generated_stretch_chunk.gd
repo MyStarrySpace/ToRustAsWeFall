@@ -4683,10 +4683,16 @@ func _add_floor_slab(
 	var cb := Color(float(blends[1]), 0.0, 0.0, 1.0)
 	var cc := Color(float(blends[2]), 0.0, 0.0, 1.0)
 	var cd := Color(float(blends[3]), 0.0, 0.0, 1.0)
-	_tri_auto(st, A, C, B, ca, cc, cb)
-	_tri_auto(st, A, D, C, ca, cd, cc)  # top
-	_tri_auto(st, E, F, G, ca, cb, cc)
-	_tri_auto(st, E, G, H, ca, cc, cd)  # bottom
+	# WINDING DECIDES THE NORMAL, and _tri_auto derives the normal from the winding. These two faces
+	# were wound so the TOP of the slab pointed DOWN (measured: (0.13, -0.96, -0.24) on the first
+	# vertices), which meant every generated floor was lit from behind and rendered black — on both
+	# renderers, at any light energy, immune to fog and overlays, and still visible in silhouette only
+	# because the material disables culling. Wind the top counter-clockwise from above and the bottom
+	# the other way, so each face is lit from the side you can actually stand on.
+	_tri_auto(st, A, B, C, ca, cb, cc)
+	_tri_auto(st, A, C, D, ca, cc, cd)  # top
+	_tri_auto(st, E, G, F, ca, cc, cb)
+	_tri_auto(st, E, H, G, ca, cd, cc)  # bottom
 	_tri_auto(st, A, B, F, ca, cb, cb)
 	_tri_auto(st, A, F, E, ca, cb, ca)  # -lane side
 	_tri_auto(st, D, H, G, cd, cd, cc)
@@ -4728,6 +4734,14 @@ func _commit_floor_surface(
 	mi.mesh = mesh
 	mi.material_override = mat
 	mi.set_meta("navigation_level", navigation_level)
+	# THE GROUND IS NEVER AN OCCLUDER. Camera occlusion fades geometry between the camera and the
+	# party, and it decides what qualifies from AABB height against a minimum (the preview passes
+	# 2.0). A floor slab is 0.16 thick and should never pass that gate — but every level's floor is
+	# committed as ONE merged surface, so on a warped/spiral stretch its bounding box spans the whole
+	# descent (measured 14.88 m) and sails through. The result was the entire walkable surface faded
+	# out: generated levels rendered as black silhouettes in play, on both renderers, immune to fog,
+	# overlays and lighting because fading is none of those things.
+	mi.set_meta("camera_occlusion_exempt", true)
 	add_child(mi)
 	var body := StaticBody3D.new()
 	body.name = node_name + "Collision"
