@@ -27944,12 +27944,11 @@ func _test_generated_decision_density() -> void:
 	_assert_true(corpus >= 0.65,
 		"corpus decision density has not collapsed (%d%%, floor 65%%)"
 			% int(round(corpus * 100.0)))
-	# Ratchet, not a target: one spec is zero-decision today
-	# (generated_teaching_channels_shelter_1_to_2 — four nodes whose approaches all require nothing,
-	# over a two-archetype alternation). Whether a teaching stretch may pose no question is OPEN;
-	# this only stops a second one appearing unnoticed.
-	_assert_true(zero_decision.size() <= 1,
-		"no NEW zero-decision stretch appeared (%d: %s)"
+	# Ratchet tightened to ZERO once the breather cap landed: capping connective-tissue archetypes
+	# took the worst stretch from 0% to 50% and cleared the last zero-decision spec. Every stretch
+	# now asks the player for something somewhere.
+	_assert_true(zero_decision.is_empty(),
+		"no stretch poses zero decisions (%d: %s)"
 			% [zero_decision.size(), ", ".join(zero_decision)])
 	_assert_true(thin_vocabulary.is_empty(),
 		"every stretch exercises at least two archetypes (%s)" % ", ".join(thin_vocabulary))

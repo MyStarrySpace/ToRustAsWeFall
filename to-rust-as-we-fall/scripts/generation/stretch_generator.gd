@@ -3237,6 +3237,21 @@ static func _filter_archetypes_by_stage(catalog, ids: Array, max_stage: int) -> 
 			result.append(str(id))
 	return result
 
+## An archetype is a BREATHER when every approach it offers requires nothing — it poses no question,
+## it connects. Derived from the catalog rather than an id list so a new archetype is classified by
+## what it actually demands, not by anyone remembering to add it here.
+static func _archetype_poses_no_demand(catalog, id: String) -> bool:
+	var entry: Dictionary = catalog.get_archetype(id)
+	var approaches: Array = entry.get("approaches", [])
+	if approaches.is_empty():
+		return true
+	for approach_v in approaches:
+		if approach_v is Dictionary \
+				and not ((approach_v as Dictionary).get("requires", []) as Array).is_empty():
+			return false
+	return true
+
+
 static func _choose_archetype_chain(catalog, settings: Dictionary, budget: Dictionary, rng) -> Array:
 	var limitations: Dictionary = settings.get("limitations", {})
 	var required := _category_limitations(limitations, "required", "archetypes")
@@ -3273,13 +3288,42 @@ static func _choose_archetype_chain(catalog, settings: Dictionary, budget: Dicti
 			ids.append(value)
 	var preferred := SystemsCurriculumScript.preferred_archetype_ids(
 		catalog, available, int(settings.get("progression_stage", 1)))
-	while ids.size() < target_count and not available.is_empty():
+	# CONNECTIVE TISSUE IS BUDGETED, NOT POOLED. Three archetypes declare only approaches that
+	# require nothing — Narrative beat, Shelter-rest management, Expectation subversion. They are
+	# legitimate BREATHERS, not puzzles, but drawing them from the same pool as demanding archetypes
+	# let the fill loop stack them: they took 21% of every node generated, and one stretch came out
+	# entirely breather and posed no question anywhere in it. Cap their share so a stretch always
+	# spends most of its nodes on something that asks the player for something.
+	var breather_cap := maxi(1, int(floor(float(target_count) / 3.0)))
+	var breathers := 0
+	for existing_id in ids:
+		if _archetype_poses_no_demand(catalog, existing_id):
+			breathers += 1
+	var guard := 0
+	while ids.size() < target_count and not available.is_empty() and guard < 256:
+		guard += 1
 		var source: Array = preferred if not preferred.is_empty() else available
 		var picked := str(rng.pick(source))
+		var is_breather := _archetype_poses_no_demand(catalog, picked)
+		if is_breather and breathers >= breather_cap:
+			# Skip it for now, but only while a demanding alternative still exists — a stretch that
+			# genuinely has nothing else available must still be fillable.
+			var has_alternative := false
+			for candidate in available:
+				if not _archetype_poses_no_demand(catalog, str(candidate)):
+					has_alternative = true
+					break
+			if has_alternative:
+				preferred.erase(picked)
+				if preferred.is_empty():
+					available.erase(picked)
+				continue
 		available.erase(picked)
 		preferred.erase(picked)
 		if not ids.has(picked):
 			ids.append(picked)
+			if is_breather:
+				breathers += 1
 
 	for i in range(ids.size()):
 		var id := ids[i]

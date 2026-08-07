@@ -26,9 +26,9 @@
 			1.5
 		],
 		"node_02": [
-			29.5,
+			30.5,
 			0.449999988079071,
-			1.5
+			2.5
 		],
 		"node_03": [
 			43.5,
@@ -36,9 +36,9 @@
 			0.5
 		],
 		"node_04": [
-			57.5,
+			58.5,
 			0.449999988079071,
-			1.5
+			2.5
 		],
 		"peris": [
 			2.91999998092651,
@@ -106,68 +106,113 @@
 				"transition",
 				"party"
 			],
-			"variant": "realization"
+			"variant": "memory"
 		},
 		{
 			"all_variants": [
-				"full_rest",
-				"contested_rest",
-				"short_rest"
+				"iron_bloom",
+				"atmospheric",
+				"biofilm_mat",
+				"flooded_lane"
 			],
 			"approaches": [
 				{
-					"id": "canonical_shelter_arrival",
-					"kind": "canonical",
-					"label": "Regroup the conscious party inside a real shelter; start canonical rest only for members who need recovery",
+					"id": "insulated_lane",
+					"kind": "primary",
+					"label": "Endo's junction-repair builds a protected low-dose lane across the field",
 					"min_stage": 1.0,
-					"party": "any",
-					"requires": [],
+					"party": "specialist",
+					"requires": [
+						"barrier"
+					],
 					"risk": "safe",
 					"taught_by": "",
 					"uses": [
-						"full_rest"
+						"iron_bloom"
+					]
+				},
+				{
+					"id": "budget_or_detour",
+					"kind": "shadow",
+					"label": "Aster computes the damage budget for a fast crossing, or the pair takes the safe-slow detour and pays time instead of HP",
+					"min_stage": 1.0,
+					"party": "aster_peris",
+					"requires": [
+						"timing"
+					],
+					"risk": "risky",
+					"taught_by": "dose_budgeting",
+					"uses": [
+						"atmospheric"
 					]
 				}
 			],
 			"atp_reward": 0,
 			"chain_index": 1,
 			"compatible_node_roles": [
-				"regroup",
-				"shelter_arrival",
-				"boundary"
+				"route_pressure",
+				"danger",
+				"mixed"
 			],
 			"composition_role": "generated_fill",
 			"exploit_target": "",
-			"id": "16",
+			"id": "15",
 			"kind": "survival",
-			"name": "Shelter-rest management",
-			"pressure_cost": 0,
+			"name": "Attrition-field crossing",
+			"pressure_cost": 2,
 			"shadow_solution": {
 				"aster_peris": true,
-				"notes": "The pair uses the same real shelter and canonical rest lifecycle; Capbage does not provide a generated field-rest substitute."
+				"notes": "Aster computes the damage budget for a short crossing, or the pair takes the safe-slow detour and pays time, not HP."
 			},
-			"spatial_affordances": [],
+			"spatial_affordances": [
+				{
+					"emergent_inputs": [
+						"hazard dose rate",
+						"route length",
+						"party capacity",
+						"movement state",
+						"safe-detour topology"
+					],
+					"failure_prediction": "Entering the short lane with insufficient capacity drains the party before the far mouth.",
+					"feature_kind": "grated_platform",
+					"feature_variant": "dose_crossing",
+					"feedback": [
+						"each lane shows rate, duration, and projected total before commitment",
+						"remaining party capacity stays visible during exposure"
+					],
+					"id": "grated_dose_crossing",
+					"leverage": "Compare the projected total dose before choosing a lane.",
+					"primary_insight": "Route cost is dose rate multiplied by time, not geometric length alone.",
+					"priority": 104.0,
+					"socket_policy": "separate_short_dose_lane_from_safe_detour",
+					"variants": [
+						"iron_bloom",
+						"atmospheric",
+						"biofilm_mat",
+						"flooded_lane"
+					]
+				}
+			],
 			"stage": 1,
 			"step_count": 5,
-			"survival_kind": "rest",
+			"survival_kind": "hazard",
 			"systems_dimensions": [
 				"relation",
 				"stock",
 				"flow",
 				"delay",
 				"feedback",
-				"local_global",
 				"threshold",
 				"leverage",
 				"transfer"
 			],
 			"tags": [
-				"rest",
-				"shelter",
-				"atp",
-				"recovery"
+				"hazard",
+				"iron_bloom",
+				"attrition",
+				"crossing"
 			],
-			"variant": "short_rest"
+			"variant": "atmospheric"
 		}
 	],
 	"area_theme": {},
@@ -187,27 +232,40 @@
 		"chain": [],
 		"chain_count": 2,
 		"element_coverage": {
-			"complete": true,
+			"complete": false,
 			"contract_id": "trawf_element_coverage_v2",
 			"coverage_scope": "realized_runtime_content",
-			"covered_count": 1,
+			"covered_count": 0,
 			"elements": {
-				"cover": {
-					"covered": true,
+				"barrier": {
+					"covered": false,
 					"required_by": [
-						"16"
+						"15"
 					],
-					"supplied_by": [
-						"node_01",
-						"node_02",
-						"node_03",
-						"node_04"
-					]
+					"supplied_by": []
+				},
+				"stabilize": {
+					"covered": false,
+					"required_by": [
+						"15"
+					],
+					"supplied_by": []
+				},
+				"wash": {
+					"covered": false,
+					"required_by": [
+						"15"
+					],
+					"supplied_by": []
 				}
 			},
-			"required_count": 1,
+			"required_count": 3,
 			"shared_elements": [],
-			"uncovered": []
+			"uncovered": [
+				"barrier",
+				"stabilize",
+				"wash"
+			]
 		},
 		"has_nested": false,
 		"host_nodes": [],
@@ -237,12 +295,12 @@
 			"center": [
 				37.5,
 				2.04999995231628,
-				1.5
+				2.5
 			],
 			"max": [
 				75.5,
 				3.72000002861023,
-				4.0
+				6.0
 			],
 			"min": [
 				-0.5,
@@ -252,10 +310,10 @@
 			"size": [
 				76.0,
 				3.34000015258789,
-				5.0
+				7.0
 			]
 		},
-		"content_placement_count": 7,
+		"content_placement_count": 3,
 		"contract_id": "generated_stretch_graybox_v1",
 		"elevation_count": 1,
 		"elevation_indices": [
@@ -268,7 +326,7 @@
 		"navigation_edge_count": 5,
 		"navigation_node_count": 6,
 		"node_surface_count": 6,
-		"realized_content_navigation_count": 7,
+		"realized_content_navigation_count": 3,
 		"roompiece_catalog": "trawf_roompiece_catalog_v1",
 		"route_surface_count": 5,
 		"source": {
@@ -308,7 +366,7 @@
 				{
 					"approach_id": "take_physical_lysate",
 					"kind": "resource_pickup",
-					"node": "node_02",
+					"node": "node_03",
 					"party": "any",
 					"requires": [],
 					"risk": "safe",
@@ -329,7 +387,7 @@
 					"action": "activate",
 					"activation_policy": "interact_at_producer",
 					"affected_node_ids": [
-						"node_02"
+						"node_03"
 					],
 					"before_node": "node_02",
 					"before_nodes": [
@@ -384,7 +442,7 @@
 					"cannot_bypass_unresolved": true,
 					"consumer_cell": [
 						63,
-						5
+						8
 					],
 					"consumer_cells": [
 						[
@@ -394,6 +452,18 @@
 						[
 							63,
 							5
+						],
+						[
+							63,
+							6
+						],
+						[
+							63,
+							7
+						],
+						[
+							63,
+							8
 						]
 					],
 					"expected_phase": "bridged",
@@ -401,7 +471,7 @@
 					"kind": "mandatory_branch_interaction",
 					"producer_cell": [
 						60,
-						11
+						13
 					],
 					"produces_state": "branch_02_resolved",
 					"required_for_progress": true,
@@ -464,6 +534,17 @@
 						"runtime_handler": ""
 					},
 					{
+						"approach_id": "traverse",
+						"blocked": false,
+						"kind": "layout_traversal",
+						"node": "node_02",
+						"party": "any",
+						"requires": [],
+						"risk": "safe",
+						"role": "route_pressure",
+						"runtime_handler": ""
+					},
+					{
 						"approach_id": "take_physical_lysate",
 						"blocked": false,
 						"borrows_from": "",
@@ -472,7 +553,7 @@
 						"kind": "resource_pickup",
 						"label": "TAKE LYSATE",
 						"min_stage": 1,
-						"node": "node_02",
+						"node": "node_03",
 						"node_pressure": 0.0,
 						"party": "any",
 						"requires": [],
@@ -481,17 +562,6 @@
 						"runtime_handler": "physical_lysate_pickup_v1",
 						"stage_ahead": false,
 						"uses": []
-					},
-					{
-						"approach_id": "traverse",
-						"blocked": false,
-						"kind": "layout_traversal",
-						"node": "node_03",
-						"party": "any",
-						"requires": [],
-						"risk": "safe",
-						"role": "regroup",
-						"runtime_handler": ""
 					},
 					{
 						"approach_id": "skip_optional_interaction",
@@ -504,7 +574,7 @@
 						"party": "any",
 						"requires": [],
 						"risk": "safe",
-						"role": "regroup",
+						"role": "route_pressure",
 						"runtime_handler": "",
 						"runtime_progression_required": false,
 						"uses": []
@@ -535,7 +605,7 @@
 						"action": "activate",
 						"activation_policy": "interact_at_producer",
 						"affected_node_ids": [
-							"node_02"
+							"node_03"
 						],
 						"before_node": "node_02",
 						"before_nodes": [
@@ -590,7 +660,7 @@
 						"cannot_bypass_unresolved": true,
 						"consumer_cell": [
 							63,
-							5
+							8
 						],
 						"consumer_cells": [
 							[
@@ -600,6 +670,18 @@
 							[
 								63,
 								5
+							],
+							[
+								63,
+								6
+							],
+							[
+								63,
+								7
+							],
+							[
+								63,
+								8
 							]
 						],
 						"expected_phase": "bridged",
@@ -607,7 +689,7 @@
 						"kind": "mandatory_branch_interaction",
 						"producer_cell": [
 							60,
-							11
+							13
 						],
 						"produces_state": "branch_02_resolved",
 						"required_for_progress": true,
@@ -664,6 +746,17 @@
 						"runtime_handler": ""
 					},
 					{
+						"approach_id": "traverse",
+						"blocked": false,
+						"kind": "layout_traversal",
+						"node": "node_02",
+						"party": "any",
+						"requires": [],
+						"risk": "safe",
+						"role": "route_pressure",
+						"runtime_handler": ""
+					},
+					{
 						"approach_id": "take_physical_lysate",
 						"blocked": false,
 						"borrows_from": "",
@@ -672,7 +765,7 @@
 						"kind": "resource_pickup",
 						"label": "TAKE LYSATE",
 						"min_stage": 1,
-						"node": "node_02",
+						"node": "node_03",
 						"node_pressure": 0.0,
 						"party": "any",
 						"requires": [],
@@ -681,17 +774,6 @@
 						"runtime_handler": "physical_lysate_pickup_v1",
 						"stage_ahead": false,
 						"uses": []
-					},
-					{
-						"approach_id": "traverse",
-						"blocked": false,
-						"kind": "layout_traversal",
-						"node": "node_03",
-						"party": "any",
-						"requires": [],
-						"risk": "safe",
-						"role": "regroup",
-						"runtime_handler": ""
 					},
 					{
 						"approach_id": "skip_optional_interaction",
@@ -704,7 +786,7 @@
 						"party": "any",
 						"requires": [],
 						"risk": "safe",
-						"role": "regroup",
+						"role": "route_pressure",
 						"runtime_handler": "",
 						"runtime_progression_required": false,
 						"uses": []
@@ -735,7 +817,7 @@
 						"action": "activate",
 						"activation_policy": "interact_at_producer",
 						"affected_node_ids": [
-							"node_02"
+							"node_03"
 						],
 						"before_node": "node_02",
 						"before_nodes": [
@@ -790,7 +872,7 @@
 						"cannot_bypass_unresolved": true,
 						"consumer_cell": [
 							63,
-							5
+							8
 						],
 						"consumer_cells": [
 							[
@@ -800,6 +882,18 @@
 							[
 								63,
 								5
+							],
+							[
+								63,
+								6
+							],
+							[
+								63,
+								7
+							],
+							[
+								63,
+								8
 							]
 						],
 						"expected_phase": "bridged",
@@ -807,7 +901,7 @@
 						"kind": "mandatory_branch_interaction",
 						"producer_cell": [
 							60,
-							11
+							13
 						],
 						"produces_state": "branch_02_resolved",
 						"required_for_progress": true,
@@ -1037,22 +1131,6 @@
 				"cells": [
 					[
 						39,
-						7
-					],
-					[
-						37,
-						8
-					],
-					[
-						38,
-						8
-					],
-					[
-						39,
-						8
-					],
-					[
-						40,
 						8
 					],
 					[
@@ -1086,13 +1164,29 @@
 					[
 						40,
 						10
+					],
+					[
+						37,
+						11
+					],
+					[
+						38,
+						11
+					],
+					[
+						39,
+						11
+					],
+					[
+						40,
+						11
 					]
 				],
 				"id": "branch_01",
 				"navigation_level": 0,
 				"neck": [
 					39,
-					7
+					8
 				],
 				"normal_route_optional": true,
 				"required_for_progress": false,
@@ -1109,7 +1203,7 @@
 					"consumer_addressing": "exact_cell",
 					"consumer_cell": [
 						63,
-						5
+						8
 					],
 					"consumer_cell_role": "visual_midpoint",
 					"consumer_cells": [
@@ -1120,6 +1214,18 @@
 						[
 							63,
 							5
+						],
+						[
+							63,
+							6
+						],
+						[
+							63,
+							7
+						],
+						[
+							63,
+							8
 						]
 					],
 					"consumer_cells_addressing": "exact_cut_set",
@@ -1131,7 +1237,7 @@
 					"cut_proof": "entry_exit_disconnected_when_removed",
 					"producer_cell": [
 						60,
-						11
+						13
 					],
 					"producer_navigation_level": 0,
 					"produces_state": "branch_02_resolved",
@@ -1145,34 +1251,6 @@
 				"cells": [
 					[
 						61,
-						7
-					],
-					[
-						62,
-						7
-					],
-					[
-						60,
-						8
-					],
-					[
-						61,
-						8
-					],
-					[
-						62,
-						8
-					],
-					[
-						60,
-						9
-					],
-					[
-						61,
-						9
-					],
-					[
-						62,
 						9
 					],
 					[
@@ -1198,13 +1276,37 @@
 					[
 						62,
 						11
+					],
+					[
+						60,
+						12
+					],
+					[
+						61,
+						12
+					],
+					[
+						62,
+						12
+					],
+					[
+						60,
+						13
+					],
+					[
+						61,
+						13
+					],
+					[
+						62,
+						13
 					]
 				],
 				"id": "branch_02",
 				"navigation_level": 0,
 				"neck": [
 					61,
-					7
+					9
 				],
 				"normal_route_optional": false,
 				"required_for_progress": true,
@@ -1219,7 +1321,7 @@
 		],
 		"entry_anchor": "entry",
 		"exit_anchor": "exit_shelter",
-		"height": 12,
+		"height": 14,
 		"level_cells": [],
 		"level_count": 1,
 		"level_height": 0.72,
@@ -1337,6 +1439,10 @@
 					[
 						31,
 						5
+					],
+					[
+						31,
+						6
 					]
 				],
 				"kind": "safe"
@@ -1344,34 +1450,6 @@
 			"main_02_03": {
 				"cells": [
 					[
-						33,
-						4
-					],
-					[
-						33,
-						5
-					],
-					[
-						33,
-						6
-					],
-					[
-						34,
-						4
-					],
-					[
-						34,
-						5
-					],
-					[
-						34,
-						6
-					],
-					[
-						35,
-						4
-					],
-					[
 						35,
 						5
 					],
@@ -1380,8 +1458,8 @@
 						6
 					],
 					[
-						36,
-						4
+						35,
+						7
 					],
 					[
 						36,
@@ -1392,8 +1470,8 @@
 						6
 					],
 					[
-						37,
-						4
+						36,
+						7
 					],
 					[
 						37,
@@ -1404,8 +1482,8 @@
 						6
 					],
 					[
-						38,
-						4
+						37,
+						7
 					],
 					[
 						38,
@@ -1416,8 +1494,8 @@
 						6
 					],
 					[
-						39,
-						4
+						38,
+						7
 					],
 					[
 						39,
@@ -1428,8 +1506,8 @@
 						6
 					],
 					[
-						40,
-						4
+						39,
+						7
 					],
 					[
 						40,
@@ -1440,8 +1518,8 @@
 						6
 					],
 					[
-						41,
-						4
+						40,
+						7
 					],
 					[
 						41,
@@ -1452,8 +1530,8 @@
 						6
 					],
 					[
-						42,
-						4
+						41,
+						7
 					],
 					[
 						42,
@@ -1464,8 +1542,8 @@
 						6
 					],
 					[
-						43,
-						4
+						42,
+						7
 					],
 					[
 						43,
@@ -1476,8 +1554,8 @@
 						6
 					],
 					[
-						44,
-						4
+						43,
+						7
 					],
 					[
 						44,
@@ -1485,6 +1563,18 @@
 					],
 					[
 						44,
+						6
+					],
+					[
+						44,
+						7
+					],
+					[
+						45,
+						6
+					],
+					[
+						46,
 						6
 					],
 					[
@@ -1504,24 +1594,28 @@
 						3
 					],
 					[
-						45,
-						4
-					],
-					[
 						46,
 						3
 					],
 					[
+						44,
+						4
+					],
+					[
+						45,
+						4
+					],
+					[
 						46,
 						4
 					],
 					[
 						45,
-						6
+						7
 					],
 					[
 						46,
-						6
+						7
 					]
 				],
 				"kind": "safe"
@@ -1682,19 +1776,19 @@
 					],
 					[
 						59,
-						3
+						5
 					],
 					[
 						60,
-						3
+						5
 					],
 					[
 						59,
-						5
+						3
 					],
 					[
 						60,
-						5
+						3
 					],
 					[
 						58,
@@ -1707,6 +1801,18 @@
 					[
 						60,
 						6
+					],
+					[
+						58,
+						7
+					],
+					[
+						59,
+						7
+					],
+					[
+						60,
+						7
 					]
 				],
 				"kind": "safe"
@@ -1714,100 +1820,92 @@
 			"main_04_05": {
 				"cells": [
 					[
-						61,
-						4
-					],
-					[
-						61,
-						5
-					],
-					[
-						62,
-						4
-					],
-					[
-						62,
-						5
-					],
-					[
-						63,
-						4
-					],
-					[
 						63,
 						5
 					],
 					[
-						64,
-						4
+						63,
+						6
 					],
 					[
 						64,
 						5
 					],
 					[
-						65,
-						4
+						64,
+						6
 					],
 					[
 						65,
 						5
 					],
 					[
-						66,
-						4
+						65,
+						6
 					],
 					[
 						66,
 						5
 					],
 					[
-						67,
-						4
+						66,
+						6
 					],
 					[
 						67,
 						5
 					],
 					[
-						68,
-						4
+						67,
+						6
 					],
 					[
 						68,
 						5
 					],
 					[
-						69,
-						4
+						68,
+						6
 					],
 					[
 						69,
 						5
 					],
 					[
-						70,
-						4
+						69,
+						6
 					],
 					[
 						70,
 						5
 					],
 					[
-						71,
-						4
+						70,
+						6
 					],
 					[
 						71,
 						5
 					],
 					[
-						72,
-						4
+						71,
+						6
 					],
 					[
 						72,
 						5
+					],
+					[
+						72,
+						6
+					],
+					[
+						73,
+						6
+					],
+					[
+						72,
+						4
 					],
 					[
 						73,
@@ -1925,6 +2023,10 @@
 				4
 			],
 			[
+				32,
+				4
+			],
+			[
 				33,
 				4
 			],
@@ -1934,38 +2036,6 @@
 			],
 			[
 				35,
-				4
-			],
-			[
-				36,
-				4
-			],
-			[
-				37,
-				4
-			],
-			[
-				38,
-				4
-			],
-			[
-				39,
-				4
-			],
-			[
-				40,
-				4
-			],
-			[
-				41,
-				4
-			],
-			[
-				42,
-				4
-			],
-			[
-				43,
 				4
 			],
 			[
@@ -2046,38 +2116,6 @@
 			],
 			[
 				63,
-				4
-			],
-			[
-				64,
-				4
-			],
-			[
-				65,
-				4
-			],
-			[
-				66,
-				4
-			],
-			[
-				67,
-				4
-			],
-			[
-				68,
-				4
-			],
-			[
-				69,
-				4
-			],
-			[
-				70,
-				4
-			],
-			[
-				71,
 				4
 			],
 			[
@@ -2505,6 +2543,50 @@
 				6
 			],
 			[
+				62,
+				6
+			],
+			[
+				63,
+				6
+			],
+			[
+				64,
+				6
+			],
+			[
+				65,
+				6
+			],
+			[
+				66,
+				6
+			],
+			[
+				67,
+				6
+			],
+			[
+				68,
+				6
+			],
+			[
+				69,
+				6
+			],
+			[
+				70,
+				6
+			],
+			[
+				71,
+				6
+			],
+			[
+				72,
+				6
+			],
+			[
 				73,
 				6
 			],
@@ -2533,7 +2615,79 @@
 				7
 			],
 			[
+				31,
+				7
+			],
+			[
+				32,
+				7
+			],
+			[
+				33,
+				7
+			],
+			[
+				34,
+				7
+			],
+			[
+				35,
+				7
+			],
+			[
+				36,
+				7
+			],
+			[
+				37,
+				7
+			],
+			[
+				38,
+				7
+			],
+			[
 				39,
+				7
+			],
+			[
+				40,
+				7
+			],
+			[
+				41,
+				7
+			],
+			[
+				42,
+				7
+			],
+			[
+				43,
+				7
+			],
+			[
+				44,
+				7
+			],
+			[
+				45,
+				7
+			],
+			[
+				46,
+				7
+			],
+			[
+				58,
+				7
+			],
+			[
+				59,
+				7
+			],
+			[
+				60,
 				7
 			],
 			[
@@ -2545,6 +2699,10 @@
 				7
 			],
 			[
+				63,
+				7
+			],
+			[
 				15,
 				8
 			],
@@ -2561,11 +2719,23 @@
 				8
 			],
 			[
-				37,
+				31,
 				8
 			],
 			[
-				38,
+				32,
+				8
+			],
+			[
+				33,
+				8
+			],
+			[
+				34,
+				8
+			],
+			[
+				35,
 				8
 			],
 			[
@@ -2573,7 +2743,7 @@
 				8
 			],
 			[
-				40,
+				59,
 				8
 			],
 			[
@@ -2586,6 +2756,10 @@
 			],
 			[
 				62,
+				8
+			],
+			[
+				63,
 				8
 			],
 			[
@@ -2621,15 +2795,7 @@
 				9
 			],
 			[
-				60,
-				9
-			],
-			[
 				61,
-				9
-			],
-			[
-				62,
 				9
 			],
 			[
@@ -2693,6 +2859,22 @@
 				11
 			],
 			[
+				37,
+				11
+			],
+			[
+				38,
+				11
+			],
+			[
+				39,
+				11
+			],
+			[
+				40,
+				11
+			],
+			[
 				60,
 				11
 			],
@@ -2703,6 +2885,30 @@
 			[
 				62,
 				11
+			],
+			[
+				60,
+				12
+			],
+			[
+				61,
+				12
+			],
+			[
+				62,
+				12
+			],
+			[
+				60,
+				13
+			],
+			[
+				61,
+				13
+			],
+			[
+				62,
+				13
 			]
 		],
 		"width": 80
@@ -2955,34 +3161,50 @@
 			"walk_transition": ""
 		},
 		{
-			"action_verb": "TAKE LYSATE",
 			"ambient_flora": [
 				"capbage",
-				"capbage"
+				"seefern"
 			],
 			"approach_position": [
-				29.5,
+				29.3999996185303,
 				0.449999988079071,
-				2.5
+				4.19999980926514
 			],
 			"approaches": [
 				{
-					"id": "canonical_shelter_arrival",
-					"kind": "canonical",
-					"label": "Regroup the conscious party inside a real shelter; start canonical rest only for members who need recovery",
+					"id": "insulated_lane",
+					"kind": "primary",
+					"label": "Endo's junction-repair builds a protected low-dose lane across the field",
 					"min_stage": 1.0,
-					"party": "any",
-					"requires": [],
+					"party": "specialist",
+					"requires": [
+						"barrier"
+					],
 					"risk": "safe",
 					"taught_by": "",
 					"uses": [
-						"full_rest"
+						"iron_bloom"
+					]
+				},
+				{
+					"id": "budget_or_detour",
+					"kind": "shadow",
+					"label": "Aster computes the damage budget for a fast crossing, or the pair takes the safe-slow detour and pays time instead of HP",
+					"min_stage": 1.0,
+					"party": "aster_peris",
+					"requires": [
+						"timing"
+					],
+					"risk": "risky",
+					"taught_by": "dose_budgeting",
+					"uses": [
+						"atmospheric"
 					]
 				}
 			],
-			"archetype_id": "16",
-			"archetype_name": "Shelter-rest management",
-			"atp_reward": 2,
+			"archetype_id": "15",
+			"archetype_name": "Attrition-field crossing",
+			"atp_reward": 0,
 			"branch_role": "",
 			"carry_payload": false,
 			"chain_cycle": 0,
@@ -2993,306 +3215,91 @@
 			"chain_output": "",
 			"chain_output_ref": "",
 			"composition_role": "generated_fill",
-			"content_placements": [
-				{
-					"category": "flora",
-					"id": "capbage",
-					"label": "capbage",
-					"local_offset": [
-						-1.0,
-						0.699999988079071,
-						-1.0
-					],
-					"navigation": {
-						"arrival_policy": "primary_then_nearest",
-						"binding_id": "capbage_concealment_v1",
-						"component_id": "entry_component:0:5:4",
-						"content_vertex": {
-							"cell": [
-								31,
-								4
-							],
-							"level": 0
-						},
-						"contract_id": "generated_content_navigation_v1",
-						"kind": "interactable",
-						"radius": 0.45,
-						"reachable_region": [
-							{
-								"cell": [
-									31,
-									4
-								],
-								"level": 0
-							}
-						]
-					},
-					"position": [
-						28.5,
-						1.14999997615814,
-						0.5
-					],
-					"role": "cover",
-					"rotation_y_degrees": 11.0,
-					"shape": "plant_cluster",
-					"size": [
-						1.20000004768372,
-						1.39999997615814,
-						1.20000004768372
-					],
-					"socket_id": "",
-					"support": "implemented"
-				},
-				{
-					"category": "flora",
-					"id": "scarpet",
-					"label": "scarpet",
-					"local_offset": [
-						-1.0,
-						0.0799999833106995,
-						0.0
-					],
-					"navigation": {
-						"binding_id": "scarpet_concealment_v1",
-						"component_id": "entry_component:0:5:4",
-						"content_vertex": {
-							"cell": [
-								31,
-								5
-							],
-							"level": 0
-						},
-						"contract_id": "generated_content_navigation_v1",
-						"kind": "occupiable",
-						"radius": 1.65,
-						"reachable_region": [
-							{
-								"cell": [
-									31,
-									5
-								],
-								"level": 0
-							},
-							{
-								"cell": [
-									31,
-									4
-								],
-								"level": 0
-							},
-							{
-								"cell": [
-									30,
-									5
-								],
-								"level": 0
-							},
-							{
-								"cell": [
-									32,
-									5
-								],
-								"level": 0
-							},
-							{
-								"cell": [
-									31,
-									6
-								],
-								"level": 0
-							},
-							{
-								"cell": [
-									32,
-									6
-								],
-								"level": 0
-							}
-						]
-					},
-					"position": [
-						28.5,
-						0.529999971389771,
-						1.5
-					],
-					"role": "cover",
-					"rotation_y_degrees": 48.0,
-					"shape": "mat",
-					"size": [
-						2.20000004768372,
-						0.159999996423721,
-						1.70000004768372
-					],
-					"socket_id": "",
-					"support": "implemented"
-				}
-			],
+			"content_placements": [],
 			"elevation_index": 0,
 			"elevation_meters": -0.0000000119209289661804,
-			"enemies": [],
-			"evidence_hint": "the cache clears, one portrait shows held lysate, and ATP changes only after that carrier endocytoses",
+			"enemies": [
+				"crusts"
+			],
 			"exploit_target": "",
 			"floor_size": [
-				3.0,
+				5.0,
 				0.140000000596046,
-				3.0
+				5.0
 			],
 			"flora": [
-				"capbage",
-				"scarpet"
+				"resolution_roots"
 			],
 			"footprint": [
-				3.0,
+				5.0,
 				0.140000000596046,
-				3.0
+				5.0
 			],
 			"id": "node_02",
-			"interaction_approach": {
-				"acceptance_radius": 1.95,
-				"approach_vertex": {
-					"cell": [
-						32,
-						6
-					],
-					"level": 0
-				},
-				"component_anchor": {
-					"cell": [
-						5,
-						4
-					],
-					"level": 0
-				},
-				"component_id": "entry_component:0:5:4",
-				"contract_id": "generated_interaction_approach_v1",
-				"handler_id": "physical_lysate_pickup_v1",
-				"interaction_radius": 1.8,
-				"region_vertices": [
-					{
-						"cell": [
-							32,
-							6
-						],
-						"level": 0
-					},
-					{
-						"cell": [
-							32,
-							5
-						],
-						"level": 0
-					},
-					{
-						"cell": [
-							31,
-							6
-						],
-						"level": 0
-					},
-					{
-						"cell": [
-							33,
-							6
-						],
-						"level": 0
-					},
-					{
-						"cell": [
-							31,
-							5
-						],
-						"level": 0
-					},
-					{
-						"cell": [
-							33,
-							5
-						],
-						"level": 0
-					}
-				],
-				"required_from_node_id": "entry",
-				"required_from_vertex": {
-					"cell": [
-						5,
-						4
-					],
-					"level": 0
-				}
-			},
-			"label": "Shelter-rest management · Full Rest",
+			"label": "Attrition-field crossing · Iron Bloom",
 			"layout_step": {},
 			"link_ref": "",
 			"nested_archetypes": [],
 			"nested_depth": 0,
 			"optional": false,
-			"playable_section": {
-				"action": "TAKE LYSATE",
-				"after_state": "one physical lysate occupies one carrier hand until endocytosed",
-				"before_state": "the cache directly refills ATP for the whole party",
-				"boundary": "the local room-piece, its route mouths, and the named cause/effect actors",
-				"completed_preview": "One carrier now holds the lysate; ATP is unchanged until endocytosis",
-				"effect_category": "party",
-				"effect_role": "carrier hand",
-				"failure_prediction": "If the relation is wrong, the named effect target will not enter the predicted state.",
-				"interacting_systems": [
-					"finite lysate cache",
-					"carrier hand",
-					"party position",
-					"route topology"
-				],
-				"observable_evidence": "cache marker clears, the carrier portrait gains lysate, and ATP stays unchanged",
-				"predicted_effect": "Moves one physical lysate into a carrier's hand; ATP changes only after endocytosis",
-				"relationship_label": "CACHE FILLS HAND",
-				"runtime_handler": "physical_lysate_pickup_v1",
-				"schema": "trawf_playable_section_v1",
-				"source_category": "structures",
-				"source_role": "finite lysate cache"
-			},
 			"position": [
-				29.5,
+				30.5,
 				0.449999988079071,
-				1.5
+				2.5
 			],
-			"prediction_hint": "claiming the cache occupies exactly one hand without changing ATP",
-			"pressure": 0,
-			"pressure_cost": 0,
-			"resource": true,
-			"resource_beat": true,
-			"resource_item_type": "lysate",
-			"resource_kind": "food",
-			"reward_atp": 2,
-			"reward_kind": "food",
-			"role": "regroup",
-			"runtime_handler": "physical_lysate_pickup_v1",
-			"runtime_progression_required": true,
-			"runtime_support": "implemented",
+			"pressure": 1,
+			"pressure_cost": 2,
+			"resource": false,
+			"resource_beat": false,
+			"resource_item_type": "generated_tool",
+			"resource_kind": "",
+			"reward_atp": 0,
+			"reward_kind": "",
+			"role": "route_pressure",
+			"runtime_handler": "",
+			"runtime_progression_required": false,
+			"runtime_support": "layout_only",
 			"shadow_solution": {
 				"aster_peris": true,
-				"notes": "The pair uses the same real shelter and canonical rest lifecycle; Capbage does not provide a generated field-rest substitute."
+				"notes": "Aster computes the damage budget for a short crossing, or the pair takes the safe-slow detour and pays time, not HP."
 			},
-			"spatial_affordances": [],
+			"spatial_affordances": [
+				{
+					"emergent_inputs": [
+						"hazard dose rate",
+						"route length",
+						"party capacity",
+						"movement state",
+						"safe-detour topology"
+					],
+					"failure_prediction": "Entering the short lane with insufficient capacity drains the party before the far mouth.",
+					"feature_kind": "grated_platform",
+					"feature_variant": "dose_crossing",
+					"feedback": [
+						"each lane shows rate, duration, and projected total before commitment",
+						"remaining party capacity stays visible during exposure"
+					],
+					"id": "grated_dose_crossing",
+					"leverage": "Compare the projected total dose before choosing a lane.",
+					"primary_insight": "Route cost is dose rate multiplied by time, not geometric length alone.",
+					"priority": 104.0,
+					"socket_policy": "separate_short_dose_lane_from_safe_detour",
+					"variants": [
+						"iron_bloom",
+						"atmospheric",
+						"biofilm_mat",
+						"flooded_lane"
+					]
+				}
+			],
 			"stage": 1,
 			"structures": [
-				"hide_slot"
+				"water_control"
 			],
 			"surface_y": 0.449999988079071,
-			"survival_kind": "rest",
-			"systems_beat": {
-				"beat": "apply",
-				"cause": "the party clears the cache window and a character with a free hand takes the lysate",
-				"changed_condition": "full rest",
-				"critical": true,
-				"effect": "the cache empties and that hand becomes occupied while ATP remains unchanged",
-				"evidence": "the cache clears, one portrait shows held lysate, and ATP changes only after that carrier endocytoses",
-				"intervention": "compare cache yield, exposure, and hand commitments before taking it",
-				"likely_misconception": "touching a cache immediately or party-wide restores ATP",
-				"model_id": "runtime_physical_lysate_pickup_v1",
-				"prediction": "claiming the cache occupies exactly one hand without changing ATP",
-				"verb": "forage"
-			},
-			"title": "Shelter-rest management · Full Rest",
-			"variant": "full_rest",
+			"survival_kind": "hazard",
+			"title": "Attrition-field crossing · Iron Bloom",
+			"variant": "iron_bloom",
 			"walk_element": "",
 			"walk_index": -1,
 			"walk_ref": "",
@@ -3300,14 +3307,15 @@
 			"walk_transition": ""
 		},
 		{
+			"action_verb": "TAKE LYSATE",
 			"ambient_flora": [
 				"seefern",
-				"seefern"
+				"capbage"
 			],
 			"approach_position": [
 				43.5,
 				0.449999988079071,
-				0.840000033378601
+				0.5
 			],
 			"approaches": [
 				{
@@ -3324,7 +3332,7 @@
 			],
 			"archetype_id": "11",
 			"archetype_name": "Narrative beat",
-			"atp_reward": 0,
+			"atp_reward": 2,
 			"branch_role": "",
 			"carry_payload": false,
 			"chain_cycle": 1,
@@ -3444,6 +3452,7 @@
 			"elevation_index": 0,
 			"elevation_meters": -0.0000000119209289661804,
 			"enemies": [],
+			"evidence_hint": "the cache clears, one portrait shows held lysate, and ATP changes only after that carrier endocytoses",
 			"exploit_target": "",
 			"floor_size": [
 				3.0,
@@ -3459,29 +3468,147 @@
 				1.0
 			],
 			"id": "node_03",
+			"interaction_approach": {
+				"acceptance_radius": 1.95,
+				"approach_vertex": {
+					"cell": [
+						46,
+						4
+					],
+					"level": 0
+				},
+				"component_anchor": {
+					"cell": [
+						5,
+						4
+					],
+					"level": 0
+				},
+				"component_id": "entry_component:0:5:4",
+				"contract_id": "generated_interaction_approach_v1",
+				"handler_id": "physical_lysate_pickup_v1",
+				"interaction_radius": 1.8,
+				"region_vertices": [
+					{
+						"cell": [
+							46,
+							4
+						],
+						"level": 0
+					},
+					{
+						"cell": [
+							46,
+							3
+						],
+						"level": 0
+					},
+					{
+						"cell": [
+							45,
+							4
+						],
+						"level": 0
+					},
+					{
+						"cell": [
+							47,
+							4
+						],
+						"level": 0
+					},
+					{
+						"cell": [
+							46,
+							5
+						],
+						"level": 0
+					},
+					{
+						"cell": [
+							45,
+							3
+						],
+						"level": 0
+					},
+					{
+						"cell": [
+							47,
+							3
+						],
+						"level": 0
+					},
+					{
+						"cell": [
+							45,
+							5
+						],
+						"level": 0
+					},
+					{
+						"cell": [
+							47,
+							5
+						],
+						"level": 0
+					}
+				],
+				"required_from_node_id": "entry",
+				"required_from_vertex": {
+					"cell": [
+						5,
+						4
+					],
+					"level": 0
+				}
+			},
 			"label": "Narrative beat · Recognition",
 			"layout_step": {},
 			"link_ref": "",
 			"nested_archetypes": [],
 			"nested_depth": 0,
 			"optional": false,
+			"playable_section": {
+				"action": "TAKE LYSATE",
+				"after_state": "one physical lysate occupies one carrier hand until endocytosed",
+				"before_state": "the cache directly refills ATP for the whole party",
+				"boundary": "the local room-piece, its route mouths, and the named cause/effect actors",
+				"completed_preview": "One carrier now holds the lysate; ATP is unchanged until endocytosis",
+				"effect_category": "party",
+				"effect_role": "carrier hand",
+				"failure_prediction": "If the relation is wrong, the named effect target will not enter the predicted state.",
+				"interacting_systems": [
+					"finite lysate cache",
+					"carrier hand",
+					"party position",
+					"route topology"
+				],
+				"observable_evidence": "cache marker clears, the carrier portrait gains lysate, and ATP stays unchanged",
+				"predicted_effect": "Moves one physical lysate into a carrier's hand; ATP changes only after endocytosis",
+				"relationship_label": "CACHE FILLS HAND",
+				"runtime_handler": "physical_lysate_pickup_v1",
+				"schema": "trawf_playable_section_v1",
+				"source_category": "structures",
+				"source_role": "finite lysate cache"
+			},
 			"position": [
 				43.5,
 				0.449999988079071,
 				0.5
 			],
+			"prediction_hint": "claiming the cache occupies exactly one hand without changing ATP",
 			"pressure": 0,
 			"pressure_cost": 0,
-			"resource": false,
-			"resource_beat": false,
-			"resource_item_type": "generated_tool",
-			"resource_kind": "",
-			"reward_atp": 0,
-			"reward_kind": "",
+			"resource": true,
+			"resource_beat": true,
+			"resource_item_type": "lysate",
+			"resource_kind": "food",
+			"reward_atp": 2,
+			"reward_kind": "food",
 			"role": "regroup",
-			"runtime_handler": "",
-			"runtime_progression_required": false,
-			"runtime_support": "layout_only",
+			"runtime_handler": "physical_lysate_pickup_v1",
+			"runtime_progression_required": true,
+			"runtime_support": "implemented",
 			"shadow_solution": {
 				"aster_peris": true,
 				"notes": "Narrative beat adapts to available party but should preserve state transition."
@@ -3493,6 +3620,19 @@
 			],
 			"surface_y": 0.449999988079071,
 			"survival_kind": "",
+			"systems_beat": {
+				"beat": "apply",
+				"cause": "the party clears the cache window and a character with a free hand takes the lysate",
+				"changed_condition": "recognition",
+				"critical": true,
+				"effect": "the cache empties and that hand becomes occupied while ATP remains unchanged",
+				"evidence": "the cache clears, one portrait shows held lysate, and ATP changes only after that carrier endocytoses",
+				"intervention": "compare cache yield, exposure, and hand commitments before taking it",
+				"likely_misconception": "touching a cache immediately or party-wide restores ATP",
+				"model_id": "runtime_physical_lysate_pickup_v1",
+				"prediction": "claiming the cache occupies exactly one hand without changing ATP",
+				"verb": "forage"
+			},
 			"title": "Narrative beat · Recognition",
 			"variant": "recognition",
 			"walk_element": "",
@@ -3510,25 +3650,42 @@
 			"approach_position": [
 				57.5,
 				0.449999988079071,
-				2.5
+				4.5
 			],
 			"approaches": [
 				{
-					"id": "canonical_shelter_arrival",
-					"kind": "canonical",
-					"label": "Regroup the conscious party inside a real shelter; start canonical rest only for members who need recovery",
+					"id": "insulated_lane",
+					"kind": "primary",
+					"label": "Endo's junction-repair builds a protected low-dose lane across the field",
 					"min_stage": 1.0,
-					"party": "any",
-					"requires": [],
+					"party": "specialist",
+					"requires": [
+						"barrier"
+					],
 					"risk": "safe",
 					"taught_by": "",
 					"uses": [
-						"full_rest"
+						"iron_bloom"
+					]
+				},
+				{
+					"id": "budget_or_detour",
+					"kind": "shadow",
+					"label": "Aster computes the damage budget for a fast crossing, or the pair takes the safe-slow detour and pays time instead of HP",
+					"min_stage": 1.0,
+					"party": "aster_peris",
+					"requires": [
+						"timing"
+					],
+					"risk": "risky",
+					"taught_by": "dose_budgeting",
+					"uses": [
+						"atmospheric"
 					]
 				}
 			],
-			"archetype_id": "16",
-			"archetype_name": "Shelter-rest management",
+			"archetype_id": "15",
+			"archetype_name": "Attrition-field crossing",
 			"atp_reward": 0,
 			"branch_role": "",
 			"carry_payload": false,
@@ -3540,179 +3697,26 @@
 			"chain_output": "",
 			"chain_output_ref": "",
 			"composition_role": "generated_fill",
-			"content_placements": [
-				{
-					"category": "flora",
-					"id": "capbage",
-					"label": "capbage",
-					"local_offset": [
-						-1.0,
-						0.699999988079071,
-						-1.0
-					],
-					"navigation": {
-						"arrival_policy": "primary_then_nearest",
-						"binding_id": "capbage_concealment_v1",
-						"component_id": "entry_component:0:5:4",
-						"content_vertex": {
-							"cell": [
-								59,
-								4
-							],
-							"level": 0
-						},
-						"contract_id": "generated_content_navigation_v1",
-						"kind": "interactable",
-						"radius": 0.45,
-						"reachable_region": [
-							{
-								"cell": [
-									59,
-									4
-								],
-								"level": 0
-							}
-						]
-					},
-					"position": [
-						56.5,
-						1.14999997615814,
-						0.5
-					],
-					"role": "cover",
-					"rotation_y_degrees": 11.0,
-					"shape": "plant_cluster",
-					"size": [
-						1.20000004768372,
-						1.39999997615814,
-						1.20000004768372
-					],
-					"socket_id": "",
-					"support": "implemented"
-				},
-				{
-					"category": "flora",
-					"id": "scarpet",
-					"label": "scarpet",
-					"local_offset": [
-						-1.0,
-						0.0799999833106995,
-						0.0
-					],
-					"navigation": {
-						"binding_id": "scarpet_concealment_v1",
-						"component_id": "entry_component:0:5:4",
-						"content_vertex": {
-							"cell": [
-								59,
-								5
-							],
-							"level": 0
-						},
-						"contract_id": "generated_content_navigation_v1",
-						"kind": "occupiable",
-						"radius": 1.65,
-						"reachable_region": [
-							{
-								"cell": [
-									59,
-									5
-								],
-								"level": 0
-							},
-							{
-								"cell": [
-									59,
-									4
-								],
-								"level": 0
-							},
-							{
-								"cell": [
-									58,
-									5
-								],
-								"level": 0
-							},
-							{
-								"cell": [
-									60,
-									5
-								],
-								"level": 0
-							},
-							{
-								"cell": [
-									59,
-									6
-								],
-								"level": 0
-							},
-							{
-								"cell": [
-									58,
-									4
-								],
-								"level": 0
-							},
-							{
-								"cell": [
-									60,
-									4
-								],
-								"level": 0
-							},
-							{
-								"cell": [
-									58,
-									6
-								],
-								"level": 0
-							},
-							{
-								"cell": [
-									60,
-									6
-								],
-								"level": 0
-							}
-						]
-					},
-					"position": [
-						56.5,
-						0.529999971389771,
-						1.5
-					],
-					"role": "cover",
-					"rotation_y_degrees": 48.0,
-					"shape": "mat",
-					"size": [
-						2.20000004768372,
-						0.159999996423721,
-						1.70000004768372
-					],
-					"socket_id": "",
-					"support": "implemented"
-				}
-			],
+			"content_placements": [],
 			"elevation_index": 0,
 			"elevation_meters": -0.0000000119209289661804,
-			"enemies": [],
+			"enemies": [
+				"candids"
+			],
 			"evidence_hint": "the main channel is visibly fed while the in-flight payload finishes its captured spillway route and becomes a held lysate",
 			"exploit_target": "",
 			"floor_size": [
-				3.0,
+				5.0,
 				0.140000000596046,
-				3.0
+				5.0
 			],
 			"flora": [
-				"capbage",
-				"scarpet"
+				"resolution_roots"
 			],
 			"footprint": [
-				3.0,
+				5.0,
 				0.140000000596046,
-				3.0
+				5.0
 			],
 			"id": "node_04",
 			"interaction_approach": {
@@ -3720,7 +3724,7 @@
 				"approach_vertex": {
 					"cell": [
 						60,
-						6
+						8
 					],
 					"level": 0
 				},
@@ -3739,42 +3743,35 @@
 					{
 						"cell": [
 							60,
-							6
+							8
 						],
 						"level": 0
 					},
 					{
 						"cell": [
 							60,
-							5
+							7
 						],
 						"level": 0
 					},
 					{
 						"cell": [
 							59,
-							6
+							8
 						],
 						"level": 0
 					},
 					{
 						"cell": [
 							61,
-							6
+							8
 						],
 						"level": 0
 					},
 					{
 						"cell": [
 							59,
-							5
-						],
-						"level": 0
-					},
-					{
-						"cell": [
-							61,
-							5
+							7
 						],
 						"level": 0
 					},
@@ -3784,18 +3781,25 @@
 							7
 						],
 						"level": 0
+					},
+					{
+						"cell": [
+							61,
+							9
+						],
+						"level": 0
 					}
 				],
-				"required_from_node_id": "node_02",
+				"required_from_node_id": "node_03",
 				"required_from_vertex": {
 					"cell": [
-						32,
-						6
+						46,
+						4
 					],
 					"level": 0
 				}
 			},
-			"label": "Shelter-rest management · Contested Rest",
+			"label": "Attrition-field crossing · Atmospheric",
 			"layout_step": {},
 			"link_ref": "",
 			"nested_archetypes": [],
@@ -3827,34 +3831,62 @@
 				"source_role": "route-captured spillway payload"
 			},
 			"position": [
-				57.5,
+				58.5,
 				0.449999988079071,
-				1.5
+				2.5
 			],
 			"prediction_hint": "restoring the main current during travel will not redirect the launched payload; it still reaches the spillway and occupies one hand when caught",
-			"pressure": 0,
-			"pressure_cost": 0,
+			"pressure": 1,
+			"pressure_cost": 2,
 			"resource": false,
 			"resource_beat": false,
 			"resource_item_type": "generated_tool",
 			"resource_kind": "",
 			"reward_atp": 0,
 			"reward_kind": "",
-			"role": "regroup",
+			"role": "route_pressure",
 			"runtime_handler": "authored_hydraulic_spillway_food_v1",
 			"runtime_progression_required": false,
 			"runtime_support": "implemented",
 			"shadow_solution": {
 				"aster_peris": true,
-				"notes": "The pair uses the same real shelter and canonical rest lifecycle; Capbage does not provide a generated field-rest substitute."
+				"notes": "Aster computes the damage budget for a short crossing, or the pair takes the safe-slow detour and pays time, not HP."
 			},
-			"spatial_affordances": [],
+			"spatial_affordances": [
+				{
+					"emergent_inputs": [
+						"hazard dose rate",
+						"route length",
+						"party capacity",
+						"movement state",
+						"safe-detour topology"
+					],
+					"failure_prediction": "Entering the short lane with insufficient capacity drains the party before the far mouth.",
+					"feature_kind": "grated_platform",
+					"feature_variant": "dose_crossing",
+					"feedback": [
+						"each lane shows rate, duration, and projected total before commitment",
+						"remaining party capacity stays visible during exposure"
+					],
+					"id": "grated_dose_crossing",
+					"leverage": "Compare the projected total dose before choosing a lane.",
+					"primary_insight": "Route cost is dose rate multiplied by time, not geometric length alone.",
+					"priority": 104.0,
+					"socket_policy": "separate_short_dose_lane_from_safe_detour",
+					"variants": [
+						"iron_bloom",
+						"atmospheric",
+						"biofilm_mat",
+						"flooded_lane"
+					]
+				}
+			],
 			"stage": 1,
 			"structures": [
-				"hide_slot"
+				"water_control"
 			],
 			"surface_y": 0.449999988079071,
-			"survival_kind": "rest",
+			"survival_kind": "hazard",
 			"systems_beat": {
 				"beat": "application",
 				"cause": "the optional diverter launches a payload on its selected route; restoring the valve changes future flow only",
@@ -3868,8 +3900,8 @@
 				"prediction": "restoring the main current during travel will not redirect the launched payload; it still reaches the spillway and occupies one hand when caught",
 				"verb": "route"
 			},
-			"title": "Shelter-rest management · Contested Rest",
-			"variant": "contested_rest",
+			"title": "Attrition-field crossing · Atmospheric",
+			"variant": "atmospheric",
 			"walk_element": "",
 			"walk_index": -1,
 			"walk_ref": "",
@@ -4065,11 +4097,11 @@
 						"level": 0
 					}
 				],
-				"required_from_node_id": "node_02",
+				"required_from_node_id": "node_03",
 				"required_from_vertex": {
 					"cell": [
-						32,
-						6
+						46,
+						4
 					],
 					"level": 0
 				}
@@ -4281,6 +4313,10 @@
 					[
 						28,
 						1
+					],
+					[
+						28,
+						2
 					]
 				],
 				"from": "node_01",
@@ -4294,34 +4330,6 @@
 			{
 				"cells": [
 					[
-						30,
-						0
-					],
-					[
-						30,
-						1
-					],
-					[
-						30,
-						2
-					],
-					[
-						31,
-						0
-					],
-					[
-						31,
-						1
-					],
-					[
-						31,
-						2
-					],
-					[
-						32,
-						0
-					],
-					[
 						32,
 						1
 					],
@@ -4330,8 +4338,8 @@
 						2
 					],
 					[
-						33,
-						0
+						32,
+						3
 					],
 					[
 						33,
@@ -4342,8 +4350,8 @@
 						2
 					],
 					[
-						34,
-						0
+						33,
+						3
 					],
 					[
 						34,
@@ -4354,8 +4362,8 @@
 						2
 					],
 					[
-						35,
-						0
+						34,
+						3
 					],
 					[
 						35,
@@ -4366,8 +4374,8 @@
 						2
 					],
 					[
-						36,
-						0
+						35,
+						3
 					],
 					[
 						36,
@@ -4378,8 +4386,8 @@
 						2
 					],
 					[
-						37,
-						0
+						36,
+						3
 					],
 					[
 						37,
@@ -4390,8 +4398,8 @@
 						2
 					],
 					[
-						38,
-						0
+						37,
+						3
 					],
 					[
 						38,
@@ -4402,8 +4410,8 @@
 						2
 					],
 					[
-						39,
-						0
+						38,
+						3
 					],
 					[
 						39,
@@ -4414,8 +4422,8 @@
 						2
 					],
 					[
-						40,
-						0
+						39,
+						3
 					],
 					[
 						40,
@@ -4426,8 +4434,8 @@
 						2
 					],
 					[
-						41,
-						0
+						40,
+						3
 					],
 					[
 						41,
@@ -4435,6 +4443,18 @@
 					],
 					[
 						41,
+						2
+					],
+					[
+						41,
+						3
+					],
+					[
+						42,
+						2
+					],
+					[
+						43,
 						2
 					],
 					[
@@ -4454,24 +4474,28 @@
 						-1
 					],
 					[
-						42,
-						0
-					],
-					[
 						43,
 						-1
 					],
 					[
+						41,
+						0
+					],
+					[
+						42,
+						0
+					],
+					[
 						43,
 						0
 					],
 					[
 						42,
-						2
+						3
 					],
 					[
 						43,
-						2
+						3
 					]
 				],
 				"from": "node_02",
@@ -4638,19 +4662,19 @@
 					],
 					[
 						56,
-						-1
+						1
 					],
 					[
 						57,
-						-1
+						1
 					],
 					[
 						56,
-						1
+						-1
 					],
 					[
 						57,
-						1
+						-1
 					],
 					[
 						55,
@@ -4663,6 +4687,18 @@
 					[
 						57,
 						2
+					],
+					[
+						55,
+						3
+					],
+					[
+						56,
+						3
+					],
+					[
+						57,
+						3
 					]
 				],
 				"from": "node_03",
@@ -4676,100 +4712,92 @@
 			{
 				"cells": [
 					[
-						58,
-						0
-					],
-					[
-						58,
-						1
-					],
-					[
-						59,
-						0
-					],
-					[
-						59,
-						1
-					],
-					[
-						60,
-						0
-					],
-					[
 						60,
 						1
 					],
 					[
-						61,
-						0
+						60,
+						2
 					],
 					[
 						61,
 						1
 					],
 					[
-						62,
-						0
+						61,
+						2
 					],
 					[
 						62,
 						1
 					],
 					[
-						63,
-						0
+						62,
+						2
 					],
 					[
 						63,
 						1
 					],
 					[
-						64,
-						0
+						63,
+						2
 					],
 					[
 						64,
 						1
 					],
 					[
-						65,
-						0
+						64,
+						2
 					],
 					[
 						65,
 						1
 					],
 					[
-						66,
-						0
+						65,
+						2
 					],
 					[
 						66,
 						1
 					],
 					[
-						67,
-						0
+						66,
+						2
 					],
 					[
 						67,
 						1
 					],
 					[
-						68,
-						0
+						67,
+						2
 					],
 					[
 						68,
 						1
 					],
 					[
-						69,
-						0
+						68,
+						2
 					],
 					[
 						69,
 						1
+					],
+					[
+						69,
+						2
+					],
+					[
+						70,
+						2
+					],
+					[
+						69,
+						0
 					],
 					[
 						70,
@@ -4831,14 +4859,40 @@
 					28,
 					0
 				],
-				"piece": "junction_t",
-				"rotation": 180,
+				"piece": "grated_platform",
+				"rotation": 0,
 				"size": [
-					3,
-					3
+					5,
+					5
 				],
-				"spatial_affordance": {},
-				"spatial_feature_kind": ""
+				"spatial_affordance": {
+					"emergent_inputs": [
+						"hazard dose rate",
+						"route length",
+						"party capacity",
+						"movement state",
+						"safe-detour topology"
+					],
+					"failure_prediction": "Entering the short lane with insufficient capacity drains the party before the far mouth.",
+					"feature_kind": "grated_platform",
+					"feature_variant": "dose_crossing",
+					"feedback": [
+						"each lane shows rate, duration, and projected total before commitment",
+						"remaining party capacity stays visible during exposure"
+					],
+					"id": "grated_dose_crossing",
+					"leverage": "Compare the projected total dose before choosing a lane.",
+					"primary_insight": "Route cost is dose rate multiplied by time, not geometric length alone.",
+					"priority": 104.0,
+					"socket_policy": "separate_short_dose_lane_from_safe_detour",
+					"variants": [
+						"iron_bloom",
+						"atmospheric",
+						"biofilm_mat",
+						"flooded_lane"
+					]
+				},
+				"spatial_feature_kind": "grated_platform"
 			},
 			{
 				"level": 0,
@@ -4863,14 +4917,40 @@
 					56,
 					0
 				],
-				"piece": "junction_t",
+				"piece": "grated_platform",
 				"rotation": 0,
 				"size": [
-					3,
-					3
+					5,
+					5
 				],
-				"spatial_affordance": {},
-				"spatial_feature_kind": ""
+				"spatial_affordance": {
+					"emergent_inputs": [
+						"hazard dose rate",
+						"route length",
+						"party capacity",
+						"movement state",
+						"safe-detour topology"
+					],
+					"failure_prediction": "Entering the short lane with insufficient capacity drains the party before the far mouth.",
+					"feature_kind": "grated_platform",
+					"feature_variant": "dose_crossing",
+					"feedback": [
+						"each lane shows rate, duration, and projected total before commitment",
+						"remaining party capacity stays visible during exposure"
+					],
+					"id": "grated_dose_crossing",
+					"leverage": "Compare the projected total dose before choosing a lane.",
+					"primary_insight": "Route cost is dose rate multiplied by time, not geometric length alone.",
+					"priority": 104.0,
+					"socket_policy": "separate_short_dose_lane_from_safe_detour",
+					"variants": [
+						"iron_bloom",
+						"atmospheric",
+						"biofilm_mat",
+						"flooded_lane"
+					]
+				},
+				"spatial_feature_kind": "grated_platform"
 			},
 			{
 				"level": 0,
@@ -5006,26 +5086,30 @@
 			},
 			"node_02": {
 				"connection_cell": [
-					29,
-					1
+					30,
+					2
 				],
 				"connection_points": {
 					"e": [
-						2,
-						1
+						4.0,
+						2.0
 					],
 					"n": [
-						1,
-						0
+						2.0,
+						0.0
+					],
+					"s": [
+						2.0,
+						4.0
 					],
 					"w": [
-						0,
-						1
+						0.0,
+						2.0
 					]
 				},
 				"footprint": [
-					3,
-					3
+					5,
+					5
 				],
 				"level": 0,
 				"origin_cell": [
@@ -5033,9 +5117,11 @@
 					0
 				],
 				"walkable": [
-					".#.",
-					"...",
-					"..."
+					".....",
+					".....",
+					".....",
+					".....",
+					"....."
 				]
 			},
 			"node_03": {
@@ -5068,26 +5154,30 @@
 			},
 			"node_04": {
 				"connection_cell": [
-					57,
-					1
+					58,
+					2
 				],
 				"connection_points": {
 					"e": [
+						4.0,
+						2.0
+					],
+					"n": [
 						2.0,
-						1.0
+						0.0
 					],
 					"s": [
-						1.0,
-						2.0
+						2.0,
+						4.0
 					],
 					"w": [
 						0.0,
-						1.0
+						2.0
 					]
 				},
 				"footprint": [
-					3,
-					3
+					5,
+					5
 				],
 				"level": 0,
 				"origin_cell": [
@@ -5095,9 +5185,11 @@
 					0
 				],
 				"walkable": [
-					"...",
-					"...",
-					".#."
+					".....",
+					".....",
+					".....",
+					".....",
+					"....."
 				]
 			}
 		},
@@ -5150,16 +5242,16 @@
 					1.5
 				],
 				"midpoint": [
-					22.5,
+					23.0,
 					0.449999988079071,
-					1.5
+					2.0
 				],
 				"slope": 0.0,
 				"supports_click_to_move": true,
 				"to": [
-					29.5,
+					30.5,
 					0.449999988079071,
-					1.5
+					2.5
 				],
 				"width": 1.85
 			},
@@ -5176,14 +5268,14 @@
 			"risk": "safe",
 			"surface": {
 				"from": [
-					29.5,
+					30.5,
 					0.449999988079071,
-					1.5
+					2.5
 				],
 				"midpoint": [
-					36.5,
+					37.0,
 					0.449999988079071,
-					1.0
+					1.5
 				],
 				"slope": 0.0,
 				"supports_click_to_move": true,
@@ -5212,16 +5304,16 @@
 					0.5
 				],
 				"midpoint": [
-					50.5,
+					51.0,
 					0.449999988079071,
-					1.0
+					1.5
 				],
 				"slope": 0.0,
 				"supports_click_to_move": true,
 				"to": [
-					57.5,
+					58.5,
 					0.449999988079071,
-					1.5
+					2.5
 				],
 				"width": 1.85
 			},
@@ -5238,14 +5330,14 @@
 			"risk": "safe",
 			"surface": {
 				"from": [
-					57.5,
+					58.5,
 					0.449999988079071,
-					1.5
+					2.5
 				],
 				"midpoint": [
-					65.0,
+					65.5,
 					0.449999988079071,
-					1.5
+					2.0
 				],
 				"slope": 0.0,
 				"supports_click_to_move": true,
@@ -5414,7 +5506,7 @@
 		],
 		"entry_anchor": "entry",
 		"exit_anchor": "exit_shelter",
-		"height": 10,
+		"height": 12,
 		"level_cells": [],
 		"level_count": 1,
 		"level_height": 0.72,
@@ -5532,6 +5624,10 @@
 					[
 						31,
 						5
+					],
+					[
+						31,
+						6
 					]
 				],
 				"kind": "safe"
@@ -5539,34 +5635,6 @@
 			"main_02_03": {
 				"cells": [
 					[
-						33,
-						4
-					],
-					[
-						33,
-						5
-					],
-					[
-						33,
-						6
-					],
-					[
-						34,
-						4
-					],
-					[
-						34,
-						5
-					],
-					[
-						34,
-						6
-					],
-					[
-						35,
-						4
-					],
-					[
 						35,
 						5
 					],
@@ -5575,8 +5643,8 @@
 						6
 					],
 					[
-						36,
-						4
+						35,
+						7
 					],
 					[
 						36,
@@ -5587,8 +5655,8 @@
 						6
 					],
 					[
-						37,
-						4
+						36,
+						7
 					],
 					[
 						37,
@@ -5599,8 +5667,8 @@
 						6
 					],
 					[
-						38,
-						4
+						37,
+						7
 					],
 					[
 						38,
@@ -5611,8 +5679,8 @@
 						6
 					],
 					[
-						39,
-						4
+						38,
+						7
 					],
 					[
 						39,
@@ -5623,8 +5691,8 @@
 						6
 					],
 					[
-						40,
-						4
+						39,
+						7
 					],
 					[
 						40,
@@ -5635,8 +5703,8 @@
 						6
 					],
 					[
-						41,
-						4
+						40,
+						7
 					],
 					[
 						41,
@@ -5647,8 +5715,8 @@
 						6
 					],
 					[
-						42,
-						4
+						41,
+						7
 					],
 					[
 						42,
@@ -5659,8 +5727,8 @@
 						6
 					],
 					[
-						43,
-						4
+						42,
+						7
 					],
 					[
 						43,
@@ -5671,8 +5739,8 @@
 						6
 					],
 					[
-						44,
-						4
+						43,
+						7
 					],
 					[
 						44,
@@ -5680,6 +5748,18 @@
 					],
 					[
 						44,
+						6
+					],
+					[
+						44,
+						7
+					],
+					[
+						45,
+						6
+					],
+					[
+						46,
 						6
 					],
 					[
@@ -5699,24 +5779,28 @@
 						3
 					],
 					[
-						45,
-						4
-					],
-					[
 						46,
 						3
 					],
 					[
+						44,
+						4
+					],
+					[
+						45,
+						4
+					],
+					[
 						46,
 						4
 					],
 					[
 						45,
-						6
+						7
 					],
 					[
 						46,
-						6
+						7
 					]
 				],
 				"kind": "safe"
@@ -5877,19 +5961,19 @@
 					],
 					[
 						59,
-						3
+						5
 					],
 					[
 						60,
-						3
+						5
 					],
 					[
 						59,
-						5
+						3
 					],
 					[
 						60,
-						5
+						3
 					],
 					[
 						58,
@@ -5902,6 +5986,18 @@
 					[
 						60,
 						6
+					],
+					[
+						58,
+						7
+					],
+					[
+						59,
+						7
+					],
+					[
+						60,
+						7
 					]
 				],
 				"kind": "safe"
@@ -5909,100 +6005,92 @@
 			"main_04_05": {
 				"cells": [
 					[
-						61,
-						4
-					],
-					[
-						61,
-						5
-					],
-					[
-						62,
-						4
-					],
-					[
-						62,
-						5
-					],
-					[
-						63,
-						4
-					],
-					[
 						63,
 						5
 					],
 					[
-						64,
-						4
+						63,
+						6
 					],
 					[
 						64,
 						5
 					],
 					[
-						65,
-						4
+						64,
+						6
 					],
 					[
 						65,
 						5
 					],
 					[
-						66,
-						4
+						65,
+						6
 					],
 					[
 						66,
 						5
 					],
 					[
-						67,
-						4
+						66,
+						6
 					],
 					[
 						67,
 						5
 					],
 					[
-						68,
-						4
+						67,
+						6
 					],
 					[
 						68,
 						5
 					],
 					[
-						69,
-						4
+						68,
+						6
 					],
 					[
 						69,
 						5
 					],
 					[
-						70,
-						4
+						69,
+						6
 					],
 					[
 						70,
 						5
 					],
 					[
-						71,
-						4
+						70,
+						6
 					],
 					[
 						71,
 						5
 					],
 					[
-						72,
-						4
+						71,
+						6
 					],
 					[
 						72,
 						5
+					],
+					[
+						72,
+						6
+					],
+					[
+						73,
+						6
+					],
+					[
+						72,
+						4
 					],
 					[
 						73,
@@ -6120,6 +6208,10 @@
 				4
 			],
 			[
+				32,
+				4
+			],
+			[
 				33,
 				4
 			],
@@ -6129,38 +6221,6 @@
 			],
 			[
 				35,
-				4
-			],
-			[
-				36,
-				4
-			],
-			[
-				37,
-				4
-			],
-			[
-				38,
-				4
-			],
-			[
-				39,
-				4
-			],
-			[
-				40,
-				4
-			],
-			[
-				41,
-				4
-			],
-			[
-				42,
-				4
-			],
-			[
-				43,
 				4
 			],
 			[
@@ -6241,38 +6301,6 @@
 			],
 			[
 				63,
-				4
-			],
-			[
-				64,
-				4
-			],
-			[
-				65,
-				4
-			],
-			[
-				66,
-				4
-			],
-			[
-				67,
-				4
-			],
-			[
-				68,
-				4
-			],
-			[
-				69,
-				4
-			],
-			[
-				70,
-				4
-			],
-			[
-				71,
 				4
 			],
 			[
@@ -6700,6 +6728,50 @@
 				6
 			],
 			[
+				62,
+				6
+			],
+			[
+				63,
+				6
+			],
+			[
+				64,
+				6
+			],
+			[
+				65,
+				6
+			],
+			[
+				66,
+				6
+			],
+			[
+				67,
+				6
+			],
+			[
+				68,
+				6
+			],
+			[
+				69,
+				6
+			],
+			[
+				70,
+				6
+			],
+			[
+				71,
+				6
+			],
+			[
+				72,
+				6
+			],
+			[
 				73,
 				6
 			],
@@ -6714,6 +6786,134 @@
 			[
 				76,
 				6
+			],
+			[
+				31,
+				7
+			],
+			[
+				32,
+				7
+			],
+			[
+				33,
+				7
+			],
+			[
+				34,
+				7
+			],
+			[
+				35,
+				7
+			],
+			[
+				36,
+				7
+			],
+			[
+				37,
+				7
+			],
+			[
+				38,
+				7
+			],
+			[
+				39,
+				7
+			],
+			[
+				40,
+				7
+			],
+			[
+				41,
+				7
+			],
+			[
+				42,
+				7
+			],
+			[
+				43,
+				7
+			],
+			[
+				44,
+				7
+			],
+			[
+				45,
+				7
+			],
+			[
+				46,
+				7
+			],
+			[
+				58,
+				7
+			],
+			[
+				59,
+				7
+			],
+			[
+				60,
+				7
+			],
+			[
+				61,
+				7
+			],
+			[
+				62,
+				7
+			],
+			[
+				63,
+				7
+			],
+			[
+				31,
+				8
+			],
+			[
+				32,
+				8
+			],
+			[
+				33,
+				8
+			],
+			[
+				34,
+				8
+			],
+			[
+				35,
+				8
+			],
+			[
+				59,
+				8
+			],
+			[
+				60,
+				8
+			],
+			[
+				61,
+				8
+			],
+			[
+				62,
+				8
+			],
+			[
+				63,
+				8
 			]
 		],
 		"width": 80
@@ -6721,7 +6921,7 @@
 	"success": true,
 	"systems_contract": {
 		"actionable_nodes": [
-			"node_02",
+			"node_03",
 			"node_04",
 			"exit_shelter"
 		],
@@ -6730,14 +6930,14 @@
 			{
 				"display": "hover_or_pause",
 				"effect_role": "carrier hand",
-				"from": "node_02:cause",
+				"from": "node_03:cause",
 				"kind": "intervention_effect",
-				"node": "node_02",
+				"node": "node_03",
 				"prediction": "Moves one physical lysate into a carrier's hand; ATP changes only after endocytosis",
 				"source_role": "finite lysate cache",
 				"state": "one physical lysate occupies one carrier hand until endocytosed",
 				"state_label": "CACHE FILLS HAND",
-				"to": "node_02:effect",
+				"to": "node_03:effect",
 				"visibility_policy": "party_visibility_union"
 			},
 			{
@@ -6824,11 +7024,11 @@
 		],
 		"causal_models": [
 			{
-				"archetype_id": "16",
-				"archetype_name": "Shelter-rest management",
+				"archetype_id": "11",
+				"archetype_name": "Narrative beat",
 				"cause": "the party clears the cache window and a character with a free hand takes the lysate",
 				"critical_node_ids": [
-					"node_02"
+					"node_03"
 				],
 				"delay": "pickup and endocytosis are separate decisions",
 				"dimensions": [
@@ -6851,7 +7051,7 @@
 				"likely_misconception": "touching a cache immediately or party-wide restores ATP",
 				"local_vs_party_scale": "a local cache and carrier choice changes who can fund a later shelter rest",
 				"node_ids": [
-					"node_02"
+					"node_03"
 				],
 				"polarity": "mixed",
 				"prediction": "claiming the cache occupies exactly one hand without changing ATP",
@@ -6985,7 +7185,7 @@
 		"layout_only_nodes": [
 			"entry",
 			"node_01",
-			"node_03"
+			"node_02"
 		],
 		"lesson_spine": [
 			{
@@ -7001,17 +7201,6 @@
 				"verb": "route"
 			},
 			{
-				"archetype_id": "16",
-				"beat": "apply",
-				"changed_condition": "full rest",
-				"critical": true,
-				"model_id": "runtime_physical_lysate_pickup_v1",
-				"node": "node_02",
-				"prediction_required": false,
-				"runtime_handler": "physical_lysate_pickup_v1",
-				"verb": "forage"
-			},
-			{
 				"archetype_id": "authored_hydraulic",
 				"beat": "test",
 				"changed_condition": "the same current now carries a bridge into a route gap and feeds the main exit route",
@@ -7022,6 +7211,17 @@
 				"prediction_required": true,
 				"runtime_handler": "",
 				"verb": "route"
+			},
+			{
+				"archetype_id": "11",
+				"beat": "apply",
+				"changed_condition": "recognition",
+				"critical": true,
+				"model_id": "runtime_physical_lysate_pickup_v1",
+				"node": "node_03",
+				"prediction_required": false,
+				"runtime_handler": "physical_lysate_pickup_v1",
+				"verb": "forage"
 			},
 			{
 				"archetype_id": "11",
@@ -7356,22 +7556,6 @@
 				"cells": [
 					[
 						39,
-						7
-					],
-					[
-						37,
-						8
-					],
-					[
-						38,
-						8
-					],
-					[
-						39,
-						8
-					],
-					[
-						40,
 						8
 					],
 					[
@@ -7405,12 +7589,28 @@
 					[
 						40,
 						10
+					],
+					[
+						37,
+						11
+					],
+					[
+						38,
+						11
+					],
+					[
+						39,
+						11
+					],
+					[
+						40,
+						11
 					]
 				],
 				"id": "branch_01",
 				"neck": [
 					39,
-					7
+					8
 				],
 				"required_for_progress": false,
 				"role": "optional_risk_reward"
@@ -7425,7 +7625,7 @@
 					"consumer_addressing": "exact_cell",
 					"consumer_cell": [
 						63,
-						5
+						8
 					],
 					"consumer_cell_role": "visual_midpoint",
 					"consumer_cells": [
@@ -7436,6 +7636,18 @@
 						[
 							63,
 							5
+						],
+						[
+							63,
+							6
+						],
+						[
+							63,
+							7
+						],
+						[
+							63,
+							8
 						]
 					],
 					"consumer_cells_addressing": "exact_cut_set",
@@ -7447,7 +7659,7 @@
 					"cut_proof": "entry_exit_disconnected_when_removed",
 					"producer_cell": [
 						60,
-						11
+						13
 					],
 					"producer_navigation_level": 0,
 					"produces_state": "branch_02_resolved",
@@ -7461,34 +7673,6 @@
 				"cells": [
 					[
 						61,
-						7
-					],
-					[
-						62,
-						7
-					],
-					[
-						60,
-						8
-					],
-					[
-						61,
-						8
-					],
-					[
-						62,
-						8
-					],
-					[
-						60,
-						9
-					],
-					[
-						61,
-						9
-					],
-					[
-						62,
 						9
 					],
 					[
@@ -7514,12 +7698,36 @@
 					[
 						62,
 						11
+					],
+					[
+						60,
+						12
+					],
+					[
+						61,
+						12
+					],
+					[
+						62,
+						12
+					],
+					[
+						60,
+						13
+					],
+					[
+						61,
+						13
+					],
+					[
+						62,
+						13
 					]
 				],
 				"id": "branch_02",
 				"neck": [
 					61,
-					7
+					9
 				],
 				"required_for_progress": true,
 				"role": "mandatory_producer"
@@ -7570,12 +7778,12 @@
 		"party_spawn_clearance": {
 			"errors": [],
 			"party_anchor_count": 3,
-			"realized_content_placement_count": 7,
+			"realized_content_placement_count": 3,
 			"valid": true
 		},
 		"realized_content_navigation": {
 			"errors": [],
-			"realized_content_placement_count": 7,
+			"realized_content_placement_count": 3,
 			"valid": true
 		},
 		"shadow_solvable": true,
@@ -7615,10 +7823,31 @@
 				"reason": "missing_generated_runtime_binding"
 			},
 			{
+				"category": "flora",
+				"id": "resolution_roots",
+				"message": "resolution_roots is omitted from playable generation because it has no generated runtime binding.",
+				"palette_support": "placeholder",
+				"reason": "missing_generated_runtime_binding"
+			},
+			{
+				"category": "enemies",
+				"id": "crusts",
+				"message": "crusts is omitted from playable generation because it has no generated runtime binding.",
+				"palette_support": "placeholder",
+				"reason": "missing_generated_runtime_binding"
+			},
+			{
 				"category": "structures",
-				"id": "hide_slot",
-				"message": "hide_slot is omitted from playable generation because it has no generated runtime binding.",
+				"id": "water_control",
+				"message": "water_control is omitted from playable generation because it has no generated runtime binding.",
 				"palette_support": "implemented",
+				"reason": "missing_generated_runtime_binding"
+			},
+			{
+				"category": "enemies",
+				"id": "candids",
+				"message": "candids is omitted from playable generation because it has no generated runtime binding.",
+				"palette_support": "placeholder",
 				"reason": "missing_generated_runtime_binding"
 			},
 			{
