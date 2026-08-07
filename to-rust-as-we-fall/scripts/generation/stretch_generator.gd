@@ -4269,57 +4269,76 @@ static func _build_themed_landmarks(nodes: Array, navigation_grid: Dictionary, s
 		if not (landmark_v is Dictionary):
 			continue
 		var landmark_def := landmark_v as Dictionary
-		var anchor_structures: Array = landmark_def.get("anchor_structures", [])
-		var candidates: Array = []
-		for node_v in nodes:
-			if not (node_v is Dictionary):
-				continue
-			var node := node_v as Dictionary
-			if str(node.get("role", "")) in ["entry", "boundary", "shelter", "shelter_arrival"]:
-				continue
-			var matches := 0
-			for structure_v in node.get("structures", []):
-				if anchor_structures.has(str(structure_v)):
-					matches += 1
-			if matches <= 0:
-				continue
-			var node_id := str(node.get("id", ""))
-			candidates.append({
-				"node": node,
-				"score": matches * 1000 + posmod(int(hash(
-					"theme-anchor:%d:%s:%s" % [seed, str(landmark_def.get("id", "")), node_id]
-				)), 1000),
-			})
-		candidates.sort_custom(func(a, b):
-			if int(a.get("score", 0)) != int(b.get("score", 0)):
-				return int(a.get("score", 0)) > int(b.get("score", 0))
-			return str((a.get("node", {}) as Dictionary).get("id", "")) \
-				< str((b.get("node", {}) as Dictionary).get("id", ""))
-		)
-		var clearance := float(landmark_def.get("clearance", 3.5))
-		for candidate_v in candidates:
-			var anchor_node := (candidate_v as Dictionary).get("node", {}) as Dictionary
-			var anchor_position := _array_to_vec3(anchor_node.get("position", []), Vector3.ZERO)
-			var level := int(anchor_node.get("elevation_index", 0))
-			var landmark_position := _themed_landmark_position(
-				grid, anchor_position, level, clearance, seed, str(landmark_def.get("id", "")), occupied
+		# A landmark anchors beside the district's signature structures. Some palettes can emit a
+		# stretch containing none of them, and the candidate filter below is hard -- that seed then
+		# produced no landmark at all. A landmark may therefore declare wider structures it will
+		# ACCEPT rather than prefer; they are tried only after the preferred set comes up empty, so a
+		# seed that has the signature structures still anchors exactly where it did before.
+		var anchor_passes: Array = [landmark_def.get("anchor_structures", []) as Array]
+		var fallback_anchors: Array = landmark_def.get("fallback_anchor_structures", [])
+		if not fallback_anchors.is_empty():
+			var widened: Array = (anchor_passes[0] as Array).duplicate()
+			for extra_v in fallback_anchors:
+				if not widened.has(extra_v):
+					widened.append(extra_v)
+			anchor_passes.append(widened)
+		var landmark_placed := false
+		for anchor_pass_v in anchor_passes:
+			if landmark_placed:
+				break
+			var anchor_structures: Array = anchor_pass_v
+			var candidates: Array = []
+			for node_v in nodes:
+				if not (node_v is Dictionary):
+					continue
+				var node := node_v as Dictionary
+				if str(node.get("role", "")) in ["entry", "boundary", "shelter", "shelter_arrival"]:
+					continue
+				var matches := 0
+				for structure_v in node.get("structures", []):
+					if anchor_structures.has(str(structure_v)):
+						matches += 1
+				if matches <= 0:
+					continue
+				var node_id := str(node.get("id", ""))
+				candidates.append({
+					"node": node,
+					"score": matches * 1000 + posmod(int(hash(
+						"theme-anchor:%d:%s:%s" % [seed, str(landmark_def.get("id", "")), node_id]
+					)), 1000),
+				})
+			candidates.sort_custom(func(a, b):
+				if int(a.get("score", 0)) != int(b.get("score", 0)):
+					return int(a.get("score", 0)) > int(b.get("score", 0))
+				return str((a.get("node", {}) as Dictionary).get("id", "")) \
+					< str((b.get("node", {}) as Dictionary).get("id", ""))
 			)
-			if landmark_position == Vector3.INF:
-				continue
-			var toward_anchor := anchor_position - landmark_position
-			var placed := landmark_def.duplicate(true)
-			placed.merge({
-				"contract_id": "generated_theme_landmark_v1",
-				"theme_id": str(theme.get("id", "")),
-				"source_area": str(theme.get("source_area", "")),
-				"anchor_node_id": str(anchor_node.get("id", "")),
-				"position": _vec3_to_array(landmark_position),
-				"elevation_index": level,
-				"rotation_y": atan2(toward_anchor.x, toward_anchor.z),
-			}, true)
-			result.append(placed)
-			occupied.append(landmark_position)
-			break
+			var clearance := float(landmark_def.get("clearance", 3.5))
+			for candidate_v in candidates:
+				var anchor_node := (candidate_v as Dictionary).get("node", {}) as Dictionary
+				var anchor_position := _array_to_vec3(anchor_node.get("position", []), Vector3.ZERO)
+				var level := int(anchor_node.get("elevation_index", 0))
+				var landmark_position := _themed_landmark_position(
+					grid, anchor_position, level, clearance, seed, str(landmark_def.get("id", "")), occupied
+				)
+				if landmark_position == Vector3.INF:
+					continue
+				var toward_anchor := anchor_position - landmark_position
+				var placed := landmark_def.duplicate(true)
+				placed.merge({
+					"contract_id": "generated_theme_landmark_v1",
+					"theme_id": str(theme.get("id", "")),
+					"source_area": str(theme.get("source_area", "")),
+					"anchor_node_id": str(anchor_node.get("id", "")),
+					"anchor_structures": anchor_structures,
+					"position": _vec3_to_array(landmark_position),
+					"elevation_index": level,
+					"rotation_y": atan2(toward_anchor.x, toward_anchor.z),
+				}, true)
+				result.append(placed)
+				occupied.append(landmark_position)
+				landmark_placed = true
+				break
 	return result
 
 
