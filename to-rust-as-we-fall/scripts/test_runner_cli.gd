@@ -1513,6 +1513,9 @@ func _ready() -> void:
 			"--test-generated-traversible":
 				ran_test = true
 				_test_generated_traversible()
+			"--test-generated-stretch-interactable-reach":
+				ran_test = true
+				await _test_generated_stretch_interactable_reach()
 			"--test-generated-stretch-quality":
 				ran_test = true
 				await _test_generated_stretch_quality()
@@ -2166,6 +2169,7 @@ func _run_all_tests() -> void:
 	_test_grid_from_data()
 	_test_generated_grid()
 	_test_generated_traversible()
+	await _test_generated_stretch_interactable_reach()
 	await _test_generated_stretch_quality()
 	await _test_generated_food_modes()
 	_test_grid_ascii()
@@ -8710,6 +8714,99 @@ func _test_generated_traversible() -> void:
 				var path: Array = g.find_multi_level_path(ecell, entry.elev, g.world_to_grid(np), int((n as Dictionary).get("elevation_index", 0)))
 				_assert_true(path.size() >= 1, "seed %d %s: node '%s' is reachable" % [seed, tiers[ti], str((n as Dictionary).get("id", ""))])
 	_assert_true(checked >= 20, "sampled enough generated levels (%d)" % checked)
+
+## LIVE-scene companion to Generated Traversible. That test proves the generated SPEC's cells and
+## nodes connect; this one proves the interactables the chunk actually BUILDS can be stood at. A
+## mechanism control the player is TOLD to use but can never reach is the failure this guards, and it
+## hides from both existing surfaces: the spec check passes because the spine is satisfiable, and an
+## affordance-driven playthrough passes it by because the affordance list only publishes what is
+## currently on screen. Gates are opened before the flood, so a control merely locked behind a puzzle
+## still passes; only one with no walkable route at any stage fails. Positions are UNWARPED through
+## the same seam the production walk-to uses -- on a spiral stretch a node's global_position is visual
+## space and compares as nonsense against grid cells.
+func _test_generated_stretch_interactable_reach() -> void:
+	_test_name = "Generated Stretch Interactable Reach"
+	var configs: Array = [
+		{"seed": 3, "complexity_tier": "teaching", "progression_stage": 1},
+		{"seed": 431, "complexity_tier": "standard", "progression_stage": 3},
+	]
+	var checked := 0
+	for cfg_v in configs:
+		var cfg: Dictionary = (cfg_v as Dictionary).duplicate(true)
+		var seed_id := int(cfg.get("seed", 0))
+		var inst = await _instantiate_preview_chunk_and_wait("generated_stretch", 8, cfg)
+		if inst == null:
+			_assert_true(false, "seed %d generated stretch instantiates" % seed_id)
+			continue
+		var gs = inst.get("_game_state")
+		var grid = gs.grid if gs != null else null
+		var actor := _stretch_reach_actor(gs)
+		if gs == null or grid == null or actor == "":
+			_assert_true(false, "seed %d exposes a game state, grid and party actor" % seed_id)
+			inst.queue_free()
+			await get_tree().process_frame
+			continue
+		# Open every gate, then flood: this separates "locked behind a puzzle" from "stranded".
+		var saved: Dictionary = grid.dynamic_blockers.duplicate(true)
+		for blocked_cell in saved.keys():
+			grid.remove_dynamic_blocker(blocked_cell)
+		var reached: Dictionary = _flood_grid_reachable(
+			grid, grid.world_to_grid(gs.get_position(actor)),
+			int(gs.get_character_level(actor)))
+		for blocked_cell in saved.keys():
+			grid.add_dynamic_blocker(blocked_cell, str(saved[blocked_cell]))
+		var stranded: Array = []
+		var enabled_count := 0
+		for ia_v in inst.find_children("*", "Interactable", true, false):
+			var ia := ia_v as Node3D
+			if ia == null or not bool(ia.get("interaction_enabled")):
+				continue
+			enabled_count += 1
+			var nav_v: Variant = gs.resolve_navigation_location(
+				actor, _stretch_flat_position(ia, gs))
+			var nav: Dictionary = nav_v as Dictionary if nav_v is Dictionary else {}
+			var label := str(ia.get("tutorial_label"))
+			if not nav.has("cell"):
+				stranded.append("%s: no service vertex" % label)
+				continue
+			if not reached.has([nav["cell"], int(nav.get("level", 0))]):
+				stranded.append("%s at %s" % [label, str(nav["cell"])])
+		_assert_true(enabled_count > 0,
+			"seed %d builds enabled interactables (%d)" % [seed_id, enabled_count])
+		_assert_true(stranded.is_empty(),
+			"seed %d: every enabled interactable has a reachable service vertex (stranded: %s)"
+				% [seed_id, str(stranded)])
+		checked += 1
+		inst.queue_free()
+		await get_tree().process_frame
+	_assert_true(checked >= 2, "sampled generated stretches (%d)" % checked)
+
+
+## The party actor to route from: an enemy id is namespaced with ':' and must never be the reference
+## body for a player-reachability claim.
+func _stretch_reach_actor(gs) -> String:
+	if gs == null:
+		return ""
+	if gs.characters.has("aster"):
+		return "aster"
+	for cid_v in gs.characters.keys():
+		var cid := str(cid_v)
+		if not cid.contains(":"):
+			return cid
+	return ""
+
+
+## The production walk-to seam: authored flat metadata first, then the coord map inverse.
+func _stretch_flat_position(node: Node3D, gs) -> Vector3:
+	if node.has_meta("flat_authored_position"):
+		var authored: Variant = node.get_meta("flat_authored_position")
+		if authored is Vector3:
+			return authored as Vector3
+	var cmap = gs.get("coord_map") if gs != null else null
+	if cmap != null and cmap.has_method("to_data"):
+		return cmap.to_data(node.global_position)
+	return node.global_position
+
 
 ## Flood every reachable (cell, level) from a start, mirroring GridWorld.find_multi_level_path's neighbour rule
 ## exactly (8-dir; a diagonal needs both orthogonal neighbours walkable; plus ramp/ladder links).
