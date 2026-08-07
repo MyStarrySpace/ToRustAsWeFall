@@ -301,6 +301,17 @@ preview_regenerate={
 
 3d/physics_engine="Jolt Physics"
 
+[editor]
+
+; The persona provenance harness hashes authored fragment resource BYTES so a Native run and a
+; Web run identify the same content with the same digest (ContentFingerprint,
+; authored_fragment_resource_bytes_v1). Godot's default rewrites .tres to binary .res on export,
+; which deleted the text path from the pck entirely — the Web bridge then published an empty
+; fingerprint schema and the browser persona tests failed. Keeping text resources as text is what
+; makes the two platforms comparable at all; hashing the converted bytes instead would have gone
+; green while quietly voiding the cross-platform contract.
+export/convert_text_resources_to_binary=false
+
 [rendering]
 
 textures/canvas_textures/default_texture_filter=0
