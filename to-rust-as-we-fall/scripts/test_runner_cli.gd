@@ -3537,7 +3537,7 @@ func _assert_level_editor_plan_browser(editor_instance: Node) -> void:
 			"seed": 1701,
 			"complexity_tier": "teaching",
 			"limitations": {
-				"required": {"flora": ["flure"], "structures": ["shelter"], "archetypes": ["11"]},
+				"required": {"flora": ["flure"], "structures": ["shelter"], "archetypes": ["2"]},
 			},
 			"world_slot": {
 				"slot_id": "editor_generated_test",
