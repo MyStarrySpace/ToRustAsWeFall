@@ -73,11 +73,6 @@ const BIOMES := {
 					"res://resources/models/generated-biomes/channels_pump_house/channels_pump_house_flow.obj",
 				],
 				"anchor_structures": ["water_control", "pipe", "terminal"],
-				# Channels is the one palette whose catch-all structure (hide_slot) is not flow
-				# infrastructure, so a stretch can emit none of the three above and leave the pump
-				# house with nowhere to stand. It still reads as plumbing furniture beside a hide
-				# slot or shortcut gate, so accept those when a seed offers nothing better.
-				"fallback_anchor_structures": ["shortcut_gate", "hide_slot"],
 				"clearance": 3.8,
 				"primary_read": "Flow infrastructure ties the nearby control to the route's hydraulic state.",
 				"feedback_role": "The lit trough and valve bank repeat the Channels flow language from first sight.",
