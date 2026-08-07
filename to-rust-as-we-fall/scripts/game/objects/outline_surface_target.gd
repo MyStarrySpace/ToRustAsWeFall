@@ -40,6 +40,8 @@ const INTERACTION_RESULT_MAX_SURFACE_SAMPLES := 96
 ## Saturated enough to remain visibly green after the Compatibility tonemapper;
 ## the former mint-blue mix clipped both G and B in bright generated scenes.
 const INTERACTION_SUCCESS_TINT := Color(0.08, 0.9, 0.12, 1.0)
+## How long a completed result holds its tint on the outline before the channel is released.
+const RESULT_OUTLINE_HOLD_SECONDS := 0.55
 const INTERACTION_SUCCESS_EMISSION_ENERGY := 0.0
 const INTERACTION_RESULT_HALO_CAMERA_MARGIN := 0.08
 
@@ -654,108 +656,40 @@ func _interaction_pulse_surface_screen_candidates(
 
 
 func _play_interaction_pulse(
-		tint: Color, kind: String, presentation_serial := -1
+		tint: Color, kind: String, _presentation_serial := -1
 	) -> bool:
+	# THE RESULT RIDES THE OBJECT'S OWN SILHOUETTE (director ruling, 2026-08-07: "there should be no
+	# such ring"). This used to mint a hand-built opaque annulus around the source — a fixed ring that
+	# ignores the object's shape, in a saturated green nothing else in the game speaks. The highlight
+	# law has ONE shape language: the screen-space mask Sobel IS the shape, tinted white for hover and
+	# the servicing character's colour when queued; a result is one more tint on that same channel.
+	# The annulus existed to dodge the GL Compatibility renderer the Web export uses, where
+	# transparent and torus geometry produced no readable fragments — but keeping it meant web and
+	# desktop players were taught two different feedback languages.
+	# This stays the single overridable ATTESTATION SEAM: headless fixtures replace it to stand in
+	# for an unavailable renderer, so its guards and return contract are unchanged.
 	if DisplayServer.get_name() == "headless" or not is_inside_tree():
 		return false
-	_ensure_interaction_pulse()
-	if _interaction_pulse == null or _interaction_pulse_material == null:
-		return false
-	# Adversarial render tests may temporarily suppress the shared material. Every
-	# real mint re-establishes the complete draw contract for its kind instead of
-	# inheriting a prior presentation's mutated render state. Completed results use
-	# the Compatibility-safe opaque path; queued intent retains its short
-	# translucent/emissive fade because it is not the attested result surface.
-	var completed_result := kind in ["success", "rejected"]
-	_interaction_pulse_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	_interaction_pulse_material.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED \
-		if completed_result else BaseMaterial3D.TRANSPARENCY_ALPHA
-	_interaction_pulse_material.emission_enabled = not completed_result
-	_interaction_pulse_material.no_depth_test = false
-	_interaction_pulse_material.cull_mode = BaseMaterial3D.CULL_DISABLED
+	_apply_object_outline(tint, true)
+	if not (kind in ["success", "rejected"]):
+		return true
+	# Hold the result tint for a readable beat, then hand the outline back to whoever still owns it.
+	# The timer is a tween BOUND TO THIS NODE, never a tree timer: a delayed callback that touches
+	# scene nodes must die with the scene.
 	if _interaction_pulse_tween != null and _interaction_pulse_tween.is_valid():
 		_interaction_pulse_tween.kill()
 	_interaction_pulse_generation += 1
-	var pulse_generation := _interaction_pulse_generation
-	_disconnect_result_pulse_draw()
-	_interaction_result_post_mint_epoch_complete = false
-	_interaction_result_hold_frames_left = 0
-	_interaction_result_readable_elapsed_msec = 0
-	_interaction_result_last_eligible_draw_msec = -1
-	_interaction_result_pending_tween.clear()
-	var radius := clampf(get_outline_highlight_radius(), 0.55, 3.0)
-	var extents := get_outline_highlight_extents()
-	var feedback_origin := _pointer_result_origin_override \
-		if completed_result and _pointer_result_origin_override.is_finite() \
-		else _get_feedback_origin()
-	var floor_y := feedback_origin.y - maxf(0.0, extents.y) + 0.045
-	# Authored/generated props may be embedded into a raised deck, which can
-	# completely hide a ground ring. Raising a result in world Y is not safe
-	# either: with an oblique camera it moves the cue away from its source and
-	# underneath opaque instruction UI. Keep queued feedback grounded, but place
-	# completed results just beyond the source AABB's camera-facing support plane.
-	# This preserves the source's screen centre and ordinary depth testing: the
-	# source/deck sit behind the halo while real foreground geometry still wins.
-	_interaction_pulse.global_position = Vector3(
-		feedback_origin.x, floor_y, feedback_origin.z)
-	if completed_result:
-		# The pointer collision point is already on the camera-facing visible
-		# surface. Applying the whole object's support distance a second time can
-		# slide the halo back underneath adjacent HUD. Only center-authored results
-		# need that depth offset; a click-authored result keeps its screen anchor.
-		var result_extents := Vector3.ZERO \
-			if _pointer_result_origin_override.is_finite() else extents
-		_interaction_pulse.global_position = _interaction_result_halo_position(
-			feedback_origin, result_extents)
-	# Result feedback must read as a halo around the source in the player's
-	# actual view. A horizontal ground ring can collapse to a few fragments at
-	# an oblique camera angle, and can share every remaining pixel with selection
-	# decals even when its world AABB is technically visible. Rotate only the
-	# completed result surface into the active camera plane. It remains ordinary
-	# depth-tested world geometry, so walls and other foreground objects still
-	# occlude it; queued/path feedback keeps its authored horizontal grounding.
-	_orient_interaction_pulse(kind)
-	var start_scale := 1.32
-	var end_scale := 0.92
-	var duration := 0.32
-	if kind == "success":
-		# Hold the truthful success ring outside the selected character's blue
-		# ground hex. The former 0.72 scale put both markers on the same pixels, so
-		# a successful Capbage HIDE produced only a few occluded green flecks.
-		start_scale = 1.25
-		end_scale = 2.1
-		duration = 0.46
-	elif kind == "rejected":
-		start_scale = 1.45
-		end_scale = 0.78
-		duration = 0.42
-	_interaction_pulse.scale = Vector3.ONE * radius * start_scale
-	_interaction_pulse.visible = true
-	_interaction_pulse_material.albedo_color = Color(
-		tint.r, tint.g, tint.b, 1.0 if completed_result else 0.96)
-	_interaction_pulse_material.emission = tint
-	# Compatibility rendering dropped this short-lived surface when it used the
-	# transparent/emissive path, even though the same camera projected all of its
-	# vertices. The unshaded opaque annulus carries hue through albedo only.
-	_interaction_pulse_material.emission_energy_multiplier = \
-		0.0 if completed_result else 3.8
-	if completed_result:
-		_interaction_result_hold_frames_left = INTERACTION_RESULT_MIN_PRESENTED_FRAMES
-		_interaction_result_pending_tween = {
-			"pulse_generation": pulse_generation,
-			"radius": radius,
-			"end_scale": end_scale,
-			"duration": duration,
-			"presentation_serial": presentation_serial,
-			"kind": kind,
-		}
-		_ensure_result_pulse_draw_connection()
-		_schedule_interaction_result_hard_cleanup(
-			pulse_generation, presentation_serial, kind)
-		return true
-	_start_interaction_pulse_tween(
-		pulse_generation, radius, end_scale, duration,
-		presentation_serial, kind)
+	var generation := _interaction_pulse_generation
+	_interaction_pulse_tween = create_tween()
+	_interaction_pulse_tween.tween_interval(RESULT_OUTLINE_HOLD_SECONDS)
+	_interaction_pulse_tween.tween_callback(func() -> void:
+		if generation != _interaction_pulse_generation:
+			return
+		_interaction_presentation_visible = false
+		if _selected:
+			_apply_object_outline(selected_feedback_color, true)
+		else:
+			_refresh_highlight_request())
 	return true
 
 
