@@ -209,6 +209,17 @@ func _wrap(src: Material, outline_safe_clip := false) -> ShaderMaterial:
 	# renderer-specific behavior just as important as an authored shader, so do not flatten them to defaults.
 	if not src is StandardMaterial3D:
 		return null
+	# TRIPLANAR IS ALSO SOMETHING WE CANNOT RECONSTRUCT. A world-triplanar material GENERATES its UVs
+	# from world position, which is the only reason a SurfaceTool-built surface with no authored UVs
+	# shows its tile at all — _tri_auto writes normal, colour and vertex, never set_uv. Wrapping it
+	# copies albedo_tex but not the mapping, so the shader samples one texel forever and a whole
+	# generated floor renders as a single dark value. That is what made every generated stretch look
+	# solid black in play, on BOTH renderers, immune to fog, overlays and lighting.
+	# Same policy as the two refusals above: if the wrapper cannot carry the behaviour, it declines
+	# the material rather than silently flattening it.
+	var standard := src as StandardMaterial3D
+	if standard.uv1_triplanar or standard.uv2_triplanar:
+		return null
 	var m := ShaderMaterial.new()
 	m.shader = OCCLUSION_SHADER
 	m.set_shader_parameter("outline_safe_clip", outline_safe_clip)
