@@ -69,6 +69,21 @@ samples is dark either way.
 preview clock update — so any environment override is overwritten within a frame or two. Lighting
 cannot be tested by setting it from outside; it has to be changed at the source.
 
+**FOG IS RULED OUT (windowed capture, 2026-08-07).** The open question from the original run --
+"is the whole level black, is it the fog shader?" -- is answered NO. Captured the generated stretch
+windowed at 1280x720 with fog ON, then again with `fog_of_war_enabled = false`: the large black
+polygons are pixel-unchanged. Disabling fog only adds the Aster Data overlay's cyan structure
+edges. So the level's SHAPE is legible through the overlay while the floor SURFACES stay black.
+
+Both committed fixes are visibly working -- some tiles now light (the teal/blue deck on the right
+of the frame) and the party, route markers and highlighted object all read. What remains black is
+the rest of the floor, which is exactly the multiplication stack above, still awaiting the ruling.
+
+One methodological note worth keeping: the first capture's numeric check said the floor band
+averaged (75, 66, 60) and looked fine. It was sampling UI chrome, not floor -- the briefing panel
+and CARRY/CONSUME panel occupy much of the frame. LOOKING at the image immediately contradicted the
+number. A screen-average is not a measurement of the thing you meant to measure.
+
 **The ruling needed:** how bright should a generated floor read? Reaching a legible dark floor (~25%)
 needs roughly an order of magnitude, taken from any mix of the biome's `ambient_energy_ceiling` /
 `directional_energy_ceiling`, the `floor_tint`, or a brighter tile. This is squarely a P-SHOWN
