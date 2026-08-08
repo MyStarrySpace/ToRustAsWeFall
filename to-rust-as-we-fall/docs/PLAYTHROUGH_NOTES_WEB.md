@@ -84,6 +84,32 @@ averaged (75, 66, 60) and looked fine. It was sampling UI chrome, not floor -- t
 and CARRY/CONSUME panel occupy much of the frame. LOOKING at the image immediately contradicted the
 number. A screen-average is not a measurement of the thing you meant to measure.
 
+**THE DARKNESS IS NOT GENERATED-ONLY (windowed sweep, 2026-08-07).** Captured four hand-authored
+fragments through the same preview shell, at the preview's OWN camera (play distance), sampling the
+identical level-only band and counting near-black pixels (r+g+b < 0.12):
+
+| Fragment | Band average | Near-black |
+| --- | --- | --- |
+| `endo_junction_stretch` | (45, 78, 65) | **0.0%** |
+| `rings` | (43, 29, 20) | **0.2%** |
+| `showcase_gallery` | (23, 27, 32) | 37.9% |
+| `stacks` | (6, 8, 12) | **73.3%** |
+
+`stacks` reads DARKER than the generated stretch that prompted this finding, and two fragments are
+perfectly legible. So the pending brightness ruling is not a generated-floor tuning knob — it spans
+hand-authored content too, and whatever number is chosen has to be judged per biome rather than
+once for the generator.
+
+**A separate, concrete preview issue found in the same sweep:** `stacks` boots with its camera on a
+small empty corner. Its content is 416 visible meshes spanning **184 x 19 x 47** units; the opening
+frame shows three party capsules on a bare grid, with none of the drawers, catalog desk or bays the
+briefing describes. Framing the measured AABB shows the content is all there. A player would pan and
+find it, but the fragment's first impression is an empty plane.
+
+Caveat recorded so it is not over-read: the wide framing capture sits 216 units above the level, so
+light falloff makes everything dark there. It settles CONTENT EXISTS, not brightness. Only the
+play-distance numbers above bear on brightness.
+
 **The ruling needed:** how bright should a generated floor read? Reaching a legible dark floor (~25%)
 needs roughly an order of magnitude, taken from any mix of the biome's `ambient_energy_ceiling` /
 `directional_energy_ceiling`, the `floor_tint`, or a brighter tile. This is squarely a P-SHOWN
