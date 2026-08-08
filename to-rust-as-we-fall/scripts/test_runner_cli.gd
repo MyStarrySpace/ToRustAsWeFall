@@ -402,8 +402,9 @@ class _PlayerObservationPointerFixture extends Node:
 
 	func get_player_pointer_affordance(_screen_point: Vector2) -> Dictionary:
 		# Adversarial observation fixture only: emulate a Compatibility/Web scan
-		# whose many pointer/framebuffer probes outlive a 0.42-second result pulse.
-		# The delay is one-shot so the rest of the visibility suite stays fast.
+		# whose many pointer/framebuffer probes outlive a short-lived result
+		# presentation. The delay is one-shot so the rest of the visibility suite
+		# stays fast.
 		if next_scan_delay_msec > 0:
 			var delay_msec := next_scan_delay_msec
 			next_scan_delay_msec = 0
@@ -426,7 +427,6 @@ class _PlayerObservationPointerFixture extends Node:
 
 class _PlayerObservationExpiringTargetFixture extends OutlineSurfaceTarget:
 	var presentation_deadline_msec := -1
-	var hard_cleanup_msec_override := -1
 
 	func play_interaction_result(succeeded: bool) -> void:
 		presentation_deadline_msec = -1
@@ -444,11 +444,6 @@ class _PlayerObservationExpiringTargetFixture extends OutlineSurfaceTarget:
 			presentation["result"] = ""
 			presentation["visible"] = false
 		return presentation
-
-	func _interaction_result_hard_cleanup_msec() -> int:
-		return hard_cleanup_msec_override \
-			if hard_cleanup_msec_override > 0 \
-			else super._interaction_result_hard_cleanup_msec()
 
 
 class _PlayerObservationBodyFixture extends CharacterBody3D:
@@ -8960,7 +8955,7 @@ const COMMENT_STYLE_LEDGER := {
 	"game/objects/interactable.gd": 2,
 	"game/objects/interactable_juice.gd": 2,
 	"game/objects/moving_platform_passenger_system.gd": 1,
-	"game/objects/outline_surface_target.gd": 3,
+	"game/objects/outline_surface_target.gd": 1,
 	"game/objects/party_gate_3d.gd": 1,
 	"game/world/character_state_presentation_controller.gd": 1,
 	"game/world/consequence_presentation_controller.gd": 3,
@@ -14582,23 +14577,19 @@ func _assert_generated_capbage_player_hide_roundtrip(
 						var diagnostic_viewport := diagnostic_target.get_viewport()
 						var diagnostic_camera := diagnostic_viewport.get_camera_3d() \
 							if diagnostic_viewport != null else null
-						var pulse_v: Variant = diagnostic_target.get(
-							"_interaction_pulse")
-						var pulse := pulse_v as MeshInstance3D \
-							if pulse_v is MeshInstance3D else null
-						var pulse_material_v: Variant = diagnostic_target.get(
-							"_interaction_pulse_material")
-						var pulse_material := pulse_material_v as StandardMaterial3D \
-							if pulse_material_v is StandardMaterial3D else null
-						var pulse_candidates: Array = diagnostic_target.call(
+						var result_render_nodes: Array = diagnostic_target.call(
+							"get_player_interaction_presentation_render_nodes")
+						var rendered_result_nodes := 0
+						for result_render_v in result_render_nodes:
+							if result_render_v is Node3D \
+									and (result_render_v as Node3D).is_visible_in_tree():
+								rendered_result_nodes += 1
+						var result_candidates: Array = diagnostic_target.call(
 							"get_player_interaction_presentation_screen_candidates",
 							diagnostic_camera,
 							diagnostic_viewport) \
 							if diagnostic_camera != null and diagnostic_viewport != null \
 							else []
-						var pulse_world_aabb := AABB()
-						if pulse != null and pulse.mesh != null:
-							pulse_world_aabb = pulse.global_transform * pulse.mesh.get_aabb()
 						var source_world_aabb := AABB()
 						var source_world_aabb_started := false
 						for source_render_v in diagnostic_target.call(
@@ -14617,24 +14608,21 @@ func _assert_generated_capbage_player_hide_roundtrip(
 								source_world_aabb = source_render_world_aabb
 								source_world_aabb_started = true
 						first_live_pulse_diagnostic = {
-							"draw_opportunity": bool(diagnostic_target.call(
-								"_interaction_result_has_draw_opportunity")),
+							"presentation_visible": bool(direct_presentation.get(
+								"visible", false)),
+							"presentation_result": str(direct_presentation.get(
+								"result", "")),
+							"presentation_serial": int(direct_presentation.get(
+								"presentation_serial", 0)),
+							"outline_active": bool(diagnostic_target.call(
+								"has_active_mesh_outline")),
 							"camera_current": diagnostic_camera.is_current() \
 								if diagnostic_camera != null else false,
 							"camera_cull_mask": diagnostic_camera.cull_mask \
 								if diagnostic_camera != null else 0,
-							"pulse_layers": pulse.layers if pulse != null else 0,
-							"pulse_visible_in_tree": pulse.is_visible_in_tree() \
-								if pulse != null else false,
-							"pulse_global_position": [
-								pulse.global_position.x,
-								pulse.global_position.y,
-								pulse.global_position.z,
-							] if pulse != null else [],
-							"pulse_scale": [pulse.scale.x, pulse.scale.y, pulse.scale.z] \
-								if pulse != null else [],
-							"pulse_candidate_count": pulse_candidates.size(),
-							"pulse_world_aabb": str(pulse_world_aabb),
+							"result_render_node_count": result_render_nodes.size(),
+							"result_render_nodes_in_tree": rendered_result_nodes,
+							"result_candidate_count": result_candidates.size(),
 							"source_world_aabb": str(source_world_aabb) \
 								if source_world_aabb_started else "",
 							"feedback_origin": str(diagnostic_target.call(
@@ -14643,15 +14631,6 @@ func _assert_generated_capbage_player_hide_roundtrip(
 								"get_outline_highlight_extents")),
 							"highlight_radius": float(diagnostic_target.call(
 								"get_outline_highlight_radius")),
-							"pulse_albedo": str(pulse_material.albedo_color) \
-								if pulse_material != null else "",
-							"pulse_emission": str(pulse_material.emission) \
-								if pulse_material != null else "",
-							"pulse_emission_energy": \
-								pulse_material.emission_energy_multiplier \
-								if pulse_material != null else -1.0,
-							"pulse_material_alpha": pulse_material.albedo_color.a \
-								if pulse_material != null else -1.0,
 						}
 					var tint_diagnostic_v: Variant = observer.get(
 						"_last_result_tint_diagnostic")
@@ -20462,11 +20441,6 @@ func _test_interactable_highlight() -> void:
 	box.mesh = BoxMesh.new()
 	it.add_child(box)
 	var tgt: Node = _PlayerObservationExpiringTargetFixture.new()
-	# This fixture has no active camera, so its result can retire only through the
-	# production generation-guarded hard cleanup. Keep the diagnostic bounded while
-	# still exceeding the shared 1.2-second readable floor.
-	var fixture_hard_cleanup_msec := 1800
-	tgt.set("hard_cleanup_msec_override", fixture_hard_cleanup_msec)
 	it.add_child(tgt)
 	tgt.register_highlight_mesh(box)
 	it.set_outline_target(tgt)
@@ -20592,46 +20566,37 @@ func _test_interactable_highlight() -> void:
 	else:
 		_assert_true(bool(success_presentation.get("visible", false))
 			and str(success_presentation.get("result", "")) == "success",
-			"the exact target exposes its green success result only while the pulse is rendered")
+			"the exact target exposes its green success result while it rides the outline")
 		var success_render_nodes: Array = it.call(
 			"get_player_interaction_presentation_render_nodes")
-		_assert_equals(success_render_nodes.size(), 1,
-			"the exact target exposes one independently verifiable success-pulse render node")
-		# Force inherited tree visibility false after proving the pulse was minted.
-		# This makes every subsequent global frame_post_draw ineligible even if an
-		# unrelated root camera happens to remain current from another fixture.
-		tgt.visible = false
-		_assert_true(not bool(tgt.call(
-			"_interaction_result_has_draw_opportunity")),
-			"the hard-timeout fixture explicitly has no eligible draw opportunity")
-		await get_tree().create_timer(0.6, true, false, true).timeout
-		var readable_presentation: Dictionary = it.call(
+		_assert_true(success_render_nodes.size() == 1
+				and success_render_nodes[0] == box,
+			"the success result's render node is the object's own registered highlight mesh")
+		# The result rides the object's silhouette: hiding the object's geometry
+		# empties the presentation meshes, so the receipt reports invisible at
+		# once — no pending state and no separate cleanup deadline.
+		box.visible = false
+		var hidden_result_presentation: Dictionary = it.call(
 			"get_player_interaction_presentation")
-		_assert_true(not bool(readable_presentation.get("visible", true))
-			and str(readable_presentation.get("result", "")) == "success"
-			and not (tgt.get(
-				"_interaction_result_pending_tween") as Dictionary).is_empty(),
-			("the forced-ineligible result remains pending before its hard deadline "
-			+ "instead of completing through ordinary draw dwell/scale-out"))
-		var remaining_cleanup_seconds := maxf(0.0,
-			float(fixture_hard_cleanup_msec) / 1000.0 - 0.6) + 0.2
+		_assert_true(not bool(hidden_result_presentation.get("visible", true))
+				and (it.call(
+					"get_player_interaction_presentation_render_nodes") as Array).is_empty(),
+			"hiding the target's geometry retires its visible presentation immediately")
+		box.visible = true
+		var restored_result_presentation: Dictionary = it.call(
+			"get_player_interaction_presentation")
+		_assert_true(bool(restored_result_presentation.get("visible", false)),
+			"restoring the geometry restores the still-held result on the same silhouette")
+		# The hold window is the result's only lifetime: once it elapses the tint
+		# hands the outline back and the presentation stops reporting visible.
 		await get_tree().create_timer(
-			remaining_cleanup_seconds, true, false, true).timeout
-		var cleared_presentation: Dictionary = it.call(
+			OutlineSurfaceTarget.RESULT_OUTLINE_HOLD_SECONDS + 0.25).timeout
+		var held_out_presentation: Dictionary = it.call(
 			"get_player_interaction_presentation")
-		_assert_true(not bool(cleared_presentation.get("visible", true))
-			and str(cleared_presentation.get("result", "")) == "",
-			"the process-always hard bound clears a result with no eligible camera")
-		var result_draw_callback := Callable(
-			tgt, "_on_result_pulse_frame_drawn")
-		_assert_true((it.call(
-				"get_player_interaction_presentation_render_nodes") as Array).is_empty()
-				and (tgt.get(
-					"_interaction_result_pending_tween") as Dictionary).is_empty()
-				and not RenderingServer.frame_post_draw.is_connected(
-					result_draw_callback),
-			"hard cleanup hides geometry, clears pending state, and disconnects its draw listener")
-		tgt.visible = true
+		_assert_true(not bool(held_out_presentation.get("visible", true))
+				and (it.call(
+					"get_player_interaction_presentation_render_nodes") as Array).is_empty(),
+			"the result clears through the ordinary outline hold window")
 
 	it.interaction_rejected.emit(it, "peris")
 	await get_tree().process_frame
@@ -34697,6 +34662,13 @@ func _test_player_observation_visibility() -> void:
 	var surface_host := _PlayerObservationHostFixture.new()
 	surface_host.name = "PlayerObservationSurfaceFixture"
 	get_tree().root.add_child(surface_host)
+	# Production scenes carry ONE OutlineMaskManager (tutorial_sequence creates it;
+	# OutlineSurfaceTarget resolves it through OutlineMaskManager.find_for). Mirror
+	# that here as a sibling of the targets so the result tint actually composites
+	# and the framebuffer receipts below sample real mask pixels.
+	var surface_mask_manager := OutlineMaskManager.new()
+	surface_mask_manager.name = "OutlineMaskManager"
+	surface_host.add_child(surface_mask_manager)
 	var surface_camera := Camera3D.new()
 	surface_camera.position = Vector3(0.0, 3.5, 8.0)
 	surface_host.add_child(surface_camera)
@@ -34955,31 +34927,27 @@ func _test_player_observation_visibility() -> void:
 		var source_token := str((interaction_affordances[0] as Dictionary).get(
 			"token", ""))
 		visible_target.play_interaction_result(true)
-		var production_pulse_material_v: Variant = visible_target.get(
-			"_interaction_pulse_material")
-		var production_pulse_material := production_pulse_material_v \
-			as StandardMaterial3D \
-			if production_pulse_material_v is StandardMaterial3D else null
-		var production_pulse_v: Variant = visible_target.get(
-			"_interaction_pulse")
-		var production_pulse := production_pulse_v as MeshInstance3D \
-			if production_pulse_v is MeshInstance3D else null
-		_assert_true(production_pulse != null \
-				and production_pulse.mesh is ArrayMesh \
-				and production_pulse_material != null \
-				and production_pulse_material.shading_mode \
-					== BaseMaterial3D.SHADING_MODE_UNSHADED \
-				and production_pulse_material.cull_mode \
-					== BaseMaterial3D.CULL_DISABLED \
-				and production_pulse_material.transparency \
-					== BaseMaterial3D.TRANSPARENCY_DISABLED \
-				and not production_pulse_material.emission_enabled \
-				and is_zero_approx(
-					production_pulse_material.emission_energy_multiplier) \
-				and production_pulse_material.albedo_color.a > 0.99 \
-				and not production_pulse_material.no_depth_test,
-			("the production result pulse is opaque/unshaded and explicitly "
-			+ "double-sided while retaining ordinary depth testing"))
+		var production_presentation: Dictionary = visible_target.call(
+			"get_player_interaction_presentation")
+		var production_render_nodes: Array = visible_target.call(
+			"get_player_interaction_presentation_render_nodes")
+		var production_result_candidates: Array = visible_target.call(
+			"get_player_interaction_presentation_screen_candidates",
+			surface_camera,
+			get_viewport())
+		var production_candidates_on_screen := \
+			not production_result_candidates.is_empty()
+		for production_candidate_v in production_result_candidates:
+			production_candidates_on_screen = production_candidates_on_screen \
+				and production_candidate_v is Vector2 \
+				and get_viewport().get_visible_rect().has_point(
+					production_candidate_v as Vector2)
+		_assert_true(bool(production_presentation.get("visible", false)) \
+				and production_render_nodes.size() == 1 \
+				and production_render_nodes[0] == visible_meshes[0] \
+				and production_candidates_on_screen,
+			("the production result rides the object's own registered mesh and its "
+			+ "silhouette candidates project onto the visible framebuffer"))
 		await get_tree().process_frame
 		await RenderingServer.frame_post_draw
 		var visible_result_observation := surface_observer.call("snapshot") as Dictionary
@@ -35026,9 +34994,10 @@ func _test_player_observation_visibility() -> void:
 		await RenderingServer.frame_post_draw
 
 		# A generated Capbage head is itself green and emissive. Reproduce that
-		# exact static source underneath live logical success geometry, then suppress
-		# only the transient pulse's fragments. A nearby source pixel must not attest
-		# the result; restoring the real multi-sector ring must attest it again.
+		# exact static source underneath a live logical success, then suppress the
+		# outline mask composite so the result tint reaches no fragment. A nearby
+		# green source pixel must not attest the result; restoring the composite
+		# and reminting must attest it again.
 		var visible_result_mesh := visible_meshes[0] as MeshInstance3D
 		var original_result_mesh_material := visible_result_mesh.material_override
 		var original_result_mesh_size := (
@@ -35046,81 +35015,68 @@ func _test_player_observation_visibility() -> void:
 			(visible_result_mesh.mesh as BoxMesh).size = Vector3(1.5, 1.0, 1.5)
 		visible_target.outline_highlight_radius = 1.4
 		visible_target.outline_highlight_extents = Vector3(0.75, 0.5, 0.75)
+		# Let the previous result's hold release the outline so the mask channel
+		# re-registers the resized green geometry fresh on the next mint.
+		await get_tree().create_timer(
+			OutlineSurfaceTarget.RESULT_OUTLINE_HOLD_SECONDS + 0.25).timeout
+		surface_mask_manager.visible = false
 		visible_target.play_interaction_result(true)
 		await get_tree().process_frame
 		await RenderingServer.frame_post_draw
-		var capbage_pulse_v: Variant = visible_target.get(
-			"_interaction_pulse")
-		var capbage_pulse_material_v: Variant = visible_target.get(
-			"_interaction_pulse_material")
-		var capbage_pulse := capbage_pulse_v as MeshInstance3D \
-			if capbage_pulse_v is MeshInstance3D else null
-		var capbage_pulse_material := \
-			capbage_pulse_material_v as StandardMaterial3D \
-			if capbage_pulse_material_v is StandardMaterial3D else null
-		_assert_true(capbage_pulse != null and capbage_pulse_material != null,
-			"the Capbage-green negative control owns the real production pulse geometry")
-		if capbage_pulse != null and capbage_pulse_material != null:
-			var production_pulse_layers := capbage_pulse.layers
-			capbage_pulse.layers = 0
-			await get_tree().process_frame
-			await RenderingServer.frame_post_draw
-			var suppressed_presentation: Dictionary = visible_target.call(
-				"get_player_interaction_presentation")
-			var suppressed_presentation_serial := int(suppressed_presentation.get(
-				"presentation_serial", 0))
-			var suppressed_candidates: Array = visible_target.call(
-				"get_player_interaction_presentation_screen_candidates",
-				surface_camera,
-				get_viewport())
-			var static_green_observation := surface_observer.call(
-				"snapshot") as Dictionary
-			_assert_true(bool(suppressed_presentation.get("visible", false))
-					and str(suppressed_presentation.get(
-						"result", "")) == "success"
-					and not suppressed_candidates.is_empty()
-					and capbage_pulse.is_visible_in_tree(),
-				("the negative control retains live logical success, candidates, and "
-				+ "pulse geometry while only its camera render layer is suppressed"))
-			_assert_equals(_player_observation_result_cues(
-				static_green_observation, source_token).size(), 0,
-				("the exact Capbage-green emissive source cannot false-positive as "
-				+ "an absent success annulus"))
-			capbage_pulse.layers = production_pulse_layers
-			var production_success_tint := \
-				OutlineSurfaceTarget.INTERACTION_SUCCESS_TINT
-			capbage_pulse_material.albedo_color = Color(
-				production_success_tint.r,
-				production_success_tint.g,
-				production_success_tint.b,
-				1.0)
-			capbage_pulse_material.emission = production_success_tint
-			capbage_pulse_material.emission_energy_multiplier = 0.0
-			visible_target.play_interaction_result(true)
-			await get_tree().process_frame
-			await RenderingServer.frame_post_draw
-			var restored_green_observation := surface_observer.call(
-				"snapshot") as Dictionary
-			var restored_green_cues := _player_observation_result_cues(
-				restored_green_observation, source_token)
-			_assert_true(restored_green_cues.size() == 1 \
-					and int((restored_green_cues[0] as Dictionary).get(
-						"presentation_serial", 0)) > suppressed_presentation_serial,
-				("a newer real bright multi-sector pulse produces one exact "
-				+ "source-token success after the static-green negative"))
+		var suppressed_presentation: Dictionary = visible_target.call(
+			"get_player_interaction_presentation")
+		var suppressed_presentation_serial := int(suppressed_presentation.get(
+			"presentation_serial", 0))
+		var suppressed_candidates: Array = visible_target.call(
+			"get_player_interaction_presentation_screen_candidates",
+			surface_camera,
+			get_viewport())
+		var suppressed_render_nodes: Array = visible_target.call(
+			"get_player_interaction_presentation_render_nodes")
+		var static_green_observation := surface_observer.call(
+			"snapshot") as Dictionary
+		_assert_true(bool(suppressed_presentation.get("visible", false))
+				and str(suppressed_presentation.get(
+					"result", "")) == "success"
+				and not suppressed_candidates.is_empty()
+				and not suppressed_render_nodes.is_empty(),
+			("the negative control retains live logical success, candidates, and "
+			+ "render geometry while only the mask composite is suppressed"))
+		_assert_equals(_player_observation_result_cues(
+			static_green_observation, source_token).size(), 0,
+			("the exact Capbage-green emissive source cannot false-positive as "
+			+ "an absent success outline"))
+		surface_mask_manager.visible = true
+		visible_target.play_interaction_result(true)
+		await get_tree().process_frame
+		await RenderingServer.frame_post_draw
+		var restored_green_observation := surface_observer.call(
+			"snapshot") as Dictionary
+		var restored_green_cues := _player_observation_result_cues(
+			restored_green_observation, source_token)
+		_assert_true(restored_green_cues.size() == 1 \
+				and int((restored_green_cues[0] as Dictionary).get(
+					"presentation_serial", 0)) > suppressed_presentation_serial,
+			("a newer real mask-composited result produces one exact "
+			+ "source-token success after the static-green negative"))
 		visible_result_mesh.material_override = original_result_mesh_material
 		if visible_result_mesh.mesh is BoxMesh:
 			(visible_result_mesh.mesh as BoxMesh).size = original_result_mesh_size
 		visible_target.outline_highlight_radius = original_result_radius
 		visible_target.outline_highlight_extents = original_result_extents
 
-		# Generated controls can legitimately produce the production pulse's
-		# three-world-unit radius clamp. An annulus has no pixels at its AABB centre
-		# or corners, so this scale adversarially proves the observer samples the
-		# real ring surface instead of accepting or missing empty bounds.
+		# Generated controls can be much larger than one grid cell. A silhouette
+		# outline has no pixels at a large body's AABB centre, so this scale
+		# adversarially proves the observer samples the accessor's projected
+		# silhouette candidates instead of accepting or missing empty bounds.
 		var ordinary_result_presentation: Dictionary = visible_target.call(
 			"get_player_interaction_presentation")
-		visible_target.outline_highlight_radius = 3.0
+		if visible_result_mesh.mesh is BoxMesh:
+			(visible_result_mesh.mesh as BoxMesh).size = Vector3(3.0, 2.0, 3.0)
+		# Let the prior hold release the outline so the mask re-registers the
+		# enlarged silhouette fresh on the next mint.
+		await get_tree().create_timer(
+			OutlineSurfaceTarget.RESULT_OUTLINE_HOLD_SECONDS + 0.25).timeout
 		visible_target.play_interaction_result(false)
 		await get_tree().process_frame
 		await RenderingServer.frame_post_draw
@@ -35128,7 +35084,7 @@ func _test_player_observation_visibility() -> void:
 		var large_result_cues := _player_observation_result_cues(
 			large_result_observation, source_token)
 		_assert_equals(large_result_cues.size(), 1,
-			("a maximum-radius rejected annulus exposes its real red surface rather "
+			("a large-geometry rejection exposes its real red silhouette rather "
 			+ "than disappearing through empty AABB probes"))
 		if large_result_cues.size() == 1:
 			_assert_true(str((large_result_cues[0] as Dictionary).get(
@@ -35137,115 +35093,67 @@ func _test_player_observation_visibility() -> void:
 						"presentation_serial", 0)) \
 						> int(ordinary_result_presentation.get(
 							"presentation_serial", 0)),
-				"the maximum-radius proof is a newer exact-target rejection")
-		visible_target.outline_highlight_radius = 0.0
+				"the large-geometry proof is a newer exact-target rejection")
+		if visible_result_mesh.mesh is BoxMesh:
+			(visible_result_mesh.mesh as BoxMesh).size = original_result_mesh_size
+		await get_tree().create_timer(
+			OutlineSurfaceTarget.RESULT_OUTLINE_HOLD_SECONDS + 0.25).timeout
 
-		# Reproduce the production failure that the entry-freeze fixture below cannot:
-		# a routed refusal creates its red pulse during one slow gameplay frame, and
-		# that frame's >0.42-second delta reaches Tween processing before the first
-		# draw. The real pulse must remain fully present through two completed draws.
+		# The hold window is the result's whole lifetime: a minted result is fully
+		# present on the silhouette the moment its trigger lands, is framebuffer-
+		# attested while the hold runs, and clears through the ordinary hold with
+		# no draw-count receipts or hard deadlines to satisfy.
 		var expiring_target := visible_target \
 			as _PlayerObservationExpiringTargetFixture
 		_assert_true(expiring_target != null,
-			"the adversarial result target exposes a production pulse fixture")
+			"the adversarial result target exposes a production result presentation fixture")
 		if expiring_target != null:
+			var hold_before: Dictionary = expiring_target.call(
+				"get_player_interaction_presentation")
 			expiring_target.play_interaction_result(false)
-			var slow_result_frame_started_msec := Time.get_ticks_msec()
-			OS.delay_msec(550)
+			var minted_presentation: Dictionary = expiring_target.call(
+				"get_player_interaction_presentation")
+			_assert_true(bool(minted_presentation.get("visible", false))
+					and str(minted_presentation.get("result", "")) == "rejected"
+					and int(minted_presentation.get("presentation_serial", 0)) \
+						> int(hold_before.get("presentation_serial", 0)),
+				"a rejection is visible on the silhouette immediately after its trigger")
 			await get_tree().process_frame
 			await RenderingServer.frame_post_draw
-			var slow_result_frame_elapsed_msec := Time.get_ticks_msec() \
-				- slow_result_frame_started_msec
-			var first_draw_presentation: Dictionary = expiring_target.call(
-				"get_player_interaction_presentation")
-			var first_draw_observation := surface_observer.call("snapshot") as Dictionary
-			var first_draw_result_cues := _player_observation_result_cues(
-				first_draw_observation, source_token)
-			_assert_true(slow_result_frame_elapsed_msec >= 500,
-				"the production result's first frame exceeds its 0.42-second tween")
-			_assert_true(str((first_draw_observation.get(
+			var held_observation := surface_observer.call("snapshot") as Dictionary
+			var held_cues := _player_observation_result_cues(
+				held_observation, source_token)
+			_assert_true(str((held_observation.get(
 				"state", {}) as Dictionary).get("hud", {}).get("message", "")) == "",
-				"the pre-draw expiry regression has no HUD text to infer from")
-			_assert_true(bool(first_draw_presentation.get("visible", false)),
-				"the real rejected pulse remains presented after its first slow draw")
-			_assert_equals(first_draw_result_cues.size(), 1,
-				"the first real framebuffer draw exposes the exact rejected result")
+				"the hold-window scenario has no HUD text to infer from")
+			_assert_equals(held_cues.size(), 1,
+				"the held result is framebuffer-attested at the exact source token during the hold")
+			if held_cues.size() == 1:
+				_assert_true(str((held_cues[0] as Dictionary).get(
+					"result", "")) == "rejected",
+					"the held framebuffer receipt is the exact red rejection")
+			await get_tree().create_timer(
+				OutlineSurfaceTarget.RESULT_OUTLINE_HOLD_SECONDS + 0.25).timeout
+			var expired_presentation: Dictionary = expiring_target.call(
+				"get_player_interaction_presentation")
+			_assert_true(not bool(expired_presentation.get("visible", true))
+					and (expiring_target.call(
+						"get_player_interaction_presentation_render_nodes") \
+						as Array).is_empty(),
+				"the result clears through the ordinary hold window with no separate deadline")
 			await get_tree().process_frame
 			await RenderingServer.frame_post_draw
-			var second_draw_presentation: Dictionary = expiring_target.call(
-				"get_player_interaction_presentation")
-			_assert_true(bool(second_draw_presentation.get("visible", false)),
-				"the real rejected pulse survives two completed framebuffer draws")
+			var expired_observation := surface_observer.call("snapshot") as Dictionary
+			_assert_true(_player_observation_result_cues(
+				expired_observation, source_token).is_empty(),
+				"an elapsed hold is not re-attested by a later snapshot")
 
-			# A human quick-click is one down/up packet, followed by the shipped
-			# driver's one post-packet frame and two normal settle frames. Generated
-			# scenes can make every one of those frames slower than the pulse's
-			# time-based tween. The exact result must still be present when observation
-			# resumes after that same public input sequence.
-			expiring_target.play_interaction_result(true)
-			var quick_click_presented_frames := \
-				AgentPlayerInputDriverScript.SETTLE_FRAMES + 1
-			for _presented_frame in range(quick_click_presented_frames):
-				OS.delay_msec(500)
-				await get_tree().process_frame
-				await RenderingServer.frame_post_draw
-			var post_quick_click_presentation: Dictionary = expiring_target.call(
-				"get_player_interaction_presentation")
-			var post_quick_click_observation := surface_observer.call(
-				"snapshot") as Dictionary
-			var post_quick_click_cues := _player_observation_result_cues(
-				post_quick_click_observation, source_token)
-			_assert_true(bool(post_quick_click_presentation.get("visible", false))
-					and str(post_quick_click_presentation.get(
-						"result", "")) == "success",
-				"the exact green result outlives the shipped quick-click settle even across slow generated frames")
-			_assert_equals(post_quick_click_cues.size(), 1,
-				"the first post-click observation attests that still-rendered exact target success")
-
-			# Draw-count coverage alone is insufficient at an uncapped frame rate. Let
-			# the pulse complete its four-draw hold, then block the next process
-			# frame longer than the result Tween. Scale-out must begin only after that
-			# slow frame has itself reached frame_post_draw, leaving one completed
-			# framebuffer receipt for the next ordinary player observation.
-			var pre_receipt_slow_before: Dictionary = expiring_target.call(
-				"get_player_interaction_presentation")
-			expiring_target.play_interaction_result(false)
-			for _presented_frame in range(
-					OutlineSurfaceTarget.INTERACTION_RESULT_MIN_PRESENTED_FRAMES):
-				await get_tree().process_frame
-				await RenderingServer.frame_post_draw
-			var pre_receipt_slow_started_msec := Time.get_ticks_msec()
-			OS.delay_msec(1300)
-			await get_tree().process_frame
-			await RenderingServer.frame_post_draw
-			var pre_receipt_slow_elapsed_msec := Time.get_ticks_msec() \
-				- pre_receipt_slow_started_msec
-			var post_slow_draw_presentation: Dictionary = expiring_target.call(
-				"get_player_interaction_presentation")
-			var post_slow_draw_observation := surface_observer.call(
-				"snapshot") as Dictionary
-			var post_slow_draw_cues := _player_observation_result_cues(
-				post_slow_draw_observation, source_token)
-			_assert_true(pre_receipt_slow_elapsed_msec >= 1200,
-				"the adversarial pre-receipt frame outlives the ordinary result tween")
-			_assert_true(bool(post_slow_draw_presentation.get("visible", false))
-					and str(post_slow_draw_presentation.get(
-						"result", "")) == "rejected"
-					and int(post_slow_draw_presentation.get(
-						"presentation_serial", 0)) \
-						> int(pre_receipt_slow_before.get(
-							"presentation_serial", 0)),
-				("the exact red result begins its scale-out only after the slow frame's "
-				+ "completed framebuffer receipt"))
-			_assert_equals(post_slow_draw_cues.size(), 1,
-				("the next ordinary snapshot sees the exact target result without "
-				+ "acknowledging or extending it"))
-
-		# The production rejected pulse lasts 0.42 seconds. Reproduce the slow
+		# A result presentation is short-lived. Reproduce the slow
 		# Browser/Compatibility failure deterministically: the exact red source is
-		# visible at snapshot entry, then the pointer scan burns longer than that
-		# presentation window before cue projection. The observation must retain the
-		# entry-frame result without consulting any HUD message or late target state.
+		# visible at snapshot entry, then the pointer scan burns longer than the
+		# fixture's 0.42-second presentation window before cue projection. The
+		# observation must retain the entry-frame result without consulting any HUD
+		# message or late target state.
 		_assert_true(expiring_target != null,
 			"the adversarial result target exposes a timed presentation fixture")
 		if expiring_target != null:
@@ -35263,7 +35171,7 @@ func _test_player_observation_visibility() -> void:
 			var delayed_hud := delayed_result_observation.get(
 				"state", {}).get("hud", {}) as Dictionary
 			_assert_true(delayed_elapsed_msec >= 500,
-				"the adversarial scan outlives the production 0.42-second rejection")
+				"the adversarial scan outlives the fixture's 0.42-second rejection window")
 			_assert_true(str(delayed_hud.get("message", "")) == "",
 				"the timed rejection regression has no HUD text to infer from")
 			_assert_equals(delayed_result_cues.size(), 1,
@@ -35306,45 +35214,31 @@ func _test_player_observation_visibility() -> void:
 		(visible_meshes[0] as Node3D).visible = true
 		await get_tree().process_frame
 
-		# The required Windowed observation lane owns the hard-deadline regression.
-		# Hide the inherited target only after minting so the pulse remains locally
-		# visible/pending but has no eligible camera draw. It must not retire through
-		# draw dwell, and its process-always deadline must release the global listener.
+		# Hiding the inherited target after minting retires its presentation at
+		# once: the result rides the object's own silhouette, so no visible
+		# geometry means no receipt — there is no pending state and no separate
+		# cleanup deadline. The authoritative serial and result persist for
+		# command ordering.
 		if expiring_target != null:
-			expiring_target.hard_cleanup_msec_override = 1000
 			expiring_target.play_interaction_result(true)
+			var minted_hidden_before: Dictionary = expiring_target.call(
+				"get_player_interaction_presentation")
 			expiring_target.visible = false
-			var deadline_pulse_v: Variant = expiring_target.get(
-				"_interaction_pulse")
-			var deadline_pulse := deadline_pulse_v as MeshInstance3D \
-				if deadline_pulse_v is MeshInstance3D else null
-			var deadline_callback := Callable(
-				expiring_target, "_on_result_pulse_frame_drawn")
-			_assert_true(deadline_pulse != null \
-					and deadline_pulse.visible \
-					and not bool(expiring_target.call(
-						"_interaction_result_has_draw_opportunity")) \
-					and not (expiring_target.get(
-						"_interaction_result_pending_tween") as Dictionary).is_empty(),
-				("a minted inherited-hidden result is explicitly ineligible while "
-				+ "retaining its local geometry and pending lifetime"))
-			await get_tree().create_timer(0.3, true, false, true).timeout
-			_assert_true(deadline_pulse.visible \
-					and not (expiring_target.get(
-						"_interaction_result_pending_tween") as Dictionary).is_empty() \
-					and RenderingServer.frame_post_draw.is_connected(deadline_callback),
-				("an ineligible result remains pending before its hard deadline "
-				+ "instead of aging on unrelated draws"))
-			await get_tree().create_timer(0.9, true, false, true).timeout
-			_assert_true(not deadline_pulse.visible \
-					and (expiring_target.get(
-						"_interaction_result_pending_tween") as Dictionary).is_empty() \
-					and not RenderingServer.frame_post_draw.is_connected(
-						deadline_callback),
-				("the process-always hard deadline hides ineligible geometry, clears "
-				+ "pending state, and releases its global draw listener"))
+			var hidden_now: Dictionary = expiring_target.call(
+				"get_player_interaction_presentation")
+			_assert_true(bool(minted_hidden_before.get("visible", false)) \
+					and not bool(hidden_now.get("visible", true)) \
+					and (expiring_target.call(
+						"get_player_interaction_presentation_render_nodes") \
+						as Array).is_empty(),
+				("a minted inherited-hidden result reports invisible immediately "
+				+ "with no render geometry, pending state, or deadline"))
+			_assert_true(int(hidden_now.get("presentation_serial", 0)) \
+					== int(minted_hidden_before.get("presentation_serial", 0)) \
+					and str(hidden_now.get("authority_result", "")) == "success",
+				("the hidden presentation retains its authoritative serial and "
+				+ "result for command ordering"))
 			expiring_target.visible = true
-			expiring_target.hard_cleanup_msec_override = -1
 			await get_tree().process_frame
 			await RenderingServer.frame_post_draw
 
@@ -61854,6 +61748,40 @@ func _test_movement_route_status_presentation() -> void:
 	observer.free()
 
 
+func _assert_silent_phase_draw_refused(
+		presenter: ConsequencePresentationController,
+		serial: int,
+		note: String
+	) -> void:
+	# A non-rendering movement phase never arms a draw connection, but the shared
+	# receipt seam can still receive a stray or spoofed frame callback. With no
+	# panel on screen there is nothing a receipt could attest to, so the seam's
+	# visibility guard must refuse it. Stage the receipt fields as if the phase
+	# were draw-gated, deliver an exact-parameter callback, prove nothing was
+	# minted, then restore the write-time receipt.
+	var entry := presenter._movement_entries[serial] as Dictionary
+	var saved_frames := int(entry.get("phase_presented_frames", 0))
+	var saved_duration := int(entry.get("phase_duration_started_msec", 0))
+	var saved_recent := int(entry.get("recent_until_msec", 0))
+	entry["phase_presented_frames"] = 0
+	entry["phase_duration_started_msec"] = 0
+	entry["recent_until_msec"] = 0
+	presenter._record_movement_phase_frame_drawn_at(
+		saved_duration + 1,
+		serial,
+		int(entry.get("phase_revision", 0)),
+		str(entry.get("phase", "")))
+	entry = presenter._movement_entries[serial] as Dictionary
+	_assert_true(not presenter._movement_panel.visible
+		and int(entry.get("phase_presented_frames", -1)) == 0
+		and int(entry.get("phase_duration_started_msec", -1)) == 0
+		and int(entry.get("recent_until_msec", -1)) == 0,
+		note)
+	entry["phase_presented_frames"] = saved_frames
+	entry["phase_duration_started_msec"] = saved_duration
+	entry["recent_until_msec"] = saved_recent
+
+
 func _test_movement_route_status_render() -> void:
 	_test_name = "Movement Route Status Render"
 	# A synchronous player-observation scan can consume more than the 1.2-second
@@ -61895,17 +61823,23 @@ func _test_movement_route_status_render() -> void:
 		draw_waits += 1
 		slow_entry = slow_presenter._movement_entries[slow_serial] as Dictionary
 	_assert_true(int(slow_entry.get("route_status_presented_frames", 0)) >= 1
-		and int(slow_entry.get("phase_presented_frames", 0)) >= 1
+		and int(slow_entry.get("phase_presented_frames", 0)) \
+			== ConsequencePresentationController.MOVEMENT_PHASE_MIN_PRESENTED_FRAMES
+		and int(slow_entry.get("phase_duration_started_msec", 0)) > 0
+		and slow_presenter._movement_phase_draw_presentation_serial == 0
 		and int(slow_entry.get("phase_revision", 0)) == slow_phase_revision
 		and str(slow_entry.get("phase", "")) == "accepted"
 		and slow_presenter._movement_label.text.contains("REFORMING ROUTE"),
-		("The production acknowledgement records one actual completed frame for "
-		+ "both ACCEPTED and its REFORMING ROUTE annotation"))
+		("The REFORMING ROUTE annotation records one actual completed frame while "
+		+ "the silent ACCEPTED phase keeps its write-time receipt and arms no "
+		+ "phase draw"))
 	OS.delay_msec(
 		ConsequencePresentationController.MOVEMENT_ROUTE_STATUS_MIN_MSEC + 80)
 	# This is the production failure mode: a synchronous observation can hold the
 	# main thread past the wall-clock deadline while no framebuffer completes.
-	# The first process after that pause must not skip the under-drawn phase.
+	# The first process after that pause may truthfully advance the silent phase
+	# lineage on its write-time receipts, but it must not consume the under-drawn
+	# route-status lifetime.
 	slow_presenter._sync_movement_entries()
 	var slow_state := slow_presenter.get_movement_presentation_state()
 	slow_entry = slow_presenter._movement_entries[slow_serial] as Dictionary
@@ -61916,15 +61850,17 @@ func _test_movement_route_status_render() -> void:
 	_assert_true(str(slow_entry.get("route_status", "")) == "reforming_route"
 		and int(slow_entry.get("route_status_presented_frames", 0)) \
 			< ConsequencePresentationController.MOVEMENT_ROUTE_STATUS_MIN_PRESENTED_FRAMES
-		and str(slow_entry.get("phase", "")) == "accepted"
+		and str(slow_entry.get("phase", "")) == "progress"
+		and int(slow_entry.get("phase_revision", 0)) == slow_phase_revision + 1
 		and int(slow_entry.get("phase_presented_frames", 0)) \
-			< ConsequencePresentationController.MOVEMENT_PHASE_MIN_PRESENTED_FRAMES
-		and int(slow_entry.get("phase_duration_started_msec", -1)) == 0
-		and str(slow_public_record.get("phase", "")) == "accepted"
+			== ConsequencePresentationController.MOVEMENT_PHASE_MIN_PRESENTED_FRAMES
+		and int(slow_entry.get("phase_duration_started_msec", 0)) > 0
+		and str(slow_public_record.get("phase", "")) == "progress"
 		and bool(slow_public_record.get("render_visible", false))
 		and str(slow_public_record.get("route_status", "")) == "reforming_route",
-		("A slow synchronous observation cannot consume either the ACCEPTED phase "
-		+ "or route-status lifetime before their remaining framebuffer receipts"))
+		("A slow synchronous observation cannot consume the route-status lifetime "
+		+ "before its remaining framebuffer receipts, while the silent phase "
+		+ "lineage advances on write-time receipts"))
 	while int(slow_entry.get("route_status_presented_frames", 0)) \
 			< ConsequencePresentationController.MOVEMENT_ROUTE_STATUS_MIN_PRESENTED_FRAMES \
 			and draw_waits < 10:
@@ -61954,16 +61890,10 @@ func _test_movement_route_status_render() -> void:
 	slow_entry = slow_presenter._movement_entries[slow_serial] as Dictionary
 	_assert_true(str(slow_entry.get("route_status", "")).is_empty(),
 		"REFORMING ROUTE retires only after completed draws plus the readable duration")
-	# The same at-time call may truthfully advance ACCEPTED to a fresh PROGRESS
-	# revision. Give that exact base phase one completed draw before layering a new
-	# status over it; the HOLD assertion below is specifically about withholding
-	# undrawn status fields while a rendered base acknowledgement remains visible.
-	slow_presenter._record_movement_phase_frame_drawn_at(
-		slow_duration_started \
-			+ ConsequencePresentationController.MOVEMENT_ROUTE_STATUS_MIN_MSEC + 1,
-		slow_serial,
-		int(slow_entry.get("phase_revision", 0)),
-		str(slow_entry.get("phase", "")))
+	# The base PROGRESS phase carries its write-time receipt, so no draw is needed
+	# before layering a new status over it; the HOLD assertion below is
+	# specifically about withholding undrawn status fields while that visible
+	# base acknowledgement remains readable.
 
 	# The timed hold uses the same truthful observation rule. Its label is written
 	# by the production updater, but its semantic fields remain private until an
@@ -61988,7 +61918,7 @@ func _test_movement_route_status_render() -> void:
 		and str(hold_before_draw_record.get("route_status", "")).is_empty()
 		and int(hold_before_draw_record.get("route_status_serial", -1)) == 0
 		and bool(hold_before_draw_record.get("render_visible", false)),
-		("A newly written COOPERATIVE HOLD keeps the rendered base movement cue "
+		("A newly written COOPERATIVE HOLD keeps the visible base acknowledgement "
 		+ "but exports no undrawn status fields"))
 	var hold_draw_waits := 0
 	while int(slow_entry.get("route_status_presented_frames", 0)) < 1 \
@@ -62035,128 +61965,94 @@ func _test_movement_route_status_render() -> void:
 	var phase_entry := phase_presenter._movement_entries[phase_serial] as Dictionary
 	var accepted_revision := int(phase_entry.get("phase_revision", 0))
 	var accepted_started := int(phase_entry.get("phase_started_msec", 0))
-	phase_presenter._sync_movement_entries_at(
-		accepted_started + ConsequencePresentationController.MOVEMENT_PHASE_MIN_MSEC + 9000)
-	phase_entry = phase_presenter._movement_entries[phase_serial] as Dictionary
-	var undrawn_accepted_state := phase_presenter.get_movement_presentation_state()
-	var undrawn_accepted_records := undrawn_accepted_state.get("records", []) as Array
-	var undrawn_accepted_record := undrawn_accepted_records[-1] as Dictionary \
-		if not undrawn_accepted_records.is_empty() else {}
+	var born_accepted_state := phase_presenter.get_movement_presentation_state()
+	var born_accepted_records := born_accepted_state.get("records", []) as Array
+	var born_accepted_record := born_accepted_records[-1] as Dictionary \
+		if not born_accepted_records.is_empty() else {}
 	_assert_true(str(phase_entry.get("phase", "")) == "accepted"
-		and int(phase_entry.get("phase_presented_frames", -1)) == 0
-		and not bool(undrawn_accepted_record.get("render_visible", true)),
-		("Wall time cannot advance or publicly expose an ACCEPTED label that has "
-		+ "never completed a framebuffer draw"))
-	phase_presenter._record_movement_phase_frame_drawn_at(
-		accepted_started + 1, phase_serial + 1, accepted_revision, "accepted")
-	phase_presenter._record_movement_phase_frame_drawn_at(
-		accepted_started + 2, phase_serial, accepted_revision + 1, "accepted")
-	phase_presenter._record_movement_phase_frame_drawn_at(
-		accepted_started + 3, phase_serial, accepted_revision, "progress")
-	phase_entry = phase_presenter._movement_entries[phase_serial] as Dictionary
-	_assert_equals(int(phase_entry.get("phase_presented_frames", -1)), 0,
-		"Stale presentation serial, phase revision, and phase callbacks all fail closed")
-	for accepted_draw in range(
-			ConsequencePresentationController.MOVEMENT_PHASE_MIN_PRESENTED_FRAMES):
-		phase_presenter._record_movement_phase_frame_drawn_at(
-			accepted_started + 100 + accepted_draw,
-			phase_serial, accepted_revision, "accepted")
-	phase_entry = phase_presenter._movement_entries[phase_serial] as Dictionary
-	var accepted_duration_started := int(phase_entry.get(
-		"phase_duration_started_msec", 0))
-	_assert_true(int(phase_entry.get("phase_presented_frames", 0)) \
+		and int(phase_entry.get("phase_presented_frames", -1)) \
 			== ConsequencePresentationController.MOVEMENT_PHASE_MIN_PRESENTED_FRAMES
-		and accepted_duration_started == accepted_started + 100 \
-			+ ConsequencePresentationController.MOVEMENT_PHASE_MIN_PRESENTED_FRAMES - 1,
-		"ACCEPTED starts its readable duration at the fourth exact draw receipt")
+		and int(phase_entry.get("phase_duration_started_msec", 0)) \
+			== accepted_started
+		and phase_presenter._movement_phase_draw_presentation_serial == 0
+		and not phase_presenter._movement_panel.visible
+		and not bool(born_accepted_record.get("render_visible", true)),
+		("ACCEPTED is born with its write-time receipt, draws no chrome, arms no "
+		+ "phase draw, and stays publicly render-invisible"))
+	_assert_silent_phase_draw_refused(phase_presenter, phase_serial,
+		("A simulated draw callback for the hidden ACCEPTED phase is a rejected "
+		+ "no-op, never receipt-earning"))
 	phase_presenter._sync_movement_entries_at(
-		accepted_duration_started \
+		accepted_started \
 			+ ConsequencePresentationController.MOVEMENT_PHASE_MIN_MSEC - 1)
 	_assert_equals(str((phase_presenter._movement_entries[
 		phase_serial] as Dictionary).get("phase", "")), "accepted",
-		"ACCEPTED remains for its full post-receipt readable duration")
+		"ACCEPTED remains for its full write-time readable duration")
 	phase_presenter._sync_movement_entries_at(
-		accepted_duration_started \
+		accepted_started \
 			+ ConsequencePresentationController.MOVEMENT_PHASE_MIN_MSEC)
 	phase_entry = phase_presenter._movement_entries[phase_serial] as Dictionary
 	var progress_revision := int(phase_entry.get("phase_revision", 0))
 	var progress_started := int(phase_entry.get("phase_started_msec", 0))
 	_assert_true(str(phase_entry.get("phase", "")) == "progress"
 		and progress_revision == accepted_revision + 1
-		and int(phase_entry.get("phase_presented_frames", -1)) == 0,
-		"PROGRESS begins as a new undrawn phase revision")
-	phase_presenter._record_movement_phase_frame_drawn_at(
-		progress_started + 1, phase_serial, accepted_revision, "accepted")
-	phase_entry = phase_presenter._movement_entries[phase_serial] as Dictionary
-	_assert_equals(int(phase_entry.get("phase_presented_frames", -1)), 0,
-		"A delayed ACCEPTED draw cannot count toward the new PROGRESS revision")
+		and int(phase_entry.get("phase_presented_frames", -1)) \
+			== ConsequencePresentationController.MOVEMENT_PHASE_MIN_PRESENTED_FRAMES
+		and int(phase_entry.get("phase_duration_started_msec", 0)) \
+			== progress_started
+		and phase_presenter._movement_phase_draw_presentation_serial == 0,
+		"PROGRESS begins as a new revision with its receipt granted at write")
+	_assert_silent_phase_draw_refused(phase_presenter, phase_serial,
+		("A simulated draw callback for the hidden PROGRESS phase is a rejected "
+		+ "no-op, never receipt-earning"))
 	phase_gs.position = Vector3(10.0, 0.0, 0.0)
 	phase_gs.remaining_distance = 0.0
 	# Production route cleanup may trail authoritative final placement by one
 	# rendered frame. Exact immutable endpoint parity must still latch ARRIVAL.
 	phase_gs.moving = true
 	phase_presenter._sync_movement_entries_at(
-		progress_started + ConsequencePresentationController.MOVEMENT_PHASE_MIN_MSEC + 9000)
+		progress_started \
+			+ ConsequencePresentationController.MOVEMENT_PHASE_MIN_MSEC - 1)
 	phase_entry = phase_presenter._movement_entries[phase_serial] as Dictionary
 	_assert_true(str(phase_entry.get("phase", "")) == "progress"
-		and is_equal_approx(float(phase_entry.get("progress", 0.0)), 1.0)
-		and int(phase_entry.get("phase_presented_frames", -1)) == 0,
-		("Even exact endpoint parity with lagging route cleanup cannot skip the undrawn PROGRESS "
-		+ "acknowledgement"))
-	for progress_draw in range(
-			ConsequencePresentationController.MOVEMENT_PHASE_MIN_PRESENTED_FRAMES):
-		phase_presenter._record_movement_phase_frame_drawn_at(
-			progress_started + 100 + progress_draw,
-			phase_serial, progress_revision, "progress")
-	phase_entry = phase_presenter._movement_entries[phase_serial] as Dictionary
-	var progress_duration_started := int(phase_entry.get(
-		"phase_duration_started_msec", 0))
-	_assert_true(int(phase_entry.get("phase_presented_frames", 0)) \
-			== ConsequencePresentationController.MOVEMENT_PHASE_MIN_PRESENTED_FRAMES
-		and progress_duration_started > 0,
-		"PROGRESS receives the exact minimum completed-draw count")
+		and is_equal_approx(float(phase_entry.get("progress", 0.0)), 1.0),
+		("Even exact endpoint parity with lagging route cleanup cannot cut the "
+		+ "PROGRESS acknowledgement's readable minimum short"))
 	phase_presenter._sync_movement_entries_at(
-		progress_duration_started \
+		progress_started \
 			+ ConsequencePresentationController.MOVEMENT_PHASE_MIN_MSEC)
 	phase_entry = phase_presenter._movement_entries[phase_serial] as Dictionary
 	var arrival_revision := int(phase_entry.get("phase_revision", 0))
 	var arrival_started := int(phase_entry.get("phase_started_msec", 0))
 	_assert_true(str(phase_entry.get("phase", "")) == "arrival"
 		and arrival_revision == progress_revision + 1
-		and int(phase_entry.get("phase_presented_frames", -1)) == 0,
-		"ARRIVAL begins as a distinct undrawn terminal revision")
-	phase_presenter._sync_movement_entries_at(
-		arrival_started + ConsequencePresentationController.MOVEMENT_RECENT_LIFETIME_MSEC + 9000)
-	_assert_true(phase_presenter._movement_entries.has(phase_serial)
-		and int((phase_presenter._movement_entries[
-			phase_serial] as Dictionary).get("phase_presented_frames", -1)) == 0,
-		"An undrawn ARRIVAL cannot expire regardless of elapsed wall time")
-	for arrival_draw in range(
-			ConsequencePresentationController.MOVEMENT_PHASE_MIN_PRESENTED_FRAMES):
-		phase_presenter._record_movement_phase_frame_drawn_at(
-			arrival_started + 100 + arrival_draw,
-			phase_serial, arrival_revision, "arrival")
-	phase_entry = phase_presenter._movement_entries[phase_serial] as Dictionary
-	var arrival_duration_started := int(phase_entry.get(
-		"phase_duration_started_msec", 0))
-	_assert_true(int(phase_entry.get("phase_presented_frames", 0)) \
+		and int(phase_entry.get("phase_presented_frames", -1)) \
 			== ConsequencePresentationController.MOVEMENT_PHASE_MIN_PRESENTED_FRAMES
+		and int(phase_entry.get("phase_duration_started_msec", 0)) \
+			== arrival_started
 		and int(phase_entry.get("recent_until_msec", 0)) \
-			== arrival_duration_started \
-				+ ConsequencePresentationController.MOVEMENT_RECENT_LIFETIME_MSEC,
-		"ARRIVAL earns exactly four draws before its recent lifetime starts")
+			== arrival_started \
+				+ ConsequencePresentationController.MOVEMENT_RECENT_LIFETIME_MSEC
+		and phase_presenter._movement_phase_draw_presentation_serial == 0
+		and not phase_presenter._movement_panel.visible,
+		("ARRIVAL is born with its write-time receipt and recent lifetime -- the "
+		+ "party standing at the destination is its presentation"))
+	_assert_silent_phase_draw_refused(phase_presenter, phase_serial,
+		("A simulated draw callback for the hidden ARRIVAL terminal is a rejected "
+		+ "no-op, never receipt-earning"))
 	phase_presenter._sync_movement_entries_at(
-		arrival_duration_started \
+		arrival_started \
 			+ ConsequencePresentationController.MOVEMENT_RECENT_LIFETIME_MSEC - 1)
 	_assert_true(phase_presenter._movement_entries.has(phase_serial),
-		"ARRIVAL survives the full post-receipt terminal lifetime")
+		"ARRIVAL survives its full write-time terminal lifetime")
 	phase_presenter._sync_movement_entries_at(
-		arrival_duration_started \
+		arrival_started \
 			+ ConsequencePresentationController.MOVEMENT_RECENT_LIFETIME_MSEC)
 	_assert_true(not phase_presenter._movement_entries.has(phase_serial),
-		"ARRIVAL expires at its draw-earned terminal deadline")
+		"ARRIVAL expires at its write-time terminal deadline")
 
-	# REFUSED is terminal at creation, but it obeys the same draw-earned lifetime.
+	# REFUSED is terminal at creation and it actually DRAWS: its receipts stay
+	# framebuffer-earned, so wall time alone can neither expire nor expose it.
 	phase_presenter._on_movement_result_requested({
 		"verb": "move",
 		"subject_ids": ["aster"],
@@ -62170,10 +62066,33 @@ func _test_movement_route_status_render() -> void:
 	var refused_entry := phase_presenter._movement_entries[refused_serial] as Dictionary
 	var refused_revision := int(refused_entry.get("phase_revision", 0))
 	var refused_started := int(refused_entry.get("phase_started_msec", 0))
+	_assert_true(int(refused_entry.get("phase_presented_frames", -1)) == 0
+		and int(refused_entry.get("phase_duration_started_msec", -1)) == 0
+		and phase_presenter._movement_phase_draw_presentation_serial \
+			== refused_serial
+		and phase_presenter._movement_panel.visible,
+		("REFUSED is born undrawn with its panel on screen and a live framebuffer "
+		+ "receipt latch"))
 	phase_presenter._sync_movement_entries_at(
 		refused_started + ConsequencePresentationController.MOVEMENT_RECENT_LIFETIME_MSEC + 9000)
-	_assert_true(phase_presenter._movement_entries.has(refused_serial),
-		"An undrawn REFUSED result cannot expire from wall time")
+	var undrawn_refused_state := phase_presenter.get_movement_presentation_state()
+	var undrawn_refused_records := undrawn_refused_state.get("records", []) as Array
+	var undrawn_refused_record := undrawn_refused_records[-1] as Dictionary \
+		if not undrawn_refused_records.is_empty() else {}
+	_assert_true(phase_presenter._movement_entries.has(refused_serial)
+		and not bool(undrawn_refused_record.get("render_visible", true)),
+		("Wall time can neither expire nor publicly expose a REFUSED label that "
+		+ "has never completed a framebuffer draw"))
+	phase_presenter._record_movement_phase_frame_drawn_at(
+		refused_started + 1, refused_serial + 1, refused_revision, "refused")
+	phase_presenter._record_movement_phase_frame_drawn_at(
+		refused_started + 2, refused_serial, refused_revision + 1, "refused")
+	phase_presenter._record_movement_phase_frame_drawn_at(
+		refused_started + 3, refused_serial, refused_revision, "accepted")
+	refused_entry = phase_presenter._movement_entries[refused_serial] as Dictionary
+	_assert_equals(int(refused_entry.get("phase_presented_frames", -1)), 0,
+		("Stale presentation serial, phase revision, and phase callbacks all fail "
+		+ "closed on the drawing REFUSED phase"))
 	for refused_draw in range(
 			ConsequencePresentationController.MOVEMENT_PHASE_MIN_PRESENTED_FRAMES):
 		phase_presenter._record_movement_phase_frame_drawn_at(
@@ -62183,8 +62102,10 @@ func _test_movement_route_status_render() -> void:
 	var refused_duration_started := int(refused_entry.get(
 		"phase_duration_started_msec", 0))
 	_assert_true(int(refused_entry.get("phase_presented_frames", 0)) \
-			== ConsequencePresentationController.MOVEMENT_PHASE_MIN_PRESENTED_FRAMES,
-		"REFUSED receives the exact minimum completed-draw count")
+			== ConsequencePresentationController.MOVEMENT_PHASE_MIN_PRESENTED_FRAMES
+		and refused_duration_started == refused_started + 100 \
+			+ ConsequencePresentationController.MOVEMENT_PHASE_MIN_PRESENTED_FRAMES - 1,
+		"REFUSED starts its readable lifetime at the fourth exact draw receipt")
 	phase_presenter._sync_movement_entries_at(
 		refused_duration_started \
 			+ ConsequencePresentationController.MOVEMENT_RECENT_LIFETIME_MSEC)
@@ -62215,40 +62136,44 @@ func _test_movement_route_status_render() -> void:
 		"preserve_cross_level_plan": false,
 		"presentation_receipt": {"label": "BASIN SWEEP"},
 	})
-	for interrupted_accepted_draw in range(
-			ConsequencePresentationController.MOVEMENT_PHASE_MIN_PRESENTED_FRAMES):
-		phase_presenter._record_movement_phase_frame_drawn_at(
-			interrupted_accepted_started + 100 + interrupted_accepted_draw,
-			interrupted_serial, interrupted_accepted_revision, "accepted")
-	interrupted_entry = phase_presenter._movement_entries[
-		interrupted_serial] as Dictionary
-	phase_presenter._sync_movement_entries_at(int(interrupted_entry.get(
-		"phase_duration_started_msec", 0)) \
-		+ ConsequencePresentationController.MOVEMENT_PHASE_MIN_MSEC)
+	# The silent accepted -> progress lineage advances on its write-time receipts
+	# alone; only the INTERRUPTED terminal below draws and earns real receipts.
+	phase_presenter._sync_movement_entries_at(
+		interrupted_accepted_started \
+			+ ConsequencePresentationController.MOVEMENT_PHASE_MIN_MSEC)
 	interrupted_entry = phase_presenter._movement_entries[
 		interrupted_serial] as Dictionary
 	var interrupted_progress_revision := int(interrupted_entry.get(
 		"phase_revision", 0))
 	var interrupted_progress_started := int(interrupted_entry.get(
 		"phase_started_msec", 0))
-	for interrupted_progress_draw in range(
-			ConsequencePresentationController.MOVEMENT_PHASE_MIN_PRESENTED_FRAMES):
-		phase_presenter._record_movement_phase_frame_drawn_at(
-			interrupted_progress_started + 100 + interrupted_progress_draw,
-			interrupted_serial, interrupted_progress_revision, "progress")
-	interrupted_entry = phase_presenter._movement_entries[
-		interrupted_serial] as Dictionary
-	phase_presenter._sync_movement_entries_at(int(interrupted_entry.get(
-		"phase_duration_started_msec", 0)) \
-		+ ConsequencePresentationController.MOVEMENT_PHASE_MIN_MSEC)
+	_assert_true(str(interrupted_entry.get("phase", "")) == "progress"
+		and interrupted_progress_revision == interrupted_accepted_revision + 1
+		and int(interrupted_entry.get("phase_presented_frames", -1)) \
+			== ConsequencePresentationController.MOVEMENT_PHASE_MIN_PRESENTED_FRAMES,
+		("The pending interruption still lets the silent lineage walk its "
+		+ "write-time accepted -> progress beats"))
+	phase_presenter._sync_movement_entries_at(
+		interrupted_progress_started \
+			+ ConsequencePresentationController.MOVEMENT_PHASE_MIN_MSEC)
 	interrupted_entry = phase_presenter._movement_entries[
 		interrupted_serial] as Dictionary
 	var interrupted_revision := int(interrupted_entry.get("phase_revision", 0))
 	var interrupted_started := int(interrupted_entry.get("phase_started_msec", 0))
 	_assert_true(str(interrupted_entry.get("phase", "")) == "interrupted"
 		and str(interrupted_entry.get("reason", "")).contains("BASIN SWEEP")
-		and int(interrupted_entry.get("phase_presented_frames", -1)) == 0,
+		and int(interrupted_entry.get("phase_presented_frames", -1)) == 0
+		and phase_presenter._movement_phase_draw_presentation_serial \
+			== interrupted_serial,
 		"INTERRUPTED is a distinct visible terminal, never a rewritten refusal")
+	phase_presenter._record_movement_phase_frame_drawn_at(
+		interrupted_started + 1, interrupted_serial,
+		interrupted_progress_revision, "progress")
+	interrupted_entry = phase_presenter._movement_entries[
+		interrupted_serial] as Dictionary
+	_assert_equals(int(interrupted_entry.get("phase_presented_frames", -1)), 0,
+		("A delayed draw callback for the superseded PROGRESS revision cannot "
+		+ "count toward the INTERRUPTED terminal"))
 	phase_presenter._sync_movement_entries_at(
 		interrupted_started \
 			+ ConsequencePresentationController.MOVEMENT_RECENT_LIFETIME_MSEC + 9000)

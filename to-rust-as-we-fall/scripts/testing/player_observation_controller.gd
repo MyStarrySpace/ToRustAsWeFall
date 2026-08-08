@@ -22,6 +22,9 @@ const BODY_COLOR_MIN_MATCHING_PIXELS := 2
 const BODY_COLOR_HUE_TOLERANCE := 0.10
 const RESULT_TINT_SAMPLE_RADIUS_PX := 3
 const RESULT_TINT_MIN_PIXELS_PER_CANDIDATE := 2
+## How many silhouette points the occlusion probe depth-tests before ruling. Comfortably above
+## the evidence quorum below, and bounded so an observation snapshot cannot cast hundreds of rays.
+const RESULT_OCCLUSION_PROBE_SAMPLES := 8
 const RESULT_TINT_MIN_MATCHED_CANDIDATES := 6
 const RESULT_TINT_ANGULAR_SECTORS := 8
 const RESULT_TINT_MIN_MATCHED_SECTORS := 3
@@ -1229,6 +1232,33 @@ func _interaction_result_screen(
 		"get_player_interaction_presentation_screen_candidates", camera, viewport)
 	if not (candidates_v is Array):
 		return []
+	# Pixels alone cannot prove the player sees the result: the outline mask composites the
+	# silhouette regardless of scene occluders, so a body standing in front of the object would
+	# still leave tinted pixels on screen. An occlusion probe depth-tests a BOUNDED, evenly spread
+	# sample of the silhouette's world points; if no sampled point is reachable from the camera,
+	# the whole result is treated as hidden. Bounded because this runs per presentation per
+	# observation snapshot, and a ray per silhouette vertex would put hundreds of casts in an
+	# observation loop. The approximation is honest: a partial occluder covering exactly the
+	# sampled points and nothing else would mis-rule, while the property under test -- an opaque
+	# body between camera and source -- covers every sample by construction.
+	var world_candidates: Array = []
+	if source.has_method("get_player_interaction_presentation_world_candidates"):
+		world_candidates = source.call(
+			"get_player_interaction_presentation_world_candidates")
+	if not world_candidates.is_empty():
+		var own_rids := _result_own_body_rids(source)
+		var probe_stride := maxi(1, int(ceil(float(world_candidates.size())
+			/ float(RESULT_OCCLUSION_PROBE_SAMPLES))))
+		var any_reachable := false
+		for probe_index in range(0, world_candidates.size(), probe_stride):
+			if not (world_candidates[probe_index] is Vector3):
+				continue
+			if _result_point_depth_visible(
+					camera, world_candidates[probe_index] as Vector3, own_rids):
+				any_reachable = true
+				break
+		if not any_reachable:
+			return []
 	var rect := viewport.get_visible_rect()
 	var framebuffer_candidates: Array[Vector2] = []
 	for candidate_v in candidates_v as Array:
@@ -1243,6 +1273,54 @@ func _interaction_result_screen(
 	if not matched_candidate.is_finite():
 		return []
 	return _quantize_screen(matched_candidate)
+
+
+## True when no OTHER body stands between the camera and this surface point. The source's own
+## collision shapes are excluded deliberately: a silhouette sample on the far side of the object is
+## still part of the outline the mask draws, and self-occlusion would thin the candidate set below
+## its evidence quorum. The question this answers is whether something ELSE hides the result.
+func _result_point_depth_visible(
+		camera: Camera3D,
+		world_point: Vector3,
+		exclude: Array[RID]
+	) -> bool:
+	if camera == null or not camera.is_inside_tree():
+		return false
+	var world := camera.get_world_3d()
+	if world == null:
+		return true
+	var origin := camera.global_position
+	var span := world_point - origin
+	var span_length := span.length()
+	if span_length <= 0.001:
+		return true
+	var query := PhysicsRayQueryParameters3D.create(origin, world_point)
+	query.collide_with_areas = false
+	query.collide_with_bodies = true
+	query.exclude = exclude
+	var hit := world.direct_space_state.intersect_ray(query)
+	if hit.is_empty():
+		return true
+	var hit_distance := (hit.get("position", world_point) as Vector3 - origin).length()
+	return hit_distance >= span_length - 0.05
+
+## Every collision RID belonging to the presenting object itself, so the depth test measures other
+## bodies rather than the object's own front face.
+func _result_own_body_rids(source: Node) -> Array[RID]:
+	var rids: Array[RID] = []
+	if source == null or not is_instance_valid(source):
+		return rids
+	# The SOURCE's own subtree only. A presenting object is itself a body, so its shapes live here;
+	# widening to the parent would also exclude its siblings -- which is exactly where a genuine
+	# occluder stands.
+	var stack: Array = [source]
+	while not stack.is_empty():
+		var node: Node = stack.pop_back()
+		for child in node.get_children():
+			stack.append(child)
+		if node is CollisionObject3D:
+			rids.append((node as CollisionObject3D).get_rid())
+	return rids
 
 
 func _framebuffer_has_result_tint(

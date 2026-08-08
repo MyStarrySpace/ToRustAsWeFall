@@ -3,11 +3,15 @@ extends "res://scripts/game/objects/outline_surface_target.gd"
 
 ## Adversarial Web-render fixture for the interaction-result observer.
 ##
+## A result rides the object's OWN silhouette: production registers the
+## highlight meshes with the scene's OutlineMaskManager at the result tint.
 ## The first successful production interaction still mints the ordinary
-## OutlineSurfaceTarget receipt, but this fixture makes only that pulse's own
-## material transparent before the renderer can draw it.  The second successful
-## interaction is left entirely to the production implementation, which restores
-## the canonical success material and advances the presentation serial.
+## OutlineSurfaceTarget receipt, but this fixture withdraws that mint's mask
+## registration before the renderer can draw it, so no result-tinted
+## silhouette pixel exists for the receipt's serial.  The second successful
+## interaction is left entirely to the production implementation, whose mint
+## re-registers the silhouette at the canonical success tint and advances the
+## presentation serial.
 
 signal fixture_presentation_minted(
 	attempt_index: int,
@@ -17,6 +21,19 @@ signal fixture_presentation_minted(
 )
 
 var _successful_interaction_count := 0
+var _seam_presented_result := false
+
+
+## Production's single attestation seam.  The fixture only records the seam's
+## own return value as proof that a result really presented on this renderer;
+## production keeps every guard and the outline registration.
+func _play_interaction_pulse(
+		tint: Color, kind: String, presentation_serial := -1
+	) -> bool:
+	var rendered := super._play_interaction_pulse(tint, kind, presentation_serial)
+	if kind in ["success", "rejected"]:
+		_seam_presented_result = rendered
+	return rendered
 
 
 func play_interaction_result(succeeded: bool) -> void:
@@ -32,16 +49,17 @@ func play_interaction_result(succeeded: bool) -> void:
 
 	if _successful_interaction_count == 1:
 		# super.play_interaction_result() has already minted the real production
-		# result and connected its post-draw lifetime callback.  Suppress only the
-		# transient pulse material, synchronously, so no success-colored pixel can
-		# reach the first framebuffer for this serial.  Keep the node, receipt, and
-		# production timing untouched: the observer must reject it from pixels.
-		pulse_suppressed = _suppress_current_pulse_material()
+		# receipt and applied the result tint to this object's outline.  Withdraw
+		# only the mask registration, synchronously, so no result-tinted
+		# silhouette pixel can reach the first framebuffer for this serial.  The
+		# receipt, highlight meshes, and production timing stay untouched: the
+		# observer must reject it from pixels.
+		pulse_suppressed = _suppress_current_result_mask()
 	elif _successful_interaction_count == 2:
-		# The production call above reapplies the complete opaque, unshaded,
-		# double-sided, depth-tested material contract on every mint. Prove that the
-		# second human interaction did not inherit the adversarial transparency.
-		production_pulse_restored = _current_pulse_uses_production_success_material()
+		# Every production mint re-registers the silhouette with the scene's
+		# outline mask at the result tint.  Prove that the second human
+		# interaction did not inherit the adversarial withdrawal.
+		production_pulse_restored = _current_result_rides_production_mask()
 
 	fixture_presentation_minted.emit(
 		_successful_interaction_count,
@@ -51,78 +69,57 @@ func play_interaction_result(succeeded: bool) -> void:
 	)
 
 
-func _suppress_current_pulse_material() -> bool:
-	if _interaction_pulse_material == null:
+func _suppress_current_result_mask() -> bool:
+	if not _seam_presented_result or not _outline_active:
 		return false
-	_interaction_pulse_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	var transparent := _interaction_pulse_material.albedo_color
-	transparent.a = 0.0
-	_interaction_pulse_material.albedo_color = transparent
-	_interaction_pulse_material.emission_enabled = false
-	_interaction_pulse_material.emission_energy_multiplier = 0.0
+	var manager := _get_mask_manager()
+	if manager == null or not manager.is_registered(get_instance_id()):
+		return false
+	_unregister_mask()
 	return true
 
 
-func _current_pulse_uses_production_success_material() -> bool:
-	if _interaction_pulse_material == null:
+func _current_result_rides_production_mask() -> bool:
+	if not _seam_presented_result or not _outline_active:
 		return false
-	return _interaction_pulse_material.shading_mode \
-			== BaseMaterial3D.SHADING_MODE_UNSHADED \
-		and _interaction_pulse_material.transparency \
-			== BaseMaterial3D.TRANSPARENCY_DISABLED \
-		and not _interaction_pulse_material.emission_enabled \
-		and not _interaction_pulse_material.no_depth_test \
-		and _interaction_pulse_material.cull_mode \
-			== BaseMaterial3D.CULL_DISABLED \
-		and _interaction_pulse_material.albedo_color.a > 0.99 \
-		and _interaction_pulse_material.emission.is_equal_approx(
-			INTERACTION_SUCCESS_TINT) \
-		and is_equal_approx(
-			_interaction_pulse_material.emission_energy_multiplier,
-			INTERACTION_SUCCESS_EMISSION_ENERGY
-		)
+	if not _active_outline_color.is_equal_approx(INTERACTION_SUCCESS_TINT):
+		return false
+	var manager := _get_mask_manager()
+	return manager != null and manager.is_registered(get_instance_id())
 
 
 ## Pure assertion surface for the Web contract.  This deliberately delegates
-## presentation and screen-candidate discovery to the production methods; it
+## presentation and screen-candidate discovery to the production accessors; it
 ## exposes render facts but cannot mint, hide, restore, or otherwise change one.
 func get_fixture_pulse_diagnostics() -> Dictionary:
 	var diagnostics := get_player_interaction_presentation()
-	var pulse_node_visible := _interaction_pulse != null \
-		and is_instance_valid(_interaction_pulse) \
-		and _interaction_pulse.is_visible_in_tree()
-	var pulse_alpha := -1.0
-	var pulse_emission_energy := -1.0
-	var pulse_transparency := -1
-	var pulse_emission_enabled := false
-	var pulse_cull_mode := -1
-	var pulse_no_depth_test := true
-	if _interaction_pulse_material != null:
-		pulse_alpha = _interaction_pulse_material.albedo_color.a
-		pulse_emission_energy = \
-			_interaction_pulse_material.emission_energy_multiplier
-		pulse_transparency = _interaction_pulse_material.transparency
-		pulse_emission_enabled = _interaction_pulse_material.emission_enabled
-		pulse_cull_mode = _interaction_pulse_material.cull_mode
-		pulse_no_depth_test = _interaction_pulse_material.no_depth_test
+	var manager := _get_mask_manager()
+	var mask_registered := manager != null \
+		and manager.is_registered(get_instance_id())
 
-	var pulse_screen_candidate_count := 0
+	var result_screen_candidate_count := 0
 	var viewport := get_viewport()
 	var camera := viewport.get_camera_3d() if viewport != null else null
 	if camera != null and viewport != null:
-		pulse_screen_candidate_count = \
+		result_screen_candidate_count = \
 			get_player_interaction_presentation_screen_candidates(
 				camera, viewport).size()
 
 	diagnostics.merge({
-		"pulse_node_visible": pulse_node_visible,
-		"pulse_screen_candidate_count": pulse_screen_candidate_count,
-		"pulse_alpha": pulse_alpha,
-		"pulse_emission_energy": pulse_emission_energy,
-		"pulse_transparency": pulse_transparency,
-		"pulse_emission_enabled": pulse_emission_enabled,
-		"pulse_cull_mode": pulse_cull_mode,
-		"pulse_no_depth_test": pulse_no_depth_test,
+		"result_render_node_count":
+			get_player_interaction_presentation_render_nodes().size(),
+		"result_screen_candidate_count": result_screen_candidate_count,
+		"outline_active": has_active_mesh_outline(),
+		"mask_registered": mask_registered,
+		"outline_color": [
+			_active_outline_color.r,
+			_active_outline_color.g,
+			_active_outline_color.b,
+			_active_outline_color.a,
+		],
+		"outline_color_is_success_tint":
+			_active_outline_color.is_equal_approx(INTERACTION_SUCCESS_TINT),
+		"seam_presented_result": _seam_presented_result,
 		"successful_interaction_count": _successful_interaction_count,
 	}, true)
 	return diagnostics

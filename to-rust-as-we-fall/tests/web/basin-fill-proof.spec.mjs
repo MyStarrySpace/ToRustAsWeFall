@@ -4701,19 +4701,16 @@ test('Static Capbage-green source cannot self-attest a suppressed Web result pul
     presentation_serial: suppressedState.chunk.first_result_serial,
     result: 'success',
     visible: true,
-    pulse_node_visible: true,
     successful_interaction_count: 1,
   });
-  expect(suppressedState.chunk?.pulse_diagnostics?.pulse_screen_candidate_count,
-    'the production observer has on-screen pulse geometry to evaluate').toBeGreaterThan(0);
-  expect(suppressedState.chunk?.pulse_diagnostics?.pulse_alpha,
-    'only the fixture pulse material is transparent').toBeCloseTo(0.0, 5);
-  expect(suppressedState.chunk?.pulse_diagnostics?.pulse_transparency,
-    'the adversarial first mint alone switches to alpha transparency').toBe(1);
-  expect(suppressedState.chunk?.pulse_diagnostics?.pulse_emission_enabled,
-    'the adversarial first mint has no emissive fallback').toBe(false);
-  expect(suppressedState.chunk?.pulse_diagnostics?.pulse_emission_energy,
-    'the suppressed pulse contributes no emissive success light').toBeCloseTo(0.0, 5);
+  expect(suppressedState.chunk?.pulse_diagnostics?.result_render_node_count,
+    'the logical receipt still names the object meshes as its geometry').toBeGreaterThan(0);
+  expect(suppressedState.chunk?.pulse_diagnostics?.result_screen_candidate_count,
+    'the production observer has on-screen silhouette candidates to evaluate').toBeGreaterThan(0);
+  expect(suppressedState.chunk?.pulse_diagnostics?.outline_active,
+    'the logical outline state claims the result tint').toBe(true);
+  expect(suppressedState.chunk?.pulse_diagnostics?.mask_registered,
+    'the adversarial first mint withdrew the silhouette from the mask, so no pixels exist').toBe(false);
   expect(suppressedState.chunk?.static_capbage_box?.size).toEqual([1.5, 1.0, 1.5]);
   expect(suppressedState.chunk?.static_capbage_box?.albedo).toEqual([0.16, 0.34, 0.18]);
   expect(suppressedState.chunk?.static_capbage_box?.emission).toEqual([0.3, 0.7, 0.35]);
@@ -4747,7 +4744,7 @@ test('Static Capbage-green source cannot self-attest a suppressed Web result pul
   expect(retiredSuppressedState.chunk?.first_result_serial).toBe(suppressedSerial);
   expect(retiredSuppressedState.chunk?.current_presentation?.visible,
     'the negative sampling reaches the suppressed presentation retirement').toBe(false);
-  expect(retiredSuppressedState.chunk?.pulse_diagnostics?.pulse_node_visible).toBe(false);
+  expect(retiredSuppressedState.chunk?.pulse_diagnostics?.result_render_node_count).toBe(0);
   const firstTriggers = productionEventRecords(
     productionMessagesAfter(productionEvents, firstEventStart), 'trigger_interactable',
   );
@@ -4816,15 +4813,13 @@ test('Static Capbage-green source cannot self-attest a suppressed Web result pul
     result: 'success',
     visible: true,
   });
-  expect(restoredState.chunk?.pulse_diagnostics?.pulse_node_visible).toBe(true);
-  expect(restoredState.chunk?.pulse_diagnostics?.pulse_screen_candidate_count).toBeGreaterThan(0);
+  expect(restoredState.chunk?.pulse_diagnostics?.result_render_node_count).toBeGreaterThan(0);
+  expect(restoredState.chunk?.pulse_diagnostics?.result_screen_candidate_count).toBeGreaterThan(0);
   expect(restoredState.chunk?.pulse_diagnostics).toMatchObject({
-    pulse_alpha: 1,
-    pulse_transparency: 0,
-    pulse_emission_enabled: false,
-    pulse_emission_energy: 0,
-    pulse_cull_mode: 2,
-    pulse_no_depth_test: false,
+    outline_active: true,
+    mask_registered: true,
+    outline_color_is_success_tint: true,
+    seam_presented_result: true,
   });
   const secondTriggers = productionEventRecords(
     productionMessagesAfter(productionEvents, secondEventStart), 'trigger_interactable',

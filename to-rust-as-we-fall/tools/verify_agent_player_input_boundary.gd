@@ -321,7 +321,10 @@ const AUDITS := [
 				"reachable": true,
 				"token_groups": [
 					["get_player_interaction_presentation_render_nodes"],
-					["_screen_candidates_for_render_nodes("],
+					# Candidates must derive from the render nodes: either the generic AABB projector
+					# or per-vertex surface sampling, which lands exactly on the silhouette the mask
+					# tints and is the finer of the two probes.
+					["_screen_candidates_for_render_nodes(", "surface_get_arrays("],
 				],
 			},
 			"_refresh_player_observation_presenter_registration": {
