@@ -36,7 +36,6 @@ const SPAWNS := {
 var _phase := "ready"        # ready | crossed | complete
 var _tangler
 var _status_label: Label3D
-var _lane_label: Label3D
 
 func _build_chunk() -> void:
 	_add_floor(self, Vector3(11.0, -0.05, 6.5), Vector3(22.0, 0.1, 13.0), Color(0.11, 0.13, 0.12))
@@ -47,10 +46,9 @@ func _build_chunk() -> void:
 			Color(0.24, 0.30, 0.22))
 		_add_box(self, Vector3(stem_x, 0.9, LANE_Z + 1.6), Vector3(0.35, 1.8, 0.35),
 			Color(0.24, 0.30, 0.22))
-	_lane_label = _add_label(self, "THICKET LANE // WALK IT",
-		Vector3(11.0, 1.9, LANE_Z), Color(0.72, 0.88, 0.68))
-	_add_label(self, "OPEN GROUND // RUN HERE",
-		Vector3(11.0, 1.9, ORBIT_CENTRE.z + 1.6), Color(0.92, 0.78, 0.48))
+	# No "WALK IT" / "RUN HERE" signage. Painting the rules into the play space is the P-SHOWN failure
+	# this project keeps catching, and it is unnecessary here: two rows of stems ARE the lane, and open
+	# ground is self-evidently open. The briefing surface says the rest; the floor shows it.
 
 	var exit_door := _add_box(self, EXIT_POS + Vector3(0.0, 1.0, 0.0),
 		Vector3(0.5, 2.0, 1.6), Color(0.46, 0.38, 0.26))
