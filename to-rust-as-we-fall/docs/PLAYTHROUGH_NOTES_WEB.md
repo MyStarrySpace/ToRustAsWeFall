@@ -122,9 +122,23 @@ honest brightness cases; the rest are the preview camera showing a slice of a lo
 So the earlier "project-wide" framing was too strong: the correct statement is that darkness is not
 generated-only, but it is also not widespread — it is two fragments plus a measurement artifact.
 
-`mother_flure` deserves its own look: its content AABB spans **2004 x 6 x 2027** units. A chamber
-fragment should not be 2 km across, so something (a backdrop or ground plane) is inflating it, which
-is also why only 12% of its meshes land on screen.
+`mother_flure`'s **2004 x 6 x 2027** content AABB is NOT a defect — looked into and resolved. A
+single mesh causes it: the `InteractableProgressRing` belonging to `MotherPortalReturn`, a disabled
+`RETURN` interactable parked at world **(2000, 0.2, 2000)**. Drop that one node and the fragment
+measures a sensible **120 x 6 x 55**.
+
+Parking out-of-play props at (2000, 2000) is a deliberate, repeated idiom in
+`mother_flure_chunk.gd` — the remote portal frame, its label, the return interactable and a gear
+interactable all use it. So this is intentional, not a leak.
+
+Two things worth keeping from it:
+- **Any content-AABB measurement must exclude parked-off-world nodes**, or it reports a 2 km chamber.
+  That is what inflated this fragment's row above and dragged its on-screen fraction to 12%.
+- The progress ring is already special-cased BY NAME in three separate mesh scans
+  (`generated_stretch_chunk.gd`, `scene_chunk.gd`, `test_runner_cli.gd`). It is kept visible with
+  alpha 0 rather than hidden, so it enters every mesh enumeration. Hiding a disabled interactable's
+  ring instead would remove the need for those three workarounds — a tidy-up, not a fix, and it
+  belongs to whoever owns that subsystem.
 
 **A separate, concrete preview issue found in the same sweep:** `stacks` boots with its camera on a
 small empty corner. Its content is 416 visible meshes spanning **184 x 19 x 47** units; the opening
