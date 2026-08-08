@@ -1519,6 +1519,9 @@ func _ready() -> void:
 			"--test-two-hands-gate":
 				ran_test = true
 				await _test_two_hands_gate()
+			"--test-scanned-plaza":
+				ran_test = true
+				await _test_scanned_plaza()
 			"--test-generated-stretch-quality":
 				ran_test = true
 				await _test_generated_stretch_quality()
@@ -2174,6 +2177,7 @@ func _run_all_tests() -> void:
 	_test_generated_traversible()
 	await _test_generated_stretch_interactable_reach()
 	await _test_two_hands_gate()
+	await _test_scanned_plaza()
 	await _test_generated_stretch_quality()
 	await _test_generated_food_modes()
 	_test_grid_ascii()
@@ -8724,6 +8728,48 @@ func _test_generated_traversible() -> void:
 				var path: Array = g.find_multi_level_path(ecell, entry.elev, g.world_to_grid(np), int((n as Dictionary).get("elevation_index", 0)))
 				_assert_true(path.size() >= 1, "seed %d %s: node '%s' is reachable" % [seed, tiers[ti], str((n as Dictionary).get("id", ""))])
 	_assert_true(checked >= 20, "sampled enough generated levels (%d)" % checked)
+
+## THE SCANNED PLAZA — the staging correction is the whole fragment, so it is asserted rather than
+## trusted to the authored numbers. A Naturalizer's equipment fails on colonized ground (GDD 7.3), so
+## its route walks CLEAN ground and scans into the aisle; if a mat cell ever lands on the walked route
+## the fragment stops being "the roster's own bypass" and becomes a lane inside the patrol's footprint.
+## Also pins the two priced crossings actually differing: the mat conceals, the margin does not drain.
+func _test_scanned_plaza() -> void:
+	_test_name = "The Scanned Plaza"
+	var inst = await _instantiate_preview_chunk_and_wait("scanned_plaza", 8)
+	if inst == null:
+		_assert_true(false, "the scanned plaza instantiates")
+		return
+	var chunk := _find_fragment_chunk_root(inst)
+	var gs = inst.get("_game_state")
+	if chunk == null or gs == null:
+		_assert_true(false, "the scanned plaza exposes its chunk and game state")
+		inst.queue_free()
+		await get_tree().process_frame
+		return
+	var sentry = chunk.get("_sentry")
+	_assert_true(sentry != null and gs.characters.has("plaza_enforcement"),
+		"the plaza absorbs exactly one enforcement body")
+	if sentry != null:
+		_assert_true(str(sentry.call("get_state")) in ["patrol", "idle"],
+			"the route OPENS on its patrol, not already chasing (got %s)"
+				% str(sentry.call("get_state")))
+	_assert_true(bool(chunk.call("mat_clears_patrol_route")),
+		"NO colonized cell lies on the walked route (GDD 7.3 staging correction)")
+	var mat = chunk.get("_mat")
+	_assert_true(mat != null and bool(mat.call("covers", chunk.MAT_CENTRE))
+			and not bool(mat.call("covers", Vector3(12.5, 0.0, chunk.PATROL_Z))),
+		"the mat covers the aisle and NOT the enforcement lane")
+	gs.snap_character_to("aster", chunk.MAT_CENTRE)
+	await get_tree().process_frame
+	var on_mat: Array = (chunk.get_preview_state().get("on_mat", []) as Array)
+	_assert_true(on_mat.has("aster"), "standing on the mat is detected as standing on the mat")
+	gs.snap_character_to("aster", chunk.MARGIN_WEST)
+	await get_tree().process_frame
+	_assert_true(not ((chunk.get_preview_state().get("on_mat", []) as Array).has("aster")),
+		"the Scarpet margin is NOT the draining mat -- it is the place you wait a period out")
+	inst.queue_free()
+	await get_tree().process_frame
 
 ## TWO HANDS ON THE GATE — the held-station co-op rule, which is the whole fragment: a crossing pad
 ## only carries somebody while a DIFFERENT body bears a gate console. If that degrades to "any hold
