@@ -133,13 +133,10 @@ const DETECTION_VERTICAL_BAND := 2.0
 ## A medium hide drops an enemy's effective spotting range to this fraction of its outer range — the
 ## "inner" tier. Close enough (inside this band) and a corner/scarpet won't shake a chaser.
 const DETECTION_INNER_FACTOR := 0.45
-## How often a wall-BLOCKED spot re-checks while the pair is still moving (scheduler ticks). Coarse enough
-## to stay cheap, fine enough that stepping out of cover mid-move is seen within a step.
-const DETECTION_LOS_RECHECK_INTERVAL := 0.25
-## Upper bound on one armed re-check chain (~30s of continuous motion). A deterministic backstop so a
-## permanently-blocked pair that never stops moving (roam yards) can't poll forever; any recompute or a
-## fresh primary event starts a new chain with a fresh budget.
-const DETECTION_LOS_RECHECK_MAX_HOPS := 120
+## RETIRED. A wall-blocked pair used to re-test on a 0.25s cadence for at most 120 hops (~30s) and then
+## give up, which was both a per-pair running cost and a correctness cliff -- past the budget, cover
+## granted immunity for the rest of a long move, the very bug the re-check existed to prevent.
+## _arm_detection_los_recheck now SOLVES for the tick sight returns and wakes once, with no horizon.
 
 ## Detection is invalidated by movement/state changes, then solved analytically into scheduler events.
 ## These derived registries keep that work proportional to active detector->target subscriptions instead
@@ -4231,18 +4228,38 @@ func _has_detection_los(detector_id: String, target_id: String) -> bool:
 ## Arm one hop of the LOS re-check chain. Only while either side is MOVING (parked-parked geometry is
 ## frozen — the next move recomputes fresh), and bounded by a hop budget so a permanently-blocked pair in
 ## constant motion can't poll forever. Uses the pair tag, so any recompute cancels + supersedes the chain.
+## A wall-blocked spot on a pair still in motion: SOLVE for the tick sight comes back, and wake there.
+##
+## This used to re-test every 0.25s for at most 120 hops -- exactly 30 seconds -- and then stop. The cadence was
+## pure overhead on every blocked-but-moving pair in the level, and the cap was worse than overhead:
+## past 30 seconds the chain silently ended, so cover granted immunity for the rest of a long move,
+## which is precisely the bug the re-check was written to prevent. Measured: a slow crawler rounding a
+## long wall comes into view at 76.4s and the old chain had given up at 30.
+##
+## The solve reads both bodies' committed plans, so it is correct for a moving detector as well as a
+## moving target, and it has no horizon. If sight never returns on the current plans it schedules
+## nothing at all -- a re-plan recomputes the pair anyway.
 func _arm_detection_los_recheck(detector_id: String, target_id: String, hops: int) -> void:
-	if scheduler == null or hops >= DETECTION_LOS_RECHECK_MAX_HOPS:
+	if scheduler == null:
 		return
 	if not (is_moving(detector_id) or is_moving(target_id)):
 		return
+	var clear_tick := predict_los_change_tick(detector_id, target_id, true)
+	if clear_tick < 0.0:
+		return
+	# STRICT PROGRESS is what makes the chain terminate now that there is no hop cap. Each re-arm must
+	# land strictly later than the tick it was armed at; otherwise a solve that returns the current
+	# moment (sampling landing exactly on a boundary) would wake, re-solve to the same tick, and spin
+	# there forever. With progress guaranteed, the chain is bounded by the movement plan's own end.
+	if clear_tick <= float(scheduler.get_current_tick()) + 0.0001:
+		clear_tick = float(scheduler.get_current_tick()) + 0.0166
 	var tag := _detection_pair_tag(detector_id, target_id)
 	_detection_active_pairs[tag] = {
 		"a": detector_id,
 		"b": target_id,
-		"tick": float(scheduler.get_current_tick()) + DETECTION_LOS_RECHECK_INTERVAL,
+		"tick": clear_tick,
 	}
-	scheduler.schedule_after(DETECTION_LOS_RECHECK_INTERVAL,
+	scheduler.schedule_at(clear_tick,
 		func(): _recheck_detection_after_los_block(detector_id, target_id, hops + 1),
 		tag)
 
@@ -4431,6 +4448,61 @@ func _on_proximity_trigger(trigger_id: String) -> void:
 		return
 	# Not enough bodies yet: solve for the NEXT entry instead of sampling again in a fixed period.
 	_recompute_proximity_trigger(trigger_id)
+
+## PREDICT WHEN SIGHT CHANGES — the general form, for pairs where EITHER side may be moving.
+##
+## `want_clear = false` answers "when is sight first LOST" (a turret holding a lock). `true` answers
+## "when is sight first GAINED" (a detector re-checking a pair currently behind cover). They are
+## complements of the same scan, so both directions come from one walk.
+##
+## SAMPLING, stated honestly. Visibility is a predicate over the segment between two moving points; it
+## changes at finitely many discrete moments per linear window, but solving for those crossings in
+## closed form against arbitrary grid geometry is not cheap. Instead the window is sampled finely
+## enough that NEITHER body can move more than half a cell between probes. Since blockers are stored
+## per cell, no blocked cell can be stepped over -- the sample spacing is tied to the granularity the
+## world is stored at, not to wall-clock, so the error does not grow with body speed the way a fixed
+## time-interval poll's does.
+##
+## Returns -1.0 if sight never reaches the requested state on the current plans.
+func predict_los_change_tick(a_id: String, b_id: String, want_clear: bool) -> float:
+	if scheduler == null or grid == null or not grid.has_method("has_line_of_sight"):
+		return -1.0
+	if not characters.has(a_id) or not characters.has(b_id):
+		return -1.0
+	var now := float(scheduler.get_current_tick())
+	var segs_a := _get_movement_segments(a_id)
+	var segs_b := _get_movement_segments(b_id)
+	var step_limit: float = maxf(0.05, float(grid.cell_size) * 0.5)
+	var earliest := -1.0
+	for seg_a_v in segs_a:
+		var seg_a: Dictionary = seg_a_v
+		for seg_b_v in segs_b:
+			var seg_b: Dictionary = seg_b_v
+			var t0: float = maxf(float(seg_a["start_tick"]), float(seg_b["start_tick"]))
+			var t1: float = minf(float(seg_a["end_tick"]), float(seg_b["end_tick"]))
+			t0 = maxf(t0, now)
+			if t0 >= t1:
+				continue
+			var vel_a: Vector3 = seg_a["velocity"]
+			var vel_b: Vector3 = seg_b["velocity"]
+			# Both parked: geometry is frozen, so sight cannot change inside this window. A trailing
+			# parked segment runs to 1e12, so without this the walk would sample forever.
+			if vel_a.length() < 0.0001 and vel_b.length() < 0.0001:
+				continue
+			var span := t1 - t0
+			var travel: float = maxf(vel_a.length(), vel_b.length()) * span
+			var steps := int(ceil(travel / step_limit)) + 1
+			steps = clampi(steps, 1, 4096)
+			for step in range(0, steps + 1):
+				var tick: float = t0 + span * (float(step) / float(steps))
+				var pos_a: Vector3 = Vector3(seg_a["start_pos"]) 					+ vel_a * (tick - float(seg_a["start_tick"]))
+				var pos_b: Vector3 = Vector3(seg_b["start_pos"]) 					+ vel_b * (tick - float(seg_b["start_tick"]))
+				var clear := bool(grid.call("has_line_of_sight", pos_a, pos_b))
+				if clear == want_clear:
+					if earliest < 0.0 or tick < earliest:
+						earliest = tick
+					break
+	return earliest
 
 ## PREDICT WHEN SIGHT BREAKS, instead of asking every quarter-second whether it has.
 ##

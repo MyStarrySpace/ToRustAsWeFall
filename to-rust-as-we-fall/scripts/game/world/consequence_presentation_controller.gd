@@ -482,10 +482,17 @@ func _on_movement_result_requested(payload: Dictionary, _source: Node) -> void:
 	}
 	_movement_entries[_movement_presentation_serial] = entry
 	_present_latest_movement_entry()
-	_connect_movement_phase_draw(
-		_movement_presentation_serial,
-		int(entry.get("phase_revision", 0)),
-		str(entry.get("phase", "")))
+	# Same receipt rule as _begin_movement_phase: an ACCEPTED birth deliberately draws nothing (the
+	# party walking is the acknowledgement), so its receipt is granted at write; only a phase that
+	# actually renders (a refusal at birth) arms the framebuffer receipt.
+	if not _movement_phase_renders(str(entry.get("phase", ""))):
+		entry["phase_presented_frames"] = MOVEMENT_PHASE_MIN_PRESENTED_FRAMES
+		entry["phase_duration_started_msec"] = now
+	else:
+		_connect_movement_phase_draw(
+			_movement_presentation_serial,
+			int(entry.get("phase_revision", 0)),
+			str(entry.get("phase", "")))
 
 
 func _retire_superseded_movement_entries() -> void:
@@ -563,9 +570,10 @@ func _present_latest_movement_entry() -> void:
 		else (COMPLETE_TINT if phase == "ARRIVAL" else ACTIVE_TINT))
 	# The player is never told about their own successful movement. Watching the party walk IS the
 	# feedback; a banner reading "RALLY ARRIVAL // 3 MEMBERS // ROUTE 100%" narrates what is already
-	# on screen. Only a move that did NOT happen earns words, because that is information the world
-	# cannot show by itself.
-	_movement_panel.visible = phase in ["REFUSED", "INTERRUPTED"]
+	# on screen. Words are earned only by what the world cannot show by itself: a move that did NOT
+	# happen (refused, interrupted), or a party visibly STALLED for a reason with no visual -- a route
+	# being reformed, a cooperative hold on a contested cell.
+	_movement_panel.visible = phase in ["REFUSED", "INTERRUPTED"] 		or route_status in ["reforming_route", "cooperative_hold"]
 
 
 func _latest_movement_serial() -> int:
@@ -906,6 +914,13 @@ func _sync_movement_entries_at(now: int) -> void:
 		_present_latest_movement_entry()
 
 
+## Which movement phases put PIXELS on screen. Successful movement (accepted / progress / arrival)
+## deliberately renders nothing -- the party visibly walking IS the acknowledgement, and a banner
+## narrating it was ruled UI junk. Only a move that did not happen earns chrome; a stall status
+## (reforming_route / cooperative_hold) renders through the same panel when present.
+func _movement_phase_renders(phase: String) -> bool:
+	return phase in ["refused", "interrupted"]
+
 func _begin_movement_phase(entry: Dictionary, phase: String, now: int) -> void:
 	entry["phase"] = phase
 	entry["phase_started_msec"] = now
@@ -918,6 +933,17 @@ func _begin_movement_phase(entry: Dictionary, phase: String, now: int) -> void:
 	# callback against the old label can otherwise leave a static ARRIVAL phase at
 	# zero presented frames until some unrelated animation dirties the canvas.
 	_present_latest_movement_entry()
+	if not _movement_phase_renders(phase):
+		# A non-rendering phase cannot earn framebuffer receipts -- there is deliberately nothing to
+		# draw. Its evidence is the WORLD: the party's real positions, which the observation layer
+		# reads directly. Grant the receipt at write time so downstream lifetimes (a status serial
+		# gating on the current phase, arrival's recent-window) do not chain on a banner that never
+		# comes, while render_visible stays honestly false.
+		entry["phase_presented_frames"] = MOVEMENT_PHASE_MIN_PRESENTED_FRAMES
+		entry["phase_duration_started_msec"] = now
+		if phase == "arrival":
+			entry["recent_until_msec"] = now + MOVEMENT_RECENT_LIFETIME_MSEC
+		return
 	_connect_movement_phase_draw(
 		int(entry.get("presentation_serial", 0)),
 		int(entry.get("phase_revision", 0)),

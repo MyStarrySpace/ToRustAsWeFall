@@ -1558,6 +1558,12 @@ func _ready() -> void:
 			"--test-detection-scaling":
 				ran_test = true
 				await _test_detection_scaling()
+			"--test-enemy-state-derived-work":
+				ran_test = true
+				await _test_enemy_state_derived_work()
+			"--test-watched-gap-los":
+				ran_test = true
+				await _test_watched_gap_los()
 			"--test-generated-stretch-quality":
 				ran_test = true
 				await _test_generated_stretch_quality()
@@ -2226,6 +2232,8 @@ func _run_all_tests() -> void:
 	await _test_predicted_consequence_parity()
 	await _test_movement_discipline()
 	await _test_detection_scaling()
+	await _test_enemy_state_derived_work()
+	await _test_watched_gap_los()
 	await _test_generated_stretch_quality()
 	await _test_generated_food_modes()
 	_test_grid_ascii()
@@ -8943,6 +8951,122 @@ func _movement_discipline_scripts(dir_path: String) -> Array:
 		entry = dir.get_next()
 	dir.list_dir_end()
 	return out
+
+## THE WATCHED GAP, and the 30-second cliff underneath it.
+##
+## The shipped detection LOS re-check exists because of a real bug: a target that entered range BEHIND
+## cover and then walked into the open during the SAME move was never re-checked, so cover granted
+## immunity for the rest of the move. The re-check fixed that by re-testing every 0.25s -- but only for
+## DETECTION_LOS_RECHECK_MAX_HOPS (120) hops. 120 x 0.25 = exactly 30 seconds, after which the chain
+## silently stops and the original bug returns for any move longer than that.
+##
+## Both cases are pinned here BEFORE the mechanism changes, so a replacement has to prove it is
+## strictly better rather than merely different.
+func _test_watched_gap_los() -> void:
+	_test_name = "Watched Gap LOS"
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.scheduler = sched
+	gs.event_log = EventLog.new()
+	var grid := GridWorld.new()
+	grid.create_room(60, 30)
+	gs.grid = grid
+	# A wall with a gap: the walker approaches behind it, then steps into the open.
+	for blocker_z in range(2, 14):
+		grid.add_sight_blocker(Vector2i(20, blocker_z))
+	gs.register_character("watcher", Vector3(10.0, 0.0, 8.0), 1.0, {"detection_range": 40.0})
+	gs.register_character("walker", Vector3(30.0, 0.0, 8.0), 3.0, {"hp": 100.0})
+	gs.set_detection_targets("watcher", ["walker"])
+	_assert_true(not grid.has_line_of_sight(
+			gs.get_position("watcher"), gs.get_position("walker")),
+		"the walker starts inside range but BEHIND cover")
+	# It walks around the wall's end into the open.
+	gs.command_move_to_pos("walker", Vector3(30.0, 0.0, 20.0))
+	var clear_tick := float(gs.predict_los_change_tick("watcher", "walker", true))
+	_assert_true(clear_tick > 0.0,
+		"the solver predicts WHEN the walker steps into view, not just that it might")
+	var actual_clear := -1.0
+	for _i in range(4000):
+		sched.advance_ticks(0.0166)
+		if grid.has_line_of_sight(gs.get_position("watcher"), gs.get_position("walker")):
+			actual_clear = float(sched.get_current_tick())
+			break
+	_assert_true(actual_clear > 0.0, "and it really does come into view on that walk")
+	if actual_clear > 0.0 and clear_tick > 0.0:
+		_assert_true(absf(actual_clear - clear_tick) <= 0.6,
+			"predicted view-gain %.3f matches the walked %.3f" % [clear_tick, actual_clear])
+	# THE CLIFF: a move longer than the hop budget. 120 hops x 0.25s = 30s of re-checking, and the
+	# solver must answer correctly past that horizon where the poll gives up.
+	var sched2 := EventScheduler.new()
+	var gs2 := GameState.new()
+	gs2.scheduler = sched2
+	gs2.event_log = EventLog.new()
+	var grid2 := GridWorld.new()
+	grid2.create_room(300, 90)
+	gs2.grid = grid2
+	for blocker_z in range(2, 27):
+		grid2.add_sight_blocker(Vector2i(40, blocker_z))
+	gs2.register_character("watcher", Vector3(20.0, 0.0, 10.0), 1.0, {"detection_range": 400.0})
+	gs2.register_character("crawler", Vector3(60.0, 0.0, 10.0), 0.45, {"hp": 100.0})
+	gs2.set_detection_targets("watcher", ["crawler"])
+	# At 0.6 u/tick this leg takes well over 30 seconds, so the shipped poll runs out of hops first.
+	# The sight line crosses the wall's column at HALF the crawler's z-offset (the watcher is twice as
+	# far from the wall as the crawler), so it must run to z=60 to clear a wall topping out at z=27.
+	gs2.command_move_to_pos("crawler", Vector3(60.0, 0.0, 70.0))
+	var late_clear := float(gs2.predict_los_change_tick("watcher", "crawler", true))
+	_assert_true(late_clear > 30.0,
+		"the view-gain lands PAST the 30s hop budget (%.1fs) -- the case the poll cannot reach" % late_clear)
+	var late_actual := -1.0
+	for _i in range(20000):
+		sched2.advance_ticks(0.0166)
+		if grid2.has_line_of_sight(
+				gs2.get_position("watcher"), gs2.get_position("crawler")):
+			late_actual = float(sched2.get_current_tick())
+			break
+	_assert_true(late_actual > 0.0, "and the crawler really does come into view eventually")
+	if late_actual > 0.0:
+		_assert_true(absf(late_actual - late_clear) <= 1.0,
+			"the solver is right past the cliff: predicted %.2f vs walked %.2f" % [
+				late_clear, late_actual])
+
+## STATE-DERIVED WORK FOLLOWS TRANSITIONS, NOT FRAMES.
+##
+## The enemy threat marker's tint, spin rate and emission are functions of FSM state alone. They used
+## to be recomputed every frame per enemy and re-uploaded to the RenderingServer, so ~59 of every 60
+## evaluations per second recomputed an unchanged value. This asserts the structural property rather
+## than a wall-clock time: driving many frames without a transition must not recompute the style once.
+func _test_enemy_state_derived_work() -> void:
+	_test_name = "Enemy State-Derived Work"
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.scheduler = sched
+	gs.event_log = EventLog.new()
+	var grid := GridWorld.new()
+	grid.create_room(30, 20)
+	gs.grid = grid
+	var holder := Node3D.new()
+	add_child(holder)
+	var foe := Enemy.new()
+	foe.game_state = gs
+	foe.char_id = "foe"
+	holder.add_child(foe)
+	gs.register_character("foe", Vector3(8.0, 0.0, 8.0), 1.2, {})
+	foe.activate()
+	await get_tree().process_frame
+	var revision_before := int(foe.get("_marker_style_revision"))
+	# Many frames, no state change.
+	for _i in range(120):
+		foe._update_threat_marker()
+	var revision_after := int(foe.get("_marker_style_revision"))
+	_assert_equals(revision_after, revision_before,
+		"120 frames without a transition recompute the marker style ZERO times")
+	# A real transition must still restyle it, or the marker would go stale.
+	foe._fsm.transition_to("alert")
+	_assert_true(int(foe.get("_marker_style_revision")) > revision_after,
+		"a state TRANSITION restyles it exactly once")
+	_assert_equals(str(foe.get_state()), "alert", "and the transition really happened")
+	holder.queue_free()
+	await get_tree().process_frame
 
 ## DETECTION SCALING — a yard full of roamers must not cost O(n^2).
 ##
@@ -53386,6 +53510,14 @@ func _test_event_log_mutation_audit() -> void:
 		# they aren't logged; replay rebuilds them from the logged movements that carry characters
 		# into/out of cover and enemies to/from the lure.
 		"set_character_hidden", "set_character_concealment", "set_character_distracted",
+		# Predicted consequences: pure solves over committed movement plans, plus trigger
+		# registrations that are DERIVED state -- rebuilt identically on replay from the logged
+		# movements, never serialized, exactly like concealment above. The solves mutate nothing;
+		# command_move_to_pos_predicted logs through command_move_to_pos (KIND_MOVE_TO_POS) and only
+		# adds a read of the plan's end tick.
+		"predict_proximity_time", "predict_los_break_tick", "predict_los_change_tick",
+		"register_proximity_trigger", "unregister_proximity_trigger",
+		"proximity_trigger_occupancy", "command_move_to_pos_predicted",
 		"get_hand_items", "get_hand_slots", "get_internal_items",
 		"has_free_hand", "has_free_hands",
 		"get_scent_radius",
@@ -60387,7 +60519,8 @@ func _test_movement_route_status_presentation() -> void:
 		and bool(pre_draw_record.get("render_visible", false)),
 		("A freshly-written REFORMING ROUTE status cannot cross the public "
 		+ "observation boundary before its exact HUD serial completes a draw, "
-		+ "while the previously rendered base movement acknowledgement remains visible"))
+		+ "while the panel -- visible again because the STALL status renders even "
+		+ "though success chrome does not -- keeps the base lineage readable"))
 	presenter._record_route_status_frame_drawn_at(base_now + 151)
 	var first_draw_state := presenter.get_movement_presentation_state()
 	var first_draw_records := first_draw_state.get("records", []) as Array

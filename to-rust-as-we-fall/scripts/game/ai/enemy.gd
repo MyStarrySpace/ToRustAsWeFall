@@ -137,6 +137,12 @@ var _eye_left: OmniLight3D
 var _eye_right: OmniLight3D
 var _base_color: Color
 var _threat_marker: Node3D
+var _marker_tint := Color(0.95, 0.07, 0.11)
+var _marker_speed := 0.75
+var _marker_energy_base := 1.7
+var _marker_urgent := false
+## Counts style recomputes so a test can prove they follow TRANSITIONS, not frames.
+var _marker_style_revision := 0
 var _threat_marker_material: StandardMaterial3D
 
 signal damaged(amount: float, new_hp: float)
@@ -766,6 +772,7 @@ func _sync_detection_subscription(state: String) -> void:
 		game_state.set_detection_enabled(char_id, state in DETECTION_SCANNING_STATES)
 
 func _enter_state(state: String) -> void:
+	_refresh_threat_marker_style()
 	# StateMachine cancels the old tag before entering. Mirror that cancellation in the serializable
 	# deadline registry before the new phase arms its own work.
 	_state_deadlines.clear()
@@ -1558,41 +1565,60 @@ func _build_threat_marker() -> void:
 		_threat_marker.add_child(pip)
 
 
+## THE MARKER'S STYLE IS A FUNCTION OF STATE, so it is computed when the state CHANGES.
+##
+## This whole block used to run every frame for every enemy: a get_state(), a match deriving tint /
+## speed / energy from it, and three material property writes. Tint, speed and energy depend on
+## nothing but the FSM state, which changes a handful of times per encounter -- so ~59 of every 60
+## evaluations per second per enemy recomputed a value that had not changed and re-uploaded it to the
+## RenderingServer. A state machine exists precisely so that state-derived work can be done on the
+## transition; doing it per frame is paying for a state machine and then not using it.
+##
+## What genuinely animates (the pulse and spin) still updates per frame, because it is a function of
+## time rather than of state. The emission energy, which mixes both, writes only while the marker is
+## on screen and only when the value actually moves.
+func _refresh_threat_marker_style() -> void:
+	var state := get_state()
+	_marker_tint = Color(0.95, 0.07, 0.11)
+	_marker_speed = 0.75
+	_marker_energy_base = 1.7
+	match state:
+		"lured", "return":
+			_marker_tint = Color(1.0, 0.58, 0.12)
+			_marker_speed = 1.15
+			_marker_energy_base = 2.3
+		"stagger", "stunned":
+			_marker_tint = Color(0.68, 0.4, 1.0)
+			_marker_speed = -1.6
+			_marker_energy_base = 2.5
+		"alert", "pursuit":
+			_marker_tint = Color(1.0, 0.04, 0.03)
+			_marker_speed = 2.2
+			_marker_energy_base = 3.2
+		"windup", "charge", "impact":
+			_marker_tint = Color(1.0, 0.02, 0.01)
+			_marker_speed = 4.2
+			_marker_energy_base = 4.0
+	_marker_urgent = state in ["alert", "pursuit", "windup", "charge", "impact"]
+	_marker_style_revision += 1
+	if _threat_marker != null:
+		_threat_marker.visible = state != "dead"
+	# The tint only changes with state, so it is uploaded here rather than 60 times a second.
+	if _threat_marker_material != null:
+		_threat_marker_material.emission = _marker_tint
+
 func _update_threat_marker() -> void:
 	if _threat_marker == null or _threat_marker_material == null:
 		return
-	var state := get_state()
-	_threat_marker.visible = state != "dead"
 	if not _threat_marker.visible:
 		return
-	var tint := Color(0.95, 0.07, 0.11)
-	var speed := 0.75
-	var energy_base := 1.7
-	match state:
-		"lured", "return":
-			tint = Color(1.0, 0.58, 0.12)
-			speed = 1.15
-			energy_base = 2.3
-		"stagger", "stunned":
-			tint = Color(0.68, 0.4, 1.0)
-			speed = -1.6
-			energy_base = 2.5
-		"alert", "pursuit":
-			tint = Color(1.0, 0.04, 0.03)
-			speed = 2.2
-			energy_base = 3.2
-		"windup", "charge", "impact":
-			tint = Color(1.0, 0.02, 0.01)
-			speed = 4.2
-			energy_base = 4.0
 	var now := float(Time.get_ticks_msec()) * 0.001 # @rendering_only
-	var pulse := 0.5 + 0.5 * sin(now * (5.0 + absf(speed) * 2.0))
-	var urgent := state in ["alert", "pursuit", "windup", "charge", "impact"]
-	_threat_marker.rotation.y = now * speed
-	_threat_marker.scale = Vector3.ONE * (0.92 + pulse * (0.22 if urgent else 0.1))
-	_threat_marker_material.albedo_color = Color(tint.r, tint.g, tint.b, 0.7 + pulse * 0.2)
-	_threat_marker_material.emission = tint
-	_threat_marker_material.emission_energy_multiplier = energy_base + pulse * 1.25
+	var pulse := 0.5 + 0.5 * sin(now * (5.0 + absf(_marker_speed) * 2.0))
+	_threat_marker.rotation.y = now * _marker_speed
+	_threat_marker.scale = Vector3.ONE * (0.92 + pulse * (0.22 if _marker_urgent else 0.1))
+	_threat_marker_material.albedo_color = Color(
+		_marker_tint.r, _marker_tint.g, _marker_tint.b, 0.7 + pulse * 0.2)
+	_threat_marker_material.emission_energy_multiplier = _marker_energy_base + pulse * 1.25
 
 func _set_eye_energy(energy: float) -> void:
 	if _eye_left:

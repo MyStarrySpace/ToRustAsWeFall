@@ -1,7 +1,7 @@
 class_name Flare
 extends Enemy
 
-## FLARE (fauna_roster L33, renamed from Neutros): "triggered bomb, mid — neutrophils; a multi-lobed
+## FLARE (fauna_roster L33; carries the renamed neutrophil entry): "triggered bomb, mid — neutrophils; a multi-lobed
 ## nucleus and three granule classes, the burst being collateral oxidative damage. Inert until set
 ## off, then a short bright wind-up and an area burst that hits friend and foe. Careless fire and
 ## bunching set it off, and the savvy play is triggering it yourself (Myke's flame) into a group.
