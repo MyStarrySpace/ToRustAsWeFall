@@ -1525,6 +1525,9 @@ func _ready() -> void:
 			"--test-tangler":
 				ran_test = true
 				await _test_tangler()
+			"--test-loudest-one":
+				ran_test = true
+				await _test_loudest_one()
 			"--test-generated-stretch-quality":
 				ran_test = true
 				await _test_generated_stretch_quality()
@@ -2182,6 +2185,7 @@ func _run_all_tests() -> void:
 	await _test_two_hands_gate()
 	await _test_scanned_plaza()
 	await _test_tangler()
+	await _test_loudest_one()
 	await _test_generated_stretch_quality()
 	await _test_generated_food_modes()
 	_test_grid_ascii()
@@ -8800,6 +8804,87 @@ func _test_tangler() -> void:
 		"going quiet does not shed the lock -- it only stops attracting a new one")
 
 	holder.queue_free()
+	await get_tree().process_frame
+
+## A decoy ORBITS -- that is the word the register uses, and it is load-bearing. Pinned to one spot it
+## gets closed on, the Tangler enters its snap cycle, scanning stops by design and no hand-off can
+## fire. Holding the decoy a fixed distance from the Tangler's CURRENT position keeps it in pursuit,
+## which is where the lock rule lives.
+func _orbit_loud_decoy(gs, decoy_id: String, radius: float) -> void:
+	var t_pos: Vector3 = gs.get_position("thicket_tangler")
+	var away: Vector3 = gs.get_position(decoy_id) - t_pos
+	if away.length() < 0.001:
+		away = Vector3(0.0, 0.0, 1.0)
+	gs.snap_character_to(decoy_id, t_pos + away.normalized() * radius)
+
+## THE LOUDEST ONE — the decoy atom. Its verb is DISTRACT (hold the lock), and the thing it teaches is
+## that quiet means WALKING: a Tangler reads the neural channel, so hiding does nothing. Both halves
+## are asserted, plus the structural one -- the lane must offer NO hide flora, because a player who
+## solves this by hiding has not learned it. Positions keep both bodies inside the 5.0 scan and
+## outside the 2.2 attack range, which is where the lock rule lives (a body at contact range drops the
+## Tangler into its snap cycle, where it stops scanning by design).
+func _test_loudest_one() -> void:
+	_test_name = "The Loudest One"
+	var inst = await _instantiate_preview_chunk_and_wait("loudest_one", 8)
+	if inst == null:
+		_assert_true(false, "the loudest-one fragment instantiates")
+		return
+	var chunk := _find_fragment_chunk_root(inst)
+	var gs = inst.get("_game_state")
+	if chunk == null or gs == null:
+		_assert_true(false, "the loudest-one fragment exposes its chunk and game state")
+		inst.queue_free()
+		await get_tree().process_frame
+		return
+	var tangler = chunk.get("_tangler")
+	_assert_true(tangler != null and gs.characters.has("thicket_tangler"),
+		"the thicket holds one Tangler")
+	if tangler != null:
+		_assert_true(str(tangler.call("get_state")) in ["roam", "idle", "patrol"],
+			"it OPENS drifting its patch, not already reading somebody (got %s)"
+				% str(tangler.call("get_state")))
+	# The structural half: there is no hide flora to solve this with. Scarpet masks iron, a Tangler
+	# reads neural -- offering cover here would teach the wrong lesson.
+	var hide_flora := 0
+	for node in inst.find_children("*", "Node3D", true, false):
+		if node is Scarpet or node is CandidZone:
+			hide_flora += 1
+	_assert_equals(hide_flora, 0,
+		"the lane offers NO hide flora -- quiet means walking, not concealed")
+	# The decoy owns the lock while it is the loud one.
+	gs.set_stat("aster", "stamina", 100.0)
+	gs.snap_character_to("aster", chunk.ORBIT_CENTRE)
+	gs.snap_character_to("peris", Vector3(11.0, 0.0, chunk.LANE_Z))
+	gs.set_running("aster", true)
+	for _i in range(30):
+		gs.set_stat("aster", "stamina", 100.0)
+		if not gs.is_running("aster"):
+			gs.set_running("aster", true)
+		_orbit_loud_decoy(gs, "aster", 3.6)
+		gs.snap_character_to("peris", Vector3(11.0, 0.0, chunk.LANE_Z))
+		inst.headless_advance(0.05)
+	_assert_equals(str(chunk.call("get_lock_holder")), "aster",
+		"the RUNNING decoy owns the lock while the other walks the lane")
+	# The teaching: walking through the scan does NOT take the lock off the decoy.
+	_assert_equals(str(chunk.call("get_lock_holder")), "aster",
+		"a WALKING crosser inside the scan does not steal the lock")
+	# The punishment: run in the lane and it is yours.
+	gs.set_stat("peris", "stamina", 100.0)
+	gs.set_running("aster", false)
+	gs.set_running("peris", true)
+	for _i in range(30):
+		gs.set_stat("peris", "stamina", 100.0)
+		if not gs.is_running("peris"):
+			gs.set_running("peris", true)
+		_orbit_loud_decoy(gs, "aster", 3.6)
+		_orbit_loud_decoy(gs, "peris", 3.4)
+		inst.headless_advance(0.05)
+	var loud_state: Dictionary = chunk.get_preview_state()
+	_assert_equals(str(chunk.call("get_lock_holder")), "peris",
+		"running in the lane TAKES the lock -- the cost of going loud mid-crossing (tangler=%s loud=%s run_a=%s run_p=%s)"
+			% [str(loud_state.get("tangler_state", "")), str(loud_state.get("loud", [])),
+				str(gs.is_running("aster")), str(gs.is_running("peris"))])
+	inst.queue_free()
 	await get_tree().process_frame
 
 ## An orbiting decoy holds its distance; a stationary one gets grabbed. Pinning both bodies keeps the
