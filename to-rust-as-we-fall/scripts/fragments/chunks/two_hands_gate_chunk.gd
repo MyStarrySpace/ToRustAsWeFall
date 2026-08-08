@@ -27,6 +27,9 @@ const EXIT_POS := Vector3(24.5, 0.0, 6.5)
 ## Matches the wash relay's plate reach so "standing on it" reads the same everywhere.
 const HOLD_RADIUS := 1.4
 
+const IDLE_LAMP_ENERGY := 0.55   # the station is findable at rest
+const HELD_LAMP_ENERGY := 2.4    # and unmistakable while borne
+
 const PARTY_IDS := ["aster", "peris"]
 
 ## The pair starts on the south lip of the near deck, OUTSIDE the sentry's reach at the near end of
@@ -74,20 +77,23 @@ func _build_chunk() -> void:
 ## A console is a visible plate plus a lamp that reports whether it is currently bearing someone.
 ## No interactable: standing on it IS the verb, so there is nothing to click and nothing to explain.
 func _add_console(pos: Vector3, label: String, watched: bool) -> void:
-	# Both consoles must read against their OWN deck. Measured: the near deck renders (93, 52, 35) and
-	# the far deck (89, 77, 70) -- the same brightness, but the far one is cool and desaturated because
-	# it sits in shadow and takes only neutral ambient. The old far tint (0.24, 0.32, 0.30) was almost
-	# the floor's own colour there, so half the puzzle vanished into its background. Contrast, not
-	# light, was the problem.
+	# Warm for the watched console, cool for the safe one -- the two sides of the trade read apart.
 	var tint := Color(0.42, 0.30, 0.22) if watched else Color(0.34, 0.62, 0.55)
-	_add_box(self, pos + Vector3(0.0, 0.06, 0.0), Vector3(2.4, 0.12, 2.4), tint)
+	# The plate EMITS so it reads as a station the moment it is visible, without depending on how
+	# much room light reaches it. (It does NOT make the far plate visible early: the far deck is
+	# hidden by the vision mask until a member stands there -- measured, the far console jumps from
+	# (25,29,39) to (109,198,160) the instant one does. That masking is correct and is not something
+	# a chunk should fight.) The lamp stays free to spike as the HOLD tell.
+	_add_box(self, pos + Vector3(0.0, 0.06, 0.0), Vector3(2.4, 0.12, 2.4), tint, tint, 0.9)
 	_add_label(self, label, pos + Vector3(0.0, 1.9, 0.0),
 		Color(0.95, 0.72, 0.46) if watched else Color(0.62, 0.88, 0.78))
 	var lamp := OmniLight3D.new()
 	lamp.name = "%sLamp" % label.replace(" ", "")
 	lamp.position = pos + Vector3(0.0, 1.2, 0.0)
 	lamp.omni_range = 4.0
-	lamp.light_energy = 0.0
+	# Idle glow, not off: a console reads as equipment at rest and BRIGHTENS when borne, so the
+	# energy step is the hold tell rather than the only thing that makes the station findable.
+	lamp.light_energy = IDLE_LAMP_ENERGY
 	lamp.light_color = Color(0.55, 0.95, 0.70)
 	add_child(lamp)
 	if watched:
@@ -221,9 +227,9 @@ func _tick(_delta: float) -> void:
 	if _phase == "ready" and _members_on_far_deck() > 0:
 		_phase = "crossed"
 	if _near_light != null:
-		_near_light.light_energy = 2.2 if bool(_held["near"]) else 0.0
+		_near_light.light_energy = HELD_LAMP_ENERGY if bool(_held["near"]) else IDLE_LAMP_ENERGY
 	if _far_light != null:
-		_far_light.light_energy = 2.2 if bool(_held["far"]) else 0.0
+		_far_light.light_energy = HELD_LAMP_ENERGY if bool(_held["far"]) else IDLE_LAMP_ENERGY
 	if _status_label != null:
 		var bearing: Array[String] = []
 		for key in ["near", "far"]:
