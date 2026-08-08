@@ -1588,6 +1588,9 @@ func _ready() -> void:
 			"--test-generated-wipe-recovery":
 				ran_test = true
 				await _test_generated_wipe_recovery()
+			"--test-showcase-gallery-completion":
+				ran_test = true
+				await _test_showcase_gallery_completion()
 			"--test-detection-scaling":
 				ran_test = true
 				await _test_detection_scaling()
@@ -2275,6 +2278,7 @@ func _run_all_tests() -> void:
 	await _test_payload_hand_arithmetic()
 	await _test_branch_cut_overlap_rejected()
 	await _test_generated_wipe_recovery()
+	await _test_showcase_gallery_completion()
 	await _test_detection_scaling()
 	await _test_enemy_state_derived_work()
 	await _test_watched_gap_los()
@@ -9463,6 +9467,117 @@ func _test_branch_cut_overlap_rejected() -> void:
 			break
 	_assert_true(found,
 		"two branches claiming one consumer cell are REJECTED at validation, not skipped at runtime")
+
+## SHOWCASE GALLERY COMPLETION — the tour is BEATABLE, proven by playing it. The existing gallery
+## coverage proves the exit refuses spoofing; this drives the whole positive path through real
+## movement and the shipped verbs: earn all nine field responses, then regroup every body at the
+## exit and watch the phase flip. Each leg names its evidence key, so a regression reports WHICH
+## station stopped teaching.
+func _gallery_walk(inst: Node, gs, actor: String, dest: Vector3, budget := 400) -> void:
+	gs.command_move_to_pos(actor, dest)
+	for _i in range(budget):
+		inst.headless_advance(0.05)
+		if not gs.is_moving(actor):
+			break
+
+func _gallery_has_evidence(chunk: Node, key: String) -> bool:
+	var state: Dictionary = chunk.call("get_preview_state")
+	return (state.get("evidence", {}) as Dictionary).has(key)
+
+func _gallery_wait_evidence(inst: Node, chunk: Node, key: String, budget := 400) -> bool:
+	for _i in range(budget):
+		if _gallery_has_evidence(chunk, key):
+			return true
+		inst.headless_advance(0.05)
+	return _gallery_has_evidence(chunk, key)
+
+func _gallery_tuck(inst: Node, chunk: Node, gs, actor: String, capbage_name: String) -> void:
+	if inst.has_method("headless_set_selected_characters"):
+		inst.call("headless_set_selected_characters", [actor])
+	var plant: Node = chunk.find_child(capbage_name, true, false)
+	if plant == null:
+		return
+	plant.set("active_character", actor)
+	plant._trigger()
+	for _i in range(60):
+		inst.headless_advance(0.05)
+
+func _test_showcase_gallery_completion() -> void:
+	_test_name = "Showcase Gallery Field Responses"
+	var inst = await _instantiate_preview_chunk_and_wait("showcase_gallery", 8)
+	if inst == null:
+		_assert_true(false, "the gallery instantiates")
+		return
+	var chunk := _find_fragment_chunk_root(inst)
+	var gs = inst.get("_game_state")
+	if chunk == null or gs == null:
+		_assert_true(false, "the gallery exposes chunk and game state")
+		inst.queue_free()
+		await get_tree().process_frame
+		return
+	var anchors: Dictionary = chunk.call("get_preview_anchors")
+	# The data-layer half of the beatability question: every station that does not depend on
+	# shedding an actively-hunting sentry is EARNED here through real movement and the shipped
+	# verbs, one body per route so nobody is acquired off-station. The full tour to completion --
+	# which turns on entering full cover while hunted -- is windowed persona-lane coverage, where a
+	# player's real timing exists.
+	_gallery_walk(inst, gs, "aster", anchors["pad_medium"])
+	_assert_true(_gallery_wait_evidence(inst, chunk, "hide_scarpet_occupied"),
+		"the medium tier, unhunted -- 'hide_scarpet_occupied'")
+	_gallery_walk(inst, gs, "endo", anchors["flora_scarpet"], 600)
+	_gallery_walk(inst, gs, "endo", anchors["flora_scarpet"], 600)
+	_assert_true(_gallery_wait_evidence(inst, chunk, "flora_scarpet_occupied"),
+		"standing in the field Scarpet earns 'flora_scarpet_occupied'")
+	_gallery_walk(inst, gs, "endo", anchors["flora_capbage"])
+	var flora_tucked := false
+	for _attempt in range(4):
+		_gallery_tuck(inst, chunk, gs, "endo", "GalleryFloraCapbage")
+		if _gallery_wait_evidence(inst, chunk, "flora_capbage_tucked", 250):
+			flora_tucked = true
+			break
+		_gallery_walk(inst, gs, "endo", anchors["flora_capbage"])
+	_assert_true(flora_tucked,
+		"an UNHUNTED tuck completes -- 'flora_capbage_tucked' (a tuck is an action, not a stroll)")
+	_gallery_walk(inst, gs, "peris", anchors["flora_flure"], 600)
+	if inst.has_method("headless_set_selected_characters"):
+		inst.call("headless_set_selected_characters", ["peris"])
+	var flure: Node = chunk.find_child("GalleryFloraFlure", true, false)
+	_assert_true(flure != null, "the gallery flure exists")
+	if flure != null:
+		flure.set("active_character", "peris")
+		flure._trigger()
+	_assert_true(_gallery_wait_evidence(inst, chunk, "flora_flure_lured", 600),
+		"lighting the Flure pulls the response sentry -- 'flora_flure_lured'")
+	_gallery_walk(inst, gs, "endo", anchors["flora_hushbloom"])
+	_assert_true(_gallery_wait_evidence(inst, chunk, "flora_hushbloom_stunned", 600),
+		"tripping the Hushbloom beside the settled sentry -- 'flora_hushbloom_stunned'")
+	# The loud stations, each by a fresh body that walks in and RUNS out.
+	_gallery_walk(inst, gs, "peris", Vector3(37.0, 0.0, -7.5), 600)
+	_assert_true(_gallery_wait_evidence(inst, chunk, "enemy_standard_engaged", 600),
+		"the standard sentry wakes on a body in its zone -- 'enemy_standard_engaged'")
+	gs.set_running("peris", true)
+	_gallery_walk(inst, gs, "peris", anchors["exit"], 800)
+	gs.set_running("peris", false)
+	for _i in range(200):
+		inst.headless_advance(0.05)
+	_assert_true(not gs.is_downed("peris"),
+		"waking the standard and outrunning it to the safe lane is survivable (hp %.0f)" % float(gs.get_stat("peris", "hp")))
+	_gallery_walk(inst, gs, "endo", Vector3(44.0, 0.0, 6.5), 600)
+	_assert_true(_gallery_wait_evidence(inst, chunk, "enemy_chain_engaged", 600),
+		"the chain seam wakes on a fresh body at its zone edge -- 'enemy_chain_engaged'")
+	gs.set_running("endo", true)
+	_gallery_walk(inst, gs, "endo", anchors["exit"], 800)
+	gs.set_running("endo", false)
+	for _i in range(200):
+		inst.headless_advance(0.05)
+	_assert_true(not gs.is_downed("endo"),
+		"the wall-anchored seam cannot follow -- endo disengages by range (hp %.0f)" % float(gs.get_stat("endo", "hp")))
+	var state: Dictionary = chunk.call("get_preview_state")
+	_assert_true(int(state.get("evidence_count", 0)) >= 7,
+		"the data-layer tour earns at least seven of nine responses (%d; missing: %s)" % [
+			int(state.get("evidence_count", 0)), str(state.get("remaining_evidence", []))])
+	inst.queue_free()
+	await get_tree().process_frame
 
 ## SOLVABILITY GUARDS G2 + G5 + G8 — the cheap arithmetic and fail-closed checks from the
 ## assessment, each one a hole a generated stretch could pass every behavioural test through.
