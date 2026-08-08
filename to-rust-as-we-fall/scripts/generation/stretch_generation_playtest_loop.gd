@@ -558,8 +558,8 @@ func _validate_preview_boot(result: Dictionary, state: Dictionary) -> void:
 	_record_check(result, "preview_navigation_grid_contract", str(navigation.get("contract_id", "")) == "unified_grid_v1", "Generated preview installs the unified multi-level grid")
 	_record_check(result, "preview_graybox_click_targets", bool(graybox.get("supports_click_to_move", false)) and int(graybox.get("outline_target_count", 0)) > 0, "Generated preview exposes click-to-move outline targets")
 	_record_check(result, "preview_graybox_content_placed", int(graybox.get("content_placement_count", 0)) > 0 and int(graybox.get("instanced_content_marker_count", 0)) > 0, "Generated preview instances flora/enemy/structure placements")
-	# A valid level has at least one playable floor. Verticality is now tier-gated (teaching/standard are FLAT),
-	# so this no longer REQUIRES multiple elevations — the multi-floor feature is covered by --test-grid-levels and
+	# A valid level has at least one playable floor. Verticality is tier-gated (teaching/standard are FLAT),
+	# so multiple elevations are not required here — the multi-floor feature is covered by --test-grid-levels and
 	# the hard/setpiece playthroughs. When a level IS multi-level, its floors must still be consistent (>= 1).
 	_record_check(result, "preview_graybox_elevations", int(graybox.get("elevation_count", 0)) >= 1, "Generated preview exposes at least one playable floor")
 	_append_event(result, "preview_boot", "preview_ready", "Preview booted with full party and shared HUD", {

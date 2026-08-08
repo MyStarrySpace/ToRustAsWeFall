@@ -57,7 +57,7 @@ var _spike_strips: Array = []    # SpikeStrip hostile architecture (the shared D
 var _infrastructure_operations: Array = [] # typed source -> receiver -> environmental consequence beats
 var _infrastructure_fields: Array = []     # shared hazard/concealment polling, like Candids/SpikeStrips
 var _hushblooms: Array = []      # Hushbloom stun flora (thigmonastic; pickable for the carried throw)
-var _basins: Array = []          # RisingWaterCrossing instances; legacy query name kept for callers.
+var _basins: Array = []          # RisingWaterCrossing instances; callers query them under the basin name.
 var _assists: Array = []         # CrossingAssist consoles (the priced perfect-launch read)
 var _fall_pos := Vector3.ZERO    # where the party last wiped (the runback decor pass grows here)
 var _candid_epoch := -1.0        # first absolute tick in the fixed Candid/Spike/service-field cadence
@@ -248,7 +248,7 @@ func _spawn_weak_wall(spec: Dictionary) -> void:
 	ia.set_pre_trigger_validator(_validate_weak_wall_trigger.bind(idx, ia))
 	ia.interacted.connect(_on_weak_wall_pried.bind(idx, ia))
 
-## Retired source-less helper calls are deliberately inert. The wall only begins moving after its
+## A source-less helper call is deliberately inert. The wall only begins moving after its
 ## own one-shot has accepted the exact nearby, ready party body and minted the next registry receipt.
 func _on_weak_wall_pried(idx: int, source: Node = null) -> bool:
 	var sched = _get_scheduler()

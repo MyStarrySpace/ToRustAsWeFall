@@ -49,8 +49,8 @@ func _ready() -> void:
 
 ## EVENT-DRIVEN, NOT POLLED. The lock follows hyperexcitability, and "is that body running" is a
 ## DISCRETE STATE FLIP -- something that changes at a knowable instant, not something to sample for.
-## The old version woke every 0.5s to look; it now subscribes to the flip itself, plus the detection
-## event that says a body became visible, which are the only two things that can change the answer.
+## The lock subscribes to the flip itself, plus the detection event that says a body became visible,
+## which are the only two things that can change the answer.
 func activate() -> void:
 	super.activate()
 	if game_state != null:

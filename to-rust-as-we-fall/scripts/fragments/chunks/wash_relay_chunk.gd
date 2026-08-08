@@ -129,8 +129,8 @@ var _branch_guard_spawns := {}      # guard id -> flat spawn (so reset re-snaps 
 var _pending_branch_guard_reposts := {} # restore barrier: rejected Wash futures win after child Enemy attach
 
 # --- Authored transit breaks ---------------------------------------------------------------
-# The old relay was one uninterrupted curl: even with optional lysate spokes, the mandatory read was
-# simply walking the next wet strip. These two composed routes give the coil a different spatial verb without
+# A relay that is one uninterrupted curl — even with optional lysate spokes — leaves the mandatory read
+# as simply walking the next wet strip. These two composed routes give the coil a different spatial verb without
 # disturbing the proven ChannelsArc mapping:
 #   * a PORTAL pressure-room tucked toward the centre vents the upcoming jet for a generous window;
 #   * a slow covered CRAWL loop bulges outside the coil and rejoins beyond the timed sluice.
@@ -248,7 +248,7 @@ var _wipe_restart_pending := false
 var _flow_strips: Array = []
 # The surge-telegraph strips ride the helix under their OWN Node3D root, so they survive hide_flat_graybox (which
 # hides the chunk's flat direct-child graybox) — the strip is the always-on "about-to-flood" tell, and it
-# was vanishing the moment the real channels.glb loaded.
+# must not vanish the moment the real channels.glb loads.
 var _strip_root: Node3D
 # Flood WATER layer — the in-game flood visual. Built WARPED onto the helix under a Node3D root so it SURVIVES
 # hide_flat_graybox (which only hides the chunk's direct-child graybox meshes), unlike the flat flow strips.
@@ -289,7 +289,7 @@ var _override_controls: Dictionary = {}   # section index -> held console (for c
 const TELEGRAPH_LEAD := 1.2         # seconds before an onset the flow strip brightens (the surge tell)
 const SURGE_CLOSE_MARGIN := 0.75     # amber when a crossing nearly touches an active-water window
 var _surge_timing_learned := false  # run knowledge: a visible surge/telegraph unlocks timing
-# THE FLOW TERMINAL + scheduled-crossing assist (director redesign; docs in the builder).
+# THE FLOW TERMINAL + scheduled-crossing assist (docs in the builder).
 const FLOW_ASSIST_SECTION := 1      # the "current" section — its window is too narrow to eyeball
 const FLOW_ASSIST_POLL := 0.25
 const FLOW_CROSS_SPEED := 6.0       # the run-speed budget the window math prices against
@@ -422,15 +422,15 @@ func _build_chunk() -> void:
 				for zz in [-DOUBLE_PLATE_Z, DOUBLE_PLATE_Z]:
 					_add_box(self, Vector3(x0 - 1.2, 0.04, zz), Vector3(1.0, 0.1, 1.6), Color(0.6, 0.4, 0.1))          # two pressure plates
 		# The active-flow indicator strip — the surge TELEGRAPH (brightens a beat before a flood). Built WARPED
-		# onto the helix under _strip_root so it rides the deck AND survives hide_flat_graybox (it was a flat
-		# direct-child box before, so it both vanished and sat off the helix on the real channels.glb scene).
+		# onto the helix under _strip_root so it rides the deck AND survives hide_flat_graybox (a flat
+		# direct-child box would both vanish and sit off the helix on the real channels.glb scene).
 		# _warped_box authors size as (lane-extent, height, s-extent) and gives a StandardMaterial3D _set_strip drives.
 		var strip := _warped_box(_strip_root, cx, 0.0, Vector3(FLOOR_Z_HALF * 1.7, 0.06, w),
 			_section_color(t) * 0.6, _section_color(t), STRIP_IDLE_ENERGY, 0.03)
 		_flow_strips.append(strip)
 		# ONE flow terminal, at the section whose safe window is deliberately too narrow to
-		# time by eye (director redesign 2026-07-25: the nine per-section SCAN FLOW gauges
-		# are gone — observation covers ordinary sections; the terminal owns the brutal one).
+		# time by eye. Ordinary sections are readable by observation alone; the terminal
+		# owns the brutal one, so the assist stays scarce instead of a per-section gauge.
 		if i == FLOW_ASSIST_SECTION:
 			_build_flow_terminal(strip)
 		# the disable control: an override console past the section, or a held plate before it
@@ -483,8 +483,8 @@ func _build_chunk() -> void:
 	_build_story_beats()
 	_build_light_rig()
 	_make_dressing_wet()
-	# Vasculature overlay PULLED (director 2026-07-28: the current Voronoi pass
-	# reads wrong on the drum). The generator stays; redesign against the organics
+	# Vasculature overlay stays disabled: the Voronoi pass
+	# reads wrong on the drum. The generator stays; redesign against the organics
 	# plate before re-enabling.
 	#_apply_vasculature()
 	_build_organic_props()
@@ -617,9 +617,9 @@ func _build_water_layer() -> void:
 	for i in range(SECTIONS.size()):
 		var s: Dictionary = SECTIONS[i]
 		var x0: float = s["x0"]; var x1: float = s["x1"]
-		# ONE arc-following ribbon per section (asset-autopsy ruling: the old overlapping
-		# box segments double-blended at every seam and showed their side walls — the
-		# "water is a bunch of rectangles" read). Top surface only, one draw, exact arc.
+		# ONE arc-following ribbon per section: overlapping
+		# box segments would double-blend at every seam and show their side walls — the
+		# "water is a bunch of rectangles" read. Top surface only, one draw, exact arc.
 		var seg := _build_water_ribbon(x0, x1, FLOOR_Z_HALF * 0.9, 0.42)
 		_water_root.add_child(seg)
 		seg.material_override = _make_water_material(i)
@@ -768,8 +768,8 @@ func _guidance_spec(i: int) -> Dictionary:
 
 func _add_warped_guidance_label(parent: Node3D, node_name: String, text: String,
 		_s: float = 0.0, _lane: float = 0.0, _color: Color = Color.WHITE, _y := 0.0) -> void:
-	# Wayfinding text is CUT (director ruling: light and color carry direction; text was
-	# noise). The signature stays so authored call sites remain as intent documentation.
+	# Wayfinding text is intentionally absent: light and color carry direction; text reads
+	# as noise. The signature stays so authored call sites remain as intent documentation.
 	return
 
 func _guidance_index_for_x(x: float) -> int:
@@ -797,7 +797,7 @@ func _set_guidance_section(index: int) -> void:
 		if is_instance_valid(_section_guides[i]):
 			_section_guides[i].visible = i == index
 
-# Persistent section silhouettes. The original type dressing was built as direct children of the chunk and
+# Persistent section silhouettes. The flat type dressing is built as direct children of the chunk and
 # intentionally disappears when the authored Channels model replaces the flat graybox. These nested warped
 # landmarks survive that swap, so a player can read the next verb before the water itself turns on.
 func _build_section_setpieces() -> void:
@@ -1677,7 +1677,7 @@ func _build_neck_garden() -> void:
 	gate_glow.position = ChannelsArc.arc_pos(44.2, -8.6) + Vector3(0.0, 1.6, 0.0)
 	garden.add_child(gate_glow)
 
-## The Plumbing Power Project is INTERIOR infrastructure (director's lighting brief): night is
+## The Plumbing Power Project is INTERIOR infrastructure: night is
 ## lit by the AUTHORED rig below, and "day" is only occasional seep light — the
 ## shared day/night curve barely moves this level. Near-zero sun in both phases,
 ## a constant ambient band in the channels' dark teal, glow held so emissives
@@ -1709,7 +1709,7 @@ func get_preview_lighting_profile() -> Dictionary:
 		"fog_aerial": 0.5,
 	}
 
-## THE AUTHORED LIGHT RIG. Wayfinding follows the no-decorative-text ruling — the
+## THE AUTHORED LIGHT RIG. Wayfinding uses no decorative text — the
 ## light IS the signage: each section gate casts its palette hue, amber work-lamps
 ## pace the branch gaps, water sections pool cyan, warm lamps mark the start
 ## shelter and the chunk-end overlook, and a few CONSTANT pale seep shafts fall
@@ -1816,17 +1816,17 @@ func _apply_vasculature() -> void:
 		if n is MeshInstance3D and (n as MeshInstance3D).mesh != null:
 			var nm := str(n.name).to_lower()
 			# The DRUM only. On the huge dark shaft panels the overlay's emissive
-			# cluster dots read as a scattered "starfield" — an invented look the
-			# director cut; those walls stay bare until the arched wall-tracery
-			# PROP replaces them (prop audit #8). Veins climb the drum, where the
+			# cluster dots read as a scattered "starfield" — an invented look, so
+			# those walls stay bare until the arched wall-tracery
+			# PROP can carry them. Veins climb the drum, where the
 			# plate shows them. Skip the rim + water.
 			if nm.contains("drum") and not nm.contains("rim") and not nm.contains("water"):
 				(n as MeshInstance3D).material_overlay = mat
 		for c in n.get_children():
 			stack.append(c)
 
-## MATERIAL RESPONSE (director: "noisy, and lacks the subtle fresnel effect on
-## materials and translucency"): every dressing/prop material gets a light
+## MATERIAL RESPONSE: raw dressing/prop materials read noisy and flat, lacking
+## fresnel and translucency, so every dressing/prop material gets a light
 ## RESPONSE — a subtle white rim so silhouettes catch the coloured light, and
 ## backlight on organics so they read translucent, lit from within. One walk,
 ## one duplicate per unique material (cached), same pattern as the wet pass.
@@ -1874,7 +1874,7 @@ func _material_response_walk(node: Node, cache: Dictionary) -> void:
 	for child in node.get_children():
 		_material_response_walk(child, cache)
 
-## THE REASSEMBLY (director: "the level isn't using the new assets yet"): place the
+## THE REASSEMBLY: place the
 ## concept-pass assemblies. All are BODIES riding the helix warp; gameplay untouched.
 func _warp_piece(pid: String, s_pos: float, lane: float, y_off: float, yaw: float,
 		parent: Node3D, tag: String, mount := "floor", embed_ok := false, cluster := "") -> Node3D:
@@ -1898,9 +1898,9 @@ func _build_concept_props() -> void:
 	# the curecumin portal ASSEMBLY at the pad ledge (plate A): ornate ring + frame
 	# behind the pad, console beside it, turned pad-rings under it, the pier's
 	# broken end past the ledge lip. The pad's plain fixture arch is hidden — the
-	# masonry ring IS the aperture now (the live lens keeps hovering in its bore).
+	# masonry ring IS the aperture (the live lens keeps hovering in its bore).
 	# MEASURED: PadLedge_001 top sits at y=1.075, 0.135 BELOW the arc line; the
-	# pier hangs off the ledge's free s-end (the old lane -8.3 was inside the drum)
+	# pier hangs off the ledge's free s-end (lane -8.3 would sit inside the drum)
 	_warp_piece("portal_ring_ornate", 1.6, -7.35, -0.135, PI * 0.5, root, "CureRing",
 		"floor", false, "cure")
 	_warp_piece("portal_console", 2.85, -6.5, -0.135, PI * 0.5 + 0.3, root, "CureConsole",
@@ -1967,8 +1967,8 @@ func _build_structural_scaffold() -> void:
 	# PLACEMENT STORY: pipe racks are not sprinkled — they gather where a crew
 	# actually worked. ONE maintenance bay beside the flush manifold: paired racks,
 	# the valve column that works them, and the bay's own work lamp. (33-47 =
-	# wall-skip, nothing hangs over the falls void; lone scattered racks are the
-	# "splatter" read and are gone.)
+	# wall-skip, nothing hangs over the falls void; lone scattered racks read
+	# as "splatter".)
 	for ps in [6.4, 10.6]:                                 # racks FLANK the flush manifold at 8.5
 		_warp_piece("pipe_rack", ps, 4.3, 0.0, -PI * 0.5, root, "PipeRack",
 			"floor", false, "bay")
@@ -2427,7 +2427,7 @@ func _ensure_wash_control_registry_shapes() -> void:
 		var registered: Dictionary = gs.get_interactable(data_id)
 		if bool(registered.get("one_shot", false)) == desired_one_shot:
 			continue
-		# Legacy bait/flures were accidental one-shots. Re-register the same source as repeatable
+		# A registered record can carry a stale accidental one-shot flag. Re-register the same source as repeatable
 		# while preserving its stable position, monotonic count, and last actor identity.
 		registered["id"] = data_id
 		registered["one_shot"] = desired_one_shot
@@ -3449,7 +3449,7 @@ func _on_wash_flure_activated(
 	_publish_wash_authority()
 
 
-## Retired compatibility seam. Only the reusable Flure's exact physical trigger can create a song.
+## Compatibility seam that intentionally refuses: only the reusable Flure's exact physical trigger can create a song.
 func _on_lure(_idx: int, _source: Node = null) -> bool:
 	return false
 
@@ -3461,7 +3461,7 @@ func _on_lure_expired(idx: int) -> void:
 	_publish_wash_authority()
 
 func _set_lure_emission(idx: int, e: float) -> void:
-	# Legacy presenter compatibility only. Reusable Flure derives its glow from its own phase.
+	# Drives only lure meshes not backed by a reusable Flure; a Flure derives its glow from its own phase.
 	if idx < _relay_flures.size():
 		return
 	if idx < _lure_meshes.size() and is_instance_valid(_lure_meshes[idx]):
@@ -4235,7 +4235,7 @@ func _respawn_missing_enemies() -> void:
 
 # --- Drain loop: lead the guard in (bait, then chase) ---
 
-## Retired compatibility seam. The DrainBait node is a real Flure and only its exact trigger can
+## Compatibility seam that intentionally refuses: the DrainBait node is a real Flure and only its exact trigger can
 ## reserve a source/target receipt and ask the Enemy FSM to follow it into the water.
 func _on_drain_bait(_source: Node = null) -> bool:
 	return false
@@ -4633,7 +4633,7 @@ func _on_override(i: int, source: Node = null) -> bool:
 	_publish_wash_authority()
 	return true
 
-## Retired compatibility seams. A chunk method has neither the exact source object nor a synchronous
+## Compatibility seams that intentionally refuse. A chunk method has neither the exact source object nor a synchronous
 ## body receipt, so it cannot tend or climb on the player's behalf. The visible upper/lower
 ## Interactables are the only gameplay entry points; their ClimbvineReturn signals retain feedback.
 func _rejoin_waiting_crew() -> int:
@@ -6010,7 +6010,7 @@ func on_game_state_snapshot_restored() -> void:
 	_sweep_count = maxi(0, int(saved.get("sweep_count", 0)))
 	_run_hint_shown = bool(saved.get("run_hint_shown", false))
 	_flush_hint_shown = bool(saved.get("flush_hint_shown", false))
-	# Never mint a deployed route from the old scene-local boolean. GameState restores the timed
+	# Never mint a deployed route from a saved scene-local boolean. GameState restores the timed
 	# ClimbvineReturn phase independently; old saves without that phase fail closed and can be tended again.
 	_sloperope_deployed = false
 	_surge_timing_learned = bool(saved.get("surge_timing_learned", false))

@@ -123,8 +123,8 @@ const SPECS := {
 		"shape": SHAPE_COMPOSITE,           # stacked-cushions: overhanging balcony slab rings (REVIEW P1)
 		"composite": "greenfields_stack",
 		"size": Vector3(5.2, 6.4, 5.0),
-		# RECONCILED AT THE SURVEY: the first slab ring rides the 1.7 m ground-storey datum — the
-		# default 2.7 m portal ran straight through it. Plate ratio (BUILDING_REVIEW greenfields #4):
+		# RECONCILED AT THE SURVEY: the first slab ring rides the 1.7 m ground-storey datum — a
+		# default 2.7 m portal would run straight through it. Plate ratio (BUILDING_REVIEW greenfields #4):
 		# arcade arch top ~80% of the 1.7 m ground storey ~= 1.35 m.
 		"entrances": {"main_w": 1.1, "main_h": 1.32, "side_w": 0.9, "side_h": 1.25, "reserve_margin": 0.08,
 			"main_surround": false, "canopy_out": 0.0},
@@ -1858,7 +1858,7 @@ static func aghora_stack_details(spec: Dictionary) -> Dictionary:
 		"neon": neon.commit(), "leaf": leaf.commit(), "cloth": cloth.commit(),
 		"nameplate_pos": Vector3(0, h + 0.6, hz + 0.2)}
 
-## Open-Files detail passes (SURVEY REBUILD 1.10) — the massing keeps the director's recursive
+## Open-Files detail passes (SURVEY REBUILD 1.10) — the massing owns the recursive
 ## awnings; this pass builds the GROUND IDIOM from the OPEN_FILES survey: the nested hex-arch
 ## portal (chamfered octagon loops stepping proud) pouring a cyan inner glow + the scan-beam fan
 ## and scan bar, the heraldic crest, the glowing green sign, flanking console pedestals, fin
@@ -2998,7 +2998,7 @@ static func greenfields_details(spec: Dictionary) -> Dictionary:
 					_emit_oriented_box_st(warm, (fd["c"] as Vector3) + u * px + n * 0.10 + Vector3(0, float(arc["sconce_y"]), 0),
 						u, Vector3.UP, n, Vector3(0.045, 0.10, 0.045))
 		# the MAIN door (front face, centre slot) gets its own arch — the arcade IS its surround
-		# (main_surround=false suppresses the generic stone that used to spear the bay arches)
+		# (main_surround=false suppresses the generic stone surround, which would spear the bay arches)
 		if (n as Vector3).dot(Vector3(0, 0, 1)) > 0.9:
 			_arch_frame(bone, (fd["c"] as Vector3) + n * 0.05, u, n, 1.32, 0.95, 1.50)
 	# three floors of arched amber windows in bone niches + tendon ribs between the bays
@@ -3873,10 +3873,10 @@ static func _emit_awning_level(st: SurfaceTool, pts: Dictionary, skip_left: bool
 	_quad_out(st, pl + up * yt, pl + back + up * yt, pr + back + up * yt, pr + up * yt, pl + up * (yt + 3.0))  # lintel (faces down)
 
 # Bridge face fi's right corner to face fi+1's left at one level: the chamfer roof + the diagonal
-# fill dropping to the notch ground. FOUR points, not three (director's report): only at level 0 do
+# fill dropping to the notch ground. FOUR points, not three: only at level 0 do
 # the two faces share one corner point — at every deeper level face i's B and face i+1's A are
 # DIFFERENT points (each face's edge moved outward along its OWN normal), so a single-apex triangle
-# left a wedge hole at every merged corner below the top. The quad degenerates to the level-0
+# would leave a wedge hole at every merged corner below the top. The quad degenerates to the level-0
 # triangle by itself when B == A.
 static func _emit_merge_bridge(st: SurfaceTool, pa: Dictionary, pb: Dictionary) -> void:
 	var b1: Vector3 = pa["B"]     # face i's top corner point
@@ -3891,8 +3891,8 @@ static func _emit_merge_bridge(st: SurfaceTool, pa: Dictionary, pb: Dictionary) 
 	var wall_hint := (f1 + e2 + g2 + h1) * 0.25 - out_dir * 1.0
 	_quad_out(st, f1, e2, g2, h1, wall_hint)
 
-# --- RACKWORK: the faces-extrude lattice (director's spec) ----------------------------------------
-# "Instead of pipes down the edges, take the FACES and EXTRUDE them out by a [PARAMETER] depth" —
+# --- RACKWORK: the faces-extrude lattice ----------------------------------------------------------
+# Not pipes down the edges: the FACES extrude outward by a parameterized depth —
 # the recessed server-rack channels. Each exposed skirt band carries rows of closed DRAWER boxes
 # standing `rack_depth` proud of the facade (a hash-chosen few pulled further out — the open-drawer
 # read); the gaps between them are the recessed channels. Green LED matrices ride the drawer fronts

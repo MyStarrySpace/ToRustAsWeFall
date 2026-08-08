@@ -165,7 +165,7 @@ func is_bridged() -> bool:
 	return _phase_state().get("phase", &"") == &"bridged"
 
 
-## Retired compatibility seam. Supplying an actor id is not evidence that the corresponding body
+## Intentionally inert. Supplying an actor id is not evidence that the corresponding body
 ## serviced this terminal; only the terminal's consumed interaction receipt may begin the span.
 func activate(_character_id: String) -> bool:
 	return false

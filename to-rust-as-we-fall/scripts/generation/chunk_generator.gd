@@ -98,9 +98,9 @@ static func _seed_pillars(chunk: Dictionary, spans: Array, rng: SeededRng) -> vo
 	var h := int(chunk["h"])
 	var placed: Array = []
 	# A distract gate's east-side comprehension landing is part of its executable
-	# three-body route. Final/next-chamber decoration used to place a pillar on one
-	# of those slots; the generic rally resolver silently shifted that character,
-	# while the authored pad and strategy proof described a different solution.
+	# three-body route. A decoration pillar on one of those slots makes the generic
+	# rally resolver silently shift that character, so the authored pad and strategy
+	# proof would describe a different solution than the one that executes.
 	var reserved := {}
 	for gate_v in (chunk.get("gates", []) as Array):
 		var gate := gate_v as Dictionary
@@ -185,8 +185,8 @@ static func _stage(g: Dictionary, chamber_x0: int, chamber_x1: int, gate_col: in
 				"patrol":
 					# WHEN-register gate: no flure. A TALLER watched gap (6 rows) with the sentry pacing
 					# inside it — the window is crossing the far rows while it walks the other end. A
-					# carved side-alcove was tried first and verify() caught it as a hole straight
-					# through the 1-cell band; the tall-gap form keeps the invariant by construction.
+					# carved side-alcove would punch a hole straight through the 1-cell band (verify()
+					# rejects it); the tall-gap form keeps the invariant by construction.
 					# Mechanism = the conceal pocket (the STAGING spot — you solve this gate by being in
 					# position when the beat opens).
 					var g_mid := _ri(rng, 3, 5)
@@ -509,7 +509,7 @@ static func _reach(chunk: Dictionary, target: Vector2i, open_flags: Array) -> bo
 			stack.append(nc)
 	return false
 
-# --- safe passage between watch fans (learned by PLAYING a generated chain) -------------------------------------
+# --- safe passage between watch fans -----------------------------------------------------------------------------
 
 ## Watch-fan radius in CELLS (mirrors the bridge: SENTRY_RANGE 4.0 / CELL 1.5).
 const WATCH_RANGE_CELLS := 2.7
@@ -518,8 +518,8 @@ const WATCH_RANGE_CELLS := 2.7
 ## a route from the previous gate's exit to the next stage's mechanism (and conceal pocket) that avoids
 ## EVERY posted sentry's watch fan except the just-crossed gate's own (you land in that one and walk out
 ## while its sentry is still away). Without this, aligned gap rows let two gates' fans jointly cover the
-## connecting chamber and a correctly-playing runner gets caught on open floor — the bridge playtest found
-## exactly that (seed 11: patrol row == twin north row). Machine-checked here; compose() re-rolls a failing
+## connecting chamber and a correctly-playing runner gets caught on open floor (a patrol row sharing a
+## twin's north row does exactly that). Machine-checked here; compose() re-rolls a failing
 ## layout. Fans are radial + wall-LOS, same truth the real detection uses.
 static func safe_passage(chunk: Dictionary) -> Dictionary:
 	var gates: Array = chunk["gates"]

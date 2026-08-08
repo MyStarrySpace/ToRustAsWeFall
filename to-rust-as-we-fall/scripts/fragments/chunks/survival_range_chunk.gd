@@ -2134,8 +2134,8 @@ func _normalized_range_authority(raw: Variant) -> Dictionary:
 		saved["shelter_rest_commit_day"] = 0
 		saved["shelter_rest_before_atp"] = {}
 	if saved_version in [1, 2, 3]:
-		# Legacy code prohibited an untuned spindle call, so every live legacy
-		# deadline necessarily targeted the side recess.
+		# A version <= 3 record cannot hold an untuned spindle call, so every
+		# live saved deadline necessarily targets the side recess.
 		saved["lure_route_mode"] = (
 			LURE_ROUTE_RECESS
 			if float(saved.get("lure_deadline", -1.0)) >= 0.0

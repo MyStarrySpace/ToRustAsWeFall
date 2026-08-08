@@ -1232,7 +1232,7 @@ func _on_terminal_interacted() -> void:
 # Aster has reached the terminal's reading spot → frame the screen from the FRONT, swap in the detailed
 # readout, hold a beat, then continue. Scheduler-driven so it runs headless and respects F.
 func _start_terminal_focus() -> void:
-	# Retired automation seam. The exact terminal receipt owns every real read.
+	# Intentionally inert: the exact terminal receipt owns every real read.
 	pass
 
 
@@ -1250,7 +1250,7 @@ func _end_terminal_focus() -> void:
 ## Re-read the monitor after the tutorial has moved past it: same screen + framing, but no step change
 ## and no progression — purely a look.
 func _replay_terminal_focus() -> void:
-	# Retired automation seam. A reread still requires Aster at the terminal.
+	# Intentionally inert: a reread still requires Aster at the terminal.
 	pass
 
 
@@ -1510,7 +1510,7 @@ func _on_drink_interacted() -> void:
 	_active_aster_source_receipt.clear()
 
 func _start_drink() -> void:
-	# Retired automation seam. Dispensing begins only from the exact machine edge.
+	# Intentionally inert: dispensing begins only from the exact machine edge.
 	pass
 
 

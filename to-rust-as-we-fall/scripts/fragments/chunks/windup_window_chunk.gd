@@ -29,12 +29,11 @@ const MOUTH := Vector3(18.0, 0.0, LANE_Z)
 const ACROSS := Vector3(24.5, 0.0, LANE_Z)
 const EXIT_POS := Vector3(27.0, 0.0, LANE_Z)
 
-## THE APRON MUST BE INSIDE THE KILL ZONE. The first cut placed the bed further back, and a measured
-## walk-across proved the fragment did not do what its own description promised: the party triggered
-## the bed in passing, kept walking to the mouth, and the burst missed them by 14cm (bodies ended
-## 3.34m out against a 3.2m burst). The wind-up you are supposed to react to was one you left for
-## free just by continuing to your destination. Every Flare here is now placed so the mouth apron --
-## the one spot a queueing party has to stand -- sits WELL inside the burst, not on its lip.
+## THE APRON MUST BE INSIDE THE KILL ZONE. A bed set further back gets triggered in passing: the
+## party keeps walking to the mouth and the burst goes off behind them, so the wind-up you are
+## supposed to react to is one you leave for free just by continuing to your destination. Every
+## Flare here is placed so the mouth apron -- the one spot a queueing party has to stand -- sits
+## WELL inside the burst, not on its lip.
 ##   dist(mouth, each) = 1.61, 1.61, 1.80   vs   burst_radius 3.2
 ## They still do not arm each other; a rooted bomb is not a body that crowds.
 const FLARE_BED := [

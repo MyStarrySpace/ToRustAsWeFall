@@ -3,10 +3,10 @@ extends RefCounted
 
 ## The lattice JUNCTION ENGINE — a 2D planar rib network fused into ONE watertight moulding mesh.
 ##
-## The old approach swept each rib path independently and dropped hub bumps on detected interior
-## crossings. That missed every T-joint (an endpoint landing ON another rib) and L-joint (two endpoints
-## meeting), left every tube end an open ring, and wound half the sweeps inside-out — the "shards and
-## holes" read. This engine fixes the class, not the instances:
+## Sweeping each rib path independently and bumping only detected interior crossings would miss every
+## T-joint (an endpoint landing ON another rib) and L-joint (two endpoints meeting), leave every tube
+## end an open ring, and let half the sweeps wind inside-out — the "shards and holes" read. The engine
+## instead treats jointing as a whole-graph problem:
 ##
 ##   1. `build(paths)` — a PLANAR GRAPH: every path is split at X-crossings AND at T-touches, endpoints
 ##      are welded into NODES, and degree-2 nodes are chained away. What remains: edges (rib runs),
@@ -105,7 +105,7 @@ static func _collect_crossings(polys: Array, splits: Array) -> void:
 						(splits[j] as Array).append({"seg": sj, "t": float(hit["u"])})
 
 # T-touches: a path ENDPOINT lying on (or within eps of) another path's segment interior. This is the
-# joint class the old interior-only detection could never see — arch feet on mullions, sill ends, etc.
+# joint class interior-only crossing detection can never see — arch feet on mullions, sill ends, etc.
 static func _collect_touches(polys: Array, splits: Array, eps: float) -> void:
 	var boxes: Array = []
 	for pv in polys:

@@ -438,7 +438,7 @@ func _flow_mask_walkable(grid, mask: PackedByteArray, cell: Vector2i) -> bool:
 
 
 ## Match GridWorld's movement law: diagonals are legal only when both orthogonal shoulders are open.
-## The old field admitted diagonal squeezes and then relied on per-enemy A* to silently repair them;
+## A field that admits diagonal squeezes would need per-enemy A* to silently repair them;
 ## direct waypoint consumption makes the shared field itself responsible for physical truth.
 func _flow_step_walkable(
 		grid, mask: PackedByteArray, from_cell: Vector2i, to_cell: Vector2i
@@ -1498,7 +1498,7 @@ func _on_tyreg_interacted() -> void:
 	_arm_suppress()
 
 
-## Tyreg is now a real escort: her GameState body trails the pair, and a shot requires that same
+## Tyreg is a real escort: her GameState body trails the pair, and a shot requires that same
 ## conscious body, authoritative LOS to the target, and one exact charge in her held magazine.
 func _arm_suppress() -> void:
 	var sched = _get_scheduler()
@@ -1982,7 +1982,7 @@ func _build_barricade() -> void:
 	_clamber.conceal_riders = false
 	# One character crosses per commitment. The partner remains the physical booster below; on the
 	# second interaction the first character is now the puller above. Sending an arbitrary selected
-	# group through together erased both roles and let the requirement collapse into a party flag.
+	# group through together would erase both roles and collapse the requirement into a party flag.
 	_clamber.requirement = _pair_boost_ok
 	_clamber.refused.connect(func() -> void:
 		_show_note("Too high alone -- one boosts, one pulls up from the top.", 2.6))
@@ -2527,7 +2527,7 @@ func on_game_state_snapshot_restored() -> void:
 		_tyreg_magazine_item_id = str(saved.get("tyreg_magazine_item_id", ""))
 		_restore_suppress_transaction(saved.get("suppress_transaction", {}))
 	else:
-		# Legacy flags/counters named an outcome with no canonical body or inventory. Do not mint
+		# Pre-v4 flags/counters name an outcome with no canonical body or inventory. Do not mint
 		# either from those proxies; only v4 physical truth can make Tyreg available.
 		_tyreg_phase = TYREG_PHASE_UNAVAILABLE
 		_tyreg_join_actor = ""

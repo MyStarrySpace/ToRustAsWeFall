@@ -152,11 +152,11 @@ const WRAP_DEFINITION_ID := "peris_sim.wrap"
 const WRAP_INPUT_ACTION := &"party_slot_2_ability_1"
 const PERIS_START := Vector3(6.0, 0.5, 4.5)  # circulation lane, outside the can/fern auto-dwell radii
 
-# Peris's two visits and the ordered Wrap tutorial used to live in one process-static
-# integer plus scene-local booleans/Callables. A save made while Peris was walking into
-# cast range restored GameState's canonical queued ability but lost the only callback
-# that advanced the story. This record is the portable causal owner; UI, dialogue, and
-# callbacks are rebuilt from it after GameState replaces a snapshot.
+# Scene-local booleans/Callables cannot survive a snapshot swap: a save made while
+# Peris walks into cast range would restore GameState's canonical queued ability but
+# lose the only callback that advances the story. This record is the portable causal
+# owner; UI, dialogue, and callbacks are rebuilt from it after GameState replaces a
+# snapshot.
 const PERIS_AUTHORITY_KEY := "runtime:peris_sim:sequence_authority"
 const PERIS_AUTHORITY_VERSION := 1
 const PERIS_AUTHORITY_CONTRACT := "peris_sim_sequence_v1"
@@ -856,8 +856,8 @@ func _begin() -> void:
 	_enter_step("fade_in")
 	_player.set_move_enabled(false)
 	# The room is DRESSED from the first frame, in BOTH phases — plants on their furniture, the
-	# wall pieces, the logbook console (they used to pop in only when the workspace step fired,
-	# seconds after the fade; phase 2 had a plantless room). Interactions stay dark until the
+	# wall pieces, the logbook console (dressing tied to the workspace step would pop in seconds
+	# after the fade, and phase 2 would show a plantless room). Interactions stay dark until the
 	# phase-1 workspace step arms them.
 	_build_exploration_objects()
 	if _game_state.get_world_state(PERIS_AUTHORITY_KEY, null) == null:
@@ -2539,7 +2539,7 @@ func _restore_watering_source_authority() -> void:
 		var committed := maxi(0, int(saved_counts.get(action_id, 0)))
 		if source_count != committed:
 			# A newer source count is the accepted-before-owner seam. A lower
-			# count means a legacy snapshot lacked the new source registry. In
+			# count means the snapshot predates the source registry. In
 			# both cases the registry visible in this save is the next receipt
 			# baseline; neither difference grants an item or watering result.
 			saved_counts[action_id] = source_count

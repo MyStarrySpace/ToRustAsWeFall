@@ -127,7 +127,7 @@ func set_authority_publisher(publisher: Callable) -> void:
 	_authority_publisher = publisher
 
 
-## Retired compatibility verbs. A caller cannot manufacture either end of the operation by invoking
+## These entry points always refuse: a caller cannot manufacture either end of the operation by invoking
 ## a convenient public helper: only the exact source/receiver Interactable's accepted GameState receipt
 ## can cross these boundaries.
 func route_service() -> bool:

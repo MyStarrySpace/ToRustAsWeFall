@@ -329,7 +329,7 @@ func _hunter_label(char_id: String) -> String:
 			return "Hunter %d" % (idx + 1)
 	return "Hunter"
 
-## Dedupe is now the saved on-arrival bookkeeping above; there is deliberately no direct-drown helper.
+## Drown dedupe lives in the saved on-arrival bookkeeping above; there is deliberately no direct-drown helper.
 
 func _announce_wash_results(drowned_names: Array[String], washed_names: Array[String]) -> void:
 	var results: Array[String] = []
@@ -349,7 +349,7 @@ func _channel_onset(i: int) -> void:
 
 # --- Beats ---
 
-## Retired compatibility seam. A wash can only start from the exact Flure Interactable accepting
+## Deliberately inert. A wash can only start from the exact Flure Interactable accepting
 ## the staged body; callers may observe `flure_activated`, never synthesize that physical cause.
 func activate_flure() -> bool:
 	return false

@@ -891,14 +891,14 @@ func _update_rally_preview_for_members(
 		return
 	# On grid scenes the resolved formation cannot change while the pointer stays
 	# inside one cell. Key the cache by that causal destination, not raw ray-hit
-	# floats; camera/pointer jitter inside a cell used to rerun one A* per member.
+	# floats — float keys let camera/pointer jitter inside a cell rerun one A* per member.
 	var signature := _rally_preview_target_signature(
 		target, anchor_id, members, formation_region)
 	if signature == _rally_preview_signature:
 		# The cached signature owns both the rendered paths and their authoritative
 		# READY/BLOCKED verdict. Preserve that verdict on unchanged process frames;
-		# resetting it before this return made a valid stationary hold turn red one
-		# frame after its routes were computed even though release accepted them.
+		# resetting it before this return turns a valid stationary hold red one
+		# frame after its routes were computed even though release accepts them.
 		PerformanceTrace.end(&"nav", &"selection.rally_preview", perf_started, "cached", members.size())
 		return
 	_clear_rally_preview()

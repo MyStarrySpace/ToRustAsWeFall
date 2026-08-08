@@ -7,8 +7,8 @@ extends RefCounted
 ##
 ## Laws: purely visual — SceneTree tweens on mesh scale/rotation, never a
 ## scheduler tick, never game state, so fast-forward invariance and replay are
-## untouched. The banned click PARTICLE bursts stay banned (play_selected_feedback
-## is a legacy no-op); juice is the object itself acknowledging the hand.
+## untouched. Click PARTICLE bursts are never part of the grammar (play_selected_feedback
+## is a deliberate no-op); juice is the object itself acknowledging the hand.
 ## Every beat ends by restoring BOTH scale and rotation to the mesh's rest pose,
 ## so interrupted beats can never leave a prop deformed.
 

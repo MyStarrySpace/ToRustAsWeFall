@@ -174,7 +174,7 @@ func _wire_outline() -> void:
 		target.call("set_interaction_delegate", self)
 	set_outline_target(target)
 
-## Retired compatibility seam. A Flure effect can only follow its exact bound Interactable trigger.
+## Always refuses: a Flure effect can only follow its exact bound Interactable trigger.
 func activate() -> bool:
 	return false
 
@@ -205,9 +205,9 @@ func _trigger(play_feedback := true) -> bool:
 ## reads true, so the physical validation truthfully refuses. That refusal is
 ## a TIMING artifact, not a plan failure (the player did everything right):
 ## when the actor stands within reach and only MOTION blocked the fire, retry
-## on the scheduler until the settle ends, bounded. Caught live by the
-## wash_ascent player-contract sweep: the clicked flure walked, refused, and
-## never sang — "why aren't the enemies attracted to the active flure?"
+## on the scheduler until the settle ends, bounded. Without the retry a
+## clicked flure walks, refuses once, and never sings — a committed plan
+## whose effect silently never fires.
 const SOURCE_ARRIVAL_SLACK := 0.85
 const _SETTLE_RETRY_STEP := 0.25
 const _SETTLE_RETRY_MAX := 6

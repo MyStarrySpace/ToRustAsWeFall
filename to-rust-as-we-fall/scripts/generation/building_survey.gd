@@ -7,7 +7,7 @@ extends RefCounted
 ##   datums        named heights — plinth / storey tops / eave (top of the vertical wall band) / crown
 ##   plan          the axis-and-bay grid: drum (wall radius + bays) or box (half extents + wall faces)
 ##   profile       the silhouette r(y) (drum) or half-extents(y) (box) as ordered control points —
-##                 this absorbs the old BaseShapeBuilder.massing_radius_at piecewise tables
+##                 the single silhouette authority radius_at() interpolates
 ##   reservations  a typed claim on wall space for EVERY planned part (openings, lattice fields,
 ##                 decorations, sockets) — two parts that want the same wall are reconciled HERE
 ##                 (restructure the field around the reservation, or fold the part into the base),
@@ -486,7 +486,7 @@ var spec: Dictionary = {}
 var datums: Dictionary = {"plinth": 0.0, "storeys": [], "eave": 0.0, "crown": 0.0}
 var plan: Dictionary = {}
 var profile: Array = []          # drum: [{y, r}] / box: [{y, hx, hz}] — ascending y, steps allowed
-var reservations: Array = []     # typed wall claims (openings carry the legacy door-region keys)
+var reservations: Array = []     # typed wall claims (openings carry the door-region keys the mesh cutters consume)
 var sockets: Array = []          # {kind: door|road|bridge|weak_point|balcony, pos, ...}
 
 
@@ -633,7 +633,7 @@ static func roll_vars(kind_in: String, seed_value: int) -> Dictionary:
 				rw[2] = float(rw[2]) * amp_s
 				rows.append(rw)
 			# the arch is metre-scaled (character door) but the sign band is an h-fraction: at low
-			# rolled heights they'd collide — the arch scales with the roll (sweep-caught)
+			# rolled heights they'd collide — the arch scales with the roll
 			var ak := h3 / 4.6
 			var an := {"rings": rows,
 				"arch": {"apex": 2.16 * ak, "glass_y0": 1.55, "glass_y1": 1.55 + 0.50 * ak},
@@ -903,7 +903,7 @@ func _survey_plan() -> void:
 		}
 
 ## The silhouette profile control points. These tables mirror the *_mesh construction constants in
-## BaseShapeBuilder (the old massing_radius_at breakpoints; curves sampled piecewise-linear) — the
+## BaseShapeBuilder (breakpoint heights and radii; curves sampled piecewise-linear) — the
 ## survey is the READ surface; per-building rebuilds re-derive both from the plate.
 func _survey_profile() -> void:
 	profile.clear()
@@ -2084,7 +2084,7 @@ func _point_he(p: Dictionary) -> Vector2:
 		return Vector2(float(p["r"]), float(p["r"]))
 	return Vector2(float(p.get("hx", 2.0)), float(p.get("hz", 2.0)))
 
-## The opening reservations (the door regions), in the legacy reserved-region shape the base mesh
+## The opening reservations (the door regions), in the reserved-region shape the base mesh
 ## cutters and lattice builders consume.
 func openings() -> Array:
 	var out: Array = []
@@ -2093,8 +2093,8 @@ func openings() -> Array:
 			out.append(r_v)
 	return out
 
-## The gameplay anchors in the legacy {weak_points, connectors, balcony_slots} shape
-## (ex BaseShapeBuilder.gameplay_anchors — building_filler and the showcase read this).
+## The gameplay anchors in the {weak_points, connectors, balcony_slots} shape
+## (building_filler and the showcase read this).
 func anchors() -> Dictionary:
 	var weak: Array = []
 	var conns: Array = []
@@ -2116,9 +2116,9 @@ func anchors() -> Dictionary:
 					c["deck"] = s["deck"]   # the walkable-lane descriptor the level layer docks
 				conns.append(c)
 			"balcony":
-				# Legacy survey profiles called these fields `n` and `radius`; newer
-				# profiles use the clearer `out` and `size` names. Normalize both at
-				# the read boundary so downstream construction code sees one schema.
+				# Survey profiles name these fields either `n` and `radius` or `out`
+				# and `size`. Normalize both at the read boundary so downstream
+				# construction code sees one schema.
 				var balcony_out: Vector3 = s.get("out", s.get("n", Vector3.ZERO))
 				var balcony_size := float(s.get("size", s.get("radius", 0.5)))
 				balc.append({"pos": s["pos"], "out": balcony_out, "size": balcony_size})
@@ -2492,7 +2492,7 @@ func _validate_reservation(r: Dictionary, problems: Array[String]) -> void:
 	if str(r.get("type", "")) == "opening":
 		var open_top := float(r.get("open_y_top", y1))
 		# the wall the opening cuts must EXIST across the whole opening: the silhouette may not fall
-		# inside the door plane below the lintel (the melted-tier door bug this check exists for)
+		# inside the door plane below the lintel (a receding tier would leave the door cut into air)
 		if on_drum:
 			var wall_r := float(plan.get("wall_radius", plan.get("radius", 2.0)))
 			for t in range(5):

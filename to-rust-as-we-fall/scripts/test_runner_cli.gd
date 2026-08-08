@@ -293,8 +293,8 @@ const FRAGMENT_CHUNK_SCENE_PATHS := [
 	"res://scenes/fragments/chunks/endo_junction_stretch_chunk.tscn",
 	"res://scenes/fragments/chunks/generated_stretch_chunk.tscn",
 ]
-# Every fragment is now previewed through ONE scene + a runtime picker (the *_preview.tscn files are
-# gone). The scene-load test drives the single scene once per registry entry.
+# Every fragment is previewed through ONE scene + a runtime picker; there are no per-fragment
+# preview scenes. The scene-load test drives the single scene once per registry entry.
 const FRAGMENT_PREVIEW_SCENE_PATH := "res://scenes/fragments/fragment_preview.tscn"
 const FragmentPreviewScript := preload("res://scripts/fragments/fragment_preview_sequence.gd")
 const AgentPlayerInputDriverScript := preload("res://tools/agent_player_input_driver.gd")
@@ -1555,6 +1555,9 @@ func _ready() -> void:
 			"--test-movement-discipline":
 				ran_test = true
 				await _test_movement_discipline()
+			"--test-comment-style":
+				ran_test = true
+				await _test_comment_style()
 			"--test-detection-scaling":
 				ran_test = true
 				await _test_detection_scaling()
@@ -1909,7 +1912,7 @@ func _ready() -> void:
 		_print_results()
 		get_tree().quit(0 if _failed == 0 else 1)
 	elif _is_test_run:
-		# An explicit test flag that no entry point claims used to leave the main
+		# An explicit test flag that no entry point claims would leave the main
 		# scene idling until the outer timeout. Treat a typo or stale manifest entry
 		# as an immediate infrastructure failure.
 		push_error("TestRunner did not recognize any requested --test-* entry point: %s" % str(args))
@@ -2231,6 +2234,7 @@ func _run_all_tests() -> void:
 	await _test_fragment_manifest()
 	await _test_predicted_consequence_parity()
 	await _test_movement_discipline()
+	await _test_comment_style()
 	await _test_detection_scaling()
 	await _test_enemy_state_derived_work()
 	await _test_watched_gap_los()
@@ -5068,7 +5072,7 @@ func _test_generated_carry_payload() -> void:
 
 	# A direct data-layer chunk has neither bodies nor inventory authority. It may
 	# describe the generated topology, but cannot manufacture physical receipts or
-	# complete the shelter outcome through either the replay helper or retired verb.
+	# complete the shelter outcome through either the replay helper or the semantic verb.
 	var chunk_scene: PackedScene = load("res://scenes/fragments/chunks/generated_stretch_chunk.tscn")
 	var hostless: Node = chunk_scene.instantiate() if chunk_scene != null else null
 	_assert_true(hostless != null, "Hostless generated physical-carry chunk instantiates")
@@ -5221,11 +5225,9 @@ func _test_generated_multi_solution() -> void:
 	_assert_true((analysis.get("warnings", []) as Array).is_empty(),
 		"A runtime-solvable stretch produces no false shadow-broken warning")
 
-	# PROCEDURAL GENERATION DOES NOT AUTHOR STORY (director ruling, 2026-08-06). Narrative beats
-	# belong to story mode, so a request for a narrative-only stretch must not come back as one —
-	# even when the caller names archetype 11 in both allowed AND required. This previously asserted
-	# the opposite ("narrative-only passes the tier gate"), which recorded what the generator did
-	# rather than what it should do.
+	# PROCEDURAL GENERATION DOES NOT AUTHOR STORY. Narrative beats belong to story mode,
+	# so a request for a narrative-only stretch must not come back as one —
+	# even when the caller names archetype 11 in both allowed AND required.
 	var narrative_spec: Dictionary = StretchGeneratorScript.generate({
 		"id": "generated_narrative_only",
 		"seed": 7,
@@ -7686,8 +7688,8 @@ func _test_building_survey() -> void:
 	red3.datums["storeys"] = [5.0, 2.0]
 	_assert_true(not red3.validate().is_empty(), "a broken storey-datum ladder goes RED")
 
-	# --- the reconciled door bands are ENFORCED: an opening rising past its wall band goes RED (the
-	# hypelines/ancourage doors used to rise past their skirt walls into an inverted wall quad) ---
+	# --- the reconciled door bands are ENFORCED: an opening rising past its wall band goes RED (a
+	# door taller than its skirt wall produces an inverted wall quad) ---
 	var tall: Dictionary = Base.generate("hypelines")
 	var tall_ov: Dictionary = (tall.get("entrances", {}) as Dictionary).duplicate()
 	tall_ov["main_h"] = 2.7
@@ -8678,7 +8680,7 @@ func _test_run_economy() -> void:
 			var costly_richer: bool = c_gain > s_gain
 			var costly_leaner: bool = c_load <= s_load
 			# CLEAN means the player actually avoids every modeled pressure cost. Charging even a
-			# 15% miss rate here previously forced an invisible menu reward to make the richer route win.
+			# 15% miss rate here would demand an invisible menu reward to make the richer route win.
 			var clean_costly_wins: bool = Econ.expected_net(c_spec, 0.0) > Econ.expected_net(s_spec, 0.0)
 			var sloppy_costly_wins: bool = Econ.expected_net(c_spec, 0.85) > Econ.expected_net(s_spec, 0.85)
 			var row: Dictionary = stats[pat]
@@ -8854,22 +8856,140 @@ func _test_tangler() -> void:
 	holder.queue_free()
 	await get_tree().process_frame
 
-## MOVEMENT DISCIPLINE — the ratchet that stops teleport-as-movement coming back.
+## COMMENT STYLE — comments are timeless what/why; history lives in git.
 ##
-## Director's ruling: the scheduler exists so a queued MOVEMENT can have its consequences solved and
-## pushed onto the timeline. Teleporting a body to make a consequence fire skips the very mechanism
-## the architecture is built on, and it produces tests that pass while the level is broken -- which is
-## exactly how windup_window shipped a bed you could walk out of for free.
-##
-## An honest lint, and its limits stated plainly:
-##   RULE A (mechanical, exact): production LEVEL and AI code may not teleport at all. Level content
-##     commands movement; genuine teleports belong to the kit objects that ARE teleports.
-##   RULE B (ratchet, approximate): the test runner's teleport count may not GROW. A source scan
-##     cannot tell "place a fixture before the scenario" from "shove the body into the blast", so this
-##     freezes the debt instead of pretending to classify it. Lower the ledger as sites convert; the
-##     test goes red if it grows AND if it drops without the ledger being updated, so the number
-##     cannot silently drift in either direction.
-const MOVEMENT_TELEPORT_DEBT := 204   # includes this lint's own two literal mentions
+## The law (design-laws.md): never reference changes, fixes, or historical context, and no
+## opinionated meta-commentary -- code reads as if it was always written this way. A phrase scan
+## cannot judge intent, so this is a RATCHET, not a classifier: the ledger freezes each file's
+## count of phrase-matching comment lines (all reviewed: the frozen residue is runtime-sequencing
+## language, code identifiers, and save-format facts that legitimately contain these phrases). A
+## file OVER its frozen count has new change-referencing comments -- rewrite them timelessly. A
+## file UNDER its count means debt was paid: lower the ledger so the ratchet keeps biting. New
+## files start at zero.
+const COMMENT_STYLE_PHRASES := [
+	"used to ", "no longer", "previously", "the old ", "old version",
+	"is now ", "are now ", "now that ", "we now ", "now uses", "now reads",
+	"retired", "was ruled", "replaced a ", "this replaced", " anymore",
+	"the review caught", "red/green", "this was a live bug", "the fix is",
+	"no more ", "instead of the old", "the new ",
+]
+const COMMENT_STYLE_LEDGER := {
+	"fragments/chunks/boss_showcase_chunk.gd": 1,
+	"fragments/chunks/channels_wash_intro_chunk.gd": 1,
+	"fragments/chunks/flora_garden_chunk.gd": 2,
+	"fragments/chunks/generated_stretch_chunk.gd": 8,
+	"fragments/chunks/lockout_chase_chunk.gd": 1,
+	"fragments/chunks/push_lab_chunk.gd": 1,
+	"fragments/chunks/puzzle_atom_chunk.gd": 2,
+	"fragments/chunks/survival_range_chunk.gd": 1,
+	"fragments/chunks/wash_relay_chunk.gd": 4,
+	"fragments/fragment_preview_sequence.gd": 6,
+	"game/ai/enemy.gd": 3,
+	"game/ai/naturalizer.gd": 1,
+	"game/ai/spiker.gd": 1,
+	"game/characters/character_interaction_controller.gd": 1,
+	"game/characters/player.gd": 4,
+	"game/characters/selection_controller.gd": 1,
+	"game/objects/belt_line.gd": 1,
+	"game/objects/channel.gd": 2,
+	"game/objects/climbvine_return.gd": 1,
+	"game/objects/decorative_flora.gd": 1,
+	"game/objects/hazard_field.gd": 1,
+	"game/objects/interactable.gd": 2,
+	"game/objects/interactable_juice.gd": 2,
+	"game/objects/moving_platform_passenger_system.gd": 1,
+	"game/objects/outline_surface_target.gd": 3,
+	"game/objects/party_gate_3d.gd": 1,
+	"game/world/character_state_presentation_controller.gd": 1,
+	"game/world/consequence_presentation_controller.gd": 3,
+	"game/world/grid_world.gd": 1,
+	"game/world/path_render_manager.gd": 2,
+	"game/world/staged_rigid_collapse_3d.gd": 1,
+	"generation/building_filler.gd": 2,
+	"generation/building_survey.gd": 2,
+	"generation/roompiece_catalog.gd": 1,
+	"generation/run_session.gd": 1,
+	"generation/stretch_branch_weaver.gd": 2,
+	"generation/stretch_generator.gd": 3,
+	"generation/stretch_solution_solver.gd": 1,
+	"scene_chunks/scene_chunk.gd": 3,
+	"system/core/game_state.gd": 7,
+	"system/core/state_machine.gd": 2,
+	"test_runner_cli.gd": 35,
+	"testing/movement_continuity_tracker.gd": 2,
+	"tutorial/act1_sequence.gd": 1,
+	"tutorial/aster_sim_sequence.gd": 2,
+	"tutorial/elevator_sequence.gd": 5,
+	"tutorial/peris_sim_sequence.gd": 2,
+	"tutorial/tutorial_sequence.gd": 3,
+	"ui/dialogue_box.gd": 1,
+	"ui/game_hud.gd": 1,
+}
+
+func _test_comment_style() -> void:
+	_test_name = "Comment Style"
+	var counts := {}
+	var dirs: Array = ["res://scripts/"]
+	while not dirs.is_empty():
+		var dir_path: String = dirs.pop_back()
+		var dir := DirAccess.open(dir_path)
+		if dir == null:
+			continue
+		dir.list_dir_begin()
+		var entry := dir.get_next()
+		while entry != "":
+			if dir.current_is_dir():
+				dirs.append(dir_path + entry + "/")
+			elif entry.ends_with(".gd"):
+				var rel := (dir_path + entry).replace("res://scripts/", "")
+				var n := _comment_style_count(dir_path + entry)
+				if n > 0:
+					counts[rel] = n
+			entry = dir.get_next()
+		dir.list_dir_end()
+	var over := []
+	var under := []
+	for rel_v in counts.keys():
+		var rel := str(rel_v)
+		var frozen := int(COMMENT_STYLE_LEDGER.get(rel, 0))
+		if int(counts[rel]) > frozen:
+			over.append("%s (%d > %d)" % [rel, int(counts[rel]), frozen])
+	for rel_v in COMMENT_STYLE_LEDGER.keys():
+		var rel := str(rel_v)
+		if int(counts.get(rel, 0)) < int(COMMENT_STYLE_LEDGER[rel]):
+			under.append("%s (%d < %d)" % [rel, int(counts.get(rel, 0)), int(COMMENT_STYLE_LEDGER[rel])])
+	_assert_true(over.is_empty(),
+		"no file grows change-referencing comments -- rewrite them timelessly: %s" % str(over))
+	_assert_true(under.is_empty(),
+		"debt was paid; lower the frozen ledger so the ratchet keeps biting: %s" % str(under))
+
+func _comment_style_count(path: String) -> int:
+	var src := FileAccess.get_file_as_string(path)
+	if src == "":
+		return 0
+	var n := 0
+	for line_v in src.split("
+"):
+		var s := str(line_v).strip_edges()
+		var idx := s.find("#")
+		if idx < 0:
+			continue
+		var low := s.substr(idx).to_lower()
+		for phrase in COMMENT_STYLE_PHRASES:
+			if low.contains(str(phrase)):
+				n += 1
+				break
+	return n
+
+## MOVEMENT DISCIPLINE. The scheduler exists so a queued movement's consequences can be solved and
+## scheduled; teleporting a body to make a consequence fire bypasses that mechanism and produces
+## tests that pass on levels a walking player cannot beat. Production level/AI code commands
+## movement; genuine teleports belong only to the kit objects that ARE teleports. The test runner's
+## own teleport count is FROZEN as debt: a source scan cannot tell fixture placement from
+## movement-simulation, so the ceiling may only go down. The count includes this constant's own
+## two literal mentions.
+const MOVEMENT_TELEPORT_DEBT := 204
+
 const MOVEMENT_TELEPORT_BANNED_DIRS := [
 	"res://scripts/fragments/chunks/",
 	"res://scripts/game/ai/",
@@ -8954,14 +9074,11 @@ func _movement_discipline_scripts(dir_path: String) -> Array:
 
 ## THE WATCHED GAP, and the 30-second cliff underneath it.
 ##
-## The shipped detection LOS re-check exists because of a real bug: a target that entered range BEHIND
-## cover and then walked into the open during the SAME move was never re-checked, so cover granted
-## immunity for the rest of the move. The re-check fixed that by re-testing every 0.25s -- but only for
-## DETECTION_LOS_RECHECK_MAX_HOPS (120) hops. 120 x 0.25 = exactly 30 seconds, after which the chain
-## silently stops and the original bug returns for any move longer than that.
-##
-## Both cases are pinned here BEFORE the mechanism changes, so a replacement has to prove it is
-## strictly better rather than merely different.
+## Two properties of blocked-pair detection, pinned together because either alone is escapable:
+## a target that enters range BEHIND cover and steps into the open during the SAME move must be
+## spotted at the solved view-gain tick, and that solve must hold arbitrarily far into a move --
+## cover must never grant immunity merely because a leg is long. A time-sampled re-check with a stop
+## budget satisfies the first and fails the second; a path-derived solve satisfies both.
 func _test_watched_gap_los() -> void:
 	_test_name = "Watched Gap LOS"
 	var sched := EventScheduler.new()
@@ -9071,8 +9188,8 @@ func _test_enemy_state_derived_work() -> void:
 ## DETECTION SCALING — a yard full of roamers must not cost O(n^2).
 ##
 ## The shape that matters in this game is many ambient enemies moving constantly (the roam rule) while
-## watching only the party. Invalidating a moved body used to scan EVERY detector against EVERY one of
-## its targets and skip the misses, so each roamer's hop paid for every other roamer in the yard.
+## watching only the party. Invalidating a moved body by scanning EVERY detector against EVERY one of
+## its targets and skipping the misses makes each roamer's hop pay for every other roamer in the yard.
 ## Indexed by participant, a roamer's own hop touches only the pairs it is actually in.
 ##
 ## The assertion is a RATIO, not a wall-clock time: pairs-considered per move must not grow with the
@@ -9099,7 +9216,7 @@ func _test_detection_scaling() -> void:
 				{"detection_range": 4.0})
 			gs.set_detection_targets(rid, ["aster", "peris"])
 		# SCANNED, not considered. "Considered" counts pairs that survived the only_id filter, which
-		# is 2 either way -- measuring it proves nothing about the scan, as a red/green revert showed.
+		# is 2 either way -- measuring it proves nothing about the scan.
 		var before := int(gs.get_performance_counters()["detection_pairs_scanned"])
 		# ONE roamer hops. Nobody watches it, so nothing else in the yard can be affected by it.
 		gs.command_move_to_pos("roamer_0", Vector3(26.0, 0.0, 26.0))
@@ -9946,7 +10063,7 @@ func _flood_grid_reachable(g: GridWorld, start: Vector2i, start_lvl: int) -> Dic
 
 ## Quality guards for generated levels the user flagged: the party spawns ON the stretch (not off at world
 ## origin), corridors vary in width (not uniform width-1), and the renderer is the tiled floor + node markers —
-## none of the old scaffolding clutter (foundation slab, route-connector boxes, big role pads).
+## with no scaffolding clutter (foundation slab, route-connector boxes, big role pads).
 func _test_generated_stretch_quality() -> void:
 	_test_name = "Generated Stretch Quality"
 	var Wfc = load("res://scripts/generation/stretch_wfc_layout.gd")
@@ -10418,9 +10535,9 @@ func _test_generated_food_modes() -> void:
 		# directly from the entry must fail by design.
 		# Walk the emitted golden-path PREFIX instead of a hand-counted schedule. The spec owns which
 		# producer gates which node and how many actions sit on each boundary, so a regeneration that
-		# moves a node must not silently invalidate this test: it moved branch_00's gate from node_02
-		# to node_01 and left the old constant demanding two actions on a boundary that now binds one,
-		# which is unsatisfiable. node_01 also became an actionable foraging node, and the route out of
+		# moves a node must not silently invalidate this test: a hand-counted constant can end up
+		# demanding two actions on a boundary the spec binds to one, which is unsatisfiable.
+		# A prefix node may also be an actionable foraging node, and the route out of
 		# it refuses to commit until it is completed -- so the prefix must activate each node, not just
 		# walk past it. Counts are derived; nothing here is weakened.
 		var solution: Dictionary = chunk.get_solution_script()
@@ -15775,8 +15892,8 @@ func _test_asset_pipeline() -> void:
 			"Aster drink machine starts disabled from data")
 		_assert_equals(str(interactable_specs["peris.logbook_gate"].interactable_type), "HOLD_ACTION",
 			"Peris logbook gate is declared as a hold/action interactable")
-	# The crisp object outline is now a SCREEN-SPACE mask Sobel (OutlineMaskManager), not an inverted hull — it
-	# stays clean on the flat-shaded pixel-art meshes the hull used to tear on, and constant-width at any distance.
+	# The crisp object outline is a SCREEN-SPACE mask Sobel (OutlineMaskManager), not an inverted hull — a hull
+	# tears on flat-shaded pixel-art meshes, while the mask stays clean and constant-width at any distance.
 	_assert_true(
 		FileAccess.file_exists("res://resources/screen_outline_mask.gdshader"),
 		"Screen-space outline mask shader exists"
@@ -17322,7 +17439,7 @@ func _test_tag_day() -> void:
 			"Tag Day teaches fast-forward as an available hold action"
 		)
 
-		# Regression guard: these mandatory clicks were uncited padding, not Tag Day.
+		# Station names that must not exist: a mandatory click no beat cites is padding, not Tag Day.
 		for removed_station_name in [
 			"TagDayPublicWitnessSeal",
 			"TagDayPrivateWitnessSeal",
@@ -17903,7 +18020,7 @@ func _synthetic_whole_party_rally_and_arrive(
 ## point a real pick invokes — then let the REAL chain run: interaction_requested →
 ## the interaction controller walks the player over → triggers on arrival. We never
 ## call _trigger() ourselves, so the player must still reach the object. RIGHT-click is
-## the interact command now (RTS-style); a LEFT-click would no longer interact.
+## the interact command (RTS-style); a LEFT-click does not interact.
 func _synthetic_click_interactable(instance: Node, interactable: Node) -> void:
 	if interactable == null or not interactable.has_method("_on_input_event"):
 		return
@@ -18041,8 +18158,8 @@ func _set_step_in_actions(actions: Array, step_value: float, schema) -> void:
 			action[schema.KEY_STEP] = step_value
 
 ## Scenarios known to diverge under fast-forward, tracked rather than gating the suite.
-## (Empty: every timing-puzzle outcome is now predicted analytically from the scheduler
-## tick at activation instead of discovered by per-frame sampling, so it's invariant.)
+## (Empty: every timing-puzzle outcome is predicted analytically from the scheduler
+## tick at activation rather than discovered by per-frame sampling, so it's invariant.)
 const _KNOWN_FF_PUZZLE_DIVERGENCES := {}
 
 func _compare_ff_puzzle_runs(id: String, slow: Dictionary, fast: Dictionary, schema) -> void:
@@ -18111,12 +18228,11 @@ func _test_intro_realinput_core() -> void:
 
 ## The Elevator real-input leg, sectioned out of --test-all ONLY because its wall-clock tweens are
 ## slow — not because input tests are skippable. Run it before touching the elevator. The FULL descent
-## is now real-input playable to `complete`: wake -> EMP -> held-command rally at the door ->
+## is real-input playable to `complete`: wake -> EMP -> held-command rally at the door ->
 ## corridor -> bridge -> collapse/fall -> route_choice (the two-route split) -> junction -> Endo ->
 ## night -> dawn -> morning -> gauntlet -> complete. (Movement + interaction is the RIGHT-click
-## "command"; the old LEFT-click beats never actually moved anyone, so the leg used to stop at the
-## scheduled route_choice. The blockers — short below/gauntlet floors, partial-party gates, and the
-## walled gauntlet exit — are fixed in elevator_sequence.gd.)
+## "command"; a LEFT-click selects without moving anyone, so LEFT-click beats would stall the leg at
+## the scheduled route_choice.)
 func _test_elevator_realinput() -> void:
 	_test_name = "Intro Real-Input Reachability"
 	var result := await _run_realinput_leg("Elevator", "res://scenes/tutorial/elevator.tscn", 0,
@@ -18528,8 +18644,8 @@ func _elevator_realinput_beats(instance: Node) -> Dictionary:
 	var gauntlet_stage_queued := [false, false]
 	var gauntlet_rally_queued := [false, false]
 	# Movement + interaction are the RIGHT-click ("command") action; LEFT is select. Every walk/interact
-	# beat uses the move-click helper (the old LEFT-click beats never moved anyone — the test only
-	# reached route_choice because that step is SCHEDULED after the fall, not walked to).
+	# beat uses the move-click helper (a LEFT-click beat would move no one, and the test would still
+	# reach route_choice only because that step is SCHEDULED after the fall, not walked to).
 	# Right-click the visible wake source. The shipped Player preflight yields this
 	# pixel to object picking, then the target's production request moves Peris into
 	# the HOLD_ACTION zone; a ground-only injection would omit half that input cycle.
@@ -18557,7 +18673,7 @@ func _elevator_realinput_beats(instance: Node) -> Dictionary:
 	# enemy detection so the loaded combat chunks can't game-over the reachability run.
 	beats["corridor"] = func(): _disable_enemy_detection(instance)
 	# Bridge: rally both units EAST. The span gives way only once both are actually over the failing section;
-	# a lead unit can no longer teleport its trailing partner down into the huddle at the bridge mouth.
+	# a lead unit cannot teleport its trailing partner down into the huddle at the bridge mouth.
 	beats["bridge"] = func():
 		if bridge_rally_queued[0] or instance._dialogue.is_active():
 			return
@@ -19237,8 +19353,8 @@ func _assert_input_glyph_bindings() -> void:
 	_assert_equals(InputHints.label_for_action("preview_reload", ""), "M",
 		"Preview menu return avoids the browser-reserved F5 key")
 
-	# The journal used to poll a raw KEY_J constant, which bypassed InputMap and
-	# could not follow rebinding. Exercise its live action path with the F9 event.
+	# A raw keycode poll would bypass InputMap and could not follow rebinding.
+	# Exercise the journal's live action path with the F9 event.
 	var engram_overlay: Node = load("res://scenes/ui/engram_overlay.tscn").instantiate()
 	get_tree().root.add_child(engram_overlay)
 	_assert_true(str(engram_overlay._shortcut_label.text).contains("F9 open/close")
@@ -20256,8 +20372,8 @@ func _test_aster_sim() -> void:
 				"Disabled drink machine cannot skip the monitor sequence")
 			instance._start_show_terminal()
 			# This test deliberately enters a later story beat without playing Ron's intro.
-			# Retire that portable approach authority too; clearing callbacks alone cannot
-			# cancel truthful GameState movement anymore.
+			# Retire that portable approach authority too; clearing callbacks alone does not
+			# cancel truthful GameState movement.
 			instance._repair_ron_authority_for_saved_step()
 			instance._game_state.command_stop("ron")
 			# Isolate the terminal beat from the scene's still-pending natural intro flow (its scheduled
@@ -20349,7 +20465,7 @@ func _test_aster_sim() -> void:
 			dialogue.clear()
 			instance._scheduler.resume()
 		# The room is the SEPARATED per-object model set (so objects can be highlighted/grid-placed
-		# individually) — assert the named objects, not the old combined 'default' import.
+		# individually) — assert the named objects, not a combined 'default' import.
 		var room_instance := instance.find_child("AsterRoom", true, false) as Node3D
 		_assert_true(room_instance != null, "Aster sim keeps the imported room instance")
 		if room_instance != null:
@@ -20508,8 +20624,8 @@ func _test_aster_sim() -> void:
 		var feedback_manager := instance.find_child("OutlineFeedbackManager", true, false)
 		_assert_true(feedback_manager != null, "Aster sim centralizes outline feedback state")
 		var room_surface_targets := _find_nodes_with_script(instance, "res://scripts/game/objects/outline_surface_target.gd")
-		# The separated per-object room model replaced the old combined import's auto-generated
-		# per-surface wrappers: the semantic targets ARE the objects now. The desk target must wrap
+		# In the separated per-object room model the semantic targets ARE the objects, not
+		# auto-generated per-surface wrappers of a combined import. The desk target must wrap
 		# the REAL model's meshes (from the AsterRoom subtree), not graybox boxes.
 		_assert_true(room_surface_targets.size() >= 3,
 			"Aster sim keeps its semantic room object targets")
@@ -21930,12 +22046,12 @@ func _assert_elevator_active_player_can_move(instance: Node, label: String) -> v
 
 # --- Test: ability content loads from the abilities xlsx (single source of truth, like dialogue) ---
 # Abilities' display names + descriptions + tuning live in data/abilities/en/abilities.xlsx. This guards
-# the loader AND that the migration preserved the per-context content (a chunk's abilities + the tutorial
-# scene abilities resolve to the same values they used to hardcode).
+# the loader AND the per-context content (a chunk's abilities + the tutorial
+# scene abilities resolve to the xlsx's authored values).
 # The five RETIRED fauna names are load-bearing traps: content written against them
-# silently contradicts canon (docs/concept-prompts/fauna.md — director's ruling, final).
+# silently contradicts canon (docs/concept-prompts/fauna.md).
 # The rename record itself (reference-docs/fauna_roster.md) and the instruction files
-# that teach the mapping keep the old names on purpose and live outside this sweep;
+# that teach the mapping carry the superseded names on purpose and live outside this sweep;
 # everywhere in the shipped project a retired name is a bug.
 # Note "neutrophil" is real biology and must survive — the check is word-boundaried,
 # and "ReportEcho…" style identifiers contain "techo" only across a word seam.
@@ -22078,7 +22194,7 @@ func _test_ability_data() -> void:
 		"emp": "aster", "wrap": "peris", "inflame": "myke",
 		"barrier": "oli", "restore": "oli", "suppress": "tyreg",
 	}, "The ability authority preserves every named GDD commitment without adding placeholders")
-	# Old contextual rows no longer leak through a chunk's cast list.
+	# Contextual ability rows must not leak through a chunk's cast list.
 	var chunk_scene := load("res://scenes/fragments/chunks/refuge_run_chunk.tscn")
 	if chunk_scene != null:
 		var chunk: Node = chunk_scene.instantiate()
@@ -22088,7 +22204,7 @@ func _test_ability_data() -> void:
 				"Refuge Run TEND must live on its hushbloom target, not the ability drawer")
 		chunk.free()
 
-# --- Test: ADVERSARIAL probes of the grid-ported scenes — try to break the new movement system ---
+# --- Test: ADVERSARIAL probes of the grid-ported scenes — try to break the movement system ---
 # Aimed at finding failures the happy-path tests miss: a manual click across the elevator's link-less
 # decks (must reject, not phantom-climb), a party cross-deck click (rejected), and an act1 grid swap while
 # a character is mid-move (must not crash or strand it). Drives the REAL player click path (_set_click_target).
@@ -22320,7 +22436,7 @@ func _test_elevator_fall_level() -> void:
 # --- Test: the bridge collapse triggers by WALKING across, and the ecology below does not pursue ---
 # Two stacked decks share one XZ grid plane. The party crosses the bridge (upper deck, Y=0) OVER the
 # ecology (lower deck, Y=-4). Reproduces: (1) walking to the far end fires the collapse — it must not
-# be blocked by the enemies parked below (level-agnostic cell reservations used to "wall off" the
+# be blocked by the enemies parked below (level-agnostic cell reservations would "wall off" the
 # bridge); (3) the enemies below never pursue the party crossing above (the vertical gap exceeds the
 # detection band).
 func _test_elevator_bridge_collapse() -> void:
@@ -22820,7 +22936,7 @@ func _test_chunk_streaming() -> void:
 	_assert_true(instance.is_chunk_streaming("below"), "below streams in the background")
 	var below_step_count: int = (instance._chunk_streams["below"].steps as Array).size()
 	_assert_true(below_step_count >= 18, "the lower route is split into fine-grained construction steps")
-	# Stream until the first fauna batch exists. Overlay guide construction now
+	# Stream until the first fauna batch exists. Overlay guide construction
 	# occupies its own small steps before fauna, so this contract follows the
 	# milestone instead of baking in a fragile step index.
 	# Always execute the new stream's prepare step first; unloading a previously
@@ -23197,8 +23313,8 @@ func _test_elevator_distracted_fauna() -> void:
 	await get_tree().process_frame
 
 # --- Test: the elevator doorway teaches rally without changing selection ---
-# The old beat taught box-selection before there was a reason to split perspectives. The doorway now
-# proves that held COMMAND addresses the visible party while portrait selection remains a singleton.
+# The doorway proves that held COMMAND addresses the visible party while portrait selection
+# remains a singleton — no box-selection beat before there is a reason to split perspectives.
 func _test_elevator_box_select_multiselect() -> void:
 	_test_name = "Elevator Rally Tutorial"
 	var scene := load("res://scenes/tutorial/elevator.tscn")
@@ -24014,7 +24130,7 @@ func _test_elevator() -> void:
 				_assert_true(not instance._grid.is_cell_risky(instance._grid.world_to_grid(safe_destination)),
 					"Every cautious rally endpoint occupies a non-risk cell")
 
-			# Regression for the reported frame collapse: rendering frames do no HP/event work. Iron emits one
+			# Rendering frames do no HP/event work. Iron emits one
 			# discrete scheduler hit per cadence, with an explicit source label and portrait acknowledgement.
 			var iron_center: Vector3 = instance._iron_patches[0].pos
 			iron_center.y = instance.BELOW_Y
@@ -25876,7 +25992,7 @@ func _survival_range_dwell_interactable(
 	if dwell_time > 0.0:
 		# Cross the analytic deadline by one millisecond. Repeated 0.05 additions can
 		# finish a few ulps below an exact six-second deadline; a real frame naturally
-		# crosses it, while the old fixture stranded the scheduled receipt at 5.999…s.
+		# crosses it, while a bare sum strands the scheduled receipt at 5.999…s.
 		_advance_showcase(instance, dwell_time + 0.001)
 	if interactable != null and interactable.interacted.is_connected(callback):
 		interactable.interacted.disconnect(callback)
@@ -26576,8 +26692,8 @@ func _test_grid_pathfinding() -> void:
 	_assert_true(grid4.is_walkable(1, 1, {}, {}), "Unlocked door passable")
 
 	# Elevator-scale core routing probe. The live lower deck is a long, shallow
-	# 232x21 grid; hundreds of otherwise modest A* expansions used to allocate a
-	# Dictionary for every heap node and hitch the Web build. Keep this fixture
+	# 232x21 grid; hundreds of otherwise modest A* expansions allocating a
+	# Dictionary for every heap node hitch the Web build. Keep this fixture
 	# scene-agnostic while matching that grid shape, and require identical output
 	# across repeated calls before reporting the per-query cost.
 	var long_grid := GridWorld.new()
@@ -27147,9 +27263,9 @@ func _test_cooperative_pathfinding() -> void:
 	_assert_true(anchored_payload_destinations10bb[1].distance_to(anchored_target10bb) < 0.001,
 		"Replay data preserves the matching anchor as the stationary centre member")
 
-	# --- 10c. An unavailable requested member blocks ONLY THEMSELF (director ruling, 2026-08-06).
+	# --- 10c. An unavailable requested member blocks ONLY THEMSELF.
 	# The free member still rallies; the downed one is reported so presentation can mark them in the
-	# world. Freezing the whole party because one member is unavailable read as a dead click.
+	# world. Freezing the whole party because one member is unavailable reads as a dead click.
 	var grid10c_unavailable := GridWorld.new()
 	grid10c_unavailable.create_room(9, 5, true)
 	var sched10c_unavailable := EventScheduler.new()
@@ -27532,9 +27648,9 @@ func _test_path_renderer() -> void:
 	if pr._line.mesh != null:
 		_assert_true(pr._line.mesh.get_surface_count() > 0,
 			"Path line mesh has a surface (vertices were added)")
-	# Stable frames reuse both the cached tail and the live-head mesh resource.
-	# The old implementation re-warped the whole path and SurfaceTool.commit()'d
-	# a brand-new head mesh on every one of these calls.
+	# Stable frames reuse both the cached tail and the live-head mesh resource,
+	# never re-warping the whole path or SurfaceTool.commit()'ing a brand-new
+	# head mesh on every one of these calls.
 	var cached_tail_builds: int = pr._tail_rebuild_count
 	var cached_head_updates: int = pr._head_update_count
 	var cached_head_mesh: Mesh = pr._line.mesh
@@ -27789,11 +27905,11 @@ func _test_path_render_manager() -> void:
 	mgr._process(0.0)
 	_assert_true(pghost != null and not pghost.visible, "The preview ghost hides when the hover clears")
 
-	# REGRESSION (ghost drawn at MULTIPLE positions): on a rebuild (the character's node instance changed —
-	# late spawn / chunk reload / _find_node flip) the old ghost was only queue_free()'d, which is DEFERRED, so
-	# it stayed valid + visible + parented at its OLD destination while the NEW ghost was added + shown the SAME
-	# frame -> two ghosts. Force a rebuild and assert exactly ONE drawable ghost THIS frame (no await — the bug
-	# is the same-frame double draw). First make the ghost VISIBLE at an old dest, THEN swap the node.
+	# GHOST DRAWN AT MULTIPLE POSITIONS: on a rebuild (the character's node instance changed —
+	# late spawn / chunk reload / _find_node flip) a ghost that is merely queue_free()'d is DEFERRED-freed, so
+	# it stays valid + visible + parented at its OLD destination while the NEW ghost is added + shown the SAME
+	# frame -> two ghosts. Force a rebuild and assert exactly ONE drawable ghost THIS frame (no await — the
+	# hazard is the same-frame double draw). First make the ghost VISIBLE at an old dest, THEN swap the node.
 	gs.command_move_to_pos("a", Vector3(6.0, 0.0, 2.0))
 	mgr._process(0.0)   # old ghost now visible at (6,0,2) on the current node
 	var n2 := Node3D.new()
@@ -27816,13 +27932,12 @@ func _test_path_render_manager() -> void:
 	_assert_equals(drawable_ghosts, 1,
 		"exactly ONE destination ghost draws after a rebuild (the old queued-for-deletion ghost must be hidden + detached, not left rendering at its old position)")
 
-	# REGRESSION (the giant green slab + hidden outlines): the active player's path-preview ribbon AND the
-	# party-preview renderers are CHILDREN of the character node — the ribbon meshes are top_level (world-space)
-	# and live under a PathRenderer. find_children swept them into the ghost, so the ghost duplicated ~6u-wide
-	# ribbon geometry: a giant translucent green slab at the move target. Drawing at render_priority 127 +
-	# no_depth_test, it covered nearby interactable outline hulls (opaque, priority 120) — the "outlines don't
-	# appear" report. The ghost must copy the BODY mesh only. Attach BOTH a top_level overlay mesh and a
-	# PathRenderer-owned mesh to the live node and assert the rebuilt ghost stays body-width.
+	# The ghost must copy the BODY mesh only. Path-preview ribbons and party-preview renderers are
+	# CHILDREN of the character node (top_level world-space meshes under a PathRenderer), so an
+	# indiscriminate find_children sweep would duplicate ~6u-wide ribbon geometry into the ghost -- a
+	# translucent slab at the move target that, at render_priority 127 + no_depth_test, occludes
+	# nearby interactable outline hulls (opaque, priority 120). Attach BOTH a top_level overlay mesh
+	# and a PathRenderer-owned mesh to the live node and assert the rebuilt ghost stays body-width.
 	var tl_ribbon := MeshInstance3D.new()
 	var tlm := BoxMesh.new(); tlm.size = Vector3(6.0, 0.05, 0.5); tl_ribbon.mesh = tlm
 	tl_ribbon.top_level = true   # like PathRenderer._line/_tail (world-space vertices)
@@ -28187,7 +28302,7 @@ func _test_camera_occlusion() -> void:
 
 	# Streamed Elevator enemies are wrapped by the same manager. Their pursuit /
 	# windup state colors must update the wrapper without casting it back to a
-	# StandardMaterial3D (which previously produced a null assignment at runtime).
+	# StandardMaterial3D (such a cast produces a null assignment at runtime).
 	var enemy := Enemy.new()
 	add_child(enemy)
 	await get_tree().process_frame
@@ -29494,13 +29609,13 @@ func _test_hidden_detection() -> void:
 # --- Test: the two-lure relay hide puzzle solves on the data layer (headless == real play) ---
 ## THE WATCHED GAP — the atomic distract-the-patrol chunk, tested AS BUILT with the real mechanics (the
 ## "test fragments as we make them" loop). Three proofs, all driven through real detection/movement/dwell:
-##   1. LOS honesty: standing INSIDE detection range but behind the wall -> never spotted (walls blind enemies;
-##      the user's correction, now a permanent regression).
+##   1. LOS honesty: standing INSIDE detection range but behind the wall -> never spotted (walls blind
+##      enemies).
 ##   2. The gate is real: walking straight for the end gets you spotted in the watched lane and swept back to
 ##      the start — you CANNOT walk start->end unsolved. The sentry's own FSM then disengages back to its post.
 ##   3. The solve works: tend the flure (real TIMED_ACTION dwell) -> the sentry commits away through the gap ->
 ##      cross behind it -> complete, uncaught.
-## A mechanically broken puzzle (like the retired redirect chunk) fails here — that's the point of the test.
+## A mechanically broken puzzle fails here — that's the point of the test.
 func _test_distract_gate() -> void:
 	_test_name = "Distract Gate (The Watched Gap)"
 	var inst = await _instantiate_preview_chunk_and_wait("distract_gate", 4)
@@ -30183,7 +30298,7 @@ func _test_fragment_preview_registry() -> void:
 			and "legacy alias" in str(legacy_lockout_entry.get("title", "")).to_lower(),
 		"the compatibility picker entry labels itself honestly at the chase curriculum stage")
 
-	# The two read-focused standalone labs used to end silently after their final station.
+	# The two read-focused standalone labs must not end silently after their final station.
 	# Drive their real chunk callbacks and require a durable completion state + host step.
 	var completion_cases := [
 		{
@@ -30215,8 +30330,8 @@ func _test_fragment_preview_registry() -> void:
 		if str(case["name"]) == "stacks":
 			host.game_state.set_party(["aster", "peris", "endo"])
 			# The standalone Open Files lab completes from the two records named by its
-			# production shelter validator. The old bank-a/b/c smoke belonged to the Act 1
-			# sequence's separate bank audit and silently exercised no source in this chunk.
+			# production shelter validator. A bank-a/b/c smoke belongs to the Act 1
+			# sequence's separate bank audit and would silently exercise no source in this chunk.
 			for target_id in ["arrival_terminal", "support_log"]:
 				var record: Node3D = chunk.get_playthrough_interaction_target(target_id)
 				_assert_true(record != null,
@@ -30335,7 +30450,7 @@ func _test_preview_party_move() -> void:
 	var gs = inst._game_state
 	# Selection changes gate future input but must not cancel an order already issued
 	# to the outgoing character. The Basin requires several independent climbs in one
-	# LOW window, and the old set_move_enabled(false) path stopped each prior member.
+	# LOW window, and a deselect that disables movement would stop each prior member.
 	inst.headless_select_character("aster")
 	var solo_target: Vector3 = gs.get_position("aster") + Vector3(4.0, 0.0, 0.0)
 	_assert_true(inst._player.move_to_world_position(solo_target) and gs.is_moving("aster"),
@@ -30430,8 +30545,8 @@ func _test_preview_path_render() -> void:
 
 # --- Test: hovering the floor reveals the target-cell grid in chunk previews ---
 ## The hover grid follows the cursor by POLLING get_viewport().get_mouse_position() each frame in
-## _process (it used to react to InputEventMouseMotion in _unhandled_input, which never reaches the
-## player — that was the "grid overlay isn't working in stacks" bug). The headless display server
+## _process (an InputEventMouseMotion handler in _unhandled_input never reaches the
+## player, so the grid would sit frozen). The headless display server
 ## stores no mouse position, so we can't feed the poll a cursor headlessly; instead we (1) run the
 ## real poll to prove _process -> _update_hover_grid is wired and crash-free, then (2) drive the
 ## worker with a real floor projection to prove the raycast -> snap -> reveal logic. In a window the
@@ -30715,7 +30830,7 @@ func _test_preview_ribbon_grounded() -> void:
 	await get_tree().process_frame
 
 # --- Test: the hover grid FADES toward its edges (solid centre, dissolving rim) ---
-# The 5x5 hover patch must dissolve at the edges like the old grid, not end in a hard square. The
+# The 5x5 hover patch must dissolve at the edges, not end in a hard square. The
 # shared alpha field (line-pixel value = radial fade) must drop from a solid centre to a faint rim.
 func _test_hover_grid_edge_fade() -> void:
 	_test_name = "Hover Grid Edge Fade"
@@ -30805,11 +30920,11 @@ func _test_aster_hover_outline() -> void:
 	await _dispose_scene(inst)
 
 # --- Test: the screen focus frames the monitor from its FRONT (the chair side), flat — not edge-on ---
-# Bug the user hit: the focus framed the monitor from the wrong axis (+Z) while the monitor actually
-# FACES the chair (+X here), so the screen showed edge-on ("we're facing the desk sideways"). The fix
+# A focus framed along a hardcoded axis shows the screen edge-on whenever the monitor actually
+# FACES the chair along another axis (+X here). The focus
 # MEASURES the facing from the chair node (_screen_facing) and both rotates the panel and places the
 # camera along that axis. This test derives the same facing from the chair and asserts the camera sits on
-# that front side and looks flat at the screen — it would FAIL for the old +Z framing (camera off-axis).
+# that front side and looks flat at the screen — a fixed +Z framing (camera off-axis) FAILS it.
 func _test_terminal_front_focus() -> void:
 	_test_name = "Terminal Front Focus"
 	var inst = await _instantiate_scene_and_wait(load("res://scenes/tutorial/aster_sim.tscn"), 8)
@@ -30904,7 +31019,7 @@ func _test_terminal_queued_glow() -> void:
 		"The queued glow clears when the interaction is completed/cancelled")
 	await _dispose_scene(inst)
 
-# --- Test: GridWorld.nearest_walkable_world — the reusable spawn resolver (no more wall spawns) ---
+# --- Test: GridWorld.nearest_walkable_world — the reusable spawn resolver (no wall spawns) ---
 # Any character spawn routes a desired position through this: a spot on a wall/blocker snaps to the
 # CLOSEST walkable cell centre; a spot already on a walkable cell keeps its exact XZ; both are grounded
 # on the floor. This is the shared primitive that stops authored markers stranding characters on walls.
@@ -30981,7 +31096,6 @@ func _test_preview_pathfinding() -> void:
 # --- Test: floor-overlay materials render in the opaque pass (the preview scene drops alpha-blend) ---
 # The fragment-preview scene does not composite the alpha-BLEND transparent pass, so any floor overlay
 # using TRANSPARENCY_ALPHA is invisible there. The hover grid + path ribbon MUST be opaque or scissor.
-# This guards the regression that made the grid faint/invisible and the path "never show".
 # --- Test: modeled furniture must not bleed the atlas's transparent void ---
 # peris-furniture.gltf colours its pieces by sampling SOLID swatches from atlas textures
 # (peris-sim_7 tan, peris-sim_16 brown) whose backgrounds are transparent BLACK. The materials are
@@ -32009,7 +32123,7 @@ func _test_dev_console() -> void:
 	console.run("fog on")
 	_assert_true(inst.get("fog_of_war_enabled") == true, "`fog on` restores it")
 
-	# fxdebug rides the console too (backtick no longer toggles it directly).
+	# fxdebug rides the console too (backtick toggles the console, not fxdebug itself).
 	var prior_fx: bool = GridWorld._fx_debug
 	console.run("fxdebug on")
 	_assert_true(GridWorld._fx_debug, "`fxdebug on` enables the FX traces")
@@ -32156,8 +32270,8 @@ func _test_chunk_interactable_outlines() -> void:
 				"%s: hovering an interactable lights the white outline hull (grammar fires, not just wired)" % cname)
 			# The crisp outline + glow are a SCREEN-SPACE mask (OutlineMaskManager) — the chunk preview (which
 			# extends tutorial_sequence) must own one, and hovering must REGISTER the target's meshes with it, or
-			# the outline lights logically but renders nothing. Proves the new system reaches EVERY chunk, not just
-			# the tutorial rooms (the recurring ask).
+			# the outline lights logically but renders nothing. Proves the screen-space system reaches EVERY chunk,
+			# not just the tutorial rooms.
 			var mask_mgr = OutlineMaskManager.find_for(tg2)
 			_assert_true(mask_mgr != null,
 				"%s: the chunk preview owns an OutlineMaskManager (screen-space outline reaches chunks)" % cname)
@@ -32186,8 +32300,8 @@ func _test_preview_matches_committed() -> void:
 	gs.command_move_to_pos("peris", target)
 	var mv = gs.characters["peris"].movement
 	var committed: Array = (mv.path as Array) if mv != null else []
-	# The preview is now the cheap SPATIAL route (find_path), recomputed per hovered cell — NOT the
-	# cooperative space-time plan (that was the per-hover freeze). The click still COMMITS the cooperative
+	# The preview is the cheap SPATIAL route (find_path), recomputed per hovered cell — NOT the
+	# cooperative space-time plan (a full space-time plan per hover freezes the frame). The click still COMMITS the cooperative
 	# route; with no other character's reservation forcing a detour (a single character here) the two track
 	# closely — same destination, essentially the same cells — differing at most by a start/wait waypoint.
 	_assert_true(preview.size() > 0 and committed.size() > 0,
@@ -32483,8 +32597,8 @@ void fragment() { ALBEDO = vec3(1.0, 0.0, 0.0); }
 	var red_count := 0
 	var max_shot := 0
 	var shot := 0
-	# The 0.95 ring looks steeply DOWN — open-top notches and roof seams hide from shallow rings
-	# (the Open Files corner-wedge holes shipped invisible to the original three).
+	# The 0.95 ring looks steeply DOWN — open-top notches and roof seams hide from shallow rings,
+	# so a hole detector without a steep ring cannot see them at all.
 	for elev in [-0.22, 0.15, 0.5, 0.95]:
 		for k in range(8):
 			var a := TAU * float(k) / 8.0
@@ -34262,7 +34376,7 @@ func _test_player_observation_visibility() -> void:
 				"the first post-click observation attests that still-rendered exact target success")
 
 			# Draw-count coverage alone is insufficient at an uncapped frame rate. Let
-			# the pulse complete the old four-draw hold, then block the next process
+			# the pulse complete its four-draw hold, then block the next process
 			# frame longer than the result Tween. Scale-out must begin only after that
 			# slow frame has itself reached frame_post_draw, leaving one completed
 			# framebuffer receipt for the next ordinary player observation.
@@ -35467,7 +35581,7 @@ func _test_basin_player_journey() -> void:
 	var shelter_screen := _basin_journey_observed_screen(shelter_affordance)
 	# The visible REST PARTY pad is itself a semantic group-parking surface. A
 	# human holds RMB on that exact affordance before trying REST; this is the
-	# end-to-end boundary that caught the old nearest-ground spread leaving Endo
+	# end-to-end boundary where a bare nearest-ground spread can leave Endo
 	# outside the authored shelter.
 	var shelter_region_v: Variant = shelter.call(
 		"get_rally_formation_region") \
@@ -35935,7 +36049,7 @@ func _test_basin_crossing_assist_selection_contract() -> void:
 	await _dispose_scene(inst)
 
 
-## Focused regression for the mixed-floor interaction race found by the EazySpeezy browser run.
+## The mixed-floor interaction race: a console click resolved while floors disagree about the clicker.
 ## Positioning below is fixture-only quarantine: it contributes no travel, proximity, command,
 ## timing, or movement evidence. After the fresh baseline, selection uses production keys and the
 ## console receives exactly one real pointer interaction. Everything that follows is production
@@ -36659,7 +36773,7 @@ func _contract_probe_fragment(eid: String) -> void:
 		_assert_equals(shown_verb, expected_verb,
 			"[%s] hovering '%s' shows that target's exact cursor action verb" % [eid, ia3.name])
 		# CLICK: deliver app-local motion before the button just like the working journey helper.
-		# A desktop cursor cannot address an offscreen window and previously turned probes into floor moves.
+		# A desktop cursor cannot address an offscreen window and would turn probes into floor moves.
 		# Observe canonical selection rather than demanding an action complete without its authored party,
 		# payload, progression, or character preconditions.
 		var selected_canonical: Array = [null]
@@ -37643,7 +37757,7 @@ func _test_wash_relay_abilities() -> void:
 		_assert_true(bool(read_state.get("flow_logged", false)),
 			"logging arms the scheduled-crossing assist")
 
-	# Peris's old lighting job is now attached to one reachable plant beside the dark optional drain.
+	# Peris's lighting job is attached to one reachable plant beside the dark optional drain.
 	var flora: Node = chunk.find_child("DrainFlora", true, false)
 	_assert_true(flora != null, "the optional drain has contextual flora for Peris")
 	if flora != null:
@@ -37695,7 +37809,7 @@ func _test_wash_relay_abilities() -> void:
 	await get_tree().process_frame
 
 # The flung droplet specks in the splash texture must read as ROUND discs, not 1px plus/cross shapes. A droplet
-# of radius 1 (the old `1 + (k % 3)`) renders as a 5px plus (diagonals excluded by ox²+oy²<=1) — the bug. This
+# of radius 1 renders as a 5px plus (diagonals excluded by ox²+oy²<=1). This
 # re-derives the generator's droplet centres and asserts each flung droplet (one outside the main blob) has a
 # SOLID 3x3 core (centre + all 8 neighbours, diagonals included) — impossible for a plus, guaranteed for a disc.
 func _test_channels_splash_droplets() -> void:
@@ -38477,7 +38591,7 @@ func _test_pump_hall() -> void:
 	inst.queue_free()
 	await get_tree().process_frame
 
-## THE ROGUELIKE, SERVED BY THE NEW SYSTEM: the run generates graded atom-chain skeletons (report card =
+## THE ROGUELIKE: the run generates graded atom-chain skeletons (report card =
 ## the playability gate), lays each on a seeded hub SHAPE with the base floor (entry shelter behind, exit
 ## shelter at the end of the final stretch), and the loader flow (rest -> branch -> descend) runs on them.
 ## Depth 0 is PLAYED end-to-end with analytic jumps — the whole loop in seconds, same outcomes as waiting.
@@ -38540,7 +38654,7 @@ func _test_roguelike_atom_run() -> void:
 	_assert_equals(str(st["hub_shape"]), "flat", "run levels are FLAT (the warp is parked until rebuilt + playtested)")
 	_assert_true(chunk.get_coord_map() == null, "no coord_map on a flat level (nothing to mis-install across descents)")
 	# Play the whole depth-0 chain through the same physical causal loop a player
-	# uses.  Directly hopping from flure to flure used to let this integration test
+	# uses.  Directly hopping from flure to flure would let this integration test
 	# certify a puzzle that the actual three-body formation could not solve.
 	var n := int((session.spec.get("stages", []) as Array).size())
 	var a: Dictionary = chunk.get_preview_anchors()
@@ -40284,7 +40398,7 @@ func _test_wash_relay_water_capture() -> void:
 	var chunk = inst.find_child("Chunk_wash_relay", true, false)
 	# Move the party to a mid-spiral section and let the preview's REAL follow-camera ease to it (the actual
 	# gameplay framing — don't fight the controller), then force the floods and capture fast while the water
-	# is up. This is the view the player sees, so the reported bugs (invisible water, wrong occlusion hole)
+	# is up. This is the view the player sees, so failures like invisible water or a wrong occlusion hole
 	# show here.
 	# PAUSE (stops the follow-camera drift + keeps the floods up since the scheduler freezes), snap the party
 	# to a mid-spiral section, force the floods, then frame it CLOSE from a fixed side-above angle. Fetch the
@@ -41188,7 +41302,7 @@ func _test_channels_wash_intro_hover_capture() -> void:
 
 	# Numeric diff: how many FLOOR pixels changed between hover-off and hover-on. The hover grid (a teal 5x5 Decal
 	# at the cell), the dashed path ribbon, and the forced Flure outline should ALL stamp pixels here. ~0 changed =
-	# none of them render (the live bug), turning "I can't see it" into a hard fail.
+	# none of them render, turning "I can't see it" into a hard fail.
 	var w := img_on.get_width(); var h := img_on.get_height()
 	# Central floor band, clear of the HUD panels (title top, carry-left, overlay-right, hotbar-bottom).
 	var x0 := int(w * 0.30); var x1 := int(w * 0.72)
@@ -41535,7 +41649,7 @@ func _test_channels_wash_intro_capture() -> void:
 	await RenderingServer.frame_post_draw
 	var img: Image = get_tree().root.get_texture().get_image()
 	img.save_png("user://vr_wash_intro.png")
-	# Numeric: the room must not be near-black (the reported bug). Sample the floor centre region brightness.
+	# Numeric: the room must not be near-black. Sample the floor centre region brightness.
 	var lit := 0
 	var w := img.get_width(); var h := img.get_height()
 	for sy in range(int(h * 0.35), int(h * 0.7), 6):
@@ -41553,8 +41667,8 @@ func _test_channels_wash_intro_capture() -> void:
 # THE PIPE AUTO-TILER: one router for every backend — occupied cells resolve to
 # connector pieces + orthogonal orientations (end/straight/elbow/tee/cross), a
 # virtual port aims a terminal cell at off-network hardware, and the GridMap3D
-# backend fills a real grid from the committed pipe_tiles.meshlib. Guards the
-# "actual pipes system" (director 2026-07-28) that replaced the yaw'd chains.
+# backend fills a real grid from the committed pipe_tiles.meshlib: pipes are
+# GRID TILES with flanged ports, never yaw'd primitive chains.
 func _test_pipe_grid() -> void:
 	_test_name = "Pipe Grid"
 	var run := PipeGrid.resolve(PipeGrid.rasterize([Vector3i(0, 0, 0), Vector3i(3, 0, 0)]))
@@ -42351,8 +42465,8 @@ func _test_wash_relay_queued_glow() -> void:
 		await get_tree().process_frame
 	_assert_equals(str(controller.get("_interactor_id")), "peris",
 		"a required non-self party member is chosen to service the interaction")
-	# CORE red/green: the servicer's data-layer destination must be the interactable's FLAT cell, NOT
-	# world_to_grid of the WARPED world position. Pre-fix it walked to a wrong cell (or no move at all).
+	# CORE: the servicer's data-layer destination must be the interactable's FLAT cell, NOT
+	# world_to_grid of the WARPED world position — that walks to a wrong cell (or no move at all).
 	var dest: Vector3 = gs.get_destination("peris")
 	var flat_auth: Vector3 = it.get_meta("flat_authored_position")
 	var derr: float = Vector2(dest.x - flat_auth.x, dest.z - flat_auth.z).length() if dest.is_finite() else 1.0e9
@@ -42608,10 +42722,10 @@ func _test_wash_ascent_playthrough() -> void:
 	_assert_true(mark_count >= 8,
 		"Peris's overlay MEMORY holds the flora she read from above (%d marks)" % mark_count)
 	# The ride-down is a LOCKED CARRY: no sentry may aggro the passing party
-	# (a lured chase ends in open water — the S4 patroller used to drown in
-	# section 3 before the level began), and every body must RENDER on the
-	# helix (a parked enemy once kept its flat spawn coords and floated in
-	# the void beside the coil — the money-shot floater).
+	# (a lured chase ends in open water — a patroller would drown before the
+	# level began), and every body must RENDER on the
+	# helix (a parked enemy keeping its flat spawn coords floats in
+	# the void beside the coil).
 	for _fp in range(3):
 		await get_tree().process_frame
 	var fauna_post: Dictionary = chunk.get("_fauna")
@@ -44673,7 +44787,7 @@ func _test_wash_relay() -> void:
 	# EXPANDED GAUNTLET: more sections + variations
 	_assert_equals(int(chunk.get_preview_state().get("section_count", 0)), 9, "the expanded gauntlet has nine sections")
 	# Pull anyone still waiting at the start to the end before the isolated back-half sub-tests. A player may
-	# instead retry immediately; `_washed` no longer makes them immune or unable to man a station.
+	# instead retry immediately; `_washed` does not make them immune or unable to man a station.
 	chunk.call("_set_character_position", "aster", chunk.CLIMB_POS)
 	_assert_true(_trigger_wash_climbvine_group(chunk, gs2, "aster"),
 		"the exact lower source accepts every physically gathered waiting member")
@@ -44752,7 +44866,7 @@ func _test_channels_textures() -> void:
 	await get_tree().process_frame
 
 # --- Test: the flush hint appears ONLY after a single section washes the party 3x (NOT on a startup timer) ---
-# Reproduces the reported bug: the flush hint/dialogue used to fire from the get-go (a pre-telegraph timer at
+# A hint on a startup timer would fire from the get-go (a pre-telegraph timer at
 # ~1.3s). It must be EARNED — three washes in the SAME section — so it teaches "read THIS surge" when you keep
 # failing it, and never interrupts the opening. Washes spread across different sections must NOT trigger it.
 func _test_wash_relay_flush_hint() -> void:
@@ -44767,7 +44881,7 @@ func _test_wash_relay_flush_hint() -> void:
 		_assert_true(false, "chunk + game_state present")
 		instance.queue_free(); await get_tree().process_frame
 		return
-	# NO startup trigger: park the party at the start and run well past the old ~1.3s pre-telegraph timer.
+	# NO startup trigger: park the party at the start and run well past the ~1.3s pre-telegraph horizon.
 	for cid in ["aster", "peris", "endo"]:
 		gs.snap_character_to(cid, Vector3(3.0, 0.5, 0.0))
 	instance.headless_advance(4.0)
@@ -45514,7 +45628,7 @@ func _test_dodge_failure_no_cooldown() -> void:
 	grid.create_room(30, 30)
 	gs.grid = grid
 	gs.scheduler = sched
-	# A dodge AIMED at a wall is no longer a dead input: the roll rotates to an open lane (direction is
+	# A dodge AIMED at a wall is not a dead input: the roll rotates to an open lane (direction is
 	# a preference, evading is the point) — it must succeed and actually move.
 	gs.register_character("p", grid.grid_to_world(Vector2i(28, 15)), 3.0, {"stamina": 100.0, "dodge_unlocked": true})
 	var start := gs.get_position("p")
@@ -45826,14 +45940,14 @@ func _vr_changed_fraction(a: Image, b: Image, region: Rect2i) -> float:
 	return float(changed) / float(sampled)
 
 # --- Test: enemy attacks land predictively, the lunge never teleports, and the FSM disengages ---
-# Encodes the three bugs the redesign fixed: (1) the charge used to teleport the body onto a target
-# that moved during windup (it now lunges through the data layer); (2) the enemy attacked a downed
-# target forever (it now disengages); (3) striking the enemy mid-windup now interrupts it (stagger).
+# Encodes three invariants: (1) the charge lunges through the data layer, never teleporting the body
+# onto a target that moved during windup; (2) the enemy disengages from a downed target rather than
+# attacking it forever; (3) striking the enemy mid-windup interrupts it (stagger).
 func _test_predictive_attack() -> void:
 	_test_name = "Predictive Attack"
 
 	# --- No teleport: the lunge is a real data-layer move, so the guard's position never jumps even
-	# when the target slides sideways during windup (the exact case that used to snap it across the map).
+	# when the target slides sideways during windup (the exact case a teleport-snap jumps across the map).
 	var ctx := _make_attack_ctx(500.0, false)
 	var sched: EventScheduler = ctx["sched"]
 	var gs: GameState = ctx["gs"]
@@ -45850,7 +45964,7 @@ func _test_predictive_attack() -> void:
 		var now: Vector3 = gs.get_position("guard")
 		max_step = maxf(max_step, Vector2(now.x - prev.x, now.z - prev.z).length())
 		prev = now
-	# charge_speed (8) * dt (0.05) = 0.4 per tick; the old teleport-snap jumped >2 units in one tick.
+	# charge_speed (8) * dt (0.05) = 0.4 per tick; a teleport-snap would jump >2 units in one tick.
 	_assert_true(max_step < 0.6,
 		"The lunge never teleports — max per-tick move %.2f stays near charge_speed*dt (0.4)" % max_step)
 	_assert_true(hit_count[0] > 0, "The predicted strike lands at least once")
@@ -45868,7 +45982,7 @@ func _test_predictive_attack() -> void:
 		"With dodge unlocked, the first strike is evaded (no damage, hp %.0f)" % dodged["hp"])
 
 	# --- Disengage: once the target is downed (hp 0), the guard stops striking and leaves combat
-	# (the old FSM cycled windup/recover on a corpse forever).
+	# (never cycling windup/recover on a corpse).
 	var dctx := _make_attack_ctx(40.0, false)  # two 25-damage hits -> downed
 	var dsched: EventScheduler = dctx["sched"]
 	var denemy: Enemy = dctx["enemy"]
@@ -47016,7 +47130,7 @@ func _test_basin_fill_proof() -> void:
 
 	# Put Aster on the strict interaction approach and the other members on two
 	# distinct Rally vertices inside the same authored shelter rectangle. Then
-	# lower Endo only in Y: the old XZ-only test called this settled even though
+	# lower Endo only in Y: an XZ-only check would call this settled even though
 	# the graph says he is on the bowl floor.
 	var ordered_shelter_vertices: Array = []
 	var approach_v: Variant = shelter_region.get("approach_vertex", {})
@@ -47272,7 +47386,7 @@ func _test_basin_fill_proof() -> void:
 	_assert_true(console != null and console is CrossingAssist, "the read console spawned from data")
 	var refusals: Array = []
 	console.read_refused.connect(func(r: String): refusals.append(r))
-	# Endpoint-only validation used to accept this reverse trip: both balcony and lip are permanent,
+	# Endpoint-only validation would accept this reverse trip: both balcony and lip are permanent,
 	# but the only level-1 route between them crosses MID-only floats. Prove ordinary topology has the
 	# route, then require the assist's permanent-hold mask to refuse before command/event/payment.
 	waited = 0.0
@@ -47573,9 +47687,9 @@ func _test_basin_fill_proof() -> void:
 	_assert_true(float(basin.get_state()["next_change_in"]) > 0.4,
 		"the launched crossing finishes before the window closes")
 
-	# (13b) ARRIVAL SAFETY (the persona-probe find): every AUTHORED party spawn sits at least 1.5x the
+	# (13b) ARRIVAL SAFETY: every AUTHORED party spawn sits at least 1.5x the
 	# detect radius from every dweller's grazing ground — nobody spawns incidentally inside a
-	# sense range (endo used to spawn 1.68wu from a 2.5-detect grazer and die on the climb).
+	# sense range (a spawn 1.68wu from a 2.5-detect grazer dies on the climb).
 	for spawn_v in authored_spawns.values():
 		for e in chunk.enemies():
 			if not is_instance_valid(e):
@@ -49909,9 +50023,9 @@ func _assert_eazy_first_rally_ladder_traversals(
 		("Eazy run %d keeps runtime navigation-edge validation receipts out of " \
 		+ "policy and learning traces") % run_index)
 
-## LEGACY DIAGNOSTIC SEED SWEEP (not approval evidence): this preserves the old
-## registry-derived invariant stress pass while generated persona breadth is rebuilt on
-## PlayerObservationController. It intentionally cannot update persona traces or trees.
+## DIAGNOSTIC SEED SWEEP (not approval evidence): a registry-derived invariant stress
+## pass. It intentionally cannot update persona traces or trees -- approval evidence comes
+## only from PlayerObservationController surfaces.
 const PERSONA_SWEEP_SEEDS := [7, 101, 202, 909, 1337]
 const PERSONA_SWEEP_ROSTER := ["spiffing_brit", "twitch_plays", "shesez", "dsp"]
 
@@ -51484,7 +51598,7 @@ func _test_sprint_gap() -> void:
 ## through ONE AT A TIME — each teleports, then walks OFF the receiving pad to a distinct slot so the
 ## next can step in. Hovering shows GHOST previews at the FINAL post-crossing positions, and the
 ## ghosts must equal where people actually end up (the preview can't lie). Solo compat: an activator
-## outside the selection crosses alone (the old behavior).
+## outside the selection crosses alone (solo semantics).
 func _test_portal_group() -> void:
 	_test_name = "Portal Group"
 	var sched := EventScheduler.new()
@@ -51634,7 +51748,7 @@ func _test_tension_sweep() -> void:
 		var m := _measure_death_march(hspeed)
 		rows[hspeed] = m
 		print("  %12.1f | %14.1f | %4d | %s" % [hspeed, float(m["march"]), int(m["hits"]), str(m["downed"])])
-	# The adopted GAME-WIDE tension invariants (director ruling off this table):
+	# The adopted GAME-WIDE tension invariants:
 	_assert_true(not bool((rows[2.4] as Dictionary)["downed"]),
 		"a dry walker ESCAPES a standard patroller (2.4) — slow watches are area denial, not death")
 	_assert_true(bool((rows[3.6] as Dictionary)["downed"]) and float((rows[3.6] as Dictionary)["march"]) < 90.0,
@@ -52314,7 +52428,7 @@ func _test_chromatic_aberration() -> void:
 		await get_tree().process_frame
 
 # --- Test: hover names + Aster's data overlay tint ---
-# EVERY hover names the object (identification is free — director ruling); Aster's data overlay only
+# EVERY hover names the object (identification is free); Aster's data overlay only
 # TINTS the readout into the data register. Disabled objects surface nothing and go quiet mid-hover.
 func _test_data_identify() -> void:
 	_test_name = "Data Identify Hover"
@@ -52364,8 +52478,8 @@ func _drive_fsm_sequence(step: float) -> String:
 	return sm.current()
 
 # --- Test: clicking another floor routes the player cross-level (shared controller, every scene) ---
-# The player used to REJECT a click on a different stacked floor (it would lerp through the air).
-# On a multi-level grid it now routes over ladders/ramps via command_move_cross_level instead.
+# A click on a different stacked floor must neither be rejected nor lerp through the air:
+# on a multi-level grid it routes over ladders/ramps via command_move_cross_level.
 func _test_player_cross_level_click() -> void:
 	_test_name = "Player Cross-Level Click"
 	var grid := GridWorld.new()
@@ -52409,10 +52523,10 @@ func _test_player_cross_level_click() -> void:
 	player.game_state = gs
 	gs.grid = grid
 
-	# Regression: a real physics ray onto a transformed L2 floor must retain the
+	# A real physics ray onto a transformed L2 floor must retain the
 	# collider's typed level through Player hover/commit and SelectionController
-	# Rally resolution. Previously SpiralCoordMap.to_data() hardcoded y0, so this
-	# exact visible upper deck became a level-0 destination beneath the geometry.
+	# Rally resolution. A to_data() that hardcodes y0 turns this
+	# exact visible upper deck into a level-0 destination beneath the geometry.
 	var SpiralCoordMapScript = load(
 		"res://scripts/generation/spiral_coord_map.gd")
 	var nav_data := {
@@ -52756,7 +52870,8 @@ func _test_interactable_outline_particles() -> void:
 		_assert_true(pm.emission_ring_inner_radius < pm.emission_ring_radius,
 			"Ring keeps a band (inner < outer) so particles trace the outline edge")
 
-	# The legacy burst API is a kept-but-no-op: the queued energy glow replaced particle sprays.
+	# play_selected_feedback is a kept-but-no-op contract: selection feedback is the queued energy
+	# glow; a particle burst must never fire.
 	it.play_selected_feedback()
 	_assert_true(it._selected_particles == null or not it._selected_particles.emitting,
 		"play_selected_feedback is a no-op (the queued glow replaced the burst)")
@@ -52799,7 +52914,7 @@ func _test_outline_feedback_system() -> void:
 	})
 	_assert_true(target != null, "outline_meshes builds a target from mesh bounds")
 	if target != null:
-		# The queued ENERGY GLOW is now the screen-space mask's noise-morphed halo (OutlineMaskManager), not an
+		# The queued ENERGY GLOW is the screen-space mask's noise-morphed halo (OutlineMaskManager), not an
 		# inverted-hull shell — has_active_glow() is the logical state; cancelling ends it.
 		target.begin_queued_feedback(Vector3.ZERO, Color(0.3, 0.7, 1.0))
 		_assert_true(bool(target.call("has_active_glow")), "queued feedback runs the energy glow")
@@ -53197,9 +53312,9 @@ func _test_game_state() -> void:
 func _test_event_log_roundtrip() -> void:
 	_test_name = "EventLog Roundtrip"
 
-	# A fixture used to hide this boundary by running with no EventLog attached:
-	# set_character_level declared a canonical kind, but omitted it from ALL_KINDS,
-	# so the first instrumented generated-level reset asserted before it could be
+	# A fixture running with no EventLog attached hides this boundary: a command
+	# can declare a canonical kind yet omit it from ALL_KINDS, and the first
+	# instrumented generated-level reset then asserts before it can be
 	# recorded. Exercise the actual command and replay seam, not just the constant.
 	var level_grid := GridWorld.new()
 	level_grid.create_room(4, 4, true)
@@ -53516,6 +53631,7 @@ func _test_event_log_mutation_audit() -> void:
 		# command_move_to_pos_predicted logs through command_move_to_pos (KIND_MOVE_TO_POS) and only
 		# adds a read of the plan's end tick.
 		"predict_proximity_time", "predict_los_break_tick", "predict_los_change_tick",
+		"predict_shelter_exit_tick",
 		"register_proximity_trigger", "unregister_proximity_trigger",
 		"proximity_trigger_occupancy", "command_move_to_pos_predicted",
 		"get_hand_items", "get_hand_slots", "get_internal_items",
@@ -54515,7 +54631,7 @@ func _test_hub_rest_restore() -> void:
 	_assert_equals(stats.get("atp", -1.0), 6.0, "Entering a hub does not refill ATP")
 
 	# Portal transit ends at another hub, but that arrival is still only a location/progression
-	# change. It must not gain the old Hub.restore_party side effect through another call path.
+	# change. It must not gain a Hub.restore_party side effect through another call path.
 	var destination_zone := Zone.new()
 	destination_zone.id = &"stacks"
 	zones.register_zone(destination_zone)
@@ -54931,7 +55047,7 @@ func _walk_gd_files(path: String, out: Array) -> void:
 # project input map). Per-step DECISIONS may stay in the sequence, expressed via
 # input actions and HUD signals — never raw keycodes or raycasts.
 ## Guard: retired Act 1 district WORKING names must never appear in code (they render to the player). The
-## GDD §4.4 rebrand replaced them; canonical names live in reference-docs/act1_timeline.md. Internal slugs
+## canonical names are the GDD §4.4 set; see reference-docs/act1_timeline.md. Internal slugs
 ## ("stacks", "channels" as biome/chunk ids) are lowercase and untouched — this only catches the spaced
 ## Title-Case working names in display strings. test_runner_cli.gd is allowlisted (it holds the pattern list).
 func _test_canonical_location_names() -> void:
@@ -55634,7 +55750,7 @@ func _advance_dialogue_box(dialogue_box: Node, dt: float) -> void:
 
 ## Advance the box, then acknowledge a wait gate the way the headless "player"
 ## would (a fully-typed wait=true line waits for an explicit advance). This is
-## the single mechanism that replaces the old speed_multiplier = 10000 hack.
+## the single advance mechanism — never a speed_multiplier override.
 func _pump_dialogue(dialogue_box: Node, dt: float) -> void:
 	if dialogue_box == null:
 		return
@@ -55853,7 +55969,7 @@ func _drive_sequence_contract_with_wall_time(
 
 	var process_dialogue := func(dt: float):
 		# Realistic-pace harness: the caller's multiplier is applied here (the
-		# box no longer carries a speed_multiplier field).
+		# box carries no speed_multiplier field).
 		_advance_dialogue_box(dialogue_box, dt * dialogue_speed_multiplier)
 		wall_time += dt
 		dialogue_time += dt
@@ -57090,7 +57206,7 @@ func _test_elevator_dialogue() -> void:
 			has_protocol = true
 	_assert_true(has_protocol, "Escort unit protocol fires")
 
-	# Verify the EMP fires (the pulse kills the lock — the old "OVERRIDE" line was cut).
+	# Verify the EMP fires (the pulse kills the lock; no "OVERRIDE" narration card explains it).
 	var has_emp_narration := false
 	var retired_emp_narration := DialogueData.text("elevator.narration.emp")
 	for entry in log:
@@ -60519,8 +60635,8 @@ func _test_movement_route_status_presentation() -> void:
 		and bool(pre_draw_record.get("render_visible", false)),
 		("A freshly-written REFORMING ROUTE status cannot cross the public "
 		+ "observation boundary before its exact HUD serial completes a draw, "
-		+ "while the panel -- visible again because the STALL status renders even "
-		+ "though success chrome does not -- keeps the base lineage readable"))
+		+ "while the panel -- on screen because a STALL status renders -- keeps "
+		+ "the base lineage readable"))
 	presenter._record_route_status_frame_drawn_at(base_now + 151)
 	var first_draw_state := presenter.get_movement_presentation_state()
 	var first_draw_records := first_draw_state.get("records", []) as Array
@@ -60798,9 +60914,9 @@ func _test_movement_route_status_presentation() -> void:
 	setpiece_state.grid = setpiece_grid
 	var setpiece_start := Vector3(1.14, 0.45, 0.36)
 	# Derive the upper-deck target from the SPEC instead of hard-coding a world point. This fixture
-	# is regenerated, and the old literal (17.5, 1.89, 0.5) now lands on a cell that is not walkable
-	# on level 2, so command_move_cross_level never started and the route read 0.000 -- the test was
-	# measuring a stale coordinate rather than the route basis it exists to guard.
+	# is regenerated, so a hard-coded literal can land on a cell that is not walkable
+	# on level 2, where command_move_cross_level never starts, the route reads 0.000, and the test
+	# measures a stale coordinate rather than the route basis it exists to guard.
 	var setpiece_target := Vector3.INF
 	for setpiece_node_v in (setpiece_spec.get("nodes", []) as Array):
 		if not (setpiece_node_v is Dictionary):
@@ -60909,9 +61025,8 @@ func _test_movement_route_status_presentation() -> void:
 
 func _test_movement_route_status_render() -> void:
 	_test_name = "Movement Route Status Render"
-	# A real completed-draw regression for the Windowed matrix failure. Its
-	# synchronous player-observation scan consumed more than the old 1.2-second
-	# wall lifetime while no SceneTree/render frame could advance. One completed
+	# A synchronous player-observation scan can consume more than the 1.2-second
+	# wall lifetime while no SceneTree/render frame advances. One completed
 	# REFORMING ROUTE frame must therefore survive that slow interval, earn the
 	# remaining draw receipts, and only then begin its readable duration.
 	var slow_gs := _MovementPresentationGameStateDouble.new()
@@ -60958,7 +61073,7 @@ func _test_movement_route_status_render() -> void:
 	OS.delay_msec(
 		ConsequencePresentationController.MOVEMENT_ROUTE_STATUS_MIN_MSEC + 80)
 	# This is the production failure mode: a synchronous observation can hold the
-	# main thread past the old wall-clock deadline while no framebuffer completes.
+	# main thread past the wall-clock deadline while no framebuffer completes.
 	# The first process after that pause must not skip the under-drawn phase.
 	slow_presenter._sync_movement_entries()
 	var slow_state := slow_presenter.get_movement_presentation_state()
@@ -61733,9 +61848,9 @@ func _test_selection_controller() -> void:
 	_assert_true(bool(accepted_preflight.get("accepted", false)) \
 			and all_accepted_paths_renderable,
 		"Atomic Rally preflight carries every READY-cue render path in the same report")
-	# Director ruling (2026-08-06): a rally refuses ONLY the members who cannot reach the
-	# destination. A party spread across floors was refused WHOLESALE by a pre-check that returned
-	# before the per-member preflight ever ran, so a legal rally read as a dead click. Standing on
+	# A rally refuses ONLY the members who cannot reach the
+	# destination. A pre-check that returns WHOLESALE before the per-member preflight
+	# ever runs makes a legal cross-floor rally read as a dead click. Standing on
 	# another deck is NOT by itself unreachable -- the grid routes a member up a typed ladder -- so
 	# the correct outcome here is that every member still answers.
 	gs.set_character_level("endo", 1)
@@ -62458,8 +62573,8 @@ func _test_grid_risk() -> void:
 	_assert_true(_polyline_length(direct_path) < _polyline_length(safe_path),
 		"The direct route is shorter (in distance) than the safe detour")
 
-	# A risky GOAL used to defeat the distance-only heuristic: this four-cell
-	# command enters three unavoidable 80-cost cells, so A* expanded roughly the
+	# A risky GOAL defeats a distance-only heuristic: this four-cell
+	# command enters three unavoidable 80-cost cells, and A* would expand roughly the
 	# whole floor (1,500+ nodes / about 15 ms in the Web elevator). The cached
 	# relaxed risk-to-go potential must keep both planners proportional to the move.
 	var deep_risk_grid := GridWorld.new()
@@ -63878,9 +63993,9 @@ func _test_wrong_character_feedback() -> void:
 	seam.interacted.disconnect(cb)
 	_assert_true(not fired[0], "The wrong character cannot fire the seam")
 	var thought: String = str(instance._thought_label.text) if instance._thought_label != null else ""
-	# The wrong-character feedback line (system.interact.wrong_character) was cut from the dialogue. If
-	# it's present it must name the required character; if it's cut, the feedback degrades to no thought
-	# (NOT a "[MISSING: ...]" placeholder). Re-adding the key restores the naming behavior.
+	# The wrong-character feedback line (system.interact.wrong_character) is optional content. If
+	# it's present it must name the required character; if it's absent, the feedback degrades to no thought
+	# (NOT a "[MISSING: ...]" placeholder). Adding the key enables the naming behavior.
 	if DialogueData.has_key("system.interact.wrong_character"):
 		_assert_true(thought.findn("endo") != -1,
 			"The rejection shows a thought naming the required character (got: '%s')" % thought)
@@ -64122,10 +64237,10 @@ func _test_physics_objects() -> void:
 
 # An AIRBORNE thrown object must still strike a character even when physics predictions are recomputed every
 # frame (e.g. a patrolling enemy re-issuing a move). `_recompute_physics_predictions` cancels the pending
-# physics_predict and reschedules; the old `t > now + 0.01` guard silently dropped a strike whose contact
-# aliased that window, so the barrel passed THROUGH the victim and no physics event fired (the flaky
-# launcher_throw_lane / aster_eats_the_barrel failure). This drives the recompute deterministically EVERY step,
-# so the imminent-contact drop fires every run, not 1-in-N. Red before the airborne guard, green after.
+# physics_predict and reschedules; a bare `t > now + 0.01` guard silently drops a strike whose contact
+# aliases that window, so the barrel passes THROUGH the victim and no physics event fires.
+# This drives the recompute deterministically EVERY step,
+# so the imminent-contact drop fires every run, not 1-in-N.
 func _test_airborne_strike_survives_recompute() -> void:
 	_test_name = "Airborne Strike Survives Recompute"
 	var grid := GridWorld.new()
@@ -65232,7 +65347,7 @@ func _test_peris_scene_transition() -> void:
 		log += str(line)
 	var drove := log.contains("[PERIS-TRANSITION-CHILD] reached_complete=true")
 	var crashed := log.contains("on a null value")
-	# Building the portal view used to call Camera3D.look_at BEFORE the camera was in the tree — a
+	# A Camera3D.look_at call BEFORE the camera is in the tree produces a
 	# print-only "Node not inside tree" error in 4.7 that an in-process state assert can't see. The
 	# child builds the full Peris scene (portal view included), so it surfaces here.
 	var not_in_tree := log.contains("Node not inside tree")
@@ -65249,8 +65364,8 @@ func _test_peris_scene_transition() -> void:
 ## teardown -> final process (NOT suppressed, NOT a manual teardown) — and prints a sentinel. A
 ## scheduler used after teardown surfaces as a SCRIPT ERROR in this child's stderr.
 ## SUBPROCESS GUARD: no wall-clock presentation work may outlive its scene. This reproduces a real
-## teardown with the frame-sliced debris queue still nonempty, then keeps the tree alive beyond the
-## old timer horizon so both queued-work and historical lambda-capture regressions surface in stderr.
+## teardown with the frame-sliced debris queue still nonempty, then keeps the tree alive past every
+## timer horizon so queued-work and freed-lambda-capture failures surface in stderr.
 func _test_elevator_teardown_clean() -> void:
 	_test_name = "Elevator Collapse Teardown Clean"
 	var exe := OS.get_executable_path()
@@ -66210,7 +66325,7 @@ func _test_dodge_roll() -> void:
 		if sched.pop_next().is_empty(): break
 
 	# --- Predicted enemy strike: an auto-dodging target evades it; with dodge locked it lands ---
-	# Attacks are now PREDICTIVE (the hit is scheduled for the contact tick and commits), so the
+	# Attacks are PREDICTIVE (the hit is scheduled for the contact tick and commits), so the
 	# dodge is checked at contact: a dodge-capable target auto-evades, an un-unlocked one is struck.
 	_test_name = "Dodge I-Frames vs Enemy"
 
@@ -66456,8 +66571,8 @@ func _test_decorative_flora() -> void:
 		float(strip.global_position.x) + float(strip.half_size.x) + 0.4, 0.5, 4.0)
 	_blind_floor_move_and_arrive(instance, gs, "peris", before_strip,
 		"Peris stages visibly before the anti-loiter curb")
-	# Align the commitment so the entire curb occupancy falls between consecutive legacy samples.
-	# Waiting is an ordinary player action; the assertion below proves the old point sampler sees no
+	# Align the commitment so the entire curb occupancy falls between consecutive point samples.
+	# Waiting is an ordinary player action; the assertion below proves a point sampler sees no
 	# on-strip position at either surrounding tick.
 	var cadence_epoch: float = float(chunk.get("_candid_epoch"))
 	var cadence_now: float = float(gs.scheduler.get_current_tick())
@@ -67240,9 +67355,20 @@ func _inflam_step(inst: Node, chunk: Node, node_name: String, actor: String) -> 
 		waited += delta
 	if it.interacted.is_connected(on_interacted):
 		it.interacted.disconnect(on_interacted)
+	var stall_diag := ""
+	if not bool(fired[0]):
+		# A timeout here has exactly four suspects; name them all so a suite-order failure
+		# carries its own diagnosis instead of demanding a reproduction.
+		stall_diag = " // moving=%s pos=%s plan_end=%.2f now=%.2f enabled=%s dwell_scheduler=%s" % [
+			str(gs.is_moving(actor)), str(gs.get_position(actor)),
+			float(gs.get_plan_end_tick(actor)) if gs.has_method("get_plan_end_tick") else -1.0,
+			float(gs.scheduler.get_current_tick()) if gs.scheduler != null else -1.0,
+			str(it.get("interaction_enabled")) if "interaction_enabled" in it else "?",
+			str(it.get("_scheduler") != null) if "_scheduler" in it else "?",
+		]
 	_assert_true(bool(fired[0]),
-		"%s is reached and triggered by nearby %s through its visible source (waited %.2fs)"
-		% [node_name, actor, waited])
+		"%s is reached and triggered by nearby %s through its visible source (waited %.2fs)%s"
+		% [node_name, actor, waited, stall_diag])
 	var settle_duration := 0.4
 	match node_name:
 		"DrainageValve":
@@ -67385,8 +67511,8 @@ func _test_lockout_chase() -> void:
 	for cid_ff2 in ["aster", "peris"]:
 		gs.snap_character_to(cid_ff2, chunk.fragment.spawns[cid_ff2])
 	_assert_true(int(chunk.get_preview_state()["pursuers"]) >= 2, "wave 1 takes the corridor")
-	# Regression for the exact binary-float phase that previously rearmed chase_pursuit at 15.4
-	# while the scheduler was already dispatching 15.4, locking advance_ticks in a zero-delay loop.
+	# The exact binary-float phase can rearm chase_pursuit at 15.4
+	# while the scheduler is already dispatching 15.4, locking advance_ticks in a zero-delay loop.
 	var rounded_cadence_deadline := float(
 		chunk._next_chase_recurring_tick_from(13.8, 0.8, 15.4))
 	_assert_true(rounded_cadence_deadline > 15.4

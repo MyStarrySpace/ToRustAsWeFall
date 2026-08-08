@@ -1002,7 +1002,7 @@ func _inflammashunt_source_should_enable(action_id: String) -> bool:
 	return false
 
 
-## Legacy test/automation handlers are deliberately inert. Consequences can only be reached through
+## Deliberately inert test/automation handlers. Consequences can only be reached through
 ## _commit_inflammashunt_action after the exact source's accepted trigger receipt.
 func _on_aster_log() -> void:
 	pass
@@ -2025,7 +2025,7 @@ func _finish_root_regrow_from_timer() -> void:
 	_show_note("A smaller tendril noses back out of the crack. Tame — and still smothered.", 3.0)
 
 
-## Retired process shortcuts. Root phase transitions are consumed only by their saved scheduler
+## Deliberately inert. Root phase transitions are consumed only by their saved scheduler
 ## mode/deadline receipt, never by a direct callback from a test or automation driver.
 func _finish_water_flow() -> void:
 	pass
@@ -2390,8 +2390,8 @@ func _reconcile_restored_device_transaction(saved_version: int, legacy_retrieved
 		_device_item_id = _spawn_device_item({"legacy_source_recovery": saved_version < 4})
 
 	if saved_version < 4:
-		# The old save only knew that a lid animation had ended. Preserve the solved housing/root,
-		# but require one honest pickup from the visible source before granting completion.
+		# A pre-version-4 save records only that a lid animation ended. Preserve the solved
+		# housing/root, but require one honest pickup from the visible source before granting completion.
 		_device_phase = DEVICE_PHASE_AVAILABLE
 		_device_claimed_by = ""
 		_device_claim_serial = 0
@@ -2432,8 +2432,8 @@ func _reconcile_restored_device_transaction(saved_version: int, legacy_retrieved
 
 
 func _normalize_sac_authority(saved_version: int) -> void:
-	# Recover the exact tagged item when the cached id was lost. Older carrier-string saves and the
-	# old spawn-at-actor pickup seam have no durable reservation, so they retract to one visible pod
+	# Recover the exact tagged item when the cached id was lost. Carrier-string saves and
+	# spawn-at-actor pickup saves have no durable reservation, so they retract to one visible pod
 	# at the plant rather than minting or guessing inventory ownership.
 	if not _is_live_sac_item_id(_sac_item_id):
 		# Version 5 binds the transaction to one exact item. If that item is absent, a different

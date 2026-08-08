@@ -230,8 +230,8 @@ func catches_body_at(pos: Vector3, level: int) -> bool:
 	if level == _float_level and _state_flag(_state, "catches_floats"):
 		# A rider RIDES. The raft climbs with the water, so a body on it only drowns when the water
 		# actually closes over the deck — which the state's own geometry already says. Sweeping on
-		# the flag alone drowned riders through every authored rise, because every authored state
-		# keeps float_y above water_y (director report, 2026-08-06).
+		# the flag alone would drown riders through every authored rise, because every authored state
+		# keeps float_y above water_y.
 		return _float_cells.has(cell) and _float_height(_state) <= _water_height(_state)
 	return false
 
@@ -861,9 +861,9 @@ func _restore_from_authority() -> bool:
 func _build_visuals() -> void:
 	if _water_mesh != null:
 		return
-	# One continuous, margin-covered surface replaces the old thin BoxMesh. The
-	# reusable @tool node owns mesh density and the stylized-water material; this
-	# mechanism continues to own only the authoritative state elevation.
+	# One continuous, margin-covered surface. The reusable @tool node owns mesh
+	# density and the stylized-water material; this mechanism owns only the
+	# authoritative state elevation.
 	_water_mesh = StylizedWaterSurfaceScript.new()
 	_water_mesh.name = "BasinWaterPlane"
 	_water_mesh.call("configure", _plane_size, 0.18)

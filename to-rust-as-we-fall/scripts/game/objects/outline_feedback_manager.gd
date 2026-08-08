@@ -5,7 +5,7 @@ extends Node
 ## outline-target representations themselves. Any scene or chunk calls
 ## OutlineFeedbackManager.ensure(self) to get the shared system for its branch and
 ## outline an object's meshes — the same path works in tutorials and in gameplay
-## chunks (where outline targets previously had no manager and silently did nothing).
+## chunks (an outline target without a manager silently does nothing).
 
 const OUTLINE_TARGET_SCRIPT := preload("res://scripts/game/objects/outline_surface_target.gd")
 const CURSOR_VERB_SCENE := preload("res://scenes/ui/cursor_verb.tscn")

@@ -3,8 +3,8 @@ extends RefCounted
 
 ## The coordinate bridge between the wash-relay gauntlet's LINEAR data layer and the CURVED channels
 ## spiral in the world. The data layer (GameState grid, sections, wash, movement, enemies) runs flat in
-## (s, lane): s = progress ALONG the gauntlet (the old gameplay x), lane = lateral offset across the path
-## (the old z). This transform wraps that flat strip into an ascending helix for rendering + input:
+## (s, lane): s = progress ALONG the gauntlet (the flat frame's x), lane = lateral offset across the path
+## (the flat frame's z). This transform wraps that flat strip into an ascending helix for rendering + input:
 ##
 ##   s     -> angle (A0 + s*KTHETA) AND height (Y0 + s*KCLIMB)   — the helix climbs monotonically with s
 ##   lane  -> radius (R0 + lane)                                  — lateral offset is a radial offset

@@ -1073,10 +1073,9 @@ static func _gw_heap_pop(heap: Array) -> Dictionary:
 			i = smallest
 	return top
 
-# Dense A* heap. Each open entry used to be a Dictionary containing a
-# Vector2i, f-score and sequence number. On Web, allocating and probing those
-# Dictionaries costs more than the path math itself (a 227-cell straight route
-# measured about 9 ms). Parallel packed arrays keep the exact same f/sequence
+# Dense A* heap. Storing each open entry as a Dictionary (cell, f-score,
+# sequence number) makes allocation and hash probing cost more than the path
+# math itself on Web. Parallel packed arrays keep the exact same f/sequence
 # ordering without allocating an object per discovered cell.
 static func _gw_dense_heap_less(
 		heap_f: PackedFloat64Array,

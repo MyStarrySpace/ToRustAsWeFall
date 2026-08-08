@@ -384,7 +384,7 @@ func compute_group_arrivals(ids: Array) -> Array:
 		out.append(pos)
 	return out
 
-## Retired compatibility seam. A list of ids is not an accepted physical source-pad interaction.
+## Always refuses: a list of ids is not an accepted physical source-pad interaction.
 func step_group_through(_ids: Array) -> bool:
 	return false
 
@@ -972,7 +972,7 @@ func _exit_tree() -> void:
 	_portal_trigger_open = false
 	_cancel_authoritative_callbacks()
 
-## Retired compatibility seam. Even a gathered actor must consume this pad's exact Interactable
+## Always refuses: even a gathered actor must consume this pad's exact Interactable
 ## trigger; callers cannot mint a portal hop by invoking a public helper.
 func step_through() -> bool:
 	return false

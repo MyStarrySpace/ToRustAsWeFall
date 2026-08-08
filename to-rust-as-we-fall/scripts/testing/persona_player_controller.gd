@@ -25,8 +25,8 @@ const SHELTER_VISIBLE_SAMPLE_COUNT := 2
 const ANNOUNCED_TRANSITION_CONSEQUENCE_GRACE_SECONDS := 2.0
 # At the Basin camera scale, the complete on-pad formation spans 72 px from the
 # REST PARTY affordance. One 8 px observation-quantization step is human-scale
-# tolerance; 80 px rejects Endo's later 82 px and earlier 146 px stacked-floor
-# separations that the old 180 px radius collapsed into false arrival.
+# tolerance; 80 px stays below the 82+ px stacked-floor body separations that a
+# wider radius would collapse into false arrival.
 const SHELTER_BODY_NEAR_RADIUS_PIXELS := 80.0
 const GROUND_BIN_ORDER := [
 	"top_center", "top_left", "middle_center", "top_right",
@@ -1133,8 +1133,8 @@ func _wait_for_presented_settle(before: Dictionary, choice: Dictionary) -> Dicti
 		return await _wait_for_camera_settle(before, choice)
 	if not bool(choice.get("world_change", true)):
 		# Camera, HUD, and portrait gestures settle on rendered frames. Waiting for a
-		# world-state delta here used to burn the Basin timer while a human-equivalent
-		# H/Home/wheel action had already visibly completed.
+		# world-state delta here would burn the Basin timer on a human-equivalent
+		# H/Home/wheel action that has already visibly completed.
 		await get_tree().create_timer(0.35, true, false, false).timeout
 		var presented: Dictionary = await _presented_snapshot()
 		_record_presented_action_sample(presented, choice)

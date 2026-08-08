@@ -11,7 +11,7 @@ extends Node3D
 ## and assert the player-visible contract, instead of force-firing data-layer triggers.
 ##
 ## IDs use broad color bins rather than raw byte values. Values such as index 1 -> G=1/255 are
-## quantized to zero by real GL framebuffers, which previously made every target after index 0
+## quantized to zero by real GL framebuffers, which would make every target after index 0
 ## decode as the first target. Three kind bins and two base-8 index digits keep every channel well
 ## away from black and at least 28 byte-values apart (64 targets per kind, far above current use).
 ##

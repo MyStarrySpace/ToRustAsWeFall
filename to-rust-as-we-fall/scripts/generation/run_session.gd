@@ -25,7 +25,7 @@ const ATOM_SHAPES: Array = [
 	{"type": "triangle"},
 ]
 
-## THE RUN GOAL — the Retrieval Descent (director + Claude, 2026-07-12): a run is a FINITE,
+## THE RUN GOAL — the Retrieval Descent: a run is a FINITE,
 ## seeded descent to a BOSS-SITE finale. The bottom level hosts a mega-landmark retrieval (v1:
 ## the Paranucleus — thread the wheels, take the last sealed dose); retrieve() completes the run.
 ## Death is PERMANENT in this mode (the DLC doc's law): a fallen character leaves the roster —
@@ -33,7 +33,7 @@ const ATOM_SHAPES: Array = [
 ## scores depth, survivors, retrieval, and choices.
 const FINALE_PARANUCLEUS := "finale_paranucleus"
 
-## A CHASE level (director, 2026-07-13): once per run, at a seeded mid-descent depth, the deal
+## A CHASE level: once per run, at a seeded mid-descent depth, the deal
 ## is the authored lockout corridor instead of a generated level. The chase needs the PAIR (its
 ## end gate refuses a solo runner) and runs its own failure economy (checkpoint runbacks, not
 ## permadeath), so a run that has already lost Aster or Peris is dealt a generated level.
@@ -325,9 +325,9 @@ func _generate_atom_level(stage_bonus: int, target_level_depth: int = depth) -> 
 	var stages: Array = []
 	for i in range(count):
 		stages.append("distract:%s" % str(pool[int(rng.call("randi_range", 0, pool.size() - 1))]))
-	# FLAT, by direction: the hub warp shipped broken in play (stale coord_map across descents; the base
-	# contract violated by the shifted-origin grid — both confirmed by review) and the director has parked
-	# the shape system. Runs serve flat, readable levels until the warp is rebuilt and PLAYTESTED.
+	# FLAT: the hub warp is unsafe in play (a stale coord_map across descents; the base contract
+	# violated by the shifted-origin grid), so the shape system stays parked. Runs serve flat,
+	# readable levels until the warp is rebuilt and PLAYTESTED.
 	var shape: Dictionary = {}
 	var _unused_shape_pool := ATOM_SHAPES.size() + int(rng.call("randi_range", 0, 1))  # keep the rng cadence stable
 	var skeleton: Dictionary = ChunkGenScript.compose(stages, atom_seed)

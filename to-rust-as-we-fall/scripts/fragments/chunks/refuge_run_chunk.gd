@@ -308,7 +308,7 @@ func reset_preview_state() -> void:
 	_restart_spatial_authority()
 	_publish_refuge_authority()
 
-## Retired compatibility seam. Route truth comes only from a conscious body sampled inside an
+## Deliberately inert. Route truth comes only from a conscious body sampled inside an
 ## authored threshold on the saved spatial cadence; a remote method call cannot manufacture it.
 func choose_route(_route_id: String) -> bool:
 	return false
@@ -370,12 +370,12 @@ func _evaluate_route_body_receipts() -> void:
 			_commit_route_from_body(route_id, char_id, position)
 			return
 
-## Compatibility hook for old authored scripts. Hushbloom has no fictional tend
+## Deliberately inert. Hushbloom has no fictional tend
 ## verb: its reusable object fires when any body crosses the trigger.
 func tend_bloom() -> bool:
 	return false
 
-## Retired compatibility verb. A player must trigger the registered Flure with a real body.
+## Deliberately inert. A player must trigger the registered Flure with a real body.
 func activate_slit_lure() -> bool:
 	return false
 

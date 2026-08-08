@@ -1,7 +1,7 @@
 class_name Flare
 extends Enemy
 
-## FLARE (fauna_roster L33; carries the renamed neutrophil entry): "triggered bomb, mid — neutrophils; a multi-lobed
+## FLARE (fauna_roster L33; the neutrophil entry): "triggered bomb, mid — neutrophils; a multi-lobed
 ## nucleus and three granule classes, the burst being collateral oxidative damage. Inert until set
 ## off, then a short bright wind-up and an area burst that hits friend and foe. Careless fire and
 ## bunching set it off, and the savvy play is triggering it yourself (Myke's flame) into a group.
@@ -24,9 +24,9 @@ extends Enemy
 ##  - HITS FRIEND AND FOE. The burst damages every body in radius at the moment it goes, party and
 ##    enemy alike. That is what makes "pop it on purpose" a real play rather than a flavour line.
 ##
-## Rooted and inert are enforced the way the Spiker proved out: refuse engagement so the base's
+## Rooted and inert are enforced the same way as the Spiker: refuse engagement so the base's
 ## lunge cycle never arms (it would both move this body and double-bill the target on top of the
-## burst), keep no detection subscription (refusing engagement alone still let the base acquire,
+## burst), keep no detection subscription (refusing engagement alone still lets the base acquire,
 ## alert and walk), and keep a TOKEN move_speed because a character registered at speed 0 divides by
 ## it and reports its position as NaN for its whole life.
 ##
@@ -70,7 +70,7 @@ func _target_engageable() -> bool:
 	return false
 
 ## It does not spot anything -- it is set off. Keeping no subscription is what actually holds the
-## body still; refusing engagement alone still let the base acquire, alert and step toward a last
+## body still; refusing engagement alone still lets the base acquire, alert and step toward a last
 ## known position.
 func _sync_detection_subscription(_state: String) -> void:
 	if game_state != null and game_state.has_method("set_detection_enabled") \
@@ -83,10 +83,10 @@ func set_roam(_anchor: Vector3, _radius: float) -> void:
 func set_patrol(_waypoints: Array) -> void:
 	return
 
-## PREDICTED, NOT POLLED. The old version woke every 0.2s to count bodies, so the trigger resolved up
-## to a fifth of a second late and its answer depended on the sampling rate rather than on the movement
-## that caused it. GameState now SOLVES for the exact tick a queued move brings enough bodies inside the
-## bunch radius and schedules that, re-solving whenever anybody's movement changes.
+## PREDICTED, NOT POLLED. A polled count resolves the trigger up to its period late, and its answer
+## depends on the sampling rate rather than on the movement that caused it. GameState SOLVES for
+## the exact tick a queued move brings enough bodies inside the bunch radius and schedules that,
+## re-solving whenever anybody's movement changes.
 func activate() -> void:
 	super.activate()
 	_flare_body_ids[char_id] = true

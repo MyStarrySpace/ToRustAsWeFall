@@ -89,22 +89,22 @@ const SPECIES := {
 	},
 }
 
-## Retired keys preserved only at load/save compatibility boundaries.
+## Legacy save keys honored only at load/save compatibility boundaries.
 const LEGACY_REDIRECT := {
 	"lumivine": "seefern",
 	"rustmoss": "scarpet",
 	"hushcap": "hushbloom",
 	"doma": "capbage",
 	"snapbloom": "gasafoetida",
-	"veilcap": "",  # cut entirely, no replacement
+	"veilcap": "",  # no successor species
 	"rootwall": "scarpet",
-	"stormcap": "",  # absorbed into network
+	"stormcap": "",  # role lives in the flora network
 	"threadweave": "",
 	"pando": "",
-	"siphonbloom": "",  # cut entirely
+	"siphonbloom": "",  # no successor species
 }
 
-## Convert a current or persisted retired key to the runtime species key.
+## Convert a current or persisted legacy key to the runtime species key.
 ## Unknown keys stay normalized so callers can report them without inventing a species.
 static func canonical_key(key: String) -> String:
 	var normalized := key.strip_edges().to_lower()
@@ -138,14 +138,14 @@ const PUZZLE_ONLY := {
 }
 
 
-## Lookup a current or retired species key.
+## Lookup a current or legacy species key.
 static func get_species(key: String) -> Dictionary:
 	var k := canonical_key(key)
 	if SPECIES.has(k):
 		return (SPECIES[k] as Dictionary).duplicate(true)
 	return {}
 
-## Display name for current or retired keys.
+## Display name for current or legacy keys.
 static func display_name(key: String) -> String:
 	var rec := get_species(key)
 	if not rec.is_empty():

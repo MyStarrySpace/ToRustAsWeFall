@@ -2775,9 +2775,9 @@ static func save_spec(spec: Dictionary, path: String) -> bool:
 	file.store_string(JSON.stringify(canonical, "\t"))
 	return true
 
-## Persisted specs may predate the flora identity migration. Retired flora names are
-## accepted at this serialization boundary, but every returned/written runtime spec
-## uses the canonical key. This intentionally does not add aliases to the live palette.
+## Persisted specs may carry retired flora names. Those are accepted at this
+## serialization boundary, but every returned/written runtime spec uses the
+## canonical key. This intentionally does not add aliases to the live palette.
 static func canonicalize_spec(spec: Dictionary) -> Dictionary:
 	var normalized := _canonicalize_persisted_flora(spec) as Dictionary
 	normalized = _canonicalize_persisted_branch_action_triggers(normalized) as Dictionary
@@ -2925,8 +2925,8 @@ static func _resolve_settings(settings: Dictionary) -> Dictionary:
 	var override_budget: Dictionary = settings.get("budget", {})
 	var overridden_keys := []
 	for key in override_budget.keys():
-		# Legacy specs budgeted a prose-only `return_shortcut` in the semantic
-		# graph. Recovery is now owned exclusively by the meta-template's real,
+		# Legacy specs budget a prose-only `return_shortcut` in the semantic
+		# graph. Recovery is owned exclusively by the meta-template's real,
 		# saved ClimbvineReturn mechanism, so this obsolete knob cannot affect content.
 		if str(key) == "shortcut_count":
 			continue
@@ -2942,8 +2942,8 @@ static func _resolve_settings(settings: Dictionary) -> Dictionary:
 	resolved["seed"] = seed
 	resolved["complexity_tier"] = tier
 	resolved["budget"] = base_budget
-	# Preserve the tier floor + caller pins as audit data. Campaign stage no longer
-	# mutates these spatial budgets; the systems profile carries progression instead.
+	# Preserve the tier floor + caller pins as audit data. Campaign stage never
+	# mutates these spatial budgets; the systems profile carries progression.
 	resolved["budget_tier_floor"] = tier_floor
 	resolved["budget_overridden_keys"] = overridden_keys
 	# A BIOME is a named content preset: if the caller named one (and didn't pin explicit
@@ -4940,9 +4940,9 @@ static func _apply_wfc_graybox(nodes: Array, routes: Array, layout: Dictionary, 
 	}
 
 # How many stacked DATA floors a tier may use. Verticality is EARNED, not the default: teaching/standard levels
-# are FLAT (1 floor) — the old per-node-index elevation made every level 3 floors, which read as confusing stacked
-# ribbons. (Note: the RENDER can still spiral a flat level into a climbing helix via the coord_map — that's a
-# separate warp, not data floors.)
+# are FLAT (1 floor) — unconditional per-node-index elevation would give every level 3 floors, which reads as
+# confusing stacked ribbons. (Note: the RENDER can still spiral a flat level into a climbing helix via the
+# coord_map — that's a separate warp, not data floors.)
 const TIER_MAX_LEVELS := {"teaching": 1, "standard": 1, "hard": 2, "setpiece": 3}
 
 static func _graybox_elevation_index(node: Dictionary, index: int, node_count: int, max_levels: int = 3) -> int:
@@ -5864,7 +5864,7 @@ const SURVIVAL_STRUCTURE := {"forage": "forage_cache", "rest": "hide_slot", "gau
 const ROLE_STRUCTURE := {"boundary": "junction", "shelter_arrival": "shelter", "foraging": "forage_cache", "route_pressure": "pipe", "guidance": "terminal", "danger": "barrier", "shortcut": "shortcut_gate", "mixed": "membrane", "regroup": "hide_slot", "setpiece": "root_slide"}
 
 ## The structure on a node, preferred by survival kind / archetype, then role — never a
-## stray shelter on an interior node (which used to undercut the find-shelter tension).
+## stray shelter on an interior node (a mid-stretch shelter undercuts the find-shelter tension).
 static func _structure_for_node(archetype: Dictionary, role: String, available: Array) -> Array:
 	var pref := str(SURVIVAL_STRUCTURE.get(str(archetype.get("survival_kind", "")), ""))
 	if pref == "":

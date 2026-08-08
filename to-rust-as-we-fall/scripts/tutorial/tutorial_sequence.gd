@@ -210,7 +210,7 @@ func _ready() -> void:
 	combat_feedback.setup(_game_state, self)
 	# One reusable cause/effect presenter for every scene built on this host. Kit objects publish
 	# portable warning receipts and GameState carries the same receipt through forced traversals;
-	# preview chunks no longer own a parallel camera/HUD implementation.
+	# no preview chunk owns a parallel camera/HUD implementation.
 	_consequence_presentation_controller = CONSEQUENCE_PRESENTATION_CONTROLLER_SCRIPT.new()
 	_consequence_presentation_controller.name = "ConsequencePresentationController"
 	add_child(_consequence_presentation_controller)
@@ -2124,8 +2124,9 @@ func _schedule_portable_method(
 		return false
 	var next_method := _portable_self_method(next_func)
 	if next_method == "":
-		# Preserve the old preview-only escape hatch, while returning false so callers and tests can
-		# distinguish it from a continuation that survives a fresh-process load.
+		# A callable with no portable self-method still schedules live — a preview-only escape
+		# hatch — while returning false so callers and tests can distinguish it from a
+		# continuation that survives a fresh-process load.
 		_scheduler.schedule_after(maxf(0.0, delay), next_func, next_tag)
 		return false
 	var now := float(_scheduler.get_current_tick())
@@ -2961,9 +2962,9 @@ func _advance_chunk_streams() -> void:
 	if _chunk_streams.is_empty():
 		_chunk_stream_round_robin_cursor = 0
 		return
-	# The frame budget is global, not per chunk. Two individually small streams used to run one
-	# step each in the same frame (for example the tail of Bridge plus the start of Below), turning
-	# two acceptable slices into one visible hitch. Round-robin keeps concurrent prewarms fair while
+	# The frame budget is global, not per chunk: two individually small streams each stepping in
+	# the same frame (for example the tail of Bridge plus the start of Below) would turn two
+	# acceptable slices into one visible hitch. Round-robin keeps concurrent prewarms fair while
 	# guaranteeing the configured number is the most construction steps any rendered frame receives.
 	var active_streams: Array[String] = []
 	for chunk_name in _chunk_streams.keys():

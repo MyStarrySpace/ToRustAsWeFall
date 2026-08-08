@@ -33,7 +33,7 @@ func _glow_mat(glow: Color) -> StandardMaterial3D:
 
 ## The portal's mouth on the floor: a flat 2D quad whose ring shape DITHERS in, then stipples away —
 ## the same ordered-Bayer dither as the hover grid. A PlaneMesh lies flat on the ground by default, so
-## there's no orientation to get wrong (the old torus ring stood the wrong way).
+## there's no orientation to get wrong (an upright ring mesh can face the wrong axis).
 func _dither_ring(glow: Color, duration: float) -> void:
 	var quad := MeshInstance3D.new()
 	var plane := PlaneMesh.new()

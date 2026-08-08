@@ -267,7 +267,7 @@ func _dispatch_command_edge(pos: Vector2, pressed_state: bool) -> void:
 	ev.set_meta("_touch_command_proxy", true)
 	Input.parse_input_event(ev)
 
-## Compatibility for focused tests/tools that used the old tap helper directly.
+## A full tap as one call — the press and release edges together — for tests/tools that drive taps directly.
 func _dispatch_command_click(pos: Vector2) -> void:
 	_dispatch_command_edge(pos, true)
 	_dispatch_command_edge(pos, false)

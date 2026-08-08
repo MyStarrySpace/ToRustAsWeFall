@@ -33,15 +33,15 @@ const BRANCH_ROLES := [
 const TIER_BRANCH_COUNT := {"teaching": 2, "standard": 2, "hard": 2, "setpiece": 2}
 const _MAX_BRANCHES := 6
 
-## Weave branches into `grid_data`. opts: {seed:int, tier:String, count:int(optional override)}. A legacy `stage`
+## Weave branches into `grid_data`. opts: {seed:int, tier:String, count:int(optional override)}. A `stage`
 ## option is accepted but intentionally ignored: campaign progression cannot add traversal padding.
 ## Returns a NEW grid_data (the input is not mutated) with the extra walkable cells + a "branches" metadata array.
 ## Each branch includes its role and causal/topology contract as well as neck/cells/shape. A grid with no walkable
 ## cells, or count<=0, is returned as-is.
 static func weave(grid_data: Dictionary, opts: Dictionary = {}) -> Dictionary:
 	var out: Dictionary = grid_data.duplicate(true)
-	# A generated spec now persists the woven grid. Preview hosts may still call
-	# weave() for compatibility, so treat an emitted weave as authoritative instead
+	# A generated spec persists its woven grid, and a host may call weave() on
+	# that grid again; treat an emitted weave as authoritative instead
 	# of growing a second, runtime-only set of rooms around it.
 	var existing_branches = out.get("branches", [])
 	if str(out.get("branch_weave_contract_id", "")) == BRANCH_WEAVE_CONTRACT_ID \

@@ -1018,8 +1018,8 @@ func _pursue_target() -> void:
 		return
 	# Otherwise keep chasing (pursuit is the ONLY state that pathfinds). A chase-pack enemy can
 	# opt into DIRECT pursuit (straight hops, no A*, no reservations): cooperative space-time
-	# planning for 4-6 pursuers re-pathing 100+ cell routes every rescan measured up to 1.8 s per
-	# 0.1 s step — the lockout chase's frame drops. A pack in an open corridor doesn't need
+	# planning for 4-6 pursuers re-pathing 100+ cell routes every rescan costs whole seconds per
+	# 0.1 s step — frame-drop territory. A pack in an open corridor doesn't need
 	# reservation-grade planning; convex-corridor scenes set pursuit_direct on their waves.
 	if game_state.characters.has(char_id):
 		if game_state.grid and not pursuit_direct:
@@ -1030,7 +1030,7 @@ func _pursue_target() -> void:
 
 ## Commit one bounded direct-pursuit leg without asking GameState to solve the
 ## same spatial route again. `command_move_to_pos()` deliberately routes through
-## grid A* in grid scenes; using it here made `pursuit_direct` an accidental
+## grid A* in grid scenes; using it here would make `pursuit_direct` an accidental
 ## per-body planner despite the flag's contract. Scene resolvers must provide
 ## wall-safe waypoints (Lockout's shared field does); the no-resolver fallback is
 ## reserved for the open/convex corridors that opt into direct pursuit.
@@ -1567,14 +1567,14 @@ func _build_threat_marker() -> void:
 
 ## THE MARKER'S STYLE IS A FUNCTION OF STATE, so it is computed when the state CHANGES.
 ##
-## This whole block used to run every frame for every enemy: a get_state(), a match deriving tint /
-## speed / energy from it, and three material property writes. Tint, speed and energy depend on
-## nothing but the FSM state, which changes a handful of times per encounter -- so ~59 of every 60
-## evaluations per second per enemy recomputed a value that had not changed and re-uploaded it to the
-## RenderingServer. A state machine exists precisely so that state-derived work can be done on the
-## transition; doing it per frame is paying for a state machine and then not using it.
+## Tint, speed and energy depend on nothing but the FSM state, which changes a handful of times per
+## encounter. Deriving them per frame — a get_state(), a match, and three material property writes
+## for every enemy — would mean ~59 of every 60 evaluations per second per enemy recompute a value
+## that has not changed and re-upload it to the RenderingServer. A state machine exists precisely
+## so that state-derived work can be done on the transition; doing it per frame is paying for a
+## state machine and then not using it.
 ##
-## What genuinely animates (the pulse and spin) still updates per frame, because it is a function of
+## What genuinely animates (the pulse and spin) updates per frame, because it is a function of
 ## time rather than of state. The emission energy, which mixes both, writes only while the marker is
 ## on screen and only when the value actually moves.
 func _refresh_threat_marker_style() -> void:
@@ -1636,7 +1636,7 @@ func _set_mesh_color(c: Color) -> void:
 		# CameraOcclusionManager replaces the enemy's StandardMaterial3D with
 		# its see-through wrapper after a streamed chunk loads.  State colors
 		# must update the wrapper parameter instead of casting it back to a
-		# StandardMaterial3D (that cast is null and used to error on pursuit).
+		# StandardMaterial3D (that cast is null).
 		var shader_material := material as ShaderMaterial
 		if shader_material.get_shader_parameter("albedo_color") is Color:
 			shader_material.set_shader_parameter("albedo_color", c)
@@ -1659,8 +1659,8 @@ var _recover_tween: Tween
 var _fade_tween: Tween
 
 ## Cosmetic tweens are FRAME-driven: on a headless tree no frame ever steps them, so every beat
-## would leak a live tween and SceneTree bookkeeping grows O(n) — measured as the chase's
-## 110 ms/step scheduler cost. Cosmetics simply don't exist without a display.
+## would leak a live tween and SceneTree bookkeeping grows O(n) — on the order of 100 ms of
+## scheduler cost per step over a long chase. Cosmetics simply don't exist without a display.
 static func _cosmetics_on() -> bool:
 	return DisplayServer.get_name() != "headless"
 
@@ -1693,7 +1693,7 @@ func _anim_recoil() -> void:               # stagger: flinch inward
 func _process(_delta: float) -> void:
 	var perf_started := PerformanceTrace.begin()
 	_update_threat_marker()
-	# The body is a pure mirror of the data layer — including the charge, which is now a real
+	# The body is a pure mirror of the data layer — including the charge, which is a real
 	# data-layer move at charge_speed (so the lunge is smooth and never teleport-snaps at impact).
 	# On a WARPED scene the mirror holds every frame, moving or parked: a body gated on
 	# is_moving keeps its flat spawn coordinates until its first hop and floats off the coil.
@@ -1732,9 +1732,9 @@ var _char_node_cache := {}
 
 func _find_character_node(target_id: String) -> Node:
 	# CACHED: the full scan walks every child of every sibling container with per-node string
-	# ops — six pack members re-alerting once a second each made it the chase's hot loop
-	# (measured: half the pack's FSM tags = 95% of the step cost). Nodes don't move between
-	# containers; one scan per target id per enemy, revalidated on use.
+	# ops — six pack members re-alerting once a second each turns the scan into the dominant
+	# cost of a chase step. Nodes don't move between containers; one scan per target id per
+	# enemy, revalidated on use.
 	var cached = _char_node_cache.get(target_id)
 	if cached != null and is_instance_valid(cached):
 		return cached

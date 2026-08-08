@@ -451,8 +451,8 @@ func _clear_all_path_feedback() -> void:
 	for char_id in _feedback_roots.keys().duplicate():
 		_clear_char_path_feedback(str(char_id))
 
-## A per-character DESTINATION ring at the end of its current move — the marker the player used to carry
-## alone, now drawn for EVERY character in that character's colour. It reads the DATA-LAYER move target
+## A per-character DESTINATION ring at the end of its current move — drawn for EVERY character in
+## that character's colour. It reads the DATA-LAYER move target
 ## (get_destination), or the controller's exact formation preview before release, so a movable held rally
 ## shows every final slot as well as every route. Cosmetic: reads move/preview targets, writes nothing.
 func _update_dest_marker(char_id: String, node: Node3D) -> void:
@@ -543,9 +543,9 @@ func _update_dest_ghost(char_id: String, node: Node3D) -> void:
 	if ghost == null or not is_instance_valid(ghost) or _ghost_built_from.get(char_id) != node:
 		if ghost != null and is_instance_valid(ghost):
 			# queue_free() is DEFERRED — a top_level ghost stays valid, visible, and drawn by the
-			# RenderingServer at its old world position until end-of-frame. Since the new ghost is built and
-			# shown THIS same _process call, that left two ghosts on screen for the frame (the "ghost at
-			# multiple positions" bug). Hide + detach synchronously first so only one ever draws.
+			# RenderingServer at its old world position until end-of-frame. The replacement ghost is built and
+			# shown THIS same _process call, so a deferred-only free would draw two ghosts on screen for
+			# that frame. Hide + detach synchronously first so only one ever draws.
 			ghost.visible = false
 			remove_child(ghost)
 			ghost.queue_free()

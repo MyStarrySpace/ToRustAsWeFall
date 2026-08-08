@@ -154,13 +154,13 @@ func is_deploying() -> bool:
 	return state.get("phase", &"") == &"deploying"
 
 
-## Retired consequence seam. Tending begins only when the exact upper Interactable has accepted an
+## Deliberately inert. Tending begins only when the exact upper Interactable has accepted an
 ## action-free Peris body at its authored data endpoint and its receipt is consumed synchronously.
 func tend(_character_id: String) -> bool:
 	return false
 
 
-## Retired consequence seam. A list of selected portraits is not a physical lower-mouth receipt.
+## Deliberately inert. A list of selected portraits is not a physical lower-mouth receipt.
 ## The lower Interactable commits only the exact all-present group captured by its validator.
 func start_climb(_character_ids: Array) -> int:
 	return 0

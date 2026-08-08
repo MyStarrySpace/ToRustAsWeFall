@@ -136,8 +136,8 @@ func _on_interaction_requested(target: Node, requested_position: Vector3 = Vecto
 	# but the resolved target is in WORLD space. Translate ONCE to flat data space for the nearest-member pick and
 	# the non-self servicer's move. The SELF path keeps the WORLD position (player._set_click_target re-applies
 	# coord_map.to_data, so handing it flat would double-warp), as does the glow origin. Flat scenes (no coord_map)
-	# are byte-identical: flat == world. Without this a non-self party member walked to a wrong cell on the helix
-	# and never reached the object, so the queued glow never tracked the real walk-to-arrival.
+	# are byte-identical: flat == world. Without this a non-self party member walks to a wrong cell on the helix
+	# and never reaches the object, so the queued glow never tracks the real walk-to-arrival.
 	var gs = _character_game_state()
 	var flat_target := _resolve_flat_target_position(target, active_target_position)
 	# A warped interactable retains the exact authored data position used to build
@@ -208,7 +208,7 @@ func _on_interaction_requested(target: Node, requested_position: Vector3 = Vecto
 		_queue_arrival_poll()
 
 ## The queued-feedback tint: the SERVICING character's color (same ownership language as the
-## hover grid / path ribbon), falling back to the host's color, then the legacy orange.
+## hover grid / path ribbon), falling back to the host's color, then a default orange.
 func _interactor_color() -> Color:
 	if character != null and "color" in character:
 		if not ("char_id" in character) or String(character.char_id) == _interactor_id or _interactor_id == "":
@@ -748,7 +748,7 @@ func _character_can_accept_interaction() -> bool:
 
 ## Only one per-character coordinator may consume a shared target signal. Live
 ## targets latch an immutable owner for the synchronous command delivery;
-## isolated/single-character scenes retain the legacy move-input ownership gate.
+## isolated/single-character scenes fall back to the move-input ownership gate.
 func _controller_owns_request(target: Node) -> bool:
 	var owner_id := _target_interaction_request_owner(target)
 	if owner_id != "":

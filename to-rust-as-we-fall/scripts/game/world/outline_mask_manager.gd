@@ -1,9 +1,9 @@
 class_name OutlineMaskManager
 extends Node3D
 
-## Scene-level SCREEN-SPACE object outline. The highlight system used to wrap each object in an inverted-hull
-## shell, which TEARS on the project's flat-shaded pixel-art meshes (per-face normals expand inconsistently) and
-## thins out with camera distance. This renders the currently-highlighted objects ALONE into a SubViewport —
+## Scene-level SCREEN-SPACE object outline. An inverted-hull shell TEARS on the project's flat-shaded
+## pixel-art meshes (per-face normals expand inconsistently) and thins out with camera distance, so the
+## outline is screen-space: this renders the currently-highlighted objects ALONE into a SubViewport —
 ## each filled with its tint colour, opaque on a transparent background (the "mask") — and composites a Sobel
 ## edge of that mask over the main view with a fullscreen quad. The mask is a flat solid, so its only edge is
 ## each object's OUTER silhouette: clean, gap-free, constant pixel width at any distance, immune to the geometry's
@@ -68,8 +68,8 @@ func _ensure_built() -> void:
 	_mask_mat = ShaderMaterial.new()
 	_mask_mat.shader = MASK_SHADER
 	# Compose ABOVE the perception-overlay quad (render_priority 126): the outline is player feedback and
-	# must survive the data/fog views. Safe now that the shader is a premultiplied-alpha BLEND (it never
-	# repaints the screen, so it can't erase the perception rewrite the way the old screen_tex copy did).
+	# must survive the data/fog views. Safe because the shader is a premultiplied-alpha BLEND (it never
+	# repaints the screen, so it can't erase the perception rewrite beneath it — a screen_tex repaint would).
 	_mask_mat.render_priority = 127
 	_mask_mat.set_shader_parameter("mask_tex", _sub.get_texture())
 	_mask_mat.set_shader_parameter("glow_mask_tex", _glow_sub.get_texture())

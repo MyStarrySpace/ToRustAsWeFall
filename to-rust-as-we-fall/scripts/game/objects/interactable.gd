@@ -241,7 +241,7 @@ func _process(delta: float) -> void:
 
 	# Self-gate: with no label pulsing, no dwell running, and no ring decaying, there is nothing
 	# per-frame to do — stop processing until a state change re-enables it (a scene full of idle
-	# interactables used to run all their _process bodies every frame).
+	# interactables would otherwise pay a per-frame _process cost for nothing).
 	if not _frame_work_pending():
 		set_process(false)
 	PerformanceTrace.end(&"update", &"interactable.process", perf_started, interactable_id, 1)
@@ -500,9 +500,9 @@ func _trigger(play_feedback := true) -> bool:
 		return false
 	if _pre_trigger_validator.is_valid() \
 			and not bool(_pre_trigger_validator.call(self, active_character)):
-		# Scenario preflight is still authoritative refusal. The old early return
-		# left a routed click with no target-specific result even though the player
-		# had reached and attempted the visible object (Basin REST PARTY exposed it).
+		# Scenario preflight is an authoritative refusal, not a silent drop: the
+		# player reached and attempted the visible object, so the routed click must
+		# still surface a target-specific result.
 		interaction_rejected.emit(self, required_character)
 		return false
 	# When bound, the data layer is the trigger authority (guards the required
@@ -787,7 +787,7 @@ func hide_tutorial_label_immediate() -> void:
 ## as hover — a hovered object and a revealed one read identically. The interactable is a meshless
 ## proximity zone that intercepts the hover ray, so the actual visual is its OBJECT's
 ## OutlineSurfaceTarget (the outline SHADER + particles emitted from the mesh surface), linked via
-## set_outline_target(). No more stray footprint ring that ignored the object's shape.
+## set_outline_target() — a footprint ring of the zone's own would ignore the object's shape.
 func set_highlight(active: bool) -> void:
 	_highlight_active = active
 	_refresh_feedback()
@@ -898,7 +898,7 @@ func _on_input_event(_camera: Node, event: InputEvent, _event_position: Vector3,
 	if event is InputEventMouseButton:
 		# The `command` action (right mouse) is the interact command (RTS-style). A `select` (left) click
 		# is NEVER an interaction — it falls through to the player as a plain move/select, so clicking
-		# past or grazing an object's pick volume no longer walks the character onto it (the old hijack).
+		# past or grazing an object's pick volume never walks the character onto it.
 		if event.is_action_pressed("command"):
 			var viewport := get_viewport()
 			if viewport != null:
@@ -1023,7 +1023,7 @@ func set_hover_feedback(active: bool) -> void:
 	_hover_active = active
 	_refresh_feedback()
 	# The name reads on EVERY hover — identification is free. Aster's data overlay only restyles
-	# the readout (its cyan), it no longer gates whether a hovered object names itself.
+	# the readout (its cyan); it never gates whether a hovered object names itself.
 	_set_identify_label_visible(active)
 	# Plants rustle at a touch of attention; industrial props hold still on hover
 	# (motion on every hover would be noise — the outline + verb already speak).

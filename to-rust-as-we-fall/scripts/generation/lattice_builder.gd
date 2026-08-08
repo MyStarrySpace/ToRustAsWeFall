@@ -27,7 +27,7 @@ const HONEYFRAME_DEFAULTS := {
 	"crown": true,         # emit a cornice + parapet + plinth silhouette
 	"pane_color": Color(1.0, 0.72, 0.36),   # base window-light colour; per-pane brightness/tint varies off it
 	"rib_merge": "sasb",   # "sasb" (the director's S_A/S_B corner-cut network — THE honeyframe) or
-	                       # "frame_ring" (the old moulded per-cell rings, kept for comparison)
+	                       # "frame_ring" (independent moulded per-cell rings, an alternate look for comparison)
 	"cut": 0.30,           # S_A: corner-cut fraction along each edge away from the vertex (capped 0.5)
 	"pinch": 0.72,         # S_A rounding pulled TOWARD the vertex (the organic pinched junction)
 	"rib_radius": 0.10,    # S_A/S_B rib crest radius (the strut gauge)
@@ -1139,7 +1139,7 @@ const TRACERY_DEFAULTS := {
 
 ## Build the tracery lattice for a drum of `radius`/`height`. Returns {frame, glass, cells}.
 ##
-## GROUND-ZERO REBUILD (Fable): the rib network is now a CONNECTED planar graph meshed watertight by
+## The rib network is a CONNECTED planar graph meshed watertight by
 ## LatticeGraph — one flowing Art-Nouveau surface, per the plate. Per bay the paths CONNECT by
 ## construction: the mullion runs root -> body course; the sill and both arches T into it; the window
 ## jambs T into the sill and CHAIN through the inner arch into one continuous window rib; the two
@@ -1282,8 +1282,8 @@ static func _drop_loop(cx: float, cy: float, size: float, sgn: float) -> PackedV
 	return out
 
 # Glass fan with ORIENTATION-CORRECTED winding: the fan faces outward regardless of whether the
-# outline was authored CW or CCW. (The old emitter assumed CW — CCW outlines like the grid-window
-# rounded rects rendered facing INTO the drum, the "missing big windows" bug.)
+# outline was authored CW or CCW. (An emitter that assumes CW renders a CCW outline — e.g. the
+# grid-window rounded rects — facing INTO the drum, which reads as a missing window.)
 static func _glass_fan_cyl(base_th: float, yc: float, r: float, outline: PackedVector2Array, pane: float, col: Color, st: SurfaceTool) -> void:
 	var pts := outline
 	if _signed_area(pts) > 0.0:
@@ -1855,12 +1855,12 @@ static func _emit_door(stone: SurfaceTool, dark: SurfaceTool, acc: SurfaceTool, 
 	var jc := (dh + jamb) * 0.5
 	# jambs + lintel (raised stone surround) — SKIPPED when the building's survey places its OWN
 	# entry idiom (plumbing hood / hypelines arch / greenfields arcade): the idiom IS the surround,
-	# and the generic stone used to interpenetrate it (the phone playtest's overlap report)
+	# and a second generic stone surround would interpenetrate it
 	if surround:
 		_emit_oriented_box(stone, a + u * (hw + jamb * 0.5) + v * jc + n * (proud * 0.5), u, v, n, Vector3(jamb * 0.5, jc, proud * 0.5))
 		_emit_oriented_box(stone, a - u * (hw + jamb * 0.5) + v * jc + n * (proud * 0.5), u, v, n, Vector3(jamb * 0.5, jc, proud * 0.5))
 		_emit_oriented_box(stone, a + v * (dh + jamb * 0.5) + n * (proud * 0.5), u, v, n, Vector3(hw + jamb, jamb * 0.5, proud * 0.5))
-	# The doorway INTERIOR is now a real pocket cut into the base mesh (no z-fighting dark box here).
+	# The doorway INTERIOR is a real pocket cut into the base mesh (a dark overlay box here would z-fight).
 	# Two door leaves set BACK inside that pocket; enforcement leaves glow teal (accent).
 	var leaf: SurfaceTool = acc if enforcement else dark
 	for side in [-1.0, 1.0]:

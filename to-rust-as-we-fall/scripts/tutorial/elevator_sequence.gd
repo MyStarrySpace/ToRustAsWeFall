@@ -254,7 +254,7 @@ const EMP_VISUAL_DURATION := 1.5
 # Below-level ecology
 const BELOW_Y := -4.0
 const BRIDGE_START_X := 11.5  # ELEVATOR_SIZE.x/2 + 0.5 + 7.0
-const BRIDGE_LENGTH := 24.0   # a real crossing (2x the old 12) so dialogue paces across the walk, not up front
+const BRIDGE_LENGTH := 24.0   # a real crossing, long enough that dialogue paces across the walk, not up front
 const BRIDGE_END_X := BRIDGE_START_X + BRIDGE_LENGTH
 const BRIDGE_COLLAPSE_X := BRIDGE_START_X + BRIDGE_LENGTH * 0.66  # the span gives way ~2/3 across, not after 4 steps
 const BRIDGE_PIECES_PER_STREAM_STEP := 4
@@ -294,9 +294,9 @@ const DEBRIS_PIECE_LAYER := 1 << 10
 const DEBRIS_FLOOR_LAYER := 1 << 11
 var _collapse_visual_active := false  # true while wall-clock debris physics is still settling
 
-# Route fork. The old branch occupied only a few metres after the landing. The
-# new course starts beyond the debris footprint and holds its two lanes for
-# three readable beats before they converge.
+# Route fork. The course starts beyond the debris footprint and holds its two
+# lanes for three readable beats before they converge — a fork only a few
+# metres long would be over before its lanes could be read.
 const ROUTE_READ_ASTER_POS := Vector3(BRIDGE_COLLAPSE_X + 4.0, BELOW_Y + 0.05, -4.5)
 const ROUTE_READ_PERIS_POS := Vector3(BRIDGE_COLLAPSE_X + 4.0, BELOW_Y + 0.05, 4.5)
 const FORK_POS := Vector3(BRIDGE_COLLAPSE_X + 9.0, BELOW_Y, 0)
@@ -790,7 +790,7 @@ func _unlock_upper_exit_footprint() -> void:
 		return
 	_upper_exit_footprint_unlocked = true
 	# The girder inner faces sit at roughly z=±1.3. Author the two central one-metre lanes explicitly;
-	# an inclusive world rectangle previously admitted the cells centred on/outside the rails (z=±1.5/2.5),
+	# an inclusive world rectangle would admit the cells centred on/outside the rails (z=±1.5/2.5),
 	# letting the grid-authoritative mover route straight through the visible railing.
 	var min_cell := _grid.world_to_grid(Vector3(4.0, 0.0, -0.5))
 	var max_cell := _grid.world_to_grid(Vector3(BRIDGE_END_X - 1.0, 0.0, 0.5))
@@ -850,7 +850,7 @@ func _setup_ui() -> void:
 	_hud.run_toggled.connect(_on_route_run_toggled)
 	_hud.routing_toggled.connect(_on_route_mode_toggled)
 	var emp_binding := AbilityData.binding("emp")
-	# The key hint comes from Aster's live direct ability slot, never a baked legacy letter, so a rebind / controller
+	# The key hint comes from Aster's live direct ability slot, never a baked letter, so a rebind / controller
 	# is reflected (the xlsx keybind is only the fallback if the action somehow has no binding).
 	_hud.add_ability("emp", AbilityData.get_ability("elevator.emp").get("display_name", "EMP"),
 		InputHints.label_for_action(EMP_INPUT_ACTION, str(emp_binding.get("keybind", ""))),
@@ -1342,9 +1342,9 @@ func _on_process(delta: float, spd: float) -> void:
 			DialogueData.say_to(_dialogue, str(_bridge_lines_pending[_bridge_lines_fired]))
 			_bridge_lines_fired += 1
 		# The whole party falls only when the whole party is actually on the
-		# failing span.  Previously the lead unit could trigger this alone; the
-		# trailing unit was then teleported straight down from the bridge mouth
-		# into the dormant huddle and could be killed off-screen.
+		# failing span.  Triggering on the lead unit alone would teleport the
+		# trailing unit straight down from the bridge mouth into the dormant
+		# huddle, where it could be killed off-screen.
 		if _party_tail_x() > BRIDGE_COLLAPSE_X:
 			_tutorial_prompt.hide_prompt()
 			_player.set_move_enabled(false)
@@ -1732,7 +1732,7 @@ func _update_rally_tutorial_prompt() -> void:
 func _show_rally_together_hint() -> void:
 	_update_rally_tutorial_prompt()
 
-## Compatibility for old focused tools/saves that still call the former tutorial helper directly.
+## Compatibility alias for focused tools/saves that call this helper by name.
 func _start_multiselect_tutorial() -> void:
 	_start_rally_tutorial()
 
@@ -2566,8 +2566,8 @@ func _start_rally_tutorial() -> void:
 	_scheduler.pause()
 	_hud.set_paused(true)
 	_hud.show_message("RALLY ALL READY  //  preview both final positions, then release to queue", 3.0)
-	# The former spreadsheet line explicitly taught multi-selection, which is no longer this beat's
-	# mechanic. Keep the instruction truthful and immediate; perspective selection is taught later.
+	# The instruction stays truthful and immediate: this beat teaches the rally release, not
+	# multi-selection; perspective selection is taught later.
 	_update_rally_tutorial_prompt()
 
 func _start_corridor() -> void:
@@ -2580,7 +2580,7 @@ func _start_corridor() -> void:
 	if _camera != null and _camera.has_method("clear_look_bounds"):
 		_camera.clear_look_bounds()
 	# Reveal the chunks streamed in during the opening (instant if the background build finished; otherwise this
-	# block-finishes the remainder — never worse than the old synchronous load).
+	# block-finishes the remainder — the cost is bounded by one full build).
 	reveal_chunk("bridge")
 	reveal_chunk("below")
 	var exit_pos := Vector3(ELEVATOR_SIZE.x / 2.0 + 3.0, 0, 0)
@@ -3916,7 +3916,7 @@ func _on_endo_at_container(id: String) -> void:
 		if StringName(str(phase.get("phase", ""))) == ENDO_DRINK_PICKED_PHASE:
 			_commit_endo_drink_pickup()
 		return
-	# The visible hold is now a scheduler-owned state machine. Saving here preserves
+	# The visible hold is a scheduler-owned state machine. Saving here preserves
 	# its exact remaining time; moving or being downed resets it through GameState signals.
 	_show_marker(_endo.global_position + Vector3(0, 1.5, 0), "...")
 	_game_state.command_begin_mechanism_phase(
@@ -5085,12 +5085,12 @@ func on_game_state_snapshot_restored() -> void:
 		return
 	_restoring_elevator_runtime_authority = true
 	_scheduler.cancel_tag(IRON_HAZARD_TAG)
-	_scheduler.cancel_tag("wreckage_clear") # legacy parallel completion from older scene instances
+	_scheduler.cancel_tag("wreckage_clear")
 	_scheduler.cancel_tag("wreckage_rearm")
 	_scheduler.cancel_tag("bridge_fall")
 	_scheduler.cancel_tag("fall_landed")
 	_scheduler.cancel_tag("fallen")
-	_scheduler.cancel_tag("night_watch") # legacy post-dialogue delay
+	_scheduler.cancel_tag("night_watch")
 	_scheduler.cancel_tag("dawn")
 	_scheduler.cancel_tag("morning")
 	_scheduler.cancel_tag(JUNCTION_REST_COMMIT_TAG)
@@ -5270,9 +5270,9 @@ func _restore_bridge_collapse_from_authority(saved_outer_version: int) -> bool:
 	_restore_portable_elevator_camera_state()
 	if _bridge_collapse_phase() == "":
 		_bridge_collapse_authority.clear()
-		# Version 1 predates bridge authority. Its bridge_collapse step can only have been either
-		# waiting to fall (upper party) or already landed (lower party), because the old implementation
-		# held GameState upstairs throughout the visual tween.
+		# Version 1 predates bridge authority. A save written at that version holds GameState
+		# upstairs throughout the visual tween, so its bridge_collapse step can only have been
+		# either waiting to fall (upper party) or already landed (lower party).
 		if saved_outer_version > 0 and saved_outer_version < 2 \
 				and _current_step == "bridge_collapse":
 			var now := float(_scheduler.get_current_tick())
@@ -5885,7 +5885,7 @@ func _play_junction_shelter_flicker() -> void:
 func _clear_junction_night_presentation(restore_daylight := true) -> void:
 	if _scheduler != null:
 		_scheduler.cancel_tag(JUNCTION_REST_FLICKER_TAG)
-		_scheduler.cancel_tag("flicker") # legacy anonymous night-watch presentation
+		_scheduler.cancel_tag("flicker")
 	for eye in _monster_eyes:
 		if is_instance_valid(eye):
 			eye.queue_free()
@@ -6859,7 +6859,7 @@ func _restore_gauntlet_intro_after_snapshot() -> void:
 		], _finish_gauntlet_intro)
 	_publish_elevator_runtime_authority()
 
-## Retired compatibility seam. The gauntlet begins only when Peris services the exact visible Flure.
+## Inert compatibility seam. The gauntlet begins only when Peris services the exact visible Flure.
 func _on_flure_activated() -> void:
 	pass
 
@@ -7390,10 +7390,9 @@ func _start_game_over() -> void:
 	_enter_step("game_over")
 	_player.set_move_enabled(false)
 	# Enemy FSM transitions and movement all ride the authoritative gameplay
-	# scheduler. Pausing it already freezes every attacker atomically. The former
-	# loop forced every (including dormant) enemy through idle here, causing a
-	# cascade of movement stops and detection rebuilds inside the lethal damage
-	# signal — the second party down was therefore much slower than the first.
+	# scheduler, so pausing it freezes every attacker atomically. Forcing each
+	# (including dormant) enemy through idle here would cascade movement stops
+	# and detection rebuilds inside the lethal damage signal.
 	_scheduler.pause()
 	# Fade to dark red-black
 	var tween := create_tween()
@@ -7547,7 +7546,7 @@ func _add_bridge_piece(model: Node3D, piece_name: String, pos: Vector3, size: Ve
 	mi.position = pos
 	model.add_child(mi)
 
-## Give the intact span a truthful destination. The old deck ended in unlit void, so the last third vanished
+## Give the intact span a truthful destination. A deck ending in unlit void makes its last third vanish
 ## against the background and read like a prematurely truncated bridge. This landing and sealed bulkhead are
 ## deliberately outside BridgeModel: the span collapses, while the blocked destination remains structurally
 ## intact until the upper chunk is retired after the fall.
@@ -8443,8 +8442,8 @@ func _build_below_chunk_one_shot_reference(parent: Node3D) -> void:
 	west_blockade.position = Vector3(LOWER_ROUTE_WEST_X - 0.75, ground_y, 0.0)
 	parent.add_child(west_blockade)
 
-	# The retired one-shot reference mirrors the current overlay-first route read:
-	# there are no character-locked perspective pedestals at the fork.
+	# The route read is overlay-first: there are no character-locked perspective
+	# pedestals at the fork.
 
 	# Iron blooms.
 	for i in range(4):
@@ -8849,7 +8848,8 @@ func _add_junction_interactable(
 	interact.active_character = _active_character
 	interact.required_character = required_character
 	# Shelter props are repeatable inspections, but they must never auto-trigger merely because a
-	# character stands nearby. The old HOLD_ACTION re-armed itself and flooded the dialogue queue.
+	# character stands nearby: a proximity dwell on a repeatable prop re-arms itself and floods
+	# the dialogue queue.
 	interact.interactable_type = Interactable.InteractableType.INSPECTION
 	interact.one_shot = false
 	interact.dwell_time = 1.0
@@ -8923,9 +8923,9 @@ func _gauntlet_step_floor(parent: Node3D) -> void:
 	var ground_y := BELOW_Y
 	var gx := GAUNTLET_POS.x
 
-	# Ground floor — extended EAST past the exit gate so the player can actually run OUT of the gauntlet.
-	# The old chamber + east wall both ended at x = GAUNTLET_EXIT.x - 2 (exactly the exit gate), so the
-	# wall blocked the player from ever crossing it. Spans from the west entrance to the grid's east edge.
+	# Ground floor — extends EAST past the exit gate so the player can actually run OUT of the gauntlet.
+	# A chamber whose floor and east wall end at x = GAUNTLET_EXIT.x - 2 (exactly the exit gate) walls
+	# the player off from ever crossing it. Spans from the west entrance to the grid's east edge.
 	var g_west := gx - 10.0
 	var g_east := GAUNTLET_EXIT.x + 2.0
 	var g_len := g_east - g_west
@@ -8952,7 +8952,7 @@ func _gauntlet_step_walls(parent: Node3D) -> void:
 	var g_len := g_east - g_west
 	var g_cx := (g_west + g_east) * 0.5
 	# Chamber walls: z-sides run the full length; the east wall sits at the far edge, PAST the exit gate
-	# (GAUNTLET_EXIT.x - 2), so reaching the gate no longer means running into a wall.
+	# (GAUNTLET_EXIT.x - 2), so reaching the gate never means running into a wall.
 	_add_wall(parent, Vector3(g_cx, ground_y + 1.5, -7.0), Vector3(g_len, 3, 0.3), wc)
 	_add_wall(parent, Vector3(g_cx, ground_y + 1.5, 7.0), Vector3(g_len, 3, 0.3), wc)
 	_add_wall(parent, Vector3(g_east, ground_y + 1.5, 0), Vector3(0.3, 3, 14), wc)

@@ -405,7 +405,7 @@ func _on_pad_tended(pad_index: int, source: Node = null) -> bool:
 	return tended
 
 
-## Retired callback-shaped bypass: the garden's authored tending must originate at FloraPadN.
+## Deliberately inert bypass: the garden's authored tending must originate at FloraPadN.
 func _on_flora_tended(_flora_id: String, _actor := "peris") -> bool:
 	return false
 

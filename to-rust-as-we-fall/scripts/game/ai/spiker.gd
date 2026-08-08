@@ -81,7 +81,7 @@ func set_patrol(_waypoints: Array) -> void:
 
 ## PREDICTED WHERE IT CAN BE, AND HONEST WHERE IT CANNOT.
 ##
-## Two of this turret's three questions are solvable in advance and are now scheduled exactly:
+## Two of this turret's three questions are solvable in advance and are scheduled exactly:
 ##   - WHEN does a body come into reach? Solved from its queued movement (a proximity trigger).
 ##   - WHEN does an unbroken connection discharge? A known span from the moment it opens.
 ## The third -- WHEN does line of sight break? -- is not cheap to solve analytically, because it
@@ -89,7 +89,7 @@ func set_patrol(_waypoints: Array) -> void:
 ## system makes the same compromise (_arm_detection_los_recheck) for the same reason, so this follows
 ## that precedent rather than inventing a second answer: LOS is re-checked only while a connection is
 ## OPEN and its target is actually MOVING. A parked target is frozen geometry and schedules nothing,
-## which is the difference from the old always-on 0.15s poll -- that ran forever, room empty or not.
+## where an always-on fixed-cadence poll would keep running forever, room empty or not.
 func activate() -> void:
 	super.activate()
 	_arm_range_trigger()
@@ -150,8 +150,8 @@ func _los_tag() -> String:
 ## its path is known. Ask when that path first leaves sight and schedule the sever at exactly that
 ## tick. A parked target schedules nothing at all, because frozen geometry cannot break sight.
 ##
-## This replaced a 0.15s poll that ran for the whole connection (~12 checks per 1.8s lock, and it kept
-## running as long as the target kept moving). Now an entire encounter costs at most two scheduled
+## A fixed-cadence poll would pay its cost for the whole connection (~12 checks per 1.8s lock, and
+## keep paying as long as the target kept moving); solving caps an entire encounter at two scheduled
 ## events: the sever, or the discharge.
 func _watch_connection() -> void:
 	var sched = _get_scheduler()

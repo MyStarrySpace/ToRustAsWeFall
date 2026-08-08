@@ -343,7 +343,7 @@ func headless_process(delta: float) -> void:
 	_initialize_or_restore_boss_authority()
 	_ensure_align_poll()
 
-## The Paranucleus camera REGISTER (director, 2026-07-11 — the Monument Valley aspect): inside the
+## The Paranucleus camera REGISTER (the Monument Valley aspect): inside the
 ## approach radius the level reads as a FLAT IMAGE — the camera flips to an orthographic ORBIT
 ## between four authored snap vantages (Q/E steps between them), zoom scales the picture, and
 ## panning is just looking closer at it (no parallax). Leaving restores the gameplay follow
@@ -1099,7 +1099,7 @@ func _build_paranucleus() -> void:
 		Vector3(PARA_X, (built["origin"] as Vector3).y * 2.1, 0), Color(0.82, 0.72, 0.92), 52)
 	_build_alignment_crossing()
 
-# --- The projection-alignment crossing (the Monument Valley payoff, director 2026-07-11) --------
+# --- The projection-alignment crossing (the Monument Valley payoff) --------
 #
 # A ground corridor threads UNDER the wheels, mouth to mouth. Ring 0's bottom tube physically
 # blocks it; ring 1 never does — but the crossing exists ONLY while the flat image shows it whole:
@@ -1835,8 +1835,8 @@ func _cancel_boss_callbacks() -> void:
 	var sched = _get_scheduler()
 	if sched == null:
 		return
-	# Cancel legacy fixed tags too, so an in-place reload cannot leave an old callback beside the
-	# seed-keyed one.
+	# Cancel the un-prefixed fixed tags too, so an in-place reload cannot leave a stale callback
+	# beside the seed-keyed one.
 	sched.cancel_tag("watch_scramble")
 	sched.cancel_tag("align_poll")
 	sched.cancel_tag(_boss_tag("watch_scramble"))

@@ -16,8 +16,8 @@ const GROUND_TILE := "facility_metal"
 
 ## Per-hero TURNTABLE REACH (m): how far a building's widest part sweeps from its plinth centre as
 ## it rotates — arms, wings, monoliths, flumes. Plinth positions are laid out cumulatively from
-## these (reach + reach + GAP), so no hero ever sweeps through its neighbour (the phone playtest
-## found the old fixed 7 m spacing let the hypelines arms and bulwark wings overlap neighbours).
+## these (reach + reach + GAP), so no hero ever sweeps through its neighbour (a fixed spacing
+## narrower than the widest sweeps — hypelines arms, bulwark wings — lets rotating heroes overlap).
 const REACH := {
 	"plumbing_power": 2.7, "honeycomb_cooperative": 3.3, "beacon_hill": 3.4, "open_files": 3.0,
 	"hypelines": 6.7, "greenfields": 3.2, "ancourage": 6.3, "bulwark_wharf": 7.2,

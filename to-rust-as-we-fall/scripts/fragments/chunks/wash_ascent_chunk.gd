@@ -113,7 +113,7 @@ const WASH_GRACE := 1.0            # quiet second after reset before the ladder 
 const TELEGRAPH_LEAD := 2.0        # enough time to identify the metal bed before the water arrives
 const WASH_Z_CENTER := 3.6         # THE GATE: the surge floods the FULL walkway width
 const WASH_Z_HALF := 4.4           # (z -0.8 .. 8.0) — sections cross only on the dry beat;
-const DANGER_Z := 2.0              # legacy band const kept for anchors/notes
+const DANGER_Z := 2.0              # band const read by anchors/notes
 const VALVE_HOLD_WINDOW := 14.0    # how long the bay valve quiets section 0
 const SWEEP_HP_BITE := 6.0         # the kit-owned fail-forward price per sweep
 const PARTY_IDS := ["aster", "peris", "endo"]
@@ -167,8 +167,8 @@ func _build_chunk() -> void:
 ## a -PI/2 trim converting "authored facing along +x" into "facing along +s".
 ## `stretch` scales the piece along the helix TANGENT: a rigid 2 m module subtends
 ## less arc at the outer radii (gaps) and more at the inner (overlap), so RUN pieces
-## fan into wedges by (R0 + lane)/R0 — the same trick the old GLB baked into its
-## arc bands. Story props stay rigid (stretch 1): their footprints don't gap.
+## fan into wedges by (R0 + lane)/R0, keeping the arc bands seamless at every
+## radius. Story props stay rigid (stretch 1): their footprints don't gap.
 func _warp_transform(flat: Transform3D, stretch := 1.0, tilt := false) -> Transform3D:
 	var s := flat.origin.x
 	var lane := LANE_CENTER - flat.origin.z
@@ -178,8 +178,8 @@ func _warp_transform(flat: Transform3D, stretch := 1.0, tilt := false) -> Transf
 	# `tilt` pitches the piece about the helix RIGHT axis so its forward (+s)
 	# direction rides the CLIMB SLOPE at its radius — run pieces (deck tiles,
 	# rails, walls, channel) meet edge-to-edge as a continuous ramp instead of
-	# terraced steps (the "disconnected tiles" bug: every piece was horizontal
-	# at its center height while the helix climbed KCLIMB per s under it).
+	# terraced steps (an untilted piece sits horizontal at its center height
+	# while the helix climbs KCLIMB per s under it).
 	# Story props stay untilted: they STAND on the ramp.
 	var tilt_basis := Basis.IDENTITY
 	if tilt:
@@ -381,8 +381,8 @@ func _flat_in_spans(x: float, spans: Array) -> bool:
 
 ## The channel run is the trough segments meeting mouth-to-mouth plus a bolted
 ## JOINT COLLAR clamped over every interior seam (real pipe-run infrastructure —
-## the seam notch was a flagged artifact). The trough's live water is NOT tiled
-## per segment anymore: helical WATER BANDS (one modeled piece per unit of s,
+## a bare seam notch reads as an artifact). The trough's live water is NOT tiled
+## per segment: helical WATER BANDS (one modeled piece per unit of s,
 ## curved along the arc with the climb baked in) cover the whole channel span —
 ## see _build_section_water.
 func _realize_channel_run(marker: Node3D, count: int) -> void:
@@ -478,8 +478,8 @@ func _realize_world_arc(marker: Node3D) -> void:
 	_realized_root.add_child(piece)
 	_placed_count += 1
 
-## The director-approved Voronoi-BRANCH vasculature (grown veins, not the retired
-## uniform web) rides the drum shells as a world-triplanar overlay — the organic
+## The Voronoi-BRANCH vasculature (grown veins, never a uniform web) rides the
+## drum shells as a world-triplanar overlay — the organic
 ## register reclaiming the iron, dense nowhere, budding into biolume tips.
 func _apply_vasculature_overlay(piece: Node3D) -> void:
 	var shader := load("res://resources/vasculature_overlay.gdshader")

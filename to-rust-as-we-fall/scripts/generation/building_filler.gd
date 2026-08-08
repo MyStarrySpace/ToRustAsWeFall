@@ -532,7 +532,7 @@ static func _plan_landmarks(seed_value: int, lots: Array, walk: Dictionary, orig
 		var lot := lots[li] as Dictionary
 		if int(lot["gx"]) >= 3 and int(lot["gz"]) >= 3 and int(lot["dist"]) <= 3:
 			# a hero rises ~26 m — its whole column must be free of overhead corridors BEFORE it is
-			# picked (the reservation grid is the authority; previously a viaduct could slice a dome)
+			# picked (the reservation grid is the authority; an unchecked pick lets a viaduct slice a dome)
 			if vol != null:
 				var lc_c: Vector2i = lot["cell"]
 				var rect_hi := Vector2i(lc_c.x + int(lot["gx"]) - 1, lc_c.y + int(lot["gz"]) - 1)
@@ -1089,7 +1089,7 @@ static func _street_dir(lc: Vector2i, gx: int, gz: int, walk: Dictionary, w: int
 ## The connective-fabric dispatcher (ARCHITECTURE_DESIGN.md §4.18-4.24): a low box lot renders as
 ## its assigned PROGRAM — retail arcade / clerical office / bonded warehouse / fabrication shed /
 ## cross-dock yard / mixed-use infill — each a distinct facade+crown+entry signature layered over a
-## shared slab massing. `generic` reproduces the original box verbatim (zero regression). Every part
+## shared slab massing. `generic` is the bare slab box with no program layered on. Every part
 ## is an axis-aligned box through _box/_boxt/_box_glow, so it stays collision-free, atlas-textured on
 ## legal tiles, emissive-pure, and seed-deterministic like the rest of the filler.
 static func _emit_building(frag: Fragment, mn: Vector2, mx: Vector2, height: float, floors: int,

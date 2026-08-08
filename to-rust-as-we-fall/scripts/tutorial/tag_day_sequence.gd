@@ -34,10 +34,10 @@ const ESCORT_FAST_FORWARD_TAG := "tag_day_escort_fast_forward_prompt"
 const ESCORT_ACTORS := ["citizen", "nk1", "nk2"]
 const FORMATION_ACTORS := ["nk1", "nk2"]
 
-# The callbacks after the escort used to exist only in DialogueBox signal
-# connections and the scheduler heap. TutorialSequence intentionally discards both
-# on load, so a save during a whimper, lockdown, pass scan, or blue clearance could
-# never continue. This compact record gives each phase an absolute deadline and an
+# Callbacks living only in DialogueBox signal connections and the scheduler heap
+# do not survive a load — TutorialSequence intentionally discards both — so a
+# save during a whimper, lockdown, pass scan, or blue clearance could never
+# continue. This compact record gives each phase an absolute deadline and an
 # explicit presentation latch; reload reconstructs the signal and only consumes the
 # saved remainder.
 const CALLBACK_AUTHORITY_KEY := "tag_day:callback_authority"
@@ -93,9 +93,9 @@ const CITIZEN_DEVICE_POS := Vector3(6 + DEVICE_SPACING, 0, 0)  # To Aster's righ
 # Naturalizer standing positions (near the back wall, out of the way)
 const NK_STAND_POS_1 := Vector3(13.2, 0, -5.5)
 const NK_STAND_POS_2 := Vector3(14.8, 0, -5.5)
-# Distinct grid-cell centres on either side of the citizen. The old sub-cell offsets
-# quantized NK-02 onto the citizen's occupied cell, so the apparent "escort" could
-# only proceed when a timer ignored the impossible physical formation.
+# Distinct grid-cell centres on either side of the citizen. Sub-cell offsets
+# would quantize NK-02 onto the citizen's occupied cell — a physically impossible
+# formation no arrival-gated escort could ever proceed from.
 const NK_GRIP_POS_1 := Vector3(8.5, 0, -1.5)
 const NK_GRIP_POS_2 := Vector3(8.5, 0, 1.5)
 const GRIP_ARRIVAL_RADIUS := 0.2
@@ -467,8 +467,8 @@ func _start_naturalizers_grip() -> void:
 			or not bool((operations["nk2"] as Dictionary).get("accepted", false)):
 		authority["phase"] = ESCORT_PHASE_BLOCKED
 	_publish_escort_authority(authority)
-	# The corridor handoff is arrival-owned. A fixed five-second timer used to fire
-	# while NK-02 was still en route and hide that mismatch with a render-node snap.
+	# The corridor handoff is arrival-owned. A fixed delay can fire while NK-02 is
+	# still en route, hiding the mismatch behind a render-node snap.
 	_maybe_begin_corridor_walk()
 
 
@@ -864,8 +864,8 @@ func _clear_dialogue_presenter() -> void:
 		var connection := connection_v as Dictionary
 		_dialogue.dialogue_finished.disconnect(connection.callable)
 	_dialogue.clear()
-	# Rebind instead of mutating: a legacy presenter may still hold a read-only
-	# constant array from before the escort-authority migration.
+	# Rebind instead of mutating: the chain keys may reference a read-only
+	# constant array, which in-place mutation would reject.
 	_dlg_chain_keys = []
 	_dlg_chain_index = 0
 	_dlg_chain_next = Callable()

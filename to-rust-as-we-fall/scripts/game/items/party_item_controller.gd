@@ -3,8 +3,8 @@ extends Node3D
 
 ## Shared party-item authority adapter and presenter.
 ##
-## GameState remains the only inventory authority. This controller owns the scene-facing work that
-## was previously duplicated in TutorialSequence and FragmentPreviewSequence: mutations, portable
+## GameState is the only inventory authority. This controller owns the scene-facing work that
+## TutorialSequence and FragmentPreviewSequence share: mutations, portable
 ## item reads, ground/hand presenters, inventory refresh notifications, and item consequence copy.
 ## Hosts configure callbacks; fragments do not grow a second item runtime.
 

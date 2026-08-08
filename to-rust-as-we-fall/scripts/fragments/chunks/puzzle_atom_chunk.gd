@@ -1252,8 +1252,8 @@ func headless_process(_delta: float) -> void:
 	_update_stage_signals(false)
 	_update_concealment()
 
-## Live gate language: the generous lure stays generous, but its remaining window and return are
-## no longer hidden state. The final three seconds change colour and pulse the key object.
+## Live gate language: the generous lure stays generous, and its remaining window and return are
+## visible state, never hidden. The final three seconds change colour and pulse the key object.
 func _update_stage_signals(render_feedback := true) -> void:
 	var now := _get_scheduler_tick()
 	var authority_changed := false
@@ -1610,7 +1610,7 @@ func _strategy_stage_metrics(st: Dictionary, gs) -> Dictionary:
 	var tender_return_distance := _planar_path_length(flure, tender_path)
 	var tender_return_seconds := tender_return_distance / GameState.RUN_SPEED
 	# The crossing window starts at the visible causal endpoint.  Proving from a
-	# proximity radius would silently grant time the runtime no longer grants.
+	# proximity radius would silently grant time the runtime does not grant.
 	var watcher_ready_seconds := watcher_outbound_distance / SENTRY_SPEED
 	var regroup_delay := maxf(0.0, tender_return_seconds - watcher_ready_seconds)
 	var effective_grace := maxf(0.05, LURE_RACE_GRACE_SECONDS - regroup_delay)

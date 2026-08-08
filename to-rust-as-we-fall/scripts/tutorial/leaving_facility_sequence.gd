@@ -2071,7 +2071,7 @@ func _toggle_routing() -> void:
 # --- Iron damage ---
 
 ## The scheduler owns iron contact outcomes. The versioned record survives callback-heap clearing,
-## preserves the exact next tick, and also carries the cumulative QA evidence that used to reset.
+## preserves the exact next tick, and carries the cumulative QA evidence so a reload cannot reset it.
 func _start_iron_hazard_cadence() -> void:
 	if _scheduler == null or _game_state == null:
 		return
@@ -2210,7 +2210,7 @@ func _restore_shelter_rest_authority() -> void:
 		SHELTER_REST_PHASE_COMPLETE:
 			_current_step = "dawn" if _current_step != "complete" else "complete"
 		_:
-			# `reach_shelter` is now a legitimate portable pre-commit phase: the party is
+			# `reach_shelter` is a legitimate portable pre-commit phase: the party is
 			# physically settled and the saved named continuation owns the exact hand-off to
 			# `_start_first_rest`. Only later phases require a committed rest transaction.
 			if _current_step in ["first_rest", "dawn"]:
@@ -2404,7 +2404,7 @@ func _apply_time_of_day_visuals() -> void:
 		var dusk_blend := clampf(normalized / DayNightCycleScript.NIGHT_START, 0.0, 1.0)
 		_world_environment.background_color = Color(0.06, 0.07, 0.09).lerp(Color(0.12, 0.08, 0.06), dusk_blend)
 		_world_environment.ambient_light_color = Color(0.32, 0.34, 0.38).lerp(Color(0.42, 0.31, 0.23), dusk_blend)
-		# WebGL's linear lighting renders the old dusk floor almost black. Keep the
+		# WebGL's linear lighting renders a dim dusk floor almost black. Keep the
 		# atmosphere, but preserve enough fill to read route seams and interactables.
 		_world_environment.ambient_light_energy = lerpf(0.58, 0.40, dusk_blend)
 		_world_environment.glow_intensity = lerpf(0.22, 0.34, dusk_blend)

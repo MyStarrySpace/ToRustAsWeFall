@@ -916,7 +916,7 @@ func _sync_movement_entries_at(now: int) -> void:
 
 ## Which movement phases put PIXELS on screen. Successful movement (accepted / progress / arrival)
 ## deliberately renders nothing -- the party visibly walking IS the acknowledgement, and a banner
-## narrating it was ruled UI junk. Only a move that did not happen earns chrome; a stall status
+## narrating it would only restate what the player already sees. Only a move that did not happen earns chrome; a stall status
 ## (reforming_route / cooperative_hold) renders through the same panel when present.
 func _movement_phase_renders(phase: String) -> bool:
 	return phase in ["refused", "interrupted"]

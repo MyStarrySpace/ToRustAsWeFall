@@ -133,11 +133,6 @@ const DETECTION_VERTICAL_BAND := 2.0
 ## A medium hide drops an enemy's effective spotting range to this fraction of its outer range — the
 ## "inner" tier. Close enough (inside this band) and a corner/scarpet won't shake a chaser.
 const DETECTION_INNER_FACTOR := 0.45
-## RETIRED. A wall-blocked pair used to re-test on a 0.25s cadence for at most 120 hops (~30s) and then
-## give up, which was both a per-pair running cost and a correctness cliff -- past the budget, cover
-## granted immunity for the rest of a long move, the very bug the re-check existed to prevent.
-## _arm_detection_los_recheck now SOLVES for the tick sight returns and wakes once, with no horizon.
-
 ## Detection is invalidated by movement/state changes, then solved analytically into scheduler events.
 ## These derived registries keep that work proportional to active detector->target subscriptions instead
 ## of every character pair in the scene. The counters are deliberately cheap and exposed for performance
@@ -145,11 +140,11 @@ const DETECTION_INNER_FACTOR := 0.45
 var _detection_active_pairs: Dictionary = {}  # symmetric pair tag -> {a, b}
 ## WHO WATCHES WHOM, so invalidating one body touches only the pairs that body is in.
 ##
-## Recomputing a moved character used to scan every detector against every one of its targets and
-## `continue` past the ones it did not need -- O(detectors x targets) work to find the O(targets)
-## pairs that actually changed, and it cancelled and re-solved pairs whose geometry had not moved at
-## all. Those re-solves are not free and they are not harmless: a pair with an unchanged plan should
-## keep the event it already has.
+## Without the index, recomputing a moved character means scanning every detector against every one
+## of its targets and `continue`-ing past the ones it does not need -- O(detectors x targets) work to
+## find the O(targets) pairs that actually changed -- and cancelling + re-solving pairs whose geometry
+## has not moved at all. Those re-solves are not free and they are not harmless: a pair with an
+## unchanged plan should keep the event it already has.
 ##
 ## Subscriptions change rarely and movement changes constantly, so the index is rebuilt lazily on a
 ## dirty flag rather than maintained incrementally at every write site (which is where this kind of
@@ -337,7 +332,7 @@ func register_character(id: String, pos: Vector3, speed: float = 3.0, stats: Dic
 	_reserve_parked(id, cell)
 	# A body appearing is a state change that can invalidate a prediction just as much as one moving:
 	# an enemy spawned beside the party must see them without waiting for somebody else to move, and a
-	# hazard must notice a body registered inside its radius. Registration used to recompute nothing.
+	# hazard must notice a body registered inside its radius.
 	#
 	# Only WHEN IT CAN MATTER, though. Scene build registers every character back to back, so an
 	# unconditional rebuild here is O(n^2) churn that solves pairs against a half-built roster and then
@@ -1080,7 +1075,7 @@ func _do_move_cross_level(id: String, end_cell: Vector2i, end_level: int) -> boo
 			and get_character_level(id) == end_level)
 
 ## Convert a node+edge plan into planar legs. The edge entering a leg remains attached to that leg;
-## this is the information the old waypoint-only reconstruction discarded.
+## a waypoint-only reconstruction would discard which typed edge carries each transition.
 func _navigation_segments_from_plan(navigation_plan: Dictionary) -> Array:
 	var nodes: Array = navigation_plan.get("nodes", [])
 	var edges: Array = navigation_plan.get("edges", [])
@@ -1242,8 +1237,8 @@ func _do_move_to_pos(
 	# straight-line resolution.
 	if grid != null:
 		# A programmatic position move (chunks, NPC scripts) snaps an off-mesh TARGET to the nearest
-		# walkable cell — the grid equivalent of the old graph's snap-to-node. (Player clicks stay
-		# strict: command_move_to_cell still rejects an unwalkable destination.)
+		# walkable cell. (Player clicks stay strict: command_move_to_cell still rejects an unwalkable
+		# destination.)
 		if grid.level_count > 1:
 			var target_level := grid.level_for_y(pos.y)
 			var target_cell := grid.nearest_walkable_cell(grid.world_to_grid(pos), target_level)
@@ -1517,9 +1512,9 @@ var coord_map = null
 ## frame, e.g. the wash coil's 26x8). Never gameplay-enforced — purely a LOUD
 ## frame-mixing tripwire: a data-layer move command far outside the authored
 ## frame almost always means a RENDER position leaked into a data API (the bug
-## class a coord_map scene makes possible; a player-contract flake teleported a
-## member to the render frame's coordinates once and the cause outran four
-## instrumentation passes — this warning is the permanent net). Scenes with a
+## class a coord_map scene makes possible, and one whose cause is nearly
+## impossible to trace back from the teleport it produces — this warning names
+## it at the boundary where the frames mix). Scenes with a
 ## coord_map should set it.
 var data_frame_bounds := Rect2()
 
@@ -3586,8 +3581,8 @@ func _try_group_start_wait_spatial_path(
 ## waits where needed. Returns {cells: Array[Vector2i], ticks: Array[float]}
 ## (absolute arrival tick per cell) or {} if no conflict-free path is found.
 # Binary min-heap for the cooperative A* open set. Ordered by f, then by insertion seq so ties break
-# deterministically (FIFO) — replaces the old O(n) linear min-scan, which made a large/hard search
-# O(n²) (≈ seconds at the 12k-node budget) and froze the per-hover path preview.
+# deterministically (FIFO) — a linear O(n) min-scan would make a large/hard search
+# O(n²) (≈ seconds at the 12k-node budget) and freeze the per-hover path preview.
 # Cooperative heap entries are immutable records in parallel packed arrays;
 # the heap itself stores only their integer ids. This preserves the exact
 # f-score/insertion-sequence ordering while avoiding one Dictionary allocation
@@ -3695,8 +3690,8 @@ func _plan_cooperative(
 			PerformanceTrace.end(&"nav", &"game_state.plan_cooperative", perf_started, "reserved", 0)
 			return {}
 	# First solve the ordinary 2D problem. Besides being the common fast path,
-	# an empty result is the geometric-unreachability proof that the old BFS
-	# computed separately. This avoids traversing reachable space twice.
+	# an empty result doubles as the geometric-unreachability proof, so no
+	# separate reachability search has to traverse the same space twice.
 	var spatial_path := grid.find_path(
 		start, end, {}, route_cautious, {}, {}, level, allowed_cells)
 	if spatial_path.is_empty():
@@ -4189,7 +4184,7 @@ func _on_detection_event(detector_id: String, target_id: String, recheck_hops: i
 	# A blocked spot is NOT the last word while the pair is still in motion: the range-crossing event fires
 	# once per recompute, so a target that entered range BEHIND a wall and then walked into the open within
 	# the SAME move would otherwise never be re-checked — cover would grant immunity for the rest of the
-	# move (The Watched Gap caught this). While either side is moving, re-arm a short scheduler re-check
+	# move. While either side is moving, re-arm a short scheduler re-check
 	# under the pair tag (any recompute replaces it; both parked = frozen geometry = no re-arm needed, the
 	# next move recomputes). Scheduler-driven, so it stays replay-deterministic and fast-forward invariant.
 	if not _has_detection_los(detector_id, target_id):
@@ -4200,7 +4195,7 @@ func _on_detection_event(detector_id: String, target_id: String, recheck_hops: i
 	# is not the last word while the pair is still moving (stepping OUT mid-move must still get
 	# spotted), so it re-arms the same re-check chain.
 	if is_at_shelter(target_id):
-		_arm_detection_los_recheck(detector_id, target_id, recheck_hops)
+		_arm_detection_shelter_recheck(detector_id, target_id, recheck_hops)
 		return
 	if is_dodging(target_id):
 		return
@@ -4230,15 +4225,99 @@ func _has_detection_los(detector_id: String, target_id: String) -> bool:
 ## constant motion can't poll forever. Uses the pair tag, so any recompute cancels + supersedes the chain.
 ## A wall-blocked spot on a pair still in motion: SOLVE for the tick sight comes back, and wake there.
 ##
-## This used to re-test every 0.25s for at most 120 hops -- exactly 30 seconds -- and then stop. The cadence was
-## pure overhead on every blocked-but-moving pair in the level, and the cap was worse than overhead:
-## past 30 seconds the chain silently ended, so cover granted immunity for the rest of a long move,
-## which is precisely the bug the re-check was written to prevent. Measured: a slow crawler rounding a
-## long wall comes into view at 76.4s and the old chain had given up at 30.
+## A fixed-cadence re-test would pay its cost on every blocked-but-moving pair in the level and need
+## an arbitrary stop budget, past which cover would grant immunity for the rest of a long move -- the
+## very failure the re-check exists to prevent (a slow crawler rounding a long wall can stay blocked
+## for minutes before coming into view). Solving for the reappearance tick costs one event and needs
+## no such budget.
 ##
 ## The solve reads both bodies' committed plans, so it is correct for a moving detector as well as a
 ## moving target, and it has no horizon. If sight never returns on the current plans it schedules
 ## nothing at all -- a re-plan recomputes the pair anyway.
+## The exact tick a body's committed plan first leaves every shelter region, or -1.0 if the plan
+## never exits (a parked body inside a shelter stays sheltered until a new plan recomputes the
+## pair). Shelters are axis-aligned rects and motion is piecewise linear, so containment per
+## segment is the intersection of two per-axis linear intervals -- solved in closed form, and the
+## solve is what lets a sanctuary miss schedule ONE wake at the doorway instead of re-asking on a
+## cadence whether the body has left yet.
+func predict_shelter_exit_tick(id: String) -> float:
+	if scheduler == null or not characters.has(id) or _shelters.is_empty():
+		return -1.0
+	var now := float(scheduler.get_current_tick())
+	for seg_v in _get_movement_segments(id):
+		var seg: Dictionary = seg_v
+		var seg_start := float(seg["start_tick"])
+		var seg_end := float(seg["end_tick"])
+		var t0: float = maxf(seg_start, now)
+		if t0 >= seg_end:
+			continue
+		var pos0: Vector3 = seg["start_pos"]
+		var vel: Vector3 = seg["velocity"]
+		if vel.length() < 0.0001:
+			# Parked: containment is constant on this window.
+			var inside_parked := false
+			for s in _shelters:
+				if pos0.x >= s.min.x and pos0.x <= s.max.x 						and pos0.z >= s.min.y and pos0.z <= s.max.y:
+					inside_parked = true
+					break
+			if not inside_parked:
+				return t0
+			continue
+		# Covered intervals: for each rect, the t-window where BOTH axes sit inside.
+		var covered: Array = []
+		for s in _shelters:
+			var lo := t0
+			var hi := seg_end
+			var ok := true
+			for axis in [["x", float(s.min.x), float(s.max.x)], ["z", float(s.min.y), float(s.max.y)]]:
+				var p0 := pos0.x if str(axis[0]) == "x" else pos0.z
+				var v := vel.x if str(axis[0]) == "x" else vel.z
+				var a_min := float(axis[1])
+				var a_max := float(axis[2])
+				if absf(v) < 0.0001:
+					if p0 < a_min or p0 > a_max:
+						ok = false
+						break
+					continue
+				var t_enter := seg_start + (a_min - p0) / v
+				var t_leave := seg_start + (a_max - p0) / v
+				lo = maxf(lo, minf(t_enter, t_leave))
+				hi = minf(hi, maxf(t_enter, t_leave))
+			if ok and lo < hi:
+				covered.append([lo, hi])
+		covered.sort_custom(func(a, b) -> bool: return float(a[0]) < float(b[0]))
+		# Earliest uncovered instant in [t0, seg_end).
+		var cursor := t0
+		for iv in covered:
+			if float(iv[0]) > cursor + 0.0001:
+				return cursor if cursor > t0 else t0
+			cursor = maxf(cursor, float(iv[1]))
+			if cursor >= seg_end:
+				break
+		if cursor < seg_end - 0.0001:
+			return cursor
+	return -1.0
+
+## A sanctuary miss is not a sight problem: the pair sees each other fine and the target is simply
+## standing on protected ground. Wake exactly when its plan walks off that ground.
+func _arm_detection_shelter_recheck(detector_id: String, target_id: String, hops: int) -> void:
+	if scheduler == null:
+		return
+	var exit_tick := predict_shelter_exit_tick(target_id)
+	if exit_tick < 0.0:
+		return
+	if exit_tick <= float(scheduler.get_current_tick()) + 0.0001:
+		exit_tick = float(scheduler.get_current_tick()) + 0.0166
+	var tag := _detection_pair_tag(detector_id, target_id)
+	_detection_active_pairs[tag] = {
+		"a": detector_id,
+		"b": target_id,
+		"tick": exit_tick,
+	}
+	scheduler.schedule_at(exit_tick,
+		func(): _recheck_detection_after_los_block(detector_id, target_id, hops + 1),
+		tag)
+
 func _arm_detection_los_recheck(detector_id: String, target_id: String, hops: int) -> void:
 	if scheduler == null:
 		return
@@ -4247,7 +4326,7 @@ func _arm_detection_los_recheck(detector_id: String, target_id: String, hops: in
 	var clear_tick := predict_los_change_tick(detector_id, target_id, true)
 	if clear_tick < 0.0:
 		return
-	# STRICT PROGRESS is what makes the chain terminate now that there is no hop cap. Each re-arm must
+	# With no hop cap, STRICT PROGRESS is what makes the chain terminate. Each re-arm must
 	# land strictly later than the tick it was armed at; otherwise a solve that returns the current
 	# moment (sampling landing exactly on a boundary) would wake, re-solve to the same tick, and spin
 	# there forever. With progress guaranteed, the chain is bounded by the movement plan's own end.
@@ -4268,8 +4347,8 @@ func _arm_detection_los_recheck(detector_id: String, target_id: String, hops: in
 ## concealment tier, effective range) before handing back to _on_detection_event, which redoes the LOS gate
 ## and re-arms this if the wall still intervenes. A transient RANGE dip is NOT terminal while the pair is
 ## still moving — the one-shot range-crossing prediction was already consumed by the original blocked event,
-## so dropping the chain here would resurrect the cover-immunity bug for in-move re-entries (the review
-## caught this). Only out-of-range AND parked (or a concealment/band change, which recompute) end it.
+## so dropping the chain here would let cover grant immunity for in-move re-entries. Only out-of-range
+## AND parked (or a concealment/band change, which recompute) end it.
 func _recheck_detection_after_los_block(detector_id: String, target_id: String, hops: int = 1) -> void:
 	if not characters.has(detector_id) or not characters.has(target_id):
 		return
@@ -4334,7 +4413,7 @@ func register_proximity_trigger(
 		# EDGE-TRIGGERED. A trigger fires on the transition into satisfied, not for as long as it
 		# stays satisfied. Without this a callback that re-arms its own trigger (a turret that
 		# rejects a body already standing in reach, say) re-solves, sees the predicate still true,
-		# fires again immediately, and recurses until the process dies -- measured, it did.
+		# fires again immediately, and recurses until the process dies.
 		"latched": false,
 	}
 	_recompute_proximity_trigger(trigger_id)
@@ -7776,7 +7855,7 @@ func command_rally_members(
 	) -> int:
 	var preflight := compute_rally_preflight(
 		member_ids, target, str(anchor_id), route_cell_constraint)
-	# A member who cannot reach the formation blocks only themselves (director ruling, 2026-08-06);
+	# A member who cannot reach the formation blocks only themselves;
 	# the rally still commits for everyone who can answer it, and the event records exactly those.
 	# The blocked member is marked in the world instead, so the split is seen rather than silent.
 	if not bool(preflight.get("accepted", false)):
@@ -8017,9 +8096,9 @@ func _rally_preflight_report_for_destinations(
 	# Selection must never run a second, independently interpreted route query and
 	# downgrade an accepted atomic command to BLOCKED (or advertise READY for a
 	# route different from the one that release validates).
-	# Director ruling (2026-08-06): a member who cannot reach the destination blocks ONLY THEMSELF.
+	# A member who cannot reach the destination blocks ONLY THEMSELF.
 	# The members who can route, go. Freezing the whole party because one of them is on another floor
-	# reads as a dead click. The original worry behind the old all-or-nothing form was a party that
+	# reads as a dead click. The real danger of a partial rally is a party that
 	# splits SILENTLY — that is answered by the blocked member being visibly marked (an X over their
 	# head), not by refusing everyone.
 	var preview_paths: Array = []
@@ -8371,9 +8450,9 @@ func compute_rally_destinations(member_ids: Array, target: Vector3, anchor_id :=
 				destinations.append(target)
 				continue
 			# A cautious rally must keep every formation pill out of a known hazard,
-			# not merely route the centre member around it.  The old resolver chose
-			# adjacent walkable cells without consulting risk, so a safe target on
-			# the edge of an iron field could place the second unit inside the field.
+			# not merely route the centre member around it.  Picking adjacent walkable
+			# cells without consulting risk would let a safe target on the edge of an
+			# iron field place the second unit inside the field.
 			var preferred_cell := target_cell + lateral_step \
 				* _party_formation_lateral_offset(surrounding_index)
 			var cell := _nearest_free_cell(
@@ -8719,7 +8798,7 @@ func _do_move_to_cell(
 ## prior movement and pinned characters[id].position to current_pos.
 ## Characters exempt from cooperative (space-time) planning: chase PACKS re-planning every rescan
 ## against five pack-mates' reservations drive the planner into deep wait-state searches — a 5 wu
-## hop measured 30-90 ms mid-chase (the lockout chase's frame drops). An exempt character routes
+## hop can cost 30-90 ms mid-chase, whole dropped frames. An exempt character routes
 ## by plain A* and neither writes nor consults reservations; brief pack overlaps are the accepted
 ## trade (a mob is not a stealth puzzle). Derived state — set at spawn, never logged.
 var _coop_exempt := {}

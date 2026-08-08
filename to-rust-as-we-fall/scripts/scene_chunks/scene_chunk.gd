@@ -1543,7 +1543,7 @@ func _add_box(
 
 ## A tiled ground slab. Passing `tile` (a pixel-atlas tile name from TILE_DIR) textures the top with the
 ## world-triplanar 1-tile/m deck material — each grid cell reads as one tile, so the grid is visible, matching
-## the sim-room / generated-stretch look. Omit `tile` for the old flat-colored slab (every existing caller).
+## the sim-room / generated-stretch look. Omit `tile` for a plain flat-colored slab.
 func _add_floor(parent: Node3D, position: Vector3, size: Vector3, color: Color, tile := "") -> MeshInstance3D:
 	var floor := _add_box(parent, position, size, color)
 	if tile != "":
@@ -1879,7 +1879,7 @@ func _auto_outline_interactable(interactable: Node, parent: Node3D, position: Ve
 ## outline shells; meshes another OutlineSurfaceTarget already owns (one mesh, one outline owner);
 ## and meshes living under a DIFFERENT interactable's subtree (its dwell ring, dressing, verb disc —
 ## grabbing a neighbour's parts merges two objects into one oversized pick body that eats the hover
-## ray: the hub-wheel bug, where the crawl mouth's outline body swallowed the wheel entirely).
+## ray: a crawl mouth's outline body can swallow an adjacent wheel entirely).
 func _collect_meshes_near(node: Node, position: Vector3, radius: float, for_interactable: Node = null) -> Array:
 	var out: Array = []
 	for mi in OutlineFeedbackManager.collect_mesh_instances(node):

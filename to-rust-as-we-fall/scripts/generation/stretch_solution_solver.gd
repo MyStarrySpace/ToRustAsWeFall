@@ -231,12 +231,12 @@ static func mandatory_branch_actions(
 			"consumer_cells": consumer_cells.duplicate(true),
 			"consumer_cell": (consumer_cell as Array).duplicate(),
 			# The canonical golden path skips optional reward nodes, while an opting-in
-			# path must cross the same cut to reach them. Keep the legacy singular
-			# trigger for golden replays and emit every earliest physical destination
+			# path must cross the same cut to reach them. Emit both the singular
+			# trigger golden replays consume and every earliest physical destination
 			# that can encounter the cut so neither path arrives at a closed span.
 			"before_node": before_node,
 			"before_nodes": before_nodes,
-			# `before_nodes` is the legacy replay interleave. Runtime actionability
+			# `before_nodes` is the replay interleave. Runtime actionability
 			# consumes this exact graph-derived set instead: apply the emitted cut to
 			# the final woven graph, then record every typed interaction region whose
 			# own declared predecessor can no longer reach any accepted arrival.

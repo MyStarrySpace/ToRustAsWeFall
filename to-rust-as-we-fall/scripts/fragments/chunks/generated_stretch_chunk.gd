@@ -120,7 +120,7 @@ var _runtime_navigation_cell_delta := Vector2i.ZERO
 var _runtime_interaction_contract_errors: Dictionary = {}
 
 # Recovery points are tended upper anchors that deploy to a lower deck and only permit the return climb.
-# `_drop_downs` remains as a compatibility readback and must stay empty: no paired forward portal may bypass
+# `_drop_downs` is a compatibility readback and must stay empty: no paired forward portal may bypass
 # unresolved puzzle beats.
 var _drop_downs: Array = []
 var _climbvines: Array = []
@@ -376,9 +376,9 @@ func _build_chunk() -> void:
 	_ensure_woven_grid()
 	_refresh_branch_gap_cells()
 
-	# The tiled walkable floor IS the level now — the old abstract scaffolding (a big foundation slab, straight
-	# route-connector boxes, big role pads, a palette legend) was redundant clutter over it, so it's gone. Only the
-	# floor + the per-node markers/interactables the player actually uses remain.
+	# The tiled walkable floor IS the level — abstract scaffolding over it (a big foundation slab, straight
+	# route-connector boxes, big role pads, a palette legend) would be redundant clutter. Only the
+	# floor + the per-node markers/interactables the player actually uses are built.
 	_build_foundation()
 
 	# Everything _build_generated_nodes adds (markers, labels, content, interactables, outline targets) is authored
@@ -633,8 +633,8 @@ func _spiral_enabled() -> bool:
 		return bool(_config["spiral"])
 
 	# A hand-authored / ASCII level (from the builder) plays as the FLAT layout the user drew — no spiral warp,
-	# no woven branch spokes. Current fixed specs identify that authored spatial
-	# projection explicitly while the old schema check keeps legacy local drafts
+	# no woven branch spokes. Fixed specs identify that authored spatial
+	# projection explicitly; the schema check keeps legacy local drafts
 	# readable without pretending they satisfy current acceptance.
 	if str(_spec.get("source", {}).get("spatial_projection", "")) \
 			== "authored_flat_v1" \
@@ -2353,7 +2353,7 @@ func _on_route_risk_bite(
 	character_id: String, damage: float, cell: Vector2i, penalty: float
 ) -> void:
 	_risky_damage_total += damage
-	# Legacy pressure telemetry is now only a mirror of actual spatial HP loss.
+	# Legacy pressure telemetry mirrors actual spatial HP loss.
 	_pressure_taken += damage
 	_route_phase = "impact"
 	_last_outcome = "risk_cell_contact:%s:%d:%d" % [character_id, cell.x, cell.y]
@@ -3187,7 +3187,7 @@ func _required_progression_predecessor(node_id: String) -> String:
 	return ""
 
 
-## Retired compatibility verb. Generated progress begins only in
+## Compatibility stub that always refuses. Generated progress begins only in
 ## _on_generated_node_interacted after the exact one-shot has been consumed.
 func activate_generated_node(_node_id: String, _interaction_actor := "") -> bool:
 	return false
@@ -3534,7 +3534,7 @@ func _headless_generated_interaction_actor(node_id: String) -> String:
 	return ""
 
 
-## Retired semantic shortcut. A route becomes active only after a canonical body
+## Compatibility stub that always refuses. A route becomes active only after a canonical body
 ## walks its authored surface and arrives at the exact destination.
 func choose_generated_route(_route_id: String, _activate_target := true) -> bool:
 	return false
@@ -4291,7 +4291,7 @@ func _clear_generated_children() -> void:
 
 func _build_foundation() -> void:
 	# The floor is built FROM the walkable grid cells as atlas TILES — so the visible surface (and its collision)
-	# is EXACTLY where the player can walk. No more big rectangular slab that eats clicks the grid then rejects.
+	# is EXACTLY where the player can walk. A big rectangular slab would eat clicks the grid then rejects.
 	_build_walkable_floor()
 	var graybox: Dictionary = _spec.get("graybox", {})
 	var bounds: Dictionary = graybox.get("bounds", {})
@@ -4883,7 +4883,7 @@ func _climbvine_selected_group() -> Array:
 	return _active_party.duplicate()
 
 
-## Compatibility count for removed forward drops, plus the real gated climbvine recovery count.
+## Compatibility readback for forward drops, which must stay absent (recovery is the gated climbvine climb).
 func get_drop_down_count() -> int:
 	return _drop_downs.size()
 
@@ -7643,9 +7643,9 @@ func _complete_bridge_cargo_transport(announce := true) -> void:
 			or _hydraulic_sequence_tick() + 0.000001 \
 				< _bridge_transport_start_tick + BRIDGE_TRANSPORT_DURATION:
 		return
-	# Seat every causal field before the first observable publication. Previously
-	# _set_bridge_cargo_phase emitted the compatibility world-state signal while the
-	# installed flag, router route, and grid topology still described a blocked gap.
+	# Seat every causal field before the first observable publication: the
+	# compatibility world-state signal must never fire while the installed flag,
+	# router route, or grid topology still describes a blocked gap.
 	_bridge_cargo_phase = BRIDGE_CARGO_SEATED
 	_cistern_bridge_installed = true
 	_main_current_restored = true
@@ -8439,7 +8439,7 @@ func _on_branch_cache_interacted(index: int, expected_source: Node) -> void:
 		_rearm_resource_source(expected_source)
 
 
-## Retired consequence helper. A branch reward exists only after the exact bound
+## Always-refusing stub. A branch reward exists only after the exact bound
 ## cache accepts a nearby body's interaction and its one-shot receipt is consumed.
 func _collect_branch_reward(_index: int) -> bool:
 	return false
@@ -9159,7 +9159,7 @@ func _reconcile_resource_claims_after_restore() -> void:
 	_apply_resource_claim_presenters()
 
 
-## Retired actor-injection seam. Physical lysate moves only from the callback of
+## Always-refusing stub. Physical lysate moves only from the callback of
 ## its exact bound one-shot Interactable.
 func _try_collect_physical_lysate(
 	_cache: Dictionary, _properties: Dictionary, _interaction_actor := ""
@@ -9206,7 +9206,7 @@ func _transfer_physical_lysate_from_receipt(
 	return pickup
 
 
-## Retired direct consequence helper. Arrival at the catch still has to consume
+## Always-refusing stub. Arrival at the catch has to consume
 ## node_04's exact one-shot interaction receipt.
 func _collect_hydraulic_spillway_food(_interaction_actor := "") -> bool:
 	return false
@@ -9324,8 +9324,8 @@ func _build_generated_node(node: Dictionary) -> void:
 	)
 	var marker_emission_energy := 0.34 if actionable else 0.035
 
-	# No big role pad over the tiled floor anymore — just a compact marker post the player reads + clicks, plus the
-	# content markers below. Elevation posts still show when a node sits on an upper floor.
+	# A compact marker post the player reads + clicks, plus the content markers below — never a big role
+	# pad over the tiled floor. Elevation posts show when a node sits on an upper floor.
 	_build_elevation_posts(pos, pad_size, int(node.get("elevation_index", 0)), base_role_color)
 	highlight_meshes.append_array(_build_node_content_markers(node, pos))
 	if handler_id == "":
@@ -9467,8 +9467,8 @@ func _build_generated_node(node: Dictionary) -> void:
 	)
 
 	# Cross-wire BOTH directions: the target already delegates to the interactable; the interactable
-	# must point back so hover/SHIFT light the node's real marker meshes (its auto-outline used to
-	# latch onto its own dwell ring — a flat circle — before rings were excluded from collection).
+	# must point back so hover/SHIFT light the node's real marker meshes, not whatever geometry the
+	# auto-outline would collect from the interactable itself (a dwell ring is a flat, unreadable circle).
 	if target != null and interactable.has_method("set_outline_target"):
 		interactable.call("set_outline_target", target)
 		# Every generated-node pick hull follows its visible marker meshes through
@@ -10346,7 +10346,7 @@ func _add_outline_target(
 	delegate: Node
 ) -> StaticBody3D:
 	# Build through the shared outline system so the target is actually bound to a
-	# feedback manager in gameplay (it used to be orphaned here). Stretch tuning is
+	# feedback manager in gameplay (an unbound target never lights). Stretch tuning is
 	# slimmer than the room default (smaller particle budget, taller highlight box).
 	var metadata := {"generated_node_id": node_id}
 	var opts := {
@@ -10797,7 +10797,7 @@ func _rearm_exit_shelter_interaction() -> void:
 		_set_outline_target_enabled(_node_targets.get("exit_shelter", null), true)
 
 
-## Retired actor-injection seam. Generated resources are finite physical sources,
+## Always-refusing stub. Generated resources are finite physical sources,
 ## not rewards a caller can request by naming a node and portrait.
 func _secure_generated_resource(
 	_node: Dictionary, _interaction_actor := ""

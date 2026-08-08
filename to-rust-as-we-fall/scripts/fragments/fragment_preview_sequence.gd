@@ -60,8 +60,8 @@ const DEFAULT_PREVIEW_EDGE_SCROLL_MARGIN := 6.0
 ## the clear region rather than the soft fringe so it cannot reveal a fogged endpoint.
 const PARTY_PERCEPTION_CLEAR_RADIUS := 14.0
 
-# chunk name -> packed scene. The single lookup that replaced the old per-name match (and the reason
-# we no longer need one *_preview.tscn per chunk: one scene reads this registry and picks at runtime).
+# chunk name -> packed scene. The single lookup behind the one shared preview: the scene reads this
+# registry and picks a chunk at runtime, so no chunk needs a preview scene of its own.
 const CHUNK_SCENES := {
 	"stacks": STACKS_CHUNK_SCENE,
 	"rings": RINGS_CHUNK_SCENE,
@@ -190,7 +190,7 @@ const PREVIEW_ENTRIES := [
 	# (SET_PIECES 21 — lure the pack across the studs). Wipe restarts demo the runback decor pass.
 	{"id": "hostile_streets", "chunk": "data_fragment", "title": "Hostile Streets (decor + studs)", "stage": 6,
 		"config": {"fragment_path": "res://data/fragments/hostile_streets.tres"}},
-	# BOSS PIECES, now PLAYABLE: the watchtower switchback CLIMB + trail-head scree WINCH + summit
+	# BOSS PIECES, PLAYABLE: the watchtower switchback CLIMB + trail-head scree WINCH + summit
 	# SURVEY beat; the paranucleus thread with the ring-rooted SPIKER sightline (SET_PIECES 18) and
 	# the reservoir cache beyond the far mouth. N reseeds both.
 	{"id": "boss_showcase", "chunk": "boss_showcase", "title": "Boss Pieces (Watchtower + Paranucleus)", "stage": 6,
@@ -217,7 +217,7 @@ const PREVIEW_ENTRIES := [
 	# The archetype PIECE LIBRARY gallery: every visual body in
 	# ArchetypePieceLibrary on its own plinth (bodies, never verbs).
 	{"id": "archetype_gallery", "chunk": "archetype_gallery", "title": "Archetype Piece Library", "stage": 1},
-	# WASH ASCENT — the from-scratch rebuild (director's restart contract): placements
+	# WASH ASCENT: placements
 	# are SCENE NODES in wash_ascent_props.tscn, every visible mesh a library piece
 	# (zero primitives, linted), runs measured from real AABBs, storytelling placement
 	# (decaying approach / kept bay / measured manifold / overgrown portal ledge).
@@ -346,7 +346,7 @@ const ABILITY_KEYCODES := {
 	"X": KEY_X,
 	"V": KEY_V,
 }
-## The spreadsheet still owns which legacy slot an ability uses; InputMap owns the live key behind
+## The spreadsheet owns which legacy slot an ability uses; InputMap owns the live key behind
 ## that slot. Abilities that share a slot (Aster/Endo on primary) are resolved by active owner.
 const ABILITY_INPUT_ACTION_BY_KEYBIND := {
 	"Z": "ability_primary",
@@ -865,8 +865,8 @@ func _load_environment_model() -> void:
 			_pdbg("interactables warped onto coord_map")
 		# Generate ground collision DIRECTLY from the chunk's walkable_regions, warped onto the deck. The GLB's
 		# set-piece decks + the chunk's straight collision planks don't match the declared walkable footprint
-		# (narrow set-pieces, chord-vs-curve branch boxes), so ~30% of walkable cells had no deck to ray-hit and
-		# were un-clickable. This makes collision == walkable by construction for ANY coord_map chunk.
+		# (narrow set-pieces, chord-vs-curve branch boxes), so a walkable cell can have no deck to ray-hit and
+		# be un-clickable. This makes collision == walkable by construction for ANY coord_map chunk.
 		_add_warped_walkable_collision()
 
 func _ensure_occlusion_manager() -> void:
@@ -1602,7 +1602,7 @@ func register_preview_interactable(interactable: Node) -> void:
 	# Chunk-built interactables must ride the GAMEPLAY scheduler like every other interactable (the
 	# tutorial base's tree-walk injection runs before chunks load, so it never reaches them). Without
 	# this a TIMED_ACTION dwell falls back to the wall clock — non-deterministic under headless_advance
-	# and not fast-forward invariant (The Watched Gap's flure tend caught it firing late).
+	# and not fast-forward invariant.
 	if _scheduler != null and interactable.has_method("set_scheduler"):
 		interactable.call("set_scheduler", _scheduler)
 	# Timed work also belongs to the authoritative mover. Dynamically loaded chunk
@@ -1682,7 +1682,7 @@ func set_preview_character_stat(char_id: String, stat_name: String, value: float
 		return
 	# GameState is the ONE truth for hp/stamina/atp: a registered character writes THROUGH the logged
 	# set_stat (clamping + combat-down marking live there) and the HUD ledger mirrors back via
-	# stat_changed. Pushing the ledger INTO gs instead let the per-frame stamina regen overwrite real
+	# stat_changed. Pushing the ledger INTO gs instead would let the per-frame stamina regen overwrite real
 	# enemy strike damage the same frame it landed.
 	if _game_state != null and _game_state.characters.has(char_id):
 		var game_stat := "stamina" if normalized == "sta" else normalized
@@ -1691,7 +1691,7 @@ func set_preview_character_stat(char_id: String, stat_name: String, value: float
 			canonical = clampf(GameState.quantize_atp(value), 0.0, _game_state.get_stat_cap(char_id, game_stat))
 		else:
 			canonical = clampf(value, 0.0, _game_state.get_stat_cap(char_id, game_stat))
-		# Continuous regeneration at an already-full cap used to emit a logged
+		# Continuous regeneration at an already-full cap would emit a logged
 		# over-cap set_stat every render frame, only for GameState to clamp it back
 		# to the same value. A semantic no-op must not pollute deterministic traces.
 		if not is_equal_approx(_game_state.get_stat(char_id, game_stat), canonical):
@@ -1899,7 +1899,7 @@ func _control_has_player_visible_area(control: Control) -> bool:
 
 
 ## Atom is a long planning board. Browser pointers naturally rest against the viewport
-## edge and used to drift the board away from the decision the player was reading. Keep
+## edge, where edge pan drifts the board away from the decision the player is reading. Keep
 ## intentional WASD/middle-drag pan, but disable accidental edge pan for this preview.
 func _configure_preview_camera_feedback() -> void:
 	if _camera == null:
@@ -2453,8 +2453,8 @@ func _build_inventory_panel() -> void:
 	_build_carry_actions()
 	_refresh_inventory_panel()
 
-## The old secondary action remains the explicit consume-item key. Direct party abilities have their
-## own 6x2 drawer and hints, so this must not imply that X still fires one of them.
+## The secondary action is the explicit consume-item key. Direct party abilities have their
+## own 6x2 drawer and hints, so this hint must not imply that X fires one of them.
 func _build_carry_actions() -> void:
 	if _hud == null or not _hud.has_method("show_carry_action"):
 		return
@@ -2747,7 +2747,7 @@ func _sync_overlay_stack() -> void:
 	# Shared "visible range" globals: transparent effects (the flood water) fade THEMSELVES past the clear
 	# radius, since a transparent surface is excluded from the perception overlay's screen rewrite and can't be
 	# data-viewed like the opaque geometry. The same registry-driven texture feeds those effects; the three
-	# legacy positions remain populated for shaders outside this stack that have not migrated yet.
+	# scalar per-source positions stay populated for shaders outside this stack that read them directly.
 	RenderingServer.global_shader_parameter_set("visible_range_active", data_enabled or fog_enabled)
 	RenderingServer.global_shader_parameter_set("vision_source_count", source_count)
 	RenderingServer.global_shader_parameter_set("vision_sources_tex", _vision_sources_texture)
@@ -3135,9 +3135,9 @@ func _apply_preview_time_state(state: Dictionary) -> void:
 
 	_anchor_preview_clock(_preview_day, _preview_time)
 	# The displayed preview clock and shelter/hazard authority must begin from one
-	# state. Previously the HUD could render authored night while GameState kept
-	# its default daytime value, so a visible REST PARTY command was refused for
-	# a condition the player could not observe. This is the explicit preview-preset
+	# state: a HUD rendering authored night over GameState's default daytime value
+	# refuses a visible REST PARTY command for a condition the player cannot
+	# observe. This is the explicit preview-preset
 	# command boundary; later frames remain analytic projections and do not write.
 	if _game_state != null and _game_state.has_method("set_game_clock"):
 		_game_state.set_game_clock(_preview_day, _preview_time)
@@ -4442,8 +4442,8 @@ func _get_ability_for_keycode(keycode: int) -> String:
 	var fallback := ""
 	for ability_id in _ability_order:
 		var ability: Dictionary = _ability_defs.get(ability_id, {})
-		# A direct 6x2 binding supersedes this ability's spreadsheet key. Until then the old keycode
-		# remains a selection-aware compatibility route.
+		# A direct 6x2 binding supersedes this ability's spreadsheet key; an ability without one
+		# keeps its spreadsheet keycode as a selection-aware route.
 		if _input_action_is_bound(str(ability.get("input_action", ""))):
 			continue
 		var mapped_keycode := int(ability.get("legacy_keycode", ability.get("keycode", 0)))

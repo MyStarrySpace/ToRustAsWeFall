@@ -13,9 +13,8 @@ extends RefCounted
 ## and non-persistent harness FSMs must be called out explicitly.
 ##
 ## A single scheduler TAG owns every timer a state arms; transitioning cancels that tag, so no stale
-## timer from the old state can fire after you've left it (the pattern enemy.gd hand-rolled with
-## `_state_tag` + `cancel_tag`). Use one StateMachine per stateful entity (enemy, interactable, the
-## sequence step flow) instead of re-implementing the same plumbing each time.
+## timer from the old state can fire after you've left it. Use one StateMachine per stateful entity
+## (enemy, interactable, the sequence step flow) instead of re-implementing the same plumbing each time.
 ##
 ## Usage:
 ##   var fsm := StateMachine.new(_scheduler, "enemy_%s" % name)

@@ -207,7 +207,7 @@ func _damage_shield(id: String) -> float:
 
 
 ## Portable phase data. The absolute deadline is the authority; remaining time is diagnostic and
-## provides compatibility for standalone snapshots made before a scheduler clock was serialized.
+## provides compatibility for standalone snapshots that carry no serialized scheduler clock.
 func get_state() -> Dictionary:
 	var remaining := -1.0
 	if (_bite_armed or not _pending_batch.is_empty()) and _next_bite_tick >= 0.0:

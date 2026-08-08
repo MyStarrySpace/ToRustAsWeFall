@@ -38,7 +38,7 @@ const INTERACTION_RESULT_MAX_ELIGIBLE_DRAW_INTERVAL_MSEC := 250
 const INTERACTION_RESULT_MAX_LIFETIME_MSEC := 6000
 const INTERACTION_RESULT_MAX_SURFACE_SAMPLES := 96
 ## Saturated enough to remain visibly green after the Compatibility tonemapper;
-## the former mint-blue mix clipped both G and B in bright generated scenes.
+## a mint-blue mix clips both G and B in bright generated scenes.
 const INTERACTION_SUCCESS_TINT := Color(0.08, 0.9, 0.12, 1.0)
 ## How long a completed result holds its tint on the outline before the channel is released.
 const RESULT_OUTLINE_HOLD_SECONDS := 0.55
@@ -49,7 +49,7 @@ const INTERACTION_RESULT_HALO_CAMERA_MARGIN := 0.08
 @export var hover_outline_color := Color.WHITE
 @export var selected_feedback_color := Color(1.0, 0.62, 0.12, 1.0)
 @export var object_outline_enabled := true
-# Outline widths are now SCREEN-SPACE (fraction of viewport height), constant at any distance — see the shader.
+# Outline widths are SCREEN-SPACE (fraction of viewport height), constant at any distance — see the shader.
 @export var hover_object_outline_width := 0.012
 @export var selected_object_outline_width := 0.02
 @export var selected_object_glow_strength := 3.8
@@ -86,7 +86,7 @@ var _hovered := false
 var _selected := false
 var _feedback_managed := false
 var _selection_token := 0
-# The crisp outline is now a SCREEN-SPACE mask (OutlineMaskManager) — clean on flat-shaded meshes, constant width
+# The crisp outline is a SCREEN-SPACE mask (OutlineMaskManager) — clean on flat-shaded meshes, constant width
 # at any distance. _outline_active is the logical "outline showing" flag (what has_active_mesh_outline reports);
 # the manager does the actual rendering. Null manager (headless test / standalone) => flag only, no render.
 var _outline_active := false
@@ -252,7 +252,7 @@ func _clear_pointer_hover() -> void:
 	outline_unhovered.emit(self)
 
 func play_selected_feedback(origin: Vector3 = Vector3.ZERO, use_world_origin := false) -> void:
-	# Legacy burst API: the queued energy glow replaced the particle sprays entirely.
+	# Deliberate no-op: selection feedback is the queued energy glow, never a particle burst.
 	return
 	_ensure_selected_particles()
 	_selected_particles.amount = maxi(1, selected_particle_count)
@@ -352,8 +352,8 @@ func register_highlight_mesh(mesh_instance: MeshInstance3D) -> void:
 	if mesh_instance == null or _highlight_meshes.has(mesh_instance):
 		return
 	# One mesh, ONE outline owner: the tag lets the chunk auto-outline skip meshes another target
-	# already wraps (the hub-wheel bug: the crawl mouth's auto-collect grabbed the neighbouring
-	# wheel's mesh, and its padded body then swallowed the wheel's hover/click ray entirely).
+	# already wraps — otherwise an auto-collect can grab a neighbouring object's mesh, and its
+	# padded body then swallows that object's hover/click ray entirely.
 	mesh_instance.set_meta("outline_owner_id", get_instance_id())
 	_highlight_meshes.append(mesh_instance)
 	_original_overlays[mesh_instance.get_instance_id()] = mesh_instance.material_overlay
@@ -504,9 +504,8 @@ func _material_has_visible_surface(material: Material) -> bool:
 	# manufacturing a policy affordance from hidden gameplay geometry.
 	return false
 
-## Number of meshes this target outlines. Named "shell count" for the historical inverted-hull shells; the crisp
-## outline is now the screen-space mask, so this is the count of registered outline meshes (the contract callers
-## assert: a visible object registered geometry to outline).
+## Number of meshes this target outlines: the registered outline meshes fed to the screen-space
+## mask. This is the contract callers assert — a visible object registered geometry to outline.
 func get_outline_shell_count() -> int:
 	_prune_highlight_meshes()
 	var count := 0
@@ -658,16 +657,14 @@ func _interaction_pulse_surface_screen_candidates(
 func _play_interaction_pulse(
 		tint: Color, kind: String, _presentation_serial := -1
 	) -> bool:
-	# THE RESULT RIDES THE OBJECT'S OWN SILHOUETTE (director ruling, 2026-08-07: "there should be no
-	# such ring"). This used to mint a hand-built opaque annulus around the source — a fixed ring that
-	# ignores the object's shape, in a saturated green nothing else in the game speaks. The highlight
-	# law has ONE shape language: the screen-space mask Sobel IS the shape, tinted white for hover and
-	# the servicing character's colour when queued; a result is one more tint on that same channel.
-	# The annulus existed to dodge the GL Compatibility renderer the Web export uses, where
-	# transparent and torus geometry produced no readable fragments — but keeping it meant web and
-	# desktop players were taught two different feedback languages.
-	# This stays the single overridable ATTESTATION SEAM: headless fixtures replace it to stand in
-	# for an unavailable renderer, so its guards and return contract are unchanged.
+	# THE RESULT RIDES THE OBJECT'S OWN SILHOUETTE. The highlight law has ONE shape language: the
+	# screen-space mask Sobel IS the shape, tinted white for hover and the servicing character's
+	# colour when queued; a result is one more tint on that same channel. A separate fixed ring
+	# would ignore the object's shape and speak a saturated green nothing else in the game uses —
+	# and any renderer-specific stand-in geometry would teach web and desktop players two
+	# different feedback languages.
+	# This is the single overridable ATTESTATION SEAM: headless fixtures replace it to stand in
+	# for an unavailable renderer, relying on its guards and return contract.
 	if DisplayServer.get_name() == "headless" or not is_inside_tree():
 		return false
 	_apply_object_outline(tint, true)
@@ -948,9 +945,9 @@ func _ensure_interaction_pulse() -> void:
 
 
 func _make_interaction_pulse_annulus_mesh() -> ArrayMesh:
-	# The generated Compatibility regression proved the exact boundary: TorusMesh
-	# and transparent annuli exposed valid projected vertices but no readable
-	# fragments, while this opaque planar surface rendered at the same transform.
+	# Under the GL Compatibility renderer, TorusMesh and transparent annuli expose
+	# valid projected vertices but no readable fragments; this opaque planar
+	# surface renders reliably at the same transform.
 	# It is explicitly double-sided because a result must remain visible across
 	# camera-handedness changes; ordinary depth testing still lets real foreground
 	# geometry occlude it, so this is never an x-ray or screen overlay.
@@ -1000,7 +997,7 @@ func _make_interaction_pulse_annulus_mesh() -> ArrayMesh:
 	return annulus
 
 ## active=hover outline (glow_on=false) OR the queued energy glow (glow_on=true). The crisp outline + the morphing
-## energy halo are both the screen-space mask now (OutlineMaskManager); glow_on flips the mask's fill-alpha flag.
+## energy halo are both the screen-space mask (OutlineMaskManager); glow_on flips the mask's fill-alpha flag.
 func _apply_object_outline(color: Color, glow_on: bool) -> void:
 	if not object_outline_enabled:
 		return
@@ -1039,8 +1036,8 @@ func _get_mask_manager() -> OutlineMaskManager:
 	_mask_manager = OutlineMaskManager.find_for(self)
 	return _mask_manager
 
-## The QUEUED energy glow is now the screen-space mask's noise-morphed halo (OutlineMaskManager), keyed off the
-## queued fill-alpha flag — no more inverted-hull emission shell. This is the logical "glow on" state.
+## The QUEUED energy glow is the screen-space mask's noise-morphed halo (OutlineMaskManager), keyed off the
+## queued fill-alpha flag. This is the logical "glow on" state.
 func has_active_glow() -> bool:
 	return _glow_active
 

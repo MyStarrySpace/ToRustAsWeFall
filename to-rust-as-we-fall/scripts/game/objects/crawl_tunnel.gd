@@ -370,7 +370,7 @@ func compute_group_arrivals(ids: Array) -> Array:
 		out.append(_snap_walkable(pos))
 	return out
 
-## Legacy helper intentionally has no consequence authority. A crawl may begin only from this exact
+## This helper intentionally has no consequence authority. A crawl may begin only from this exact
 ## Interactable's accepted source/body/proximity receipt; arbitrary IDs cannot remotely enter.
 func start_group_crawl(ids: Array) -> bool:
 	if ids.is_empty():
@@ -429,7 +429,7 @@ func _enter_next() -> void:
 	var wait := 0.05
 	if not _actor_at_mouth(who):
 		if not bool(_gs.command_move_to_pos(who, _to_data(global_position))):
-			# A failed approach is a visible refusal. Never let the old 0.05 fallback convert an
+			# A failed approach is a visible refusal. A minimal-wait fallback here would convert an
 			# unreachable or action-locked remote body into an in-tube crawler.
 			refused.emit()
 			_enter_next()

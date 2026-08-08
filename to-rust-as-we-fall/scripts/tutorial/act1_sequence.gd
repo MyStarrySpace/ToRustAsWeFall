@@ -338,8 +338,8 @@ func _activate_hosted_chunk_grid(chunk: Node) -> bool:
 	if candidate.width <= 0 or candidate.height <= 0:
 		push_error("Act 1 could not construct the hosted grid from %s." % chunk.name)
 		return false
-	# Commit only after the replacement has been validated. A malformed incoming
-	# chunk can no longer strand the campaign on a stale origin after the outgoing
+	# Commit only after the replacement has been validated: a malformed incoming
+	# chunk must not strand the campaign on a stale origin after the outgoing
 	# district has already been unloaded.
 	_grid = candidate
 	_game_state.grid = _grid
@@ -1607,7 +1607,7 @@ func apply_save_snapshot(data: Dictionary) -> void:
 	var active_character := str(act1_data.get("active_character", _active_character))
 	if active_character != "":
 		_select_character(active_character, true)
-	# Accept the retired channels_fieldwork key only to preserve optional findings in old saves.
+	# Accept the channels_fieldwork key only to preserve optional findings in old saves.
 	var channels_state: Dictionary = act1_data.get(
 		"channels_state", act1_data.get("channels_fieldwork", {}))
 	_channels_optional_findings = channels_state.get(
@@ -2953,7 +2953,7 @@ func _resume_committed_channels_shelter_rest(expected_tick: float) -> void:
 		_apply_channels_shelter_rest_presentation()
 		_publish_channels_runtime_authority()
 
-## Retired compatibility seam. The coda advances only after the visible Flure accepts Peris.
+## Inert compatibility seam. The coda advances only after the visible Flure accepts Peris.
 func _start_channels_flure_flush() -> void:
 	pass
 
@@ -3105,8 +3105,8 @@ func _begin_channels_window_lane(window_id: String) -> void:
 	_tutorial_prompt.show_prompt(
 		"Tend the flure. Watch which current carries the sentries, then cross between surges")
 
-## Retired compatibility seam. QA drivers stage Peris at the lane's exact Flure and trigger that
-## Interactable; this callback can no longer stand in for the player action.
+## Inert compatibility seam. QA drivers stage Peris at the lane's exact Flure and trigger that
+## Interactable; this callback cannot stand in for the player action.
 func _on_channels_window_lure_activated(_window_id: String) -> void:
 	pass
 
@@ -3331,7 +3331,7 @@ func _begin_channels_encounter() -> void:
 	_player.set_move_enabled(true)
 
 
-## Retired compatibility entry point. The real Flure's exact source/body receipt is mandatory.
+## Inert compatibility entry point. The real Flure's exact source/body receipt is mandatory.
 func _on_channels_run_lure_activated() -> void:
 	pass
 
@@ -3789,7 +3789,7 @@ func _enable_channels_shelter_rest() -> void:
 		"Use REST PARTY at the shelter hearth when everyone is settled")
 
 
-## Compatibility probe for retired tests/tapes. Rest can begin only from the hearth receipt below.
+## Compatibility probe for external tests/tapes. Rest can begin only from the hearth receipt below.
 func trigger_channels_shelter_rest() -> bool:
 	return false
 
@@ -3870,7 +3870,7 @@ func _on_act1_channels_shelter_requested(
 		show_preview_note(str(blocked[0]), 2.8)
 
 
-## Compatibility probe for retired deterministic tapes; it cannot manufacture a hearth receipt.
+## Compatibility probe for deterministic tapes; it cannot manufacture a hearth receipt.
 func _recuperate_channels_party() -> bool:
 	return false
 
@@ -4123,7 +4123,7 @@ func _record_stacks_support_log_from_terminal() -> void:
 	_stacks_support_log_entry_id = int(entry.get("id", -1))
 
 
-## Retired compatibility helper. Optional observations still require their exact world source.
+## Inert compatibility helper. Optional observations still require their exact world source.
 func trigger_stacks_terminal(_play_dialogue := false) -> bool:
 	return false
 
@@ -4176,7 +4176,7 @@ func _finish_stacks_terminal_dialogue() -> void:
 	if _current_step.begins_with("stacks") and _stacks_terminal_interacted:
 		_player.set_move_enabled(true)
 
-## Retired compatibility helper. Optional observations still require their exact world source.
+## Inert compatibility helper. Optional observations still require their exact world source.
 func trigger_stacks_signal(_play_dialogue := false) -> bool:
 	return false
 
@@ -4223,7 +4223,7 @@ func _start_stacks_bank_audit() -> void:
 			interactable.set_interaction_enabled(true)
 			interactable.show_tutorial_label()
 
-## Compatibility probe for retired tests/tapes. Progress belongs to the real bank controls below.
+## Compatibility probe for external tests/tapes. Progress belongs to the real bank controls below.
 func trigger_stacks_bank(_bank_id: String) -> bool:
 	return false
 
@@ -4326,7 +4326,7 @@ func _on_act1_stacks_bank_interacted(source: Node, bank_id: String) -> void:
 			candidate.set_interaction_enabled(false)
 	_start_stacks_shelter()
 
-## Retired compatibility helper. Optional observations still require their exact world source.
+## Inert compatibility helper. Optional observations still require their exact world source.
 func trigger_stacks_archive(_play_dialogue := false) -> bool:
 	return false
 
@@ -4377,7 +4377,7 @@ func _start_stacks_shelter() -> void:
 	_tutorial_prompt.show_prompt("Bring Aster, Peris, and Endo together, then REST at the shelter")
 	_apply_act1_stacks_rest_presentation()
 
-## Compatibility probe for retired automation. The accepted shelter one-shot owns this consequence.
+## Compatibility probe for external automation. The accepted shelter one-shot owns this consequence.
 func trigger_stacks_shelter_rest(_play_dialogue := true) -> bool:
 	return false
 
@@ -5221,7 +5221,7 @@ func _finalize_rings_endo_departure() -> void:
 	_publish_rings_endo_authority()
 	_start_rings_explore()
 
-## Retired compatibility helper. Ambient information is optional, but it must still be learned at
+## Inert compatibility helper. Ambient information is optional, but it must still be learned at
 ## the authored plant/door rather than injected as a dictionary key.
 func trigger_rings_trace(_trace_id: String) -> bool:
 	return false
@@ -5389,7 +5389,7 @@ func _start_lockout_chase() -> void:
 		if not present_dispatch:
 			return
 		# These urgent lines ride over player-controlled movement; the pursuit scene remains sparse
-		# and the story no longer turns its opening seconds into another stationary cutscene.
+		# and never turns its opening seconds into a stationary cutscene.
 		_dialogue_chain([
 			"lockout.dispatch.narration",
 			"lockout.dispatch.aster.frozen",

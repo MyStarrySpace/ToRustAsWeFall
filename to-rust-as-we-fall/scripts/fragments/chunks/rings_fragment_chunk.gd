@@ -221,9 +221,9 @@ func reset_preview_state() -> void:
 	_publish_rings_authority()
 
 
-## Retained for callers that still probe the old automation API. The endpoint helper is
-## intentionally inert: automation and deterministic tapes must resolve the semantic target
-## returned by get_playthrough_interaction_target() and enter through the ordinary coordinator.
+## Intentionally inert endpoint: automation and deterministic tapes must resolve the semantic
+## target returned by get_playthrough_interaction_target() and enter through the ordinary
+## coordinator.
 func trigger_rings_reassignment_beat() -> bool:
 	return false
 

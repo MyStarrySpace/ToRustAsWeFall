@@ -113,8 +113,8 @@ var _banner_polylines: Array = []   # Array of Array[Vector3] — the built line
 ## Banner lines sagging across the canyon, hung with market flags. MEASURED, never guessed: each
 ## line ties the nearest stack in each row, hooked at that stack's REAL facade plane + BANNER_PROUD
 ## at its surveyed top storey gap, z clamped into its actual span. A bracket stub ties each hook
-## back to its wall. (The old constant endpoints sat inside the stacks' detail crust — the
-## clipping report of 2026-07-12.)
+## back to its wall. (A constant, unmeasured endpoint can land inside a stack's detail crust and
+## clip the facade.)
 func _build_banner_lines() -> void:
 	var measured := _measured_stacks()
 	var lines := SurfaceTool.new()

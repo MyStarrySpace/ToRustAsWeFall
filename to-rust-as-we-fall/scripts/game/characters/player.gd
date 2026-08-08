@@ -39,8 +39,8 @@ var game_state: GameState
 var char_id := ""  ## Character ID in GameState (e.g. "aster")
 
 ## Optional A* grid for a standalone Player that has no GameState. Once authoritative
-## state is bound, its live grid is the single navigation source. Keeping the legacy
-## setter lets existing scene construction assign a grid before GameState is ready,
+## state is bound, its live grid is the single navigation source. Keeping the
+## setter lets scene construction assign a grid before GameState is ready,
 ## without allowing that cached reference to diverge from GameState later.
 var _standalone_grid_world: GridWorld
 var grid_world: GridWorld:
@@ -774,7 +774,7 @@ func get_rally_navigation_target(screen_pos: Vector2) -> Dictionary:
 	return ground
 
 ## The production pointer's typed ground result. SelectionController consumes the
-## same record for Rally, while legacy callers can continue using `_raycast_ground`.
+## same record for Rally; callers that need only a world point use `_raycast_ground`.
 ## No node identity crosses this seam.
 func get_ground_navigation_target(screen_pos: Vector2) -> Dictionary:
 	var world_position := _raycast_ground(screen_pos)
@@ -851,8 +851,8 @@ func _ground_navigation_level(collider_v: Variant) -> int:
 
 ## Convert an accepted render-space ground point into authoritative flat data
 ## space. A matching typed hit removes its known floor lift before the warped
-## inverse chooses a helix turn; an unrelated/direct world point retains the
-## historical base-floor inverse.
+## inverse chooses a helix turn; an unrelated/direct world point falls back to
+## the base-floor inverse.
 func _ground_hit_to_data(world_hit: Vector3) -> Vector3:
 	if not world_hit.is_finite() or game_state == null \
 			or game_state.coord_map == null:
@@ -972,8 +972,8 @@ static func _ensure_grid_alpha() -> void:
 			var fade := clampf((1.18 - r) / 0.68, 0.0, 1.0)
 			_grid_alpha[y * dim + x] = fade if (is_line[x] or is_line[y]) else 0.0
 
-	# Cache the dark 2px dilation once. The old builder repeated this neighbourhood
-	# walk and Image.get_pixel/set_pixel work for every character colour.
+	# Cache the dark 2px dilation once: the neighbourhood walk is colour-independent,
+	# so rebuilding it per character colour would repeat the same work.
 	_grid_rim_alpha = PackedFloat32Array()
 	_grid_rim_alpha.resize(dim * dim)
 	var rim_px := 2
@@ -994,8 +994,8 @@ static func _ensure_grid_alpha() -> void:
 func _build_grid_texture() -> ImageTexture:
 	# CONTRAST is the whole game here: thin faded lines vanish against the room model's own white tile seams
 	# (and inside character glow). Lines render in the CHARACTER's color over a dark cached rim. The radial
-	# fade is still the same Bayer stipple; only the construction path changed from per-pixel Image calls to
-	# one byte buffer, and completed color textures are shared between matching character instances/scenes.
+	# fade is the Bayer stipple, written into one byte buffer rather than per-pixel Image calls, and
+	# completed color textures are shared between matching character instances/scenes.
 	_ensure_grid_alpha()
 	var dim := _grid_dim
 	var tint := _character_color()
@@ -1074,7 +1074,7 @@ func _update_hover_from_screen(screen_pos: Vector2) -> void:
 ## Project the hover grid straight DOWN from above the hovered point. The Decal stamps its texture onto the
 ## floor inside its box, so it conforms to the curve below instead of laying a flat quad that clips. Cursor-
 ## free: the live cursor path and the data-layer simulate_hover_at() both route here. `normal` is ignored —
-## the old quad tilted to it; a down-projecting Decal must NOT (tilting it reintroduces the clip).
+## a down-projecting Decal must NOT tilt to it (tilting reintroduces the clip).
 func _apply_hover_grid(hit: Vector3, _normal: Vector3) -> void:
 	if _hover_grid == null:
 		return
@@ -1156,7 +1156,7 @@ func _current_navigation_graph_revision() -> int:
 
 func _preview_navigation_cache_is_current() -> bool:
 	if _preview_commit_location.is_empty():
-		# Compatibility for callers/tests that seed only the legacy world endpoint. Commit still
+		# Some callers/tests seed only the world endpoint without a typed location. Commit still
 		# resolves that full XYZ into a typed location before issuing a grid command.
 		return _preview_commit_target.is_finite()
 	if grid_world == null:
@@ -1727,7 +1727,7 @@ func _update_hover_grid() -> void:
 		_hover_grid.visible = false
 		return
 	# A stationary cursor over a stationary character changes nothing — skip the per-frame
-	# raycast + preview work entirely (the raycast used to run 60x/sec regardless).
+	# raycast + preview work entirely (an unconditional ray would run 60x/sec for nothing).
 	var mouse := vp.get_mouse_position()
 	var self_moving := game_state != null and char_id != "" and game_state.is_moving(char_id)
 	var graph_revision := _current_navigation_graph_revision()

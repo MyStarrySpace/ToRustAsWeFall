@@ -181,7 +181,7 @@ const BODY_SOURCE_OFFSETS := [
 ]
 
 # Mother Flure owns its root/portal transits, two physical route commitments, and the finite corpse
-# source ledger that used to be a reward counter. Settled endpoints, reserved targets, item IDs,
+# source ledger. Settled endpoints, reserved targets, item IDs,
 # actors, phases, and absolute scheduler deadlines are portable truth; meshes, collision shapes,
 # labels, and dynamic grid blockers are only presenters.
 const MOTHER_AUTHORITY_VERSION := 5
@@ -226,8 +226,8 @@ var _rings_gate_phase := RINGS_GATE_PHASE_SEALED
 var _rings_gate_started_at := -1.0
 var _rings_gate_deadline := -1.0
 ## Absolute EventScheduler deadline for the next whole-chamber root contact sample. The root mat
-## is gameplay geometry, but sampling it from `_process` made both the first bite and its cadence
-## depend on render/headless call frequency. One saved global deadline now owns every bite.
+## is gameplay geometry; sampling it from `_process` would make both the first bite and its cadence
+## depend on render/headless call frequency, so one saved global deadline owns every bite.
 var _hazard_next_tick := -1.0
 var _terminal_readings_seen: Array[String] = []
 var _body_remaining: Dictionary = {}
@@ -847,7 +847,7 @@ func _on_terminal_interacted(source: Node, terminal_id: String) -> void:
 	_rearm_repeatable_source(source)
 
 
-## Retired automation seam. Only the exact terminal's accepted source receipt can tune the bank.
+## Automation cannot tune the bank; only the exact terminal's accepted source receipt can.
 func activate_terminal(_terminal_id: String) -> bool:
 	return false
 
@@ -907,7 +907,7 @@ func _on_portal_interacted(source: Node) -> void:
 	_rearm_repeatable_source(source)
 
 
-## Retired automation seam. A portal crossing starts only from its exact calibrated pad receipt.
+## Automation cannot start a crossing; a portal crossing begins only from its exact calibrated pad receipt.
 func use_portal() -> bool:
 	return false
 
@@ -1078,7 +1078,7 @@ func _on_root_control_interacted(
 	_rearm_repeatable_source(source)
 
 
-## Retired automation seams. Root movement belongs to the exact remote service bud.
+## Automation cannot shift roots; root movement belongs to the exact remote service bud.
 func activate_fragment(_root_id: String) -> bool:
 	return false
 
@@ -1153,7 +1153,7 @@ func _on_collapse_interacted(source: Node) -> void:
 	_shift_collapse_from_source_receipt()
 
 
-## Retired automation seam. The collapse moves only after Endo consumes its physical source.
+## Automation cannot clear the collapse; it moves only after Endo consumes its physical source.
 func clear_collapse() -> bool:
 	return false
 
@@ -1217,7 +1217,7 @@ func _on_body_harvest_interacted(source: Node, body_id: String) -> void:
 	_rearm_repeatable_source(source)
 
 
-## Retired automation seam. A corpse reward must be claimed through its exact visible source.
+## Automation cannot harvest; a corpse reward must be claimed through its exact visible source.
 func harvest_body(_body_id: String, _actor_id := "") -> bool:
 	return false
 
@@ -1301,7 +1301,7 @@ func _on_gear_pickup_interacted(source: Node) -> void:
 	_rearm_repeatable_source(source)
 
 
-## Retired automation seam. The exact Mother Gear pedestal receipt owns the two-hand pickup.
+## Automation cannot lift the gear; the exact Mother Gear pedestal receipt owns the two-hand pickup.
 func pick_up_gear() -> bool:
 	return false
 
@@ -1357,7 +1357,7 @@ func _on_gear_install_interacted(source: Node, repair_id: String) -> void:
 	_rearm_repeatable_source(source)
 
 
-## Retired automation seams. A mount commits only from the exact repair fixture receipt.
+## Automation cannot mount the gear; a mount commits only from the exact repair fixture receipt.
 func install_gear() -> bool:
 	return false
 
@@ -1428,7 +1428,7 @@ func _on_mother_tend_interacted(source: Node) -> void:
 	_tend_mother_from_source_receipt()
 
 
-## Retired automation seams. Tending commits only through Mother Flure's exact physical fixture.
+## Automation cannot tend the mother; tending commits only through Mother Flure's exact physical fixture.
 func tend_mother() -> bool:
 	return false
 
@@ -1506,7 +1506,7 @@ func _on_exit_handoff_interacted(source: Node) -> void:
 	_complete_exit_handoff_from_source_receipt()
 
 
-## Retired automation seam. The Rings boundary accepts only its gathered-party source receipt.
+## Automation cannot finish the handoff; the Rings boundary accepts only its gathered-party source receipt.
 func complete_exit_handoff() -> bool:
 	return false
 
@@ -2098,7 +2098,7 @@ func _build_exit_handoff() -> void:
 	_exit_gate_root.position = EXIT_POS
 	add_child(_exit_gate_root)
 	# The ribbed chembrane is visibly flexible and lifts through the authoritative opening phase;
-	# it cannot be mistaken for the old rectangular "beacon" proxy.
+	# it reads as a physical gate, never an abstract rectangular beacon.
 	_rings_membrane_mesh = _exit_gate_root.find_child("Model", true, false) as MeshInstance3D
 	_exit_material = (
 		_rings_membrane_mesh.material_override as StandardMaterial3D
