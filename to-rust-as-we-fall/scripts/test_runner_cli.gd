@@ -8755,10 +8755,14 @@ func _test_tangler() -> void:
 	holder.add_child(tangler)
 	gs.register_character("tangler", Vector3(4.0, 0.0, 4.0), tangler.move_speed,
 		{"detection_range": float(tangler.detection_range)})
-	gs.register_character("aster", Vector3(6.0, 0.0, 4.0), 3.0,
-		{"hp": 100.0, "stamina": 100.0, "max_stamina": 100.0})
-	gs.register_character("peris", Vector3(6.2, 0.0, 4.6), 3.0,
-		{"hp": 100.0, "stamina": 100.0, "max_stamina": 100.0})
+	# Inside its 5.0 scan but OUTSIDE its 2.2 attack range. That distance is the whole scenario: a
+	# decoy ORBITS, so the Tangler stays in pursuit where it is still reading the room. Park a decoy
+	# at contact range instead and it drops straight into the windup/charge/recover cycle, stops
+	# scanning by design, and no hand-off can ever happen -- which looks like a broken lock and is not.
+	gs.register_character("aster", Vector3(8.4, 0.0, 5.2), 3.0,
+		{"hp": 999.0, "stamina": 100.0, "max_stamina": 100.0})
+	gs.register_character("peris", Vector3(8.4, 0.0, 3.2), 3.0,
+		{"hp": 999.0, "stamina": 100.0, "max_stamina": 100.0})
 	tangler.set_detection_targets(["aster", "peris"])
 	tangler.activate()
 	_assert_true(tangler.windup_duration > 1.0,
@@ -8766,29 +8770,43 @@ func _test_tangler() -> void:
 	_assert_true(tangler.move_speed < 2.0, "it CREEPS in (%.2f)" % tangler.move_speed)
 	gs.set_running("peris", true)
 	for _i in range(30):
+		_hold_tangler_decoys(gs)
 		sched.advance_ticks(0.05)
 	_assert_equals(tangler.get_locked_target(), "peris",
 		"the lock takes the RUNNING body -- hyperexcitability, not proximity")
 	# The hand-off has to survive a whole attack cycle: scanning is OFF while the snap is committed
 	# (windup/charge/impact/recover), by design -- the filaments choose while creeping, not mid-snap.
 	# So give it long enough to come back out of that commitment and read the room again.
-	# Going quiet must not SHED the lock -- that is what stops "stop running" from being a free
-	# escape, and it is the half of the rule that makes the decoy a commitment rather than a toggle.
+	# THE DECOY HAND-OFF: peris goes quiet, aster starts shouting, the lock moves. Running burns
+	# stamina, so the new decoy has to be kept able to run or it silently stops and the lock
+	# correctly stands.
 	gs.set_running("peris", false)
+	for _i in range(30):
+		_hold_tangler_decoys(gs)
+		gs.set_stat("aster", "stamina", 100.0)
+		if not gs.is_running("aster"):
+			gs.set_running("aster", true)
+		sched.advance_ticks(0.05)
+	_assert_equals(tangler.get_locked_target(), "aster",
+		"the lock JUMPS to the new loudest -- the decoy hand-off idea 3 is built on")
+	# And going quiet with nobody else shouting must NOT shed it: that is what stops "stop running"
+	# being a free escape.
+	gs.set_running("aster", false)
 	var held := tangler.get_locked_target()
 	for _i in range(30):
+		_hold_tangler_decoys(gs)
 		sched.advance_ticks(0.05)
 	_assert_equals(tangler.get_locked_target(), held,
 		"going quiet does not shed the lock -- it only stops attracting a new one")
-	# NOT ASSERTED YET: the decoy HAND-OFF (peris stops, aster starts, lock moves to aster). The
-	# lock takes the first runner correctly, but it does not transfer to a second one within an
-	# attack cycle and the cause is not yet isolated -- ruled out so far: stamina running out under
-	# the new runner (topped up, no change), the committed-state scanning gate (extended through
-	# alert/pursuit), and detection subscription (now kept live while creeping). Documented in
-	# FRAGMENT_IDEAS.md #3 rather than asserted, because a test that encodes a behaviour I have not
-	# demonstrated would be a claim, not a guard.
+
 	holder.queue_free()
 	await get_tree().process_frame
+
+## An orbiting decoy holds its distance; a stationary one gets grabbed. Pinning both bodies keeps the
+## Tangler in PURSUIT, which is the state its lock rule is defined for.
+func _hold_tangler_decoys(gs) -> void:
+	gs.snap_character_to("aster", Vector3(8.4, 0.0, 5.2))
+	gs.snap_character_to("peris", Vector3(8.4, 0.0, 3.2))
 
 ## THE SCANNED PLAZA — the staging correction is the whole fragment, so it is asserted rather than
 ## trusted to the authored numbers. A Naturalizer's equipment fails on colonized ground (GDD 7.3), so

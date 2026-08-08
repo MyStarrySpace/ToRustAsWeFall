@@ -102,9 +102,12 @@ Aster spoof is the *shadow* (this broke draft #11's framing).
   keep scanning through `alert` and `pursuit` (it is still creeping) and drop it for the snap itself.
   With that, the lock correctly takes the RUNNING body and correctly does NOT release when that body
   goes quiet. `--test-tangler` guards creep speed, the long uncoil, and both halves of that rule.
-  **Still open:** the decoy HAND-OFF (first runner stops, a second starts, lock moves). Not asserted,
-  because it is not demonstrated. Ruled out so far: the new runner's stamina expiring (topped up, no
-  change), the committed-state gate, and the subscription itself.
+  **The HAND-OFF works too, and the thing that hid it was the test, not the class.** A Tangler stops
+  scanning once it is in contact (windup/charge/impact/recover, by design), and a decoy parked at
+  `attack_range` drops it straight into that cycle forever -- so no hand-off can ever fire and the
+  lock looks stuck. A decoy ORBITS: hold the bodies inside the 5.0 scan but outside the 2.2 attack
+  range and the Tangler stays in PURSUIT, which is the state the lock rule is defined for. The lock
+  then moves to the new runner within one poll (~0.5s). Asserted in `--test-tangler`.
   **Superseded note, kept for the ruled-out list:** gating re-lock candidacy on
   `is_detection_pair_currently_visible(detector, other)`. It reads true before acquisition and false
   for every body from the first tick AFTER the enemy acquires — including the acquired target itself —
