@@ -59682,7 +59682,31 @@ func _test_movement_route_status_presentation() -> void:
 	setpiece_state.event_log = EventLog.new()
 	setpiece_state.grid = setpiece_grid
 	var setpiece_start := Vector3(1.14, 0.45, 0.36)
-	var setpiece_target := Vector3(17.5, 1.89, 0.5)
+	# Derive the upper-deck target from the SPEC instead of hard-coding a world point. This fixture
+	# is regenerated, and the old literal (17.5, 1.89, 0.5) now lands on a cell that is not walkable
+	# on level 2, so command_move_cross_level never started and the route read 0.000 -- the test was
+	# measuring a stale coordinate rather than the route basis it exists to guard.
+	var setpiece_target := Vector3.INF
+	for setpiece_node_v in (setpiece_spec.get("nodes", []) as Array):
+		if not (setpiece_node_v is Dictionary):
+			continue
+		var setpiece_node := setpiece_node_v as Dictionary
+		if int(setpiece_node.get("elevation_index", 0)) != 2:
+			continue
+		var setpiece_pos_a: Array = setpiece_node.get("position", [])
+		if setpiece_pos_a.size() < 3:
+			continue
+		var setpiece_candidate := Vector3(
+			float(setpiece_pos_a[0]), float(setpiece_pos_a[1]), float(setpiece_pos_a[2]))
+		var setpiece_candidate_cell := setpiece_grid.world_to_grid(setpiece_candidate)
+		if setpiece_grid.is_walkable(
+				setpiece_candidate_cell.x, setpiece_candidate_cell.y, {}, {}, 2):
+			setpiece_target = setpiece_candidate
+			break
+	_assert_true(setpiece_target != Vector3.INF,
+		"the setpiece fixture still exposes a walkable upper-deck node to route to")
+	if setpiece_target == Vector3.INF:
+		setpiece_target = Vector3(17.5, 1.89, 0.5)
 	setpiece_state.register_character(
 		"aster", setpiece_start, GameState.RUN_SPEED,
 		{"stamina": 58.0, "max_stamina": 100.0})
