@@ -1534,6 +1534,12 @@ func _ready() -> void:
 			"--test-wall-hugger":
 				ran_test = true
 				await _test_wall_hugger()
+			"--test-flare":
+				ran_test = true
+				await _test_flare()
+			"--test-flare-friend-and-foe":
+				ran_test = true
+				await _test_flare_friend_and_foe()
 			"--test-generated-stretch-quality":
 				ran_test = true
 				await _test_generated_stretch_quality()
@@ -2194,6 +2200,8 @@ func _run_all_tests() -> void:
 	await _test_loudest_one()
 	await _test_spiker()
 	await _test_wall_hugger()
+	await _test_flare()
+	await _test_flare_friend_and_foe()
 	await _test_generated_stretch_quality()
 	await _test_generated_food_modes()
 	_test_grid_ascii()
@@ -8811,6 +8819,99 @@ func _test_tangler() -> void:
 	_assert_equals(tangler.get_locked_target(), held,
 		"going quiet does not shed the lock -- it only stops attracting a new one")
 
+	holder.queue_free()
+	await get_tree().process_frame
+
+## FLARE — the canon is a bomb, and the two lines that make it a bomb rather than another hunter are
+## the ones under test: it reads DENSITY not presence, and once primed it does NOT cancel. Stepping
+## out saves the body that stepped; the burst still goes, and it pays friend and foe alike.
+func _test_flare() -> void:
+	_test_name = "Flare"
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.scheduler = sched
+	gs.event_log = EventLog.new()
+	var grid := GridWorld.new()
+	grid.create_room(20, 16)
+	gs.grid = grid
+	var holder := Node3D.new()
+	add_child(holder)
+	var flare := Flare.new()
+	flare.game_state = gs
+	flare.char_id = "flare"
+	holder.add_child(flare)
+	gs.register_character("flare", Vector3(8.0, 0.0, 8.0), 1.0, {})
+	gs.register_character("aster", Vector3(9.0, 0.0, 8.0), 3.0,
+		{"hp": 100.0, "stamina": 100.0, "max_stamina": 100.0})
+	flare.activate()
+	var planted := gs.get_position("flare")
+	# ONE body beside it is not bunching. A Flare that armed on presence would be a proximity mine.
+	for _i in range(20):
+		sched.advance_ticks(0.05)
+	_assert_equals(str(flare.call("get_flare_state")), "inert",
+		"a single body beside it is not bunching -- it reads DENSITY, not presence")
+	_assert_equals(gs.get_stat("aster", "hp"), 100.0, "and an inert Flare costs nothing")
+	# A SECOND body crowds it: that is the trigger.
+	gs.register_character("peris", Vector3(8.0, 0.0, 9.0), 3.0,
+		{"hp": 100.0, "stamina": 100.0, "max_stamina": 100.0})
+	for _i in range(10):
+		sched.advance_ticks(0.05)
+	_assert_equals(str(flare.call("get_flare_state")), "priming",
+		"two bodies inside the bunch radius set it off")
+	# THE INVERSION vs the Spiker: breaking a Spiker's sight SEVERS it, but leaving a primed Flare
+	# only saves the body that left. Walk one out; keep one in.
+	gs.snap_character_to("aster", Vector3(16.0, 0.0, 8.0))
+	for _i in range(80):
+		sched.advance_ticks(0.05)
+	_assert_equals(str(flare.call("get_flare_state")), "spent",
+		"the burst still goes -- leaving the radius is not a way to switch it back off")
+	_assert_equals(gs.get_stat("aster", "hp"), 100.0,
+		"the body that left the radius is untouched")
+	_assert_true(gs.get_stat("peris", "hp") < 100.0,
+		"the body that stayed pays for it")
+	_assert_true(gs.get_position("flare").distance_to(planted) < 0.001,
+		"a Flare is scenery until it goes off -- it never took a step")
+	holder.queue_free()
+	await get_tree().process_frame
+
+## FRIEND AND FOE is the line that makes "pop it on purpose" a real play instead of flavour, so the
+## burst is asserted against an ENEMY body too -- which keeps its hp on the node, not in GameState.
+func _test_flare_friend_and_foe() -> void:
+	_test_name = "Flare Friend and Foe"
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.scheduler = sched
+	gs.event_log = EventLog.new()
+	var grid := GridWorld.new()
+	grid.create_room(20, 16)
+	gs.grid = grid
+	var holder := Node3D.new()
+	add_child(holder)
+	var flare := Flare.new()
+	flare.game_state = gs
+	flare.char_id = "flare"
+	holder.add_child(flare)
+	gs.register_character("flare", Vector3(8.0, 0.0, 8.0), 1.0, {})
+	var victim := Enemy.new()
+	victim.game_state = gs
+	victim.char_id = "bystander"
+	victim.position = Vector3(9.0, 0.0, 8.0)
+	holder.add_child(victim)
+	gs.register_character("bystander", victim.position, victim.move_speed, {})
+	victim.activate()
+	var full_hp := float(victim.call("get_hp"))
+	flare.activate()
+	# Nobody crowded it -- this is the deliberate trigger, the roster's "pop it on purpose".
+	flare.call("pop")
+	_assert_equals(str(flare.call("get_flare_state")), "priming", "pop() arms it deliberately")
+	for _i in range(80):
+		sched.advance_ticks(0.05)
+	_assert_true(float(victim.call("get_hp")) < full_hp,
+		"the burst pays an ENEMY body too -- friend and foe, which is what makes popping it a play")
+	# One-shot: a bomb that re-armed itself would make the lane free to farm.
+	_assert_equals(str(flare.call("get_flare_state")), "spent", "a spent Flare stays spent")
+	flare.call("pop")
+	_assert_equals(str(flare.call("get_flare_state")), "spent", "and cannot be popped a second time")
 	holder.queue_free()
 	await get_tree().process_frame
 
