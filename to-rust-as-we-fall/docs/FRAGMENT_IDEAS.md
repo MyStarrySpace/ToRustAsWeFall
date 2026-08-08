@@ -90,6 +90,26 @@ Aster spoof is the *shadow* (this broke draft #11's framing).
   OUT of the atom** — that "unravel the Tangler in a Candid zone" is an enemy-degradation edge, unbuilt.
 - **AUDIT:** OK both.
 
+- **ATTEMPTED 2026-08-08, PARKED — read this before retrying.** Two of the three roster lines verify
+  immediately: `move_speed 1.35` ("creeps in") and `windup_duration 1.55` (the uncoil, "a clear
+  step-away window" — deliberately the inverse of the Naturalizer's short 0.35 contact tell).
+  "Prefers hyperexcitable neurons" maps cleanly onto shipped run state via `GameState.is_running()`,
+  and the re-lock poll belongs on the scheduler under its own tag (copy `naturalizer.gd`'s
+  `_hesitation_poll` idiom), never per frame.
+  **What does NOT work:** gating re-lock candidacy on
+  `is_detection_pair_currently_visible(detector, other)`. It reads true before acquisition and false
+  for every body from the first tick AFTER the enemy acquires — including the acquired target itself —
+  so the lock freezes on whoever was seen first and never jumps to the runner, which is the whole
+  decoy play. Measured, and NOT explained by the detector's `detection_targets` (still lists both),
+  target concealment (0), shelter, or dodge. Next attempt: stop using that predicate for re-targeting;
+  do the enemy's own range + concealment check, or find what the base uses to hold a target through
+  `pursuit`.
+  **Harness traps that cost four runs:** `set_running` silently refuses without `stamina` in the
+  registered stats; in a `SceneTree` script `_ready` does not fire until the tree processes, so
+  `await process_frame` before `activate()`; `_has_detection_los` needs `gs.grid`, so a gridless probe
+  reports nothing visible while prediction-based acquisition still fires; `create_room` borders are
+  walls, so place bodies in the interior.
+
 ### 4. Windup Window
 - **HOOK:** A **Flare** cluster lane where *your own bunching* is the trigger (ruling 3: bunching is
   bunching, whoever crowds) — 2–3s wind-up, then a friend-and-foe burst. Single-file through the portal
