@@ -126,6 +126,36 @@ func get_preview_anchors() -> Dictionary:
 		"pair_target": Vector3(float(PAIR_TARGET_CELL.x) + 0.5, 0.0, float(PAIR_TARGET_CELL.y) + 0.5),
 	}
 
+## Declared from the design, before the body: --test-fragment-manifest proves the built scene
+## matches. Every crate is a command-clickable PushTarget body; the bend and pair-blocker crates
+## are named individually because the REFUSAL exhibits are the lab's point, not the happy pushes.
+func get_fragment_manifest() -> Dictionary:
+	return {
+		"components": [
+			{"id": "pushable_crates", "kind": "node", "node_class": "PushTarget", "count": 5},
+			{"id": "pusher_body", "kind": "character", "char_prefix": "aster", "count": 1},
+			{"id": "bend_crate", "kind": "interactable", "node_name": "PushTarget_crate_bend"},
+			{"id": "pair_blocker", "kind": "interactable", "node_name": "PushTarget_crate_pair_b"},
+		],
+		"behaviours": [
+			{
+				"id": "dead_bend_refuses",
+				"claim": "pushing around the bend has no plan and the command refuses without moving the crate",
+				"test": "--test-push-lab",
+			},
+			{
+				"id": "crate_blocks_crate",
+				"claim": "a second crate is an obstacle: the plan routes around it and its own cell is a refused destination",
+				"test": "--test-push-lab",
+			},
+			{
+				"id": "queued_push_reads",
+				"claim": "a queued push shows the object's ghost at a pushable destination and the blocked cursor at an impossible one",
+				"test": "--test-push-lab",
+			},
+		],
+	}
+
 func get_preview_state() -> Dictionary:
 	var gs = _get_game_state()
 	var crates := {}

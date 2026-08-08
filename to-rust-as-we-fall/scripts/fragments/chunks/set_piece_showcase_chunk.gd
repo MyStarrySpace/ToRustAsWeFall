@@ -188,6 +188,37 @@ func get_grid_data() -> Dictionary:
 		"walkable_cells": extra,                         # float bridge + canal crossing — gated
 	}
 
+## Declared from the design (docs/SET_PIECES.md), before the body: every set piece keeps its
+## CONTROL separated from its EFFECT, so the manifest names the crawl routes, the controls, and
+## the bodies the effects act on. --test-fragment-manifest proves the built scene matches.
+func get_fragment_manifest() -> Dictionary:
+	return {
+		"components": [
+			{"id": "crawl_mouths", "kind": "node", "node_class": "CrawlTunnel", "count": 4},
+			{"id": "hub_wheel", "kind": "interactable", "node_name": "HubWheel"},
+			{"id": "water_valve", "kind": "interactable", "node_name": "WaterValve"},
+			{"id": "pen_threat", "kind": "character", "char_prefix": "pen_lurker", "count": 1},
+			{"id": "scrap_swarm", "kind": "character", "char_prefix": "scrap_", "count": 2},
+		],
+		"behaviours": [
+			{
+				"id": "aligned_crawl",
+				"claim": "a crawl mouth carries a body through walls the grid forbids, and the hub's route opens only once the pushed wheel aligns the bent pipe",
+				"test": "--test-set-piece-showcase",
+			},
+			{
+				"id": "water_tiers",
+				"claim": "the valve's scheduler-committed level floats the bridge ONLY at MID and drowns the penned enemy at HIGH",
+				"test": "--test-set-piece-showcase",
+			},
+			{
+				"id": "plate_decays_under_swarm",
+				"claim": "a dropped plate bridges the canal but living scraps eat it; only a drowned swarm leaves the crossing permanent",
+				"test": "--test-set-piece-showcase",
+			},
+		],
+	}
+
 func _build_chunk() -> void:
 	_add_floor(self, Vector3(15.0, 0.0, 11.5), Vector3(30.0, 0.1, 23.0), Color(0.085, 0.09, 0.11))
 	_add_label(self, "SET PIECES", Vector3(15.0, 3.4, 0.6), Color(0.9, 0.85, 0.6))

@@ -165,6 +165,35 @@ func get_preview_camera_profile() -> Dictionary:
 func get_preview_camera_recenter_target() -> Vector3:
 	return Vector3(13.0, 0.0, 6.5)
 
+## Declared from the design, before the body. The crossing pads are declared as a PAIR because the
+## trade is the fragment: one pad forward and one pad back, or the far console has nothing to open
+## and the second crossing cannot happen.
+func get_fragment_manifest() -> Dictionary:
+	return {
+		"components": [
+			{"id": "gate_sentry", "kind": "character", "char_prefix": "gate_sentry", "count": 1},
+			{"id": "crossing_pads", "kind": "node", "node_class": "PortalPad", "count": 2},
+			{"id": "gate_exit", "kind": "interactable", "node_name": "GateExit"},
+		],
+		"behaviours": [
+			{
+				"id": "pads_dead_unheld",
+				"claim": "a crossing pad is dead while nobody bears a console",
+				"test": "--test-two-hands-gate",
+			},
+			{
+				"id": "no_self_carry",
+				"claim": "the bearer cannot open their OWN gate -- only a different body's hold carries you",
+				"test": "--test-two-hands-gate",
+			},
+			{
+				"id": "role_trades",
+				"claim": "bearing the far console trades the role so the first holder can follow",
+				"test": "--test-two-hands-gate",
+			},
+		],
+	}
+
 func configure_chunk(_config: Dictionary) -> void:
 	pass
 

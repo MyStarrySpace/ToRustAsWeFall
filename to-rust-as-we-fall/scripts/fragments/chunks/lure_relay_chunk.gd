@@ -457,6 +457,36 @@ func _cancel_win_poll() -> void:
 
 # --- SceneChunk interface ---
 
+## Declared from the design, before the body. The components pin the geometry that IS the puzzle:
+## sentries massed on the exit and two physical flures, with the hide sitting close to the far one —
+## the arrangement that makes firing the near lure alone a trap and the relay the only clean line out.
+func get_fragment_manifest() -> Dictionary:
+	return {
+		"components": [
+			{"id": "relay_guards", "kind": "character", "char_prefix": "relay_guard_", "count": 3},
+			{"id": "flures", "kind": "node", "node_class": "Flure", "count": 2},
+			{"id": "near_lure", "kind": "interactable", "node_name": "Lure1Interact"},
+			{"id": "far_lure", "kind": "interactable", "node_name": "Lure2Interact"},
+		],
+		"behaviours": [
+			{
+				"id": "relay_handoff",
+				"claim": "when the far lure expires the sentries relay to the still-singing near lure, walking the hall back past the hidden party",
+				"test": "--test-lure-relay",
+			},
+			{
+				"id": "far_lure_first",
+				"claim": "firing only the near lure and crossing to the hide gets you spotted; only the far lure clears the corridor",
+				"test": "--test-lure-relay",
+			},
+			{
+				"id": "spotted_is_caught",
+				"claim": "a sentry locking onto an exposed party member fails the run",
+				"test": "--test-lure-relay",
+			},
+		],
+	}
+
 func get_scene_title() -> String:
 	return "Flure Relay"
 

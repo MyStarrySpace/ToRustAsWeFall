@@ -108,6 +108,37 @@ func _spawn_patrol() -> void:
 		enemy.set_patrol(route)
 	_sentry = enemy
 
+## Declared from the design, before the body. The mat and the margins are declared apart because the
+## pricing is the fragment: the Candid mat is the scan-blind lane that charges health, the Scarpet
+## margins are the free cover you wait a period out on -- collapse them and the plaza offers one
+## crossing instead of a choice.
+func get_fragment_manifest() -> Dictionary:
+	return {
+		"components": [
+			{"id": "enforcement", "kind": "character", "char_prefix": "plaza_enforcement", "count": 1},
+			{"id": "candid_mat", "kind": "node", "node_class": "CandidZone", "count": 1},
+			{"id": "scarpet_margins", "kind": "node", "node_class": "Scarpet", "count": 2},
+			{"id": "plaza_exit", "kind": "interactable", "node_name": "PlazaExit"},
+		],
+		"behaviours": [
+			{
+				"id": "route_keeps_clean_ground",
+				"claim": "no colonized mat cell lies on the walked route -- the patrol skips colonized ground",
+				"test": "--test-scanned-plaza",
+			},
+			{
+				"id": "plaza_absorbs_one",
+				"claim": "the plaza absorbs exactly one enforcement body and it opens on its patrol",
+				"test": "--test-scanned-plaza",
+			},
+			{
+				"id": "margin_is_not_the_mat",
+				"claim": "the Scarpet margin shelters without the mat's drain",
+				"test": "--test-scanned-plaza",
+			},
+		],
+	}
+
 func configure_chunk(_config: Dictionary) -> void:
 	pass
 

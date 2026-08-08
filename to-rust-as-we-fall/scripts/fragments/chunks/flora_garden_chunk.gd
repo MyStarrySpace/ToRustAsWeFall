@@ -1092,6 +1092,37 @@ func get_preview_anchors() -> Dictionary:
 		"pad_1": PAD_POSITIONS[0], "pad_2": PAD_POSITIONS[1], "pad_3": PAD_POSITIONS[2],
 	}
 
+## Declared from the design, before the body: a finite seed crate, near pads whose growths join one
+## mycelial network while the far pad stays its own, a TEND station per pad, and one stable bloom
+## presenter per authored pad. --test-fragment-manifest proves the built scene matches.
+func get_fragment_manifest() -> Dictionary:
+	return {
+		"components": [
+			{"id": "seed_crate", "kind": "interactable", "node_name": "SeedCrate"},
+			{"id": "near_pad", "kind": "interactable", "node_name": "SoilPad1"},
+			{"id": "far_pad", "kind": "interactable", "node_name": "SoilPad3"},
+			{"id": "tend_station", "kind": "interactable", "node_name": "FloraPad1"},
+			{"id": "pad_blooms", "kind": "node", "node_class": "FloraLight", "count": 3},
+		],
+		"behaviours": [
+			{
+				"id": "daily_tending_flourishes",
+				"claim": "a crate seed planted on a pad and tended each day advances a stage at dawn and reaches flourishing",
+				"test": "--test-flora-garden",
+			},
+			{
+				"id": "flourishing_sheds_light",
+				"claim": "a flourishing growth sheds real light where it stands",
+				"test": "--test-flora-garden",
+			},
+			{
+				"id": "near_pads_one_network",
+				"claim": "the two near pads grow into ONE mycelial network",
+				"test": "--test-flora-garden",
+			},
+		],
+	}
+
 func get_preview_state() -> Dictionary:
 	var gs = _get_game_state()
 	if gs == null:

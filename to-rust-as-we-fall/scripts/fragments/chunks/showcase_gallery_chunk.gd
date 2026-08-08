@@ -840,6 +840,39 @@ func get_preview_anchors() -> Dictionary:
 	return anchors
 
 
+## Declared from the design, before the body: --test-fragment-manifest proves the built scene
+## matches. The four "gallery_" bodies are the demo sentry, the standard sentry, the chain seam,
+## and the flora response sentry; the exhibited flora are the shipped gameplay objects themselves,
+## one Scarpet and one Capbage in each of the hiding and flora bays.
+func get_fragment_manifest() -> Dictionary:
+	return {
+		"components": [
+			{"id": "gallery_enemies", "kind": "character", "char_prefix": "gallery_", "count": 4},
+			{"id": "scarpet_covers", "kind": "node", "node_class": "Scarpet", "count": 2},
+			{"id": "capbage_hides", "kind": "node", "node_class": "Capbage", "count": 2},
+			{"id": "flure_lure", "kind": "node", "node_class": "Flure", "count": 1},
+			{"id": "hushbloom_stun", "kind": "node", "node_class": "Hushbloom", "count": 1},
+		],
+		"behaviours": [
+			{
+				"id": "hiding_tiers_teach",
+				"claim": "under the pacing sentry the pads visibly differ: EXPOSED is spotted, MEDIUM holds at pad range, FULL is never seen",
+				"test": "--test-showcase-gallery",
+			},
+			{
+				"id": "flora_is_real",
+				"claim": "the flora bay exhibits the shipped gameplay objects (Scarpet/Capbage/Flure/Hushbloom), never labelled stand-ins",
+				"test": "--test-showcase-gallery",
+			},
+			{
+				"id": "exit_cannot_be_spoofed",
+				"claim": "neither one member nor the whole party at the regroup exit completes the gallery while live responses are missing",
+				"test": "--test-showcase-gallery",
+			},
+		],
+	}
+
+
 func get_playthrough_interaction_target(action_id: String) -> Node3D:
 	match action_id:
 		"hide_capbage":

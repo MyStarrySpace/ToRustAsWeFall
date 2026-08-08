@@ -82,6 +82,38 @@ func _spawn_tangler() -> void:
 		enemy.set_roam(TANGLER_HOME, 2.2)
 	_tangler = enemy
 
+## Declared from the design, before the body. The zero-count rows carry the fragment's whole
+## distinction: Scarpet masks the iron channel and a Tangler reads the neural one, so the lane
+## deliberately offers NO hide flora -- "quiet" means walking, not concealed. A clump slipping in
+## during a dressing pass would silently hand the player the wrong solve, so the absence is a
+## declared fact rather than an accident of the current layout.
+func get_fragment_manifest() -> Dictionary:
+	return {
+		"components": [
+			{"id": "thicket_tangler", "kind": "character", "char_prefix": "thicket_tangler", "count": 1},
+			{"id": "no_scarpet", "kind": "node", "node_class": "Scarpet", "count": 0},
+			{"id": "no_candid_zone", "kind": "node", "node_class": "CandidZone", "count": 0},
+			{"id": "thicket_exit", "kind": "interactable", "node_name": "ThicketExit"},
+		],
+		"behaviours": [
+			{
+				"id": "decoy_owns_lock",
+				"claim": "the running decoy owns the Tangler's lock while the other member walks the lane",
+				"test": "--test-loudest-one",
+			},
+			{
+				"id": "walking_is_quiet",
+				"claim": "a walking crosser inside the scan does not steal the lock",
+				"test": "--test-loudest-one",
+			},
+			{
+				"id": "loudest_takes_lock",
+				"claim": "when the decoy stops running the lock jumps to whoever is loudest instead",
+				"test": "--test-loudest-one",
+			},
+		],
+	}
+
 func configure_chunk(_config: Dictionary) -> void:
 	pass
 

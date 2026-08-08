@@ -8788,15 +8788,26 @@ func _test_run_economy() -> void:
 ## walkable grid from ENTRY with the game's exact rule (8-dir, a diagonal only when both orthogonal neighbours are
 ## walkable, plus ramp/ladder links) and assert EVERY walkable cell is reached (no isolated pockets) and every node
 ## is reachable. This is what the render draws its tiled floor from, so "reachable floor" == "visible floor".
+## How many of the 32 seed/tier combos may fail generation before the sweep goes red. Failures are
+## fail-closed at runtime, so this ratchets POOL SHRINKAGE, not solvability.
+const GENERATED_TRAVERSIBLE_FAILURE_CEILING := 0
+
 func _test_generated_traversible() -> void:
 	_test_name = "Generated Traversible"
 	var tiers := ["teaching", "standard", "hard", "setpiece"]
 	var checked := 0
+	var generation_failures := 0
 	for seed in range(8):
 		for ti in range(tiers.size()):
 			var spec: Dictionary = StretchGeneratorScript.generate({
 				"seed": seed * 13 + ti, "complexity_tier": tiers[ti], "id": "trav_%d_%d" % [seed, ti]})
 			if not bool(spec.get("success", false)):
+				# A failed generation fails CLOSED (the runtime substitutes the labelled fallback), so
+				# it is not a solvability hole -- but a rising failure rate silently shrinks the pool
+				# of levels players actually see. Count it and ratchet it below instead of skipping in
+				# silence.
+				generation_failures += 1
+				print("  SKIP (generation failed): seed=%d tier=%s" % [seed * 13 + ti, tiers[ti]])
 				continue
 			checked += 1
 			var gd: Dictionary = StretchGeneratorScript.build_navigation_grid_from_spec(spec)
@@ -8826,6 +8837,13 @@ func _test_generated_traversible() -> void:
 				var path: Array = g.find_multi_level_path(ecell, entry.elev, g.world_to_grid(np), int((n as Dictionary).get("elevation_index", 0)))
 				_assert_true(path.size() >= 1, "seed %d %s: node '%s' is reachable" % [seed, tiers[ti], str((n as Dictionary).get("id", ""))])
 	_assert_true(checked >= 20, "sampled enough generated levels (%d)" % checked)
+	# The frozen failure ceiling: the sweep tolerates the known rate and goes red if it GROWS. A
+	# genuine improvement should lower the constant so the ratchet keeps biting.
+	_assert_true(generation_failures <= GENERATED_TRAVERSIBLE_FAILURE_CEILING,
+		"generation failures do not grow (%d of 32, ceiling %d)" % [
+			generation_failures, GENERATED_TRAVERSIBLE_FAILURE_CEILING])
+	_assert_true(generation_failures >= GENERATED_TRAVERSIBLE_FAILURE_CEILING - 4,
+		"failure rate dropped to %d; lower GENERATED_TRAVERSIBLE_FAILURE_CEILING to match" % generation_failures)
 
 ## TANGLER — the roster's three load-bearing lines asserted as behaviour. "Prefers hyperexcitable
 ## neurons" is the lock rule (it takes the RUNNING body and JUMPS when the decoy hands off), "the
