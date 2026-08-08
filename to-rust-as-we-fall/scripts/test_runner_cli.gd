@@ -1558,6 +1558,15 @@ func _ready() -> void:
 			"--test-comment-style":
 				ran_test = true
 				await _test_comment_style()
+			"--test-push-puzzle-filters":
+				ran_test = true
+				await _test_push_puzzle_filters()
+			"--test-push-puzzle-builder":
+				ran_test = true
+				await _test_push_puzzle_builder()
+			"--test-push-puzzle-certificate-replay":
+				ran_test = true
+				await _test_push_puzzle_certificate_replay()
 			"--test-detection-scaling":
 				ran_test = true
 				await _test_detection_scaling()
@@ -2235,6 +2244,9 @@ func _run_all_tests() -> void:
 	await _test_predicted_consequence_parity()
 	await _test_movement_discipline()
 	await _test_comment_style()
+	await _test_push_puzzle_filters()
+	await _test_push_puzzle_builder()
+	await _test_push_puzzle_certificate_replay()
 	await _test_detection_scaling()
 	await _test_enemy_state_derived_work()
 	await _test_watched_gap_los()
@@ -9314,6 +9326,150 @@ func _test_predicted_consequence_parity() -> void:
 		# THE POINT: 1x and 10x resolve the same consequence at the same moment in game time.
 		_assert_true(absf(fine - coarse) <= 0.166 + 0.0001,
 			"1x and 10x fire the SAME consequence at the same tick (%.4f vs %.4f)" % [fine, coarse])
+
+## PUSH PUZZLE S1 — the deadlock filters are SOUND on the geometries that define them: the dead
+## corner (the same shape as push_lab's bent-corridor scenario), the frozen 2x2, and the wall-pinned
+## crate. Filters reject provably-lost states; they never claim solvability.
+func _test_push_puzzle_filters() -> void:
+	_test_name = "Push Puzzle Filters"
+	var cells: Array = []
+	for x in range(0, 4):
+		for y in range(0, 4):
+			cells.append(Vector2i(x, y))
+	var model := PushPuzzleModel.new(cells, [Vector2i(3, 3)])
+	var live := model.live_cells()
+	_assert_true(not live.has(Vector2i(0, 0)),
+		"a non-goal corner is DEAD -- no push can ever bring a crate back off it")
+	_assert_true(live.has(Vector2i(3, 3)), "the goal itself is live")
+	_assert_true(live.has(Vector2i(2, 2)), "open interior ground is live")
+	_assert_true(not live.has(Vector2i(1, 0)),
+		"a wall-hugging cell with no pusher room beyond is dead, like the bent-corridor corner")
+	var square := {Vector2i(1, 1): true, Vector2i(2, 1): true, Vector2i(1, 2): true, Vector2i(2, 2): true}
+	_assert_true(model.freeze_deadlocked(square),
+		"a full 2x2 of crates off-goal is frozen -- no member can ever be pushed")
+	var on_goals := PushPuzzleModel.new(cells,
+		[Vector2i(1, 1), Vector2i(2, 1), Vector2i(1, 2), Vector2i(2, 2)])
+	_assert_true(not on_goals.freeze_deadlocked(square),
+		"the same 2x2 with every crate ON a goal is not a deadlock")
+	_assert_true(model.freeze_deadlocked({Vector2i(0, 0): true}),
+		"a crate wall-pinned on both axes off-goal is frozen")
+
+## PUSH PUZZLE S4+S7 — the builder's instances carry a REAL guarantee: the exact verifier agrees on
+## every emitted instance, crates land only on live cells, difficulty clears the knob, and the same
+## seed reproduces the same instance byte-for-byte.
+func _test_push_puzzle_builder() -> void:
+	_test_name = "Push Puzzle Builder"
+	var cells: Array = []
+	for x in range(0, 7):
+		for y in range(0, 5):
+			cells.append(Vector2i(x, y))
+	var model := PushPuzzleModel.new(cells, [Vector2i(3, 2), Vector2i(5, 1)])
+	var live := model.live_cells()
+	var accepted := 0
+	for seed_value in range(1, 41):
+		var instance := PushPuzzleBuilder.build(model, seed_value, 14, 3)
+		if instance.is_empty():
+			continue
+		accepted += 1
+		var crates := {}
+		for c in instance["crates"]:
+			crates[c] = true
+			_assert_true(live.has(c),
+				"seed %d: generated crates sit on LIVE cells only (%s)" % [seed_value, str(c)])
+		var verdict := PushPuzzleVerifier.solve(model, crates, instance["player"])
+		if not bool(verdict["solvable"]) or int(verdict["pushes"]) < 3:
+			_assert_true(false,
+				"seed %d: verifier confirms the instance at >= the difficulty knob" % seed_value)
+		var again := PushPuzzleBuilder.build(model, seed_value, 14, 3)
+		if str(again) != str(instance):
+			_assert_true(false, "seed %d: same seed reproduces the same instance" % seed_value)
+	_assert_true(accepted >= 15,
+		"the builder accepts a workable share of seeds (%d/40) rather than rejecting everything" % accepted)
+
+## PUSH PUZZLE S3+S8 — the certificate replays through the SHIPPED verb. Each certificate step is a
+## one-cell command_push_object in a live GameState whose grid the model was read FROM, so the model
+## and the game cannot drift apart silently. The identical replay at a 10x coarser step must land
+## the identical final configuration (fast-forward invariance).
+func _test_push_puzzle_certificate_replay() -> void:
+	_test_name = "Push Puzzle Certificate Replay"
+	var final_layouts := {}
+	for step_v in [0.05, 0.5]:
+		var step := float(step_v)
+		var sched := EventScheduler.new()
+		var gs := GameState.new()
+		gs.scheduler = sched
+		gs.event_log = EventLog.new()
+		var grid := GridWorld.new()
+		grid.create_room(9, 7)
+		gs.grid = grid
+		# The model's board is read off the REAL grid, so their walkability agrees by construction.
+		var cells: Array = []
+		for x in range(9):
+			for y in range(7):
+				if grid.is_walkable(x, y):
+					cells.append(Vector2i(x, y))
+		var model := PushPuzzleModel.new(cells, [Vector2i(4, 3), Vector2i(6, 2)])
+		var instance := {}
+		for seed_value in range(1, 60):
+			instance = PushPuzzleBuilder.build(model, seed_value, 12, 3)
+			if not instance.is_empty():
+				break
+		_assert_true(not instance.is_empty(), "a replayable instance generates (step %.2f)" % step)
+		if instance.is_empty():
+			continue
+		var player_cell: Vector2i = instance["player"]
+		gs.register_character("pusher",
+			Vector3(float(player_cell.x) + 0.5, 0.0, float(player_cell.y) + 0.5), 3.0, {})
+		var crate_index := 0
+		for crate_cell_v in instance["crates"]:
+			var crate_cell: Vector2i = crate_cell_v
+			gs.register_physics_object("chamber_crate_%d" % crate_index,
+				Vector3(float(crate_cell.x) + 0.5, 0.0, float(crate_cell.y) + 0.5),
+				0.45, 3.0, 0.7, true)
+			crate_index += 1
+		var replay_ok := true
+		for push_step_v in instance["certificate"]:
+			var push_step: Dictionary = push_step_v
+			var from_cell: Vector2i = push_step["crate"]
+			var to_cell: Vector2i = from_cell + (push_step["dir"] as Vector2i)
+			var crate_id := ""
+			for obj_id_v in gs.physics_objects.keys():
+				if grid.world_to_grid(gs.get_physics_position(str(obj_id_v))) == from_cell:
+					crate_id = str(obj_id_v)
+					break
+			if crate_id == "" or not gs.command_push_object("pusher", crate_id, to_cell):
+				replay_ok = false
+				_assert_true(false,
+					"the shipped verb ACCEPTS certificate step %s->%s (step %.2f)" % [
+						str(from_cell), str(to_cell), step])
+				break
+			var arrived := false
+			for _i in range(1200):
+				sched.advance_ticks(step)
+				if grid.world_to_grid(gs.get_physics_position(crate_id)) == to_cell \
+						and not gs.is_moving("pusher"):
+					arrived = true
+					break
+			if not arrived:
+				replay_ok = false
+				_assert_true(false,
+					"certificate step %s->%s completes in the live scheduler (step %.2f)" % [
+						str(from_cell), str(to_cell), step])
+				break
+		if not replay_ok:
+			continue
+		var landed: Array = []
+		for obj_id_v in gs.physics_objects.keys():
+			var cell := grid.world_to_grid(gs.get_physics_position(str(obj_id_v)))
+			landed.append(cell)
+			_assert_true(model.goals.has(cell),
+				"after the full certificate every crate stands ON a goal (step %.2f)" % step)
+		landed.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
+			return a.y < b.y or (a.y == b.y and a.x < b.x))
+		final_layouts[step] = str(landed)
+	if final_layouts.size() == 2:
+		_assert_equals(str(final_layouts[0.5]), str(final_layouts[0.05]),
+			"a 10x coarser tick step lands the IDENTICAL final configuration")
 
 ## FRAGMENT MANIFEST — does the built scene actually contain what the fragment says it contains?
 ##
