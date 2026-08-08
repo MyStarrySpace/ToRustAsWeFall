@@ -1516,6 +1516,9 @@ func _ready() -> void:
 			"--test-generated-stretch-interactable-reach":
 				ran_test = true
 				await _test_generated_stretch_interactable_reach()
+			"--test-two-hands-gate":
+				ran_test = true
+				await _test_two_hands_gate()
 			"--test-generated-stretch-quality":
 				ran_test = true
 				await _test_generated_stretch_quality()
@@ -2170,6 +2173,7 @@ func _run_all_tests() -> void:
 	_test_generated_grid()
 	_test_generated_traversible()
 	await _test_generated_stretch_interactable_reach()
+	await _test_two_hands_gate()
 	await _test_generated_stretch_quality()
 	await _test_generated_food_modes()
 	_test_grid_ascii()
@@ -8720,6 +8724,52 @@ func _test_generated_traversible() -> void:
 				var path: Array = g.find_multi_level_path(ecell, entry.elev, g.world_to_grid(np), int((n as Dictionary).get("elevation_index", 0)))
 				_assert_true(path.size() >= 1, "seed %d %s: node '%s' is reachable" % [seed, tiers[ti], str((n as Dictionary).get("id", ""))])
 	_assert_true(checked >= 20, "sampled enough generated levels (%d)" % checked)
+
+## TWO HANDS ON THE GATE — the held-station co-op rule, which is the whole fragment: a crossing pad
+## only carries somebody while a DIFFERENT body bears a gate console. If that degrades to "any hold
+## opens it" the puzzle stops being co-op and becomes a walk; if it degrades to "no hold is enough"
+## the fragment is unbeatable. Both directions are asserted, plus the role TRADE that makes the second
+## crossing possible and the downed-holder case that must not count as bearing weight.
+func _test_two_hands_gate() -> void:
+	_test_name = "Two Hands On The Gate"
+	var inst = await _instantiate_preview_chunk_and_wait("two_hands_gate", 8)
+	if inst == null:
+		_assert_true(false, "the two-hands gate fragment instantiates")
+		return
+	var chunk := _find_fragment_chunk_root(inst)
+	var gs = inst.get("_game_state")
+	if chunk == null or gs == null:
+		_assert_true(false, "the two-hands gate exposes its chunk and game state")
+		inst.queue_free()
+		await get_tree().process_frame
+		return
+	_assert_true(not bool(chunk.call("_validate_crossing", null, "aster"))
+			and not bool(chunk.call("_validate_crossing", null, "peris")),
+		"a crossing pad is dead while nobody bears a console")
+	gs.snap_character_to("aster", Vector3(5.5, 0.0, 6.5))
+	await get_tree().process_frame
+	_assert_true(bool(chunk.call("_validate_crossing", null, "peris")),
+		"the partner may cross while somebody bears a console")
+	_assert_true(not bool(chunk.call("_validate_crossing", null, "aster")),
+		"the bearer cannot open their OWN gate -- the co-op rule, not a formality")
+	gs.snap_character_to("peris", Vector3(20.5, 0.0, 6.5))
+	gs.snap_character_to("aster", Vector3(3.5, 0.0, 6.5))
+	await get_tree().process_frame
+	_assert_true(bool(chunk.call("_validate_crossing", null, "aster"))
+			and not bool(chunk.call("_validate_crossing", null, "peris")),
+		"trading the console to the far side lets the first holder follow")
+	gs.snap_character_to("aster", Vector3(5.5, 0.0, 6.5))
+	gs.down_character("aster")
+	await get_tree().process_frame
+	var downed_state: Dictionary = chunk.get_preview_state()
+	_assert_true(not bool((downed_state.get("held", {}) as Dictionary).get("near", true)),
+		"a downed body on the console does not bear it")
+	var sentry = chunk.get("_sentry")
+	_assert_true(sentry != null and gs.characters.has("gate_sentry")
+			and str(sentry.call("get_state")) in ["patrol", "idle", "alert", "pursuit"],
+		"the watched console carries an authored Naturalizer patrol")
+	inst.queue_free()
+	await get_tree().process_frame
 
 ## LIVE-scene companion to Generated Traversible. That test proves the generated SPEC's cells and
 ## nodes connect; this one proves the interactables the chunk actually BUILDS can be stood at. A

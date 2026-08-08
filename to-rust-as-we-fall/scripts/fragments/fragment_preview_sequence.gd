@@ -30,6 +30,7 @@ const REFUGE_RUN_CHUNK_SCENE := preload("res://scenes/fragments/chunks/refuge_ru
 const CHANNELS_WASH_INTRO_CHUNK_SCENE := preload("res://scenes/fragments/chunks/channels_wash_intro_chunk.tscn")
 const PUSH_LAB_CHUNK_SCENE := preload("res://scenes/fragments/chunks/push_lab_chunk.tscn")
 const REST_LAB_CHUNK_SCENE := preload("res://scenes/fragments/chunks/rest_lab_chunk.tscn")
+const TWO_HANDS_GATE_CHUNK_SCENE := preload("res://scenes/fragments/chunks/two_hands_gate_chunk.tscn")
 const FLORA_GARDEN_CHUNK_SCENE := preload("res://scenes/fragments/chunks/flora_garden_chunk.tscn")
 const DUSK_RUN_CHUNK_SCENE := preload("res://scenes/fragments/chunks/dusk_run_chunk.tscn")
 const LURE_RELAY_CHUNK_SCENE := preload("res://scenes/fragments/chunks/lure_relay_chunk.tscn")
@@ -72,6 +73,7 @@ const CHUNK_SCENES := {
 	"puzzle_atom": PUZZLE_ATOM_CHUNK_SCENE,
 	"push_lab": PUSH_LAB_CHUNK_SCENE,
 	"rest_lab": REST_LAB_CHUNK_SCENE,
+	"two_hands_gate": TWO_HANDS_GATE_CHUNK_SCENE,
 	"flora_garden": FLORA_GARDEN_CHUNK_SCENE,
 	"dusk_run": DUSK_RUN_CHUNK_SCENE,
 	"showcase_gallery": SHOWCASE_GALLERY_CHUNK_SCENE,
@@ -220,6 +222,10 @@ const PREVIEW_ENTRIES := [
 	# non-uniform windows, dweller eviction, sweep-to-outfall via the Channel transaction.
 	{"id": "basin_fill_proof", "chunk": "data_fragment", "title": "Balancing Basin — Fill Proof (water rota)", "stage": 3,
 		"config": {"fragment_path": "res://data/fragments/basin_fill_proof.tres"}},
+	# TWO HANDS ON THE GATE — the bare-pair held-station co-op (FRAGMENT_IDEAS.md #6). The crossing
+	# pads are dead unless somebody bears a gate console, and the holder cannot be the crosser, so the
+	# role has to be traded across the gap. Only the near console is watched by a Naturalizer patrol.
+	{"id": "two_hands_gate", "chunk": "two_hands_gate", "title": "Two Hands on the Gate", "stage": 2},
 ]
 
 # Exported-browser regression fixtures are immutable launch contracts, not game
@@ -390,7 +396,7 @@ const PREVIEW_ABILITY_TAG_PREFIX := "fragment_preview:ability:"
 # (the --test-fragment-preview-registry test enforces it). Empty = the picker (preview_menu).
 @export_enum("stacks", "rings", "lockout", "mother_flure", "survival_range",
 	"endo_junction_stretch", "generated_stretch",
-	"refuge_run", "channels_wash_intro", "lure_relay", "distract_gate", "puzzle_atom", "push_lab", "rest_lab", "flora_garden", "dusk_run", "showcase_gallery", "wash_relay", "data_fragment", "shape_grammar", "creature_grammar", "archetype_gallery", "architecture_showcase", "geometry_lab", "set_piece_showcase", "boss_showcase", "aghora_bazaar", "lockout_chase", "inflammashunt", "wash_ascent") var preview_chunk := "stacks"
+	"refuge_run", "channels_wash_intro", "lure_relay", "distract_gate", "puzzle_atom", "push_lab", "rest_lab", "flora_garden", "dusk_run", "showcase_gallery", "wash_relay", "data_fragment", "shape_grammar", "creature_grammar", "archetype_gallery", "architecture_showcase", "geometry_lab", "set_piece_showcase", "boss_showcase", "aghora_bazaar", "lockout_chase", "inflammashunt", "wash_ascent", "two_hands_gate") var preview_chunk := "stacks"
 @export var scene_title_override := ""
 @export var preview_chunk_config: Dictionary = {}
 
