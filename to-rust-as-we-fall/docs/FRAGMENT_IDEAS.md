@@ -96,7 +96,16 @@ Aster spoof is the *shadow* (this broke draft #11's framing).
   "Prefers hyperexcitable neurons" maps cleanly onto shipped run state via `GameState.is_running()`,
   and the re-lock poll belongs on the scheduler under its own tag (copy `naturalizer.gd`'s
   `_hesitation_poll` idiom), never per frame.
-  **What does NOT work:** gating re-lock candidacy on
+  **RESOLVED 2026-08-08 and SHIPPED (partial).** The cause was the detection SUBSCRIPTION: the base
+  drops it outside `DETECTION_SCANNING_STATES`, so a committed enemy stops scanning and every body --
+  including its own target -- reads invisible. `Tangler` overrides `_sync_detection_subscription` to
+  keep scanning through `alert` and `pursuit` (it is still creeping) and drop it for the snap itself.
+  With that, the lock correctly takes the RUNNING body and correctly does NOT release when that body
+  goes quiet. `--test-tangler` guards creep speed, the long uncoil, and both halves of that rule.
+  **Still open:** the decoy HAND-OFF (first runner stops, a second starts, lock moves). Not asserted,
+  because it is not demonstrated. Ruled out so far: the new runner's stamina expiring (topped up, no
+  change), the committed-state gate, and the subscription itself.
+  **Superseded note, kept for the ruled-out list:** gating re-lock candidacy on
   `is_detection_pair_currently_visible(detector, other)`. It reads true before acquisition and false
   for every body from the first tick AFTER the enemy acquires — including the acquired target itself —
   so the lock freezes on whoever was seen first and never jumps to the runner, which is the whole

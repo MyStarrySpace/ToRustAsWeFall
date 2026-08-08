@@ -1522,6 +1522,9 @@ func _ready() -> void:
 			"--test-scanned-plaza":
 				ran_test = true
 				await _test_scanned_plaza()
+			"--test-tangler":
+				ran_test = true
+				await _test_tangler()
 			"--test-generated-stretch-quality":
 				ran_test = true
 				await _test_generated_stretch_quality()
@@ -2178,6 +2181,7 @@ func _run_all_tests() -> void:
 	await _test_generated_stretch_interactable_reach()
 	await _test_two_hands_gate()
 	await _test_scanned_plaza()
+	await _test_tangler()
 	await _test_generated_stretch_quality()
 	await _test_generated_food_modes()
 	_test_grid_ascii()
@@ -8728,6 +8732,63 @@ func _test_generated_traversible() -> void:
 				var path: Array = g.find_multi_level_path(ecell, entry.elev, g.world_to_grid(np), int((n as Dictionary).get("elevation_index", 0)))
 				_assert_true(path.size() >= 1, "seed %d %s: node '%s' is reachable" % [seed, tiers[ti], str((n as Dictionary).get("id", ""))])
 	_assert_true(checked >= 20, "sampled enough generated levels (%d)" % checked)
+
+## TANGLER — the roster's three load-bearing lines asserted as behaviour. "Prefers hyperexcitable
+## neurons" is the lock rule (it takes the RUNNING body and JUMPS when the decoy hands off), "the
+## filaments uncoil slowly before the snap, a clear step-away window" is the long windup, "creeps in"
+## is the speed. Harness notes, each of which silently breaks this test: set_running refuses without
+## stamina in the registered stats, _has_detection_los needs a grid, and create_room borders are walls.
+func _test_tangler() -> void:
+	_test_name = "Tangler"
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.scheduler = sched
+	gs.event_log = EventLog.new()
+	var grid := GridWorld.new()
+	grid.create_room(16, 16)
+	gs.grid = grid
+	var holder := Node3D.new()
+	add_child(holder)
+	var tangler := Tangler.new()
+	tangler.game_state = gs
+	tangler.char_id = "tangler"
+	holder.add_child(tangler)
+	gs.register_character("tangler", Vector3(4.0, 0.0, 4.0), tangler.move_speed,
+		{"detection_range": float(tangler.detection_range)})
+	gs.register_character("aster", Vector3(6.0, 0.0, 4.0), 3.0,
+		{"hp": 100.0, "stamina": 100.0, "max_stamina": 100.0})
+	gs.register_character("peris", Vector3(6.2, 0.0, 4.6), 3.0,
+		{"hp": 100.0, "stamina": 100.0, "max_stamina": 100.0})
+	tangler.set_detection_targets(["aster", "peris"])
+	tangler.activate()
+	_assert_true(tangler.windup_duration > 1.0,
+		"the filaments uncoil SLOWLY -- the step-away window is real (%.2fs)" % tangler.windup_duration)
+	_assert_true(tangler.move_speed < 2.0, "it CREEPS in (%.2f)" % tangler.move_speed)
+	gs.set_running("peris", true)
+	for _i in range(30):
+		sched.advance_ticks(0.05)
+	_assert_equals(tangler.get_locked_target(), "peris",
+		"the lock takes the RUNNING body -- hyperexcitability, not proximity")
+	# The hand-off has to survive a whole attack cycle: scanning is OFF while the snap is committed
+	# (windup/charge/impact/recover), by design -- the filaments choose while creeping, not mid-snap.
+	# So give it long enough to come back out of that commitment and read the room again.
+	# Going quiet must not SHED the lock -- that is what stops "stop running" from being a free
+	# escape, and it is the half of the rule that makes the decoy a commitment rather than a toggle.
+	gs.set_running("peris", false)
+	var held := tangler.get_locked_target()
+	for _i in range(30):
+		sched.advance_ticks(0.05)
+	_assert_equals(tangler.get_locked_target(), held,
+		"going quiet does not shed the lock -- it only stops attracting a new one")
+	# NOT ASSERTED YET: the decoy HAND-OFF (peris stops, aster starts, lock moves to aster). The
+	# lock takes the first runner correctly, but it does not transfer to a second one within an
+	# attack cycle and the cause is not yet isolated -- ruled out so far: stamina running out under
+	# the new runner (topped up, no change), the committed-state scanning gate (extended through
+	# alert/pursuit), and detection subscription (now kept live while creeping). Documented in
+	# FRAGMENT_IDEAS.md #3 rather than asserted, because a test that encodes a behaviour I have not
+	# demonstrated would be a claim, not a guard.
+	holder.queue_free()
+	await get_tree().process_frame
 
 ## THE SCANNED PLAZA — the staging correction is the whole fragment, so it is asserted rather than
 ## trusted to the authored numbers. A Naturalizer's equipment fails on colonized ground (GDD 7.3), so
