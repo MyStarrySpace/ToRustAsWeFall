@@ -121,21 +121,49 @@ off-grid at z = 15/17 on an 80×13 board. The production path unwarps first, via
 Scope: verified on the default teaching stretch (`generated_teaching_channels_shelter_1_to_2`), the
 same family and mechanism as the browser run, not on seed 80713 specifically.
 
-## 4. The instruction banner never goes away and covers the level
+## 4. ~~The instruction banner never goes away~~ — MOSTLY RETRACTED, that is the preview harness
 
-*"All three characters start topped off. Run and cast abilities spend stamina; ATP pays for shelter
-rest unless an experimental scarcity preset is selected."* sits across the middle of the screen for
-the entire session. Pressing **H** (Hide) removes the control-key list but not this banner, and not
-the CARRY / CONSUME panel bottom-left. Both occlude level geometry permanently.
+The banner I complained about is `fragment_preview_sequence.gd:3709` -- the FRAGMENT PREVIEW's own
+status note, set as `_note_default`. I was playing inside the dev preview shell, so it is the
+harness describing the harness, not shipping game UI dressing the world.
 
-## 5. Explanatory prose drawn over the world — a P-SHOWN violation in the shipping path
+H's behaviour is also deliberate and already under test: `real H input hides the optional briefing`
+and `H leaves the persistent status surface and current receipt visible` both pass. H is specified
+to hide the briefing and KEEP the status surface, so "H doesn't hide it" is the contract working.
 
-Hovering the exit shelter draws, in large text across the level: **`ENTER SHELTER`** and
-**`-> Completes once the conscious party is inside; starts canonical rest only where recovery is
-needed`**. That is a rules explanation rendered into the play space. Under P-SHOWN the shelter should
-*show* that it is a shelter and *show* who is inside it; a sentence describing its completion
-semantics is the precise thing that law exists to stop. It is also unreadable-by-design clutter at
-this text size over black geometry.
+What survives: preview chrome that sits across the middle of the play area is still bad for
+eyeballing a level in the preview, which is what the preview is for. That is a dev-surface polish
+item, not a P-SHOWN violation, and it should be weighed as such.
+
+## 5. The hover consequence is sourced from a QA metadata field — CONFIRMED, measured
+
+Hovering the exit shelter draws **`ENTER SHELTER`** and **`-> Completes once the conscious party is
+inside; starts canonical rest only where recovery is needed`**. Traced: every generated node sets
+`consequence_preview` from `playable_section.predicted_effect`
+(`generated_stretch_chunk.gd:9403`).
+
+`predicted_effect` is QA/design metadata -- it sits beside `failure_prediction`,
+`observable_evidence` and `likely_misconception`, which are review fields, not player copy. Using
+one as the hover line is a category error independent of taste.
+
+Measured across `data/generated_stretches/*.json`:
+
+| | |
+| --- | --- |
+| Generated nodes shipping a hover consequence | 36 |
+| Of those, longer than 60 chars | **36 / 36** |
+| Length: min / median / p90 / max | 83 / 83 / 105 / **144** |
+
+Against the hand-authored register in the same UI: `Bridge the marked downstream gap after a delay`
+(45), `Extend or retract every %s drawer` (33). The generated line is 2-3x that, and reads as spec
+prose: *"The exact interacting character takes the visible physical load if they are in range and
+have a free hand"* (105).
+
+This is player-facing WRITING, which is the director's to set, so it is not being rewritten
+unilaterally. The decision needed is the register: (a) emit a dedicated terse player line in the
+generator and leave `predicted_effect` to QA, (b) reuse the already-terse authored
+`relationship_label` (e.g. `PARTY ENTERS`), or (c) show the verb alone and let the world carry the
+consequence, which is the strictest P-SHOWN reading.
 
 ---
 
