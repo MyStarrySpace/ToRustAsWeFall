@@ -33,6 +33,7 @@ const REST_LAB_CHUNK_SCENE := preload("res://scenes/fragments/chunks/rest_lab_ch
 const TWO_HANDS_GATE_CHUNK_SCENE := preload("res://scenes/fragments/chunks/two_hands_gate_chunk.tscn")
 const SCANNED_PLAZA_CHUNK_SCENE := preload("res://scenes/fragments/chunks/scanned_plaza_chunk.tscn")
 const LOUDEST_ONE_CHUNK_SCENE := preload("res://scenes/fragments/chunks/loudest_one_chunk.tscn")
+const WALL_HUGGER_CHUNK_SCENE := preload("res://scenes/fragments/chunks/wall_hugger_chunk.tscn")
 const FLORA_GARDEN_CHUNK_SCENE := preload("res://scenes/fragments/chunks/flora_garden_chunk.tscn")
 const DUSK_RUN_CHUNK_SCENE := preload("res://scenes/fragments/chunks/dusk_run_chunk.tscn")
 const LURE_RELAY_CHUNK_SCENE := preload("res://scenes/fragments/chunks/lure_relay_chunk.tscn")
@@ -78,6 +79,7 @@ const CHUNK_SCENES := {
 	"two_hands_gate": TWO_HANDS_GATE_CHUNK_SCENE,
 	"scanned_plaza": SCANNED_PLAZA_CHUNK_SCENE,
 	"loudest_one": LOUDEST_ONE_CHUNK_SCENE,
+	"wall_hugger": WALL_HUGGER_CHUNK_SCENE,
 	"flora_garden": FLORA_GARDEN_CHUNK_SCENE,
 	"dusk_run": DUSK_RUN_CHUNK_SCENE,
 	"showcase_gallery": SHOWCASE_GALLERY_CHUNK_SCENE,
@@ -238,6 +240,10 @@ const PREVIEW_ENTRIES := [
 	# NEURAL channel, so Scarpet is no help and there is none: quiet means WALKING. One runs to own
 	# the lock, the other threads the lane; stop running and the lock jumps to whoever is mid-lane.
 	{"id": "loudest_one", "chunk": "loudest_one", "title": "The Loudest One", "stage": 3},
+	# WALL-HUGGER'S LAMENT (FRAGMENT_IDEAS.md #2) — inverts the hug-the-wall instinct. Both walls vent
+	# on alternating cadences and a rooted Spiker watches the dry middle, so safe ground is the moving
+	# intersection of "this wall is shut" and "the turret cannot see me".
+	{"id": "wall_hugger", "chunk": "wall_hugger", "title": "Wall-Hugger's Lament", "stage": 3},
 ]
 
 # Exported-browser regression fixtures are immutable launch contracts, not game
@@ -408,7 +414,7 @@ const PREVIEW_ABILITY_TAG_PREFIX := "fragment_preview:ability:"
 # (the --test-fragment-preview-registry test enforces it). Empty = the picker (preview_menu).
 @export_enum("stacks", "rings", "lockout", "mother_flure", "survival_range",
 	"endo_junction_stretch", "generated_stretch",
-	"refuge_run", "channels_wash_intro", "lure_relay", "distract_gate", "puzzle_atom", "push_lab", "rest_lab", "flora_garden", "dusk_run", "showcase_gallery", "wash_relay", "data_fragment", "shape_grammar", "creature_grammar", "archetype_gallery", "architecture_showcase", "geometry_lab", "set_piece_showcase", "boss_showcase", "aghora_bazaar", "lockout_chase", "inflammashunt", "wash_ascent", "two_hands_gate", "scanned_plaza", "loudest_one") var preview_chunk := "stacks"
+	"refuge_run", "channels_wash_intro", "lure_relay", "distract_gate", "puzzle_atom", "push_lab", "rest_lab", "flora_garden", "dusk_run", "showcase_gallery", "wash_relay", "data_fragment", "shape_grammar", "creature_grammar", "archetype_gallery", "architecture_showcase", "geometry_lab", "set_piece_showcase", "boss_showcase", "aghora_bazaar", "lockout_chase", "inflammashunt", "wash_ascent", "two_hands_gate", "scanned_plaza", "loudest_one", "wall_hugger") var preview_chunk := "stacks"
 @export var scene_title_override := ""
 @export var preview_chunk_config: Dictionary = {}
 

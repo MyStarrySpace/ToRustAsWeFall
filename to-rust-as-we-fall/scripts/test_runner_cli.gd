@@ -1531,6 +1531,9 @@ func _ready() -> void:
 			"--test-spiker":
 				ran_test = true
 				await _test_spiker()
+			"--test-wall-hugger":
+				ran_test = true
+				await _test_wall_hugger()
 			"--test-generated-stretch-quality":
 				ran_test = true
 				await _test_generated_stretch_quality()
@@ -2190,6 +2193,7 @@ func _run_all_tests() -> void:
 	await _test_tangler()
 	await _test_loudest_one()
 	await _test_spiker()
+	await _test_wall_hugger()
 	await _test_generated_stretch_quality()
 	await _test_generated_food_modes()
 	_test_grid_ascii()
@@ -8808,6 +8812,57 @@ func _test_tangler() -> void:
 		"going quiet does not shed the lock -- it only stops attracting a new one")
 
 	holder.queue_free()
+	await get_tree().process_frame
+
+## WALL-HUGGER'S LAMENT — the fragment is the INTERSECTION of two reads, so both are asserted plus the
+## thing that makes them an intersection: the walls must never be dangerous at the same moment (or the
+## corridor has no safe wall), and the flora must actually break the turret's sight (or the WHERE read
+## is a claim the fragment does not honour).
+func _test_wall_hugger() -> void:
+	_test_name = "Wall-Hugger's Lament"
+	var inst = await _instantiate_preview_chunk_and_wait("wall_hugger", 8)
+	if inst == null:
+		_assert_true(false, "the wall-hugger corridor instantiates")
+		return
+	var chunk := _find_fragment_chunk_root(inst)
+	var gs = inst.get("_game_state")
+	if chunk == null or gs == null:
+		_assert_true(false, "the corridor exposes its chunk and game state")
+		inst.queue_free()
+		await get_tree().process_frame
+		return
+	# WHEN: the two vents run half a period apart, so there is always a dry wall. Sample a whole period.
+	var both_open := false
+	var saw_north := false
+	var saw_south := false
+	for _i in range(160):
+		inst.headless_advance(0.05)
+		var north := bool(chunk.call("vent_open", "north"))
+		var south := bool(chunk.call("vent_open", "south"))
+		saw_north = saw_north or north
+		saw_south = saw_south or south
+		both_open = both_open or (north and south)
+	_assert_true(saw_north and saw_south, "both walls DO vent across a period")
+	_assert_true(not both_open,
+		"the walls never vent together -- there is always a dry side to be on")
+	# WHERE: the turret reads a moving body in the open lane...
+	var turret = chunk.get("_spiker")
+	_assert_true(turret != null and gs.characters.has("lane_spiker"), "the lane is watched by a Spiker")
+	gs.snap_character_to("aster", Vector3(16.0, 0.0, chunk.LANE_Z))
+	gs.command_move_to_pos("aster", Vector3(16.0, 0.0, chunk.LANE_Z + 1.5))
+	for _i in range(15):
+		inst.headless_advance(0.05)
+	_assert_equals(str(chunk.call("spiker_connection")), "aster",
+		"a body moving in the open lane is read by the turret")
+	# ...and the wall clumps BREAK that sight, which is the counter the roster names. You hide BEHIND
+	# cover, not inside it: a sight blocker on the body's own cell does not block sight to that cell,
+	# so the position that matters is the far side of the clump from the turret.
+	gs.snap_character_to("aster", Vector3(13.0, 0.0, chunk.NORTH_VENT_Z + 1.2))
+	for _i in range(15):
+		inst.headless_advance(0.05)
+	_assert_equals(str(chunk.call("spiker_connection")), "",
+		"the wall clump BREAKS the turret's sight -- the counter is real, not claimed")
+	inst.queue_free()
 	await get_tree().process_frame
 
 ## SPIKER — the roster's turret, asserted line by line. "ROOTED" (it never moves, even while reading a
