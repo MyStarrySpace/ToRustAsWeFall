@@ -46,6 +46,35 @@ func detach_chunk_host() -> void:
 			link.call("set_latched", false)
 	_causal_feedback_links.clear()
 
+## WHAT THIS FRAGMENT CLAIMS TO CONTAIN AND DO — the authoring contract.
+##
+## Write this from the DESIGN, before the chunk body, and `--test-fragment-manifest` proves the built
+## scene actually matches it. It exists because a fragment can pass every behavioural test written
+## against it and still not be the thing its description promises: the tests get written against what
+## was built, so they inherit the same blind spot that built it. A manifest is the one artifact
+## written from the intent instead, so the two can be compared.
+##
+## Shape (every field optional; an empty manifest means "not yet declared"):
+##   {
+##     "components": [
+##       # kind "character": N registered GameState ids sharing a prefix (enemies, hazards, party)
+##       {"id": "flare_bed", "kind": "character", "char_prefix": "flare_", "count": 3},
+##       # kind "node": N nodes of a class inside the chunk
+##       {"id": "portal", "kind": "node", "node_class": "PortalPad", "count": 1},
+##       # kind "interactable": a named Interactable the player can actually use
+##       {"id": "exit", "kind": "interactable", "node_name": "CrossingExit"},
+##       # kind "water": a fluid body that MUST render visible geometry, not just exist
+##       {"id": "north_vent", "kind": "water", "node_class": "Channel", "count": 2},
+##     ],
+##     "behaviours": [
+##       # Each claim names the test that proves it. An unbacked claim is a red.
+##       {"id": "lazy_play_fails", "claim": "walking the party over as a group sets the bed off",
+##        "test": "--test-windup-window-walk-across"},
+##     ],
+##   }
+func get_fragment_manifest() -> Dictionary:
+	return {}
+
 func configure_chunk(_config: Dictionary) -> void:
 	pass
 

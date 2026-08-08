@@ -34,6 +34,7 @@ const TWO_HANDS_GATE_CHUNK_SCENE := preload("res://scenes/fragments/chunks/two_h
 const SCANNED_PLAZA_CHUNK_SCENE := preload("res://scenes/fragments/chunks/scanned_plaza_chunk.tscn")
 const LOUDEST_ONE_CHUNK_SCENE := preload("res://scenes/fragments/chunks/loudest_one_chunk.tscn")
 const WALL_HUGGER_CHUNK_SCENE := preload("res://scenes/fragments/chunks/wall_hugger_chunk.tscn")
+const WINDUP_WINDOW_CHUNK_SCENE := preload("res://scenes/fragments/chunks/windup_window_chunk.tscn")
 const FLORA_GARDEN_CHUNK_SCENE := preload("res://scenes/fragments/chunks/flora_garden_chunk.tscn")
 const DUSK_RUN_CHUNK_SCENE := preload("res://scenes/fragments/chunks/dusk_run_chunk.tscn")
 const LURE_RELAY_CHUNK_SCENE := preload("res://scenes/fragments/chunks/lure_relay_chunk.tscn")
@@ -80,6 +81,7 @@ const CHUNK_SCENES := {
 	"scanned_plaza": SCANNED_PLAZA_CHUNK_SCENE,
 	"loudest_one": LOUDEST_ONE_CHUNK_SCENE,
 	"wall_hugger": WALL_HUGGER_CHUNK_SCENE,
+	"windup_window": WINDUP_WINDOW_CHUNK_SCENE,
 	"flora_garden": FLORA_GARDEN_CHUNK_SCENE,
 	"dusk_run": DUSK_RUN_CHUNK_SCENE,
 	"showcase_gallery": SHOWCASE_GALLERY_CHUNK_SCENE,
@@ -244,6 +246,7 @@ const PREVIEW_ENTRIES := [
 	# on alternating cadences and a rooted Spiker watches the dry middle, so safe ground is the moving
 	# intersection of "this wall is shut" and "the turret cannot see me".
 	{"id": "wall_hugger", "chunk": "wall_hugger", "title": "Wall-Hugger's Lament", "stage": 3},
+	{"id": "windup_window", "chunk": "windup_window", "title": "Windup Window", "stage": 3},
 ]
 
 # Exported-browser regression fixtures are immutable launch contracts, not game
@@ -414,7 +417,7 @@ const PREVIEW_ABILITY_TAG_PREFIX := "fragment_preview:ability:"
 # (the --test-fragment-preview-registry test enforces it). Empty = the picker (preview_menu).
 @export_enum("stacks", "rings", "lockout", "mother_flure", "survival_range",
 	"endo_junction_stretch", "generated_stretch",
-	"refuge_run", "channels_wash_intro", "lure_relay", "distract_gate", "puzzle_atom", "push_lab", "rest_lab", "flora_garden", "dusk_run", "showcase_gallery", "wash_relay", "data_fragment", "shape_grammar", "creature_grammar", "archetype_gallery", "architecture_showcase", "geometry_lab", "set_piece_showcase", "boss_showcase", "aghora_bazaar", "lockout_chase", "inflammashunt", "wash_ascent", "two_hands_gate", "scanned_plaza", "loudest_one", "wall_hugger") var preview_chunk := "stacks"
+	"refuge_run", "channels_wash_intro", "lure_relay", "distract_gate", "puzzle_atom", "push_lab", "rest_lab", "flora_garden", "dusk_run", "showcase_gallery", "wash_relay", "data_fragment", "shape_grammar", "creature_grammar", "archetype_gallery", "architecture_showcase", "geometry_lab", "set_piece_showcase", "boss_showcase", "aghora_bazaar", "lockout_chase", "inflammashunt", "wash_ascent", "two_hands_gate", "scanned_plaza", "loudest_one", "wall_hugger", "windup_window") var preview_chunk := "stacks"
 @export var scene_title_override := ""
 @export var preview_chunk_config: Dictionary = {}
 
@@ -2436,19 +2439,45 @@ func _refresh_ability_hint_flow() -> void:
 		)
 	_ability_hint_flow.visible = _ability_hint_flow.get_child_count() > 0
 
+## The carry/consume verbs live in the HUD's bottom bar beside PAUSE/WALK/SAFE/CENTER, not in a
+## floating panel over the play area. The panel's nodes are still resolved because the carried-item
+## READOUT still writes to them, but the margin stays hidden -- `_refresh_inventory_panel` keeps that
+## true, so a chunk cannot bring the overlay back by writing to the label.
 func _build_inventory_panel() -> void:
 	_inventory_panel_margin = _preview_layer.get_node("InventoryMargin") as MarginContainer
 	_inventory_panel_title = _preview_layer.get_node("InventoryMargin/Panel/Content/Title") as Label
 	_inventory_controls_flow = _preview_layer.get_node("InventoryMargin/Panel/Content/ControlHints") as HFlowContainer
-	# The old secondary action remains the explicit consume-item key. Direct party abilities have their
-	# own 6x2 drawer and hints, so this must not imply that X still fires one of them.
-	_add_action_hint(_inventory_controls_flow, "ability_secondary", "Use item", "X")
-	_add_action_hint(_inventory_controls_flow, "preview_drop_item", "Drop", "V")
-	_add_action_hint(_inventory_controls_flow, "preview_transfer_item", "Transfer", "T")
-	_add_action_hint(_inventory_controls_flow, "preview_retrieve_item", "Retrieve", "B")
-
 	_inventory_panel_label = _preview_layer.get_node("InventoryMargin/Panel/Content/InventoryLabel") as Label
+	if _inventory_panel_margin != null:
+		_inventory_panel_margin.visible = false
+	_build_carry_actions()
 	_refresh_inventory_panel()
+
+## The old secondary action remains the explicit consume-item key. Direct party abilities have their
+## own 6x2 drawer and hints, so this must not imply that X still fires one of them.
+func _build_carry_actions() -> void:
+	if _hud == null or not _hud.has_method("show_carry_action"):
+		return
+	_hud.show_carry_action("use_item", "Use item", "ability_secondary", "X")
+	_hud.show_carry_action("drop_item", "Drop", "preview_drop_item", "V")
+	_hud.show_carry_action("transfer_item", "Transfer", "preview_transfer_item", "T")
+	_hud.show_carry_action("retrieve_item", "Retrieve", "preview_retrieve_item", "B")
+	if _hud.has_signal("carry_action_pressed") \
+			and not _hud.carry_action_pressed.is_connected(_on_carry_action_pressed):
+		_hud.carry_action_pressed.connect(_on_carry_action_pressed)
+
+## The button and its key run the SAME handler, so the two can never drift apart.
+func _on_carry_action_pressed(action_id: String) -> void:
+	match action_id:
+		"use_item":
+			if not _activate_action_bound_preview_ability("ability_secondary"):
+				_consume_active_item()
+		"drop_item":
+			_drop_active_item()
+		"transfer_item":
+			_transfer_active_item()
+		"retrieve_item":
+			_exocytose_active_item()
 
 const OVERLAY_PANEL_TOP := 12.0
 const OVERLAY_PANEL_EXPANDED_BOTTOM := 260.0
@@ -3729,8 +3758,8 @@ func _apply_chunk_metadata() -> void:
 	_refresh_control_hint_flow()
 	_refresh_ability_hint_flow()
 
-	if _show_default_note and _note_default == "":
-		_note_default = "All three characters start topped off. Run and cast abilities spend stamina; ATP pays for shelter rest unless an experimental scarcity preset is selected."
+	# No generic stamina/ATP explainer. A chunk that has something worth saying sets its own note;
+	# a chunk that does not says nothing rather than restating the game's standing rules at the player.
 	if _note_timer <= 0.0:
 		_restore_default_note()
 

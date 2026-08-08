@@ -38,8 +38,6 @@ extends Enemy
 signal primed(trigger_ids: Array)
 signal burst(at_position: Vector3, hit_ids: Array)
 
-const PRIME_POLL := 0.2
-
 ## Canon says two or three seconds of swelling membrane. The window has to be long enough to walk
 ## out of, because walking out is the entire answer.
 @export var windup_delay := 2.5
@@ -55,7 +53,6 @@ const PRIME_POLL := 0.2
 static var _flare_body_ids: Dictionary = {}
 
 var _state_name := "inert"          # inert | priming | spent
-var _prime_deadline := -1.0
 var _primed_at_tick := -1.0
 
 func _ready() -> void:
@@ -86,46 +83,35 @@ func set_roam(_anchor: Vector3, _radius: float) -> void:
 func set_patrol(_waypoints: Array) -> void:
 	return
 
+## PREDICTED, NOT POLLED. The old version woke every 0.2s to count bodies, so the trigger resolved up
+## to a fifth of a second late and its answer depended on the sampling rate rather than on the movement
+## that caused it. GameState now SOLVES for the exact tick a queued move brings enough bodies inside the
+## bunch radius and schedules that, re-solving whenever anybody's movement changes.
 func activate() -> void:
 	super.activate()
 	_flare_body_ids[char_id] = true
-	_arm_prime_poll()
+	_arm_bunch_trigger()
 
-func _arm_prime_poll() -> void:
-	var sched = _get_scheduler()
-	if sched == null:
-		_prime_deadline = -1.0
+func _arm_bunch_trigger() -> void:
+	if game_state == null or not game_state.has_method("register_proximity_trigger"):
 		return
-	sched.cancel_tag(_poll_tag())
-	var deadline := float(sched.get_current_tick()) + PRIME_POLL
-	_prime_deadline = deadline
-	sched.schedule_after(PRIME_POLL, _run_prime_poll.bind(deadline), _poll_tag())
+	# ANY body can crowd it, not just declared targets: an enemy pack that bunches on a Flare arms it
+	# exactly as a careless party does. The filter drops other Flares, which sit there rather than crowd.
+	game_state.call("register_proximity_trigger", _trigger_id(), char_id, [],
+		bunch_radius, bunch_count, Callable(self, "_on_bunched"),
+		Callable(self, "_counts_as_crowd"))
 
-func _poll_tag() -> String:
-	return "flare_prime_%s" % char_id
+func _counts_as_crowd(subject_id: String) -> bool:
+	return not _flare_body_ids.has(subject_id)
 
-func _run_prime_poll(expected_deadline: float) -> void:
-	if _prime_deadline < 0.0 or not is_equal_approx(_prime_deadline, expected_deadline):
+func _trigger_id() -> String:
+	return "flare_bunch_%s" % char_id
+
+## The predicted crossing fired; GameState has already re-read the live count before calling.
+func _on_bunched() -> void:
+	if _state_name != "inert":
 		return
-	_prime_deadline = -1.0
-	_advance()
-	if _state_name != "spent":
-		_arm_prime_poll()
-
-func _advance() -> void:
-	if game_state == null:
-		return
-	match _state_name:
-		"inert":
-			var crowd := bodies_in_bunch_radius()
-			if crowd.size() >= bunch_count:
-				_prime(crowd)
-		"priming":
-			var sched = _get_scheduler()
-			if sched == null:
-				return
-			if float(sched.get_current_tick()) - _primed_at_tick >= windup_delay:
-				_burst()
+	_prime(bodies_in_bunch_radius())
 
 ## Who is currently crowding it. Public so a fragment can show the count and a test can assert the
 ## trigger without reaching into private state.
@@ -159,7 +145,15 @@ func _prime(trigger_ids: Array) -> void:
 	var sched = _get_scheduler()
 	_state_name = "priming"
 	_primed_at_tick = float(sched.get_current_tick()) if sched != null else 0.0
+	# The swell is a known span, so the moment it ends is known the instant it starts. Scheduled AT
+	# that tick -- nothing counts down and nothing samples.
+	if sched != null:
+		sched.cancel_tag(_burst_tag())
+		sched.schedule_after(windup_delay, _burst, _burst_tag())
 	primed.emit(trigger_ids)
+
+func _burst_tag() -> String:
+	return "flare_burst_%s" % char_id
 
 ## The burst reads the room at the moment it goes, never at the moment it was armed. That is what
 ## makes stepping out work and what makes it hit friend and foe without special-casing either: the
@@ -169,6 +163,8 @@ func _burst() -> void:
 		return
 	_state_name = "spent"
 	_primed_at_tick = -1.0
+	if game_state.has_method("unregister_proximity_trigger"):
+		game_state.call("unregister_proximity_trigger", _trigger_id())
 	var here := game_state.get_position(char_id)
 	var caught := _bodies_within(burst_radius)
 	for id_v in caught:
@@ -228,6 +224,8 @@ func get_prime_progress() -> float:
 
 func _exit_tree() -> void:
 	_flare_body_ids.erase(char_id)
+	if game_state != null and game_state.has_method("unregister_proximity_trigger"):
+		game_state.call("unregister_proximity_trigger", _trigger_id())
 	var sched = _get_scheduler()
 	if sched != null:
-		sched.cancel_tag(_poll_tag())
+		sched.cancel_tag(_burst_tag())

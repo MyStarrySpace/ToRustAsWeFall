@@ -561,7 +561,11 @@ func _present_latest_movement_entry() -> void:
 	_movement_label.modulate = FAILED_TINT if phase == "REFUSED" \
 		else (WARNING_TINT if phase == "INTERRUPTED" \
 		else (COMPLETE_TINT if phase == "ARRIVAL" else ACTIVE_TINT))
-	_movement_panel.visible = true
+	# The player is never told about their own successful movement. Watching the party walk IS the
+	# feedback; a banner reading "RALLY ARRIVAL // 3 MEMBERS // ROUTE 100%" narrates what is already
+	# on screen. Only a move that did NOT happen earns words, because that is information the world
+	# cannot show by itself.
+	_movement_panel.visible = phase in ["REFUSED", "INTERRUPTED"]
 
 
 func _latest_movement_serial() -> int:

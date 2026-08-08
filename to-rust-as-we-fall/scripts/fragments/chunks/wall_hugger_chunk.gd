@@ -120,6 +120,31 @@ func _spawn_spiker() -> void:
 		turret.activate()
 	_spiker = turret
 
+## Declared from the design, before the body. The vents are declared "water" specifically: a fluid
+## body that exists in the data layer but renders nothing is the failure mode this kind exists to
+## catch, because the whole corridor is unreadable if the player cannot SEE which wall is running.
+func get_fragment_manifest() -> Dictionary:
+	return {
+		"components": [
+			{"id": "wall_vents", "kind": "water", "node_class": "Channel", "count": 2},
+			{"id": "lane_spiker", "kind": "character", "char_prefix": "lane_spiker", "count": 1},
+			{"id": "cover_clumps", "kind": "node", "node_class": "Scarpet", "count": 2},
+			{"id": "corridor_exit", "kind": "interactable", "node_name": "CorridorExit"},
+		],
+		"behaviours": [
+			{
+				"id": "alternating_vents",
+				"claim": "the two walls never vent at the same time, so there is always a dry side",
+				"test": "--test-wall-hugger",
+			},
+			{
+				"id": "cover_breaks_sight",
+				"claim": "a body behind a clump breaks the turret's connection",
+				"test": "--test-wall-hugger",
+			},
+		],
+	}
+
 func configure_chunk(_config: Dictionary) -> void:
 	pass
 

@@ -1540,6 +1540,18 @@ func _ready() -> void:
 			"--test-flare-friend-and-foe":
 				ran_test = true
 				await _test_flare_friend_and_foe()
+			"--test-windup-window":
+				ran_test = true
+				await _test_windup_window()
+			"--test-windup-window-walk-across":
+				ran_test = true
+				await _test_windup_window_walk_across()
+			"--test-fragment-manifest":
+				ran_test = true
+				await _test_fragment_manifest()
+			"--test-predicted-consequence-parity":
+				ran_test = true
+				await _test_predicted_consequence_parity()
 			"--test-generated-stretch-quality":
 				ran_test = true
 				await _test_generated_stretch_quality()
@@ -2202,6 +2214,10 @@ func _run_all_tests() -> void:
 	await _test_wall_hugger()
 	await _test_flare()
 	await _test_flare_friend_and_foe()
+	await _test_windup_window()
+	await _test_windup_window_walk_across()
+	await _test_fragment_manifest()
+	await _test_predicted_consequence_parity()
 	await _test_generated_stretch_quality()
 	await _test_generated_food_modes()
 	_test_grid_ascii()
@@ -8820,6 +8836,260 @@ func _test_tangler() -> void:
 		"going quiet does not shed the lock -- it only stops attracting a new one")
 
 	holder.queue_free()
+	await get_tree().process_frame
+
+## PREDICTION MATCHES REALITY — the guard the whole predictive architecture rests on.
+##
+## A consequence is solved in advance from a queued movement and scheduled at the tick it will happen.
+## That is only trustworthy if the solved tick is the tick a body ACTUALLY arrives at, so this walks a
+## real commanded move and compares the two. It also re-runs the identical scenario at a coarse step:
+## a predicted event fires at the same TICK regardless of how finely time is sampled, which is the
+## property polling can never have (a 0.2s poll resolves late by up to 0.2s, and differently at 10x).
+func _test_predicted_consequence_parity() -> void:
+	_test_name = "Predicted Consequence Parity"
+	var fired_at := {}
+	for step_v in [0.0166, 0.166]:
+		var step := float(step_v)
+		var sched := EventScheduler.new()
+		var gs := GameState.new()
+		gs.scheduler = sched
+		gs.event_log = EventLog.new()
+		var grid := GridWorld.new()
+		grid.create_room(30, 20)
+		gs.grid = grid
+		gs.register_character("anchor", Vector3(15.0, 0.0, 10.0), 1.0, {})
+		gs.register_character("walker", Vector3(4.0, 0.0, 10.0), 3.0, {"hp": 100.0})
+		var hits := []
+		gs.register_proximity_trigger("parity", "anchor", ["walker"], 2.5, 1,
+			func() -> void: hits.append(sched.get_current_tick()))
+		# A REAL commanded move, not a teleport. The solve happens off this queued movement.
+		gs.command_move_to_pos("walker", Vector3(24.0, 0.0, 10.0))
+		var predicted := float(gs.predict_proximity_time("anchor", "walker", 2.5))
+		_assert_true(predicted > 0.0,
+			"a queued walk yields a SOLVED crossing tick before any time passes (step %.4f)" % step)
+		for _i in range(1200):
+			if not hits.is_empty():
+				break
+			sched.advance_ticks(step)
+		_assert_true(not hits.is_empty(),
+			"the predicted crossing actually fires when the body walks it (step %.4f)" % step)
+		if hits.is_empty():
+			continue
+		var actual := float(hits[0])
+		fired_at[step] = actual
+		# The event is SCHEDULED at the solved tick, so it fires at it -- the only slack is the step the
+		# scheduler happens to land on, never the width of a poll period.
+		_assert_true(absf(actual - predicted) <= step + 0.0001,
+			"predicted %.4f == actual %.4f within one step (%.4f)" % [predicted, actual, step])
+		# And the body really did walk there rather than being placed: it must have travelled.
+		_assert_true(gs.get_position("walker").x > 5.0,
+			"the walker moved under its own commanded movement (step %.4f)" % step)
+	if fired_at.size() == 2:
+		var fine := float(fired_at[0.0166])
+		var coarse := float(fired_at[0.166])
+		# THE POINT: 1x and 10x resolve the same consequence at the same moment in game time.
+		_assert_true(absf(fine - coarse) <= 0.166 + 0.0001,
+			"1x and 10x fire the SAME consequence at the same tick (%.4f vs %.4f)" % [fine, coarse])
+
+## FRAGMENT MANIFEST — does the built scene actually contain what the fragment says it contains?
+##
+## This exists because behavioural tests inherit the blind spot that built the thing: they get written
+## against what WAS built, so a fragment can pass everything and still not be its own description. The
+## manifest is written from the design instead, so the two can be compared. Concretely it catches:
+##   - a hazard/prop that silently failed to spawn (every assertion about it is then vacuous),
+##   - a WATER body that exists in the data layer but renders nothing, so the player cannot read it,
+##   - a behavioural claim with no test behind it.
+func _test_fragment_manifest() -> void:
+	_test_name = "Fragment Manifest"
+	var entries: Array = load(
+		"res://scripts/fragments/fragment_preview_sequence.gd").PREVIEW_ENTRIES
+	var runner_src := FileAccess.get_file_as_string("res://scripts/test_runner_cli.gd")
+	var declared := 0
+	for entry_v in entries:
+		var entry: Dictionary = entry_v
+		var frag_id := str(entry.get("id", ""))
+		var inst = await _instantiate_preview_chunk_and_wait(frag_id, 8)
+		if inst == null:
+			continue
+		var chunk := _find_fragment_chunk_root(inst)
+		var gs = inst.get("_game_state")
+		if chunk == null or not chunk.has_method("get_fragment_manifest"):
+			inst.queue_free()
+			await get_tree().process_frame
+			continue
+		var manifest: Dictionary = chunk.call("get_fragment_manifest")
+		if manifest.is_empty():
+			inst.queue_free()
+			await get_tree().process_frame
+			continue
+		declared += 1
+		for comp_v in manifest.get("components", []):
+			var comp: Dictionary = comp_v
+			var cid := str(comp.get("id", "?"))
+			var kind := str(comp.get("kind", ""))
+			var want := int(comp.get("count", 1))
+			match kind:
+				"character":
+					var prefix := str(comp.get("char_prefix", ""))
+					var found := 0
+					if gs != null:
+						for id_v in gs.characters.keys():
+							if str(id_v).begins_with(prefix):
+								found += 1
+					_assert_equals(found, want,
+						"%s declares %d '%s' bodies and the live scene has them" % [frag_id, want, cid])
+				"node", "water":
+					var node_class := str(comp.get("node_class", ""))
+					var nodes := _manifest_nodes_of_class(chunk, node_class)
+					_assert_equals(nodes.size(), want,
+						"%s declares %d '%s' (%s) and the live scene has them" % [
+							frag_id, want, cid, node_class])
+					if kind == "water":
+						# THE WATER RULE: a fluid body the player cannot SEE is not a fluid body. A
+						# channel that exists only in the data layer makes its whole level unreadable.
+						for water_node in nodes:
+							_assert_true(_manifest_has_visible_geometry(water_node),
+								"%s: water body '%s' RENDERS visible geometry, not data-only" % [
+									frag_id, cid])
+				"interactable":
+					var node_name := str(comp.get("node_name", ""))
+					_assert_true(chunk.find_child(node_name, true, false) != null,
+						"%s declares interactable '%s' and the live scene has it" % [frag_id, node_name])
+		for beh_v in manifest.get("behaviours", []):
+			var beh: Dictionary = beh_v
+			var flag := str(beh.get("test", ""))
+			# A claim with no test behind it is a description, not a guarantee.
+			_assert_true(flag != "" and runner_src.contains('"%s"' % flag),
+				"%s: claim '%s' is backed by a real test (%s)" % [
+					frag_id, str(beh.get("id", "?")), flag])
+		inst.queue_free()
+		await get_tree().process_frame
+	_assert_true(declared > 0, "at least one fragment declares a manifest")
+
+func _manifest_nodes_of_class(root: Node, node_class: String) -> Array:
+	var found: Array = []
+	if node_class == "":
+		return found
+	var stack: Array = [root]
+	while not stack.is_empty():
+		var node: Node = stack.pop_back()
+		for child in node.get_children():
+			stack.append(child)
+		var script: Variant = node.get_script()
+		if node.get_class() == node_class 				or (script != null and str(script.get_global_name()) == node_class):
+			found.append(node)
+	return found
+
+## Visible means it puts pixels on screen: a mesh, in the tree, visible, with a non-degenerate AABB.
+func _manifest_has_visible_geometry(root: Node) -> bool:
+	var stack: Array = [root]
+	while not stack.is_empty():
+		var node: Node = stack.pop_back()
+		for child in node.get_children():
+			stack.append(child)
+		if node is MeshInstance3D:
+			var mesh_node := node as MeshInstance3D
+			if mesh_node.mesh != null and mesh_node.is_visible_in_tree():
+				var box := mesh_node.mesh.get_aabb()
+				if box.size.length() > 0.001:
+					return true
+	return false
+
+## WINDUP WINDOW — the fragment's whole claim is that YOUR formation is the hazard, so the test has to
+## show the same ground being both safe and lethal depending only on how the party stands on it.
+func _test_windup_window() -> void:
+	_test_name = "Windup Window"
+	var inst = await _instantiate_preview_chunk_and_wait("windup_window", 8)
+	if inst == null:
+		_assert_true(false, "the crossing instantiates")
+		return
+	var chunk := _find_fragment_chunk_root(inst)
+	var gs = inst.get("_game_state")
+	if chunk == null or gs == null:
+		_assert_true(false, "the crossing exposes its chunk and game state")
+		inst.queue_free()
+		await get_tree().process_frame
+		return
+	# The bed is placed as a real cluster, so a live scene is the honest test of the boot behaviour the
+	# unit test pins: three bombs within each other's radius must still be sitting there quietly.
+	for _i in range(20):
+		inst.headless_advance(0.05)
+	_assert_equals(int(chunk.call("primed_count")), 0,
+		"the bed sits quiet at boot -- a cluster does not arm itself")
+	_assert_equals(int(chunk.call("burst_count")), 0, "and nothing has gone off")
+	# ONE body on the apron is a crossing, not a crowd. This is the safe play the fragment teaches.
+	gs.snap_character_to("aster", chunk.MOUTH)
+	gs.snap_character_to("peris", chunk.STAGING[0])
+	gs.snap_character_to("endo", chunk.STAGING[2])
+	for _i in range(30):
+		inst.headless_advance(0.05)
+	_assert_equals(int(chunk.call("crowd_at_mouth")), 1, "one body waits on the apron")
+	_assert_equals(int(chunk.call("primed_count")), 0,
+		"sending them singly keeps the bed inert -- the safe play is actually safe")
+	# The SAME ground, with the party parked on it together: that is the whole lesson.
+	gs.snap_character_to("peris", chunk.MOUTH + Vector3(0.6, 0.0, 0.6))
+	for _i in range(20):
+		inst.headless_advance(0.05)
+	_assert_true(int(chunk.call("primed_count")) > 0,
+		"crowding the apron sets the bed off -- your own formation is the hazard")
+	# And the wind-up is a real window: whoever clears it is fine, whoever stays pays.
+	gs.snap_character_to("aster", chunk.STAGING[1])
+	var peris_hp_before := float(gs.get_stat("peris", "hp"))
+	for _i in range(90):
+		inst.headless_advance(0.05)
+	_assert_true(int(chunk.call("burst_count")) > 0, "the wind-up ends in a burst")
+	_assert_equals(gs.get_stat("aster", "hp"), 100.0,
+		"the one who stepped clear in the window is untouched")
+	_assert_true(float(gs.get_stat("peris", "hp")) < peris_hp_before,
+		"the one who stayed on the apron pays")
+	inst.queue_free()
+	await get_tree().process_frame
+
+## THE PLAY TEST, not the mechanism test. Everything above SNAPS bodies into place, which proves the
+## Flare works and proves nothing about the fragment: the question a player asks is "what happens if I
+## just walk everyone across?", and the answer has to be "it goes off". This drives real moves through
+## the shipped party command and lets the scheduler carry them.
+func _test_windup_window_walk_across() -> void:
+	_test_name = "Windup Window Walk-Across"
+	var inst = await _instantiate_preview_chunk_and_wait("windup_window", 8)
+	if inst == null:
+		_assert_true(false, "the crossing instantiates")
+		return
+	var chunk := _find_fragment_chunk_root(inst)
+	var gs = inst.get("_game_state")
+	if chunk == null or gs == null:
+		_assert_true(false, "the crossing exposes its chunk and game state")
+		inst.queue_free()
+		await get_tree().process_frame
+		return
+	# The bed must actually BE there. A fragment whose hazard silently failed to spawn passes every
+	# behavioural assertion written against the hazard it does not have.
+	var bed_ids: Array[String] = []
+	for id_v in gs.characters.keys():
+		if str(id_v).begins_with("flare_"):
+			bed_ids.append(str(id_v))
+	_assert_equals(bed_ids.size(), 3, "the Flare bed is actually REGISTERED in the live scene")
+	# Now play it the lazy way: send the whole party to the crossing and let them walk.
+	for char_id in ["aster", "peris", "endo"]:
+		gs.command_move_to_pos(char_id, chunk.MOUTH)
+	var fired := false
+	for _i in range(400):
+		inst.headless_advance(0.05)
+		if int(chunk.call("burst_count")) > 0:
+			fired = true
+			break
+	_assert_true(fired,
+		"walking the whole party to the crossing SETS THE BED OFF -- the lazy play must not be free")
+	var hurt := 0
+	for char_id in ["aster", "peris", "endo"]:
+		if float(gs.get_stat(char_id, "hp")) < 100.0:
+			hurt += 1
+	var diag := "burst_at=%s hits=%s aster=%s peris=%s endo=%s hp=[%.0f,%.0f,%.0f]" % [
+		str(chunk.call("last_burst_at")), str(chunk.call("last_burst_hits")),
+		str(gs.get_position("aster")), str(gs.get_position("peris")), str(gs.get_position("endo")),
+		gs.get_stat("aster", "hp"), gs.get_stat("peris", "hp"), gs.get_stat("endo", "hp")]
+	_assert_true(hurt > 0, "and somebody actually paid for it // %s" % diag)
+	inst.queue_free()
 	await get_tree().process_frame
 
 ## FLARE — the canon is a bomb, and the two lines that make it a bomb rather than another hunter are

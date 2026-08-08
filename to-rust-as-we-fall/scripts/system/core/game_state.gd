@@ -146,6 +146,10 @@ const DETECTION_LOS_RECHECK_MAX_HOPS := 120
 ## of every character pair in the scene. The counters are deliberately cheap and exposed for performance
 ## regressions; they never affect simulation or serialization.
 var _detection_active_pairs: Dictionary = {}  # symmetric pair tag -> {a, b}
+## Registered proximity TRIGGERS: trigger_id -> {anchor, subjects, radius, count, callback}. These are
+## the general form of the same idea detection already uses -- a consequence is SOLVED for the tick it
+## will happen at and scheduled, never discovered by polling. See register_proximity_trigger().
+var _proximity_triggers: Dictionary = {}
 var _detection_batch_depth := 0
 var _detection_batch_dirty := false
 var _detection_batch_all_dirty := false
@@ -316,6 +320,10 @@ func register_character(id: String, pos: Vector3, speed: float = 3.0, stats: Dic
 	}
 	explored[id] = {}
 	_reserve_parked(id, cell)
+	# A body appearing is a state change that can invalidate a prediction just as much as one moving:
+	# an enemy spawned beside the party must see them without waiting for somebody else to move, and a
+	# hazard must notice a body registered inside its radius. Registration used to recompute nothing.
+	_recompute_all_detection_predictions(id)
 
 ## Which stacked floor a world Y sits on (round to the nearest grid level). 0 without a grid.
 func _level_for_y(y: float) -> int:
@@ -4087,6 +4095,11 @@ func _recompute_all_detection_predictions(only_id: String = "") -> void:
 				_performance_counters["detection_events_scheduled"]) + 1
 			scheduler.schedule_at(detection_tick,
 				func(): _on_detection_event(scheduled_detector, scheduled_target), tag)
+	# Proximity triggers are re-solved wherever detection is re-solved, by construction rather than by
+	# a hand-maintained list of call sites. Any state change that can invalidate a predicted sighting
+	# (a move, a stop, a teleport, a level change, a fresh registration, a restored snapshot) can
+	# invalidate a predicted crossing for exactly the same reason.
+	_recompute_proximity_triggers(only_id)
 	PerformanceTrace.end(
 		&"update", &"game_state.recompute_detection", perf_started,
 		only_id if only_id != "" else "all",
@@ -4185,6 +4198,158 @@ func _recheck_detection_after_los_block(detector_id: String, target_id: String, 
 		_arm_detection_los_recheck(detector_id, target_id, hops)
 		return
 	_on_detection_event(detector_id, target_id, hops)
+
+## PREDICTED CONSEQUENCES — the general service behind the detection solver.
+##
+## The scheduler exists so that a queued MOVEMENT can have its consequences solved in advance and
+## pushed onto the timeline. A system that instead wakes up every N seconds to look around is polling
+## with extra steps: it burns work when nothing is happening, it resolves late by up to its own poll
+## period, and its answer depends on the sampling rate rather than on the movement. Detection has
+## always been predictive (_predict_detection_time); this makes the same thing available to any
+## consequence that is really "when do these bodies get close enough".
+##
+## Ask "when will these two be within radius, given what they are ACTUALLY doing right now". Returns
+## -1.0 when the current plans never bring them that close. Exact across multi-waypoint paths, because
+## it solves per movement segment.
+func predict_proximity_time(a_id: String, b_id: String, radius: float) -> float:
+	if scheduler == null or not characters.has(a_id) or not characters.has(b_id):
+		return -1.0
+	if radius <= 0.0:
+		return -1.0
+	return _predict_detection_time(a_id, b_id, radius, scheduler.get_current_tick())
+
+## Register "call me when at least `count` of `subject_ids` are within `radius` of `anchor_id`".
+##
+## Correctness note that lets this be exact WITHOUT sampling: the number of bodies inside a disc can
+## only ever INCREASE at an entry crossing. So it is sufficient to solve for the earliest entry among
+## the subjects not already inside, wake there, and re-read the live count. Exits only lower the count
+## and can never satisfy the predicate, so they need no event at all.
+## Pass an EMPTY subject_ids to mean "any registered body", which is what an area hazard actually
+## wants: it does not care who you are, only that you crowded it. `accepts` optionally rejects ids the
+## hazard should ignore (a Flare ignores other Flares). Resolved fresh on every recompute, so bodies
+## registered later are included without re-registering the trigger.
+func register_proximity_trigger(
+		trigger_id: String,
+		anchor_id: String,
+		subject_ids: Array,
+		radius: float,
+		count: int,
+		callback: Callable,
+		accepts := Callable()
+	) -> void:
+	_proximity_triggers[trigger_id] = {
+		"anchor": anchor_id,
+		"subjects": subject_ids.duplicate(),
+		"radius": radius,
+		"count": maxi(1, count),
+		"callback": callback,
+		"accepts": accepts,
+	}
+	_recompute_proximity_trigger(trigger_id)
+
+## The live subject set for a trigger: its declared list, or every other registered body when the list
+## is empty, minus anything its filter rejects.
+func _proximity_trigger_subjects(spec: Dictionary) -> Array:
+	var anchor_id := str(spec["anchor"])
+	var declared: Array = spec["subjects"]
+	var pool: Array = []
+	if declared.is_empty():
+		for id_v in characters.keys():
+			pool.append(str(id_v))
+	else:
+		pool = declared
+	var accepts: Callable = spec.get("accepts", Callable())
+	var out: Array = []
+	for id_v in pool:
+		var subject_id := str(id_v)
+		if subject_id == anchor_id or not characters.has(subject_id):
+			continue
+		if accepts.is_valid() and not bool(accepts.call(subject_id)):
+			continue
+		out.append(subject_id)
+	return out
+
+func unregister_proximity_trigger(trigger_id: String) -> void:
+	if scheduler != null:
+		scheduler.cancel_tag(_proximity_trigger_tag(trigger_id))
+	_proximity_triggers.erase(trigger_id)
+
+func _proximity_trigger_tag(trigger_id: String) -> String:
+	return "proximity_trigger_%s" % trigger_id
+
+## How many subjects are inside the disc RIGHT NOW, read from live analytic positions.
+func proximity_trigger_occupancy(trigger_id: String) -> int:
+	if not _proximity_triggers.has(trigger_id):
+		return 0
+	var spec: Dictionary = _proximity_triggers[trigger_id]
+	var anchor_id := str(spec["anchor"])
+	if not characters.has(anchor_id):
+		return 0
+	var here := get_position(anchor_id)
+	var radius := float(spec["radius"])
+	var inside := 0
+	for subject_v in _proximity_trigger_subjects(spec):
+		var subject_id := str(subject_v)
+		var there := get_position(subject_id)
+		if Vector2(here.x - there.x, here.z - there.z).length() <= radius:
+			inside += 1
+	return inside
+
+func _recompute_proximity_triggers(only_id: String = "") -> void:
+	for trigger_id_v in _proximity_triggers.keys():
+		var trigger_id := str(trigger_id_v)
+		if only_id != "":
+			var spec: Dictionary = _proximity_triggers[trigger_id]
+			var declared: Array = spec["subjects"]
+			if str(spec["anchor"]) != only_id 					and not declared.is_empty() and only_id not in declared:
+				continue
+		_recompute_proximity_trigger(trigger_id)
+
+func _recompute_proximity_trigger(trigger_id: String) -> void:
+	if scheduler == null or not _proximity_triggers.has(trigger_id):
+		return
+	var spec: Dictionary = _proximity_triggers[trigger_id]
+	var anchor_id := str(spec["anchor"])
+	if not characters.has(anchor_id):
+		return
+	var tag := _proximity_trigger_tag(trigger_id)
+	scheduler.cancel_tag(tag)
+	# Already satisfied on the current geometry: fire on the next tick rather than waiting for a
+	# crossing that has already happened.
+	if proximity_trigger_occupancy(trigger_id) >= int(spec["count"]):
+		scheduler.schedule_at(scheduler.get_current_tick(),
+			func() -> void: _on_proximity_trigger(trigger_id), tag)
+		return
+	var radius := float(spec["radius"])
+	var here := get_position(anchor_id)
+	var earliest := -1.0
+	for subject_v in _proximity_trigger_subjects(spec):
+		var subject_id := str(subject_v)
+		var there := get_position(subject_id)
+		if Vector2(here.x - there.x, here.z - there.z).length() <= radius:
+			continue   # already inside; its entry is behind us
+		var entry := predict_proximity_time(anchor_id, subject_id, radius)
+		if entry < 0.0:
+			continue
+		if earliest < 0.0 or entry < earliest:
+			earliest = entry
+	if earliest < 0.0:
+		return
+	scheduler.schedule_at(earliest, func() -> void: _on_proximity_trigger(trigger_id), tag)
+
+func _on_proximity_trigger(trigger_id: String) -> void:
+	if not _proximity_triggers.has(trigger_id):
+		return
+	var spec: Dictionary = _proximity_triggers[trigger_id]
+	# The scheduled tick only proves what the movement plan predicted. Re-read the live count before
+	# any side effect, exactly as _on_detection_event re-validates its pair.
+	if proximity_trigger_occupancy(trigger_id) >= int(spec["count"]):
+		var callback: Callable = spec["callback"]
+		if callback.is_valid():
+			callback.call()
+		return
+	# Not enough bodies yet: solve for the NEXT entry instead of sampling again in a fixed period.
+	_recompute_proximity_trigger(trigger_id)
 
 func _predict_detection_time(detector_id: String, target_id: String, det_range: float, now: float) -> float:
 	var segs_a := _get_movement_segments(detector_id)

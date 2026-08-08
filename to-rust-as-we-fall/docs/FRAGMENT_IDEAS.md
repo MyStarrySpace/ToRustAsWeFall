@@ -135,6 +135,29 @@ Aster spoof is the *shadow* (this broke draft #11's framing).
   edge + Sapscraps + Gnawer classes; split it to its own offensive combo card.
 - **AUDIT:** FLAGGED (law). Original conflated the offensive combo into the "shadow." Corrected: presented
   pressure IS the Gnawer pack (same geometry); shadow is the 2-body queue; offensive play moved out.
+- **BUILT 2026-08-08 (partial), `--preview=windup_window`.** The **Flare** shipped as canon
+  (`scripts/game/ai/flare.gd`): rooted, inert, reads DENSITY not presence, and -- the line that makes it
+  a bomb rather than another hunter -- **once primed it does not cancel**. That is the deliberate inverse
+  of the Spiker: breaking a Spiker's sight *severs* its connection, but stepping out of a primed Flare
+  only saves the body that stepped. The burst still goes, and it reads the room at the moment it fires,
+  so friend-and-foe falls out of one rule instead of two.
+- **The geometry replaced the pack.** The register's pressure was a Gnawer pack; no Gnawer class ships,
+  so rather than substitute another enemy and call it the same design, the bunching source is the
+  **portal's own one-at-a-time queue**. A party sent to the crossing as a group converges on the mouth
+  apron and waits there together, which is exactly the density the bed reads -- so the *convenient input*
+  is the losing one. This may be a tighter fit for the stated verb than an external pack, but it is a
+  SUBSTITUTION, not the audited design: **still owed** is a clock, without which the player can take all
+  day over the crossing.
+- **Also still owed:** the roster's "the savvy play is triggering it yourself (Myke's flame)". `Inflame`
+  is explicitly unimplemented (`canonical_character_ability.gd`: "deliberately not fabricated here before
+  its runtime contract is authored"), so the chunk exposes `pop_flare()` as a seam and offers the player
+  no ignition it does not have. A click-to-detonate button would have invented the mechanic.
+- **Lesson worth keeping -- a bed detonated itself.** A Flare is a REGISTERED body, so every Flare in a
+  cluster read its neighbours as a crowd and armed on the first poll (measured: three at 0.9m, all three
+  priming at boot). The register asks for "a Flare cluster lane" and a cluster was impossible until
+  Flares were excluded from each other's density count. **Found by designing the fragment, not by the
+  unit tests written moments earlier** -- the class looked complete and passed 11/11 before anything
+  tried to place more than one of them.
 
 ### 5. The Feeding Frenzy  *(was "Immunity Gap")*
 - **HOOK:** **Toxos** are bait, not opponents (there is no player-attack verb). A dense Toxo pocket

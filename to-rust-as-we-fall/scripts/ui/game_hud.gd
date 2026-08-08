@@ -31,6 +31,10 @@ signal highlight_held(active: bool)
 ## Emitted when the player asks to recenter the camera on the party (button or the camera_center key).
 ## Momentary, like an ability press — carries no state.
 signal center_camera_requested()
+
+## One carry/consume verb was pressed. A host connects this once and gets both the HUD button and
+## the matching key, exactly like the run/route/pause toggles above.
+signal carry_action_pressed(action_id: String)
 ## A positional-work badge (plate, lever, channel, etc.) was clicked. Locking is deliberately
 ## separate from portrait selection: it only excludes this holder from whole-party rally commands.
 signal portrait_hold_lock_changed(character_id: String, locked: bool)
@@ -49,6 +53,7 @@ var _ability_column_serial := 0
 var _ordered_sections: Array[Control] = []
 @onready var _hands_section: HBoxContainer = $BottomMargin/BottomPanel/BottomRow/HandsSection
 var _section_separators: Array[VSeparator] = []
+var _carry_buttons: Dictionary = {}
 @onready var _time_container: HBoxContainer = $TimeContainer
 @onready var _time_label: Label = $TimeContainer/TimeLabel
 @onready var _time_bar: ProgressBar = $TimeContainer/TimeBar
@@ -1276,6 +1281,33 @@ func show_center_camera_button(keybind := "P") -> void:
 
 func _on_center_camera_pressed() -> void:
 	center_camera_requested.emit()
+
+## Carry / consume verbs belong in the bottom bar with the other controls, not in a floating panel
+## over the play area. They use the same chip grammar as PAUSE/WALK/SAFE/CENTER, and they honour the
+## project's input rule the same way: a key and the HUD button emit the SAME signal, so a host wires
+## the verb once. `refresh_hands()` owns the carried-item chips beside them and clears its own
+## section, which is why these live in the control section rather than among those chips.
+func show_carry_action(
+	action_id: String,
+	label: String,
+	input_action := "",
+	keybind := ""
+) -> Button:
+	if _carry_buttons.has(action_id):
+		return _carry_buttons[action_id]
+	var btn := _make_control_button(
+		label.to_upper(), Color(0.72, 0.62, 0.42), input_action, keybind)
+	btn.pressed.connect(func() -> void: carry_action_pressed.emit(action_id))
+	_control_section.add_child(btn)
+	_carry_buttons[action_id] = btn
+	return btn
+
+## Hosts hide a verb that cannot apply right now (nothing held, nothing to pick up) instead of
+## showing a dead control.
+func set_carry_action_visible(action_id: String, is_visible: bool) -> void:
+	var btn: Button = _carry_buttons.get(action_id, null)
+	if btn != null:
+		btn.visible = is_visible
 
 # --- Abilities ---
 
