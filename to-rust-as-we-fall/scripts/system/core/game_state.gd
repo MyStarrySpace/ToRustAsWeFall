@@ -5453,13 +5453,18 @@ func solve_throw(from_id: String, item_id: String, target_kind: String, target_r
 		return fail.call("too many floors")
 	# _get_movement_segments zeroes Y in every branch, so the solved point is on the y=0 plane
 	# structurally. Derive the real height from the destination floor instead of trusting it.
-	if grid:
-		var cell := grid.world_to_grid(landing)
-		landing.y = grid.grid_to_world(cell, to_level).y
-		if not grid.has_throw_line(from_pos, landing):
-			return fail.call("no line")
-		if not grid.is_walkable(cell.x, cell.y, {}, {}, to_level):
-			return fail.call("cannot land there")
+	# The landing is only a landing if the grid can vouch for it: a walkable cell with a clear
+	# throw line. With no grid there is nothing to vouch, and an unvouched success would hurl the
+	# item -- possibly a progression-required payload -- into space nothing can validate or reach.
+	# Refusing is the same contract as "cannot land there", applied to a world with no floor data.
+	if grid == null:
+		return fail.call("no grid to validate the landing")
+	var cell := grid.world_to_grid(landing)
+	landing.y = grid.grid_to_world(cell, to_level).y
+	if not grid.has_throw_line(from_pos, landing):
+		return fail.call("no line")
+	if not grid.is_walkable(cell.x, cell.y, {}, {}, to_level):
+		return fail.call("cannot land there")
 	return {"ok": true, "reason": "", "landing": landing, "level": to_level, "flight": flight, "aim": aim}
 
 ## Solve, then delegate on success only. Emits nothing itself — throw_item does — so a refusal

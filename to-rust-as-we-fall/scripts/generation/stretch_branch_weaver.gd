@@ -578,6 +578,25 @@ static func validate_branch_contracts(branches: Array, grid_data: Dictionary = {
 			var branch_cell := _as_cell(branch_cell_v)
 			if branch_cell.x != 2147483647:
 				all_branch_cells[branch_cell] = true
+	# Two branches may never claim the same consumer cell. A grid blocker cell has exactly one
+	# owner, so the second span's configure() refuses and the chunk skips it -- the geometry stays
+	# open while the producer interaction never exists, and the exit transaction is permanently
+	# refused. That failure is silent at runtime, so it must be loud here.
+	var consumer_cell_owners := {}
+	for branch_v in branches:
+		if not (branch_v is Dictionary):
+			continue
+		var owner_id := str((branch_v as Dictionary).get("id", "?"))
+		for cut_cell_v in (branch_v as Dictionary).get("_consumer_cells", []):
+			var cut_cell := _as_cell(cut_cell_v)
+			if cut_cell.x == 2147483647:
+				continue
+			if consumer_cell_owners.has(cut_cell) \
+					and str(consumer_cell_owners[cut_cell]) != owner_id:
+				errors.append(
+					"Branches '%s' and '%s' share consumer cell %s; a blocker cell has one owner, so the second span cannot configure."
+					% [str(consumer_cell_owners[cut_cell]), owner_id, str(cut_cell)])
+			consumer_cell_owners[cut_cell] = owner_id
 	var role_counts := {
 		ROLE_MANDATORY_PRODUCER: 0,
 		ROLE_OPTIONAL_RISK_REWARD: 0,

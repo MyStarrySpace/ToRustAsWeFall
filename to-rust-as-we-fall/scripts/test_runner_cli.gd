@@ -1576,6 +1576,15 @@ func _ready() -> void:
 			"--test-stretch-greedy-solvability":
 				ran_test = true
 				await _test_stretch_greedy_solvability()
+			"--test-throw-fails-closed-without-grid":
+				ran_test = true
+				await _test_throw_fails_closed_without_grid()
+			"--test-payload-hand-arithmetic":
+				ran_test = true
+				await _test_payload_hand_arithmetic()
+			"--test-branch-cut-overlap-rejected":
+				ran_test = true
+				await _test_branch_cut_overlap_rejected()
 			"--test-detection-scaling":
 				ran_test = true
 				await _test_detection_scaling()
@@ -2259,6 +2268,9 @@ func _run_all_tests() -> void:
 	await _test_push_chamber()
 	await _test_push_chamber_reset()
 	await _test_stretch_greedy_solvability()
+	await _test_throw_fails_closed_without_grid()
+	await _test_payload_hand_arithmetic()
+	await _test_branch_cut_overlap_rejected()
 	await _test_detection_scaling()
 	await _test_enemy_state_derived_work()
 	await _test_watched_gap_los()
@@ -9338,6 +9350,130 @@ func _test_predicted_consequence_parity() -> void:
 		# THE POINT: 1x and 10x resolve the same consequence at the same moment in game time.
 		_assert_true(absf(fine - coarse) <= 0.166 + 0.0001,
 			"1x and 10x fire the SAME consequence at the same tick (%.4f vs %.4f)" % [fine, coarse])
+
+## G2: two branches claiming one consumer cell is a construction the runtime fails SILENTLY on (the
+## second span cannot configure, its producer never exists, the exit refuses forever). The contract
+## validator must reject it loudly, and must keep accepting the committed specs it ships today.
+func _test_branch_cut_overlap_rejected() -> void:
+	_test_name = "Branch Cut Overlap Rejected"
+	var clean := [
+		{"id": "branch_00", "cells": [[5, 2], [5, 3]], "role": "mandatory_producer",
+			"_consumer_cells": [[8, 1], [8, 2], [8, 3]]},
+		{"id": "branch_01", "cells": [[12, 2], [12, 3]], "role": "mandatory_producer",
+			"_consumer_cells": [[14, 1], [14, 2], [14, 3]]},
+	]
+	var clean_verdict := StretchBranchWeaver.validate_branch_contracts(clean)
+	var clean_errors: Array = clean_verdict.get("errors", [])
+	var overlap_errors := 0
+	for err in clean_errors:
+		if str(err).contains("share consumer cell"):
+			overlap_errors += 1
+	_assert_equals(overlap_errors, 0, "distinct cuts raise no overlap error")
+	var colliding := [
+		{"id": "branch_00", "cells": [[5, 2], [5, 3]], "role": "mandatory_producer",
+			"_consumer_cells": [[8, 1], [8, 2], [8, 3]]},
+		{"id": "branch_01", "cells": [[12, 2], [12, 3]], "role": "mandatory_producer",
+			"_consumer_cells": [[8, 2], [8, 3], [8, 4]]},
+	]
+	var verdict := StretchBranchWeaver.validate_branch_contracts(colliding)
+	var found := false
+	for err in (verdict.get("errors", []) as Array):
+		if str(err).contains("share consumer cell"):
+			found = true
+			break
+	_assert_true(found,
+		"two branches claiming one consumer cell are REJECTED at validation, not skipped at runtime")
+
+## SOLVABILITY GUARDS G2 + G5 + G8 — the cheap arithmetic and fail-closed checks from the
+## assessment, each one a hole a generated stretch could pass every behavioural test through.
+##
+## G8: a throw's landing is validated by the grid (walkable cell, throw line). Without a grid there
+## is nothing to validate AGAINST, and an unvalidated success can hurl a progression-required
+## payload into space no one can reach. A solve with no grid must refuse, exactly as an unreachable
+## landing refuses.
+func _test_throw_fails_closed_without_grid() -> void:
+	_test_name = "Throw Fails Closed Without Grid"
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.scheduler = sched
+	gs.event_log = EventLog.new()
+	gs.register_character("carrier", Vector3(2.0, 0.0, 2.0), 3.0, {})
+	var relay_id := gs.spawn_item("payload", Vector3(2.0, 0.0, 2.0))
+	_assert_true(gs.pick_up_item("carrier", relay_id), "the carrier takes the payload in hand")
+	var solved: Dictionary = gs.solve_throw("carrier", relay_id, "pos", Vector3(12.0, 0.0, 2.0))
+	_assert_true(not bool(solved.get("ok", false)),
+		"a throw with NO grid refuses -- there is nothing to validate the landing against")
+	var committed: Dictionary = gs.command_throw_item(
+		"carrier", relay_id, "pos", Vector3(12.0, 0.0, 2.0))
+	_assert_true(not bool(committed.get("ok", false)),
+		"the command path refuses identically")
+	_assert_true(gs.items.has(relay_id) \
+			and str(gs.items[relay_id].get("holder", "")) == "carrier",
+		"the refused payload stays IN HAND, never lost into unvalidated space")
+
+## G5: the exit transaction demands every progression-required payload simultaneously in hand, and
+## hands are two per character -- so a spec demanding more payloads than the spawn roster can carry
+## is unsolvable by arithmetic before anyone moves. Checked across generated seeds.
+func _test_payload_hand_arithmetic() -> void:
+	_test_name = "Payload Hand Arithmetic"
+	# The committed spec files are what replays and campaign order actually load, so the arithmetic
+	# is proven on them directly: required payloads must fit the BARE PAIR's four hands, because the
+	# pair-floor law promises every stretch to Aster+Peris alone.
+	var spec_dir := DirAccess.open("res://data/generated_stretches")
+	if spec_dir != null:
+		spec_dir.list_dir_begin()
+		var spec_name := spec_dir.get_next()
+		while spec_name != "":
+			if spec_name.ends_with(".json"):
+				var parsed_v: Variant = JSON.parse_string(FileAccess.get_file_as_string(
+					"res://data/generated_stretches/" + spec_name))
+				if parsed_v is Dictionary:
+					var payloads := 0
+					for node_v in ((parsed_v as Dictionary).get("nodes", []) as Array):
+						var node: Dictionary = node_v
+						if str(node.get("runtime_handler", "")) == "physical_carried_payload_v1" \
+								and bool(node.get("runtime_progression_required", false)):
+							payloads += 1
+					_assert_true(payloads <= 4,
+						"%s: %d required payloads fit the bare pair's 4 hands" % [
+							spec_name, payloads])
+			spec_name = spec_dir.get_next()
+		spec_dir.list_dir_end()
+	var checked := 0
+	for cfg_v in [
+		{"seed": 3, "complexity_tier": "teaching", "progression_stage": 1},
+		{"seed": 431, "complexity_tier": "standard", "progression_stage": 3},
+		{"seed": 909, "complexity_tier": "hard", "progression_stage": 5},
+	]:
+		var cfg: Dictionary = (cfg_v as Dictionary).duplicate(true)
+		var seed_id := int(cfg.get("seed", 0))
+		var inst = await _instantiate_preview_chunk_and_wait("generated_stretch", 8, cfg)
+		if inst == null:
+			continue
+		var gs = inst.get("_game_state")
+		var chunk := _find_fragment_chunk_root(inst)
+		if gs == null or chunk == null:
+			inst.queue_free()
+			await get_tree().process_frame
+			continue
+		var spec: Dictionary = chunk.get("_spec") if chunk.get("_spec") is Dictionary else {}
+		var payload_nodes := 0
+		for node_v in (spec.get("nodes", []) as Array):
+			var node: Dictionary = node_v
+			if not bool(node.get("runtime_progression_required", false)):
+				continue
+			if str(node.get("runtime_handler", "")).contains("payload") 					and bool(node.get("runtime_progression_required", false)):
+				payload_nodes += 1
+		var hands := 0
+		for char_id in gs.characters.keys():
+			hands += 2
+		_assert_true(payload_nodes <= hands,
+			"seed %d: %d required payloads fit the roster's %d hands" % [
+				seed_id, payload_nodes, hands])
+		checked += 1
+		inst.queue_free()
+		await get_tree().process_frame
+	_assert_true(checked >= 2, "swept specs for payload arithmetic (%d)" % checked)
 
 ## STRETCH GREEDY SOLVABILITY (G1) — the monotone-greedy flood-open validator, run against the
 ## flattened (cell, level) graph. Opening a gate only removes blockers, so reachability is monotone,
