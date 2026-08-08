@@ -51,8 +51,12 @@ var _crossings := 0
 func _build_chunk() -> void:
 	_add_floor(self, Vector3(6.0, -0.05, 6.5), Vector3(11.0, 0.1, 12.0), Color(0.10, 0.12, 0.14))
 	_add_floor(self, Vector3(20.5, -0.05, 6.5), Vector3(11.0, 0.1, 12.0), Color(0.10, 0.12, 0.14))
-	# The gap between the decks is the reason the pads exist; it is never walkable.
-	_add_box(self, Vector3(13.0, 0.9, 6.5), Vector3(1.2, 1.8, 12.0), Color(0.16, 0.13, 0.11))
+	# The gap between the decks is the reason the pads exist; it is never walkable. It is a CHASM, not
+	# a wall: a 1.8 m slab here threw the low afternoon sun's shadow across the entire far deck and
+	# hid the far console, which is half the puzzle. Knee-high lips mark each edge instead -- the drop
+	# reads as uncrossable without shadowing what the player needs to see.
+	_add_box(self, Vector3(11.3, 0.2, 6.5), Vector3(0.35, 0.4, 12.0), Color(0.20, 0.16, 0.13))
+	_add_box(self, Vector3(14.7, 0.2, 6.5), Vector3(0.35, 0.4, 12.0), Color(0.20, 0.16, 0.13))
 
 	_add_console(NEAR_CONSOLE, "NEAR GATE", true)
 	_add_console(FAR_CONSOLE, "FAR GATE", false)
@@ -70,7 +74,12 @@ func _build_chunk() -> void:
 ## A console is a visible plate plus a lamp that reports whether it is currently bearing someone.
 ## No interactable: standing on it IS the verb, so there is nothing to click and nothing to explain.
 func _add_console(pos: Vector3, label: String, watched: bool) -> void:
-	var tint := Color(0.42, 0.30, 0.22) if watched else Color(0.24, 0.32, 0.30)
+	# Both consoles must read against their OWN deck. Measured: the near deck renders (93, 52, 35) and
+	# the far deck (89, 77, 70) -- the same brightness, but the far one is cool and desaturated because
+	# it sits in shadow and takes only neutral ambient. The old far tint (0.24, 0.32, 0.30) was almost
+	# the floor's own colour there, so half the puzzle vanished into its background. Contrast, not
+	# light, was the problem.
+	var tint := Color(0.42, 0.30, 0.22) if watched else Color(0.34, 0.62, 0.55)
 	_add_box(self, pos + Vector3(0.0, 0.06, 0.0), Vector3(2.4, 0.12, 2.4), tint)
 	_add_label(self, label, pos + Vector3(0.0, 1.9, 0.0),
 		Color(0.95, 0.72, 0.46) if watched else Color(0.62, 0.88, 0.78))
@@ -124,6 +133,23 @@ func _spawn_sentry() -> void:
 		]
 		enemy.set_patrol(route)
 	_sentry = enemy
+
+## The whole read is "two decks, one gap, a console on each side". The default preview camera follows
+## the active character from close in, which opens on the spawn corner and shows one deck -- the
+## player cannot see the problem they are being asked to solve. Pull back and sit over the gap so the
+## opening frame carries the composition; the player can still zoom in once they know the shape.
+func get_preview_camera_profile() -> Dictionary:
+	return {
+		"follow_offset": Vector3(0.0, 21.0, 15.0),
+		"min_zoom": 0.5,
+		"max_zoom": 2.0,
+		"initial_zoom": 1.0,
+		"reset_yaw": true,
+	}
+
+## Home reframes the PUZZLE (the gap between the decks), not whoever happens to be selected.
+func get_preview_camera_recenter_target() -> Vector3:
+	return Vector3(13.0, 0.0, 6.5)
 
 func configure_chunk(_config: Dictionary) -> void:
 	pass
