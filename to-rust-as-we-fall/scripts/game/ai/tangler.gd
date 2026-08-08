@@ -36,11 +36,6 @@ const TANGLER_SCANNING_STATES := [
 	"idle", "roam", "patrol", "lured", "search", "return", "alert", "pursuit",
 ]
 
-const LOCK_POLL := 0.5
-const _RESTORE_POLL_EPSILON := 0.000001
-
-var _lock_poll_deadline := -1.0
-
 func _ready() -> void:
 	# Tau filament pallor -- the base colour state repaints return to.
 	color = Color(0.78, 0.74, 0.52)
@@ -52,36 +47,30 @@ func _ready() -> void:
 	detection_range = 5.0
 	super._ready()
 
+## EVENT-DRIVEN, NOT POLLED. The lock follows hyperexcitability, and "is that body running" is a
+## DISCRETE STATE FLIP -- something that changes at a knowable instant, not something to sample for.
+## The old version woke every 0.5s to look; it now subscribes to the flip itself, plus the detection
+## event that says a body became visible, which are the only two things that can change the answer.
 func activate() -> void:
 	super.activate()
-	_arm_lock_poll()
+	if game_state != null:
+		if game_state.has_signal("running_changed") 				and not game_state.running_changed.is_connected(_on_running_changed):
+			game_state.running_changed.connect(_on_running_changed)
+		if game_state.has_signal("detection_predicted") 				and not game_state.detection_predicted.is_connected(_on_detection_predicted_lock):
+			game_state.detection_predicted.connect(_on_detection_predicted_lock)
+	_repick_lock()
 
-## The lock follows hyperexcitability, so it has to be re-read while the encounter runs rather than
-## fixed at acquisition. A decoy that stops running stops being the loudest thing in the room.
-func _arm_lock_poll() -> void:
-	var sched = _get_scheduler()
-	if sched == null:
-		_lock_poll_deadline = -1.0
-		return
-	sched.cancel_tag(_lock_tag())
-	var deadline := float(sched.get_current_tick()) + LOCK_POLL
-	_lock_poll_deadline = deadline
-	sched.schedule_after(LOCK_POLL, _run_lock_poll.bind(deadline), _lock_tag())
+func _on_running_changed(char_id: String, _running: bool) -> void:
+	if str(char_id) in _detection_targets:
+		_repick_lock()
+
+func _on_detection_predicted_lock(detector_id: String, _target_id: String) -> void:
+	if detector_id == char_id:
+		_repick_lock()
 
 func _sync_detection_subscription(state: String) -> void:
 	if game_state != null and game_state.has_method("set_detection_enabled") 			and game_state.characters.has(char_id):
 		game_state.set_detection_enabled(char_id, state in TANGLER_SCANNING_STATES)
-
-func _lock_tag() -> String:
-	return "tangler_lock_%s" % char_id
-
-func _run_lock_poll(expected_deadline: float) -> void:
-	if _lock_poll_deadline < 0.0 \
-			or not is_equal_approx(_lock_poll_deadline, expected_deadline):
-		return
-	_lock_poll_deadline = -1.0
-	_repick_lock()
-	_arm_lock_poll()
 
 ## Prefer the loudest VISIBLE body. Only a running target can take the lock from another; when nobody
 ## is running the current lock simply stands, which is what makes "stop running" a real decision
@@ -134,6 +123,9 @@ func get_locked_target() -> String:
 	return _current_target_id
 
 func _exit_tree() -> void:
-	var sched = _get_scheduler()
-	if sched != null:
-		sched.cancel_tag(_lock_tag())
+	if game_state == null:
+		return
+	if game_state.has_signal("running_changed") 			and game_state.running_changed.is_connected(_on_running_changed):
+		game_state.running_changed.disconnect(_on_running_changed)
+	if game_state.has_signal("detection_predicted") 			and game_state.detection_predicted.is_connected(_on_detection_predicted_lock):
+		game_state.detection_predicted.disconnect(_on_detection_predicted_lock)

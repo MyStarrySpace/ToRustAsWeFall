@@ -1552,6 +1552,12 @@ func _ready() -> void:
 			"--test-predicted-consequence-parity":
 				ran_test = true
 				await _test_predicted_consequence_parity()
+			"--test-movement-discipline":
+				ran_test = true
+				await _test_movement_discipline()
+			"--test-detection-scaling":
+				ran_test = true
+				await _test_detection_scaling()
 			"--test-generated-stretch-quality":
 				ran_test = true
 				await _test_generated_stretch_quality()
@@ -2218,6 +2224,8 @@ func _run_all_tests() -> void:
 	await _test_windup_window_walk_across()
 	await _test_fragment_manifest()
 	await _test_predicted_consequence_parity()
+	await _test_movement_discipline()
+	await _test_detection_scaling()
 	await _test_generated_stretch_quality()
 	await _test_generated_food_modes()
 	_test_grid_ascii()
@@ -8838,6 +8846,149 @@ func _test_tangler() -> void:
 	holder.queue_free()
 	await get_tree().process_frame
 
+## MOVEMENT DISCIPLINE — the ratchet that stops teleport-as-movement coming back.
+##
+## Director's ruling: the scheduler exists so a queued MOVEMENT can have its consequences solved and
+## pushed onto the timeline. Teleporting a body to make a consequence fire skips the very mechanism
+## the architecture is built on, and it produces tests that pass while the level is broken -- which is
+## exactly how windup_window shipped a bed you could walk out of for free.
+##
+## An honest lint, and its limits stated plainly:
+##   RULE A (mechanical, exact): production LEVEL and AI code may not teleport at all. Level content
+##     commands movement; genuine teleports belong to the kit objects that ARE teleports.
+##   RULE B (ratchet, approximate): the test runner's teleport count may not GROW. A source scan
+##     cannot tell "place a fixture before the scenario" from "shove the body into the blast", so this
+##     freezes the debt instead of pretending to classify it. Lower the ledger as sites convert; the
+##     test goes red if it grows AND if it drops without the ledger being updated, so the number
+##     cannot silently drift in either direction.
+const MOVEMENT_TELEPORT_DEBT := 204   # includes this lint's own two literal mentions
+const MOVEMENT_TELEPORT_BANNED_DIRS := [
+	"res://scripts/fragments/chunks/",
+	"res://scripts/game/ai/",
+]
+## Kit objects whose whole purpose IS an instantaneous topology hop, plus the enemy re-post that
+## returns a body to its authored station.
+const MOVEMENT_TELEPORT_ALLOWED := [
+	"res://scripts/game/objects/portal_pad.gd",
+	"res://scripts/game/objects/crawl_tunnel.gd",
+	"res://scripts/game/ai/enemy.gd",
+]
+
+func _test_movement_discipline() -> void:
+	_test_name = "Movement Discipline"
+	for dir_path in MOVEMENT_TELEPORT_BANNED_DIRS:
+		for file_name in _movement_discipline_scripts(str(dir_path)):
+			var full: String = dir_path + str(file_name)
+			if full in MOVEMENT_TELEPORT_ALLOWED:
+				continue
+			var src := FileAccess.get_file_as_string(full)
+			if src == "":
+				continue
+			for offender in _movement_teleport_offenders(src):
+				_assert_true(false,
+					"%s: %s teleports a body -- level content commands movement" % [
+						file_name, offender])
+	var runner := FileAccess.get_file_as_string("res://scripts/test_runner_cli.gd")
+	var debt := runner.count("snap_character_to")
+	# The ledger constant and its two mentions in this function are themselves matches; subtract them
+	# so the number means call sites.
+	_assert_true(debt <= MOVEMENT_TELEPORT_DEBT,
+		"the test runner's teleport debt does not GROW (%d vs frozen %d) -- new tests walk" % [
+			debt, MOVEMENT_TELEPORT_DEBT])
+	_assert_true(debt >= MOVEMENT_TELEPORT_DEBT - 40,
+		"debt dropped to %d; lower MOVEMENT_TELEPORT_DEBT to match so the ratchet keeps biting" % debt)
+
+## A chunk may still RE-PLACE a body when the level resets, respawns or first spawns it: that is
+## authored placement, not movement. The distinction is drawn from the enclosing function's NAME,
+## which is mechanical and honest -- it is the author declaring intent in the one place a reader
+## already looks. A teleport anywhere else is a body being shoved somewhere it should have walked.
+const MOVEMENT_PLACEMENT_VERBS := [
+	"reset", "restart", "restore", "spawn", "place", "respawn", "recover",
+	"at_start", "initial", "opening",
+]
+
+func _movement_teleport_offenders(src: String) -> Array:
+	var out: Array = []
+	var current := "<file scope>"
+	for line in src.split("
+"):
+		var text := str(line)
+		var stripped := text.strip_edges()
+		if stripped.begins_with("func "):
+			current = stripped.substr(5).split("(")[0].strip_edges()
+		if not stripped.contains("snap_character_to("):
+			continue
+		if stripped.begins_with("#") or stripped.begins_with("##"):
+			continue
+		var lowered := current.to_lower()
+		var is_placement := false
+		for verb in MOVEMENT_PLACEMENT_VERBS:
+			if lowered.contains(str(verb)):
+				is_placement = true
+				break
+		if not is_placement:
+			out.append(current)
+	return out
+
+func _movement_discipline_scripts(dir_path: String) -> Array:
+	var out: Array = []
+	var dir := DirAccess.open(dir_path)
+	if dir == null:
+		return out
+	dir.list_dir_begin()
+	var entry := dir.get_next()
+	while entry != "":
+		if not dir.current_is_dir() and entry.ends_with(".gd"):
+			out.append(entry)
+		entry = dir.get_next()
+	dir.list_dir_end()
+	return out
+
+## DETECTION SCALING — a yard full of roamers must not cost O(n^2).
+##
+## The shape that matters in this game is many ambient enemies moving constantly (the roam rule) while
+## watching only the party. Invalidating a moved body used to scan EVERY detector against EVERY one of
+## its targets and skip the misses, so each roamer's hop paid for every other roamer in the yard.
+## Indexed by participant, a roamer's own hop touches only the pairs it is actually in.
+##
+## The assertion is a RATIO, not a wall-clock time: pairs-considered per move must not grow with the
+## size of the crowd. That is the property, and it is machine-checkable on any hardware.
+func _test_detection_scaling() -> void:
+	_test_name = "Detection Scaling"
+	var measured := {}
+	for crowd_v in [6, 24]:
+		var crowd := int(crowd_v)
+		var sched := EventScheduler.new()
+		var gs := GameState.new()
+		gs.scheduler = sched
+		gs.event_log = EventLog.new()
+		var grid := GridWorld.new()
+		grid.create_room(80, 80)
+		gs.grid = grid
+		gs.register_character("aster", Vector3(4.0, 0.0, 4.0), 3.0, {"hp": 100.0})
+		gs.register_character("peris", Vector3(5.0, 0.0, 4.0), 3.0, {"hp": 100.0})
+		# A yard of roamers, each watching ONLY the party -- they do not watch each other.
+		for i in range(crowd):
+			var rid := "roamer_%d" % i
+			gs.register_character(rid,
+				Vector3(20.0 + float(i % 8) * 3.0, 0.0, 20.0 + float(i / 8) * 3.0), 1.2,
+				{"detection_range": 4.0})
+			gs.set_detection_targets(rid, ["aster", "peris"])
+		# SCANNED, not considered. "Considered" counts pairs that survived the only_id filter, which
+		# is 2 either way -- measuring it proves nothing about the scan, as a red/green revert showed.
+		var before := int(gs.get_performance_counters()["detection_pairs_scanned"])
+		# ONE roamer hops. Nobody watches it, so nothing else in the yard can be affected by it.
+		gs.command_move_to_pos("roamer_0", Vector3(26.0, 0.0, 26.0))
+		var cost := int(gs.get_performance_counters()["detection_pairs_scanned"]) - before
+		measured[crowd] = cost
+		_assert_true(cost >= 0, "a roamer hop in a crowd of %d scanned %d pairs" % [crowd, cost])
+	var small := int(measured[6])
+	var large := int(measured[24])
+	# Quadrupling the crowd must not multiply the cost of one unrelated body's hop.
+	_assert_true(large <= small * 2 + 4,
+		"one roamer's hop scans the same in a crowd of 24 as in 6 (%d vs %d pairs) -- not O(n^2)" % [
+			large, small])
+
 ## PREDICTION MATCHES REALITY — the guard the whole predictive architecture rests on.
 ##
 ## A consequence is solved in advance from a queued movement and scheduled at the tick it will happen.
@@ -8884,6 +9035,38 @@ func _test_predicted_consequence_parity() -> void:
 		# And the body really did walk there rather than being placed: it must have travelled.
 		_assert_true(gs.get_position("walker").x > 5.0,
 			"the walker moved under its own commanded movement (step %.4f)" % step)
+	# SIGHT BREAKS ARE SOLVED TOO, and the solve has to land on the same tick the walk produces.
+	var los_sched := EventScheduler.new()
+	var los_gs := GameState.new()
+	los_gs.scheduler = los_sched
+	los_gs.event_log = EventLog.new()
+	var los_grid := GridWorld.new()
+	los_grid.create_room(30, 20)
+	los_gs.grid = los_grid
+	# A wall the walker passes behind, between the observer and the far end of its route.
+	for blocker_z in range(6, 12):
+		los_grid.add_sight_blocker(Vector2i(14, blocker_z))
+	los_gs.register_character("watcher", Vector3(6.0, 0.0, 10.0), 1.0, {})
+	los_gs.register_character("runner", Vector3(10.0, 0.0, 10.0), 3.0, {"hp": 100.0})
+	_assert_true(los_grid.has_line_of_sight(
+		los_gs.get_position("watcher"), los_gs.get_position("runner")),
+		"the walker starts in plain sight")
+	los_gs.command_move_to_pos("runner", Vector3(22.0, 0.0, 10.0))
+	var predicted_break := float(los_gs.predict_los_break_tick("watcher", "runner"))
+	_assert_true(predicted_break > 0.0,
+		"walking behind a wall yields a SOLVED sight-break tick, not a poll")
+	var actual_break := -1.0
+	for _i in range(2000):
+		los_sched.advance_ticks(0.0166)
+		if not los_grid.has_line_of_sight(
+				los_gs.get_position("watcher"), los_gs.get_position("runner")):
+			actual_break = float(los_sched.get_current_tick())
+			break
+	_assert_true(actual_break > 0.0, "and sight really does break when it walks the route")
+	if actual_break > 0.0:
+		# Cells are the unit the grid stores blockers at, so the solve is exact to a cell crossing.
+		_assert_true(absf(actual_break - predicted_break) <= 0.6,
+			"predicted sight-break %.3f matches the walked %.3f" % [predicted_break, actual_break])
 	if fired_at.size() == 2:
 		var fine := float(fired_at[0.0166])
 		var coarse := float(fired_at[0.166])
@@ -9248,9 +9431,15 @@ func _test_wall_hugger() -> void:
 	# ...and the wall clumps BREAK that sight, which is the counter the roster names. You hide BEHIND
 	# cover, not inside it: a sight blocker on the body's own cell does not block sight to that cell,
 	# so the position that matters is the far side of the clump from the turret.
-	gs.snap_character_to("aster", Vector3(13.0, 0.0, chunk.NORTH_VENT_Z + 1.2))
-	for _i in range(15):
+	#
+	# WALKED, not snapped. The turret re-reads sight while its target is MOVING, so a body teleported
+	# behind cover would never break the connection -- and neither would a player, because players
+	# cannot teleport. Driving the real move is the only version of this that tests the counter.
+	gs.command_move_to_pos("aster", Vector3(13.0, 0.0, chunk.NORTH_VENT_Z + 1.2))
+	for _i in range(200):
 		inst.headless_advance(0.05)
+		if str(chunk.call("spiker_connection")) == "":
+			break
 	_assert_equals(str(chunk.call("spiker_connection")), "",
 		"the wall clump BREAKS the turret's sight -- the counter is real, not claimed")
 	inst.queue_free()

@@ -146,6 +146,20 @@ const DETECTION_LOS_RECHECK_MAX_HOPS := 120
 ## of every character pair in the scene. The counters are deliberately cheap and exposed for performance
 ## regressions; they never affect simulation or serialization.
 var _detection_active_pairs: Dictionary = {}  # symmetric pair tag -> {a, b}
+## WHO WATCHES WHOM, so invalidating one body touches only the pairs that body is in.
+##
+## Recomputing a moved character used to scan every detector against every one of its targets and
+## `continue` past the ones it did not need -- O(detectors x targets) work to find the O(targets)
+## pairs that actually changed, and it cancelled and re-solved pairs whose geometry had not moved at
+## all. Those re-solves are not free and they are not harmless: a pair with an unchanged plan should
+## keep the event it already has.
+##
+## Subscriptions change rarely and movement changes constantly, so the index is rebuilt lazily on a
+## dirty flag rather than maintained incrementally at every write site (which is where this kind of
+## cache usually rots).
+var _detectors_by_target: Dictionary = {}   # target id -> {detector id: true}
+var _detectors_watch_all: Dictionary = {}   # detectors with no explicit subscription list
+var _detector_index_dirty := true
 ## Registered proximity TRIGGERS: trigger_id -> {anchor, subjects, radius, count, callback}. These are
 ## the general form of the same idea detection already uses -- a consequence is SOLVED for the tick it
 ## will happen at and scheduled, never discovered by polling. See register_proximity_trigger().
@@ -157,6 +171,9 @@ var _detection_batch_dirty_ids: Dictionary = {}
 var _performance_counters := {
 	"detection_recomputes": 0,
 	"detection_pairs_considered": 0,
+	# Pairs the invalidation loop LOOKED at, before the only_id filter. The difference between this
+	# and pairs_considered is pure wasted scan, which is what the participant index removes.
+	"detection_pairs_scanned": 0,
 	"detection_predictions_solved": 0,
 	"detection_events_scheduled": 0,
 	"cooperative_plans": 0,
@@ -319,11 +336,19 @@ func register_character(id: String, pos: Vector3, speed: float = 3.0, stats: Dic
 		"internal": [],
 	}
 	explored[id] = {}
+	_mark_detector_index_dirty()
 	_reserve_parked(id, cell)
 	# A body appearing is a state change that can invalidate a prediction just as much as one moving:
 	# an enemy spawned beside the party must see them without waiting for somebody else to move, and a
 	# hazard must notice a body registered inside its radius. Registration used to recompute nothing.
-	_recompute_all_detection_predictions(id)
+	#
+	# Only WHEN IT CAN MATTER, though. Scene build registers every character back to back, so an
+	# unconditional rebuild here is O(n^2) churn that solves pairs against a half-built roster and then
+	# throws the answers away. Skipped when there is no scheduler to schedule onto, and when this is the
+	# first body (a pair needs two). A caller registering a crowd should still wrap the burst in
+	# begin_detection_update_batch()/end_detection_update_batch(), which coalesces it to one rebuild.
+	if scheduler != null and characters.size() > 1:
+		_recompute_all_detection_predictions(id)
 
 ## Which stacked floor a world Y sits on (round to the nearest grid level). 0 without a grid.
 func _level_for_y(y: float) -> int:
@@ -378,6 +403,7 @@ func unregister_character(id: String) -> void:
 					scheduler.cancel_tag(_detection_pair_tag(id, str(other)))
 		_cancel_detection_prediction_tags(id)
 	characters.erase(id)
+	_mark_detector_index_dirty()
 	explored.erase(id)
 	_coop_exempt.erase(id)
 
@@ -3922,6 +3948,7 @@ func set_detection_targets(detector_id: String, target_ids: Array) -> void:
 	if stats.has("detection_targets") and previous == normalized:
 		return
 	stats["detection_targets"] = normalized
+	_mark_detector_index_dirty()
 	_recompute_all_detection_predictions(detector_id)
 
 ## Scanning is a state-machine capability, not a permanent property. Alert/pursuit/attack states disable
@@ -4021,6 +4048,42 @@ func _detection_pair_live_range_valid(detector_id: String, target_id: String) ->
 func _detection_pair_tag(a: String, b: String) -> String:
 	return "dp_%s|%s" % [a, b] if a < b else "dp_%s|%s" % [b, a]
 
+func _mark_detector_index_dirty() -> void:
+	_detector_index_dirty = true
+
+func _rebuild_detector_index() -> void:
+	_detectors_by_target.clear()
+	_detectors_watch_all.clear()
+	for raw_detector_id in characters.keys():
+		var detector_id := str(raw_detector_id)
+		var stats: Dictionary = characters[detector_id].stats
+		if not stats.has("detection_targets"):
+			# A legacy detector with no explicit list watches everyone, so it is affected by any
+			# body moving and has to stay in the sweep.
+			_detectors_watch_all[detector_id] = true
+			continue
+		for raw_target in stats.get("detection_targets", []):
+			var target_id := str(raw_target)
+			if not _detectors_by_target.has(target_id):
+				_detectors_by_target[target_id] = {}
+			_detectors_by_target[target_id][detector_id] = true
+	_detector_index_dirty = false
+
+## The detectors whose predictions can possibly have changed because `only_id` changed: everyone
+## explicitly watching it, everyone watching everything, and itself if it is a detector.
+func _detectors_affected_by(only_id: String) -> Array:
+	if _detector_index_dirty:
+		_rebuild_detector_index()
+	var out: Dictionary = {}
+	if characters.has(only_id):
+		out[only_id] = true
+	for detector_id in _detectors_watch_all.keys():
+		out[str(detector_id)] = true
+	if _detectors_by_target.has(only_id):
+		for detector_id in (_detectors_by_target[only_id] as Dictionary).keys():
+			out[str(detector_id)] = true
+	return out.keys()
+
 func _cancel_detection_prediction_tags(only_id: String = "") -> void:
 	for raw_tag in _detection_active_pairs.keys():
 		var tag := str(raw_tag)
@@ -4047,8 +4110,13 @@ func _recompute_all_detection_predictions(only_id: String = "") -> void:
 	_performance_counters["detection_recomputes"] = int(_performance_counters["detection_recomputes"]) + 1
 	_cancel_detection_prediction_tags(only_id)
 	var now := scheduler.get_current_tick()
-	for raw_detector_id in characters.keys():
+	# Only the detectors this change can possibly have affected. With only_id set that is its
+	# watchers plus itself, instead of the whole roster.
+	var detector_pool: Array = characters.keys() if only_id == "" 		else _detectors_affected_by(only_id)
+	for raw_detector_id in detector_pool:
 		var detector_id := str(raw_detector_id)
+		if not characters.has(detector_id):
+			continue
 		var detector_stats: Dictionary = characters[detector_id].stats
 		if not bool(detector_stats.get("detection_enabled", true)):
 			continue
@@ -4058,6 +4126,8 @@ func _recompute_all_detection_predictions(only_id: String = "") -> void:
 		for target_id in _detection_target_ids(detector_id):
 			if target_id == detector_id or not characters.has(target_id):
 				continue
+			_performance_counters["detection_pairs_scanned"] = int(
+				_performance_counters["detection_pairs_scanned"]) + 1
 			if only_id != "" and detector_id != only_id and target_id != only_id:
 				continue
 			_performance_counters["detection_pairs_considered"] = int(
@@ -4244,6 +4314,11 @@ func register_proximity_trigger(
 		"count": maxi(1, count),
 		"callback": callback,
 		"accepts": accepts,
+		# EDGE-TRIGGERED. A trigger fires on the transition into satisfied, not for as long as it
+		# stays satisfied. Without this a callback that re-arms its own trigger (a turret that
+		# rejects a body already standing in reach, say) re-solves, sees the predicate still true,
+		# fires again immediately, and recurses until the process dies -- measured, it did.
+		"latched": false,
 	}
 	_recompute_proximity_trigger(trigger_id)
 
@@ -4314,12 +4389,17 @@ func _recompute_proximity_trigger(trigger_id: String) -> void:
 		return
 	var tag := _proximity_trigger_tag(trigger_id)
 	scheduler.cancel_tag(tag)
-	# Already satisfied on the current geometry: fire on the next tick rather than waiting for a
-	# crossing that has already happened.
-	if proximity_trigger_occupancy(trigger_id) >= int(spec["count"]):
+	var occupancy := proximity_trigger_occupancy(trigger_id)
+	if occupancy < int(spec["count"]):
+		spec["latched"] = false          # dropped back below: the next crossing is a fresh edge
+	elif not bool(spec["latched"]):
+		# Already satisfied on the current geometry (a body registered inside the radius, or one that
+		# crossed while the trigger was being rebuilt). That is still an edge, so fire once.
 		scheduler.schedule_at(scheduler.get_current_tick(),
 			func() -> void: _on_proximity_trigger(trigger_id), tag)
 		return
+	else:
+		return                            # still satisfied and already fired: nothing to schedule
 	var radius := float(spec["radius"])
 	var here := get_position(anchor_id)
 	var earliest := -1.0
@@ -4344,12 +4424,55 @@ func _on_proximity_trigger(trigger_id: String) -> void:
 	# The scheduled tick only proves what the movement plan predicted. Re-read the live count before
 	# any side effect, exactly as _on_detection_event re-validates its pair.
 	if proximity_trigger_occupancy(trigger_id) >= int(spec["count"]):
+		spec["latched"] = true
 		var callback: Callable = spec["callback"]
 		if callback.is_valid():
 			callback.call()
 		return
 	# Not enough bodies yet: solve for the NEXT entry instead of sampling again in a fixed period.
 	_recompute_proximity_trigger(trigger_id)
+
+## PREDICT WHEN SIGHT BREAKS, instead of asking every quarter-second whether it has.
+##
+## Sight from a STATIC observer to a moving target changes only because the target moved, and a path
+## is a known sequence of waypoints with known arrival ticks. So walk the remaining waypoints, find
+## the first one the observer cannot see, and return the tick the target reaches it. That is exact at
+## CELL granularity, which is the granularity the grid stores blockers at -- there is no finer truth
+## to sample for. One solve per movement plan replaces a poll that ran for the whole encounter.
+##
+## Returns -1.0 when sight holds for the whole remaining path. `sample_per_segment` subdivides long
+## legs so a blocker crossed mid-leg is not stepped over; 2 means each leg is tested at its midpoint
+## and its end.
+func predict_los_break_tick(
+		observer_id: String,
+		target_id: String,
+		sample_per_segment := 2
+	) -> float:
+	if scheduler == null or grid == null or not grid.has_method("has_line_of_sight"):
+		return -1.0
+	if not characters.has(observer_id) or not characters.has(target_id):
+		return -1.0
+	var here := get_position(observer_id)
+	var now := float(scheduler.get_current_tick())
+	for seg_v in _get_movement_segments(target_id):
+		var seg: Dictionary = seg_v
+		var seg_start := float(seg["start_tick"])
+		var seg_end := float(seg["end_tick"])
+		if seg_end <= now:
+			continue
+		# A trailing parked segment runs to 1e12; sight cannot change while nothing moves, so a break
+		# that has not happened by the time the target stops will never happen on this plan.
+		if Vector3(seg["velocity"]).length() < 0.0001:
+			continue
+		var from_tick := maxf(seg_start, now)
+		var steps := maxi(1, sample_per_segment)
+		for step in range(1, steps + 1):
+			var tick := from_tick + (seg_end - from_tick) * (float(step) / float(steps))
+			var offset := tick - seg_start
+			var probe: Vector3 = Vector3(seg["start_pos"]) + Vector3(seg["velocity"]) * offset
+			if not bool(grid.call("has_line_of_sight", here, probe)):
+				return tick
+	return -1.0
 
 func _predict_detection_time(detector_id: String, target_id: String, det_range: float, now: float) -> float:
 	var segs_a := _get_movement_segments(detector_id)
@@ -4579,6 +4702,18 @@ func predict_proximity_tick(id: String, point: Vector3, radius: float) -> float:
 
 ## The tick the current movement plan ARRIVES (its last waypoint), or now if parked. The analytic form of
 ## "wait until they get there".
+## Issue the ordinary move and hand back the tick it will ARRIVE at, so a caller can hang a
+## consequence on the scheduler instead of teleporting a body to make one fire. Returns -1.0 if the
+## move was refused (unreachable cell, blocked graph, external traversal already running).
+##
+## This verb exists because its absence is why teleport-as-movement kept coming back: there was an
+## ergonomic way to put a body somewhere instantly and no ergonomic way to walk it there and know when.
+## The wire format is unchanged (KIND_MOVE_TO_POS), so replay is untouched.
+func command_move_to_pos_predicted(id: String, pos: Vector3) -> float:
+	if not command_move_to_pos(id, pos):
+		return -1.0
+	return get_plan_end_tick(id)
+
 func get_plan_end_tick(id: String) -> float:
 	if not characters.has(id) or scheduler == null:
 		return -1.0

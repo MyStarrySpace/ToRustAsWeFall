@@ -28,15 +28,16 @@ signal connection_opened(target_id: String)
 signal connection_severed(target_id: String, reason: String)
 signal discharged(target_id: String, at_position: Vector3)
 
-const CONNECTION_POLL := 0.15
-const _RESTORE_POLL_EPSILON := 0.000001
+## How finely each movement leg is probed for a sight break. Cells are the unit the grid stores
+## blockers at, and legs are cell-to-cell, so the midpoint plus the end catches a blocker crossed
+## mid-leg without sampling time.
+const LOS_SAMPLES_PER_LEG := 2
 
 @export var connection_delay := 1.8
 @export var discharge_damage := 12.0
 
 var _connection_target := ""
 var _connection_started_tick := -1.0
-var _poll_deadline := -1.0
 
 func _ready() -> void:
 	color = Color(0.86, 0.82, 0.44)
@@ -78,48 +79,117 @@ func set_roam(_anchor: Vector3, _radius: float) -> void:
 func set_patrol(_waypoints: Array) -> void:
 	return
 
+## PREDICTED WHERE IT CAN BE, AND HONEST WHERE IT CANNOT.
+##
+## Two of this turret's three questions are solvable in advance and are now scheduled exactly:
+##   - WHEN does a body come into reach? Solved from its queued movement (a proximity trigger).
+##   - WHEN does an unbroken connection discharge? A known span from the moment it opens.
+## The third -- WHEN does line of sight break? -- is not cheap to solve analytically, because it
+## depends on the target's path crossing the shadow of arbitrary grid blockers. The shipped detection
+## system makes the same compromise (_arm_detection_los_recheck) for the same reason, so this follows
+## that precedent rather than inventing a second answer: LOS is re-checked only while a connection is
+## OPEN and its target is actually MOVING. A parked target is frozen geometry and schedules nothing,
+## which is the difference from the old always-on 0.15s poll -- that ran forever, room empty or not.
 func activate() -> void:
 	super.activate()
-	_arm_connection_poll()
+	_arm_range_trigger()
+	# It locks onto MOVEMENT, so a body already standing in reach becomes interesting the moment it
+	# STARTS moving -- which is an event, not something to re-solve or sample for.
+	if game_state != null and game_state.has_signal("movement_started") 			and not game_state.movement_started.is_connected(_on_movement_started):
+		game_state.movement_started.connect(_on_movement_started)
+	# A re-route mid-connection changes when (or whether) sight breaks, so the solve is redone from
+	# the new plan rather than trusting the one made against the old one.
+	if game_state != null and game_state.has_signal("movement_started") 			and not game_state.movement_started.is_connected(_on_target_replanned):
+		game_state.movement_started.connect(_on_target_replanned)
 
-func _arm_connection_poll() -> void:
+func _on_target_replanned(moved_id: String) -> void:
+	if _connection_target != "" and str(moved_id) == _connection_target:
+		_watch_connection()
+
+func _on_movement_started(moved_id: String) -> void:
+	if _connection_target != "" or str(moved_id) not in _detection_targets:
+		return
+	_try_open_connection()
+	if _connection_target != "":
+		_watch_connection()
+
+func _arm_range_trigger() -> void:
+	if game_state == null or not game_state.has_method("register_proximity_trigger"):
+		return
+	var subjects: Array = []
+	for raw_id in _detection_targets:
+		subjects.append(str(raw_id))
+	if subjects.is_empty():
+		return
+	game_state.call("register_proximity_trigger", _range_trigger_id(), char_id, subjects,
+		detection_range, 1, Callable(self, "_on_body_in_reach"))
+
+func _range_trigger_id() -> String:
+	return "spiker_reach_%s" % char_id
+
+## A body crossed into reach at the solved tick. It only becomes a lock if it is MOVING and in sight.
+func _on_body_in_reach() -> void:
+	if _connection_target != "":
+		return
+	_try_open_connection()
+	if _connection_target != "":
+		_watch_connection()
+
+func _rearm_range_trigger() -> void:
+	if game_state != null and game_state.has_method("unregister_proximity_trigger"):
+		game_state.call("unregister_proximity_trigger", _range_trigger_id())
+	_arm_range_trigger()
+
+func _discharge_tag() -> String:
+	return "spiker_discharge_%s" % char_id
+
+func _los_tag() -> String:
+	return "spiker_los_%s" % char_id
+
+## SOLVED, NOT SAMPLED. The turret is rooted, so sight can only break because the TARGET moved -- and
+## its path is known. Ask when that path first leaves sight and schedule the sever at exactly that
+## tick. A parked target schedules nothing at all, because frozen geometry cannot break sight.
+##
+## This replaced a 0.15s poll that ran for the whole connection (~12 checks per 1.8s lock, and it kept
+## running as long as the target kept moving). Now an entire encounter costs at most two scheduled
+## events: the sever, or the discharge.
+func _watch_connection() -> void:
 	var sched = _get_scheduler()
-	if sched == null:
-		_poll_deadline = -1.0
+	if sched == null or _connection_target == "":
 		return
-	sched.cancel_tag(_poll_tag())
-	var deadline := float(sched.get_current_tick()) + CONNECTION_POLL
-	_poll_deadline = deadline
-	sched.schedule_after(CONNECTION_POLL, _run_connection_poll.bind(deadline), _poll_tag())
-
-func _poll_tag() -> String:
-	return "spiker_conn_%s" % char_id
-
-func _run_connection_poll(expected_deadline: float) -> void:
-	if _poll_deadline < 0.0 or not is_equal_approx(_poll_deadline, expected_deadline):
+	sched.cancel_tag(_los_tag())
+	if game_state == null or not game_state.has_method("predict_los_break_tick"):
 		return
-	_poll_deadline = -1.0
-	_advance_connection()
-	_arm_connection_poll()
+	var break_tick := float(game_state.call(
+		"predict_los_break_tick", char_id, _connection_target))
+	if break_tick < 0.0:
+		return                      # sight holds for the rest of its plan; the discharge stands
+	if break_tick >= _connection_started_tick + connection_delay:
+		return                      # it discharges before sight is lost
+	sched.schedule_at(break_tick, _on_predicted_los_break, _los_tag())
 
-## The connection: open on a MOVING body in sight, hold only while that sight is clear, discharge when
-## the authored delay has elapsed. Every exit from here is one of the roster's three outcomes.
-func _advance_connection() -> void:
-	var gs = game_state
-	if gs == null:
-		return
+## The solved break tick. Re-read live sight before severing, exactly as a predicted detection event
+## re-validates its pair -- the target may have been re-routed since the solve.
+func _on_predicted_los_break() -> void:
 	if _connection_target == "":
-		_try_open_connection()
+		return
+	if _connection_holds(_connection_target):
+		_watch_connection()
+		return
+	_sever("los_broken")
+	_rearm_range_trigger()
+
+## Fires at the solved discharge tick. Re-reads live sight first, exactly as a predicted detection
+## event re-validates its pair before any side effect.
+func _discharge_if_held() -> void:
+	if _connection_target == "":
 		return
 	if not _connection_holds(_connection_target):
 		_sever("los_broken")
+		_rearm_range_trigger()
 		return
-	var sched = _get_scheduler()
-	if sched == null:
-		return
-	var elapsed := float(sched.get_current_tick()) - _connection_started_tick
-	if elapsed >= connection_delay:
-		_discharge()
+	_discharge()
+	_rearm_range_trigger()
 
 func _try_open_connection() -> void:
 	var gs = game_state
@@ -135,6 +205,10 @@ func _try_open_connection() -> void:
 		_connection_target = target_id
 		var sched = _get_scheduler()
 		_connection_started_tick = float(sched.get_current_tick()) if sched != null else 0.0
+		# The delay is a known span, so the discharge tick is known the instant the filament attaches.
+		if sched != null:
+			sched.cancel_tag(_discharge_tag())
+			sched.schedule_after(connection_delay, _discharge_if_held, _discharge_tag())
 		connection_opened.emit(target_id)
 		return
 
@@ -194,6 +268,11 @@ func get_connection_progress() -> float:
 		0.0, 1.0)
 
 func _exit_tree() -> void:
+	if game_state != null and game_state.has_signal("movement_started") 			and game_state.movement_started.is_connected(_on_movement_started):
+		game_state.movement_started.disconnect(_on_movement_started)
+	if game_state != null and game_state.has_method("unregister_proximity_trigger"):
+		game_state.call("unregister_proximity_trigger", _range_trigger_id())
 	var sched = _get_scheduler()
 	if sched != null:
-		sched.cancel_tag(_poll_tag())
+		sched.cancel_tag(_discharge_tag())
+		sched.cancel_tag(_los_tag())
