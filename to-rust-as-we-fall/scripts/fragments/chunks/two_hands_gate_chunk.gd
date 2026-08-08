@@ -67,8 +67,16 @@ func _build_chunk() -> void:
 	_near_pad = _add_crossing_pad("NearCrossing", NEAR_PAD, FAR_PAD)
 	_far_pad = _add_crossing_pad("FarCrossing", FAR_PAD, NEAR_PAD)
 
-	_add_interactable(
-		self, "GateExit", "Leave through the far door", EXIT_POS, "LEAVE", "", 0.6, true
+	# The exit is a DOOR you can see, not an invisible zone. Every visible interactable has to share
+	# the outline/glow shaders, and a bare _add_interactable has no mesh to outline -- so it never
+	# lights on hover and the player has nothing to aim at. _add_object_interactable wires the mesh,
+	# the outline target and the interactable together. INSPECTION, so it is click-gated rather than
+	# firing because somebody wandered past it.
+	var exit_door := _add_box(self, EXIT_POS + Vector3(0.0, 1.0, 0.0),
+		Vector3(0.5, 2.0, 1.6), Color(0.46, 0.38, 0.26))
+	_add_object_interactable(
+		self, "GateExit", "Leave through the far door", EXIT_POS, "LEAVE",
+		[exit_door], "", 0.6, true, 1.6, Interactable.InteractableType.INSPECTION
 	).interacted.connect(_on_exit)
 
 	_status_label = _add_label(self, "", Vector3(13.0, 3.4, 6.5), Color(0.72, 0.84, 0.96))

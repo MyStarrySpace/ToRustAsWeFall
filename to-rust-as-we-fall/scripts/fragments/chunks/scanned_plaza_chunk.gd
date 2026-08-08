@@ -68,8 +68,13 @@ func _build_chunk() -> void:
 		mat.configure(margin, 1.9)
 		add_child(mat)
 
-	_add_interactable(
-		self, "PlazaExit", "Leave the plaza", EXIT_POS, "LEAVE", "", 0.6, true
+	# A visible way out, for the same reason as the gate's: an interactable with no mesh has nothing
+	# to outline, so it never lights on hover. Click-gated (INSPECTION), not proximity.
+	var exit_door := _add_box(self, EXIT_POS + Vector3(0.0, 1.0, 0.0),
+		Vector3(0.5, 2.0, 1.6), Color(0.46, 0.38, 0.26))
+	_add_object_interactable(
+		self, "PlazaExit", "Leave the plaza", EXIT_POS, "LEAVE",
+		[exit_door], "", 0.6, true, 1.6, Interactable.InteractableType.INSPECTION
 	).interacted.connect(_on_exit)
 
 	_status_label = _add_label(self, "", Vector3(12.5, 3.2, 6.0), Color(0.74, 0.85, 0.96))
