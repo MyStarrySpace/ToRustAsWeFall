@@ -1567,6 +1567,12 @@ func _ready() -> void:
 			"--test-push-puzzle-certificate-replay":
 				ran_test = true
 				await _test_push_puzzle_certificate_replay()
+			"--test-push-chamber":
+				ran_test = true
+				await _test_push_chamber()
+			"--test-push-chamber-reset":
+				ran_test = true
+				await _test_push_chamber_reset()
 			"--test-detection-scaling":
 				ran_test = true
 				await _test_detection_scaling()
@@ -2247,6 +2253,8 @@ func _run_all_tests() -> void:
 	await _test_push_puzzle_filters()
 	await _test_push_puzzle_builder()
 	await _test_push_puzzle_certificate_replay()
+	await _test_push_chamber()
+	await _test_push_chamber_reset()
 	await _test_detection_scaling()
 	await _test_enemy_state_derived_work()
 	await _test_watched_gap_los()
@@ -9326,6 +9334,139 @@ func _test_predicted_consequence_parity() -> void:
 		# THE POINT: 1x and 10x resolve the same consequence at the same moment in game time.
 		_assert_true(absf(fine - coarse) <= 0.166 + 0.0001,
 			"1x and 10x fire the SAME consequence at the same tick (%.4f vs %.4f)" % [fine, coarse])
+
+## PUSH CHAMBER — the sealed room's whole contract in play: the shipped certificate, pushed through
+## the real verb by a real body, latches the gate open; the latch is monotone; and the seal holds
+## (solving grants nothing but the gate -- no stat moves, no items).
+func _test_push_chamber() -> void:
+	_test_name = "Push Chamber"
+	var inst = await _instantiate_preview_chunk_and_wait("push_chamber", 8)
+	if inst == null:
+		_assert_true(false, "the chamber instantiates")
+		return
+	var chunk := _find_fragment_chunk_root(inst)
+	var gs = inst.get("_game_state")
+	if chunk == null or gs == null:
+		_assert_true(false, "the chamber exposes its chunk and game state")
+		inst.queue_free()
+		await get_tree().process_frame
+		return
+	var certificate: Array = chunk.call("puzzle_certificate")
+	_assert_true(not certificate.is_empty(), "the room shipped with its own solution certificate")
+	_assert_true(not bool(chunk.call("gate_open")), "the gate starts sealed")
+	var hp_before := float(gs.get_stat("aster", "hp"))
+	# The solver enters through the crawl; the data-layer stand-in places the body inside once (the
+	# chamber's own reset law is what un-strands bodies, and the crawl is covered by its own suite).
+	gs.snap_character_to("aster", Vector3(12.5, 0.0, 7.5))
+	for push_step_v in certificate:
+		var push_step: Dictionary = push_step_v
+		var from_cell: Vector2i = push_step["crate"]
+		var to_cell: Vector2i = from_cell + (push_step["dir"] as Vector2i)
+		var crate_id := ""
+		for obj_id_v in gs.physics_objects.keys():
+			if str(obj_id_v).begins_with("chamber_crate_") \
+					and gs.grid.world_to_grid(gs.get_physics_position(str(obj_id_v))) == from_cell:
+				crate_id = str(obj_id_v)
+				break
+		if crate_id == "" or not gs.command_push_object("aster", crate_id, to_cell):
+			_assert_true(false, "the live chamber accepts certificate step %s->%s" % [
+				str(from_cell), str(to_cell)])
+			inst.queue_free()
+			await get_tree().process_frame
+			return
+		var arrived := false
+		for _i in range(1600):
+			inst.headless_advance(0.05)
+			if gs.grid.world_to_grid(gs.get_physics_position(crate_id)) == to_cell \
+					and not gs.is_moving("aster"):
+				arrived = true
+				break
+		_assert_true(arrived, "certificate step %s->%s completes in the live scene" % [
+			str(from_cell), str(to_cell)])
+		if not arrived:
+			inst.queue_free()
+			await get_tree().process_frame
+			return
+	for _i in range(10):
+		inst.headless_advance(0.05)
+	_assert_true(bool(chunk.call("gate_open")),
+		"every crate on its plate LATCHES the gate open")
+	for cell in chunk.DOOR_CELLS:
+		_assert_true(not gs.grid.dynamic_blockers.has(cell),
+			"the door cell %s is walkable once earned" % str(cell))
+	# THE SEAL: solving granted nothing but the latch.
+	_assert_equals(float(gs.get_stat("aster", "hp")), hp_before,
+		"solving costs and grants no hp -- nothing crosses the seal")
+	_assert_true(gs.get_hand_items("aster").is_empty() if gs.has_method("get_hand_items") else true,
+		"solving puts nothing in the solver's hands")
+	inst.queue_free()
+	await get_tree().process_frame
+
+## PUSH CHAMBER RESET — S5: the reset control restores the EXACT opening state (state-hash
+## equality), un-strands any body inside, and survives being pressed mid-plan. The latch is
+## deliberately monotone: resetting a solved room does not re-seal the gate.
+func _test_push_chamber_reset() -> void:
+	_test_name = "Push Chamber Reset"
+	var inst = await _instantiate_preview_chunk_and_wait("push_chamber", 8)
+	if inst == null:
+		_assert_true(false, "the chamber instantiates")
+		return
+	var chunk := _find_fragment_chunk_root(inst)
+	var gs = inst.get("_game_state")
+	if chunk == null or gs == null:
+		_assert_true(false, "the chamber exposes its chunk and game state")
+		inst.queue_free()
+		await get_tree().process_frame
+		return
+	var sigma0 := str(chunk.call("chamber_state_key"))
+	_assert_true(sigma0 != "", "the opening state has a canonical key")
+	var certificate: Array = chunk.call("puzzle_certificate")
+	gs.snap_character_to("aster", Vector3(12.5, 0.0, 7.5))
+	# Disturb the room: play the first certificate push for real.
+	var push_step: Dictionary = certificate[0]
+	var from_cell: Vector2i = push_step["crate"]
+	var to_cell: Vector2i = from_cell + (push_step["dir"] as Vector2i)
+	var crate_id := ""
+	for obj_id_v in gs.physics_objects.keys():
+		if str(obj_id_v).begins_with("chamber_crate_") \
+				and gs.grid.world_to_grid(gs.get_physics_position(str(obj_id_v))) == from_cell:
+			crate_id = str(obj_id_v)
+			break
+	_assert_true(crate_id != "" and gs.command_push_object("aster", crate_id, to_cell),
+		"the disturbing push commits")
+	for _i in range(1600):
+		inst.headless_advance(0.05)
+		if gs.grid.world_to_grid(gs.get_physics_position(crate_id)) == to_cell \
+				and not gs.is_moving("aster"):
+			break
+	_assert_true(str(chunk.call("chamber_state_key")) != sigma0,
+		"a played push visibly changes the chamber state")
+	# Reset with the solver still standing INSIDE, mid-nothing: exact restoration, body un-stranded.
+	chunk.call("_reset_chamber_to_start")
+	for _i in range(5):
+		inst.headless_advance(0.05)
+	_assert_equals(str(chunk.call("chamber_state_key")), sigma0,
+		"reset restores the EXACT opening state, hash-equal")
+	var aster_pos: Vector3 = gs.get_position("aster")
+	_assert_true(aster_pos.x < float(chunk.CHAMBER_MIN.x),
+		"a body inside the chamber is returned to the mouth, never stranded")
+	# Mid-plan reset: queue a fresh push and reset before it lands; the room still restores exactly.
+	gs.snap_character_to("aster", Vector3(12.5, 0.0, 7.5))
+	var crate2 := ""
+	for obj_id_v in gs.physics_objects.keys():
+		if str(obj_id_v).begins_with("chamber_crate_") \
+				and gs.grid.world_to_grid(gs.get_physics_position(str(obj_id_v))) == from_cell:
+			crate2 = str(obj_id_v)
+			break
+	if crate2 != "" and gs.command_push_object("aster", crate2, to_cell):
+		inst.headless_advance(0.05)
+		chunk.call("_reset_chamber_to_start")
+		for _i in range(20):
+			inst.headless_advance(0.05)
+		_assert_equals(str(chunk.call("chamber_state_key")), sigma0,
+			"a reset fired MID-PLAN still restores the exact opening state")
+	inst.queue_free()
+	await get_tree().process_frame
 
 ## PUSH PUZZLE S1 — the deadlock filters are SOUND on the geometries that define them: the dead
 ## corner (the same shape as push_lab's bent-corridor scenario), the frozen 2x2, and the wall-pinned
