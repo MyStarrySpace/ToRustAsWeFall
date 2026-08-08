@@ -97,8 +97,34 @@ identical level-only band and counting near-black pixels (r+g+b < 0.12):
 
 `stacks` reads DARKER than the generated stretch that prompted this finding, and two fragments are
 perfectly legible. So the pending brightness ruling is not a generated-floor tuning knob — it spans
-hand-authored content too, and whatever number is chosen has to be judged per biome rather than
-once for the generator.
+hand-authored content too.
+
+**REFINED after sweeping all 39 fragments and separating framing from lighting.** Near-black
+percentage alone is a bad instrument: it counts empty space as darkness. Measuring what fraction of
+each fragment's visible meshes actually sits inside the camera frustum separates the two, and it
+demotes most of the scary numbers:
+
+| Fragment | Near-black | Content on screen | Span | Reading |
+| --- | --- | --- | --- | --- |
+| `rest_lab` | 59.3% | **100%** | 19x4x12 | **genuinely too dark** |
+| `distract_gate` | 51.8% | **98%** | 24x4x13 | **genuinely too dark** |
+| `refuge_run` | 38.5% | 49% | 76x7x29 | mixed |
+| `showcase_gallery` | 37.8% | 41% | 88x6x32 | mixed |
+| `lure_relay` | 43.9% | 28% | 66x4x11 | mostly framing |
+| `stacks` | 73.3% | 25% | 184x19x47 | mostly framing |
+| `survival_range` | 89.7% | 12% | 328x7x25 | mostly framing |
+| `mother_flure` | 99.1% | 12% | **2004x6x2027** | mostly framing; see below |
+
+Across all 39 the median is **0.2%** near-black — most fragments are fine. Only 8 exceed 30%, and of
+those only **two** have all their content in view while still reading half-black. Those two are the
+honest brightness cases; the rest are the preview camera showing a slice of a long level.
+
+So the earlier "project-wide" framing was too strong: the correct statement is that darkness is not
+generated-only, but it is also not widespread — it is two fragments plus a measurement artifact.
+
+`mother_flure` deserves its own look: its content AABB spans **2004 x 6 x 2027** units. A chamber
+fragment should not be 2 km across, so something (a backdrop or ground plane) is inflating it, which
+is also why only 12% of its meshes land on screen.
 
 **A separate, concrete preview issue found in the same sweep:** `stacks` boots with its camera on a
 small empty corner. Its content is 416 visible meshes spanning **184 x 19 x 47** units; the opening
