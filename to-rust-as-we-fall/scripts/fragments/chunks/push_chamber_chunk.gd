@@ -125,12 +125,19 @@ func _build_crates() -> void:
 		PushTarget.wrap(mesh, obj_id)
 		index += 1
 
+## The tunnel's rider comes from the host's live selection, the same authority a real click uses.
+func _selected_party_ids() -> Array:
+	if host != null and host.has_method("get_preview_selected_characters"):
+		return host.call("get_preview_selected_characters")
+	return []
+
 func _build_mouth() -> void:
 	var gs = _get_game_state()
 	if gs == null:
 		return
 	var mouth := CrawlTunnel.new()
 	mouth.name = "ChamberMouth"
+	mouth.set_group_provider(_selected_party_ids)
 	add_child(mouth)
 	if mouth.has_method("configure"):
 		mouth.configure(gs, MOUTH_OUTSIDE, [MOUTH_OUTSIDE, MOUTH_INSIDE], 1.4, 0.9)

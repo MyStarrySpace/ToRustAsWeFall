@@ -1585,6 +1585,9 @@ func _ready() -> void:
 			"--test-branch-cut-overlap-rejected":
 				ran_test = true
 				await _test_branch_cut_overlap_rejected()
+			"--test-generated-wipe-recovery":
+				ran_test = true
+				await _test_generated_wipe_recovery()
 			"--test-detection-scaling":
 				ran_test = true
 				await _test_detection_scaling()
@@ -2271,6 +2274,7 @@ func _run_all_tests() -> void:
 	await _test_throw_fails_closed_without_grid()
 	await _test_payload_hand_arithmetic()
 	await _test_branch_cut_overlap_rejected()
+	await _test_generated_wipe_recovery()
 	await _test_detection_scaling()
 	await _test_enemy_state_derived_work()
 	await _test_watched_gap_los()
@@ -9351,6 +9355,64 @@ func _test_predicted_consequence_parity() -> void:
 		_assert_true(absf(fine - coarse) <= 0.166 + 0.0001,
 			"1x and 10x fire the SAME consequence at the same tick (%.4f vs %.4f)" % [fine, coarse])
 
+## G4 — a full party wipe must have DEFINED consequences. Revive requires a conscious ally, so a
+## run whose every member is down has nobody to act and, without a handler, simply sits forever --
+## not a fail state, an undefined one. The canon shape of the recovery is the shelter law: the
+## party comes to at the entry shelter at revive HP, having lost the ground since -- a section,
+## never the run.
+func _test_generated_wipe_recovery() -> void:
+	_test_name = "Generated Wipe Recovery"
+	var inst = await _instantiate_preview_chunk_and_wait("generated_stretch", 8,
+		{"seed": 3, "complexity_tier": "teaching", "progression_stage": 1})
+	if inst == null:
+		_assert_true(false, "the stretch instantiates")
+		return
+	var gs = inst.get("_game_state")
+	var chunk := _find_fragment_chunk_root(inst)
+	if gs == null or chunk == null:
+		_assert_true(false, "the stretch exposes game state and chunk")
+		inst.queue_free()
+		await get_tree().process_frame
+		return
+	var party: Array = []
+	for char_id_v in gs.characters.keys():
+		var char_id := str(char_id_v)
+		if gs.characters[char_id].stats.has("hp") and not char_id.begins_with("enemy"):
+			party.append(char_id)
+	_assert_true(party.size() >= 2, "the stretch spawns a party (%d)" % party.size())
+	# Down every member through the real transition every damage source funnels into.
+	for char_id in party:
+		gs.adjust_stat(char_id, "hp", -1000.0)
+	var all_down := true
+	for char_id in party:
+		if not gs.is_downed(char_id):
+			all_down = false
+	_assert_true(all_down and gs.is_party_downed(party), "every member is genuinely DOWN")
+	# The run must not sit in the undefined state: within a bounded beat the party recovers at the
+	# entry shelter, conscious, having paid the section.
+	var recovered := false
+	for _i in range(1200):
+		inst.headless_advance(0.05)
+		if not gs.is_party_downed(party):
+			recovered = true
+			break
+	_assert_true(recovered,
+		"a full wipe RESOLVES within a minute of game time -- the run never sits undefined")
+	var conscious := 0
+	for char_id in party:
+		if not gs.is_downed(char_id) and float(gs.get_stat(char_id, "hp")) > 0.0:
+			conscious += 1
+	_assert_equals(conscious, party.size(),
+		"every member comes back conscious at revive HP")
+	var sheltered := 0
+	for char_id in party:
+		if gs.is_at_shelter(char_id):
+			sheltered += 1
+	_assert_true(sheltered == party.size(),
+		"the party wakes ON shelter ground -- revival happens at a shelter")
+	inst.queue_free()
+	await get_tree().process_frame
+
 ## G2: two branches claiming one consumer cell is a construction the runtime fails SILENTLY on (the
 ## second span cannot configure, its producer never exists, the exit refuses forever). The contract
 ## validator must reject it loudly, and must keep accepting the committed specs it ships today.
@@ -9644,6 +9706,31 @@ func _test_stretch_greedy_solvability() -> void:
 		await get_tree().process_frame
 	_assert_true(checked >= 2, "swept generated stretches (%d)" % checked)
 
+## The real way into the chamber: walk to the crawl mouth and take the tunnel. Every chamber test
+## enters this way, so the mouth is exercised in context and no body is ever placed by fiat.
+func _enter_push_chamber(inst: Node, chunk: Node, gs, actor: String) -> bool:
+	gs.command_move_to_pos(actor, chunk.MOUTH_OUTSIDE)
+	for _i in range(600):
+		inst.headless_advance(0.05)
+		if not gs.is_moving(actor):
+			break
+	var mouth: Node = chunk.find_child("ChamberMouth", true, false)
+	if mouth == null:
+		return false
+	# The tunnel reads its rider from the host's live selection, exactly as a real click would.
+	# The rider is the host's live selection AND the interactable's servicing character -- the same
+	# two facts a routed click establishes before the trigger fires.
+	if inst.has_method("headless_set_selected_characters"):
+		inst.call("headless_set_selected_characters", [actor])
+	mouth.set("active_character", actor)
+	if not mouth._trigger():
+		return false
+	for _i in range(600):
+		inst.headless_advance(0.05)
+		if gs.get_position(actor).x >= float(chunk.CHAMBER_MIN.x) and not gs.is_moving(actor):
+			return true
+	return false
+
 ## PUSH CHAMBER — the sealed room's whole contract in play: the shipped certificate, pushed through
 ## the real verb by a real body, latches the gate open; the latch is monotone; and the seal holds
 ## (solving grants nothing but the gate -- no stat moves, no items).
@@ -9664,9 +9751,8 @@ func _test_push_chamber() -> void:
 	_assert_true(not certificate.is_empty(), "the room shipped with its own solution certificate")
 	_assert_true(not bool(chunk.call("gate_open")), "the gate starts sealed")
 	var hp_before := float(gs.get_stat("aster", "hp"))
-	# The solver enters through the crawl; the data-layer stand-in places the body inside once (the
-	# chamber's own reset law is what un-strands bodies, and the crawl is covered by its own suite).
-	gs.snap_character_to("aster", Vector3(12.5, 0.0, 7.5))
+	_assert_true(_enter_push_chamber(inst, chunk, gs, "aster"),
+		"the solver enters through the crawl mouth for real")
 	for push_step_v in certificate:
 		var push_step: Dictionary = push_step_v
 		var from_cell: Vector2i = push_step["crate"]
@@ -9730,7 +9816,8 @@ func _test_push_chamber_reset() -> void:
 	var sigma0 := str(chunk.call("chamber_state_key"))
 	_assert_true(sigma0 != "", "the opening state has a canonical key")
 	var certificate: Array = chunk.call("puzzle_certificate")
-	gs.snap_character_to("aster", Vector3(12.5, 0.0, 7.5))
+	_assert_true(_enter_push_chamber(inst, chunk, gs, "aster"),
+		"the solver enters through the crawl mouth for real")
 	# Disturb the room: play the first certificate push for real.
 	var push_step: Dictionary = certificate[0]
 	var from_cell: Vector2i = push_step["crate"]
@@ -9760,7 +9847,8 @@ func _test_push_chamber_reset() -> void:
 	_assert_true(aster_pos.x < float(chunk.CHAMBER_MIN.x),
 		"a body inside the chamber is returned to the mouth, never stranded")
 	# Mid-plan reset: queue a fresh push and reset before it lands; the room still restores exactly.
-	gs.snap_character_to("aster", Vector3(12.5, 0.0, 7.5))
+	_assert_true(_enter_push_chamber(inst, chunk, gs, "aster"),
+		"the solver re-enters through the crawl after the reset returned them to the mouth")
 	var crate2 := ""
 	for obj_id_v in gs.physics_objects.keys():
 		if str(obj_id_v).begins_with("chamber_crate_") \
@@ -54238,6 +54326,10 @@ func _test_event_log_mutation_audit() -> void:
 		# adds a read of the plan's end tick.
 		"predict_proximity_time", "predict_los_break_tick", "predict_los_change_tick",
 		"predict_shelter_exit_tick",
+		# Wipe recovery refuses unless EVERY listed member is down, so it cannot touch a live party;
+		# its cause is derived from logged damage, its placements are logged snaps, and the revive
+		# rides the same derived path as shelter presence recovery -- replay re-derives all of it.
+		"recover_wiped_party",
 		"register_proximity_trigger", "unregister_proximity_trigger",
 		"proximity_trigger_occupancy", "command_move_to_pos_predicted",
 		"get_hand_items", "get_hand_slots", "get_internal_items",

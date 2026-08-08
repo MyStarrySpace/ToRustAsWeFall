@@ -6687,6 +6687,29 @@ func _conscious_ally_near(char_id: String) -> bool:
 	return false
 
 ## Derived revive (no-emit): up at 1 HP, narratively available again, and straight into rest.
+## Recovery from a FULL party wipe: with every member down there is no conscious ally to drag or
+## revive, so without this seam the run has no next state at all. The party comes to on shelter
+## ground at revive HP -- the shelter law applied to the only actor left, the world. Refuses unless
+## every listed member is genuinely down, so it can never touch a live party. The wipe that invokes
+## it is derived from logged damage, the placements are logged snaps, and the revive rides the same
+## path as shelter presence recovery -- replay re-derives the whole sequence.
+func recover_wiped_party(members: Array, at_pos: Vector3) -> bool:
+	if not is_party_downed(members):
+		return false
+	var index := 0
+	for member_v in members:
+		var member := String(member_v)
+		if not characters.has(member):
+			continue
+		var ring := Vector3(
+			at_pos.x + 0.9 * float(index % 3) - 0.9,
+			at_pos.y,
+			at_pos.z + 0.9 * float(index / 3))
+		snap_character_to(member, ring, false)
+		_apply_revive(member)
+		index += 1
+	return true
+
 func _apply_revive(char_id: String) -> void:
 	if not characters.has(char_id):
 		return

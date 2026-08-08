@@ -200,6 +200,7 @@ var _blocked_nodes: Array[String] = []
 var _generated_route_game_state: GameState
 
 var _hydraulic_phase := "disabled"
+var _wipe_recoveries := 0
 var _first_sluice_open := false
 var _cistern_bridge_installed := false
 var _borrowed_current_diverted := false
@@ -325,6 +326,7 @@ func _build_chunk() -> void:
 	# Tall generated architecture uses the shared camera fade. The outline-safe clip
 	# prevents its dissolve from feeding white speckles into the outline pass.
 	set_meta("camera_occlusion_outline_safe_clip", true)
+	_watch_for_party_wipe()
 
 	_cancel_scarcity_drain()
 	_clear_physical_food_items()
@@ -1672,6 +1674,51 @@ func _generated_biome_id() -> String:
 			return "deadzone"
 	return "channels"
 
+
+## A full wipe leaves nobody to act, so the stretch itself answers: after a short beat the party
+## comes to at the entry shelter, conscious at revive HP, having lost the ground since -- a
+## section, never the run. Derived end to end: the wipe is detected from the downed transition,
+## the beat rides the gameplay scheduler, and the recovery verb refuses unless everyone is down.
+func _watch_for_party_wipe() -> void:
+	var gs = _get_game_state()
+	if gs == null or not gs.has_signal("character_downed"):
+		return
+	if not gs.character_downed.is_connected(_on_party_member_downed):
+		gs.character_downed.connect(_on_party_member_downed)
+
+func _wipe_party_roster() -> Array:
+	var gs = _get_game_state()
+	var roster: Array = []
+	if gs == null:
+		return roster
+	for char_id in PARTY_IDS:
+		if gs.characters.has(char_id):
+			roster.append(char_id)
+	return roster
+
+func _on_party_member_downed(_char_id: String) -> void:
+	var gs = _get_game_state()
+	var roster := _wipe_party_roster()
+	if gs == null or roster.is_empty() or not gs.is_party_downed(roster):
+		return
+	var sched = _get_scheduler()
+	if sched == null:
+		_recover_party_from_wipe()
+		return
+	sched.cancel_tag("generated_wipe_recovery")
+	sched.schedule_after(2.0, _recover_party_from_wipe, "generated_wipe_recovery")
+
+func _recover_party_from_wipe() -> void:
+	var gs = _get_game_state()
+	var roster := _wipe_party_roster()
+	if gs == null or roster.is_empty():
+		return
+	var at := _anchor_position("entry")
+	if at == Vector3.INF:
+		var spawns := get_spawn_positions()
+		at = _vec3(spawns.get(str(roster[0]), Vector3.ZERO), Vector3.ZERO) 			if spawns.get(str(roster[0]), null) != null else Vector3.ZERO
+	if gs.recover_wiped_party(roster, at):
+		_wipe_recoveries += 1
 
 func get_spawn_positions() -> Dictionary:
 	_ensure_spec_loaded()
