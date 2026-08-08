@@ -8871,6 +8871,26 @@ func _test_flare() -> void:
 		"the body that stayed pays for it")
 	_assert_true(gs.get_position("flare").distance_to(planted) < 0.001,
 		"a Flare is scenery until it goes off -- it never took a step")
+	# A BED does not arm itself. Three Flares packed well inside each other's bunch radius: without
+	# the exclusion every one of them reads its neighbours as a crowd and the whole bed goes at boot,
+	# which would make the roster's own "Flare cluster" impossible to place.
+	var bed: Array = []
+	for i in range(3):
+		var b := Flare.new()
+		b.game_state = gs
+		b.char_id = "bed_%d" % i
+		holder.add_child(b)
+		gs.register_character(b.char_id, Vector3(3.0 + float(i) * 0.9, 0.0, 3.0), 1.0, {})
+		b.activate()
+		bed.append(b)
+	for _i in range(40):
+		sched.advance_ticks(0.05)
+	var armed := 0
+	for b in bed:
+		if str(b.call("get_flare_state")) != "inert":
+			armed += 1
+	_assert_equals(armed, 0,
+		"a packed Flare BED does not arm itself -- a rooted bomb is scenery, not a body that crowds")
 	holder.queue_free()
 	await get_tree().process_frame
 

@@ -13,8 +13,10 @@ extends Enemy
 ##  - INERT UNTIL SET OFF. It never notices, never approaches, never picks a target. A Flare that
 ##    hunted would be a Gnawer. It is scenery until something crowds it.
 ##  - BUNCHING SETS IT OFF. The trigger is DENSITY near the body, not identity: `bunch_count` bodies
-##    inside `bunch_radius`. It counts ANY registered body, so an enemy pack that crowds it arms it
-##    exactly as a careless party does -- bunching is bunching, whoever crowds.
+##    inside `bunch_radius`. It counts any registered body that can CROWD, so an enemy pack that
+##    crowds it arms it exactly as a careless party does -- bunching is bunching, whoever crowds.
+##    The one exclusion is other Flares: a rooted bomb is scenery that sits there, not a body that
+##    crowds, and counting them would make the roster's own "Flare cluster" self-detonate at boot.
 ##  - THE WIND-UP IS THE WHOLE COUNTERPLAY, AND IT DOES NOT CANCEL. This is the deliberate inversion
 ##    of the Spiker: breaking a Spiker's line of sight SEVERS its connection, but stepping out of a
 ##    primed Flare only saves the body that stepped. The burst still happens. "Leave the radius" is
@@ -45,6 +47,12 @@ const PRIME_POLL := 0.2
 @export var bunch_count := 2
 @export var burst_radius := 3.2
 @export var burst_damage := 18.0
+
+## Live Flare bodies, by char_id. A Flare is a REGISTERED body like any other, so without this a
+## bed would read its own neighbours as a crowd and every Flare in it would arm at boot -- which
+## would make the roster's "Flare cluster" impossible to build. A rooted bomb is not a body that
+## crowds: it is scenery that sits there.
+static var _flare_body_ids: Dictionary = {}
 
 var _state_name := "inert"          # inert | priming | spent
 var _prime_deadline := -1.0
@@ -80,6 +88,7 @@ func set_patrol(_waypoints: Array) -> void:
 
 func activate() -> void:
 	super.activate()
+	_flare_body_ids[char_id] = true
 	_arm_prime_poll()
 
 func _arm_prime_poll() -> void:
@@ -130,7 +139,7 @@ func _bodies_within(radius: float) -> Array:
 	var here := game_state.get_position(char_id)
 	for id_v in game_state.characters.keys():
 		var other_id := str(id_v)
-		if other_id == char_id:
+		if other_id == char_id or _flare_body_ids.has(other_id):
 			continue
 		var there: Vector3 = game_state.get_position(other_id)
 		if Vector2(here.x - there.x, here.z - there.z).length() <= radius:
@@ -186,6 +195,11 @@ func _enemy_bodies_within(radius: float) -> Array:
 			stack.append(child)
 		if node == self or not (node is Enemy) or not node.has_method("take_damage"):
 			continue
+		# Neighbouring Flares are skipped rather than chipped. Chain detonation would be the
+		# roster's "careless fire sets it off" half, which does not ship; half-implementing it as
+		# quiet chip damage that silently kills a bed off would be worse than the stated gap.
+		if node is Flare:
+			continue
 		if not (node as Node3D).is_inside_tree():
 			continue
 		var there: Vector3 = (node as Node3D).global_position
@@ -213,6 +227,7 @@ func get_prime_progress() -> float:
 		0.0, 1.0)
 
 func _exit_tree() -> void:
+	_flare_body_ids.erase(char_id)
 	var sched = _get_scheduler()
 	if sched != null:
 		sched.cancel_tag(_poll_tag())
