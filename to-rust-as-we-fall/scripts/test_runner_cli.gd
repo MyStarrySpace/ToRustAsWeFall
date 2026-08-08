@@ -19716,7 +19716,15 @@ func _test_aster_sim() -> void:
 			surface_click.pressed = true
 			macabre_target.call("_on_input_event", null, surface_click, macabre_origin, Vector3.UP, 0)
 			instance._sync_perception_shader()
-			_assert_true(feedback_manager.call("get_selected_target") == macabre_target,
+			# The manager resolves hover AND selection to the CANONICAL node -- the surface target's
+			# interaction delegate -- so a physics pick that flips between the meshless Interactable
+			# Area and the mesh body is a no-op. Measured here: selected and hovered both settle on
+			# macabre_tealZone. Assert ownership of that canonical identity rather than the wrapper,
+			# which is the thing the law says must NOT be tracked separately.
+			var macabre_canonical: Node = macabre_target.call("get_interaction_delegate") 				if macabre_target.has_method("get_interaction_delegate") else null
+			if macabre_canonical == null:
+				macabre_canonical = macabre_target
+			_assert_true(feedback_manager.call("get_selected_target") == macabre_canonical,
 				"Outline feedback manager owns graybox room selected state")
 			_assert_true(bool(macabre_target.call("has_active_mesh_outline")),
 				"Clicking a graybox room element keeps the object outline shader active for selected feedback")
