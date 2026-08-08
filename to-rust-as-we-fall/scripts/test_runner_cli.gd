@@ -1528,6 +1528,9 @@ func _ready() -> void:
 			"--test-loudest-one":
 				ran_test = true
 				await _test_loudest_one()
+			"--test-spiker":
+				ran_test = true
+				await _test_spiker()
 			"--test-generated-stretch-quality":
 				ran_test = true
 				await _test_generated_stretch_quality()
@@ -2186,6 +2189,7 @@ func _run_all_tests() -> void:
 	await _test_scanned_plaza()
 	await _test_tangler()
 	await _test_loudest_one()
+	await _test_spiker()
 	await _test_generated_stretch_quality()
 	await _test_generated_food_modes()
 	_test_grid_ascii()
@@ -8803,6 +8807,73 @@ func _test_tangler() -> void:
 	_assert_equals(tangler.get_locked_target(), held,
 		"going quiet does not shed the lock -- it only stops attracting a new one")
 
+	holder.queue_free()
+	await get_tree().process_frame
+
+## SPIKER — the roster's turret, asserted line by line. "ROOTED" (it never moves, even while reading a
+## target), "locks onto MOVEMENT" (a still body is not a lock), "deals damage ONLY if that connection
+## retains clear line of sight for the full authored delay", and "ANY LOS break severs it immediately
+## and cancels the damage" -- that last one is the counter the roster names, so it is the assertion
+## that matters most. Harness notes: a character registered at move_speed 0 divides by it and reports
+## a NaN position, and grid LOS needs a real grid with the bodies inside its walls.
+func _test_spiker() -> void:
+	_test_name = "Spiker"
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.scheduler = sched
+	gs.event_log = EventLog.new()
+	var grid := GridWorld.new()
+	grid.create_room(20, 16)
+	gs.grid = grid
+	var holder := Node3D.new()
+	add_child(holder)
+	var spiker := Spiker.new()
+	spiker.game_state = gs
+	spiker.char_id = "spiker"
+	holder.add_child(spiker)
+	gs.register_character("spiker", Vector3(4.0, 0.0, 8.0), 1.0,
+		{"detection_range": float(spiker.detection_range)})
+	gs.register_character("aster", Vector3(9.0, 0.0, 8.0), 3.0,
+		{"hp": 100.0, "stamina": 100.0, "max_stamina": 100.0})
+	spiker.set_detection_targets(["aster"])
+	spiker.activate()
+	var planted := gs.get_position("spiker")
+	# A still body is not a lock: it reads MOVEMENT, not presence.
+	for _i in range(20):
+		sched.advance_ticks(0.05)
+	_assert_equals(str(spiker.call("get_connection_target")), "",
+		"a body holding still is not a lock -- it reads movement, not presence")
+	_assert_equals(gs.get_stat("aster", "hp"), 100.0,
+		"and a body it has not locked takes nothing")
+	# Moving, in clear sight, for the full delay: the connection opens and discharges once.
+	gs.command_move_to_pos("aster", Vector3(9.0, 0.0, 11.0))
+	for _i in range(15):
+		sched.advance_ticks(0.05)
+	_assert_equals(str(spiker.call("get_connection_target")), "aster",
+		"a MOVING body in clear sight opens the connection")
+	for _i in range(45):
+		sched.advance_ticks(0.05)
+	_assert_equals(gs.get_stat("aster", "hp"), 88.0,
+		"an unbroken connection discharges exactly once for its authored damage")
+	# ROOTED: it read, it fired, and it never took a step.
+	_assert_true(gs.get_position("spiker").distance_to(planted) < 0.001,
+		"it is ROOTED -- it never moved while reading or firing (%s)" % str(gs.get_position("spiker")))
+	# THE COUNTER: break line of sight mid-connection and the charge is cancelled outright.
+	gs.snap_character_to("aster", Vector3(9.0, 0.0, 8.0))
+	gs.command_move_to_pos("aster", Vector3(9.0, 0.0, 12.0))
+	for _i in range(15):
+		sched.advance_ticks(0.05)
+	_assert_equals(str(spiker.call("get_connection_target")), "aster",
+		"the connection re-opens on the moving body")
+	var hp_before_break := float(gs.get_stat("aster", "hp"))
+	for blocker_z in range(6, 11):
+		grid.add_sight_blocker(Vector2i(6, blocker_z))
+	for _i in range(45):
+		sched.advance_ticks(0.05)
+	_assert_equals(str(spiker.call("get_connection_target")), "",
+		"ANY line-of-sight break severs the connection immediately")
+	_assert_equals(gs.get_stat("aster", "hp"), hp_before_break,
+		"a severed connection cancels the damage -- it does not resume or land late")
 	holder.queue_free()
 	await get_tree().process_frame
 
