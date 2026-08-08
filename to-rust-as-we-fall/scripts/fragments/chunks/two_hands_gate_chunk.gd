@@ -29,9 +29,12 @@ const HOLD_RADIUS := 1.4
 
 const PARTY_IDS := ["aster", "peris"]
 
+## The pair starts on the south lip of the near deck, OUTSIDE the sentry's reach at the near end of
+## its route. Spawning inside that reach meant the patrol opened in pursuit and the fragment was
+## unwinnable before the player touched anything -- the encounter has to begin with a readable sweep.
 const SPAWNS := {
-	"aster": Vector3(3.5, 0.0, 6.5),
-	"peris": Vector3(2.5, 0.0, 5.5),
+	"aster": Vector3(2.5, 0.0, 1.5),
+	"peris": Vector3(3.6, 0.0, 1.5),
 }
 
 var _phase := "ready"                # ready | crossed | complete
@@ -100,7 +103,7 @@ func _spawn_sentry() -> void:
 		return
 	var enemy := (Naturalizer.new() as Enemy)
 	enemy.name = "GateSentry"
-	enemy.position = Vector3(5.5, 0.0, 2.0)
+	enemy.position = Vector3(5.5, 0.0, 5.0)
 	enemy.move_speed = 1.9
 	enemy.detection_range = 3.4
 	enemy._detection_targets.assign(PARTY_IDS)
@@ -113,9 +116,11 @@ func _spawn_sentry() -> void:
 	if enemy.has_method("activate"):
 		enemy.activate()
 	if enemy.has_method("set_patrol"):
+		# The route sweeps the watched console (z 6.5) but stops short of the spawn lip, so the
+		# opening frame shows the threat WALKING rather than already on top of you.
 		var route: Array[Vector3] = [
-			Vector3(5.5, 0.0, 2.0),
-			Vector3(5.5, 0.0, 11.0),
+			Vector3(5.5, 0.0, 5.0),
+			Vector3(5.5, 0.0, 11.5),
 		]
 		enemy.set_patrol(route)
 	_sentry = enemy

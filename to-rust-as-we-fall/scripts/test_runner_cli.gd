@@ -8743,6 +8743,18 @@ func _test_two_hands_gate() -> void:
 		inst.queue_free()
 		await get_tree().process_frame
 		return
+	# The OPENING state is load-bearing, so it is checked before anything is moved. Spawning the pair
+	# inside the sentry's reach made the fragment open in PURSUIT -- unwinnable before the player
+	# touches anything -- and the first version of this assertion accepted "pursuit" as valid, so it
+	# passed the broken build. Later steps deliberately stand on the watched console, which SHOULD
+	# raise the sentry; that is why this is asserted here and not at the end.
+	var sentry = chunk.get("_sentry")
+	_assert_true(sentry != null and gs.characters.has("gate_sentry"),
+		"the watched console carries an authored Naturalizer")
+	if sentry != null:
+		_assert_true(str(sentry.call("get_state")) in ["patrol", "idle"],
+			"the sentry OPENS on its patrol, not already chasing (got %s)"
+				% str(sentry.call("get_state")))
 	_assert_true(not bool(chunk.call("_validate_crossing", null, "aster"))
 			and not bool(chunk.call("_validate_crossing", null, "peris")),
 		"a crossing pad is dead while nobody bears a console")
@@ -8764,10 +8776,6 @@ func _test_two_hands_gate() -> void:
 	var downed_state: Dictionary = chunk.get_preview_state()
 	_assert_true(not bool((downed_state.get("held", {}) as Dictionary).get("near", true)),
 		"a downed body on the console does not bear it")
-	var sentry = chunk.get("_sentry")
-	_assert_true(sentry != null and gs.characters.has("gate_sentry")
-			and str(sentry.call("get_state")) in ["patrol", "idle", "alert", "pursuit"],
-		"the watched console carries an authored Naturalizer patrol")
 	inst.queue_free()
 	await get_tree().process_frame
 
