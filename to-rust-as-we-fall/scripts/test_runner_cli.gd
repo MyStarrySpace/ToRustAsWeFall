@@ -1573,6 +1573,9 @@ func _ready() -> void:
 			"--test-push-chamber-reset":
 				ran_test = true
 				await _test_push_chamber_reset()
+			"--test-stretch-greedy-solvability":
+				ran_test = true
+				await _test_stretch_greedy_solvability()
 			"--test-detection-scaling":
 				ran_test = true
 				await _test_detection_scaling()
@@ -2255,6 +2258,7 @@ func _run_all_tests() -> void:
 	await _test_push_puzzle_certificate_replay()
 	await _test_push_chamber()
 	await _test_push_chamber_reset()
+	await _test_stretch_greedy_solvability()
 	await _test_detection_scaling()
 	await _test_enemy_state_derived_work()
 	await _test_watched_gap_los()
@@ -9334,6 +9338,175 @@ func _test_predicted_consequence_parity() -> void:
 		# THE POINT: 1x and 10x resolve the same consequence at the same moment in game time.
 		_assert_true(absf(fine - coarse) <= 0.166 + 0.0001,
 			"1x and 10x fire the SAME consequence at the same tick (%.4f vs %.4f)" % [fine, coarse])
+
+## STRETCH GREEDY SOLVABILITY (G1) — the monotone-greedy flood-open validator, run against the
+## flattened (cell, level) graph. Opening a gate only removes blockers, so reachability is monotone,
+## and the greedy procedure -- flood from spawn, open any gate whose producer is reachable, repeat --
+## is a COMPLETE decision procedure: it succeeds iff any opening order succeeds. No column premise,
+## no single-level assumption; ramps and ladders are ordinary edges of the same flood.
+##
+## Two halves: hand geometries that prove the validator itself (including the failure it must catch:
+## a producer sealed behind its own gate, and a producer reachable only across a ramp), then a sweep
+## over live generated stretches asserting every real gate opens in some greedy order AND every
+## enabled interactable is reachable with gates closed-then-earned -- strictly stronger than a flood
+## that opens everything first.
+func _greedy_flood_open(
+		g: GridWorld, spawn: Vector2i, spawn_level: int, gates: Array
+	) -> Dictionary:
+	var closed := {}
+	for gate_v in gates:
+		var gate: Dictionary = gate_v
+		closed[str(gate["tag"])] = gate
+	var order: Array = []
+	while not closed.is_empty():
+		var reached := _flood_grid_reachable(g, spawn, spawn_level)
+		var opened_tag := ""
+		for tag_v in closed.keys():
+			var gate: Dictionary = closed[tag_v]
+			var keys: Array = gate.get("producer_keys",
+				[[gate.get("producer_cell", Vector2i.ZERO), int(gate.get("producer_level", 0))]])
+			var all_reachable := true
+			for key in keys:
+				if not reached.has(key):
+					all_reachable = false
+					break
+			if all_reachable:
+				opened_tag = str(tag_v)
+				break
+		if opened_tag == "":
+			break
+		for cell in (closed[opened_tag]["cells"] as Array):
+			g.remove_dynamic_blocker(cell)
+		order.append(opened_tag)
+		closed.erase(opened_tag)
+	return {"order": order, "unopened": closed.keys()}
+
+func _test_stretch_greedy_solvability() -> void:
+	_test_name = "Stretch Greedy Solvability"
+	# --- Hand geometry: two sequential gates; greedy must discover the order itself. ---
+	var g := GridWorld.new()
+	g.create_room(20, 12)
+	var gate_a_cells: Array = []
+	var gate_b_cells: Array = []
+	for y in range(1, 11):
+		gate_a_cells.append(Vector2i(8, y))
+		gate_b_cells.append(Vector2i(14, y))
+	for cell in gate_a_cells:
+		g.add_dynamic_blocker(cell, "gate_a")
+	for cell in gate_b_cells:
+		g.add_dynamic_blocker(cell, "gate_b")
+	var verdict := _greedy_flood_open(g, Vector2i(2, 2), 0, [
+		{"tag": "gate_a", "cells": gate_a_cells, "producer_cell": Vector2i(6, 3)},
+		{"tag": "gate_b", "cells": gate_b_cells, "producer_cell": Vector2i(11, 8)},
+	])
+	_assert_equals(str(verdict["order"]), str(["gate_a", "gate_b"]),
+		"greedy discovers the only workable order without being told it")
+	_assert_true(_flood_grid_reachable(g, Vector2i(2, 2), 0).has([Vector2i(17, 2), 0]),
+		"with every gate earned the far side is reachable")
+	# --- The failure it exists to catch: a producer sealed behind its OWN gate. ---
+	var g2 := GridWorld.new()
+	g2.create_room(20, 12)
+	for cell in gate_a_cells:
+		g2.add_dynamic_blocker(cell, "gate_a")
+	for cell in gate_b_cells:
+		g2.add_dynamic_blocker(cell, "gate_b")
+	var sealed := _greedy_flood_open(g2, Vector2i(2, 2), 0, [
+		{"tag": "gate_a", "cells": gate_a_cells, "producer_cell": Vector2i(6, 3)},
+		{"tag": "gate_b", "cells": gate_b_cells, "producer_cell": Vector2i(17, 8)},
+	])
+	_assert_equals(str(sealed["unopened"]), str(["gate_b"]),
+		"a producer standing beyond its own cut is REPORTED unopenable, not silently passed")
+	# --- Multi-level: the producer sits on level 1, reachable only across a ramp link. ---
+	var g3 := GridWorld.new()
+	g3.create_room(20, 12)
+	g3.add_inter_level_link(Vector2i(5, 5), 0, 1, "ramp")
+	for cell in gate_a_cells:
+		g3.add_dynamic_blocker(cell, "gate_a")
+	var ramped := _greedy_flood_open(g3, Vector2i(2, 2), 0, [
+		{"tag": "gate_a", "cells": gate_a_cells,
+			"producer_cell": Vector2i(6, 5), "producer_level": 1},
+	])
+	_assert_equals(str(ramped["order"]), str(["gate_a"]),
+		"a producer reachable only ACROSS A RAMP still opens -- the flood is the flattened graph")
+	# --- Live sweep: real generated stretches, gates closed, greedy must earn everything. ---
+	var checked := 0
+	for cfg_v in [
+		{"seed": 3, "complexity_tier": "teaching", "progression_stage": 1},
+		{"seed": 431, "complexity_tier": "standard", "progression_stage": 3},
+	]:
+		var cfg: Dictionary = (cfg_v as Dictionary).duplicate(true)
+		var seed_id := int(cfg.get("seed", 0))
+		var inst = await _instantiate_preview_chunk_and_wait("generated_stretch", 8, cfg)
+		if inst == null:
+			_assert_true(false, "seed %d generated stretch instantiates" % seed_id)
+			continue
+		var gs = inst.get("_game_state")
+		var grid = gs.grid if gs != null else null
+		var actor := _stretch_reach_actor(gs)
+		if gs == null or grid == null or actor == "":
+			_assert_true(false, "seed %d exposes game state, grid and actor" % seed_id)
+			inst.queue_free()
+			await get_tree().process_frame
+			continue
+		# The chunk's own inventory is the authority on what is openable; every other dynamic
+		# blocker is scenery and stays closed. A gate opens when ALL its control vertices are
+		# reachable, which is conservative about a mechanism's internal step order and exact about
+		# the geometric question.
+		var chunk := _find_fragment_chunk_root(inst)
+		var gates: Array = []
+		for gate_v in (chunk.call("get_gate_inventory") as Array):
+			var gate: Dictionary = gate_v
+			var tag := str(gate["tag"])
+			var cells: Array = []
+			for cell_v in grid.dynamic_blockers.keys():
+				if str(grid.dynamic_blockers[cell_v]) == tag:
+					cells.append(cell_v)
+			var producer_keys: Array = []
+			var resolvable := true
+			for pos_v in (gate["producer_positions"] as Array):
+				var nav_v: Variant = gs.resolve_navigation_location(actor, pos_v)
+				var nav: Dictionary = nav_v as Dictionary if nav_v is Dictionary else {}
+				if not nav.has("cell"):
+					resolvable = false
+					break
+				producer_keys.append([nav["cell"], int(nav.get("level", 0))])
+			if not resolvable:
+				_assert_true(false, "seed %d: gate %s has resolvable control vertices" % [
+					seed_id, tag])
+				continue
+			gates.append({"tag": tag, "cells": cells, "producer_keys": producer_keys})
+		var saved: Dictionary = grid.dynamic_blockers.duplicate(true)
+		var live_verdict := _greedy_flood_open(
+			grid, grid.world_to_grid(gs.get_position(actor)),
+			int(gs.get_character_level(actor)), gates)
+		_assert_true((live_verdict["unopened"] as Array).is_empty(),
+			"seed %d: EVERY real gate opens in some greedy order (stuck: %s)" % [
+				seed_id, str(live_verdict["unopened"])])
+		# The earned-world reach: interactables must be reachable in the world greedy actually
+		# produced, with no gate opened for free.
+		var reached := _flood_grid_reachable(
+			grid, grid.world_to_grid(gs.get_position(actor)),
+			int(gs.get_character_level(actor)))
+		var stranded: Array = []
+		for ia_v in inst.find_children("*", "Interactable", true, false):
+			var ia := ia_v as Node3D
+			if ia == null or not bool(ia.get("interaction_enabled")):
+				continue
+			var nav2_v: Variant = gs.resolve_navigation_location(
+				actor, _stretch_flat_position(ia, gs))
+			var nav2: Dictionary = nav2_v as Dictionary if nav2_v is Dictionary else {}
+			if not nav2.has("cell") 					or not reached.has([nav2["cell"], int(nav2.get("level", 0))]):
+				stranded.append(str(ia.get("tutorial_label")))
+		_assert_true(stranded.is_empty(),
+			"seed %d: the EARNED world reaches every enabled interactable (stranded: %s)" % [
+				seed_id, str(stranded)])
+		for blocked_cell in saved.keys():
+			if not grid.dynamic_blockers.has(blocked_cell):
+				grid.add_dynamic_blocker(blocked_cell, str(saved[blocked_cell]))
+		checked += 1
+		inst.queue_free()
+		await get_tree().process_frame
+	_assert_true(checked >= 2, "swept generated stretches (%d)" % checked)
 
 ## PUSH CHAMBER — the sealed room's whole contract in play: the shipped certificate, pushed through
 ## the real verb by a real body, latches the gate open; the latch is monotone; and the seal holds

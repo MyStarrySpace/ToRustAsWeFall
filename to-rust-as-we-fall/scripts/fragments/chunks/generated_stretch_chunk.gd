@@ -8023,6 +8023,39 @@ func _reset_hydraulic_state() -> void:
 	_sync_hydraulic_bridge_blocker()
 
 
+## Every openable mechanism this stretch realizes, as the solvability validator's inventory: the
+## blocker tag each holds on the grid, and the control positions a player must reach to open it. A
+## mechanism absent from this inventory reads as permanent scenery to the greedy validator, so any
+## new gated seam must list itself here to be provable open.
+func get_gate_inventory() -> Array:
+	var gates: Array = []
+	for span_v in _branch_span_producers:
+		if span_v == null or not is_instance_valid(span_v):
+			continue
+		gates.append({
+			"tag": str(span_v.get("_blocker_tag")),
+			"producer_positions": [span_v.get("_producer_data_position")],
+		})
+	if _hydraulic_enabled():
+		# Only the controls that must be operated BEFORE the span seats: the First Sluice and the
+		# cistern release at node_02. node_03 sits on the far landing and gates later steps, so
+		# listing it would demand crossing the bridge to open the bridge.
+		var controls: Array = []
+		if _hydraulic_first_control != null and is_instance_valid(_hydraulic_first_control):
+			var control_pos: Vector3 = _hydraulic_first_control.global_position
+			if _hydraulic_first_control.has_meta("flat_authored_position"):
+				control_pos = _hydraulic_first_control.get_meta("flat_authored_position")
+			controls.append(control_pos)
+		var node_02 := _node_position("node_02")
+		if node_02 != Vector3.INF:
+			controls.append(node_02)
+		if not controls.is_empty():
+			gates.append({
+				"tag": HYDRAULIC_BLOCKER_TAG,
+				"producer_positions": controls,
+			})
+	return gates
+
 func _hydraulic_bridge_blocker_cells() -> Array[Vector2i]:
 	var cells: Array[Vector2i] = []
 	if not _hydraulic_enabled():
