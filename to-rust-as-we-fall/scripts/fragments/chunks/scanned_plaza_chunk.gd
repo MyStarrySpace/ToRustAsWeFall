@@ -23,24 +23,24 @@ extends "res://scripts/scene_chunks/scene_chunk.gd"
 ## configuration is deliberately NOT built here: it needs terrain damage applied to enemy bodies,
 ## which does not ship, and it is a second verb besides.
 
-const PATROL_Z := 3.0                       # the clean north lane the enforcement route walks
-const OPEN_LANE_Z := 5.2                    # fast, scanned
-const MAT_CENTRE := Vector3(12.5, 0.0, 8.6) # scan-blind, priced in hp/tick
-const MAT_HALF := Vector2(5.2, 1.7)
-const MARGIN_WEST := Vector3(4.0, 0.0, 11.6)
-const MARGIN_EAST := Vector3(20.6, 0.0, 11.6)
-const EXIT_POS := Vector3(23.4, 0.0, 11.6)
+const PATROL_Z := 2.5                       # the clean north lane the enforcement route walks
+const OPEN_LANE_Z := 4.5                    # fast, scanned
+const MAT_CENTRE := Vector3(12.5, 0.0, 7.0) # scan-blind, priced in hp/tick
+const MAT_HALF := Vector2(5.2, 1.5)
+const MARGIN_WEST := Vector3(4.0, 0.0, 9.8)
+const MARGIN_EAST := Vector3(20.6, 0.0, 9.8)
+const EXIT_POS := Vector3(23.4, 0.0, 9.8)
 
 const MAT_DOT_PER_SEC := 4.0
-const SCAN_RANGE := 7.5
+const SCAN_RANGE := 6.0
 
 const PARTY_IDS := ["aster", "peris"]
 
 ## South-west, outside the sweep's reach at its nearest approach. The gate fragment taught this the
 ## hard way: a party spawned inside detection opens the scene already caught.
 const SPAWNS := {
-	"aster": Vector3(2.4, 0.0, 11.6),
-	"peris": Vector3(3.5, 0.0, 11.6),
+	"aster": Vector3(2.4, 0.0, 9.8),
+	"peris": Vector3(3.5, 0.0, 9.8),
 }
 
 var _phase := "ready"          # ready | crossed | complete
@@ -50,7 +50,7 @@ var _status_label: Label3D
 var _mat_ticks := 0.0
 
 func _build_chunk() -> void:
-	_add_floor(self, Vector3(12.5, -0.05, 7.0), Vector3(25.0, 0.1, 13.0), Color(0.12, 0.13, 0.15))
+	_add_floor(self, Vector3(12.5, -0.05, 6.0), Vector3(25.0, 0.1, 10.0), Color(0.12, 0.13, 0.15))
 	# The clean perimeter the route walks, tinted apart from the colonized aisle so the "why does it
 	# never step on the mat" question answers itself from the floor.
 	_add_box(self, Vector3(12.5, 0.01, PATROL_Z), Vector3(21.0, 0.04, 2.0), Color(0.22, 0.21, 0.18))
@@ -72,7 +72,7 @@ func _build_chunk() -> void:
 		self, "PlazaExit", "Leave the plaza", EXIT_POS, "LEAVE", "", 0.6, true
 	).interacted.connect(_on_exit)
 
-	_status_label = _add_label(self, "", Vector3(12.5, 3.2, 7.0), Color(0.74, 0.85, 0.96))
+	_status_label = _add_label(self, "", Vector3(12.5, 3.2, 6.0), Color(0.74, 0.85, 0.96))
 	_spawn_patrol()
 
 ## The absorbed body. Its route is FIXED and walks only clean ground; the scan reaches across and down
@@ -166,15 +166,19 @@ func get_grid_data() -> Dictionary:
 		"origin": [0.0, 0.0, 0.0],
 		"cell_size": 1.0,
 		"width": 26,
-		"height": 14,
+		"height": 12,
 		"walkable_regions": [
-			{"min": [1.0, 2.0], "max": [24.4, 12.4]},
+			{"min": [1.0, 1.5], "max": [24.4, 10.6]},
 		],
 	}
 
 func get_preview_camera_profile() -> Dictionary:
+	# The plaza runs west->east and the party must enter from the west (anywhere nearer the middle is
+	# inside the sweep), so a camera centred on them throws the whole composition off to the right,
+	# under the overlay panel. Offsetting the camera EAST puts the party at frame-left and the plaza
+	# they have to read across the open middle of the screen instead.
 	return {
-		"follow_offset": Vector3(0.0, 20.0, 14.0),
+		"follow_offset": Vector3(8.0, 19.0, 12.0),
 		"min_zoom": 0.5,
 		"max_zoom": 2.0,
 		"initial_zoom": 1.0,
@@ -182,7 +186,7 @@ func get_preview_camera_profile() -> Dictionary:
 	}
 
 func get_preview_camera_recenter_target() -> Vector3:
-	return Vector3(12.5, 0.0, 7.0)
+	return Vector3(12.5, 0.0, 6.0)
 
 func get_scene_title() -> String:
 	return "The Scanned Plaza"
