@@ -115,6 +115,25 @@ func on_game_state_grid_ready() -> void:
 ## BasinWater emits state_changed only after its scheduled commit has applied
 ## every per-level blocker. Refresh semantic destinations at that exact graph
 ## boundary so a permanent shelter never advertises a stale topology revision.
+## Surface the rota's pending change as the note the player acts on. The direction is what
+## matters at a glance -- rising water closes ground and sweeps bodies, draining water opens it --
+## and the lead says how long there is to act. Held for the telegraph's own length so the cue is
+## on screen for exactly the window it describes.
+func _on_basin_telegraphed(next_state: int, basin) -> void:
+	if basin == null or not is_instance_valid(basin):
+		return
+	var record: Dictionary = basin.get_state() if basin.has_method("get_state") else {}
+	var current_state := int(record.get("state", next_state))
+	if next_state == current_state:
+		return
+	var lead := float(record.get("telegraph_lead", 0.0))
+	var verb := "BASIN RISING" if next_state > current_state else "BASIN DRAINING"
+	var detail := "the water takes its next level"
+	if lead > 0.0:
+		detail = "%.0fs until the water takes its next level" % lead
+	_show_note("%s // %s" % [verb, detail], maxf(1.0, lead))
+
+
 func _on_basin_navigation_state_changed(_state: int) -> void:
 	_republish_exit_shelter_navigation_regions()
 
@@ -1306,6 +1325,10 @@ func _spawn_object(spec: Dictionary) -> void:
 			basin.set_party_ids(Array(fragment.party_ids))
 			basin.set_enemy_resolver(_enemy_by_id)
 			basin.state_changed.connect(_on_basin_navigation_state_changed)
+			# The rota's telegraph is the player's whole warning: the water announces the level it is
+			# about to take one telegraph_lead ahead of the commit, so a crossing can be started,
+			# abandoned, or waited out on information rather than on memory of the cycle.
+			basin.telegraphed.connect(_on_basin_telegraphed.bind(basin))
 			add_child(basin)
 			_basins.append(basin)
 		"rota_chart":
@@ -1618,6 +1641,10 @@ func _publish_exit_shelter_navigation_region(
 		"contract_id": RALLY_FORMATION_REGION_CONTRACT,
 		"semantic_id": str(it.get("data_id")),
 		"label": "SHELTER // RALLY PARTY HERE",
+		# A shelter's vertices are connected parking points, not the distinct bodily interiors an
+		# exact-hide-slot region describes. Declared rather than defaulted so the published region
+		# is the same shape the rally records -- one contract id must mean one set of fields.
+		"slot_policy": "connected_region",
 		"authored_level": shelter_level,
 		"graph_revision": graph_revision,
 		"approach_cell": [approach_cell.x, approach_cell.y],
@@ -1794,10 +1821,14 @@ func _exit_shelter_rally_formation_region_valid(source: Node) -> bool:
 		return false
 	var rally := rally_v as Dictionary
 	var gs = _get_game_state()
-	if gs == null or gs.grid == null or rally.size() != 7 \
+	# The published region carries the canonical field set: contract, semantic id, label, slot
+	# policy, level, revision, approach, cells. An exact count keeps an extra or missing key from
+	# passing as the same contract.
+	if gs == null or gs.grid == null or rally.size() != 8 \
 			or str(rally.get("contract_id", "")) \
 				!= RALLY_FORMATION_REGION_CONTRACT \
 			or str(rally.get("semantic_id", "")) != str(source.get("data_id")) \
+			or str(rally.get("slot_policy", "")) != "connected_region" \
 			or str(rally.get("label", "")) != "SHELTER // RALLY PARTY HERE":
 		return false
 	var grid = gs.grid

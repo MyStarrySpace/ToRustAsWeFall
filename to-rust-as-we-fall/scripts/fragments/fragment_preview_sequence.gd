@@ -36,6 +36,7 @@ const LOUDEST_ONE_CHUNK_SCENE := preload("res://scenes/fragments/chunks/loudest_
 const WALL_HUGGER_CHUNK_SCENE := preload("res://scenes/fragments/chunks/wall_hugger_chunk.tscn")
 const WINDUP_WINDOW_CHUNK_SCENE := preload("res://scenes/fragments/chunks/windup_window_chunk.tscn")
 const PUSH_CHAMBER_CHUNK_SCENE := preload("res://scenes/fragments/chunks/push_chamber_chunk.tscn")
+const LONG_HALL_CHUNK_SCENE := preload("res://scenes/fragments/chunks/long_hall_chunk.tscn")
 const FLORA_GARDEN_CHUNK_SCENE := preload("res://scenes/fragments/chunks/flora_garden_chunk.tscn")
 const DUSK_RUN_CHUNK_SCENE := preload("res://scenes/fragments/chunks/dusk_run_chunk.tscn")
 const LURE_RELAY_CHUNK_SCENE := preload("res://scenes/fragments/chunks/lure_relay_chunk.tscn")
@@ -84,6 +85,7 @@ const CHUNK_SCENES := {
 	"wall_hugger": WALL_HUGGER_CHUNK_SCENE,
 	"windup_window": WINDUP_WINDOW_CHUNK_SCENE,
 	"push_chamber": PUSH_CHAMBER_CHUNK_SCENE,
+	"long_hall": LONG_HALL_CHUNK_SCENE,
 	"flora_garden": FLORA_GARDEN_CHUNK_SCENE,
 	"dusk_run": DUSK_RUN_CHUNK_SCENE,
 	"showcase_gallery": SHOWCASE_GALLERY_CHUNK_SCENE,
@@ -250,6 +252,7 @@ const PREVIEW_ENTRIES := [
 	{"id": "wall_hugger", "chunk": "wall_hugger", "title": "Wall-Hugger's Lament", "stage": 3},
 	{"id": "windup_window", "chunk": "windup_window", "title": "Windup Window", "stage": 3},
 	{"id": "push_chamber", "chunk": "push_chamber", "title": "Push Chamber", "stage": 3},
+	{"id": "long_hall", "chunk": "long_hall", "title": "Long Hall", "stage": 3},
 ]
 
 # Exported-browser regression fixtures are immutable launch contracts, not game
@@ -420,7 +423,7 @@ const PREVIEW_ABILITY_TAG_PREFIX := "fragment_preview:ability:"
 # (the --test-fragment-preview-registry test enforces it). Empty = the picker (preview_menu).
 @export_enum("stacks", "rings", "lockout", "mother_flure", "survival_range",
 	"endo_junction_stretch", "generated_stretch",
-	"refuge_run", "channels_wash_intro", "lure_relay", "distract_gate", "puzzle_atom", "push_lab", "rest_lab", "flora_garden", "dusk_run", "showcase_gallery", "wash_relay", "data_fragment", "shape_grammar", "creature_grammar", "archetype_gallery", "architecture_showcase", "geometry_lab", "set_piece_showcase", "boss_showcase", "aghora_bazaar", "lockout_chase", "inflammashunt", "wash_ascent", "two_hands_gate", "scanned_plaza", "loudest_one", "wall_hugger", "windup_window", "push_chamber") var preview_chunk := "stacks"
+	"refuge_run", "channels_wash_intro", "lure_relay", "distract_gate", "puzzle_atom", "push_lab", "rest_lab", "flora_garden", "dusk_run", "showcase_gallery", "wash_relay", "data_fragment", "shape_grammar", "creature_grammar", "archetype_gallery", "architecture_showcase", "geometry_lab", "set_piece_showcase", "boss_showcase", "aghora_bazaar", "lockout_chase", "inflammashunt", "wash_ascent", "two_hands_gate", "scanned_plaza", "loudest_one", "wall_hugger", "windup_window", "push_chamber", "long_hall") var preview_chunk := "stacks"
 @export var scene_title_override := ""
 @export var preview_chunk_config: Dictionary = {}
 

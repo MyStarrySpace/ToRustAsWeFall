@@ -1568,6 +1568,12 @@ func _ready() -> void:
 			"--test-push-chamber-reset":
 				ran_test = true
 				await _test_push_chamber_reset()
+			"--test-risk-lane-price":
+				ran_test = true
+				await _test_risk_lane_price()
+			"--test-long-hall-fee":
+				ran_test = true
+				await _test_long_hall_fee()
 			"--test-stretch-greedy-solvability":
 				ran_test = true
 				await _test_stretch_greedy_solvability()
@@ -2268,6 +2274,8 @@ func _run_all_tests() -> void:
 	await _test_push_puzzle_certificate_replay()
 	await _test_push_chamber()
 	await _test_push_chamber_reset()
+	await _test_risk_lane_price()
+	await _test_long_hall_fee()
 	await _test_stretch_greedy_solvability()
 	await _test_throw_fails_closed_without_grid()
 	await _test_payload_hand_arithmetic()
@@ -9862,6 +9870,280 @@ func _enter_push_chamber(inst: Node, chunk: Node, gs, actor: String) -> bool:
 ## PUSH CHAMBER — the sealed room's whole contract in play: the shipped certificate, pushed through
 ## the real verb by a real body, latches the gate open; the latch is monotone; and the seal holds
 ## (solving grants nothing but the gate -- no stat moves, no items).
+## Drive one route of the Long Hall end to end and report what it charged. `route` is the mouth to
+## take; `step` is the scheduler step, so the same run can be replayed coarse to prove the fee does
+## not depend on how finely time was sliced.
+func _run_long_hall_route(route: String, step: float) -> Dictionary:
+	var inst = await _instantiate_preview_chunk_and_wait("long_hall", 8)
+	if inst == null:
+		return {"ok": false, "reason": "no_instance"}
+	var chunk := _find_fragment_chunk_root(inst)
+	var gs = inst.get("_game_state")
+	if chunk == null or gs == null:
+		inst.queue_free()
+		await get_tree().process_frame
+		return {"ok": false, "reason": "no_chunk"}
+
+	inst.headless_advance(0.05)
+	var sealed_before := {
+		"hall": gs.grid.is_walkable(int(chunk.MOUTH_X), 7),
+		"safe": gs.grid.is_walkable(int(chunk.MOUTH_X), 2),
+	}
+	var mouth_name := "HallMouth" if route == "hall" else "SafeMouth"
+	var mouth: Node = chunk.find_child(mouth_name, true, false)
+	if mouth == null:
+		inst.queue_free()
+		await get_tree().process_frame
+		return {"ok": false, "reason": "no_mouth"}
+	# Walk to the mouth first. The lane's opening gap is measured from the mouth line, so a party
+	# teleported past the approach would be priced against a chase that never had that head start.
+	var mouth_pos := Vector3(chunk.get_preview_anchors()[
+		"hall_mouth" if route == "hall" else "safe_mouth"])
+	for member_id in chunk.PARTY_IDS:
+		if gs.characters.has(member_id):
+			gs.command_move_to_pos(member_id,
+				mouth_pos + Vector3(0.0, 0.0, float(chunk.PARTY_IDS.find(member_id)) - 1.0))
+	for _i in range(400):
+		inst.headless_advance(0.05)
+		var settled := true
+		for member_id in chunk.PARTY_IDS:
+			if gs.characters.has(member_id) and gs.is_moving(member_id):
+				settled = false
+		if settled:
+			break
+	mouth.set("active_character", "aster")
+	mouth._trigger()
+
+	# Real data-layer movement at the party's own pace. Nothing is snapped: the run is a sprint the
+	# stamina economy actually pays for, and the chaser closes on its own schedule.
+	var destination := Vector3(chunk.get_preview_anchors()["hide"]) if route == "hall" \
+		else Vector3(chunk.get_preview_anchors()["junction"])
+	for member_id in chunk.PARTY_IDS:
+		if not gs.characters.has(member_id):
+			continue
+		gs.set_running(member_id, true)
+		gs.command_move_to_pos(member_id,
+			destination + Vector3(0.0, 0.0, float(chunk.PARTY_IDS.find(member_id)) * 0.8 - 0.8))
+
+	var arrived := false
+	var min_stamina := 999.0
+	for _i in range(int(90.0 / step)):
+		inst.headless_advance(step)
+		for member_id in chunk.PARTY_IDS:
+			if not gs.characters.has(member_id):
+				continue
+			min_stamina = minf(min_stamina, float(gs.get_stat(member_id, "stamina")))
+			# A connection cancels the runner's move order. A player under fire re-commands toward
+			# cover rather than standing where the charge left them, so the drive does the same;
+			# without it the run measures a runner who gave up, not a runner who paid a toll.
+			if not gs.is_moving(member_id) and gs.get_stat(member_id, "hp") > 0.0:
+				gs.command_move_to_pos(member_id, destination)
+		if str(chunk.get_preview_state().get("step", "")) in ["hidden", "complete"]:
+			arrived = true
+			break
+		if route == "safe":
+			var reached := true
+			for member_id in chunk.PARTY_IDS:
+				if gs.characters.has(member_id) and gs.is_moving(member_id):
+					reached = false
+			if reached:
+				arrived = true
+				break
+	var report := {
+		"ok": true,
+		"arrived": arrived,
+		"hp_paid": float(chunk.call("hp_paid")),
+		"advertised": float(chunk.call("advertised_hp_cost")),
+		"hall_length": float(chunk.call("hall_length")),
+		"lane_price": chunk.call("lane_price"),
+		"sealed_before": sealed_before,
+		"min_stamina": min_stamina,
+	}
+	inst.queue_free()
+	await get_tree().process_frame
+	return report
+
+
+func _test_long_hall_fee() -> void:
+	_test_name = "Long Hall Fee"
+	var RiskLaneScript = load("res://scripts/generation/risk_lane.gd")
+
+	var hall: Dictionary = await _run_long_hall_route("hall", 0.05)
+	if not bool(hall.get("ok", false)):
+		_assert_true(false, "the long hall instantiates (%s)" % str(hall.get("reason", "")))
+		return
+
+	# The level does not carry its own copy of the number: the corridor it built is the corridor the
+	# model tunes for the fee it quotes. A drift here means the geometry stopped being the sum.
+	var tuned: Dictionary = RiskLaneScript.length_for_strikes(
+		1, (hall["lane_price"] as Dictionary).get("profile", {}))
+	_assert_true(absf(float(hall["hall_length"]) - float(tuned["lane_length"])) < 0.001,
+		"the built hall is exactly the length the model tunes for its fee")
+	_assert_equals(float(hall["advertised"]), 25.0,
+		"the mouth quotes one shipped charge of damage before you commit")
+
+	# Both mouths are shut until one is chosen, so no route can be walked before it is priced.
+	_assert_true(not bool((hall["sealed_before"] as Dictionary)["hall"]),
+		"the hall mouth is sealed until the hall is chosen")
+	_assert_true(not bool((hall["sealed_before"] as Dictionary)["safe"]),
+		"the long way is sealed until the long way is chosen")
+
+	_assert_true(bool(hall["arrived"]), "the party reaches the Capbage at the end of the hall")
+	_assert_equals(float(hall["hp_paid"]), float(hall["advertised"]),
+		"the hall charges exactly the fee it advertised")
+	# The bar is what buys the distance. A hall that leaves stamina standing was not the sprint the
+	# price was computed from.
+	_assert_true(float(hall["min_stamina"]) <= 0.0,
+		"running the hall spends the whole stamina bar")
+
+	# The same fee at a coarse step. Slicing time differently must not change what a route costs, or
+	# the advertised price is a property of the frame rate rather than of the world.
+	var coarse: Dictionary = await _run_long_hall_route("hall", 0.2)
+	_assert_true(bool(coarse.get("ok", false)) and bool(coarse["arrived"]),
+		"the hall completes at a coarse scheduler step too")
+	_assert_equals(float(coarse["hp_paid"]), float(hall["hp_paid"]),
+		"the fee is the same at a coarse step as at a fine one")
+
+	# The long way is the same journey without the fee. It has to actually be free, or the fork is
+	# one route wearing two labels.
+	var safe: Dictionary = await _run_long_hall_route("safe", 0.05)
+	_assert_true(bool(safe.get("ok", false)) and bool(safe["arrived"]),
+		"the party reaches the junction by the long way")
+	_assert_equals(float(safe["hp_paid"]), 0.0,
+		"the long way costs no HP at all")
+
+
+func _test_risk_lane_price() -> void:
+	_test_name = "Risk Lane Price"
+	var RiskLaneScript = load("res://scripts/generation/risk_lane.gd")
+	var GameStateClass = load("res://scripts/system/core/game_state.gd")
+
+	# The fee is spent stamina converted into distance. A full bar buys exactly the shipped sprint
+	# range, so a lane authored against this model and a lane run in the world agree on where the
+	# legs give out.
+	var free_lane: Dictionary = RiskLaneScript.price(30.0)
+	_assert_equals(float(free_lane["sprint_distance"]), 40.0,
+		"a full stamina bar sprints exactly the shipped 40 world units")
+	_assert_equals(float(free_lane["hp_cost"]), 0.0,
+		"a lane shorter than sprint range costs nothing")
+	_assert_equals(str(free_lane["free_reason"]), "sprint_covers_lane",
+		"a free lane says which of its terms made it free")
+
+	# The tuner and the pricer are inverses: a route asks for a price and gets the geometry that
+	# charges it. Without this the advertised cost and the played cost are two different numbers.
+	for target in [1, 2, 3]:
+		var tuned: Dictionary = RiskLaneScript.length_for_strikes(target)
+		_assert_true(bool(tuned.get("solved", false)),
+			"the tuner solves a %d-connection lane" % target)
+		var length := float(tuned["lane_length"])
+		var priced: Dictionary = RiskLaneScript.price(length)
+		_assert_equals(int(priced["strikes"]), target,
+			"a lane tuned for %d connections is priced at %d" % [target, target])
+		# The band that charges this fee is one strike cycle wide and the lane sits in the middle of
+		# it, so live pacing has room to differ from the model without moving the price. Both edges
+		# are checked: an author who nudges the length either way still charges what was advertised.
+		var low := float(tuned["band_low_length"])
+		var high := float(tuned["band_high_length"])
+		_assert_true(length > low and length < high,
+			"the %d-connection lane sits strictly inside its price band" % target)
+		_assert_equals(int((RiskLaneScript.price(length - 1.0) as Dictionary)["strikes"]), target,
+			"a unit shorter than the %d-connection lane still charges %d" % [target, target])
+		_assert_equals(int((RiskLaneScript.price(length + 1.0) as Dictionary)["strikes"]), target,
+			"a unit longer than the %d-connection lane still charges %d" % [target, target])
+		# Crossing an edge is what changes the fee, and it changes it by exactly one connection.
+		_assert_equals(int((RiskLaneScript.price(low - 0.5) as Dictionary)["strikes"]), target - 1,
+			"dropping below the %d-connection band charges %d" % [target, target - 1])
+		_assert_equals(int((RiskLaneScript.price(high + 0.5) as Dictionary)["strikes"]), target + 1,
+			"rising above the %d-connection band charges %d" % [target, target + 1])
+
+	# The director's worked example: one connection, and the shipped charge is worth 25 HP.
+	var hall: Dictionary = RiskLaneScript.price(
+		float((RiskLaneScript.length_for_strikes(1) as Dictionary)["lane_length"]))
+	_assert_equals(float(hall["hp_cost"]), 25.0,
+		"the long hall charges exactly one shipped charge of damage")
+	_assert_true(float(hall["hp_cost"]) >= 20.0 and float(hall["hp_cost"]) <= 30.0,
+		"the long hall lands inside the authored 20-30 HP band")
+	_assert_true(float(hall["seconds_within_reach"]) < float(hall["walk_seconds"]),
+		"the walk begins out of reach and only ends inside it")
+
+	# A longer lane never costs less. Monotonicity is what lets a generator search lengths at all.
+	var previous := -1.0
+	var monotone := true
+	for step in range(0, 60):
+		var cost := float((RiskLaneScript.price(float(step) * 3.0) as Dictionary)["hp_cost"])
+		if cost < previous:
+			monotone = false
+		previous = cost
+	_assert_true(monotone, "cost never falls as the lane grows")
+
+	# A chaser no faster than a walk can never close, so such a lane is free at any length. That is a
+	# lane authored wrong, and both directions of the model have to name it rather than return a
+	# plausible number.
+	var slow := {"pursuit_speed": 3.0}
+	var slow_lane: Dictionary = RiskLaneScript.price(200.0, slow)
+	_assert_equals(float(slow_lane["hp_cost"]), 0.0,
+		"a pursuer no faster than a walk never charges")
+	_assert_equals(str(slow_lane["free_reason"]), "pursuit_no_faster_than_walk",
+		"the free lane names the pursuer, not the length")
+	_assert_true(not bool((RiskLaneScript.length_for_strikes(1, slow) \
+			as Dictionary).get("solved", true)),
+		"the tuner refuses to price a lane whose pursuer cannot close")
+
+	# The model reads the live world rather than a copy of it, so a tuning change to the shipped
+	# constants moves the price instead of silently diverging from it.
+	var gs = GameStateClass.new()
+	var enemy = load("res://scripts/game/ai/enemy.gd").new()
+	var world_profile: Dictionary = RiskLaneScript.profile_from_world(gs, enemy)
+	_assert_equals(float(world_profile["sprint_speed"]), float(GameStateClass.RUN_SPEED),
+		"the profile takes its sprint speed from the shipped constant")
+	_assert_equals(float(world_profile["walk_speed"]), float(GameStateClass.WALK_SPEED),
+		"the profile takes its walk speed from the shipped constant")
+	_assert_equals(float(world_profile["charge_damage"]), float(enemy.charge_damage),
+		"the profile takes its damage from the shipped enemy")
+	enemy.free()
+
+	# Affordability is a separate question from reachability. A route the party can walk but not
+	# survive is not a route, and the guard has to name who cannot pay.
+	var one_strike := float((RiskLaneScript.length_for_strikes(1) as Dictionary)["lane_length"])
+	var healthy: Dictionary = RiskLaneScript.route_affordability(
+		[one_strike], {"aster": 30.0, "peris": 40.0})
+	_assert_true(bool(healthy["affordable"]),
+		"a party above the fee can afford the lane")
+	_assert_equals(float(healthy["hp_cost"]), 25.0, "the route reports its own fee")
+	var wounded: Dictionary = RiskLaneScript.route_affordability(
+		[one_strike], {"aster": 25.0, "peris": 40.0})
+	_assert_true(not bool(wounded["affordable"]),
+		"a member who would be emptied by the fee makes the route unaffordable")
+	_assert_equals(wounded["casualties"], ["aster"],
+		"the unaffordable route names exactly who cannot pay")
+	_assert_equals(wounded["survivors"], ["peris"],
+		"the unaffordable route still names who could")
+
+	# A fork every arm of which is unpayable has stranded the run. This is the check the open world
+	# needs that reachability cannot make: all three arms are walkable, and none is survivable.
+	var three_strike := float((RiskLaneScript.length_for_strikes(3) as Dictionary)["lane_length"])
+	var two_strike := float((RiskLaneScript.length_for_strikes(2) as Dictionary)["lane_length"])
+	var stranded: Dictionary = RiskLaneScript.fork_viability([
+		{"id": "deep", "lanes": [three_strike]},
+		{"id": "mid", "lanes": [two_strike]},
+		{"id": "short", "lanes": [one_strike]},
+	], {"aster": 20.0})
+	_assert_true(not bool(stranded["viable"]),
+		"a fork whose every arm costs more than the party has is not viable")
+	_assert_equals(str(stranded["cheapest_id"]), "short",
+		"the stranded fork still names its cheapest arm")
+	var open_fork: Dictionary = RiskLaneScript.fork_viability([
+		{"id": "deep", "lanes": [three_strike]},
+		{"id": "long_way_round", "lanes": [20.0]},
+	], {"aster": 20.0})
+	_assert_true(bool(open_fork["viable"]),
+		"a fork keeping one payable arm stays viable")
+	_assert_equals(open_fork["payable"], ["long_way_round"],
+		"the viable fork names the arm the party can actually take")
+	_assert_equals(float(open_fork["cheapest_cost"]), 0.0,
+		"the free arm is priced at zero rather than left unpriced")
+
+
 func _test_push_chamber() -> void:
 	_test_name = "Push Chamber"
 	var inst = await _instantiate_preview_chunk_and_wait("push_chamber", 8)
@@ -35654,6 +35936,26 @@ static func _basin_journey_highest_visible_movement_serial(
 	return highest
 
 
+## The movement record's own phase for a presentation serial. Successful movement renders no
+## chrome, so this -- not a visible cue -- is where a lineage's completion is read.
+static func _basin_journey_movement_phase(
+		consequence_presentation, presentation_serial: int
+	) -> String:
+	if consequence_presentation == null \
+			or not consequence_presentation.has_method(
+				"get_movement_presentation_state"):
+		return ""
+	var state: Dictionary = consequence_presentation.call(
+		"get_movement_presentation_state")
+	for record_v in (state.get("records", []) as Array):
+		if not (record_v is Dictionary):
+			continue
+		var record := record_v as Dictionary
+		if int(record.get("presentation_serial", 0)) == presentation_serial:
+			return str(record.get("phase", ""))
+	return ""
+
+
 static func _basin_journey_exact_visible_movement_cues(
 		observation: Dictionary,
 		target_token: String,
@@ -36411,7 +36713,15 @@ func _test_basin_player_journey() -> void:
 		and shelter_rally_destinations.size()
 			== expected_rally_members.size(),
 		("the one existing rally_members payload retains the exact portable shelter " \
-		+ "region and one endpoint per visible portrait"))
+		+ "region and one endpoint per visible portrait " \
+		+ "(kind_ok=%s region_ok=%s members=%d/%d destinations=%d logged=%s expected=%s)") % [
+			str(shelter_rally_event.get("kind", &"") == GameEvent.KIND_RALLY_MEMBERS),
+			str(PersonaDecisionTraceScript.canonical_equal(
+				logged_shelter_region, shelter_region)),
+			(shelter_rally_payload.get("members", []) as Array).size(),
+			expected_rally_members.size(),
+			shelter_rally_destinations.size(),
+			str(logged_shelter_region), str(shelter_region)])
 	var shelter_destination_by_id := {}
 	var shelter_destination_vertices := {}
 	for shelter_destination_index in range(
@@ -36434,9 +36744,12 @@ func _test_basin_player_journey() -> void:
 		expected_rally_members.size(),
 		"the semantic shelter Rally commits three distinct parking vertices")
 
-	# Observe the same public acknowledgement a player sees. Endpoint parity alone
-	# cannot certify a command: the opaque target and portrait roster must retain
-	# one accepted, progress, and arrival lineage in that order.
+	# Observe the same public acknowledgement a player sees. Endpoint parity alone cannot certify
+	# a command: the opaque target and portrait roster must carry the movement's own lineage.
+	# Successful movement renders no chrome -- the party walking IS its acknowledgement -- so the
+	# visible half is whatever the panel was up for (a stall status, a refusal), and it must stay
+	# in phase order. ARRIVAL is proven where a player actually reads it: the authoritative
+	# movement record, plus the endpoint parity asserted immediately below.
 	var shelter_movement_phases: Array[String] = []
 	var shelter_movement_serial := -1
 	var shelter_movement_cue: Dictionary = {}
@@ -36457,21 +36770,34 @@ func _test_basin_player_journey() -> void:
 			if shelter_movement_phases.is_empty() \
 					or shelter_movement_phases[-1] != movement_phase:
 				shelter_movement_phases.append(movement_phase)
-		if shelter_movement_phases == ["accepted", "progress", "arrival"]:
+		if _basin_journey_movement_phase(consequence_presentation,
+				shelter_movement_serial) == "arrival":
 			break
 		await get_tree().create_timer(0.05).timeout
-	var shelter_rally_settled := shelter_movement_phases == [
-		"accepted", "progress", "arrival"]
+	var shelter_record_phase := _basin_journey_movement_phase(
+		consequence_presentation, shelter_movement_serial)
+	var shelter_phase_order := ["accepted", "progress", "arrival"]
+	var shelter_phases_in_order := true
+	var shelter_last_rank := -1
+	for observed_phase in shelter_movement_phases:
+		var observed_rank := shelter_phase_order.find(str(observed_phase))
+		if observed_rank <= shelter_last_rank:
+			shelter_phases_in_order = false
+			break
+		shelter_last_rank = observed_rank
+	var shelter_rally_settled := shelter_record_phase == "arrival"
 	_assert_true(shelter_movement_serial > shelter_movement_serial_before
-		and shelter_movement_phases == ["accepted", "progress", "arrival"]
+		and not shelter_movement_phases.is_empty()
+		and shelter_phases_in_order
 		and bool(shelter_movement_cue.get("accepted", false))
 		and str(shelter_movement_cue.get("target_token", "")) \
 			== shelter_target_token
 		and shelter_rally_settled,
-		("the shelter Rally exposes one exact public accepted -> progress -> arrival " \
-		+ "lineage on the chosen opaque target and full portrait roster " \
-		+ "(phases=%s cue=%s)") % [
-			str(shelter_movement_phases), str(shelter_movement_cue)])
+		("the shelter Rally carries one exact lineage to ARRIVAL on the chosen opaque " \
+		+ "target and full portrait roster, with every rendered phase in order " \
+		+ "(visible=%s record=%s cue=%s)") % [
+			str(shelter_movement_phases), shelter_record_phase,
+			str(shelter_movement_cue)])
 	for expected_member in expected_rally_members:
 		var settled_shelter_position: Vector3 = gs.get_position(expected_member)
 		var settled_shelter_cell: Vector2i = grid.world_to_grid(
@@ -47822,7 +48148,11 @@ func _test_basin_fill_proof() -> void:
 					[service_cell.x, service_cell.y]):
 				service_region_is_rally_subset = false
 	var rally_region_checks := {
-		"exact_fields": rally_region.size() == 7,
+		# The canonical region is eight fields: contract, semantic id, label, slot policy, level,
+		# revision, approach, cells. Counting them keeps a producer from publishing a different
+		# shape under the same contract id.
+		"exact_fields": rally_region.size() == 8
+			and str(rally_region.get("slot_policy", "")) == "connected_region",
 		"contract": str(rally_region.get("contract_id", "")) \
 			== "rally_formation_region/v1",
 		"semantic": str(rally_region.get("semantic_id", "")) \
