@@ -8814,7 +8814,7 @@ func _test_generated_traversible() -> void:
 				# of levels players actually see. Count it and ratchet it below instead of skipping in
 				# silence.
 				generation_failures += 1
-				print("  SKIP (generation failed): seed=%d tier=%s" % [seed * 13 + ti, tiers[ti]])
+				print("  GENERATION FAILED: seed=%d tier=%s" % [seed * 13 + ti, tiers[ti]])
 				continue
 			checked += 1
 			var gd: Dictionary = StretchGeneratorScript.build_navigation_grid_from_spec(spec)
