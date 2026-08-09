@@ -868,6 +868,12 @@ func _ready() -> void:
 			"--test-displacement-resume-discipline":
 				ran_test = true
 				_test_displacement_resume_discipline()
+			"--test-displacement-reroute":
+				ran_test = true
+				_test_displacement_reroute()
+			"--test-displacement-never-strands":
+				ran_test = true
+				_test_displacement_never_strands()
 			"--test-showcase-gallery":
 				ran_test = true
 				await _test_showcase_gallery()
@@ -2023,6 +2029,8 @@ func _run_all_tests() -> void:
 	_test_strike_skips_corpse()
 	_test_strike_preserves_destination()
 	_test_displacement_resume_discipline()
+	_test_displacement_reroute()
+	_test_displacement_never_strands()
 	await _test_showcase_gallery()
 	await _test_set_piece_showcase()
 	await _test_wash_relay()
@@ -46778,6 +46786,103 @@ func _run_displacement_resume(step: float) -> Dictionary:
 ## landed, so a replay of exactly those entries has to rebuild the resumed walk without either one
 ## being written again. And because the resume rides the displacement's own scheduled end rather than
 ## being noticed by a per-frame poll, a coarse clock has to produce the same run as a fine one.
+## Rerouting a body mid-shove revises where it goes AFTERWARDS, and changes nothing about the shove.
+## The distinction is the whole point: a player may redirect a struck body, and may not use that
+## redirect to shorten the blow, skip the displacement, or refund the damage already taken.
+func _test_displacement_reroute() -> void:
+	_test_name = "Displacement Reroute"
+	var ctx := _make_attack_ctx(500.0, false)
+	var sched: EventScheduler = ctx["sched"]
+	var gs: GameState = ctx["gs"]
+	var enemy: Enemy = ctx["enemy"]
+
+	var first_destination := Vector3(14.0, 0.5, 0.0)
+	var revised_destination := Vector3(4.0, 0.5, 9.0)
+	gs.change_move_speed("aster", 0.9)
+	gs.command_move_to_pos("aster", first_destination)
+
+	var rerouted := false
+	var shove_end_tick := -1.0
+	var shove_destination := Vector3.ZERO
+	var hp_at_reroute := 0.0
+	var accepted_mid_shove := false
+	var arrived_at_revised := false
+	for _i in range(1600):
+		sched.advance_ticks(0.05)
+		enemy._process(0.05)
+		# The first moment the body is being shoved, send it somewhere else entirely.
+		if not rerouted and gs.is_external_traversal_active("aster"):
+			rerouted = true
+			var state: Dictionary = gs.get_external_traversal_state("aster")
+			shove_end_tick = float(state.get("end_tick", -1.0))
+			shove_destination = state.get("data_destination", Vector3.ZERO)
+			hp_at_reroute = gs.get_stat("aster", "hp")
+			accepted_mid_shove = gs.command_move_to_pos("aster", revised_destination)
+			# The shove itself must be untouched by the click.
+			var after: Dictionary = gs.get_external_traversal_state("aster")
+			_assert_true(gs.is_external_traversal_active("aster"),
+				"the click does not cancel the displacement")
+			_assert_true(is_equal_approx(
+					float(after.get("end_tick", 0.0)), shove_end_tick),
+				"the click does not shorten the displacement")
+		if rerouted and gs.get_position("aster").distance_to(revised_destination) <= 0.8:
+			arrived_at_revised = true
+			break
+
+	_assert_true(rerouted, "the run actually produced a shove to reroute out of")
+	_assert_true(accepted_mid_shove,
+		"a move issued mid-shove is ACCEPTED rather than dropped")
+	_assert_true(gs.get_stat("aster", "hp") <= hp_at_reroute,
+		"rerouting refunds none of the damage already taken")
+	_assert_true(arrived_at_revised,
+		"the body walks to the revised destination once the shove ends, not the original")
+	_cleanup_attack_ctx(ctx)
+
+
+## A displaced body always comes to rest somewhere it can leave from. The shove refuses blocked
+## ground at commit, but ground can BECOME blocked while the body is in the air, and a body standing
+## inside a blocker answers no click at all -- that is a lost run, not a paid toll.
+func _test_displacement_never_strands() -> void:
+	_test_name = "Displacement Never Strands"
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.scheduler = sched
+	var grid := GridWorld.from_data({
+		"contract_id": GridWorld.GRID_DATA_CONTRACT_ID,
+		"origin": [0.0, 0.0, 0.0], "cell_size": 1.0, "width": 12, "height": 12,
+		"walkable_regions": [{"min": [0.5, 0.5], "max": [11.5, 11.5]}],
+	})
+	gs.grid = grid
+	gs.register_character("aster", grid.grid_to_world(Vector2i(2, 2)), 2.0, {"hp": 100.0})
+	gs.command_move_to_cell("aster", Vector2i(9, 9))
+	for _i in range(10):
+		sched.advance_ticks(0.05)
+
+	# A shove into a cell that is fine when the displacement begins, and blocked before it lands.
+	var landing := Vector2i(4, 4)
+	gs.command_external_traversal("aster", &"test_shove",
+		grid.grid_to_world(landing), Vector3.ZERO, Vector3.ZERO, 0.4, &"locked", {}, true)
+	_assert_true(gs.is_external_traversal_active("aster"), "the test shove commits")
+	grid.add_dynamic_blocker(landing, "closed_while_airborne")
+	for _i in range(40):
+		sched.advance_ticks(0.05)
+		if not gs.is_external_traversal_active("aster"):
+			break
+
+	var resting: Vector2i = gs.characters["aster"].get("grid_cell", Vector2i.ZERO)
+	_assert_true(grid.is_walkable(resting.x, resting.y, {}, {}, 0),
+		"the body comes to rest on ground it can stand on (got: %s)" % str(resting))
+	_assert_true(gs.command_move_to_cell("aster", Vector2i(9, 9)),
+		"a fresh order is accepted from where the shove left it")
+	var moved := false
+	for _i in range(400):
+		sched.advance_ticks(0.05)
+		if gs.characters["aster"].get("grid_cell", Vector2i.ZERO) != resting:
+			moved = true
+			break
+	_assert_true(moved, "the body can actually leave the cell it landed on")
+
+
 func _test_displacement_resume_discipline() -> void:
 	_test_name = "Displacement Resume Discipline"
 

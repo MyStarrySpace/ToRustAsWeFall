@@ -370,13 +370,17 @@ func set_character_level(id: String, level: int) -> void:
 	_emit(GameEvent.KIND_SET_LEVEL, {"id": id, "level": level})
 	_apply_set_level(id, level)
 
-## Floor change without its own log entry — used by the cross-level executor so a
-## whole multi-floor traversal is one logged command (the transitions are derived,
-## not separately recorded). Snaps the data-layer Y to the target floor.
+## Floor change without its own log entry. Snaps the data-layer Y to the target floor.
+##
+## A scripted floor change is a displacement like any other: the body still wants the place it was
+## walking to, it simply has to get there from another floor now. The order is held across the change
+## and re-issued once position, cell and level all agree, which routes it back over the link.
 func _apply_set_level(id: String, level: int) -> void:
 	if not characters.has(id):
 		return
 	var p := get_position(id)  # capture the current interpolated position before cancelling
+	var now := float(scheduler.get_current_tick()) if scheduler != null else 0.0
+	_defer_move_intent(id, &"set_level", now)
 	_cancel_movement(id)
 	characters[id]["level"] = level
 	if grid != null:
@@ -385,6 +389,8 @@ func _apply_set_level(id: String, level: int) -> void:
 	if grid != null:
 		characters[id]["grid_cell"] = grid.world_to_grid(p)
 		_reserve_parked(id, characters[id]["grid_cell"])
+	# There is no window to wait out, so the re-issue is immediate.
+	_resume_move_intent(id, "floor_change")
 
 func unregister_character(id: String) -> void:
 	_emit(GameEvent.KIND_UNREGISTER_CHARACTER, {"id": id})
@@ -624,7 +630,7 @@ func _apply_external_traversal(payload: Dictionary) -> bool:
 		_cross_level_plan.erase(id)
 	# Pin the body where the displacement starts BEFORE the plan is torn down. The cancel re-solves
 	# every prediction that involves this body, and it must solve them against a body that is
-	# somewhere rather than against one interpolating along a path it no longer has.
+	# somewhere rather than against one interpolating along a path that is about to be gone.
 	characters[id]["position"] = data_origin
 	if grid != null:
 		characters[id]["grid_cell"] = grid.world_to_grid(data_origin)
@@ -1027,9 +1033,11 @@ func can_accept_move_command(id: String) -> bool:
 ## Shared side effects of a fresh explicit movement command. These are derived state, so replay
 ## applies them through the same command/application path without recording additional events.
 func _prepare_explicit_move(id: String) -> void:
-	_abandon_deferred_move_intent(id)
 	if is_external_traversal_active(id):
+		# The displacement owns the body until its own end. The order it lands into is still open to
+		# revision, which the move verbs handle; dropping it here would lose the click entirely.
 		return
+	_abandon_deferred_move_intent(id)
 	_cross_level_plan.erase(id)
 	if not _push_plans.is_empty() and _push_plans.has(id):
 		_push_plans.erase(id)
@@ -1082,6 +1090,10 @@ func command_move_cross_level(id: String, end_cell: Vector2i, end_level: int) ->
 	return _do_move_cross_level(id, end_cell, end_level)
 
 func _do_move_cross_level(id: String, end_cell: Vector2i, end_level: int) -> bool:
+	if grid != null and not can_accept_move_command(id) \
+			and _rewrite_deferred_move_intent(
+				id, grid.grid_to_world(end_cell, end_level), end_level):
+		return true
 	_cross_level_plan.erase(id)
 	_abandon_deferred_move_intent(id)
 	if not characters.has(id) or not grid or not scheduler:
@@ -1267,6 +1279,10 @@ func _do_move_to_pos(
 		already_prepared := false,
 		route_cell_constraint: Dictionary = {}
 	) -> bool:
+	if not can_accept_move_command(id) and _rewrite_deferred_move_intent(
+			id, pos, _level_for_y(pos.y) if grid != null and grid.is_multi_level() \
+				else get_character_level(id), route_cell_constraint):
+		return true
 	if not can_accept_move_command(id):
 		return false
 	# On a grid a position move routes on the CELLS (the cooperative planner, same as a cell move) —
@@ -3399,7 +3415,7 @@ func _start_movement(
 	_recompute_pendulum_predictions()
 
 ## Lift the body's walk ORDER off the plan that is about to be torn down. Called at the COMMIT of a
-## displacement, before the cancel, so the order survives the very teardown that used to lose it.
+## displacement, before the cancel, so the order survives the teardown that destroys its path.
 ## `resume_tick` is the displacement's own already-known end, which is what lets the resume ride a
 ## scheduled callback instead of being discovered by polling.
 func _defer_move_intent(id: String, source: StringName, resume_tick: float) -> void:
@@ -3432,6 +3448,7 @@ func _resume_move_intent(id: String, reason: String) -> bool:
 	_deferred_move_intent.erase(id)
 	if not characters.has(id) or is_downed(id) or not can_accept_move_command(id):
 		return false
+	_ensure_standing_somewhere_walkable(id)
 	# The graph executor advances its own remaining plan off the same arrival; letting the planar leg
 	# re-issue as well would put two orders on one body.
 	if _cross_level_plan.has(id):
@@ -3457,6 +3474,49 @@ func _resume_move_intent(id: String, reason: String) -> bool:
 		var speed := float(characters[id].get("move_speed", 0.0))
 		_emit_navigation_route_replanned(id, speed, speed, reason)
 	return resumed
+
+
+## Redirect a body that is mid-displacement. A move issued while a shove, roll or fall owns the body
+## cannot move it now, but it REPLACES the order the body picks up on landing. The displacement is
+## never shortened, cancelled, or skipped by this: rerouting is how a player redirects a struck body,
+## never how they escape the blow that struck it.
+##
+## Returns true when the order was revised, which is an ACCEPTED command -- the walk will happen, just
+## not this instant -- so a click during a shove reads as taken rather than refused.
+func _rewrite_deferred_move_intent(
+		id: String, destination: Vector3, level: int,
+		route_cell_constraint: Dictionary = {}
+	) -> bool:
+	if not _deferred_move_intent.has(id) or not characters.has(id) or is_downed(id):
+		return false
+	var intent: Dictionary = _deferred_move_intent[id]
+	intent["destination"] = destination
+	intent["level"] = level
+	intent["route_cell_constraint"] = route_cell_constraint.duplicate(true)
+	_deferred_move_intent[id] = intent
+	return true
+
+
+## A displaced body must always come to rest somewhere it can leave from. The shove itself refuses to
+## commit onto blocked ground, but the ground can BECOME blocked during it -- a gate closing, a crate
+## pushed into the landing cell -- and a body standing inside a blocker can path nowhere and answers
+## no click. Nudging it to the nearest open cell is a derived correction to a position the world
+## invalidated, not a gameplay teleport, and it is the difference between paying a toll and losing
+## the run.
+func _ensure_standing_somewhere_walkable(id: String) -> void:
+	if grid == null or not characters.has(id):
+		return
+	var level := get_character_level(id)
+	var cell: Vector2i = characters[id].get("grid_cell", Vector2i.ZERO)
+	if grid.is_walkable(cell.x, cell.y, {}, {}, level):
+		return
+	var open_cell := grid.nearest_walkable_cell(cell, level)
+	if open_cell == cell:
+		return
+	characters[id]["grid_cell"] = open_cell
+	characters[id]["position"] = grid.grid_to_world(open_cell, level)
+	_reserve_parked(id, open_cell)
+	_recompute_all_detection_predictions(id)
 
 
 ## Drop a held order because the body was given a different one, or has no errand left to run.
@@ -5207,7 +5267,7 @@ func _on_dodge_end(char_id: String) -> void:
 	# until some unrelated command recomputed (post-dodge immunity, same bug class as the LOS re-check).
 	_recompute_all_detection_predictions()
 	dodge_finished.emit(char_id)
-	# After the dodge record is cleared and the roll's own movement is retired, so the body can take
+	# After the dodge record is cleared and the roll's own movement is cleaned up, so the body can take
 	# an order again and the resumed plan is not immediately overwritten.
 	_resume_move_intent(char_id, "dodged")
 
@@ -8963,6 +9023,11 @@ func _do_move_to_cell(
 		already_prepared := false,
 		route_cell_constraint: Dictionary = {}
 	) -> bool:
+	if grid != null and not can_accept_move_command(id) \
+			and _rewrite_deferred_move_intent(
+				id, grid.grid_to_world(cell, get_character_level(id)),
+				get_character_level(id), route_cell_constraint):
+		return true
 	if not grid or not can_accept_move_command(id):
 		return false
 	var current_pos := get_position(id)
