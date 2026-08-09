@@ -100,6 +100,17 @@ static var _pf_debug: bool = OS.has_environment("PATHFIND_DEBUG")
 ## both the remaining plan and active edge survive save/load and deterministic replay.
 var _cross_level_plan: Dictionary = {}
 
+## Walk orders held across a displacement the body did not choose: char_id -> the COMMAND SHAPE
+## (kind + destination + level + route constraint), not merely a point. A shove, a dodge, or a fall
+## displaces a body; it does not change where that body was going, so the order waits here until the
+## displacement's own scheduled end re-issues it from wherever the body actually landed.
+##
+## Keeping the SHAPE is what lets a cell order that crossed a floor boundary re-route through the
+## ladder instead of re-planning on the wrong plane. DERIVED state: reproduced on replay from the
+## already-logged move command plus the already-logged displacement, never an EventLog entry of its
+## own.
+var _deferred_move_intent: Dictionary = {}
+
 ## Scheduler callbacks are allowed to outlive the movement record that created them (for example,
 ## when a Rally replaces a path while the scheduler is already dispatching a due batch).  The
 ## callback must therefore identify its own movement instead of completing whichever replacement
@@ -394,6 +405,7 @@ func unregister_character(id: String) -> void:
 				if str(other) != id:
 					scheduler.cancel_tag(_detection_pair_tag(id, str(other)))
 		_cancel_detection_prediction_tags(id)
+	_abandon_deferred_move_intent(id)
 	characters.erase(id)
 	_mark_detector_index_dirty()
 	explored.erase(id)
@@ -463,7 +475,8 @@ func command_external_traversal(
 		render_destination: Vector3,
 		duration: float,
 		interrupt_policy: StringName = &"locked",
-		presentation_receipt: Dictionary = {}
+		presentation_receipt: Dictionary = {},
+		preserve_move_intent := false
 	) -> bool:
 	var data_origin := get_position(id) if characters.has(id) else Vector3.ZERO
 	return command_external_path_traversal(
@@ -473,7 +486,8 @@ func command_external_traversal(
 		[render_origin, render_destination],
 		duration,
 		interrupt_policy,
-		presentation_receipt)
+		presentation_receipt,
+		preserve_move_intent)
 
 
 ## Path-preserving mechanism traversal. A crawl/rail/river may cross grid-forbidden space along
@@ -486,7 +500,8 @@ func command_external_path_traversal(
 		render_path_value: Array,
 		duration: float,
 		interrupt_policy: StringName = &"locked",
-		presentation_receipt: Dictionary = {}
+		presentation_receipt: Dictionary = {},
+		preserve_move_intent := false
 	) -> bool:
 	if not characters.has(id) or scheduler == null or duration <= 0.0:
 		return false
@@ -522,6 +537,11 @@ func command_external_path_traversal(
 		"progress_start": 0.0,
 		"interrupt_policy": interrupt_policy,
 		"presentation_receipt": portable_presentation,
+		# A carry ENDS the rider's errand -- it is why the rider got on. A shove the body did not
+		# choose only moves it, so that caller opts in here and its walk order is held for the
+		# landing. A key on the already-logged begin, never a new event kind: an older log simply
+		# reads false and replays exactly as it always did.
+		"preserve_move_intent": preserve_move_intent,
 	}
 	_emit(GameEvent.KIND_BEGIN_EXTERNAL_TRAVERSAL, payload)
 	return _apply_external_traversal(payload)
@@ -602,12 +622,22 @@ func _apply_external_traversal(payload: Dictionary) -> bool:
 	var preserves_graph_plan := bool(payload.get("preserve_cross_level_plan", false))
 	if not preserves_graph_plan:
 		_cross_level_plan.erase(id)
-	_cancel_movement(id)
-	_stop_rest(id)
-	cancel_field_restore(id)
+	# Pin the body where the displacement starts BEFORE the plan is torn down. The cancel re-solves
+	# every prediction that involves this body, and it must solve them against a body that is
+	# somewhere rather than against one interpolating along a path it no longer has.
 	characters[id]["position"] = data_origin
 	if grid != null:
 		characters[id]["grid_cell"] = grid.world_to_grid(data_origin)
+	# A typed navigation edge already carries its remainder in the graph plan; deferring the planar
+	# leg as well would put two orders on the body when the edge lands.
+	if bool(payload.get("preserve_move_intent", false)) and not preserves_graph_plan:
+		_defer_move_intent(id, &"external_traversal", end_tick)
+	else:
+		_abandon_deferred_move_intent(id)
+	_cancel_movement(id)
+	_stop_rest(id)
+	cancel_field_restore(id)
+	if grid != null:
 		_clear_reservations(id)
 	var handle := int(scheduler.schedule_at(
 		end_tick,
@@ -636,6 +666,7 @@ func _apply_external_traversal(payload: Dictionary) -> bool:
 		"progress_start": progress_start,
 		"interrupt_policy": policy,
 		"preserve_cross_level_plan": preserves_graph_plan,
+		"preserve_move_intent": bool(payload.get("preserve_move_intent", false)),
 		"navigation_edge": (payload.get("navigation_edge", {}) as Dictionary).duplicate(true),
 		"presentation_receipt": presentation_receipt,
 		"handle": handle,
@@ -664,6 +695,11 @@ func _finish_external_traversal(id: String, traversal_id: StringName, start_tick
 		_reserve_parked(id, characters[id]["grid_cell"])
 	external_traversal_finished.emit(id, traversal_id)
 	character_arrived.emit(id)
+	# The displacement is over; the errand is not. Re-issued after the arrival so a graph plan gets
+	# first refusal, and after the traversal record is gone, since a body still inside one cannot
+	# accept an order at all.
+	if bool(state.get("preserve_move_intent", false)):
+		_resume_move_intent(id, "displaced")
 	_recompute_all_detection_predictions(id)
 	_recompute_physics_predictions()
 	_recompute_pendulum_predictions()
@@ -694,6 +730,8 @@ func _apply_cancel_external_traversal(payload: Dictionary) -> bool:
 	var reason := StringName(str(payload.get("reason", "cancelled")))
 	external_traversal_cancelled.emit(id, requested_id, reason)
 	character_arrived.emit(id)
+	if bool(state.get("preserve_move_intent", false)):
+		_resume_move_intent(id, "displacement_interrupted")
 	_recompute_all_detection_predictions(id)
 	_recompute_physics_predictions()
 	_recompute_pendulum_predictions()
@@ -989,6 +1027,7 @@ func can_accept_move_command(id: String) -> bool:
 ## Shared side effects of a fresh explicit movement command. These are derived state, so replay
 ## applies them through the same command/application path without recording additional events.
 func _prepare_explicit_move(id: String) -> void:
+	_abandon_deferred_move_intent(id)
 	if is_external_traversal_active(id):
 		return
 	_cross_level_plan.erase(id)
@@ -1044,6 +1083,7 @@ func command_move_cross_level(id: String, end_cell: Vector2i, end_level: int) ->
 
 func _do_move_cross_level(id: String, end_cell: Vector2i, end_level: int) -> bool:
 	_cross_level_plan.erase(id)
+	_abandon_deferred_move_intent(id)
 	if not characters.has(id) or not grid or not scheduler:
 		return false
 	if is_endocytosing(id) or is_dodging(id) or is_knocked_down(id) or is_downed(id) \
@@ -1265,6 +1305,7 @@ func _do_move_to_pos(
 
 ## Set an explicit path (scripted waypoints).
 func command_walk_path(id: String, path: Array[Vector3]) -> void:
+	_abandon_deferred_move_intent(id)
 	_cross_level_plan.erase(id)
 	_emit(GameEvent.KIND_WALK_PATH, {"id": id, "path": GameEvent.path_to_arr(path)})
 	if not characters.has(id) or not scheduler or path.is_empty():
@@ -1282,6 +1323,7 @@ func command_walk_path(id: String, path: Array[Vector3]) -> void:
 ## Halt movement at current interpolated position. Stopping also abandons an in-flight push plan
 ## (the crate stays wherever its last completed shove left it).
 func command_stop(id: String) -> void:
+	_abandon_deferred_move_intent(id)
 	_cross_level_plan.erase(id)
 	_push_plans.erase(id)
 	_emit(GameEvent.KIND_STOP, {"id": id})
@@ -2079,6 +2121,7 @@ func serialize() -> Dictionary:
 		"characters": char_data,
 		"character_movements": _serialize_character_movements(),
 		"cross_level_plans": _serialize_cross_level_plans(),
+		"deferred_move_intents": _serialize_deferred_move_intents(),
 		"explored": _serialize_explored(),
 		"route_cautious": route_cautious,
 		"world_state": world_state.duplicate(true),
@@ -2201,6 +2244,8 @@ func deserialize(data: Dictionary) -> void:
 		_restore_clock_state(data["clock_state"] as Dictionary)
 	if data.has("cross_level_plans"):
 		_restore_cross_level_plans(data["cross_level_plans"] as Dictionary)
+	if data.has("deferred_move_intents"):
+		_restore_deferred_move_intents(data["deferred_move_intents"] as Dictionary)
 	if data.has("push_plans"):
 		_restore_push_plans(data["push_plans"] as Dictionary)
 	if data.has("drags"):
@@ -2238,6 +2283,7 @@ func deserialize(data: Dictionary) -> void:
 
 
 func _clear_snapshot_runtime_phases() -> void:
+	_deferred_move_intent.clear()
 	# The scheduler itself is cleared by the owning save loader before its clock is restored. Cancelling here is
 	# still useful for direct GameState.deserialize callers and harmless after that clear.
 	for state_v in _external_traversals.values():
@@ -2409,6 +2455,45 @@ func _restore_character_movements(saved: Dictionary) -> void:
 				continue
 		characters[id]["position"] = path[0]
 		_start_movement(id, path, ticks, route_cell_constraint)
+
+
+## Held walk orders travel with a save. A snapshot taken inside the fraction of a second a body is
+## being shoved would otherwise lose the errand entirely, because the character's own movement record
+## is skipped for anyone mid-traversal. Ticks are stored RELATIVE to now, the same convention the
+## movement and traversal serializers use.
+func _serialize_deferred_move_intents() -> Dictionary:
+	var now := float(scheduler.get_current_tick()) if scheduler != null else 0.0
+	var result := {}
+	for id_v in _deferred_move_intent.keys():
+		var intent: Dictionary = _deferred_move_intent[id_v]
+		result[str(id_v)] = {
+			"destination": GameEvent.v3_to_arr(
+				intent.get("destination", Vector3.ZERO) as Vector3),
+			"level": int(intent.get("level", 0)),
+			"route_cell_constraint": (intent.get(
+				"route_cell_constraint", {}) as Dictionary).duplicate(true),
+			"resume_after": maxf(0.0, float(intent.get("resume_tick", now)) - now),
+			"source": str(intent.get("source", "")),
+		}
+	return result
+
+
+func _restore_deferred_move_intents(saved: Dictionary) -> void:
+	_deferred_move_intent.clear()
+	var now := float(scheduler.get_current_tick()) if scheduler != null else 0.0
+	for id_v in saved.keys():
+		var id := str(id_v)
+		if not characters.has(id):
+			continue
+		var encoded := saved[id_v] as Dictionary
+		_deferred_move_intent[id] = {
+			"destination": GameEvent.arr_to_v3(encoded.get("destination", [])),
+			"level": int(encoded.get("level", 0)),
+			"route_cell_constraint": (encoded.get(
+				"route_cell_constraint", {}) as Dictionary).duplicate(true),
+			"resume_tick": now + maxf(0.0, float(encoded.get("resume_after", 0.0))),
+			"source": StringName(str(encoded.get("source", ""))),
+		}
 
 
 func _serialize_cross_level_plans() -> Dictionary:
@@ -3312,6 +3397,72 @@ func _start_movement(
 	_recompute_all_detection_predictions(id)
 	_recompute_physics_predictions()
 	_recompute_pendulum_predictions()
+
+## Lift the body's walk ORDER off the plan that is about to be torn down. Called at the COMMIT of a
+## displacement, before the cancel, so the order survives the very teardown that used to lose it.
+## `resume_tick` is the displacement's own already-known end, which is what lets the resume ride a
+## scheduled callback instead of being discovered by polling.
+func _defer_move_intent(id: String, source: StringName, resume_tick: float) -> void:
+	if not characters.has(id):
+		return
+	var ch: Dictionary = characters[id]
+	if not (ch.movement is Dictionary):
+		return
+	var movement := ch.movement as Dictionary
+	var path: Array = movement.get("path", [])
+	if path.size() < 2:
+		return
+	_deferred_move_intent[id] = {
+		"destination": path[path.size() - 1] as Vector3,
+		"level": get_character_level(id),
+		"route_cell_constraint": (movement.get(
+			"route_cell_constraint", {}) as Dictionary).duplicate(true),
+		"resume_tick": resume_tick,
+		"source": source,
+	}
+
+
+## Re-issue a held order from wherever the body now stands. The record is dropped FIRST so no refusal
+## path can leave a stale order behind, and the re-issue goes through the no-emit internals: the move
+## was already logged once, and logging it again would make a replay apply it twice.
+func _resume_move_intent(id: String, reason: String) -> bool:
+	if not _deferred_move_intent.has(id):
+		return false
+	var intent: Dictionary = _deferred_move_intent[id]
+	_deferred_move_intent.erase(id)
+	if not characters.has(id) or is_downed(id) or not can_accept_move_command(id):
+		return false
+	# The graph executor advances its own remaining plan off the same arrival; letting the planar leg
+	# re-issue as well would put two orders on one body.
+	if _cross_level_plan.has(id):
+		return false
+	# Something took the body somewhere else inside the window. That newer order wins.
+	if characters[id].movement != null:
+		return false
+	var destination: Vector3 = intent.get("destination", Vector3.ZERO)
+	var constraint: Dictionary = intent.get("route_cell_constraint", {}) as Dictionary
+	var resumed := false
+	if grid != null:
+		var intended_level := int(intent.get("level", get_character_level(id)))
+		if intended_level != get_character_level(id):
+			resumed = _do_move_cross_level(
+				id, grid.world_to_grid(destination), intended_level)
+		else:
+			resumed = _do_move_to_cell(
+				id, grid.world_to_grid(destination), false, false, constraint)
+	else:
+		_do_move_to_pos(id, destination, false, false, constraint)
+		resumed = characters[id].movement != null
+	if resumed:
+		var speed := float(characters[id].get("move_speed", 0.0))
+		_emit_navigation_route_replanned(id, speed, speed, reason)
+	return resumed
+
+
+## Drop a held order because the body was given a different one, or has no errand left to run.
+func _abandon_deferred_move_intent(id: String) -> void:
+	_deferred_move_intent.erase(id)
+
 
 func _cancel_movement(id: String) -> void:
 	if not characters.has(id):
@@ -4955,7 +5106,9 @@ func dodge_roll(char_id: String, direction: Vector3) -> bool:
 	ch.stats["stamina"] = stamina - DODGE_STAMINA_COST
 	ch.stats["_last_dodge_tick"] = now
 
-	# Cancel current movement and start dodge movement
+	# The roll replaces the path, not the order: the body still wants where it was going, and picks
+	# that up again the moment it comes out of the evade.
+	_defer_move_intent(char_id, &"dodge", now + DODGE_DURATION)
 	_cancel_movement(char_id)
 	ch.position = from
 
@@ -5015,8 +5168,11 @@ func _dodge_lands_on_character(char_id: String, dest: Vector3) -> bool:
 func _begin_knockdown(char_id: String) -> void:
 	if is_knocked_down(char_id) or not scheduler:
 		return
-	# Fall where you stand: pin the position, drop any movement.
+	# Fall where you stand: pin the position, drop the path. The order is held so getting up resumes
+	# the walk rather than ending it -- the fall costs exactly the time spent on the ground.
 	var pinned := get_position(char_id)
+	_defer_move_intent(char_id, &"knockdown",
+		scheduler.get_current_tick() + KNOCKDOWN_DURATION)
 	_cancel_movement(char_id)
 	characters[char_id].position = pinned
 	if grid:
@@ -5030,10 +5186,13 @@ func _begin_knockdown(char_id: String) -> void:
 func _on_knockdown_end(char_id: String) -> void:
 	_knocked_down.erase(char_id)
 	knockdown_ended.emit(char_id)
+	# After the erase: a body still registered as down cannot accept an order.
+	_resume_move_intent(char_id, "stood_up")
 
 func _on_dodge_end(char_id: String) -> void:
 	_dodging.erase(char_id)
 	if not characters.has(char_id):
+		_abandon_deferred_move_intent(char_id)
 		return
 	var ch: Dictionary = characters[char_id]
 	if ch.movement != null:
@@ -5048,6 +5207,9 @@ func _on_dodge_end(char_id: String) -> void:
 	# until some unrelated command recomputed (post-dodge immunity, same bug class as the LOS re-check).
 	_recompute_all_detection_predictions()
 	dodge_finished.emit(char_id)
+	# After the dodge record is cleared and the roll's own movement is retired, so the body can take
+	# an order again and the resumed plan is not immediately overwritten.
+	_resume_move_intent(char_id, "dodged")
 
 # --- Queued Abilities (auto-move-into-range) ---
 
@@ -8945,6 +9107,7 @@ func down_character(char_id: String) -> void:
 ## here, so the state can never diverge by cause. They drop where they stood, dead weight until
 ## restored/revived; a downed caster drops the cast.
 func _mark_downed(char_id: String) -> void:
+	_abandon_deferred_move_intent(char_id)
 	clear_damage_shield(char_id)
 	_cancel_external_traversal_derived(char_id, &"incapacitated")
 	var ch: Dictionary = characters[char_id]

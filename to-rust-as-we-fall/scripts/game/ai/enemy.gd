@@ -1171,9 +1171,12 @@ func _apply_strike_knockback(tid: String) -> void:
 	var render_dest: Vector3 = dest
 	if "coord_map" in game_state and game_state.coord_map != null:
 		render_dest = game_state.coord_map.to_world(dest)
+	# The shove GIVES GROUND -- it does not end the errand. The struck body keeps whatever walk order
+	# it was carrying and resumes it from where it lands, which is what makes a landed charge a price
+	# in HP and time rather than a body that stops in the open and is struck until it dies.
 	game_state.command_external_traversal(tid,
 		StringName("strike_knockback:%s" % tid), dest,
-		render_from, render_dest, STRIKE_KNOCKBACK_DURATION, &"locked")
+		render_from, render_dest, STRIKE_KNOCKBACK_DURATION, &"locked", {}, true)
 
 ## The strike resolves at impact (standard enemy). ChainEnemy routes its segment contact through the same
 ## _resolve_strike so the two paths can't diverge.

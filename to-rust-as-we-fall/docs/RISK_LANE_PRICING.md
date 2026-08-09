@@ -56,18 +56,42 @@ Each of these was found by the fragment's test disagreeing with the model, and e
 5. **A mixed-pace party cannot be charged one price.** Members carry their own speeds; a lane cut for
    the slowest under-charges the fastest and vice versa. A route is a SOLO dash in this build.
 
-## Being caught is currently terminal, not a toll
+## A displacement adjusts the walk; it never cancels it
 
-The intended beat is: run, run out, get caught, pay 20–30 HP, reach cover. What the shipped systems do
-is: the connection **cancels the runner's movement command**, and nothing re-issues it. A runner who
-is not re-commanded stands where the charge left them and is struck again every cycle until they are
-down — in the fragment's first passes the runner paid 100 HP and died in the open.
+The intended beat is: run, run out, get caught, pay 20–30 HP, reach cover. The shipped systems used to
+do something else — the connection cancelled the runner's movement command and nothing re-issued it,
+so a runner who was not re-commanded stood where the charge left them and was struck every cycle until
+they were down. The fragment's first passes measured 100 HP and a corpse.
 
-A real player re-commands toward cover immediately, and then the lane behaves exactly as designed: one
-hit, then away. The fragment's drive does the same, and that is legitimate play rather than a
-workaround. But it means the fee is only bounded for a player who reacts. **Open question for the
-director:** should a landed charge preserve the target's destination and resume the walk (making the
-toll self-limiting), or is "if you freeze after a hit you die" the intended teeth?
+**Director's ruling: a consequence ADJUSTS the movement command, it does not cancel it** — and what
+can be precomputed should be. That is now how the world works, for the shove, for a dodge, and for a
+knockdown alike:
+
+- The body's walk ORDER is lifted off the plan before the plan is torn down, and held as a command
+  shape (destination, floor, route constraint) rather than a bare point.
+- It is re-issued from the callback the displacement had **already scheduled** — the shove's end tick
+  is known the moment it is committed, so nothing is discovered by polling. That is the precomputed
+  half, and it is what makes the resumed walk fast-forward invariant.
+- The **route** is deliberately re-solved at the landing tick rather than frozen at commit: a quarter
+  of a second of other bodies moving can invalidate a frozen plan, and the body would walk into a
+  blocker that appeared while it was in the air.
+- A newer order always wins. A held order is dropped by any explicit move, stop, walk-path, push, or
+  by the body going down.
+- It is **derived**, never logged: the walk was recorded once when the player gave it and the shove
+  once when it landed, so a replay of exactly those entries rebuilds the resumed walk.
+
+Opting in is per-displacement. A carry ENDS the rider's errand — it is why the rider got on — so the
+~20 other traversal callers keep today's semantics, and a wash sweep still strands the member it
+carried backwards. Only the strike shove opts in.
+
+Guards: `--test-strike-preserves-destination` (a struck walker owns a plan ending at its destination
+after every shove, and arrives) and `--test-displacement-resume-discipline` (one walk order logged
+across two shoves; identical strikes, HP and finishing position at a fine and a coarse clock). The
+long hall's own test now issues **one** order for the whole run and still pays exactly 25 HP.
+
+Still open, and separate: a move clicked *during* the shove is refused outright by
+`can_accept_move_command`, so it is lost rather than replacing the held order. And `_apply_set_level`
+— a scripted floor change — still drops a walk; it has twelve call sites and deserves its own ruling.
 
 ## Affordability is not reachability
 

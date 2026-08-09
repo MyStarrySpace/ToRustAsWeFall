@@ -862,6 +862,12 @@ func _ready() -> void:
 			"--test-strike-skips-corpse":
 				ran_test = true
 				_test_strike_skips_corpse()
+			"--test-strike-preserves-destination":
+				ran_test = true
+				_test_strike_preserves_destination()
+			"--test-displacement-resume-discipline":
+				ran_test = true
+				_test_displacement_resume_discipline()
 			"--test-showcase-gallery":
 				ran_test = true
 				await _test_showcase_gallery()
@@ -2015,6 +2021,8 @@ func _run_all_tests() -> void:
 	_test_chain_combat()
 	_test_dodge_failure_no_cooldown()
 	_test_strike_skips_corpse()
+	_test_strike_preserves_destination()
+	_test_displacement_resume_discipline()
 	await _test_showcase_gallery()
 	await _test_set_piece_showcase()
 	await _test_wash_relay()
@@ -9933,11 +9941,6 @@ func _run_long_hall_route(route: String, step: float) -> Dictionary:
 			if not gs.characters.has(member_id):
 				continue
 			min_stamina = minf(min_stamina, float(gs.get_stat(member_id, "stamina")))
-			# A connection cancels the runner's move order. A player under fire re-commands toward
-			# cover rather than standing where the charge left them, so the drive does the same;
-			# without it the run measures a runner who gave up, not a runner who paid a toll.
-			if not gs.is_moving(member_id) and gs.get_stat(member_id, "hp") > 0.0:
-				gs.command_move_to_pos(member_id, destination)
 		if str(chunk.get_preview_state().get("step", "")) in ["hidden", "complete"]:
 			arrived = true
 			break
@@ -39938,10 +39941,21 @@ func _advance_to_proximity(inst: Node, gs, id: String, point: Vector3, radius: f
 		spent += 1.0
 	return false
 
+## Advance until the body has actually finished walking. A displacement it did not choose costs it
+## time and then hands the same order back, so the end tick moves FORWARD mid-walk; reading it once
+## returns a body still in transit. Re-read until it stops moving forward, bounded so a body pinned
+## under continuous fire ends the wait rather than the run.
 func _advance_to_arrival(inst: Node, gs, id: String, pad := 0.3) -> void:
-	var t: float = gs.get_plan_end_tick(id)
-	var now: float = gs.scheduler.get_current_tick()
-	inst.headless_advance(maxf(t - now, 0.0) + pad, 0.1)
+	var previous_end := -INF
+	for _attempt in range(24):
+		var end_tick: float = gs.get_plan_end_tick(id)
+		var now: float = gs.scheduler.get_current_tick()
+		inst.headless_advance(maxf(end_tick - now, 0.0) + pad, 0.1)
+		if not gs.is_moving(id):
+			return
+		if end_tick <= previous_end:
+			return
+		previous_end = end_tick
 
 
 ## Atom readiness is a state transition emitted by the watcher's real arrival,
@@ -46704,6 +46718,139 @@ func _test_dodge_failure_no_cooldown() -> void:
 # --- Test: a strike never lands on a target that is already down (no hitting a corpse) ---
 # Written to break the current code: _apply_strike applies damage without re-checking the target is alive,
 # so a charge that resolves after the target died (another enemy's kill) still hits the corpse.
+## A body that is walking somewhere keeps walking there after it is struck. The shove is a real
+## displacement and it costs time, but it is not a cancellation: the destination the player chose
+## survives the hit, and the walk resumes from wherever the strike left the body.
+##
+## Without this a caught runner stops dead in the open and is struck every cycle until it dies, which
+## is what turned the long hall's advertised 25 HP toll into a corpse.
+## Walk orders written to the replay log FOR ONE BODY. A resumed walk must add none of these; the
+## chaser's own pursuit orders share the log and are not what is being measured.
+func _count_logged_move_orders(gs: GameState, subject_id: String) -> int:
+	if gs.event_log == null:
+		return -1
+	var total := 0
+	for entry_v in gs.event_log.events:
+		var entry := entry_v as Dictionary
+		var kind := StringName(str(entry.get("kind", "")))
+		if kind != GameEvent.KIND_MOVE_TO_POS and kind != GameEvent.KIND_MOVE_TO_CELL:
+			continue
+		if str((entry.get("payload", {}) as Dictionary).get("id", "")) == subject_id:
+			total += 1
+	return total
+
+
+## Drive one strike-interrupted walk and report what the world did. `step` is the scheduler step, so
+## the same run can be replayed coarse to prove the resume is a property of the tick rather than of
+## how finely time was sliced.
+func _run_displacement_resume(step: float) -> Dictionary:
+	var ctx := _make_attack_ctx(500.0, false)
+	var sched: EventScheduler = ctx["sched"]
+	var gs: GameState = ctx["gs"]
+	var enemy: Enemy = ctx["enemy"]
+	# The replay log is what the derived-state claim is measured against, so this run keeps one.
+	gs.event_log = EventLog.new()
+	var destination := Vector3(14.0, 0.5, 0.0)
+	gs.change_move_speed("aster", 0.9)
+	gs.command_move_to_pos("aster", destination)
+	var struck := [0]
+	enemy.hit_target.connect(func(_t, _d): struck[0] += 1)
+	var arrival_tick := -1.0
+	for _i in range(int(90.0 / step)):
+		sched.advance_ticks(step)
+		enemy._process(step)
+		if gs.get_position("aster").distance_to(destination) <= 0.6:
+			arrival_tick = sched.get_current_tick()
+			break
+	var report := {
+		"strikes": struck[0],
+		"arrival_tick": arrival_tick,
+		"final": gs.get_position("aster"),
+		"hp": gs.get_stat("aster", "hp"),
+		"logged_moves": _count_logged_move_orders(gs, "aster"),
+	}
+	_cleanup_attack_ctx(ctx)
+	return report
+
+
+## The resume obeys the two laws every movement change in this project has to obey. It is DERIVED --
+## the walk order was logged once when the player gave it, and the shove was logged once when it
+## landed, so a replay of exactly those entries has to rebuild the resumed walk without either one
+## being written again. And because the resume rides the displacement's own scheduled end rather than
+## being noticed by a per-frame poll, a coarse clock has to produce the same run as a fine one.
+func _test_displacement_resume_discipline() -> void:
+	_test_name = "Displacement Resume Discipline"
+
+	var fine := _run_displacement_resume(0.05)
+	_assert_true(int(fine["strikes"]) > 0,
+		"the fine run actually takes a hit (got: %d)" % int(fine["strikes"]))
+	_assert_true(float(fine["arrival_tick"]) > 0.0,
+		"the fine run arrives after being struck")
+
+	# No new logged command. A resumed walk that wrote its own entry would be applied a second time
+	# by replay, which is the whole reason the held order is derived rather than recorded.
+	_assert_equals(int(fine["logged_moves"]), 1,
+		"one walk order was given and exactly one walk order was logged")
+
+	var coarse := _run_displacement_resume(0.2)
+	_assert_equals(int(coarse["strikes"]), int(fine["strikes"]),
+		"a coarse clock lands the same number of strikes")
+	_assert_true(absf(float(coarse["hp"]) - float(fine["hp"])) < 0.001,
+		"a coarse clock costs the same HP (fine: %.1f, coarse: %.1f)" % [
+			float(fine["hp"]), float(coarse["hp"])])
+	_assert_true((coarse["final"] as Vector3).distance_to(fine["final"] as Vector3) < 0.6,
+		"a coarse clock finishes in the same place")
+
+
+func _test_strike_preserves_destination() -> void:
+	_test_name = "Strike Preserves Destination"
+	var ctx := _make_attack_ctx(500.0, false)
+	var sched: EventScheduler = ctx["sched"]
+	var gs: GameState = ctx["gs"]
+	var enemy: Enemy = ctx["enemy"]
+
+	# A walker slow enough for the guard to actually catch, sent somewhere definite and far.
+	var destination := Vector3(14.0, 0.5, 0.0)
+	gs.change_move_speed("aster", 0.9)
+	gs.command_move_to_pos("aster", destination)
+	_assert_true(gs.is_moving("aster"), "the walker sets off toward its destination")
+
+	var struck := [0]
+	enemy.hit_target.connect(func(_t, _d): struck[0] += 1)
+
+	var destination_held := [true]
+	var stranded := [false]
+	var arrived := false
+	for _i in range(1600):
+		sched.advance_ticks(0.05)
+		enemy._process(0.05)
+		var short_of_destination := gs.get_position("aster").distance_to(destination) > 0.6
+		# Once the shove is over and the body is still short of where it was sent, it must OWN a plan,
+		# and that plan must still end at the destination. A missing plan is the defect itself, so the
+		# check cannot pass merely because there is nothing left to inspect.
+		if struck[0] > 0 and short_of_destination 				and not gs.is_external_traversal_active("aster"):
+			var movement_value: Variant = gs.characters["aster"].movement
+			if not (movement_value is Dictionary):
+				stranded[0] = true
+			else:
+				var plan: Array = (movement_value as Dictionary).get("path", [])
+				if plan.is_empty() 						or (plan[plan.size() - 1] as Vector3).distance_to(destination) > 1.0:
+					destination_held[0] = false
+		if not short_of_destination:
+			arrived = true
+			break
+
+	# Guard against a vacuous pass: if nothing ever connected, the test proved nothing.
+	_assert_true(struck[0] > 0, "the guard actually lands at least one strike (got: %d)" % struck[0])
+	_assert_true(not stranded[0],
+		"the struck body is never left without a plan while short of its destination")
+	_assert_true(destination_held[0],
+		"every plan the struck body holds after the shove still ends at the chosen destination")
+	_assert_true(arrived,
+		"the struck body reaches the destination it was sent to instead of stopping where it was hit")
+	_cleanup_attack_ctx(ctx)
+
+
 func _test_strike_skips_corpse() -> void:
 	_test_name = "Strike Skips Corpse"
 	var ctx := _make_attack_ctx(500.0, false)

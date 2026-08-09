@@ -623,6 +623,10 @@ func _latch_nonpreserving_movement_override(
 	# GameState cancels that plan before emitting this exact public boundary.
 	if bool(state.get("preserve_cross_level_plan", false)):
 		return
+	# A displacement that keeps the body's walk order is not an interruption of it. Reporting one
+	# would tell the player their party stopped short while it is visibly still walking.
+	if bool(state.get("preserve_move_intent", false)):
+		return
 	var receipt := state.get("presentation_receipt", {}) as Dictionary
 	var cause_label := str(receipt.get("label", "FORCED MOVEMENT")).strip_edges()
 	if cause_label == "":
