@@ -21,8 +21,7 @@ static func build(
 		pull_steps: int,
 		min_pushes: int
 	) -> Dictionary:
-	var rng := RandomNumberGenerator.new()
-	rng.seed = seed_value
+	var rng := SeededRng.new(seed_value)
 	var crates := {}
 	for g in model.goals.keys():
 		crates[g] = true
@@ -35,7 +34,7 @@ static func build(
 		return {}
 	open.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
 		return a.y < b.y or (a.y == b.y and a.x < b.x))
-	var player: Vector2i = open[rng.randi_range(0, open.size() - 1)]
+	var player: Vector2i = open[rng.pick_index(open.size())]
 
 	var pulls: Array = []
 	for _step in range(pull_steps):
@@ -55,7 +54,7 @@ static func build(
 					filtered.append(opt)
 		if filtered.is_empty():
 			filtered = options
-		var pick: Dictionary = filtered[rng.randi_range(0, filtered.size() - 1)]
+		var pick: Dictionary = filtered[rng.pick_index(filtered.size())]
 		var after := model.apply_pull(crates, pick["crate"], pick["dir"])
 		crates = after["crates"]
 		player = after["player"]

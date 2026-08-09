@@ -10249,8 +10249,12 @@ func _test_push_chamber_reset() -> void:
 		"a played push visibly changes the chamber state")
 	# Reset with the solver still standing INSIDE, mid-nothing: exact restoration, body un-stranded.
 	chunk.call("_reset_chamber_to_start")
-	for _i in range(5):
+	# The room restores at once; a body inside walks itself out, so the drive gives it the time that
+	# walk takes rather than expecting it to appear outside.
+	for _i in range(400):
 		inst.headless_advance(0.05)
+		if not gs.is_moving("aster"):
+			break
 	_assert_equals(str(chunk.call("chamber_state_key")), sigma0,
 		"reset restores the EXACT opening state, hash-equal")
 	var aster_pos: Vector3 = gs.get_position("aster")

@@ -111,6 +111,8 @@ func snapshot() -> Dictionary:
 	var affordances := interaction_affordances.duplicate(true)
 	affordances.append_array(ground_records)
 	affordances.sort_custom(_screen_record_less)
+	var cues := _cue_snapshot(
+		hud_record, movement_presentation, interaction_presentation, affordances)
 	var state := {
 		"hud": hud_record,
 		"viewport": _viewport_snapshot(viewport),
@@ -122,9 +124,13 @@ func snapshot() -> Dictionary:
 		"visible_affordance_verbs": _visible_affordance_texts(affordances, "verb"),
 		"visible_affordance_consequences": _visible_affordance_texts(
 			affordances, "consequence"),
-		"cues": _cue_snapshot(
-			hud_record, movement_presentation, interaction_presentation,
-			affordances),
+		"cues": cues,
+		# What the WORLD did, beside what the pixels showed. Successful movement renders no chrome
+		# (the party walking is its own acknowledgement), so a consumer proving a move COMPLETED
+		# reads the record, while a consumer proving something was SHOWN still reads the cues.
+		# Derived AFTER the cues, because building them is what binds this frame's portrait tokens.
+		"movement_records": _portable_movement_records(
+			movement_presentation, affordances),
 		"viewport_bins": _viewport_bin_index(
 			ground_records, interaction_affordances, viewport),
 	}
@@ -514,6 +520,49 @@ func _cue_snapshot(hud_record: Dictionary, movement_presentation: Dictionary,
 	return cues
 
 
+## The movement lineage as portable data: serial, phase, acceptance, subject tokens, and whether
+## that phase was actually rendered. Tokens only -- raw character ids never cross this boundary.
+func _portable_movement_records(movement_presentation: Dictionary,
+		affordances: Array = []) -> Array:
+	var out: Array = []
+	for record_v in (movement_presentation.get("records", []) as Array):
+		if not (record_v is Dictionary):
+			continue
+		var record := record_v as Dictionary
+		var subject_tokens: Array = []
+		for subject_v in (record.get("subject_ids", []) as Array):
+			var token := str(_visible_portrait_subject_tokens.get(str(subject_v), ""))
+			if token != "":
+				subject_tokens.append(token)
+		subject_tokens.sort()
+		# The destination this lineage was sent to, named the same way the rendered acknowledgement
+		# names it. Binding is attempted on EVERY record rather than only on drawn ones: a successful
+		# move draws nothing, so waiting for chrome means the destination is never named at all.
+		var serial := int(record.get("presentation_serial", 0))
+		var record_target := str(_movement_target_tokens_by_serial.get(serial, ""))
+		if record_target == "":
+			var screen_v: Variant = record.get("target_screen", null)
+			if screen_v is Array and (screen_v as Array).size() == 2:
+				var screen := Vector2(
+					float((screen_v as Array)[0]), float((screen_v as Array)[1]))
+				if screen.is_finite():
+					record_target = _unique_visible_affordance_token_at_screen(
+						affordances, _quantize_screen(screen), screen)
+					if record_target != "":
+						_movement_target_tokens_by_serial[serial] = record_target
+		out.append({
+			"presentation_serial": serial,
+			"target_token": record_target,
+			"reason": str(record.get("reason", "")).strip_edges(),
+			"phase": str(record.get("phase", "")),
+			"accepted": bool(record.get("accepted", false)),
+			"progress": clampf(float(record.get("progress", 0.0)), 0.0, 1.0),
+			"subjects": subject_tokens,
+			"rendered": bool(record.get("render_visible", false)),
+		})
+	return out
+
+
 func _movement_presentation_snapshot() -> Dictionary:
 	if _host == null or not _host.has_method(
 			"get_player_observation_consequence_presenter"):
@@ -607,7 +656,7 @@ func _movement_result_cues(hud_record: Dictionary,
 		var target_token := str(_movement_target_tokens_by_serial.get(serial, ""))
 		if target_token == "":
 			target_token = _unique_visible_affordance_token_at_screen(
-				affordances, quantized_target)
+				affordances, quantized_target, target_screen)
 			if target_token == "":
 				continue
 			_movement_target_tokens_by_serial[serial] = target_token
@@ -664,12 +713,24 @@ func _movement_result_cues(hud_record: Dictionary,
 	return cues
 
 
+## Which visible affordance a movement acknowledgement points at. The committed destination is the
+## navigable point NEAREST the thing that was chosen, not that thing's exact centre, so an equality
+## test on the quantized point rejects the very affordance the player picked. The rule instead is
+## NEAREST WITHIN ONE QUANTUM, and it still refuses to answer when a second candidate sits close
+## enough to be confusable: the guarantee that matters is that the naming is unambiguous, not that
+## two projections agree to the pixel.
 func _unique_visible_affordance_token_at_screen(
-		affordances: Array, quantized_target: Array) -> String:
+		affordances: Array, quantized_target: Array,
+		target_screen := Vector2.INF) -> String:
 	if quantized_target.size() != 2:
 		return ""
-	var matched_token := ""
-	var match_count := 0
+	var point := target_screen
+	if not point.is_finite():
+		point = Vector2(float(quantized_target[0]), float(quantized_target[1]))
+	var tolerance := float(SCREEN_QUANTUM_PX)
+	var best_token := ""
+	var best_distance := INF
+	var runner_up_distance := INF
 	for affordance_v in affordances:
 		if not (affordance_v is Dictionary):
 			continue
@@ -678,19 +739,28 @@ func _unique_visible_affordance_token_at_screen(
 			continue
 		var token := str(affordance.get("token", ""))
 		var screen_v: Variant = affordance.get("screen", null)
-		if token == "" or not (screen_v is Array) \
-				or (screen_v as Array).size() != 2:
+		if token == "" or not (screen_v is Array) 				or (screen_v as Array).size() != 2:
 			continue
 		var screen := Vector2(
 			float((screen_v as Array)[0]), float((screen_v as Array)[1]))
-		if not screen.is_finite() \
-				or _quantize_screen(screen) != quantized_target:
+		if not screen.is_finite():
 			continue
-		match_count += 1
-		matched_token = token
-		if match_count > 1:
-			return ""
-	return matched_token if match_count == 1 else ""
+		var distance := screen.distance_to(point)
+		if distance > tolerance:
+			continue
+		if distance < best_distance:
+			runner_up_distance = best_distance
+			best_distance = distance
+			best_token = token
+		elif distance < runner_up_distance:
+			runner_up_distance = distance
+	if best_token == "":
+		return ""
+	# A second candidate no farther than half a quantum behind the winner is not a different place a
+	# player could tell apart, so the acknowledgement stays unnamed rather than guessing.
+	if runner_up_distance - best_distance < tolerance * 0.5:
+		return ""
+	return best_token
 
 
 func _normalized_subject_label(value: String) -> String:

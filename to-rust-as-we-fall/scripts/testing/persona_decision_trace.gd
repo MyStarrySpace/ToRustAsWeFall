@@ -47,7 +47,23 @@ const FORBIDDEN_VERBS := [
 ]
 
 const OBSERVATION_KEYS := ["schema", "source", "capture_serial", "tick", "state"]
+## The exact published observation surface. A key absent from this list is refused, so the boundary
+## can only grow deliberately -- "cues" is what the pixels showed, "movement_records" is what the
+## world did (successful movement renders no chrome, so completion is read from the record).
 const OBSERVATION_STATE_KEYS := [
+	"hud",
+	"viewport",
+	"affordances",
+	"visible_affordance_verbs",
+	"visible_affordance_consequences",
+	"cues",
+	"movement_records",
+	"viewport_bins",
+]
+## The subset whose change counts as "the player saw something happen". A movement record is world
+## bookkeeping, not chrome: a route advancing its progress field draws nothing, so counting it here
+## would let a passive wait claim a visible delta it never rendered.
+const OBSERVATION_VISIBLE_DELTA_KEYS := [
 	"hud",
 	"viewport",
 	"affordances",
@@ -2296,7 +2312,7 @@ static func _public_presentation_delta(observation_before: Dictionary,
 		if not (state_value is Dictionary):
 			continue
 		var state := state_value as Dictionary
-		for field in OBSERVATION_STATE_KEYS:
+		for field in OBSERVATION_VISIBLE_DELTA_KEYS:
 			if not canonical_equal(before_state.get(field), state.get(field)):
 				changed[field] = true
 	var changed_fields: Array[String] = []
@@ -2401,6 +2417,56 @@ static func _derived_movement_result(observation_before: Dictionary,
 			continue
 		var capture_serial := int((observation_value as Dictionary).get(
 			"capture_serial", 0))
+		# The world half of the lineage: a successful move draws nothing, so its completion is read
+		# from the movement record rather than from a cue that was never rendered.
+		var observation_state := (observation_value as Dictionary).get(
+			"state", {}) as Dictionary
+		for record_value in (observation_state.get("movement_records", []) as Array):
+			if not (record_value is Dictionary):
+				continue
+			var movement_record := record_value as Dictionary
+			var record_serial := int(movement_record.get("presentation_serial", 0))
+			if record_serial <= before_serial 					or str(movement_record.get("target_token", "")) != target_token:
+				continue
+			# The lineage is OPENED here, not by the chrome. A move that succeeds draws nothing, so a
+			# lineage that only exists when something was rendered is a lineage that only exists when
+			# something went wrong. Subject tokens and acceptance come from the record; the rendered
+			# phases below add whatever the player was additionally shown.
+			var record_subjects: Array[String] = []
+			for subject_value in (movement_record.get("subjects", []) as Array):
+				record_subjects.append(str(subject_value))
+			record_subjects.sort()
+			var record_lineage: Dictionary = lineages.get(record_serial, {
+				"target_token": target_token,
+				"subjects": record_subjects,
+				"presentation_serial": record_serial,
+				"phases": [],
+				"phase_capture_serials": {},
+				"record_terminal_phase": "",
+				"accepted": bool(movement_record.get("accepted", false)),
+				"reason": "",
+				"visible": true,
+				"subjects_consistent": true,
+				"accepted_consistent": true,
+				"target_consistent": true,
+				"phase_order_valid": true,
+				"last_phase_rank": -1,
+			})
+			if (record_lineage.get("subjects", []) as Array).is_empty():
+				record_lineage["subjects"] = record_subjects
+			elif not record_subjects.is_empty() and not canonical_equal(
+					record_lineage.get("subjects", []), record_subjects):
+				record_lineage["subjects_consistent"] = false
+			if bool(record_lineage.get("accepted", false)) 					!= bool(movement_record.get("accepted", false)):
+				record_lineage["accepted_consistent"] = false
+			var record_reason := str(movement_record.get("reason", "")).strip_edges()
+			if record_reason != "":
+				record_lineage["reason"] = record_reason
+			var record_phase := str(movement_record.get("phase", "")).to_lower()
+			if record_phase in ["arrival", "interrupted"]:
+				record_lineage["record_terminal_phase"] = record_phase
+			record_lineage["last_observation_index"] = observation_index
+			lineages[record_serial] = record_lineage
 		for cue_value in _observation_cues(observation_value):
 			if not (cue_value is Dictionary):
 				continue
@@ -2419,6 +2485,7 @@ static func _derived_movement_result(observation_before: Dictionary,
 				"presentation_serial": serial,
 				"phases": [],
 				"phase_capture_serials": {},
+				"record_terminal_phase": "",
 				"accepted": bool(cue.get("accepted", false)),
 				"reason": "",
 				"visible": true,
@@ -2620,34 +2687,26 @@ static func _movement_result_reasons(
 	var phases := result.get("phases", []) as Array
 	var phase_serials := result.get("phase_capture_serials", {}) as Dictionary
 	if receipt_accepted:
-		var terminal_phase := ""
-		if canonical_equal(phases, ["accepted", "progress", "arrival"]):
-			terminal_phase = "arrival"
-		elif canonical_equal(phases, ["accepted", "progress", "interrupted"]):
-			terminal_phase = "interrupted"
-		if terminal_phase == "":
+		# A successful move renders no chrome -- the party walking IS its acknowledgement -- so
+		# completion is proven by the movement RECORD, not by a cue that was never drawn. Whatever
+		# DID render (a stall status, a refusal) must still be an ordered subsequence: that half is
+		# what keeps a persona from claiming it saw something it did not.
+		var record_terminal := str(result.get("record_terminal_phase", ""))
+		if record_terminal not in ["arrival", "interrupted"]:
 			reasons.append("movement_result_phase_sequence_invalid")
-		else:
-			var accepted_serial := int(phase_serials.get("accepted", 0))
-			var progress_serial := int(phase_serials.get("progress", 0))
-			var terminal_serial := int(phase_serials.get(terminal_phase, 0))
-			if not (accepted_serial < progress_serial and progress_serial < terminal_serial):
+		var rank_by_phase := {"accepted": 0, "progress": 1, "arrival": 2,
+			"interrupted": 2, "refused": 0}
+		var seen_rank := -1
+		for rendered_phase in phases:
+			var rendered_rank := int(rank_by_phase.get(str(rendered_phase), -1))
+			if rendered_rank < 0 or rendered_rank < seen_rank:
 				reasons.append("movement_result_phase_order_invalid")
-			var sample_serials := {}
-			for sample_value in observation_samples:
-				if sample_value is Dictionary:
-					sample_serials[int((sample_value as Dictionary).get(
-						"capture_serial", 0))] = true
-			if not sample_serials.has(progress_serial):
-				reasons.append("accepted_movement_progress_sample_missing")
-			if terminal_serial != int(observation_after.get("capture_serial", 0)):
-				reasons.append("accepted_movement_terminal_arrival_missing" \
-					if terminal_phase == "arrival" \
-					else "accepted_movement_terminal_interruption_missing")
+				break
+			seen_rank = rendered_rank
 		var result_reason := str(result.get("reason", "")).strip_edges()
-		if terminal_phase == "arrival" and result_reason != "":
+		if record_terminal == "arrival" and result_reason != "":
 			reasons.append("accepted_movement_result_has_refusal_reason")
-		elif terminal_phase == "interrupted" and result_reason == "":
+		elif record_terminal == "interrupted" and result_reason == "":
 			reasons.append("interrupted_movement_visible_reason_missing")
 	else:
 		if not canonical_equal(phases, ["refused"]):

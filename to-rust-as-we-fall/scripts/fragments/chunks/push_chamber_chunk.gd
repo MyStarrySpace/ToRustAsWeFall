@@ -184,7 +184,10 @@ func _reset_chamber_to_start(_source = null) -> void:
 		var cell := Vector2i(int(floor(pos.x)), int(floor(pos.z)))
 		if cell.x >= CHAMBER_MIN.x and cell.x <= CHAMBER_MAX.x \
 				and cell.y >= CHAMBER_MIN.y and cell.y <= CHAMBER_MAX.y:
-			gs.snap_character_to(char_id, MOUTH_OUTSIDE)
+			# A body inside walks back out under its own power. The reset restores the room, not
+			# the bodies: moving one is a queued command like any other, so the consequences of it
+			# crossing the mouth ride the scheduler instead of appearing at a new position.
+			gs.command_move_to_pos(char_id, MOUTH_OUTSIDE)
 	_resets += 1
 
 func _on_body_arrived(_char_id: String) -> void:

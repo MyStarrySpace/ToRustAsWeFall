@@ -38,6 +38,16 @@ func randfn(mean: float = 0.0, deviation: float = 1.0) -> float:
 	return _rng.randfn(mean, deviation)
 
 # Pick one element from an array.
+## A uniform index into a collection of `size` items, or -1 when there is nothing to draw from.
+## Callers outside this file reach for this rather than a range draw of their own: the lint that keeps
+## wall-clock randomness out of game logic matches on the call text, so the seeded plumbing has to
+## offer every draw shape a caller needs.
+func pick_index(size: int) -> int:
+	if size <= 0:
+		return -1
+	return _rng.randi_range(0, size - 1)
+
+
 func pick(arr: Array) -> Variant:
 	if arr.is_empty():
 		return null
