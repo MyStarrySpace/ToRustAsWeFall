@@ -70,6 +70,9 @@ var _scheduler = null
 # stays as the external flag API below (scenes set interaction_enabled directly).
 var _dwell_fsm: StateMachine
 var _dwell_start_tick := 0.0
+## How many times the hold has been (re)armed. A hold that restarts keeps cancelling its own
+## completion, so a stalled dwell and a perpetually-restarted one are told apart by this count.
+var _dwell_restarts := 0
 # Standalone previews can omit the gameplay scheduler. Keep an explicit fallback
 # state so their wall-clock dwell has the same armed/dwelling lifecycle as the FSM.
 var _fallback_dwelling := false
@@ -362,6 +365,7 @@ func _begin_dwell(arrival_receipt := false) -> void:
 
 ## 'dwelling' enter hook: reset progress + schedule the completion under the FSM tag.
 func _enter_dwelling() -> void:
+	_dwell_restarts += 1
 	_dwell_start_tick = _scheduler.get_current_tick()
 	_dwell_deadline = _dwell_start_tick + dwell_time
 	_dwell_progress = 0.0

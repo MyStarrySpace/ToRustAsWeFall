@@ -3,6 +3,7 @@ extends RefCounted
 
 const CatalogScript := preload("res://scripts/generation/stretch_archetype_catalog.gd")
 const SeededRngScript := preload("res://scripts/system/random/seeded_rng.gd")
+const GenerationProbeScript := preload("res://scripts/generation/generation_probe.gd")
 const SolverScript := preload("res://scripts/generation/stretch_solution_solver.gd")
 const RoomPieceCatalogScript := preload("res://scripts/generation/roompiece_catalog.gd")
 const WfcLayoutScript := preload("res://scripts/generation/stretch_wfc_layout.gd")
@@ -543,6 +544,10 @@ static func generate(settings: Dictionary) -> Dictionary:
 			"validation": spec["validation"],
 			"draft_spec": spec,
 		}
+	# The level and the verdict on whether anyone can play it are emitted together. A stretch that
+	# cannot be finished, or that can only be finished by bleeding, is answerable HERE rather than
+	# after a player has walked into it.
+	spec["probe"] = GenerationProbeScript.probe(spec)
 	return spec
 
 

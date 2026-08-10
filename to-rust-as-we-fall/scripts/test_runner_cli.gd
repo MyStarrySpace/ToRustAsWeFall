@@ -1589,6 +1589,9 @@ func _ready() -> void:
 			"--test-branch-point-sockets":
 				ran_test = true
 				_test_branch_point_sockets()
+			"--test-generation-probe":
+				ran_test = true
+				_test_generation_probe()
 			"--test-long-hall-fee":
 				ran_test = true
 				await _test_long_hall_fee()
@@ -2299,6 +2302,7 @@ func _run_all_tests() -> void:
 	await _test_push_chamber_reset()
 	await _test_risk_lane_price()
 	_test_branch_point_sockets()
+	_test_generation_probe()
 	await _test_long_hall_fee()
 	await _test_stretch_greedy_solvability()
 	await _test_throw_fails_closed_without_grid()
@@ -10079,6 +10083,104 @@ func _test_long_hall_fee() -> void:
 ## priced arm stays within what its difficulty tier allows. These are asserted against rosters
 ## that actively try to break them, because a generator that ships a stranded fork has produced a
 ## run nobody can finish.
+## THE GENERATION PROBE. A generated stretch is emitted together with the verdict on whether anyone
+## can play it: passable at all, finishable by perfect play without paying anything, and survivable
+## if the priced line is taken instead. The point is that a level nobody can finish — or can only
+## finish by bleeding — is caught at generation rather than by a player walking into it.
+##
+## The probe is also held to being HONEST about its own limits: a node that declares no cost is
+## reported as unpriced rather than counted as safe, because "nothing said it was expensive" is not
+## evidence of safety and a probe that rounds it into a pass is worse than no probe.
+func _test_generation_probe() -> void:
+	_test_name = "Generation Probe"
+	var ProbeScript = load("res://scripts/generation/generation_probe.gd")
+
+	# A generated stretch carries its own verdict — the caller does not have to remember to ask.
+	var spec: Dictionary = StretchGeneratorScript.generate({
+		"seed": 4242, "complexity_tier": "standard", "id": "probe_check"})
+	if not bool(spec.get("success", false)):
+		_assert_true(false, "the probe fixture generates")
+		return
+	_assert_true(spec.has("probe"), "a generated stretch is emitted WITH its probe")
+	var carried: Dictionary = spec.get("probe", {})
+	_assert_equals(str(carried.get("contract", "")), "generation_probe/v1",
+		"and the probe it carries states its contract")
+	_assert_true(bool(carried.get("passable", false)),
+		"the generated stretch is passable (%s)" % str(carried.get("reasons", [])))
+	_assert_true(bool(carried.get("lossless", false)),
+		"perfect play pays nothing for it (%s)" % str(carried.get("reasons", [])))
+	_assert_true(bool(carried.get("survivable", false)),
+		"and the priced line would not wipe the party")
+	_assert_true(bool(carried.get("ok", false)), "so the stretch passes its own probe")
+
+	# Several seeds and tiers, because one lucky level proves nothing about the generator.
+	var probed := 0
+	for seed_value in [7, 19, 33]:
+		for tier in ["teaching", "standard"]:
+			var s: Dictionary = StretchGeneratorScript.generate({
+				"seed": seed_value, "complexity_tier": tier,
+				"id": "probe_%d_%s" % [seed_value, tier]})
+			if not bool(s.get("success", false)):
+				continue
+			probed += 1
+			var verdict: Dictionary = s.get("probe", {})
+			_assert_true(bool(verdict.get("ok", false)),
+				"seed %d/%s passes its probe (%s)" % [
+					seed_value, tier, str(verdict.get("reasons", []))])
+	_assert_true(probed >= 4, "enough stretches were probed to mean something (got: %d)" % probed)
+
+	# A NODE THAT CHARGES WITH NO WAY PAST is exactly what the probe exists to catch, so it has to
+	# actually catch one rather than only agreeing with levels the generator already makes.
+	var toll_spec: Dictionary = spec.duplicate(true)
+	var injected := false
+	for node_v in (toll_spec["nodes"] as Array):
+		var node: Dictionary = node_v
+		if str(node.get("role", "")) in ["boundary", "shelter_arrival"]:
+			continue
+		node["guaranteed_hp_cost"] = 30.0
+		injected = true
+		break
+	_assert_true(injected, "the fixture has an interior node to make expensive")
+	var tolled: Dictionary = ProbeScript.probe(toll_spec)
+	_assert_true(not bool(tolled.get("lossless", true)),
+		"a node that charges with no way past makes the stretch not lossless")
+	_assert_true(not bool(tolled.get("ok", true)), "and the stretch fails its probe")
+
+	# The SAME toll with a clean way past it is a CHOICE, not a wall, and must pass again.
+	var bypassed: Dictionary = toll_spec.duplicate(true)
+	for node_v in (bypassed["nodes"] as Array):
+		var node: Dictionary = node_v
+		if float(node.get("guaranteed_hp_cost", 0.0)) > 0.0:
+			node["safe_approach"] = "the long way round"
+			break
+	var with_bypass: Dictionary = ProbeScript.probe(bypassed)
+	_assert_true(bool(with_bypass.get("lossless", false)),
+		"the same toll with a clean line past it is a choice, and the stretch is lossless again")
+
+	# A toll steep enough to empty the party is caught even when a clean line exists: the priced line
+	# has to be survivable for the choice to be a real one.
+	var lethal: Dictionary = bypassed.duplicate(true)
+	for node_v in (lethal["nodes"] as Array):
+		var node: Dictionary = node_v
+		if float(node.get("guaranteed_hp_cost", 0.0)) > 0.0:
+			node["guaranteed_hp_cost"] = 500.0
+			break
+	var wiped: Dictionary = ProbeScript.probe(lethal)
+	_assert_true(not bool(wiped.get("survivable", true)),
+		"a priced line that would empty the party is caught")
+
+	# HONESTY. The probe must not treat silence as safety: strict mode refuses a stretch whose nodes
+	# never said what they cost, so the gap between "proven clean" and "nobody mentioned a price"
+	# stays visible.
+	var strict: Dictionary = ProbeScript.probe(spec, {"strict": true})
+	if int(strict.get("unpriced_node_count", 0)) > 0:
+		_assert_true(not bool(strict.get("lossless", true)),
+			"strict mode refuses to call unpriced nodes lossless")
+		_assert_true(int(carried.get("unpriced_node_count", -1)) >= 0,
+			"and the ordinary verdict still COUNTS them rather than hiding them (%d)" % int(
+				carried.get("unpriced_node_count", -1)))
+
+
 func _test_branch_point_sockets() -> void:
 	_test_name = "Branch Point Sockets"
 	var BranchPointScript = load("res://scripts/generation/branch_point.gd")
@@ -68964,7 +69066,7 @@ func _inflam_step(inst: Node, chunk: Node, node_name: String, actor: String) -> 
 		# fail identically from the outside, and only the first means the click went nowhere.
 		stall_diag = (" // moving=%s pos=%s source=%s plan_end=%.2f now=%.2f enabled=%s"
 			+ " dwell_scheduler=%s used=%s in_range=%s dwell_progress=%.2f dwell_state=%s"
-			+ " type=%d dwell_time=%.2f") % [
+			+ " type=%d dwell_time=%.2f restarts=%d start_tick=%.2f") % [
 			str(gs.is_moving(actor)), str(gs.get_position(actor)), str(source_position),
 			float(gs.get_plan_end_tick(actor)) if gs.has_method("get_plan_end_tick") else -1.0,
 			float(gs.scheduler.get_current_tick()) if gs.scheduler != null else -1.0,
@@ -68976,6 +69078,8 @@ func _inflam_step(inst: Node, chunk: Node, node_name: String, actor: String) -> 
 			str(it.get("_dwell_fsm").current()) if "_dwell_fsm" in it 				and it.get("_dwell_fsm") != null else "none",
 			int(it.get("interactable_type")) if "interactable_type" in it else -1,
 			float(it.get("dwell_time")) if "dwell_time" in it else -1.0,
+			int(it.get("_dwell_restarts")) if "_dwell_restarts" in it else -1,
+			float(it.get("_dwell_start_tick")) if "_dwell_start_tick" in it else -1.0,
 		]
 	_assert_true(bool(fired[0]),
 		"%s is reached and triggered by nearby %s through its visible source (waited %.2fs)%s"
