@@ -1586,6 +1586,9 @@ func _ready() -> void:
 			"--test-risk-lane-price":
 				ran_test = true
 				await _test_risk_lane_price()
+			"--test-branch-point-sockets":
+				ran_test = true
+				_test_branch_point_sockets()
 			"--test-long-hall-fee":
 				ran_test = true
 				await _test_long_hall_fee()
@@ -2295,6 +2298,7 @@ func _run_all_tests() -> void:
 	await _test_push_chamber()
 	await _test_push_chamber_reset()
 	await _test_risk_lane_price()
+	_test_branch_point_sockets()
 	await _test_long_hall_fee()
 	await _test_stretch_greedy_solvability()
 	await _test_throw_fails_closed_without_grid()
@@ -10069,6 +10073,118 @@ func _test_long_hall_fee() -> void:
 		"the long way costs no HP at all")
 
 
+## BRANCH POINTS AND THEIR SOCKETS. Branching is generator structure: a fork carries arms, an arm
+## carries sockets, and fragments are filled in afterwards. The invariants are the director's law —
+## a damaging fragment never lands on the safe way through, every fork keeps a safe arm, and a
+## priced arm stays within what its difficulty tier allows. These are asserted against rosters
+## that actively try to break them, because a generator that ships a stranded fork has produced a
+## run nobody can finish.
+func _test_branch_point_sockets() -> void:
+	_test_name = "Branch Point Sockets"
+	var BranchPointScript = load("res://scripts/generation/branch_point.gd")
+
+	var roster := [
+		{"id": "flora_garden", "route_class": "clean", "hp_cost": 0.0},
+		{"id": "push_lab", "route_class": "clean", "hp_cost": 0.0},
+		{"id": "wall_hugger", "route_class": "clean", "hp_cost": 0.0},
+		{"id": "long_hall", "route_class": "damaging", "hp_cost": 25.0},
+		{"id": "deep_cut", "route_class": "damaging", "hp_cost": 50.0},
+	]
+
+	# A fork always has a safe arm, and it is built with one more socket than a priced arm: the clean
+	# way is longer, and that length is the whole of what it costs.
+	var layout: Dictionary = BranchPointScript.build({"tier": "standard", "sockets_per_arm": 2})
+	var safe_sockets := 0
+	var priced_sockets := 0
+	for arm_v in (layout["arms"] as Array):
+		var arm: Dictionary = arm_v
+		if str(arm["class"]) == "safe":
+			safe_sockets = (arm["sockets"] as Array).size()
+		else:
+			priced_sockets = (arm["sockets"] as Array).size()
+	_assert_true(safe_sockets > priced_sockets,
+		"the safe arm is the longer way round (%d sockets vs %d)" % [safe_sockets, priced_sockets])
+
+	var filled: Dictionary = BranchPointScript.fill(layout, roster, 7)
+	_assert_true(bool(filled["ok"]), "a fork fills from a whole roster (%s)" % str(filled["reason"]))
+	var built: Dictionary = filled["branch_point"]
+
+	# THE LAW: nothing that charges blood is ever on the safe way through.
+	for arm_v in (built["arms"] as Array):
+		var arm: Dictionary = arm_v
+		if str(arm["class"]) != "safe":
+			continue
+		for socket_v in (arm["sockets"] as Array):
+			_assert_equals(str((socket_v as Dictionary)["route_class"]), "clean",
+				"every socket on the safe arm holds a clean fragment")
+		_assert_equals(float(arm["hp_cost"]), 0.0, "the safe arm charges nothing at all")
+
+	# A priced arm never charges more than its tier allows, however many sockets it carries.
+	for arm_v in (built["arms"] as Array):
+		var arm: Dictionary = arm_v
+		if str(arm["class"]) == "safe":
+			continue
+		_assert_true(float(arm["hp_cost"]) <= float(arm["hp_cap"]) + 0.001,
+			"a priced arm stays inside its cap (%.1f <= %.1f)" % [
+				float(arm["hp_cost"]), float(arm["hp_cap"])])
+
+	# The tier caps what a hard run HANDS BACK, never what it takes: a harder tier must not be a
+	# damage slider.
+	for tier in ["teaching", "standard", "hard"]:
+		var tier_layout: Dictionary = BranchPointScript.build({"tier": tier, "sockets_per_arm": 2})
+		var tier_filled: Dictionary = BranchPointScript.fill(tier_layout, roster, 3)
+		_assert_true(bool(tier_filled["ok"]), "the %s tier fills" % tier)
+	_assert_true(BranchPointScript.hp_cap_for("hard") >= BranchPointScript.hp_cap_for("standard"),
+		"a harder tier may price an arm higher")
+	_assert_true(BranchPointScript.gain_cap_for("hard") < BranchPointScript.gain_cap_for("standard"),
+		"and it pays back LESS, which is what makes it harder rather than merely bloodier")
+
+	# Determinism: the same roster and seed fill the same fork, or a branch point is not replay-safe.
+	var again: Dictionary = BranchPointScript.fill(
+		BranchPointScript.build({"tier": "standard", "sockets_per_arm": 2}), roster, 7)
+	_assert_equals(BranchPointScript.advertise(again["branch_point"]),
+		BranchPointScript.advertise(built),
+		"the same roster and seed build the same fork")
+
+	# FAIL CLOSED. A roster with nothing clean in it cannot furnish a safe arm, and the answer is a
+	# refusal naming the invariant rather than a fork that quietly breaks it.
+	var no_clean: Dictionary = BranchPointScript.fill(
+		BranchPointScript.build({"tier": "standard"}),
+		[{"id": "long_hall", "route_class": "damaging", "hp_cost": 25.0}], 1)
+	_assert_true(not bool(no_clean["ok"]),
+		"a roster with no clean fragment cannot build a fork")
+	_assert_equals(str(no_clean["reason"]), "no_clean_fragment_for_the_safe_arm",
+		"and the refusal names what was missing")
+
+	# A roster whose every toll exceeds the cap still fills — with clean fragments — rather than
+	# overcharging the arm.
+	var dear: Dictionary = BranchPointScript.fill(
+		BranchPointScript.build({"tier": "teaching", "sockets_per_arm": 2}),
+		[{"id": "flora_garden", "route_class": "clean", "hp_cost": 0.0},
+		 {"id": "deep_cut", "route_class": "damaging", "hp_cost": 50.0}], 5)
+	_assert_true(bool(dear["ok"]),
+		"a teaching fork whose only toll is too dear still builds")
+	for arm_v in ((dear["branch_point"] as Dictionary)["arms"] as Array):
+		var arm: Dictionary = arm_v
+		_assert_true(float(arm["hp_cost"]) <= float(arm["hp_cap"]) + 0.001,
+			"and no arm of it charges over the teaching cap")
+
+	# The validator is what the generator trusts, so it has to CATCH a hand-broken fork rather than
+	# only agreeing with forks the filler built.
+	var tampered: Dictionary = (built as Dictionary).duplicate(true)
+	for arm_v in (tampered["arms"] as Array):
+		var arm: Dictionary = arm_v
+		if str(arm["class"]) == "safe":
+			var socket: Dictionary = (arm["sockets"] as Array)[0]
+			socket["route_class"] = "damaging"
+			socket["hp_cost"] = 25.0
+	var caught: Dictionary = BranchPointScript.validate(tampered)
+	_assert_true(not bool(caught["ok"]),
+		"a damaging fragment slipped onto the safe arm is caught")
+	_assert_true(str(caught["reason"]).begins_with("damaging_fragment_on_safe_arm"),
+		"and the verdict names the fragment that does not belong there")
+
+
 func _test_risk_lane_price() -> void:
 	_test_name = "Risk Lane Price"
 	var RiskLaneScript = load("res://scripts/generation/risk_lane.gd")
@@ -10493,6 +10609,10 @@ func _test_fragment_manifest() -> void:
 		"res://scripts/fragments/fragment_preview_sequence.gd").PREVIEW_ENTRIES
 	var runner_src := FileAccess.get_file_as_string("res://scripts/test_runner_cli.gd")
 	var declared := 0
+	# What the GENERATOR gets to socket. Built from what the fragments themselves declare rather than
+	# a list kept beside them, because a roster that can drift from the manifests is a roster that
+	# will eventually offer the branch builder a fragment whose class it guessed.
+	var route_roster: Array = []
 	for entry_v in entries:
 		var entry: Dictionary = entry_v
 		var frag_id := str(entry.get("id", ""))
@@ -10519,6 +10639,12 @@ func _test_fragment_manifest() -> void:
 		#   clean     -> names the test that plays its damage-free line
 		#   damaging  -> states the HP it charges, which the difficulty cap is applied against
 		var route_class := str(manifest.get("route_class", ""))
+		if route_class in ["clean", "damaging"]:
+			route_roster.append({
+				"id": frag_id,
+				"route_class": route_class,
+				"hp_cost": float(manifest.get("hp_cost", 0.0)),
+			})
 		_assert_true(route_class in ["clean", "damaging"],
 			"%s declares its route_class (clean|damaging), got '%s'" % [frag_id, route_class])
 		if route_class == "clean":
@@ -10569,6 +10695,26 @@ func _test_fragment_manifest() -> void:
 		inst.queue_free()
 		await get_tree().process_frame
 	_assert_true(declared > 0, "at least one fragment declares a manifest")
+
+	# THE TWO LAYERS AGREE. Everything the roster offers came from a fragment's own manifest, and a
+	# real fork built from exactly that roster satisfies every invariant the law states — so the
+	# generator can never socket a fragment whose class nobody declared.
+	var BranchPointScript = load("res://scripts/generation/branch_point.gd")
+	var clean_count := 0
+	for entry_v in route_roster:
+		if str((entry_v as Dictionary).get("route_class", "")) == "clean":
+			clean_count += 1
+	_assert_true(clean_count > 0,
+		"the live roster offers the generator at least one clean fragment for a safe arm")
+	var live_fork: Dictionary = BranchPointScript.fill(
+		BranchPointScript.build({"tier": "standard", "sockets_per_arm": 2}), route_roster, 11)
+	_assert_true(bool(live_fork.get("ok", false)),
+		"a branch point fills from the LIVE fragment roster (%s)" % str(live_fork.get("reason", "")))
+	if bool(live_fork.get("ok", false)):
+		var verdict: Dictionary = BranchPointScript.validate(live_fork["branch_point"])
+		_assert_true(bool(verdict.get("ok", false)),
+			"and the fork it builds from real fragments holds every invariant (%s)" % str(
+				verdict.get("reason", "")))
 
 func _manifest_nodes_of_class(root: Node, node_class: String) -> Array:
 	var found: Array = []
