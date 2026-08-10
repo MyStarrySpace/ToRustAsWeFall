@@ -32,6 +32,17 @@ const GUARANTEED_HP_FIELDS := ["guaranteed_hp_cost", "hp_toll", "forced_damage"]
 ## zero for perfect play even when it also advertises a toll: the toll is then a CHOICE.
 const BYPASS_FIELDS := ["safe_approach", "bypass", "clean_line"]
 
+## The authored risk vocabulary on an approach (data/generation/archetype_catalog.json), read the way
+## the labels actually use it:
+##   safe   — straightforward cooperative work ("Peris tends the plant tool; Aster confirms the target")
+##   risky  — SKILLED work by the shadow pair ("Aster times the enemy charge while Peris holds scarpet
+##            cover"). Demanding, and clean when executed: this is the director's safe route that MAY
+##            BE CHALLENGING, not a line that charges.
+##   direct — confrontation ("bait a charge", "force it open with raw impact"). This is what costs.
+##
+## So a node has a clean line through it when it authors ANY approach that is not `direct`.
+const CLEAN_RISKS := ["safe", "risky"]
+
 
 ## Probe a finished spec. Returns the verdict the spec then carries.
 static func probe(spec: Dictionary, opts: Dictionary = {}) -> Dictionary:
@@ -62,14 +73,27 @@ static func probe(spec: Dictionary, opts: Dictionary = {}) -> Dictionary:
 		if role in ["boundary", "shelter_arrival"]:
 			continue
 		var toll := _declared_toll(node)
-		var has_bypass := _has_bypass(node)
+		# An OPTIONAL detour is a choice, not a way through: the golden path walks the non-optional
+		# spine, so a risky side room is exactly the priced content the law permits. Its toll still
+		# counts toward what the priced line costs -- taking it is how you pay it.
+		if bool(node.get("optional", false)):
+			priced_total += toll
+			continue
+		var has_bypass := _has_bypass(node) or _offers_a_safe_approach(node)
 		if toll > 0.0:
 			priced_total += toll
 			# A toll with no way past it is what makes a stretch unplayable clean.
 			if not has_bypass:
 				forced.append(str(node.get("id", node.get("role", "?"))))
-		elif not has_bypass and not _states_a_price(node):
-			# Nothing declared either a cost or a clean way past. That is not evidence of safety.
+		elif not has_bypass:
+			# The node authored approaches and NONE of them is the safe one, so every line through it
+			# is a line that can cost. That is a forced toll whether or not anyone wrote a number on
+			# it, and it is exactly what the clean-line law forbids on a safe route.
+			forced.append(str(node.get("id", node.get("role", "?"))))
+		elif not (node.get("approaches", []) as Array).is_empty() and not _states_a_price(node):
+			# A clean line exists, but what its RISKY siblings would cost was never written down. The
+			# stretch is lossless; what the priced line costs is still unknown, and saying so is the
+			# difference between a probe and a rubber stamp.
 			unpriced.append(str(node.get("id", node.get("role", "?"))))
 
 	var lossless := forced.is_empty()
@@ -104,6 +128,21 @@ static func _declared_toll(node: Dictionary) -> float:
 	for field in GUARANTEED_HP_FIELDS:
 		toll = maxf(toll, float(node.get(field, 0.0)))
 	return toll
+
+
+## Whether the node authors a line through it that perfect play pays nothing for -- allowing that the
+## line may be hard to walk. A node with NO approaches at all is a plain traversal beat — entry, shelter, an unscripted room — which the
+## solution solver itself treats as always passable and safe; there is nothing there to charge.
+static func _offers_a_safe_approach(node: Dictionary) -> bool:
+	var approaches: Array = node.get("approaches", []) as Array
+	if approaches.is_empty():
+		return true
+	for approach_value in approaches:
+		if not (approach_value is Dictionary):
+			continue
+		if str((approach_value as Dictionary).get("risk", "")) in CLEAN_RISKS:
+			return true
+	return false
 
 
 static func _has_bypass(node: Dictionary) -> bool:

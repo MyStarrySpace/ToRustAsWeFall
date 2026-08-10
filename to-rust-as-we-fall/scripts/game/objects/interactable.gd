@@ -73,6 +73,9 @@ var _dwell_start_tick := 0.0
 ## How many times the hold has been (re)armed. A hold that restarts keeps cancelling its own
 ## completion, so a stalled dwell and a perpetually-restarted one are told apart by this count.
 var _dwell_restarts := 0
+## Who the running hold belongs to, so a redundant begin for the SAME body can be told from a genuine
+## re-trigger by another one.
+var _dwell_owner_at_arm := ""
 # Standalone previews can omit the gameplay scheduler. Keep an explicit fallback
 # state so their wall-clock dwell has the same armed/dwelling lifecycle as the FSM.
 var _fallback_dwelling := false
@@ -354,6 +357,16 @@ func _begin_dwell(arrival_receipt := false) -> void:
 		return
 	_dwell_pending = false
 	set_process(true)
+	# A hold ALREADY running for this body keeps the time it has banked. Re-entering `dwelling`
+	# restarts the clock, so a redundant trigger — a second party member crossing the zone, an
+	# arrival receipt arriving behind a body that was already standing here — would silently throw
+	# away the seconds the player has held, and a long hold could then never finish inside a window
+	# sized for its own duration. A genuine re-trigger still restarts, because cancelling leaves the
+	# FSM in `armed` and this guard does not apply there.
+	if _dwell_fsm != null and _dwell_fsm.current() == "dwelling" \
+			and str(_dwell_owner_at_arm) == str(_dwell_char_id):
+		return
+	_dwell_owner_at_arm = _dwell_char_id
 	if _dwell_fsm == null:
 		_fallback_dwelling = true
 		_dwell_progress = 0.0
@@ -374,6 +387,7 @@ func _enter_dwelling() -> void:
 
 func _cancel_dwell() -> void:
 	_fallback_dwelling = false
+	_dwell_owner_at_arm = ""
 	# Back to 'armed' — the FSM cancels the pending completion via its tag.
 	if _dwell_fsm != null:
 		_dwell_fsm.transition_to("armed")
