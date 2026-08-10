@@ -11,6 +11,7 @@ extends RefCounted
 ## Deterministic: the pattern + both children's seeds are hashed from (run seed, depth), so a run is reproducible.
 
 const BiomesScript := preload("res://scripts/generation/biomes.gd")
+const BranchPointScript := preload("res://scripts/generation/branch_point.gd")
 
 const TIERS := ["teaching", "standard", "hard", "setpiece"]
 const CORE_PAIR := ["aster", "peris"]          # the shadow pair — always in the party, never recruited
@@ -36,7 +37,69 @@ static func decide(context: Dictionary) -> Dictionary:
 	var roster: Array = context.get("roster", CORE_PAIR.duplicate())
 	var available := _available_patterns(roster)
 	var pattern: String = available[_hash_index("pattern:%d:%d" % [seed, depth], available.size())]
-	return _build(pattern, depth, seed, roster)
+	var decision := _build(pattern, depth, seed, roster)
+	_apply_gain_cap(decision)
+	decision["branch_point"] = _as_branch_point(decision, depth)
+	return decision
+
+
+## The fork, expressed as the BRANCH POINT it is: a safe arm and a priced one, each with the single
+## socket the next level fills. The run has always offered this shape; saying so in the generator's
+## own vocabulary is what lets `BranchPoint.validate()` speak about a real run rather than about a
+## structure built beside it.
+static func _as_branch_point(decision: Dictionary, depth: int) -> Dictionary:
+	var tier: String = TIERS[mini(depth, TIERS.size() - 1)]
+	var point := BranchPointScript.build({
+		"tier": tier, "sockets_per_arm": 1, "damaging_arms": 1})
+	for arm_v in (point["arms"] as Array):
+		var arm: Dictionary = arm_v
+		var want_safe := str(arm.get("class", "")) == BranchPointScript.SAFE
+		for option_v in (decision.get("options", []) as Array):
+			var option: Dictionary = option_v
+			var option_is_safe := str(option.get("risk", "")) == "low"
+			if option_is_safe != want_safe:
+				continue
+			arm["id"] = str(option.get("id", arm.get("id", "")))
+			for socket_v in (arm["sockets"] as Array):
+				var socket: Dictionary = socket_v
+				socket["fragment"] = str(option.get("id", ""))
+				# The level behind a socket is generated, so its class is what its own probe will
+				# say. The safe arm is held to that by RunSession at the moment of descent; here the
+				# arm simply records the intent the fork advertises.
+				socket["route_class"] = "clean" if option_is_safe else "damaging"
+				socket["hp_cost"] = 0.0
+			break
+	point["pattern"] = str(decision.get("pattern", ""))
+	point["validation"] = BranchPointScript.validate(point)
+	return point
+
+
+## HARD CAPS THE GAINS, NEVER THE BLOOD. A costly arm generating at a tier that caps gains authors
+## FEWER physical caches — fewer forage beats, fewer flora slots, fewer optional rooms. It is applied
+## to the generation budget rather than to a number on the menu because the run's law is that a
+## branch's value comes from what the level physically places, never from an invisible grant attached
+## to picking an option.
+static func _apply_gain_cap(decision: Dictionary) -> void:
+	for option_v in (decision.get("options", []) as Array):
+		var option: Dictionary = option_v
+		if str(option.get("risk", "")) != "high":
+			continue
+		var settings: Dictionary = option.get("settings", {}) as Dictionary
+		var scale := BranchPointScript.gain_cap_for(
+			str(settings.get("complexity_tier", "standard")))
+		if scale >= 1.0:
+			continue
+		var budget: Dictionary = settings.get("budget", {}) as Dictionary
+		if budget.is_empty():
+			continue
+		for key in ["resource_beats", "optional_node_count"]:
+			if budget.has(key):
+				budget[key] = maxi(0, int(floorf(float(budget[key]) * scale)))
+		if budget.has("flora_slots") and budget["flora_slots"] is Array:
+			var slots: Array = budget["flora_slots"]
+			for i in range(slots.size()):
+				slots[i] = maxi(0, int(floorf(float(slots[i]) * scale)))
+		option["gain_cap_applied"] = scale
 
 ## Which patterns can fire here. Recruit only when a specialist is still un-joined.
 static func _available_patterns(roster: Array) -> Array:

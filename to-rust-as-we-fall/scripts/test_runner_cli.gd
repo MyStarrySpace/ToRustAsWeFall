@@ -1589,6 +1589,9 @@ func _ready() -> void:
 			"--test-branch-point-sockets":
 				ran_test = true
 				_test_branch_point_sockets()
+			"--test-run-fork-is-a-branch-point":
+				ran_test = true
+				_test_run_fork_is_a_branch_point()
 			"--test-generation-probe":
 				ran_test = true
 				_test_generation_probe()
@@ -2305,6 +2308,7 @@ func _run_all_tests() -> void:
 	await _test_push_chamber_reset()
 	await _test_risk_lane_price()
 	_test_branch_point_sockets()
+	_test_run_fork_is_a_branch_point()
 	_test_generation_probe()
 	_test_safe_arm_refuses_a_toll()
 	await _test_long_hall_fee()
@@ -10263,6 +10267,71 @@ func _test_generation_probe() -> void:
 		_assert_true(int(carried.get("unpriced_node_count", -1)) >= 0,
 			"and the ordinary verdict still COUNTS them rather than hiding them (%d)" % int(
 				carried.get("unpriced_node_count", -1)))
+
+
+## THE RUN'S FORK IS A BRANCH POINT. The shape was always there — a safe way and a costly one — but it
+## lived in one vocabulary while the invariants were proven in another. Saying it in the generator's
+## own terms is what lets `BranchPoint.validate()` speak about a real run rather than about a
+## structure built beside it, and it is what carries the tier's gain cap into an actual descent.
+func _test_run_fork_is_a_branch_point() -> void:
+	_test_name = "Run Fork Is A Branch Point"
+	var Branch = load("res://scripts/generation/run_branch_decisions.gd")
+	var BranchPointScript = load("res://scripts/generation/branch_point.gd")
+
+	# Every fork a run can offer, at every depth, is a VALID branch point: a safe arm exists, nothing
+	# damaging sits on it, and no arm is left with an empty socket.
+	var checked := 0
+	for seed_value in [3, 11, 29]:
+		for depth in range(0, 4):
+			var decision: Dictionary = Branch.decide({
+				"seed": seed_value, "depth": depth, "roster": ["aster", "peris"]})
+			var point: Dictionary = decision.get("branch_point", {})
+			_assert_true(not point.is_empty(),
+				"the fork at seed %d depth %d carries its branch point" % [seed_value, depth])
+			if point.is_empty():
+				continue
+			checked += 1
+			var verdict: Dictionary = BranchPointScript.validate(point)
+			_assert_true(bool(verdict.get("ok", false)),
+				"seed %d depth %d is a valid branch point (%s)" % [
+					seed_value, depth, str(verdict.get("reason", ""))])
+			# The arms carry the fork's OWN option ids, so the two vocabularies name the same things.
+			var arm_ids: Array = []
+			for arm_v in (point.get("arms", []) as Array):
+				arm_ids.append(str((arm_v as Dictionary).get("id", "")))
+			for option_v in (decision.get("options", []) as Array):
+				_assert_true(arm_ids.has(str((option_v as Dictionary).get("id", ""))),
+					"the fork's option '%s' is an arm of its branch point" % str(
+						(option_v as Dictionary).get("id", "")))
+	_assert_true(checked >= 8, "enough forks were checked to mean something (got: %d)" % checked)
+
+	# HARD CAPS THE GAINS, NOT THE BLOOD. A costly arm that generates at a gain-capped tier authors
+	# FEWER physical caches — the run's law is that a branch's value comes from what the level places,
+	# so the cap has to land on the generation budget rather than on a number in the menu.
+	var capped_seen := false
+	for seed_value in [3, 11, 29, 47]:
+		for depth in range(0, 4):
+			var decision: Dictionary = Branch.decide({
+				"seed": seed_value, "depth": depth, "roster": ["aster", "peris"]})
+			for option_v in (decision.get("options", []) as Array):
+				var option: Dictionary = option_v
+				if not option.has("gain_cap_applied"):
+					continue
+				capped_seen = true
+				_assert_equals(str(option.get("risk", "")), "high",
+					"only the COSTLY arm ever has its gains capped")
+				_assert_true(float(option["gain_cap_applied"]) < 1.0,
+					"a recorded cap actually reduces the take")
+				var budget: Dictionary = (option.get("settings", {}) as Dictionary).get(
+					"budget", {}) as Dictionary
+				var uncapped: Dictionary = Branch._settings(
+					seed_value, depth, "probe", "standard", ["aster", "peris"],
+					{"resource_beats": 2, "optional_node_count": 4})
+				_assert_true(int(budget.get("resource_beats", 0)) \
+						<= int((uncapped.get("budget", {}) as Dictionary).get("resource_beats", 0)),
+					"the capped arm authors no more forage than an uncapped one would")
+	_assert_true(capped_seen,
+		"at least one fork in the sweep reaches a tier that caps gains")
 
 
 func _test_branch_point_sockets() -> void:
