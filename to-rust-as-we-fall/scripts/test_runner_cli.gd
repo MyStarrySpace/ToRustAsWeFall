@@ -1589,6 +1589,9 @@ func _ready() -> void:
 			"--test-branch-point-sockets":
 				ran_test = true
 				_test_branch_point_sockets()
+			"--test-rally-is-atomic":
+				ran_test = true
+				_test_rally_is_atomic()
 			"--test-run-fork-is-a-branch-point":
 				ran_test = true
 				_test_run_fork_is_a_branch_point()
@@ -2310,6 +2313,7 @@ func _run_all_tests() -> void:
 	await _test_push_chamber_reset()
 	await _test_risk_lane_price()
 	_test_branch_point_sockets()
+	_test_rally_is_atomic()
 	_test_run_fork_is_a_branch_point()
 	_test_generation_probe()
 	_test_safe_arm_refuses_a_toll()
@@ -10334,6 +10338,65 @@ func _test_run_fork_is_a_branch_point() -> void:
 					"the capped arm authors no more forage than an uncapped one would")
 	_assert_true(capped_seen,
 		"at least one fork in the sweep reaches a tier that caps gains")
+
+
+## WHAT A RALLY DOES WHEN IT CANNOT TAKE EVERYONE. The party splitting on one gesture would be a bug,
+## so the preflight settles it BEFORE anything moves: it serves the members it can reach the slots
+## for, and names each member it could not with a player-facing reason. The command is therefore
+## never half-committed -- the members it accepted all go, and the one it refused never started.
+##
+## This is the contract the persona probe has to read. A Rally that comes back
+## {aster: accepted, endo: accepted, peris: refused} is NOT a silently decomposed group verb; it is a
+## whole-party gesture with an exact, visible refusal attached, and a policy is entitled to learn
+## from it only if that refusal actually reached the player.
+func _test_rally_is_atomic() -> void:
+	_test_name = "Rally Is Atomic"
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.scheduler = sched
+	var grid := GridWorld.from_data({
+		"contract_id": GridWorld.GRID_DATA_CONTRACT_ID,
+		"origin": [0.0, 0.0, 0.0], "cell_size": 1.0, "width": 14, "height": 10,
+		"walkable_regions": [
+			{"min": [0.5, 0.5], "max": [5.5, 8.5]},
+			{"min": [8.5, 0.5], "max": [13.5, 8.5]},
+		],
+	})
+	gs.grid = grid
+	gs.register_character("aster", grid.grid_to_world(Vector2i(2, 2)), 3.0, {"hp": 100.0})
+	gs.register_character("endo", grid.grid_to_world(Vector2i(2, 4)), 3.0, {"hp": 100.0})
+	gs.register_character("peris", grid.grid_to_world(Vector2i(11, 4)), 3.0, {"hp": 100.0})
+	var stranded_cell: Vector2i = gs.characters["peris"].get("grid_cell", Vector2i.ZERO)
+
+	# The refusal is decided BEFORE the command, and it is legible: the member that cannot be served
+	# is named, with a reason a player can be shown.
+	var preflight: Dictionary = gs.compute_rally_preflight(
+		["aster", "endo", "peris"], grid.grid_to_world(Vector2i(3, 6)))
+	_assert_true(bool(preflight.get("accepted", false)),
+		"a rally two of three can reach is still worth issuing")
+	_assert_equals(preflight.get("members", []), ["aster", "endo"],
+		"the preflight serves exactly the members it can reach a slot for")
+	var blocked: Dictionary = preflight.get("blocked_reasons", {}) as Dictionary
+	_assert_true(blocked.has("peris"), "and it names the member it could not serve")
+	if blocked.has("peris"):
+		var why: Dictionary = blocked["peris"]
+		_assert_equals(str(why.get("reason_code", "")), "route_missing",
+			"with a reason code the caller can branch on")
+		_assert_true(str(why.get("reason", "")).strip_edges() != "",
+			"and a sentence a player can be shown (%s)" % str(why.get("reason", "")))
+
+	var moved: int = gs.command_rally_members(
+		["aster", "endo", "peris"], grid.grid_to_world(Vector2i(3, 6)))
+
+	# NEVER HALF-COMMITTED: everyone the rally accepted goes, and the refused member never started.
+	_assert_equals(moved, 2, "the rally moves exactly the members it accepted")
+	for member_id in ["aster", "endo"]:
+		_assert_true(gs.is_moving(member_id),
+			"%s, which the rally accepted, is walking" % member_id)
+	_assert_true(not gs.is_moving("peris"), "the refused member never set off")
+	_assert_equals(gs.characters["peris"].get("grid_cell", Vector2i.ZERO), stranded_cell,
+		"and is left exactly where it stood")
+
 
 
 func _test_branch_point_sockets() -> void:
