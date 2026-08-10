@@ -1024,6 +1024,9 @@ func _ready() -> void:
 			"--test-capbage-retrieve":
 				ran_test = true
 				await _test_capbage_retrieve()
+			"--test-flora-rig-plays":
+				ran_test = true
+				await _test_flora_rig_plays()
 			"--test-basin-fill-proof":
 				ran_test = true
 				await _test_basin_fill_proof()
@@ -2080,6 +2083,7 @@ func _run_all_tests() -> void:
 	await _test_blind_floor()
 	await _test_conceal_stops_strikes()
 	await _test_capbage_retrieve()
+	await _test_flora_rig_plays()
 	await _test_basin_fill_proof()
 	await _test_sprint_gap()
 	await _test_run_stamina_budget()
@@ -47490,6 +47494,55 @@ func _test_dwell_follows_its_scheduler() -> void:
 	_assert_true(banked[0],
 		"a redundant trigger does not throw away the time a hold has already banked")
 
+	# CLEAR AND RESTART (coverage gap #27). Cancelling a hold releases it, and the NEXT trigger is a
+	# genuine one that must start over from zero. This is the other side of the banked-progress rule
+	# above: keeping progress across a redundant trigger must not also keep it across a cancel, or a
+	# player who steps out and back in would inherit time they did not stand for.
+	var restarted := [0]
+	it.interacted.connect(func(): restarted[0] += 1)
+	it._player_in_range = true
+	it._begin_dwell()
+	for _i in range(16):
+		live.advance_ticks(0.05)                 # 0.8s of a 1.0s hold, then step away
+	it._cancel_dwell()
+	it._player_in_range = false
+	for _i in range(8):
+		live.advance_ticks(0.05)
+	_assert_equals(restarted[0], 0, "a cancelled hold does not fire on its own")
+	it._player_in_range = true
+	it._begin_dwell()                            # back in: this one starts from zero
+	for _i in range(12):
+		live.advance_ticks(0.05)                 # 0.6s -- would already be over if it had inherited
+	_assert_equals(restarted[0], 0,
+		"a hold resumed after a cancel starts from zero rather than inheriting the old time")
+	for _i in range(10):
+		live.advance_ticks(0.05)
+	_assert_equals(restarted[0], 1, "and it completes once its own full duration has passed")
+
+	# LARGE TICK (coverage gap #26). The hold rides the scheduler, so a coarse step must complete it
+	# at the same point a fine one does: fast-forward may not turn a hold into a different hold.
+	var coarse_host := Node3D.new()
+	add_child(coarse_host)
+	var coarse_sched := EventScheduler.new()
+	var coarse := Interactable.new()
+	coarse.interactable_type = Interactable.InteractableType.HOLD_ACTION
+	coarse.dwell_time = 1.0
+	coarse.one_shot = false
+	coarse_host.add_child(coarse)
+	await get_tree().process_frame
+	coarse.set_scheduler(coarse_sched)
+	var coarse_fired := [0]
+	coarse.interacted.connect(func(): coarse_fired[0] += 1)
+	coarse._player_in_range = true
+	coarse._begin_dwell()
+	coarse_sched.advance_ticks(0.9)
+	_assert_equals(coarse_fired[0], 0, "a coarse step does not finish a hold early")
+	coarse_sched.advance_ticks(0.2)
+	_assert_equals(coarse_fired[0], 1,
+		"and one coarse step past the duration completes it exactly once")
+	coarse.queue_free()
+	coarse_host.queue_free()
+
 	it.queue_free()
 	host.queue_free()
 	await get_tree().process_frame
@@ -53292,6 +53345,66 @@ func _persona_shesez(inst, gs, chunk, grid, party: Array, pseed: int, notes: Arr
 	await driver.rally(gs.get_position(_persona_first_up(gs, party)))
 	inst.headless_advance(6.0)
 	return ok and _persona_beat_ok(gs, grid, party, notes)
+
+
+## THE RIG ACTUALLY PLAYS. A rigged asset that nothing ever calls is potential, not
+## a feature, and the failure is silent in every other test: the plant still hides
+## you, still clicks, still passes its contract, and simply never moves. So this
+## drives the real seam — the concealment pass asking a Capbage whether someone is
+## inside it — and asserts the transition reaches the AnimationPlayer.
+func _test_flora_rig_plays() -> void:
+	_test_name = "Flora Rig Plays"
+	var cap = Capbage.new()
+	cap.configure(null, Vector3.ZERO, 1.4)
+	get_tree().root.add_child(cap)
+	await get_tree().process_frame
+
+	var rig = cap.get("_rig")
+	_assert_true(rig != null, "the Capbage builds its RIGGED body, not a static one")
+	if rig == null:
+		cap.queue_free()
+		await get_tree().process_frame
+		return
+
+	# a body only advertises its OWN transitions; the shared player carries every
+	# species' clips and a Capbage has no business offering the fern's
+	var clips: PackedStringArray = rig.call("clips")
+	_assert_true(clips.has("capbage_seal") and clips.has("capbage_open"),
+		"it carries its seal and open clips (%s)" % str(clips))
+	for name in clips:
+		_assert_true(str(name).begins_with("capbage_"),
+			"it advertises only its own clips (found %s)" % str(name))
+
+	var player: AnimationPlayer = rig.get("_player")
+	_assert_true(player != null, "the rigged body has an AnimationPlayer")
+	if player == null:
+		cap.queue_free()
+		await get_tree().process_frame
+		return
+
+	# nobody inside: the head is at rest
+	cap.conceals(Vector3(9.0, 0.0, 9.0))
+	_assert_equals(str(player.current_animation), "",
+		"an empty Capbage is not playing anything")
+
+	# somebody tucks in -> it SEALS. This is the moment the player watches.
+	cap.conceals(Vector3(0.2, 0.0, 0.2))
+	_assert_equals(str(player.current_animation), "capbage_seal",
+		"a member inside makes the head seal")
+
+	# they leave, the hold window lapses -> it OPENS again
+	cap.set("_last_occupied_ms", Time.get_ticks_msec() - 60000)
+	cap.conceals(Vector3(9.0, 0.0, 9.0))
+	_assert_equals(str(player.current_animation), "capbage_open",
+		"once they are gone the head opens back up")
+
+	# the seal must never be a gameplay gate: concealment is true the instant the
+	# member is inside, whatever the leaves are doing
+	_assert_true(cap.conceals(Vector3(0.1, 0.0, 0.1)),
+		"concealment does not wait for the animation")
+
+	cap.queue_free()
+	await get_tree().process_frame
 
 func _test_capbage_retrieve() -> void:
 	_test_name = "Capbage Retrieve"
