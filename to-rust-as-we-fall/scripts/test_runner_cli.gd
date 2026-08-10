@@ -874,6 +874,9 @@ func _ready() -> void:
 			"--test-displacement-never-strands":
 				ran_test = true
 				_test_displacement_never_strands()
+			"--test-dwell-follows-its-scheduler":
+				ran_test = true
+				await _test_dwell_follows_its_scheduler()
 			"--test-showcase-gallery":
 				ran_test = true
 				await _test_showcase_gallery()
@@ -2031,6 +2034,7 @@ func _run_all_tests() -> void:
 	_test_displacement_resume_discipline()
 	_test_displacement_reroute()
 	_test_displacement_never_strands()
+	await _test_dwell_follows_its_scheduler()
 	await _test_showcase_gallery()
 	await _test_set_piece_showcase()
 	await _test_wash_relay()
@@ -46842,6 +46846,58 @@ func _test_displacement_reroute() -> void:
 ## A displaced body always comes to rest somewhere it can leave from. The shove refuses blocked
 ## ground at commit, but ground can BECOME blocked while the body is in the air, and a body standing
 ## inside a blocker answers no click at all -- that is a lost run, not a paid toll.
+## An interactable's hold timer runs on whatever scheduler it was LAST given. The dwell FSM is built
+## the first time a scheduler arrives, and a second injection has to re-point it: otherwise the field
+## says one scheduler while the timer sits on another, the completion is armed on a clock nobody
+## advances, and the dwell stays in `dwelling` forever while every outward sign -- enabled, in range,
+## scheduler present -- reads healthy. This is the same failure the enemy FSM carries a `set_scheduler`
+## call in `activate()` to avoid.
+func _test_dwell_follows_its_scheduler() -> void:
+	_test_name = "Dwell Follows Its Scheduler"
+	var abandoned := EventScheduler.new()
+	var live := EventScheduler.new()
+	var host := Node3D.new()
+	add_child(host)
+
+	var it := Interactable.new()
+	it.interactable_type = Interactable.InteractableType.HOLD_ACTION
+	it.dwell_time = 1.0
+	it.one_shot = false
+	host.add_child(it)
+	await get_tree().process_frame
+
+	# The wiring pass runs more than once across a scene's life; the second one is authoritative.
+	it.set_scheduler(abandoned)
+	it.set_scheduler(live)
+
+	var fired := [false]
+	it.interacted.connect(func(): fired[0] = true)
+	it._player_in_range = true
+	it._begin_dwell()
+
+	# Advancing the scheduler the interactable was last given must complete the hold.
+	for _i in range(40):
+		live.advance_ticks(0.05)
+		if fired[0]:
+			break
+	_assert_true(fired[0],
+		"the hold completes on the scheduler the interactable was last given")
+
+	# And the abandoned clock must own nothing: advancing it alone can fire no dwell.
+	var second := [false]
+	it.interacted.connect(func(): second[0] = true)
+	it._player_in_range = true
+	it._begin_dwell()
+	for _i in range(60):
+		abandoned.advance_ticks(0.05)
+	_assert_true(not second[0],
+		"a scheduler the interactable no longer uses cannot complete its hold")
+
+	it.queue_free()
+	host.queue_free()
+	await get_tree().process_frame
+
+
 func _test_displacement_never_strands() -> void:
 	_test_name = "Displacement Never Strands"
 	var sched := EventScheduler.new()
@@ -68699,14 +68755,24 @@ func _inflam_step(inst: Node, chunk: Node, node_name: String, actor: String) -> 
 		it.interacted.disconnect(on_interacted)
 	var stall_diag := ""
 	if not bool(fired[0]):
-		# A timeout here has exactly four suspects; name them all so a suite-order failure
-		# carries its own diagnosis instead of demanding a reproduction.
-		stall_diag = " // moving=%s pos=%s plan_end=%.2f now=%.2f enabled=%s dwell_scheduler=%s" % [
-			str(gs.is_moving(actor)), str(gs.get_position(actor)),
+		# A timeout here has a short list of suspects; name them all so a suite-order failure carries
+		# its own diagnosis instead of demanding a reproduction. Beyond the body and the wiring, the
+		# click itself is a suspect: a dwell that never STARTED and a dwell that started and stalled
+		# fail identically from the outside, and only the first means the click went nowhere.
+		stall_diag = (" // moving=%s pos=%s source=%s plan_end=%.2f now=%.2f enabled=%s"
+			+ " dwell_scheduler=%s used=%s in_range=%s dwell_progress=%.2f dwell_state=%s"
+			+ " type=%d dwell_time=%.2f") % [
+			str(gs.is_moving(actor)), str(gs.get_position(actor)), str(source_position),
 			float(gs.get_plan_end_tick(actor)) if gs.has_method("get_plan_end_tick") else -1.0,
 			float(gs.scheduler.get_current_tick()) if gs.scheduler != null else -1.0,
 			str(it.get("interaction_enabled")) if "interaction_enabled" in it else "?",
 			str(it.get("_scheduler") != null) if "_scheduler" in it else "?",
+			str(it.get("_used")) if "_used" in it else "?",
+			str(it.get("_player_in_range")) if "_player_in_range" in it else "?",
+			float(it.get("_dwell_progress")) if "_dwell_progress" in it else -1.0,
+			str(it.get("_dwell_fsm").current()) if "_dwell_fsm" in it 				and it.get("_dwell_fsm") != null else "none",
+			int(it.get("interactable_type")) if "interactable_type" in it else -1,
+			float(it.get("dwell_time")) if "dwell_time" in it else -1.0,
 		]
 	_assert_true(bool(fired[0]),
 		"%s is reached and triggered by nearby %s through its visible source (waited %.2fs)%s"

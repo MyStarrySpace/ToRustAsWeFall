@@ -257,11 +257,19 @@ func _frame_work_pending() -> bool:
 ## pauses with gameplay. Without it, dwell falls back to the per-frame wall clock.
 func set_scheduler(scheduler_ref) -> void:
 	_scheduler = scheduler_ref
-	if _scheduler != null and _dwell_fsm == null:
+	if _scheduler == null:
+		return
+	if _dwell_fsm == null:
 		_dwell_fsm = StateMachine.new(_scheduler, "dwell_%d" % get_instance_id())
 		_dwell_fsm.add_state("armed")
 		_dwell_fsm.add_state("dwelling", _enter_dwelling)
 		_dwell_fsm.start("armed")
+		return
+	# The wiring pass runs more than once across a scene's life, and the last one is authoritative.
+	# An FSM left pointing at the earlier clock arms its completion where nothing advances: the field
+	# would name one scheduler while the hold timer waited on another, and the dwell would sit in
+	# `dwelling` forever with every outward sign reading healthy.
+	_dwell_fsm.set_scheduler(_scheduler)
 
 ## Bind this view to a GameState-registered interactable id. Pulls the spec's
 ## parameters into the node's fields (so all the visual/dwell code is unchanged)
