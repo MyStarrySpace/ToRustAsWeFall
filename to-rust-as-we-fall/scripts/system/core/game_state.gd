@@ -8259,6 +8259,9 @@ func get_rally_formation_region_target(
 ## result for the held-command READY cue and formation paths; command_rally_members consumes it
 ## again at release. That keeps a green cue from advertising an Aster-only route that another
 ## visible portrait cannot actually traverse.
+var _rally_block_destination := Vector3.INF
+
+
 func compute_rally_preflight(
 		member_ids: Array,
 		target: Vector3,
@@ -8356,9 +8359,27 @@ func _rally_preflight_report_for_destinations(
 	var accepted_destinations: Array[Vector3] = []
 	var blocked_members: Array[String] = []
 	var blocked_reasons: Dictionary = {}
+	_rally_block_destination = Vector3.INF
 	var block := func(id: String, code: String, text: String) -> void:
 		blocked_members.append(id)
-		blocked_reasons[id] = {"reason_code": code, "reason": text}
+		var entry := {"reason_code": code, "reason": text}
+		# WHERE the refusal happened, not only who it happened to. A member refused for a missing
+		# route is either cut off from everything or was handed one slot it could not reach, and
+		# those want opposite fixes; without the endpoints a caller cannot tell them apart and ends
+		# up guessing at the level. The `reason` sentence stays exactly as it was, so anything
+		# showing it to a player is untouched.
+		if _rally_block_destination.is_finite():
+			entry["to"] = GameEvent.v3_to_arr(_rally_block_destination)
+			if grid != null:
+				entry["to_cell"] = GameEvent.v2i_to_arr(
+					grid.world_to_grid(_rally_block_destination))
+		if characters.has(id):
+			entry["from"] = GameEvent.v3_to_arr(get_position(id))
+			entry["level"] = get_character_level(id)
+			if grid != null:
+				entry["from_cell"] = GameEvent.v2i_to_arr(
+					grid.world_to_grid(get_position(id)))
+		blocked_reasons[id] = entry
 	for member_index in range(member_ids.size()):
 		var id := str(member_ids[member_index])
 		var destination: Vector3 = destinations[member_index]
@@ -8368,6 +8389,7 @@ func _rally_preflight_report_for_destinations(
 		if not destination.is_finite():
 			block.call(id, "invalid_destination", "NO FORMATION SLOT FOR %s" % id.to_upper())
 			continue
+		_rally_block_destination = destination
 		if not can_accept_move_command(id):
 			block.call(id, "member_unavailable", "%s IS NOT READY" % id.to_upper())
 			continue

@@ -10480,6 +10480,13 @@ func _test_rally_is_atomic() -> void:
 			"with a reason code the caller can branch on")
 		_assert_true(str(why.get("reason", "")).strip_edges() != "",
 			"and a sentence a player can be shown (%s)" % str(why.get("reason", "")))
+		# WHERE it failed, not just who. Without both endpoints a caller cannot tell a member cut
+		# off from everything apart from one handed a slot it could not reach, and those want
+		# opposite fixes.
+		_assert_true(why.has("from") and why.has("to"),
+			"and both endpoints, so the refusal can be classified rather than guessed at")
+		_assert_true(why.has("from_cell") and why.has("to_cell"),
+			"in grid cells too, which is what a reachability check actually needs")
 
 	var moved: int = gs.command_rally_members(
 		["aster", "endo", "peris"], grid.grid_to_world(Vector2i(3, 6)))
