@@ -90,6 +90,10 @@ const DISTRICT_PIECES := {
 		"pieces": {
 			"portal_ring_ornate": "PortalArch",
 			"portal_pad_rings": "PortalPadRing",
+			# The district's grate draws its weave as an alpha card instead of
+			# modelling the bars; the archetype set keeps the modeled one for
+			# districts that have not been styled yet.
+			"deck_grate": "DeckGrate",
 			"vine_skeleton": "VineSkeleton",
 			"dead_flure": "DeadFlure",
 			"valve_bank": "ValveBank",
