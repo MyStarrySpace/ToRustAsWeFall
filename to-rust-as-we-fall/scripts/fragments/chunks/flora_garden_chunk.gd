@@ -1097,6 +1097,10 @@ func get_preview_anchors() -> Dictionary:
 ## presenter per authored pad. --test-fragment-manifest proves the built scene matches.
 func get_fragment_manifest() -> Dictionary:
 	return {
+		# Nothing here charges a toll: a player who plays it perfectly finishes whole, so this
+		# fragment may be socketed onto a SAFE arm of a branch point.
+		"route_class": "clean",
+		"safe_route_test": "--test-flora-garden",
 		"components": [
 			{"id": "seed_crate", "kind": "interactable", "node_name": "SeedCrate"},
 			{"id": "near_pad", "kind": "interactable", "node_name": "SoilPad1"},

@@ -14,8 +14,9 @@ extends "res://scripts/scene_chunks/scene_chunk.gd"
 ## Capbage takes them. Stamina is the mechanism; HP is the price.
 ##
 ## Composes shipped systems only: the run toggle and its stamina drain, the enemy pursuit/charge cycle,
-## Capbage tight-hide concealment, and dynamic blockers for the two mouths. Greybox — dressing is a
-## canon consultation, not part of the arithmetic.
+## Capbage tight-hide concealment, and dynamic blockers for the two mouths. The structure is greybox;
+## the WARNING is not: the damaging mouth wears canon leavings (archetype bodies) and the safe mouth
+## wears nothing, so the fee reads from the world before it reads from the board.
 
 const RiskLaneScript := preload("res://scripts/generation/risk_lane.gd")
 const EnemyScript := preload("res://scripts/game/ai/enemy.gd")
@@ -87,6 +88,7 @@ func _build_chunk() -> void:
 	_build_mouths()
 	_build_hide()
 	_build_exit()
+	_build_warning_dressing()
 	_status_label = _add_label(self, "", Vector3(4.0, 3.2, 5.0), Color(0.78, 0.86, 0.96))
 	_refresh_status()
 	var gs = _get_game_state()
@@ -154,6 +156,29 @@ func _build_exit() -> void:
 		self, "HallExit", "Leave by the junction", Vector3(_rejoin_x, 0.0, 5.0), "LEAVE",
 		[arch], "", 0.6, true, 1.6, Interactable.InteractableType.INSPECTION
 	).interacted.connect(_on_exit)
+
+
+## The damaging mouth wears its warning where the choosing player reads it from the plaza. The
+## cluster is the ecology telling the truth, not decoration: a dead flure keeps baiting siderophores
+## after death — a siderophore is exactly what hunts this hall — and the husk beside it is the
+## flure's last catch. Vine skeletons are what an unmaintained corridor looks like. The clean mouth
+## wears nothing; the contrast is the read. Bodies only (no collision, no concealment), kept to the
+## walls and flanks — the hall's run line stays coverless because that absence is the mechanism.
+func _build_warning_dressing() -> void:
+	_place_leaving("dead_flure", Vector3(MOUTH_X - 1.4, 0.0, 8.7), 0.6)
+	_place_leaving("sapscrap_body", Vector3(MOUTH_X - 0.6, 0.0, 8.9), 2.4)
+	_place_leaving("vine_skeleton", Vector3(MOUTH_X - 2.4, 0.0, 9.1), 1.1)
+	_place_leaving("vine_skeleton", Vector3(MOUTH_X - 0.9, 0.0, 5.2), -1.9)
+	_place_leaving("vine_skeleton", Vector3(MOUTH_X + _hall_length * 0.4, 0.0, 5.4), 0.9)
+
+
+func _place_leaving(piece_id: String, pos: Vector3, yaw: float) -> void:
+	var body := ArchetypePieceLibrary.instantiate(piece_id)
+	if body == null:
+		return
+	body.position = pos
+	body.rotate_y(yaw)
+	add_child(body)
 
 
 func _hall_mouth_cells() -> Array:
@@ -379,6 +404,11 @@ func _refresh_status() -> void:
 
 func get_fragment_manifest() -> Dictionary:
 	return {
+		# A guaranteed toll: the fee is arithmetic and there is no line through the hall that
+		# avoids it. That makes this DAMAGING content -- legal, and restricted to a damaging arm
+		# of a branch point. The stated cost is what the difficulty cap is applied against.
+		"route_class": "damaging",
+		"hp_cost": advertised_hp_cost(),
 		"components": [
 			{"id": "route_board", "kind": "interactable", "node_name": "RouteBoard"},
 			{"id": "hall_mouth", "kind": "interactable", "node_name": "HallMouth"},
@@ -398,13 +428,18 @@ func get_fragment_manifest() -> Dictionary:
 				"test": "--test-long-hall-fee",
 			},
 			{
-				"id": "long_way_costs_no_hp",
-				"claim": "the safe route reaches the same junction with nothing chasing and no HP paid",
+				"id": "safe_route",
+				"claim": "the long way reaches the same junction with nothing chasing and no HP paid - it is longer, and that length is its whole cost",
 				"test": "--test-long-hall-fee",
 			},
 			{
 				"id": "a_route_cannot_be_entered_unpriced",
 				"claim": "both mouths stay sealed until their fee has been chosen",
+				"test": "--test-long-hall-fee",
+			},
+			{
+				"id": "the_damaging_route_wears_its_warning",
+				"claim": "canon leavings cluster at the hall mouth and are absent from the safe route - the danger is written in the world before the board",
 				"test": "--test-long-hall-fee",
 			},
 		],

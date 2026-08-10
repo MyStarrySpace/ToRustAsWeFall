@@ -122,6 +122,10 @@ func _spawn_portal() -> void:
 ## every one of these, and that each behavioural claim is backed by a test that actually exists.
 func get_fragment_manifest() -> Dictionary:
 	return {
+		# Nothing here charges a toll: a player who plays it perfectly finishes whole, so this
+		# fragment may be socketed onto a SAFE arm of a branch point.
+		"route_class": "clean",
+		"safe_route_test": "--test-windup-window",
 		"components": [
 			{"id": "flare_bed", "kind": "character", "char_prefix": "flare_", "count": 3},
 			{"id": "crossing_portal", "kind": "node", "node_class": "PortalPad", "count": 1},

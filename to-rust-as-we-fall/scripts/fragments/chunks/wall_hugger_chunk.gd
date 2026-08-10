@@ -125,6 +125,10 @@ func _spawn_spiker() -> void:
 ## catch, because the whole corridor is unreadable if the player cannot SEE which wall is running.
 func get_fragment_manifest() -> Dictionary:
 	return {
+		# Nothing here charges a toll: a player who plays it perfectly finishes whole, so this
+		# fragment may be socketed onto a SAFE arm of a branch point.
+		"route_class": "clean",
+		"safe_route_test": "--test-wall-hugger",
 		"components": [
 			{"id": "wall_vents", "kind": "water", "node_class": "Channel", "count": 2},
 			{"id": "lane_spiker", "kind": "character", "char_prefix": "lane_spiker", "count": 1},

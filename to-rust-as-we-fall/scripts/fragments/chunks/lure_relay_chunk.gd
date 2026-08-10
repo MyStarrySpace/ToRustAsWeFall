@@ -462,6 +462,10 @@ func _cancel_win_poll() -> void:
 ## the arrangement that makes firing the near lure alone a trap and the relay the only clean line out.
 func get_fragment_manifest() -> Dictionary:
 	return {
+		# Nothing here charges a toll: a player who plays it perfectly finishes whole, so this
+		# fragment may be socketed onto a SAFE arm of a branch point.
+		"route_class": "clean",
+		"safe_route_test": "--test-lure-relay",
 		"components": [
 			{"id": "relay_guards", "kind": "character", "char_prefix": "relay_guard_", "count": 3},
 			{"id": "flures", "kind": "node", "node_class": "Flure", "count": 2},

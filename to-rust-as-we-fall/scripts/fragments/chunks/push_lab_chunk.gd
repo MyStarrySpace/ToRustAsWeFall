@@ -131,6 +131,10 @@ func get_preview_anchors() -> Dictionary:
 ## are named individually because the REFUSAL exhibits are the lab's point, not the happy pushes.
 func get_fragment_manifest() -> Dictionary:
 	return {
+		# Nothing here charges a toll: a player who plays it perfectly finishes whole, so this
+		# fragment may be socketed onto a SAFE arm of a branch point.
+		"route_class": "clean",
+		"safe_route_test": "--test-push-lab",
 		"components": [
 			{"id": "pushable_crates", "kind": "node", "node_class": "PushTarget", "count": 5},
 			{"id": "pusher_body", "kind": "character", "char_prefix": "aster", "count": 1},

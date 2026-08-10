@@ -9909,6 +9909,8 @@ func _run_long_hall_route(route: String, step: float) -> Dictionary:
 		"hall": gs.grid.is_walkable(int(chunk.MOUTH_X), 7),
 		"safe": gs.grid.is_walkable(int(chunk.MOUTH_X), 2),
 	}
+	var leavings: Array = []
+	_collect_archetype_bodies(chunk, leavings)
 	var mouth_name := "HallMouth" if route == "hall" else "SafeMouth"
 	var mouth: Node = chunk.find_child(mouth_name, true, false)
 	if mouth == null:
@@ -9973,10 +9975,21 @@ func _run_long_hall_route(route: String, step: float) -> Dictionary:
 		"lane_price": chunk.call("lane_price"),
 		"sealed_before": sealed_before,
 		"min_stamina": min_stamina,
+		"mouth_x": float(chunk.MOUTH_X),
+		"leavings": leavings,
 	}
 	inst.queue_free()
 	await get_tree().process_frame
 	return report
+
+
+## Every archetype-library body under `node`, as {id, pos} — the placed dressing a scene wears.
+func _collect_archetype_bodies(node: Node, out: Array) -> void:
+	if node is Node3D and node.has_meta("archetype_piece_id"):
+		out.append({"id": str(node.get_meta("archetype_piece_id")),
+			"pos": (node as Node3D).global_position})
+	for child in node.get_children():
+		_collect_archetype_bodies(child, out)
 
 
 func _test_long_hall_fee() -> void:
@@ -10002,6 +10015,34 @@ func _test_long_hall_fee() -> void:
 		"the hall mouth is sealed until the hall is chosen")
 	_assert_true(not bool((hall["sealed_before"] as Dictionary)["safe"]),
 		"the long way is sealed until the long way is chosen")
+
+	# A damaging route WEARS ITS WARNING: canon leavings cluster at the hall mouth where the player
+	# stands choosing, the unmaintained corridor carries them past the mouth, and the clean route
+	# wears none — the contrast is the read, and the board is not the only place the danger is
+	# written. The leavings are the ecology telling the truth: a dead flure still baits siderophores,
+	# and a siderophore is what hunts this hall.
+	var warning_register := ["dead_flure", "vine_skeleton", "sapscrap_body"]
+	var mouth_x := float(hall["mouth_x"])
+	var at_mouth := 0
+	var inside_hall := 0
+	var on_safe_route := 0
+	for body in (hall["leavings"] as Array):
+		if not (str((body as Dictionary)["id"]) in warning_register):
+			continue
+		var pos: Vector3 = (body as Dictionary)["pos"]
+		if pos.z < 4.5:
+			on_safe_route += 1
+		elif pos.x <= mouth_x:
+			at_mouth += 1
+		else:
+			inside_hall += 1
+	_assert_true(at_mouth >= 3,
+		"the hall mouth wears its warning before commitment (%d leavings read from the plaza)"
+		% at_mouth)
+	_assert_true(inside_hall >= 1,
+		"the unmaintained hall carries leavings past its mouth")
+	_assert_true(on_safe_route == 0,
+		"the clean route wears no warning at all")
 
 	_assert_true(bool(hall["arrived"]), "the party reaches the Capbage at the end of the hall")
 	_assert_equals(float(hall["hp_paid"]), float(hall["advertised"]),
@@ -10470,6 +10511,22 @@ func _test_fragment_manifest() -> void:
 			await get_tree().process_frame
 			continue
 		declared += 1
+		# ROUTE CLASS (director, 2026-08-10). The safe way through a run is a property of the ROUTE,
+		# not of every room on it: the generator sockets fragments onto branch arms, and a fragment
+		# that charges a guaranteed toll is legal content restricted to a DAMAGING arm. What a
+		# fragment owes is an honest statement of which it is, because that is what the generator
+		# reads when it decides where the thing may be socketed.
+		#   clean     -> names the test that plays its damage-free line
+		#   damaging  -> states the HP it charges, which the difficulty cap is applied against
+		var route_class := str(manifest.get("route_class", ""))
+		_assert_true(route_class in ["clean", "damaging"],
+			"%s declares its route_class (clean|damaging), got '%s'" % [frag_id, route_class])
+		if route_class == "clean":
+			_assert_true(str(manifest.get("safe_route_test", "")).begins_with("--test-"),
+				"%s is clean, so it names the test that plays its damage-free line" % frag_id)
+		elif route_class == "damaging":
+			_assert_true(float(manifest.get("hp_cost", -1.0)) > 0.0,
+				"%s is damaging, so it states the HP it charges" % frag_id)
 		for comp_v in manifest.get("components", []):
 			var comp: Dictionary = comp_v
 			var cid := str(comp.get("id", "?"))

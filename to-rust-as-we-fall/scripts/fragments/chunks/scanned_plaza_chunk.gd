@@ -114,6 +114,10 @@ func _spawn_patrol() -> void:
 ## crossing instead of a choice.
 func get_fragment_manifest() -> Dictionary:
 	return {
+		# Nothing here charges a toll: a player who plays it perfectly finishes whole, so this
+		# fragment may be socketed onto a SAFE arm of a branch point.
+		"route_class": "clean",
+		"safe_route_test": "--test-scanned-plaza",
 		"components": [
 			{"id": "enforcement", "kind": "character", "char_prefix": "plaza_enforcement", "count": 1},
 			{"id": "candid_mat", "kind": "node", "node_class": "CandidZone", "count": 1},

@@ -286,6 +286,10 @@ func _tick(_delta: float) -> void:
 ## Declared from the design (§8.7's clauses, stated as checkable components and claims).
 func get_fragment_manifest() -> Dictionary:
 	return {
+		# Nothing here charges a toll: a player who plays it perfectly finishes whole, so this
+		# fragment may be socketed onto a SAFE arm of a branch point.
+		"route_class": "clean",
+		"safe_route_test": "--test-push-chamber",
 		"components": [
 			{"id": "crates", "kind": "node", "node_class": "PushTarget",
 				"count": GOAL_CELLS.size()},

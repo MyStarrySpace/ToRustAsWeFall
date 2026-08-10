@@ -89,6 +89,10 @@ func _spawn_tangler() -> void:
 ## declared fact rather than an accident of the current layout.
 func get_fragment_manifest() -> Dictionary:
 	return {
+		# Nothing here charges a toll: a player who plays it perfectly finishes whole, so this
+		# fragment may be socketed onto a SAFE arm of a branch point.
+		"route_class": "clean",
+		"safe_route_test": "--test-loudest-one",
 		"components": [
 			{"id": "thicket_tangler", "kind": "character", "char_prefix": "thicket_tangler", "count": 1},
 			{"id": "no_scarpet", "kind": "node", "node_class": "Scarpet", "count": 0},

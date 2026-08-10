@@ -846,6 +846,10 @@ func get_preview_anchors() -> Dictionary:
 ## one Scarpet and one Capbage in each of the hiding and flora bays.
 func get_fragment_manifest() -> Dictionary:
 	return {
+		# Nothing here charges a toll: a player who plays it perfectly finishes whole, so this
+		# fragment may be socketed onto a SAFE arm of a branch point.
+		"route_class": "clean",
+		"safe_route_test": "--test-showcase-gallery",
 		"components": [
 			{"id": "gallery_enemies", "kind": "character", "char_prefix": "gallery_", "count": 4},
 			{"id": "scarpet_covers", "kind": "node", "node_class": "Scarpet", "count": 2},

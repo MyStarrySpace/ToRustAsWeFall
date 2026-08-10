@@ -22,6 +22,7 @@ const MANIFEST := {
 	"membrane": "Membrane", "pipe": "Pipe", "portal": "Portal",
 	"root_slide": "RootSlide", "shelter": "Shelter", "shortcut_gate": "ShortcutGate",
 	"terminal": "Terminal", "water_control": "WaterControl", "workbench": "Workbench",
+	"moving_platform": "MovingPlatform", "rising_water_crossing": "RisingWaterCrossing",
 	"capbage": "Capbage", "scarpet": "Scarpet", "hushbloom": "Hushbloom",
 	"flure": "Flure", "seefern": "Seefern", "climbvine": "Climbvine",
 	"gasafoetida": "Gasafoetida", "forget_me_nots": "ForgetMeNots",
@@ -63,22 +64,60 @@ const DRESSING_MANIFEST := {
 	"water_band_trough_b": "WaterBandTroughB", "water_band_trough_c": "WaterBandTroughC",
 	"deck_sluice": "DeckSluice",
 	"deck_sluice_b": "DeckSluiceB", "deck_sluice_c": "DeckSluiceC",
+	# The warning-leavings register — what a damaging route wears (the route-class
+	# law). This world's "bones" are dead flora (flora_taxonomy.md ambient register,
+	# the GDD flure dying states): a dead flure still baits siderophores, so the
+	# warning is the ecology telling the truth. SapscrapBody above is the register's
+	# carcass read.
+	"vine_skeleton": "VineSkeleton", "dead_flure": "DeadFlure",
+	# Channels biome feature vocabulary ("valve bank" — biomes.gd theme).
+	"valve_bank": "ValveBank",
 }
 
-## HAND-MODELED overrides — pieces whose geometry is MODELED through a
-## dedicated Blender area script (the model-in-Blender rule), sourced from
-## their OWN committed gltf: the archetype batch regen can never clobber them
-## again (the portal family wore a rejected batch read for weeks because the
-## chain owned their ids). id -> {path, node}. An override id must still be a
-## known manifest id (the coverage law is unchanged); only the SOURCE moves.
-const MODELED_OVERRIDES := {
-	"portal_ring_ornate": {
-		"path": "res://resources/models/channels/portal_fixtures.gltf",
-		"node": "PortalArch"},
-	"portal_pad_rings": {
-		"path": "res://resources/models/channels/portal_fixtures.gltf",
-		"node": "PortalPadRing"},
+## DISTRICT piece sets — an archetype is the abstract gameplay noun; a district
+## STYLES it. The Channels render `water_control` as rusted hydraulic hardware;
+## the Stacks will render the same noun as drawer-stack furniture. So geometry is
+## resolved through the ACTIVE district's set FIRST, with the archetype gltf as the
+## fallback for nouns that district has not styled yet. Adding a district is adding
+## one entry here plus its `<district>_pieces` Blender file.
+##
+## A district set also protects hand-modeled work: the archetype batch regen owns
+## only its own gltf, so it can never clobber a district piece (the portal family
+## wore a rejected batch read for weeks when the chain owned those ids).
+const DISTRICT_PIECES := {
+	"channels": {
+		"path": "res://resources/models/channels/channels_pieces.gltf",
+		"pieces": {
+			"portal_ring_ornate": "PortalArch",
+			"portal_pad_rings": "PortalPadRing",
+			"vine_skeleton": "VineSkeleton",
+			"dead_flure": "DeadFlure",
+			"valve_bank": "ValveBank",
+		},
+	},
 }
+
+## The district whose styling piece lookups resolve through. Act 1 is the Channels;
+## a scene set elsewhere calls `set_district()` as it builds.
+static var _district: String = "channels"
+
+
+static func set_district(district_id: String) -> void:
+	_district = district_id
+
+
+static func get_district() -> String:
+	return _district
+
+
+## {path, node} for `content_id` in the active district, or {} when that district
+## does not style this noun (the caller then falls back to the archetype set).
+static func _district_source(content_id: String) -> Dictionary:
+	var set_data: Dictionary = DISTRICT_PIECES.get(_district, {})
+	var pieces: Dictionary = set_data.get("pieces", {})
+	if not pieces.has(content_id):
+		return {}
+	return {"path": str(set_data["path"]), "node": str(pieces[content_id])}
 
 # Only the PackedScene is cached; each call instantiates, clones the named
 # piece, and frees the scratch instance — a live never-in-tree template Node
@@ -120,17 +159,21 @@ static func instantiate(content_id: String) -> Node3D:
 		push_warning("ArchetypePieceLibrary: no piece for content id '%s'" % content_id)
 		return null
 	var packed: PackedScene = null
-	if MODELED_OVERRIDES.has(content_id):
-		var ov: Dictionary = MODELED_OVERRIDES[content_id]
-		node_name = str(ov["node"])
-		var ov_path := str(ov["path"])
-		if not _override_packed.has(ov_path):
-			var loaded = load(ov_path)
-			_override_packed[ov_path] = loaded if loaded is PackedScene else null
-		packed = _override_packed[ov_path]
+	var source_path := SCENE_PATH
+	var district: Dictionary = _district_source(content_id)
+	if not district.is_empty():
+		node_name = str(district["node"])
+		source_path = str(district["path"])
+		if not _override_packed.has(source_path):
+			var loaded = load(source_path)
+			_override_packed[source_path] = loaded if loaded is PackedScene else null
+		packed = _override_packed[source_path]
 		if packed == null:
-			push_warning("ArchetypePieceLibrary: modeled override missing: %s" % ov_path)
+			push_warning("ArchetypePieceLibrary: %s piece set missing: %s"
+				% [_district, source_path])
 	if packed == null:
+		source_path = SCENE_PATH
+		node_name = _node_name_for(content_id)
 		packed = _ensure_packed()
 	if packed == null:
 		return null
@@ -139,7 +182,7 @@ static func instantiate(content_id: String) -> Node3D:
 	var clone: Node3D = null
 	if node == null or not (node is Node3D):
 		push_warning("ArchetypePieceLibrary: piece node '%s' missing from %s"
-			% [node_name, SCENE_PATH])
+			% [node_name, source_path])
 	else:
 		clone = (node as Node3D).duplicate() as Node3D
 		clone.transform = Transform3D.IDENTITY

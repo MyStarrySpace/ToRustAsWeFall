@@ -193,6 +193,10 @@ func get_grid_data() -> Dictionary:
 ## the bodies the effects act on. --test-fragment-manifest proves the built scene matches.
 func get_fragment_manifest() -> Dictionary:
 	return {
+		# Nothing here charges a toll: a player who plays it perfectly finishes whole, so this
+		# fragment may be socketed onto a SAFE arm of a branch point.
+		"route_class": "clean",
+		"safe_route_test": "--test-set-piece-showcase",
 		"components": [
 			{"id": "crawl_mouths", "kind": "node", "node_class": "CrawlTunnel", "count": 4},
 			{"id": "hub_wheel", "kind": "interactable", "node_name": "HubWheel"},

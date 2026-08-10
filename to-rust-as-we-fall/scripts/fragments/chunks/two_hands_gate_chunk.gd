@@ -170,6 +170,10 @@ func get_preview_camera_recenter_target() -> Vector3:
 ## and the second crossing cannot happen.
 func get_fragment_manifest() -> Dictionary:
 	return {
+		# Nothing here charges a toll: a player who plays it perfectly finishes whole, so this
+		# fragment may be socketed onto a SAFE arm of a branch point.
+		"route_class": "clean",
+		"safe_route_test": "--test-two-hands-gate",
 		"components": [
 			{"id": "gate_sentry", "kind": "character", "char_prefix": "gate_sentry", "count": 1},
 			{"id": "crossing_pads", "kind": "node", "node_class": "PortalPad", "count": 2},
