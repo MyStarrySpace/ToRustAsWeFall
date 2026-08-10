@@ -44,6 +44,7 @@ var _portal_provider: Callable = Callable()
 var _petal_mat: StandardMaterial3D
 var _head: MeshInstance3D
 var _body: MeshInstance3D
+var _rig: FloraRig = null
 var _visual_root: Node3D
 var _visual_meshes: Array[MeshInstance3D] = []
 var _effect_origin := Vector3.INF
@@ -126,6 +127,22 @@ func _wire_outline() -> void:
 	set_outline_target(target)
 
 func _build_visual() -> void:
+	# A rigged body first: this species' states are a FOLD — the leaflets close "in
+	# a wave along each rachis" when it fires — and the fold is what tells the player
+	# it has gone off. The portable presenter stays the fallback, so a missing rig
+	# still leaves a working, readable plant.
+	if FloraRig.has_rig("hushbloom"):
+		var rigged := FloraRig.new()
+		rigged.name = "HushbloomVisual"
+		add_child(rigged)
+		if rigged.setup("hushbloom"):
+			_rig = rigged
+			_visual_root = rigged
+			_visual_meshes.clear()
+			for m in rigged.meshes():
+				_visual_meshes.append(m)
+			return
+		rigged.queue_free()
 	_visual_root = BiotaPlaceholderCatalogScript.instantiate(VISUAL_KEY)
 	if _visual_root == null:
 		push_error("Hushbloom could not instantiate its portable biota presenter")
@@ -533,6 +550,7 @@ func _apply_runtime_surface(phase: String) -> void:
 	visible = phase != PHASE_PICKED
 	_used = phase == PHASE_PICKED
 	set_interaction_enabled(phase == PHASE_CHARGED and pickable)
+	_play_phase_clip(phase)
 	if _head != null:
 		# The external signal family is the charged compound reservoir. Body leaves
 		# remain after a burst; the luminous crown returns only when authority says
@@ -551,6 +569,36 @@ func _apply_runtime_surface(phase: String) -> void:
 		_:
 			_petal_mat.emission_energy_multiplier = SIGNAL_SPENT_EMISSION
 			_petal_mat.albedo_color = Color(0.38, 0.38, 0.4)
+
+
+
+## The rigged body's transitions. A phase CHANGE is played; the first application is
+## posed instead, because a bloom that was already discharged when the scene loaded
+## should look discharged rather than fire again in front of the player.
+##
+## Cosmetic throughout: authority owns the phase, this only decides what the leaves
+## are doing while it is true.
+const _PHASE_CLIPS := {
+	PHASE_DISCHARGED: "hushbloom_trigger",
+	PHASE_RECHARGING: "hushbloom_recharge",
+}
+
+var _surfaced_phase := ""
+
+func _play_phase_clip(phase: String) -> void:
+	if _rig == null or not is_instance_valid(_rig):
+		return
+	var clip := str(_PHASE_CLIPS.get(phase, ""))
+	var first := _surfaced_phase.is_empty()
+	_surfaced_phase = phase
+	if clip.is_empty():
+		return
+	# A plant that was already spent when the scene loaded plays its fold once on
+	# arrival and then holds it, which is the right end state by a cheap route.
+	if first:
+		_rig.play_to_end(clip)
+	else:
+		_rig.play(clip)
 
 
 func _source_item_id() -> String:

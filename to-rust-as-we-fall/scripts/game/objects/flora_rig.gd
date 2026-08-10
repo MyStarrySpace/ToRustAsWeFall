@@ -87,15 +87,17 @@ func play(clip: String, from_start := true) -> void:
 	_player.play(clip)
 
 
-## Hold a clip's FINAL pose without playing it — the state a plant is already in
-## when it comes into view (a Capbage that was sealed before the player arrived).
-func hold_end(clip: String) -> void:
-	if _player == null or not _player.has_animation(clip):
-		return
-	var anim := _player.get_animation(clip)
-	_player.play(clip)
-	_player.seek(anim.length, true)
-	_player.pause()
+## Play a clip and leave the plant in its FINAL pose — which is what a transition
+## ends in anyway, since an AnimationPlayer keeps the last frame applied.
+##
+## This is deliberately not a "pose without playing": seek(), pause() and advance()
+## are all no-ops issued straight after play() because playback has not been
+## processed yet, and fighting that produced a plant parked at a random frame. The
+## honest cost is that a plant which was ALREADY in a state when the scene loaded
+## plays its transition once on arrival. Cheap, self-correcting, and the end state
+## is right either way.
+func play_to_end(clip: String) -> void:
+	play(clip)
 
 
 func is_playing(clip := "") -> bool:
