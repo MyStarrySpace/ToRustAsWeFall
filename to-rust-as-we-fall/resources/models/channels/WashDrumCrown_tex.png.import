@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bi7pexhe6l5j6"
-path="res://.godot/imported/CrownRings_emissive.png-68732ba31756616d682f5d8f7240ea08.ctex"
+uid="uid://blk0yhmsq71vs"
+path="res://.godot/imported/WashDrumCrown_tex.png-f33aa0cee93339e6c8d2781148025b03.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://resources/models/channels/CrownRings_emissive.png"
-dest_files=["res://.godot/imported/CrownRings_emissive.png-68732ba31756616d682f5d8f7240ea08.ctex"]
+source_file="res://resources/models/channels/WashDrumCrown_tex.png"
+dest_files=["res://.godot/imported/WashDrumCrown_tex.png-f33aa0cee93339e6c8d2781148025b03.ctex"]
 
 [params]
 
