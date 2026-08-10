@@ -75,7 +75,7 @@ const DRESSING_MANIFEST := {
 }
 
 ## DISTRICT piece sets — an archetype is the abstract gameplay noun; a district
-## STYLES it. The Channels render `water_control` as rusted hydraulic hardware;
+## STYLES it. The Plumbing Power Project renders `water_control` as rusted hydraulics;
 ## the Stacks will render the same noun as drawer-stack furniture. So geometry is
 ## resolved through the ACTIVE district's set FIRST, with the archetype gltf as the
 ## fallback for nouns that district has not styled yet. Adding a district is adding
