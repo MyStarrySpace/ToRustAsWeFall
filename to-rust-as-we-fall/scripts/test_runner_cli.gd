@@ -1595,6 +1595,9 @@ func _ready() -> void:
 			"--test-rally-is-atomic":
 				ran_test = true
 				_test_rally_is_atomic()
+			"--test-basin-regroup-reachable":
+				ran_test = true
+				await _test_basin_regroup_reachable()
 			"--test-run-fork-is-a-branch-point":
 				ran_test = true
 				_test_run_fork_is_a_branch_point()
@@ -2318,6 +2321,7 @@ func _run_all_tests() -> void:
 	await _test_risk_lane_price()
 	_test_branch_point_sockets()
 	_test_rally_is_atomic()
+	await _test_basin_regroup_reachable()
 	_test_run_fork_is_a_branch_point()
 	_test_generation_probe()
 	_test_safe_arm_refuses_a_toll()
@@ -10353,6 +10357,94 @@ func _test_run_fork_is_a_branch_point() -> void:
 ## {aster: accepted, endo: accepted, peris: refused} is NOT a silently decomposed group verb; it is a
 ## whole-party gesture with an exact, visible refusal attached, and a policy is entitled to learn
 ## from it only if that refusal actually reached the player.
+## CAN THE PARTY STILL REGROUP WHILE THE BASIN FLOODS? The persona probe loops here: every refused
+## rally in a run is peris -- six of six, never aster, never endo -- so the party never assembles, the
+## crossing console answers ASSIST WAITING, and the policy rallies again forever.
+##
+## Two very different things produce that symptom, and they want opposite fixes, so this measures
+## which it is rather than assuming:
+##   - the flood genuinely CUTS PERIS OFF, leaving no route to any regroup point. Perfect play then
+##     cannot assemble the party, which is the clean-line law failing at the level;
+##   - or a route exists and the rally simply handed her a slot she cannot reach, while a reachable
+##     free slot sat reserved for someone else. That is an assignment bug, and the level is fine.
+##
+## `_assign_party_cells` fans slots laterally by member INDEX and takes the nearest free cell; it
+## never asks whether THAT member can reach THAT cell. So the second explanation is mechanically
+## possible, and the difference is worth measuring at every phase of the water.
+func _test_basin_regroup_reachable() -> void:
+	_test_name = "Basin Regroup Reachable"
+	var inst = await _instantiate_preview_chunk_and_wait("basin_fill_proof", 30)
+	if inst == null:
+		_assert_true(false, "the basin fill proof instantiates")
+		return
+	var chunk := _find_fragment_chunk_root(inst)
+	var gs = inst.get("_game_state")
+	if chunk == null or gs == null:
+		_assert_true(false, "the basin exposes its chunk and game state")
+		inst.queue_free()
+		await get_tree().process_frame
+		return
+
+	var party: Array[String] = []
+	for member_id in ["aster", "peris", "endo"]:
+		if gs.characters.has(member_id):
+			party.append(member_id)
+	_assert_true(party.size() >= 2, "the basin fields a party to regroup")
+
+	# Sample across the water's whole rota rather than at one instant: a level that offers a regroup
+	# point only while drained is exactly the level that strands somebody when it fills.
+	var stranded_samples: Array = []
+	var badly_assigned_samples: Array = []
+	# Rally targets are swept across the level, not just at the party's own feet: Eazy picks visible
+	# GROUND affordances, so the question is whether some reachable-looking spot refuses a member.
+	var probe_targets: Array[Vector3] = []
+	for member_id in party:
+		probe_targets.append(gs.get_position(member_id))
+	if gs.grid != null:
+		for gx in range(1, gs.grid.width, maxi(2, gs.grid.width / 6)):
+			for gz in range(1, gs.grid.height, maxi(2, gs.grid.height / 6)):
+				if gs.grid.is_walkable(gx, gz, {}, {}, 0):
+					probe_targets.append(gs.grid.grid_to_world(Vector2i(gx, gz)))
+	for sample in range(24):
+		inst.headless_advance(1.0, 0.1)
+		var anchor: Vector3 = probe_targets[sample % probe_targets.size()]
+		var preflight: Dictionary = gs.compute_rally_preflight(party, anchor)
+		var blocked: Dictionary = preflight.get("blocked_reasons", {}) as Dictionary
+		if blocked.is_empty():
+			continue
+		var assigned: Array = preflight.get("requested_destinations",
+			preflight.get("destinations", [])) as Array
+		for member_v in blocked.keys():
+			var member_id := str(member_v)
+			# Could this member have reached ANY of the slots the rally laid out?
+			var reachable_slot_existed := false
+			for slot_v in assigned:
+				if not (slot_v is Vector3):
+					continue
+				var navigation: Dictionary = gs.compute_preview_navigation(
+					member_id, slot_v as Vector3)
+				if (navigation.get("path", []) as Array).size() >= 2:
+					reachable_slot_existed = true
+					break
+			if reachable_slot_existed:
+				badly_assigned_samples.append("%s@t%d" % [member_id, sample])
+			else:
+				stranded_samples.append("%s@t%d" % [member_id, sample])
+
+	# THE MEASUREMENT. Neither list being empty is a finding; which one is not empty is the answer.
+	print("[BASINREGROUP] stranded=%s badly_assigned=%s" % [
+		str(stranded_samples), str(badly_assigned_samples)])
+	_assert_true(badly_assigned_samples.is_empty(),
+		("a rally never hands a member a slot it cannot reach while a reachable slot was laid out "
+		+ "(%s)") % str(badly_assigned_samples))
+	_assert_true(stranded_samples.is_empty(),
+		("the party can regroup at every phase of the water -- nobody is cut off with no route to "
+		+ "any slot (%s)") % str(stranded_samples))
+
+	inst.queue_free()
+	await get_tree().process_frame
+
+
 func _test_rally_is_atomic() -> void:
 	_test_name = "Rally Is Atomic"
 	var sched := EventScheduler.new()
