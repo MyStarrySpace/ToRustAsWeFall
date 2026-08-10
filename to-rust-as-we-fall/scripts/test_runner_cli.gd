@@ -10216,7 +10216,12 @@ func _test_generation_probe() -> void:
 		var node: Dictionary = node_v
 		if str(node.get("role", "")) in ["boundary", "shelter_arrival"]:
 			continue
+		# A genuine forced toll: the node charges, it is on the mandatory spine, and every line it
+		# authors is a costly one. Leaving a safe approach in place would make the toll a CHOICE,
+		# which is legal content and not what this assertion is about.
 		node["guaranteed_hp_cost"] = 30.0
+		node["optional"] = false
+		node["approaches"] = [{"id": "forced", "risk": "direct", "requires": []}]
 		injected = true
 		break
 	_assert_true(injected, "the fixture has an interior node to make expensive")
@@ -42060,6 +42065,38 @@ func _test_archetype_pieces() -> void:
 	_assert_true(failed_ids.is_empty(), "every manifest piece instantiates (failed: %s)" % str(failed_ids))
 	_assert_true(meshless_ids.is_empty(), "every piece carries mesh geometry (meshless: %s)" % str(meshless_ids))
 	_assert_true(verbful_ids.is_empty(), "pieces are BODIES — no collision/interactables (verbful: %s)" % str(verbful_ids))
+
+	# (2b) STATE VARIANTS are real bodies, not the same body under another name.
+	# The tending loop's whole visible payoff is that a tended plant LOOKS tended,
+	# so a variant that renders identically to its default is a state that does not
+	# exist. Compared by vertex signature, which a repaint alone would not change --
+	# so the check also proves the variant carries its own TEXTURE, by requiring a
+	# distinct material name where the geometry matches.
+	for species_v in ArchetypePieceLibrary.PIECE_STATES.keys():
+		var species := str(species_v)
+		var states: Array = ArchetypePieceLibrary.piece_states(species)
+		var seen: Dictionary = {}
+		for state_v in states:
+			var state := str(state_v)
+			var body := ArchetypePieceLibrary.instantiate(species, state)
+			_assert_true(body != null, "%s instantiates in state '%s'" % [species, state])
+			if body == null:
+				continue
+			var sig := _flora_body_signature(body)
+			_assert_true(not seen.has(sig),
+				"%s state '%s' is a distinct body, not a copy of '%s'"
+					% [species, state, str(seen.get(sig, ""))])
+			seen[sig] = state
+			body.free()
+		# asking for a state a piece does not have must fall back, never fail
+		var fallback := ArchetypePieceLibrary.instantiate(species, "no_such_state")
+		_assert_true(fallback != null,
+			"%s falls back to its default body for an unknown state" % species)
+		if fallback != null:
+			_assert_true(not fallback.has_meta("archetype_piece_state"),
+				"%s does not claim a state it could not resolve" % species)
+			fallback.free()
+
 	# (3) branch placements in the live wash relay wear pieces
 	var inst = await _instantiate_preview_chunk_and_wait("wash_relay", 6)
 	if inst != null:
@@ -42073,6 +42110,29 @@ func _test_archetype_pieces() -> void:
 		_assert_true(pieces >= 1,
 			"branch placements wear library pieces (found %d BranchContent_ nodes)" % pieces)
 		await _dispose_scene(inst)
+
+## A flora body's identity for state comparison: its vertex counts plus its
+## material names, so a repaint counts as a different body even when the geometry
+## is deliberately shared between states.
+func _flora_body_signature(body: Node) -> String:
+	var parts: Array = []
+	var stack: Array = [body]
+	while not stack.is_empty():
+		var n = stack.pop_back()
+		if n is MeshInstance3D and n.mesh != null:
+			var mesh: Mesh = n.mesh
+			for i in range(mesh.get_surface_count()):
+				var arrays := mesh.surface_get_arrays(i)
+				var count := 0
+				if arrays.size() > 0 and arrays[0] != null:
+					count = (arrays[0] as PackedVector3Array).size()
+				var mat := mesh.surface_get_material(i)
+				parts.append("%d:%s" % [count, mat.resource_name if mat != null else "-"])
+		for c in n.get_children():
+			stack.append(c)
+	parts.sort()
+	return "|".join(parts)
+
 
 func _trigger_wash_climbvine_tend(chunk: Node, gs, actor := "peris") -> bool:
 	var source: Node = chunk.find_child("ClimbvineTendAnchor", true, false)
@@ -47279,6 +47339,22 @@ func _test_dwell_follows_its_scheduler() -> void:
 		abandoned.advance_ticks(0.05)
 	_assert_true(not second[0],
 		"a scheduler the interactable no longer uses cannot complete its hold")
+
+	# A HOLD KEEPS THE TIME IT HAS BANKED. A redundant trigger for the same body -- a second party
+	# member crossing the zone, an arrival receipt landing behind a body already standing there --
+	# must not restart the clock, or a long hold can never finish inside a window sized for its own
+	# duration, and a player watches their progress silently reset.
+	var banked := [false]
+	it.interacted.connect(func(): banked[0] = true)
+	it._player_in_range = true
+	it._begin_dwell()
+	for _i in range(12):
+		live.advance_ticks(0.05)
+	it._begin_dwell()                     # the redundant trigger
+	for _i in range(10):
+		live.advance_ticks(0.05)
+	_assert_true(banked[0],
+		"a redundant trigger does not throw away the time a hold has already banked")
 
 	it.queue_free()
 	host.queue_free()

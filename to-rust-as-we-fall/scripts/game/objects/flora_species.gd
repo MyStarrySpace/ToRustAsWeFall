@@ -166,3 +166,23 @@ static func peris_word(key: String) -> String:
 		return ""
 	var words: Array = rec.get("peris_words", [])
 	return str(words[0]) if not words.is_empty() else ""
+
+## Health state -> the modelled body that shows it. The register above has always
+## named these states; this is where a state stops being a number and becomes
+## something the player can see. A species with no entry (or a state it has no
+## body for) falls through to "" and gets its default body, which is what the
+## piece library does with an unknown state anyway.
+##
+## Charge states (a Hushbloom that has fired, a sealed Capbage) are a DIFFERENT
+## axis and are asked for by name at the point the mechanism changes, not through
+## this table — a fired Hushbloom is not an unhealthy one.
+const STATE_BODIES := {
+	"seefern": {State.HEALTHY: "tended", State.DORMANT: "wild", State.STRESSED: "stressed"},
+	"scarpet": {State.HEALTHY: "tended", State.DORMANT: "wild", State.DYING: "senescent"},
+}
+
+
+## The piece-library state name for `key` in `state`, or "" for its default body.
+static func body_state(key: String, state: int) -> String:
+	var rec: Dictionary = STATE_BODIES.get(key, {})
+	return str(rec.get(state, ""))

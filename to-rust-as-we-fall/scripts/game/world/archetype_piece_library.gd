@@ -202,7 +202,29 @@ static func _node_name_for(content_id: String) -> String:
 
 ## A fresh visual body for `content_id`, transform reset to identity — or null
 ## (loudly) when the vocabulary doesn't know it or the model lost the node.
-static func instantiate(content_id: String) -> Node3D:
+## STATE VARIANTS. A tendable plant is supposed to LOOK tended, and until the
+## variants existed every species shipped one body, so the tending loop had nothing
+## to show for itself. A variant is one more node in the same gltf named
+## `<Piece>__<state>`; the default state keeps the bare name. Asking for a state a
+## piece does not have is not an error — it quietly gives you the default body,
+## which is what a caller wants when only some species have variants.
+const STATE_SEPARATOR := "__"
+
+## Variant states each content id ships, default first. Declared rather than probed
+## so a test can assert the set without loading the model.
+const PIECE_STATES := {
+	"seefern": ["tended", "wild", "stressed"],
+	"scarpet": ["tended", "wild", "senescent"],
+	"hushbloom": ["charged", "triggered", "recharging"],
+}
+
+
+## The states `content_id` ships, or [] when it has only one body.
+static func piece_states(content_id: String) -> Array:
+	return (PIECE_STATES.get(content_id, []) as Array).duplicate()
+
+
+static func instantiate(content_id: String, state: String = "") -> Node3D:
 	# The district is asked FIRST, and it alone may know the id: a district's own
 	# feature vocabulary never appears in the shared manifests, so requiring a
 	# manifest name up front would make those pieces unaskable.
@@ -231,7 +253,14 @@ static func instantiate(content_id: String) -> Node3D:
 	if packed == null:
 		return null
 	var scratch := packed.instantiate()
-	var node := scratch.find_child(node_name, true, false)
+	var node: Node = null
+	var resolved_state := ""
+	if not state.is_empty():
+		node = scratch.find_child(node_name + STATE_SEPARATOR + state, true, false)
+		if node != null:
+			resolved_state = state
+	if node == null:
+		node = scratch.find_child(node_name, true, false)
 	var clone: Node3D = null
 	if node == null or not (node is Node3D):
 		push_warning("ArchetypePieceLibrary: piece node '%s' missing from %s"
@@ -240,5 +269,7 @@ static func instantiate(content_id: String) -> Node3D:
 		clone = (node as Node3D).duplicate() as Node3D
 		clone.transform = Transform3D.IDENTITY
 		clone.set_meta("archetype_piece_id", content_id)
+		if not resolved_state.is_empty():
+			clone.set_meta("archetype_piece_state", resolved_state)
 	scratch.free()
 	return clone
