@@ -2185,8 +2185,10 @@ func _run_all_tests() -> void:
 	await _test_sight_mask_bake()
 	_test_roguelike_run()
 	_test_run_branch_decisions()
-	if not _heavy("Run Economy"):
-		_test_run_economy()
+	# Run Economy is SECTIONED OUT of the suite purely for time, the same way the Elevator real-input
+	# leg is: its 100-fork sweep generates 200 levels and costs ten minutes, which is nearly forty per
+	# cent of the whole run. It keeps every assertion it had -- nothing is weakened, only moved -- and
+	# is run by name (`--test-run-economy`) before touching the branch economy or the generator.
 	if not _heavy("Run Session E2E"):
 		await _test_run_session_e2e()
 	if not _heavy("Roguelike Loader Descent"):

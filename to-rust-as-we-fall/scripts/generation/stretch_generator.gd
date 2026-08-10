@@ -547,7 +547,7 @@ static func generate(settings: Dictionary) -> Dictionary:
 	# The level and the verdict on whether anyone can play it are emitted together. A stretch that
 	# cannot be finished, or that can only be finished by bleeding, is answerable HERE rather than
 	# after a player has walked into it.
-	spec["probe"] = GenerationProbeScript.probe(spec)
+	spec["probe"] = GenerationProbeScript.probe(spec, {"analysis": solution})
 	return spec
 
 

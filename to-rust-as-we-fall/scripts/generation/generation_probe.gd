@@ -53,8 +53,12 @@ static func probe(spec: Dictionary, opts: Dictionary = {}) -> Dictionary:
 	if not bool(spec.get("success", false)):
 		return _verdict(false, false, false, false, [], ["generation_failed"], {})
 
-	# 1. PASSABLE.
-	var analysis: Dictionary = SolverScript.analyze_spec(spec)
+	# 1. PASSABLE. Generation has already walked the spine once to build the level; re-walking it here
+	# would be a second answer to a question already answered, and the solver is the most expensive
+	# thing either of us does. A caller that has the analysis hands it over.
+	var analysis: Dictionary = opts.get("analysis", {}) as Dictionary
+	if analysis.is_empty():
+		analysis = SolverScript.analyze_spec(spec)
 	var passable := bool(analysis.get("shadow_solvable", false)) \
 		and int(analysis.get("solvable_loadout_count", 0)) > 0
 	if not passable:
