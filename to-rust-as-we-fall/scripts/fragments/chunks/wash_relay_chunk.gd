@@ -2016,7 +2016,10 @@ func _build_organic_props() -> void:
 			cluster.transform = Transform3D(Basis(Vector3.UP, a + 0.9),
 				radial * (drum_r + 0.55) + Vector3(0.35 * sin(a + 1.6), float(t["y"]) + 0.02, 0.35 * cos(a + 1.6)))
 			cluster.name = "Biolume_%d" % roundi(a * 100.0)
-			cluster.set_meta("mount", "wall")
+			# ATTACHED, not wall: the colony grows on the TRUNK, and at this height
+			# the drum has only its narrow neck, so there is no skin out here to be
+			# mounted on. The trunk is its cluster-mate and its actual support.
+			cluster.set_meta("mount", "attached")
 			cluster.set_meta("embed_ok", true)       # the colony nests in the trunk's roots
 			cluster.set_meta("cluster", "trunk_%d" % roundi(a * 100.0))
 			root.add_child(cluster)

@@ -15,7 +15,7 @@ signal tucked_in()
 @export var conceal_radius := 1.4
 
 var _gs   # GameState (Interactable keeps its own _game_state for data binding)
-var _head: MeshInstance3D
+var _head: Node3D
 var _concealment_origin := Vector3.INF
 
 ## Configure BEFORE adding to the tree (interaction_radius is read in _ready).
@@ -52,7 +52,18 @@ func _ready() -> void:
 	if not interacted.is_connected(_on_interacted):
 		interacted.connect(_on_interacted)
 
-func _build_head() -> MeshInstance3D:
+## The modelled leaf head — concentric leaf tiers around the dark apex cavity that
+## is the plant's whole affordance ("the cavity reads as doorway"). The library has
+## carried this body all along while the runtime drew a box; the box survives only
+## as the degrade path, so a missing model still leaves a clickable, hideable plant
+## rather than an invisible one.
+func _build_head() -> Node3D:
+	var body := ArchetypePieceLibrary.instantiate("capbage")
+	if body != null:
+		body.name = "Head"
+		add_child(body)
+		return body
+	push_warning("Capbage: no modelled body; falling back to the block head")
 	var mi := MeshInstance3D.new()
 	mi.name = "Head"
 	var bm := BoxMesh.new()
@@ -68,11 +79,28 @@ func _build_head() -> MeshInstance3D:
 	add_child(mi)
 	return mi
 
+
+## Every mesh in the head, so the outline traces the modelled silhouette instead of
+## only whichever mesh happened to be the root.
+func _head_meshes() -> Array:
+	var out: Array = []
+	var stack: Array = [_head]
+	while not stack.is_empty():
+		var n = stack.pop_back()
+		if n is MeshInstance3D:
+			out.append(n)
+		for c in n.get_children():
+			stack.append(c)
+	return out
+
 func _wire_outline() -> void:
 	var mgr := OutlineFeedbackManager.ensure(self)
 	if mgr == null or _head == null:
 		return
-	var target := mgr.outline_meshes(self, str(name) + "Outline", [_head], "capbage", maxf(1.0, interaction_radius))
+	var meshes := _head_meshes()
+	if meshes.is_empty():
+		return
+	var target := mgr.outline_meshes(self, str(name) + "Outline", meshes, "capbage", maxf(1.0, interaction_radius))
 	if target == null:
 		return
 	if target.has_method("set_interaction_delegate"):
