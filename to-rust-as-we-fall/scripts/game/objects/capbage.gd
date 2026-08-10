@@ -140,7 +140,7 @@ func conceals(world_pos: Vector3) -> bool:
 	var origin := global_position if _concealment_origin == Vector3.INF else _concealment_origin
 	var inside := Vector2(world_pos.x - origin.x, world_pos.z - origin.z).length() <= conceal_radius
 	if inside:
-		_last_occupied_ms = Time.get_ticks_msec()
+		_last_occupied_ms = Time.get_ticks_msec()  # @rendering_only: seal animation only
 	_refresh_seal()
 	return inside
 
@@ -158,7 +158,8 @@ const _OCCUPANCY_HOLD_MS := 700
 func _refresh_seal() -> void:
 	if _rig == null or not is_instance_valid(_rig):
 		return
-	var occupied := (Time.get_ticks_msec() - _last_occupied_ms) < _OCCUPANCY_HOLD_MS
+	# Which clip the leaves play; concealment itself never reads it.
+	var occupied := (Time.get_ticks_msec() - _last_occupied_ms) < _OCCUPANCY_HOLD_MS  # @rendering_only
 	if occupied == _sealed:
 		return
 	_sealed = occupied
