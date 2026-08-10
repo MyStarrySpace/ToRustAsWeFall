@@ -165,6 +165,14 @@ const DISTRICT_PIECES := {
 			"junction": "Junction",
 			"scan_arch": "ScanArch",
 			"drawer_spire": "DrawerSpire",
+			# The fixtures every district needs: a district that cannot tile its
+			# own floor borrows the Channels' wet deck and stops being the Stacks.
+			"deck_planks": "FloorTile",
+			"wall_panel_tile": "WallPanelTile",
+			"railing_run": "RailingRun",
+			"door_ironband": "RecordsDoor",
+			"cage_lamp": "ReadingLamp",
+			"gate_sign": "DepartmentSign",
 		},
 	},
 }
