@@ -895,7 +895,7 @@
 		{
 			"bufferView":39,
 			"componentType":5126,
-			"count":922,
+			"count":926,
 			"max":[
 				0.7500000596046448,
 				1.1266295909881592,
@@ -911,13 +911,13 @@
 		{
 			"bufferView":40,
 			"componentType":5126,
-			"count":922,
+			"count":926,
 			"type":"VEC3"
 		},
 		{
 			"bufferView":41,
 			"componentType":5123,
-			"count":1230,
+			"count":1236,
 			"type":"SCALAR"
 		},
 		{
@@ -951,7 +951,7 @@
 		{
 			"bufferView":45,
 			"componentType":5126,
-			"count":1021,
+			"count":1017,
 			"max":[
 				0.7400000095367432,
 				1.0769999027252197,
@@ -967,13 +967,13 @@
 		{
 			"bufferView":46,
 			"componentType":5126,
-			"count":1021,
+			"count":1017,
 			"type":"VEC3"
 		},
 		{
 			"bufferView":47,
 			"componentType":5123,
-			"count":1539,
+			"count":1533,
 			"type":"SCALAR"
 		},
 		{
@@ -1242,56 +1242,56 @@
 		},
 		{
 			"buffer":0,
-			"byteLength":11064,
+			"byteLength":11112,
 			"byteOffset":268608,
 			"target":34962
 		},
 		{
 			"buffer":0,
-			"byteLength":11064,
-			"byteOffset":279672,
+			"byteLength":11112,
+			"byteOffset":279720,
 			"target":34962
 		},
 		{
 			"buffer":0,
-			"byteLength":2460,
-			"byteOffset":290736,
+			"byteLength":2472,
+			"byteOffset":290832,
 			"target":34963
 		},
 		{
 			"buffer":0,
 			"byteLength":14952,
-			"byteOffset":293196,
+			"byteOffset":293304,
 			"target":34962
 		},
 		{
 			"buffer":0,
 			"byteLength":14952,
-			"byteOffset":308148,
+			"byteOffset":308256,
 			"target":34962
 		},
 		{
 			"buffer":0,
 			"byteLength":3732,
-			"byteOffset":323100,
+			"byteOffset":323208,
 			"target":34963
 		},
 		{
 			"buffer":0,
-			"byteLength":12252,
-			"byteOffset":326832,
+			"byteLength":12204,
+			"byteOffset":326940,
 			"target":34962
 		},
 		{
 			"buffer":0,
-			"byteLength":12252,
-			"byteOffset":339084,
+			"byteLength":12204,
+			"byteOffset":339144,
 			"target":34962
 		},
 		{
 			"buffer":0,
-			"byteLength":3078,
-			"byteOffset":351336,
+			"byteLength":3066,
+			"byteOffset":351348,
 			"target":34963
 		},
 		{
