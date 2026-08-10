@@ -140,6 +140,27 @@ func choose(option: Dictionary) -> Dictionary:
 				str(rejection_details)]
 		)
 		return candidate_spec
+
+	# THE SAFE ARM'S LAW. A player who took a route BECAUSE it was the safe one may not be handed a
+	# level that charges a toll. Every generated spec rides with its own probe, so this is answerable
+	# BEFORE the descent commits — and a candidate that breaks it is rejected exactly like a failed
+	# generation, leaving the player at the shelter to choose again rather than dropping them into it.
+	var safe_arm_breach := _safe_arm_breach(option, candidate_spec)
+	if safe_arm_breach != "":
+		candidate_spec = candidate_spec.duplicate(true)
+		candidate_spec["success"] = false
+		candidate_spec["ok"] = false
+		candidate_spec["error"] = "safe_route_would_charge_a_toll"
+		candidate_spec["run_transition_rejected"] = true
+		candidate_spec["requested_choice"] = str(option.get("id", ""))
+		candidate_spec["requested_depth"] = candidate_depth
+		candidate_spec["safe_arm_breach"] = safe_arm_breach
+		last_transition_rejection = candidate_spec.duplicate(true)
+		push_warning(
+			"RunSession rejected SAFE choice '%s' at depth %d: %s"
+			% [str(option.get("id", "")), candidate_depth, safe_arm_breach])
+		return candidate_spec
+
 	last_transition_rejection = {}
 	roster = candidate_roster
 	depth = candidate_depth
@@ -150,6 +171,31 @@ func choose(option: Dictionary) -> Dictionary:
 		"biome": str(spec.get("biome", "")),
 	})
 	return spec
+
+
+## Why a candidate is unfit for the arm the player chose, or "" when it is fit. Only the SAFE arm is
+## held to this: a route advertised as costly is allowed to cost, and its price is capped elsewhere by
+## the branch point's difficulty tier.
+static func _safe_arm_breach(option: Dictionary, candidate_spec: Dictionary) -> String:
+	if str(option.get("risk", "")) != "low":
+		return ""
+	# Only PROCEDURAL output is held to this. An authored finale, a chase interlude and the atom
+	# levels are not generated stretches: they never pass through the generator, carry no probe by
+	# construction, and answer to their own authored guarantees instead.
+	if str((candidate_spec.get("source", {}) as Dictionary).get("generator", "")) == "":
+		return ""
+	var probe: Dictionary = candidate_spec.get("probe", {})
+	if probe.is_empty():
+		# A GENERATED level with no probe cannot be offered as the safe way through: for procedural
+		# output, silence is not safety.
+		return "the safe route generated a level that carries no probe"
+	if not bool(probe.get("passable", false)):
+		return "the safe route generated a level nobody can finish: %s" % str(
+			probe.get("reasons", []))
+	if not bool(probe.get("lossless", false)):
+		return "the safe route generated a level that charges a toll: %s" % str(
+			probe.get("reasons", []))
+	return ""
 
 
 ## Surface the validation section that actually rejected the candidate. Early
