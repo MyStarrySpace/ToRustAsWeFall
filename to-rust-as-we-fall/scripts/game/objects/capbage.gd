@@ -16,7 +16,14 @@ signal tucked_in()
 
 var _gs   # GameState (Interactable keeps its own _game_state for data binding)
 var _head: Node3D
+var _rig: FloraRig = null
 var _concealment_origin := Vector3.INF
+## Sealing is DERIVED from occupancy and purely cosmetic: the chunk's concealment
+## pass asks conceals() on its own cadence, so the plant notices it is being used
+## and closes. Nothing gameplay-facing reads these back — the hide works whether or
+## not the leaves have finished moving.
+var _sealed := false
+var _last_occupied_ms := -1_000_000
 
 ## Configure BEFORE adding to the tree (interaction_radius is read in _ready).
 ##
@@ -52,12 +59,21 @@ func _ready() -> void:
 	if not interacted.is_connected(_on_interacted):
 		interacted.connect(_on_interacted)
 
-## The modelled leaf head — concentric leaf tiers around the dark apex cavity that
-## is the plant's whole affordance ("the cavity reads as doorway"). The library has
-## carried this body all along while the runtime drew a box; the box survives only
-## as the degrade path, so a missing model still leaves a clickable, hideable plant
-## rather than an invisible one.
+## The leaf head — concentric leaf tiers around the dark apex cavity that is the
+## plant's whole affordance ("the cavity reads as doorway").
+##
+## Preference order is RIGGED, then the static modelled piece, then the block. The
+## rigged body is what lets the plant SEAL: the spec's states are a fold, not two
+## shapes, and the fold is what a player watches when they tuck in.
 func _build_head() -> Node3D:
+	if FloraRig.has_rig("capbage"):
+		var rigged := FloraRig.new()
+		rigged.name = "Head"
+		add_child(rigged)
+		if rigged.setup("capbage"):
+			_rig = rigged
+			return rigged
+		rigged.queue_free()
 	var body := ArchetypePieceLibrary.instantiate("capbage")
 	if body != null:
 		body.name = "Head"
@@ -81,9 +97,12 @@ func _build_head() -> Node3D:
 
 
 ## Every mesh in the head, so the outline traces the modelled silhouette instead of
-## only whichever mesh happened to be the root.
+## only whichever mesh happened to be the root. A rigged head keeps its meshes under
+## a Skeleton3D, so this walks rather than reaching for a known child.
 func _head_meshes() -> Array:
 	var out: Array = []
+	if _head == null:
+		return out
 	var stack: Array = [_head]
 	while not stack.is_empty():
 		var n = stack.pop_back()
@@ -111,9 +130,39 @@ func _on_interacted() -> void:
 	tucked_in.emit()
 
 ## True if `world_pos` is inside this Capbage's tight-hide radius (a member there is CONCEAL_FULL).
+##
+## The chunk's concealment pass calls this for every member on its own cadence, so
+## it is also where the plant learns it is being USED. Noting that is what lets the
+## head seal without any chunk having to tell it to — the four separate concealment
+## passes in the codebase all break on the first match and discard which plant it
+## was, so there is nothing upstream to ask.
 func conceals(world_pos: Vector3) -> bool:
 	var origin := global_position if _concealment_origin == Vector3.INF else _concealment_origin
-	return Vector2(world_pos.x - origin.x, world_pos.z - origin.z).length() <= conceal_radius
+	var inside := Vector2(world_pos.x - origin.x, world_pos.z - origin.z).length() <= conceal_radius
+	if inside:
+		_last_occupied_ms = Time.get_ticks_msec()
+	_refresh_seal()
+	return inside
+
+
+## Seal while someone is inside, open once they have gone.
+##
+## This rides the concealment call rather than _process because Interactable turns
+## per-frame processing OFF whenever it has no label or dwell work to do — a
+## _process override here simply never runs. The pass asks every plant about every
+## member on its own cadence, so it is a reliable heartbeat, and the hold window
+## covers the gap between ticks so the head cannot flap. Cosmetic and derived: the
+## hide works whether or not the leaves have finished moving.
+const _OCCUPANCY_HOLD_MS := 700
+
+func _refresh_seal() -> void:
+	if _rig == null or not is_instance_valid(_rig):
+		return
+	var occupied := (Time.get_ticks_msec() - _last_occupied_ms) < _OCCUPANCY_HOLD_MS
+	if occupied == _sealed:
+		return
+	_sealed = occupied
+	_rig.play("capbage_seal" if occupied else "capbage_open")
 
 
 func get_concealment_origin() -> Vector3:
