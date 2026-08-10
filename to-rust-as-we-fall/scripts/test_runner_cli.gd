@@ -1592,6 +1592,9 @@ func _ready() -> void:
 			"--test-generation-probe":
 				ran_test = true
 				_test_generation_probe()
+			"--test-safe-arm-refuses-a-toll":
+				ran_test = true
+				_test_safe_arm_refuses_a_toll()
 			"--test-long-hall-fee":
 				ran_test = true
 				await _test_long_hall_fee()
@@ -2303,6 +2306,7 @@ func _run_all_tests() -> void:
 	await _test_risk_lane_price()
 	_test_branch_point_sockets()
 	_test_generation_probe()
+	_test_safe_arm_refuses_a_toll()
 	await _test_long_hall_fee()
 	await _test_stretch_greedy_solvability()
 	await _test_throw_fails_closed_without_grid()
@@ -10091,6 +10095,81 @@ func _test_long_hall_fee() -> void:
 ## The probe is also held to being HONEST about its own limits: a node that declares no cost is
 ## reported as unpriced rather than counted as safe, because "nothing said it was expensive" is not
 ## evidence of safety and a probe that rounds it into a pass is worse than no probe.
+## THE SAFE ARM'S LAW, at the seam where a run actually descends. A player who took a route BECAUSE
+## it was the safe one may not be handed a level that charges a toll. Every generated spec rides with
+## its probe, so the run can answer that before the descent commits — and a candidate that breaks it
+## is rejected the same way a failed generation is, leaving the player at the shelter to choose
+## again rather than dropping them into it.
+func _test_safe_arm_refuses_a_toll() -> void:
+	_test_name = "Safe Arm Refuses A Toll"
+	var SessionScript = load("res://scripts/generation/run_session.gd")
+
+	# The rule is asked of the SAFE arm only: a route advertised as costly is allowed to cost, and
+	# its price is capped elsewhere by the branch point's difficulty tier.
+	var clean_probe := {"passable": true, "lossless": true, "survivable": true}
+	var tolled_probe := {"passable": true, "lossless": false, "survivable": true,
+		"reasons": ["nodes_charge_a_toll_with_no_way_past:1"]}
+
+	# The law is asked of PROCEDURAL output, so these fixtures carry the generator stamp a real spec
+	# carries. An authored finale or chase interlude has no such stamp and answers elsewhere.
+	var made := {"generator": "archetype_based_stretch_v2_systems"}
+	_assert_equals(SessionScript._safe_arm_breach(
+			{"id": "slip", "risk": "low"}, {"source": made, "probe": clean_probe}), "",
+		"a clean level is fit for the safe arm")
+	_assert_true(SessionScript._safe_arm_breach(
+			{"id": "slip", "risk": "low"}, {"source": made, "probe": tolled_probe}) != "",
+		"a level that charges a toll is REFUSED on the safe arm")
+	_assert_equals(SessionScript._safe_arm_breach(
+			{"id": "trace", "risk": "high"}, {"source": made, "probe": tolled_probe}), "",
+		"and the same level is perfectly fit for the costly arm")
+
+	# A level nobody can finish is unfit for the safe arm too -- passable comes before lossless.
+	_assert_true(SessionScript._safe_arm_breach(
+			{"id": "slip", "risk": "low"}, {"source": made,
+			"probe": {"passable": false, "lossless": true, "survivable": true}}) != "",
+		"an unfinishable level is refused on the safe arm")
+
+	# SILENCE IS NOT SAFETY, for procedural output. A GENERATED level with no probe cannot be offered
+	# as the safe way through, or the guarantee quietly becomes "nothing checked".
+	_assert_true(SessionScript._safe_arm_breach(
+			{"id": "slip", "risk": "low"}, {"source": made}) != "",
+		"a generated level carrying no probe cannot be the safe way through")
+
+	# An AUTHORED level carries no generator stamp and no probe, and is not refused for it: the
+	# finale and the chase interludes answer to their own authored guarantees.
+	_assert_equals(SessionScript._safe_arm_breach({"id": "slip", "risk": "low"}, {}), "",
+		"an authored level is not held to the procedural probe")
+
+	# And the law holds on a REAL descent: taking the safe option of an actual fork lands the run on a
+	# level whose own probe says perfect play pays nothing for it. This is the end-to-end statement --
+	# the guarantee is worth having only if the levels the run actually generates satisfy it.
+	var session = SessionScript.new()
+	session.set("seed", 909)
+	session.set("target_depth", 4)
+	session.call("start")
+	var fork: Dictionary = session.call("branch")
+	var safe_option := {}
+	for option_v in (fork.get("options", []) as Array):
+		if str((option_v as Dictionary).get("risk", "")) == "low":
+			safe_option = option_v as Dictionary
+	if safe_option.is_empty():
+		_assert_true(false, "the fork offers a low-risk option to take")
+		return
+	var landed: Dictionary = session.call("choose", safe_option)
+	if bool(landed.get("run_transition_rejected", false)):
+		# A refusal here is the law WORKING -- it declined to hand the safe arm a tolled level.
+		_assert_true(str(landed.get("error", "")) != "",
+			"a refused safe descent names why it was refused (%s)" % str(
+				landed.get("safe_arm_breach", landed.get("error", ""))))
+	else:
+		var landed_probe: Dictionary = landed.get("probe", {})
+		_assert_true(not landed_probe.is_empty(),
+			"a committed safe descent lands on a PROBED level")
+		_assert_true(bool(landed_probe.get("lossless", false)),
+			"and that level charges nothing for perfect play (%s)" % str(
+				landed_probe.get("reasons", [])))
+
+
 func _test_generation_probe() -> void:
 	_test_name = "Generation Probe"
 	var ProbeScript = load("res://scripts/generation/generation_probe.gd")
@@ -41954,7 +42033,10 @@ func _test_archetype_pieces() -> void:
 	var failed_ids: Array = []
 	var meshless_ids: Array = []
 	var verbful_ids: Array = []
-	for id_v in ArchetypePieceLibrary.piece_ids() + ArchetypePieceLibrary.dressing_ids():
+	# District-only ids are swept too: a district's own feature vocabulary is real
+	# geometry the game can ask for, and it has to instantiate like anything else.
+	for id_v in (ArchetypePieceLibrary.piece_ids() + ArchetypePieceLibrary.dressing_ids()
+			+ ArchetypePieceLibrary.district_only_ids()):
 		var piece := ArchetypePieceLibrary.instantiate(str(id_v))
 		if piece == null:
 			failed_ids.append(id_v)

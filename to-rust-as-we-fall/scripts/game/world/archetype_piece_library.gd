@@ -99,6 +99,22 @@ const DISTRICT_PIECES := {
 			"valve_bank": "ValveBank",
 		},
 	},
+	# The Open Files Initiative styles the SAME nouns as records furniture: the
+	# terminal is a reading kiosk, the barrier is a stack of drawers, carried gear
+	# is a file case, a junction branches references instead of pipes. Adding this
+	# district was one entry here and one Blender file — which is the whole point
+	# of splitting the archetype from its styling.
+	"stacks": {
+		"path": "res://resources/models/stacks/stacks_pieces.gltf",
+		"pieces": {
+			"terminal": "Terminal",
+			"barrier": "Barrier",
+			"carry_gear": "CarryGear",
+			"junction": "Junction",
+			"scan_arch": "ScanArch",
+			"drawer_spire": "DrawerSpire",
+		},
+	},
 }
 
 ## The district whose styling piece lookups resolve through. Act 1 is the Channels;
@@ -114,14 +130,29 @@ static func get_district() -> String:
 	return _district
 
 
-## {path, node} for `content_id` in the active district, or {} when that district
-## does not style this noun (the caller then falls back to the archetype set).
+## {path, node} for `content_id`, preferring the ACTIVE district's styling. A piece
+## that only one district defines — its own feature vocabulary, like the Open Files'
+## scan arch — still resolves from wherever it lives, because the alternative is a
+## caller that must know which district owns a noun before it can ask for it.
+## Returns {} only when no district styles the id, and the archetype set answers.
 static func _district_source(content_id: String) -> Dictionary:
-	var set_data: Dictionary = DISTRICT_PIECES.get(_district, {})
-	var pieces: Dictionary = set_data.get("pieces", {})
-	if not pieces.has(content_id):
+	var active: Dictionary = DISTRICT_PIECES.get(_district, {})
+	var pieces: Dictionary = active.get("pieces", {})
+	if pieces.has(content_id):
+		return {"path": str(active["path"]), "node": str(pieces[content_id])}
+	# Another district's styling is NEVER borrowed for a noun the archetype set can
+	# answer — that would put the Open Files' reading kiosk in the Channels the
+	# moment the Open Files existed. The one exception is an id no shared manifest
+	# knows: a district's own feature vocabulary lives only in its file, so it
+	# resolves from there or nowhere.
+	if MANIFEST.has(content_id) or DRESSING_MANIFEST.has(content_id):
 		return {}
-	return {"path": str(set_data["path"]), "node": str(pieces[content_id])}
+	for district_id in DISTRICT_PIECES.keys():
+		var set_data: Dictionary = DISTRICT_PIECES[district_id]
+		var owned: Dictionary = set_data.get("pieces", {})
+		if owned.has(content_id):
+			return {"path": str(set_data["path"]), "node": str(owned[content_id])}
+	return {}
 
 # Only the PackedScene is cached; each call instantiates, clones the named
 # piece, and frees the scratch instance — a live never-in-tree template Node
@@ -140,7 +171,21 @@ static func _ensure_packed() -> PackedScene:
 	return _packed
 
 static func has_piece(content_id: String) -> bool:
-	return MANIFEST.has(content_id) or DRESSING_MANIFEST.has(content_id)
+	return (MANIFEST.has(content_id) or DRESSING_MANIFEST.has(content_id)
+		or not _district_source(content_id).is_empty())
+
+
+## Every id a district styles that the shared manifests do not name — a district's
+## own feature vocabulary (the Open Files' scan arch, its drawer spire).
+static func district_only_ids() -> Array:
+	var out: Array = []
+	for district_id in DISTRICT_PIECES.keys():
+		for content_id in (DISTRICT_PIECES[district_id] as Dictionary).get("pieces", {}):
+			if MANIFEST.has(content_id) or DRESSING_MANIFEST.has(content_id):
+				continue
+			if not out.has(content_id):
+				out.append(content_id)
+	return out
 
 ## Generation-vocabulary ids only (the content-palette coverage law sweeps these).
 static func piece_ids() -> Array:
@@ -158,13 +203,17 @@ static func _node_name_for(content_id: String) -> String:
 ## A fresh visual body for `content_id`, transform reset to identity — or null
 ## (loudly) when the vocabulary doesn't know it or the model lost the node.
 static func instantiate(content_id: String) -> Node3D:
-	var node_name := _node_name_for(content_id)
-	if node_name.is_empty():
+	# The district is asked FIRST, and it alone may know the id: a district's own
+	# feature vocabulary never appears in the shared manifests, so requiring a
+	# manifest name up front would make those pieces unaskable.
+	var district: Dictionary = _district_source(content_id)
+	var archetype_name := _node_name_for(content_id)
+	if district.is_empty() and archetype_name.is_empty():
 		push_warning("ArchetypePieceLibrary: no piece for content id '%s'" % content_id)
 		return null
 	var packed: PackedScene = null
 	var source_path := SCENE_PATH
-	var district: Dictionary = _district_source(content_id)
+	var node_name := archetype_name
 	if not district.is_empty():
 		node_name = str(district["node"])
 		source_path = str(district["path"])
@@ -175,9 +224,9 @@ static func instantiate(content_id: String) -> Node3D:
 		if packed == null:
 			push_warning("ArchetypePieceLibrary: %s piece set missing: %s"
 				% [_district, source_path])
-	if packed == null:
+	if packed == null and not archetype_name.is_empty():
 		source_path = SCENE_PATH
-		node_name = _node_name_for(content_id)
+		node_name = archetype_name
 		packed = _ensure_packed()
 	if packed == null:
 		return null
