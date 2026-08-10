@@ -53505,6 +53505,39 @@ func _test_flora_rig_plays() -> void:
 	cap.queue_free()
 	await get_tree().process_frame
 
+	# The Scarpet is the other shape of transition in the roster: not a fold but a
+	# GROWTH, the patch boundary moving outward, which the spec makes the read on
+	# tending progress. Same two questions — does it build the rigged body, and does
+	# the transition actually reach the player.
+	var mat = Scarpet.new()
+	mat.configure(Vector3.ZERO, 1.65, false)
+	get_tree().root.add_child(mat)
+	await get_tree().process_frame
+
+	var mat_rig = mat.get("_rig")
+	_assert_true(mat_rig != null, "the Scarpet builds its RIGGED body, not a placeholder")
+	if mat_rig != null:
+		var mat_clips: PackedStringArray = mat_rig.call("clips")
+		_assert_true(mat_clips.has("scarpet_tend"),
+			"it carries its tending expansion (%s)" % str(mat_clips))
+		for clip_name in mat_clips:
+			_assert_true(str(clip_name).begins_with("scarpet_"),
+				"it advertises only its own clips (found %s)" % str(clip_name))
+		var mat_player: AnimationPlayer = mat_rig.get("_player")
+		_assert_true(mat_player != null, "the rigged carpet has an AnimationPlayer")
+		if mat_player != null:
+			_assert_equals(str(mat_player.current_animation), "",
+				"an untended patch is not playing anything")
+			mat.tend()
+			_assert_equals(str(mat_player.current_animation), "scarpet_tend",
+				"tending it plays the expansion")
+		# growing is cosmetic: the mat hides you the whole time it is spreading
+		_assert_true(mat.conceals(Vector3(0.2, 0.0, 0.2)),
+			"concealment does not wait for the patch to finish growing")
+
+	mat.queue_free()
+	await get_tree().process_frame
+
 func _test_capbage_retrieve() -> void:
 	_test_name = "Capbage Retrieve"
 	var wall0 := Time.get_ticks_msec()

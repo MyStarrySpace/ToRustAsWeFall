@@ -22,6 +22,7 @@ const REFERENCE_CONCEAL_RADIUS := 1.65
 
 var _pad: MeshInstance3D
 var _visual_root: Node3D
+var _rig: FloraRig = null
 var _concealment_origin := Vector3.INF
 
 func configure(world_pos: Vector3, radius := 1.65, with_label := true) -> void:
@@ -41,21 +42,46 @@ func _ready() -> void:
 		add_child(lbl)
 
 
+## The modelled carpet where one is available, the portable presenter otherwise.
+##
+## The rigged body is the one that can GROW: the spec makes the expanding patch
+## boundary the read on tending progress ("the visible expansion of the patch
+## boundary tells the player when work is paying off"), which is a single patch
+## bone scaling the mat and the tufts riding it. The clip is authored and ships;
+## the plant plays it when something tends it.
 func _build_visual() -> void:
+	var footprint_scale := maxf(0.01, conceal_radius / REFERENCE_CONCEAL_RADIUS)
+	if FloraRig.has_rig("scarpet"):
+		var rigged := FloraRig.new()
+		rigged.name = "ScarpetVisual"
+		add_child(rigged)
+		if rigged.setup("scarpet"):
+			_rig = rigged
+			_visual_root = rigged
+			# Concealment is planar, so a larger gameplay patch spreads across
+			# more ground without growing taller.
+			rigged.scale = Vector3(footprint_scale, 1.0, footprint_scale)
+			rigged.set_meta("gameplay_visual_key", VISUAL_KEY)
+			return
+		rigged.queue_free()
 	_visual_root = BiotaPlaceholderCatalogScript.instantiate(VISUAL_KEY)
 	if _visual_root == null:
 		push_error("Scarpet could not instantiate its portable biota presenter")
 		return
 	_visual_root.name = "ScarpetVisual"
-	var footprint_scale := maxf(0.01, conceal_radius / REFERENCE_CONCEAL_RADIUS)
-	# Concealment is planar. Preserve the authored plant height while making a larger
-	# gameplay patch visibly occupy a proportionally larger XZ footprint.
 	_visual_root.scale = Vector3(footprint_scale, 1.0, footprint_scale)
 	_visual_root.set_meta("gameplay_visual_key", VISUAL_KEY)
 	add_child(_visual_root)
 	_pad = _visual_root.get_node_or_null("Body") as MeshInstance3D
 	if _pad == null:
 		push_error("Scarpet portable presenter is missing its Body mesh")
+
+
+## Work the patch: the moss spreads outward and flashes when the growth stops.
+## Cosmetic only — the caller owns how long tending takes and whether it counted.
+func tend() -> void:
+	if _rig != null and is_instance_valid(_rig):
+		_rig.play("scarpet_tend")
 
 
 func get_visual_presenter() -> Node3D:

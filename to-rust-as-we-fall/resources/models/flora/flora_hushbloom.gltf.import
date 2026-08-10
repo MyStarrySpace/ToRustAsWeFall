@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://bxf5hjkn8om6m"
-path="res://.godot/imported/flora_rigged.gltf-62a33505f581f4e2578a2b15983894d5.scn"
+uid="uid://cbibqkpyy2tjc"
+path="res://.godot/imported/flora_hushbloom.gltf-c4cd3d61969c33d4da7d75c6c4285910.scn"
 
 [deps]
 
-source_file="res://resources/models/flora/flora_rigged.gltf"
-dest_files=["res://.godot/imported/flora_rigged.gltf-62a33505f581f4e2578a2b15983894d5.scn"]
+source_file="res://resources/models/flora/flora_hushbloom.gltf"
+dest_files=["res://.godot/imported/flora_hushbloom.gltf-c4cd3d61969c33d4da7d75c6c4285910.scn"]
 
 [params]
 

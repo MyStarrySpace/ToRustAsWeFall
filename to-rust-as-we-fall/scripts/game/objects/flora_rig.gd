@@ -14,47 +14,56 @@ extends Node3D
 ## commits; nothing here is ever waited on, and no gameplay truth is read back out
 ## of an animation (the fast-forward invariance law).
 ##
-## The source gltf holds every species under one AnimationPlayer, so `setup()`
-## keeps the requested species' armature and frees the rest — the clips are named
-## per species precisely so one player can carry them all without collision.
+## Each species ships its OWN gltf. Exporting them together looked tidier and was
+## wrong: the exporter samples every armature in the file over every clip, so each
+## species' animations carried constant rest-pose tracks for all the others' bones.
+## A plant that dropped its siblings then could not resolve those tracks, and a
+## single suite run printed 7401 warnings about it.
 
-const RIG_SCENE := "res://resources/models/flora/flora_rigged.gltf"
-
-## species id -> the armature node that carries its skin in the shared gltf
+## species id -> the armature node carrying its skin, in that species' own gltf
 const SPECIES_ARMATURES := {
 	"capbage": "Capbage_Armature",
 	"seefern": "Seefern_Armature",
 	"hushbloom": "Hushbloom_Armature",
+	"scarpet": "Scarpet_Armature",
 }
 
-static var _packed: PackedScene = null
+static var _packed := {}
 
 var species := ""
 var _player: AnimationPlayer = null
 var _armature: Node3D = null
 
 
-static func _ensure_packed() -> PackedScene:
-	if _packed != null:
-		return _packed
-	if not ResourceLoader.exists(RIG_SCENE):
-		return null
-	var res = load(RIG_SCENE)
-	_packed = res if res is PackedScene else null
-	return _packed
+static func scene_path(species_id: String) -> String:
+	return "res://resources/models/flora/flora_%s.gltf" % species_id
+
+
+static func _ensure_packed(species_id: String) -> PackedScene:
+	if _packed.has(species_id):
+		return _packed[species_id]
+	var path := scene_path(species_id)
+	var packed: PackedScene = null
+	if ResourceLoader.exists(path):
+		var res = load(path)
+		packed = res if res is PackedScene else null
+	_packed[species_id] = packed
+	return packed
 
 
 ## True when `species_id` has a rigged body to play clips on.
 static func has_rig(species_id: String) -> bool:
-	return SPECIES_ARMATURES.has(species_id) and _ensure_packed() != null
+	return SPECIES_ARMATURES.has(species_id) and _ensure_packed(species_id) != null
 
 
 ## Build the body for `species_id`. Returns false when the rig is unavailable, so a
 ## caller can fall back to its static piece rather than standing there invisible.
 func setup(species_id: String) -> bool:
 	species = species_id
-	var packed := _ensure_packed()
-	if packed == null or not SPECIES_ARMATURES.has(species_id):
+	if not SPECIES_ARMATURES.has(species_id):
+		return false
+	var packed := _ensure_packed(species_id)
+	if packed == null:
 		return false
 	var scene := packed.instantiate()
 	var want := str(SPECIES_ARMATURES[species_id])
@@ -63,15 +72,6 @@ func setup(species_id: String) -> bool:
 	if _armature == null:
 		scene.free()
 		return false
-	# Drop the other species: one gltf carries them all, and a Capbage has no
-	# business paying for a fern it will never show.
-	for other_id in SPECIES_ARMATURES.keys():
-		if str(other_id) == species_id:
-			continue
-		var other := scene.find_child(str(SPECIES_ARMATURES[other_id]), true, false)
-		if other != null:
-			other.get_parent().remove_child(other)
-			other.queue_free()
 	add_child(scene)
 	return true
 
