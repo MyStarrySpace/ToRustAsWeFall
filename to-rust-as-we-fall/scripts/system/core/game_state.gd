@@ -389,6 +389,12 @@ func _apply_set_level(id: String, level: int) -> void:
 	if grid != null:
 		characters[id]["grid_cell"] = grid.world_to_grid(p)
 		_reserve_parked(id, characters[id]["grid_cell"])
+	# A floor change keeps the cell and moves only the height, so the same coordinates can arrive
+	# somewhere the destination floor does not reach -- the rim of a wide room sits over open air
+	# once you stand on the balcony above it. The body belongs on ground it can stand on, and that
+	# belongs here rather than in the resume below, which runs only when an order was held: whether
+	# a body happened to be walking cannot decide whether it can still be given orders.
+	_ensure_standing_somewhere_walkable(id)
 	# There is no window to wait out, so the re-issue is immediate.
 	_resume_move_intent(id, "floor_change")
 
@@ -698,7 +704,6 @@ func _finish_external_traversal(id: String, traversal_id: StringName, start_tick
 	if grid != null:
 		characters[id]["grid_cell"] = grid.world_to_grid(destination)
 		characters[id]["level"] = _level_for_y(destination.y)
-		_reserve_parked(id, characters[id]["grid_cell"])
 	external_traversal_finished.emit(id, traversal_id)
 	character_arrived.emit(id)
 	# The displacement is over; the errand is not. Re-issued after the arrival so a graph plan gets
@@ -731,8 +736,6 @@ func _apply_cancel_external_traversal(payload: Dictionary) -> bool:
 	characters[id]["position"] = pinned
 	if grid != null:
 		characters[id]["grid_cell"] = grid.world_to_grid(pinned)
-		characters[id]["level"] = _level_for_y(pinned.y)
-		_reserve_parked(id, characters[id]["grid_cell"])
 	var reason := StringName(str(payload.get("reason", "cancelled")))
 	external_traversal_cancelled.emit(id, requested_id, reason)
 	character_arrived.emit(id)

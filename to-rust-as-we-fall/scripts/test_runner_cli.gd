@@ -871,6 +871,9 @@ func _ready() -> void:
 			"--test-displacement-reroute":
 				ran_test = true
 				_test_displacement_reroute()
+			"--test-floor-change-never-strands":
+				ran_test = true
+				_test_floor_change_never_strands()
 			"--test-displacement-never-strands":
 				ran_test = true
 				_test_displacement_never_strands()
@@ -2055,6 +2058,7 @@ func _run_all_tests() -> void:
 	_test_displacement_resume_discipline()
 	_test_displacement_reroute()
 	_test_displacement_never_strands()
+	_test_floor_change_never_strands()
 	await _test_dwell_follows_its_scheduler()
 	await _test_showcase_gallery()
 	await _test_set_piece_showcase()
@@ -47645,6 +47649,75 @@ func _test_dwell_follows_its_scheduler() -> void:
 	it.queue_free()
 	host.queue_free()
 	await get_tree().process_frame
+
+
+## A FLOOR CHANGE MUST NOT STRAND THE BODY. A level is the same 2D plane lifted in Y, so a cell that
+## is perfectly good ground on one floor can be off the mesh on the next. Changing floors keeps the
+## cell and moves only the height, which means the same coordinates can arrive somewhere unstandable.
+##
+## A body that was WALKING survives this: its held order resumes, and the resume nudges it back onto
+## the mesh on the way past. A body that was STANDING STILL has no held order to resume, so it takes
+## the identical displacement with none of the protection -- and from an unwalkable cell no route
+## exists to anywhere, so every later order is refused while the character looks perfectly healthy.
+## That is a softlock, and which of the two you get depends only on whether you happened to be moving.
+func _test_floor_change_never_strands() -> void:
+	_test_name = "Floor Change Never Strands"
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.scheduler = sched
+	# The upper floor is a smaller island than the lower one, so the rim of the ground floor hangs
+	# over nothing upstairs -- the ordinary shape of a balcony above a wider room.
+	var grid := GridWorld.from_data({
+		"contract_id": GridWorld.GRID_DATA_CONTRACT_ID,
+		"origin": [0.0, 0.0, 0.0], "cell_size": 1.0, "width": 12, "height": 12,
+		"level_count": 2, "level_height": 3.0,
+		"walkable_regions": [{"min": [0.5, 0.5], "max": [11.5, 11.5]}],
+	})
+	# A level with ANY allowed cell is restricted to its allow-set, so declaring the balcony footprint
+	# is what makes the ground floor's rim hang over nothing upstairs.
+	grid.allow_cell_region_on_level(Vector2i(3, 3), Vector2i(8, 8), 1)
+	gs.grid = grid
+	var rim := Vector2i(10, 1)
+	_assert_true(grid.is_walkable(rim.x, rim.y, {}, {}, 0),
+		"the rim cell is good ground on the lower floor")
+	_assert_true(not grid.is_walkable(rim.x, rim.y, {}, {}, 1),
+		"and the upper floor does not reach over it")
+
+	# THE STATIONARY BODY. Nothing is in flight, so there is no held order to carry the guarantee.
+	gs.register_character("peris", grid.grid_to_world(rim, 0), 2.0, {"hp": 100.0})
+	gs.set_character_level("peris", 1)
+	for _i in range(4):
+		sched.advance_ticks(0.05)
+	var landed: Vector2i = gs.characters["peris"].get("grid_cell", Vector2i.ZERO)
+	var landed_level := gs.get_character_level("peris")
+	_assert_true(grid.is_walkable(landed.x, landed.y, {}, {}, landed_level),
+		"a body that changes floors while STANDING STILL comes to rest on ground it can stand on (got: %s level=%d)" % [
+			str(landed), landed_level])
+
+	# The real consequence, stated the way a player meets it: orders stop working.
+	var target := Vector2i(5, 5)
+	_assert_true(gs.command_move_to_cell("peris", target),
+		"an order from where the floor change left it is accepted")
+	var arrived := false
+	for _i in range(400):
+		sched.advance_ticks(0.05)
+		if gs.characters["peris"].get("grid_cell", Vector2i.ZERO) == target:
+			arrived = true
+			break
+	_assert_true(arrived, "and the body can actually walk away -- it is not softlocked where it stands")
+
+	# THE CONTROL: a body that was already walking must keep behaving exactly as it does today.
+	gs.register_character("aster", grid.grid_to_world(rim, 0), 2.0, {"hp": 100.0})
+	gs.command_move_to_cell("aster", Vector2i(9, 2))
+	for _i in range(3):
+		sched.advance_ticks(0.05)
+	gs.set_character_level("aster", 1)
+	for _i in range(4):
+		sched.advance_ticks(0.05)
+	var moving_landed: Vector2i = gs.characters["aster"].get("grid_cell", Vector2i.ZERO)
+	_assert_true(grid.is_walkable(moving_landed.x, moving_landed.y, {}, {},
+		gs.get_character_level("aster")),
+		"a body that changes floors mid-walk still lands on good ground (got: %s)" % str(moving_landed))
 
 
 func _test_displacement_never_strands() -> void:
