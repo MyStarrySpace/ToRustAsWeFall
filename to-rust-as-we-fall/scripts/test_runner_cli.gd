@@ -871,6 +871,9 @@ func _ready() -> void:
 			"--test-displacement-reroute":
 				ran_test = true
 				_test_displacement_reroute()
+			"--test-cross-level-replay":
+				ran_test = true
+				_test_cross_level_replay()
 			"--test-roam-is-salted-per-enemy":
 				ran_test = true
 				await _test_roam_is_salted_per_enemy()
@@ -2099,6 +2102,7 @@ func _run_all_tests() -> void:
 	await _test_patrol_cycles()
 	_test_stop_during_a_wait()
 	await _test_roam_is_salted_per_enemy()
+	_test_cross_level_replay()
 	await _test_dwell_follows_its_scheduler()
 	await _test_showcase_gallery()
 	await _test_set_piece_showcase()
@@ -47797,6 +47801,78 @@ func _test_dwell_follows_its_scheduler() -> void:
 ## Lose it and nothing errors: they still roam, still stay in their circles, still reproduce under
 ## fast-forward. They just move as one body, which is the most obviously non-living thing a crowd can
 ## do and reads instantly as broken.
+## A CLIMB REPLAYS AS A CLIMB. Walking to another floor is ONE recorded order; the floor changes it
+## makes on the way are worked out again from that order rather than written down, and so are the cell
+## reservations the walk claims. That is the whole bargain of a derived layer -- it keeps the log
+## small and honest, on the condition that replaying the order really does rebuild the same journey.
+##
+## When it does not, a replayed run puts somebody on the wrong floor while every recorded command
+## still reads as executed, and the two histories disagree about where a character is standing.
+func _test_cross_level_replay() -> void:
+	_test_name = "Cross Level Replay"
+	var grid_data := {
+		"contract_id": GridWorld.GRID_DATA_CONTRACT_ID,
+		"origin": [0.0, 0.0, 0.0], "cell_size": 1.0, "width": 12, "height": 12,
+		"level_count": 2, "level_height": 3.0,
+		"walkable_regions": [{"min": [0.5, 0.5], "max": [11.5, 11.5]}],
+	}
+	var grid := GridWorld.from_data(grid_data)
+	grid.allow_cell_region_on_level(Vector2i(3, 3), Vector2i(9, 9), 1)
+	grid.add_inter_level_link(Vector2i(4, 4), 0, 1, "ladder")
+	grid.add_inter_level_link(Vector2i(4, 4), 1, 0, "ladder")
+
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.scheduler = sched
+	gs.grid = grid
+	gs.event_log = EventLog.new()
+	gs.register_character("climber", grid.grid_to_world(Vector2i(1, 1), 0), 4.0, {})
+
+	var destination := Vector2i(8, 8)
+	_assert_true(gs.command_move_cross_level("climber", destination, 1),
+		"the climb to the upper floor is accepted")
+	for _i in range(1200):
+		sched.advance_ticks(0.05)
+		if not gs.is_moving("climber") and gs.get_character_level("climber") == 1:
+			break
+	var lived_cell: Vector2i = gs.characters["climber"].get("grid_cell", Vector2i.ZERO)
+	var lived_level := gs.get_character_level("climber")
+	_assert_equals(lived_level, 1, "the climber actually reaches the upper floor")
+	_assert_equals(lived_cell, destination, "and arrives at the cell it was sent to")
+
+	# ONE order in the log; the floor changes along the way are derived, not separate entries.
+	var logged_moves := 0
+	var logged_levels := 0
+	for event_v in gs.event_log.events:
+		var kind := StringName((event_v as Dictionary).get("kind", &""))
+		if kind == GameEvent.KIND_MOVE_CROSS_LEVEL:
+			logged_moves += 1
+		elif kind == GameEvent.KIND_SET_LEVEL:
+			logged_levels += 1
+	_assert_equals(logged_moves, 1, "the whole climb is recorded as a single order")
+	_assert_equals(logged_levels, 0,
+		"and the floor change it makes on the way is derived rather than recorded separately")
+
+	# Replaying that one order has to rebuild the same journey.
+	# The replay grid must be the SAME WORLD before a single order is applied: its upper floor and
+	# its ladders are level geometry, not something the log carries, so building them afterwards
+	# would replay the climb against a world with nowhere to climb to.
+	var replay_grid := GridWorld.from_data(grid_data)
+	replay_grid.allow_cell_region_on_level(Vector2i(3, 3), Vector2i(9, 9), 1)
+	replay_grid.add_inter_level_link(Vector2i(4, 4), 0, 1, "ladder")
+	replay_grid.add_inter_level_link(Vector2i(4, 4), 1, 0, "ladder")
+	var replayed = GameState.replay(gs.event_log, replay_grid)
+	if replayed.scheduler != null:
+		for _i in range(1200):
+			replayed.scheduler.advance_ticks(0.05)
+			if not replayed.is_moving("climber") 					and replayed.get_character_level("climber") == 1:
+				break
+	_assert_equals(replayed.get_character_level("climber"), lived_level,
+		"the replayed climber stands on the same floor as the one that walked it")
+	_assert_equals(replayed.characters["climber"].get("grid_cell", Vector2i.ZERO), lived_cell,
+		"and on the same cell")
+
+
 func _test_roam_is_salted_per_enemy() -> void:
 	_test_name = "Roam Is Salted Per Enemy"
 	var host := Node3D.new()
