@@ -4272,8 +4272,12 @@ func _test_graph_first_capbage_roompiece_coverage() -> void:
 				% [piece_id, rotation, str(socket_errors)])
 			if socket_errors.is_empty():
 				checked_socket_placements += socket_capbages.size()
-	_assert_equals(checked_room_variants, expected_room_variants,
-		"every room-piece rotation seats Capbage on an exact graph vertex")
+	# Both counts come off the same catalog, so an EMPTY catalog satisfies them as 0 == 0 and every
+	# claim above is made about nothing. The socket assertion below already guards its own count;
+	# this one needed the same.
+	_assert_true(expected_room_variants > 0 			and checked_room_variants == expected_room_variants,
+		"every room-piece rotation seats Capbage on an exact graph vertex (%d/%d)"
+		% [checked_room_variants, expected_room_variants])
 	_assert_true(expected_socket_placements > 0 \
 			and checked_socket_placements == expected_socket_placements,
 		"every authored/rotated Capbage socket moves its visual and receipt together (%d/%d)"
