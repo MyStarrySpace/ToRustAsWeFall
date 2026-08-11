@@ -142,10 +142,17 @@ static func surface(
 	var mat := ShaderMaterial.new()
 	mat.shader = shader
 	mat.set_shader_parameter("base_tex", base_tex)
+	# An overlay that did not load must contribute NOTHING. Leaving the sampler
+	# unset does the opposite: Godot supplies an opaque white texture, so the
+	# coverage the shader reads is 1.0 and the surface mixes toward white — a
+	# mistyped id would bleach the wall rather than look obviously absent.
+	var wear := clampf(amount, 0.0, 1.0)
 	if decay_tex != null:
 		mat.set_shader_parameter("decay_tex", decay_tex)
+	else:
+		wear = 0.0
 	mat.set_shader_parameter("uv_scale", uv_scale)
-	mat.set_shader_parameter("decay_amount", clampf(amount, 0.0, 1.0))
+	mat.set_shader_parameter("decay_amount", wear)
 	mat.set_shader_parameter("tint", tint)
 	# The offsets are derived from the seed rather than drawn at random: a wall
 	# has to look the same every time the level is generated from the same seed.
@@ -158,6 +165,14 @@ static func surface(
 static func _offset(seed: int, salt: int) -> Vector2:
 	var h := int(abs(seed)) * 73856093 + salt * 19349663
 	return Vector2(float(h % 97) / 97.0, float((h / 97) % 89) / 89.0)
+
+
+## Whether the library really maps `role`, as opposed to handing back the
+## wall-shaped fallback `for_role` gives anything it does not recognise. A caller
+## that cannot tell the two apart will dress a glow strip as riveted panelling
+## and never find out.
+static func has_role(role: String) -> bool:
+	return ROLE_BASE.has(role)
 
 
 ## The surface a generator's batch role should wear.

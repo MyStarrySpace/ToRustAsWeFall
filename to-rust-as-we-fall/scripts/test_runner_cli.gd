@@ -54678,6 +54678,24 @@ func _test_building_materials() -> void:
 	_assert_equals(BuildingMaterialLibrary.all_variations().size(), 70,
 		"ten materials by seven overlays is seventy variations")
 
+	# A MISSING OVERLAY IS NO OVERLAY, NOT A WHITE ONE. An unset sampler reads as
+	# opaque white, so `mix(base, decay, decay.a * amount)` bleaches the surface
+	# toward white — a mistyped decay id would have silently produced a white wall
+	# rather than an obviously missing texture.
+	var bad := BuildingMaterialLibrary.surface(
+		"base_01_riveted_panel", "no_such_decay_at_all", 0.6, 1)
+	_assert_true(bad != null, "a surface still builds without its overlay")
+	if bad != null:
+		_assert_equals(float(bad.get_shader_parameter("decay_amount")), 0.0,
+			"a missing overlay contributes nothing")
+
+	# and a caller has to be able to tell a real role from the wall-shaped
+	# fallback, or it cannot know whether the library actually answered
+	_assert_true(BuildingMaterialLibrary.has_role("mass"),
+		"'mass' is a role the library really maps")
+	_assert_true(not BuildingMaterialLibrary.has_role("glow"),
+		"'glow' is not, and says so instead of quietly becoming a wall")
+
 
 func _test_flora_rig_plays() -> void:
 	_test_name = "Flora Rig Plays"
