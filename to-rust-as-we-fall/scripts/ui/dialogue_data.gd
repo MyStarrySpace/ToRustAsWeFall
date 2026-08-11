@@ -33,7 +33,17 @@ static func load_dir(dir_path: String) -> void:
 			elif file_name.ends_with(".json"):
 				_load_json_file(dir_path.path_join(file_name))
 		file_name = dir.get_next()
-	_loaded = true
+	# A LOAD THAT PRODUCED NOTHING IS NOT A LOAD. The line cache is cleared at the
+	# top of this function, so a pass where every workbook failed to parse leaves
+	# it empty — and latching _loaded anyway means get_line and get_lines never try
+	# again for the life of the process. Every consumer then reads an empty
+	# dictionary forever, which is indistinguishable from a game that simply has no
+	# dialogue in it: no error at the point of use, no second chance, and a suite
+	# that reports zero lines long after the thing that failed has gone.
+	_loaded = not _lines.is_empty()
+	if not _loaded:
+		push_error("DialogueData: %s yielded no lines; leaving the cache open to retry"
+			% dir_path)
 
 ## Load an xlsx workbook (each sheet becomes a batch of dialogue lines)
 static func _load_xlsx_file(path: String) -> void:
