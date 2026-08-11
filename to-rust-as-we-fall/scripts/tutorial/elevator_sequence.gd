@@ -7401,11 +7401,23 @@ func _start_game_over() -> void:
 	PerformanceTrace.end(&"update", &"elevator.game_over.enter", perf_started, "party", 1)
 
 func _show_game_over_text() -> void:
-	var overlay := preload("res://scenes/ui/game_over_overlay.tscn").instantiate() as CanvasLayer
+	var overlay := preload("res://scenes/ui/game_over_overlay.tscn").instantiate() as GameOverOverlay
 	add_child(overlay)
-	var label := overlay.get_node("Label") as Label
-	var tween := create_tween()
-	tween.tween_property(label, "theme_override_colors/font_color:a", 1.0, 2.0)
+	# Nothing carried through the elevator survives past it either way, so taking the level again
+	# costs the player only the walk.
+	overlay.set_guidance(GameOverOverlay.DEFAULT_GUIDANCE)
+	overlay.reset_requested.connect(_on_game_over_reset)
+	overlay.reveal()
+
+## The overlay asks; the scene change belongs to the host. This is the same restart the pause menu
+## offers, taken through the same door: the scene gets its `prepare_scene_restart` notice, and the
+## tree is released so the replacement starts live rather than inheriting the death pause.
+func _on_game_over_reset() -> void:
+	var current_scene := get_tree().current_scene
+	if current_scene != null and current_scene.has_method("prepare_scene_restart"):
+		current_scene.call("prepare_scene_restart")
+	get_tree().paused = false
+	get_tree().reload_current_scene()
 
 # The bridge chunk is built in STREAMABLE steps (see _chunk_build_steps): synchronous debug loads build it all,
 # while normal play emits only a small batch of its repeated procedural pieces per frame.

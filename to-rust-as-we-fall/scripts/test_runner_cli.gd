@@ -914,6 +914,9 @@ func _ready() -> void:
 			"--test-cover-mid-run":
 				ran_test = true
 				_test_cover_mid_run()
+			"--test-death-offers-a-way-out":
+				ran_test = true
+				await _test_death_offers_a_way_out()
 			"--test-outline-mask-clears":
 				ran_test = true
 				await _test_outline_mask_clears()
@@ -2145,6 +2148,7 @@ func _run_all_tests() -> void:
 	await _test_chunk_unload_scheduler_clean()
 	await _test_outline_body_extent()
 	await _test_outline_mask_clears()
+	await _test_death_offers_a_way_out()
 	_test_cover_mid_run()
 	_test_pause_defers_never_drops()
 	await _test_path_source_precedence()
@@ -48820,6 +48824,58 @@ func _test_cover_mid_run() -> void:
 	_assert_true((run["spotted"] as Array)[0],
 		"stepping back out of cover is spotted -- the recompute runs both ways")
 
+
+## Death in story mode is a recoverable state, so the screen that announces it must also offer the
+## way back out. A player who loses a body early has one correct move available -- take the level
+## again -- and the screen is the only place the game can say so.
+func _test_death_offers_a_way_out() -> void:
+	_test_name = "Death Offers A Way Out"
+	var overlay := preload("res://scenes/ui/game_over_overlay.tscn").instantiate()
+	add_child(overlay)
+	await get_tree().process_frame
+
+	# The pause menu pauses the whole tree. An overlay that stops with it hands the player a button
+	# that cannot be pressed, which is the dead end wearing a control.
+	_assert_equals(int(overlay.process_mode), int(Node.PROCESS_MODE_ALWAYS),
+		"the death screen keeps running while the tree is paused")
+
+	var buttons := overlay.find_children("*", "BaseButton", true, false)
+	_assert_true(buttons.size() >= 1, "the death screen offers at least one control")
+	if buttons.is_empty():
+		overlay.queue_free()
+		return
+
+	var reset_button: BaseButton = buttons[0]
+	_assert_true(reset_button.visible, "the reset control is visible")
+	var button_text := str(reset_button.get("text"))
+	_assert_true(button_text.strip_edges() != "", "the reset control names what it does")
+
+	# Guidance is a SECOND line: the epitaph alone tells the player what happened, never what to do.
+	var epitaph := ""
+	var guidance := ""
+	for label in overlay.find_children("*", "Label", true, false):
+		var text := str((label as Label).text).strip_edges()
+		if text == "":
+			continue
+		if epitaph == "":
+			epitaph = text
+		else:
+			guidance = text
+	_assert_true(guidance != "", "the death screen says what to do next, not only what happened")
+	_assert_true(guidance != epitaph, "the guidance is its own line, not a repeat of the epitaph")
+
+	# A control that emits nothing is scenery. The overlay asks; the host owns the scene change.
+	_assert_true(overlay.has_signal("reset_requested"),
+		"the death screen publishes the reset as a signal the host acts on")
+	if overlay.has_signal("reset_requested"):
+		var requests := [0]
+		overlay.connect("reset_requested", func() -> void: requests[0] += 1)
+		reset_button.emit_signal("pressed")
+		await get_tree().process_frame
+		_assert_equals(requests[0], 1, "pressing reset asks the host exactly once")
+
+	overlay.queue_free()
+	await get_tree().process_frame
 
 func _test_outline_mask_clears() -> void:
 	_test_name = "Outline Mask Clears"
