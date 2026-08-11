@@ -871,6 +871,9 @@ func _ready() -> void:
 			"--test-displacement-reroute":
 				ran_test = true
 				_test_displacement_reroute()
+			"--test-roam-is-salted-per-enemy":
+				ran_test = true
+				await _test_roam_is_salted_per_enemy()
 			"--test-stop-during-a-wait":
 				ran_test = true
 				_test_stop_during_a_wait()
@@ -2095,6 +2098,7 @@ func _run_all_tests() -> void:
 	await _test_style_cps_composition()
 	await _test_patrol_cycles()
 	_test_stop_during_a_wait()
+	await _test_roam_is_salted_per_enemy()
 	await _test_dwell_follows_its_scheduler()
 	await _test_showcase_gallery()
 	await _test_set_piece_showcase()
@@ -47785,6 +47789,63 @@ func _test_dwell_follows_its_scheduler() -> void:
 ## The route is scheduled by tick, so the leg after the pause is already timed. If the stop cancels
 ## the walk without also dropping what was scheduled, the body waits out the rest of the pause and
 ## then calmly resumes a journey the player cancelled, which reads as an order being ignored.
+## A YARD OF ROAMERS IS A CROWD, NOT A CHOIR LINE. Ambient wandering is deliberately cheap and
+## deterministic -- the heading comes from a hash rather than a random draw, so the same enemy walks
+## the same beat at any speed. The hash is salted with WHO is walking, and that salt is the only thing
+## stopping every idle enemy in a scene from turning the same way at the same moment.
+##
+## Lose it and nothing errors: they still roam, still stay in their circles, still reproduce under
+## fast-forward. They just move as one body, which is the most obviously non-living thing a crowd can
+## do and reads instantly as broken.
+func _test_roam_is_salted_per_enemy() -> void:
+	_test_name = "Roam Is Salted Per Enemy"
+	var host := Node3D.new()
+	add_child(host)
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.scheduler = sched
+
+	# Two roamers with identical settings, each on its own anchor, so the only thing that can tell
+	# their wander apart is who they are.
+	var anchors := {"sentry_a": Vector3(0.0, 0.5, 0.0), "sentry_b": Vector3(20.0, 0.5, 0.0)}
+	var made: Array = []
+	for id in ["sentry_a", "sentry_b"]:
+		var e := Enemy.new()
+		e.game_state = gs
+		e.char_id = id
+		e._detection_targets = []
+		host.add_child(e)
+		await get_tree().process_frame
+		gs.register_character(id, anchors[id], 3.0, {})
+		e.activate()
+		e.set_roam(anchors[id], 5.0)
+		made.append(e)
+
+	# Compare each one's displacement FROM ITS OWN ANCHOR: identical offsets mean identical headings.
+	var samples_a: Array[Vector3] = []
+	var samples_b: Array[Vector3] = []
+	for _i in range(240):
+		sched.advance_ticks(0.1)
+		samples_a.append(gs.get_position("sentry_a") - anchors["sentry_a"])
+		samples_b.append(gs.get_position("sentry_b") - anchors["sentry_b"])
+
+	var moved_a := 0.0
+	for offset in samples_a:
+		moved_a = maxf(moved_a, offset.length())
+	_assert_true(moved_a > 0.5, "the roamers actually wander (%.2f from anchor)" % moved_a)
+
+	var biggest_difference := 0.0
+	for idx in range(samples_a.size()):
+		biggest_difference = maxf(biggest_difference,
+			(samples_a[idx] - samples_b[idx]).length())
+	_assert_true(biggest_difference > 0.5,
+		("two enemies with the same settings wander differently rather than moving as one "
+		+ "(largest difference %.3f)") % biggest_difference)
+
+	host.queue_free()
+	await get_tree().process_frame
+
+
 func _test_stop_during_a_wait() -> void:
 	_test_name = "Stop During A Wait"
 	var sched := EventScheduler.new()
