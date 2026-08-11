@@ -54241,6 +54241,45 @@ func _test_flora_rig_plays() -> void:
 	bomb.queue_free()
 	await get_tree().process_frame
 
+	# The NATURALIZER, the last of the live enemies to get a body. Its granules
+	# must rest SPREAD and its synapse dark: packed-and-lit is the 0.35 s warning
+	# before a lethal contact strike, and a patrol wearing it permanently is a
+	# threat the player can never read.
+	var patrol := FloraRig.new()
+	get_tree().root.add_child(patrol)
+	var patrol_built := patrol.setup("naturalizer")
+	_assert_true(patrol_built, "the naturalizer has a rigged body")
+	if patrol_built:
+		var n_clips: PackedStringArray = patrol.clips()
+		for wanted in ["naturalizer_pack", "naturalizer_strike"]:
+			_assert_true(n_clips.has(wanted),
+				"the naturalizer carries %s (%s)" % [wanted, str(n_clips)])
+		var n_skel: Skeleton3D = null
+		var nstack: Array = [patrol]
+		while not nstack.is_empty():
+			var n = nstack.pop_back()
+			if n is Skeleton3D:
+				n_skel = n
+			for c in n.get_children():
+				nstack.append(c)
+		if n_skel != null:
+			var syn := n_skel.find_bone("syn_0")
+			_assert_true(syn >= 0 and n_skel.get_bone_pose_scale(syn).x < 0.01,
+				"and rests with its contact point DARK")
+			# Against REST, not against identity: a granule's bone runs radially out
+			# of the cell, so its rest orientation is already a rotation. Measuring
+			# the pose against identity reads the bone's own direction as a swing.
+			var swung := 0
+			for b in n_skel.get_bone_count():
+				if not str(n_skel.get_bone_name(b)).begins_with("gran"):
+					continue
+				var at_rest := n_skel.get_bone_rest(b).basis.get_rotation_quaternion()
+				if n_skel.get_bone_pose_rotation(b).angle_to(at_rest) > 0.05:
+					swung += 1
+			_assert_equals(swung, 0, "with its granules still spread, not packed")
+	patrol.queue_free()
+	await get_tree().process_frame
+
 	# THE OUTLINE HAS TO WEAR THE POSE. The mask renders private COPIES of an
 	# object's meshes; a copy without the source's skin draws bind space, so a
 	# rigged plant is outlined in the shape it was modelled in rather than the one

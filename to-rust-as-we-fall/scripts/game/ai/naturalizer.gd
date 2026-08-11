@@ -8,6 +8,8 @@ extends Enemy
 ## signature environmental lever. Zones are checked on a scheduler cadence (never per-frame), and
 ## the slow is a real logged speed change — replay and fast-forward safe like every other move.
 
+var _rig: FloraRig = null
+
 const HESITATION_FACTOR := 0.45
 const HESITATION_POLL := 0.4
 const NATURALIZER_AUTHORITY_VERSION := 1
@@ -215,8 +217,25 @@ func _restore_naturalizer_authority() -> void:
 	_naturalizer_authority_initialized = true
 
 ## Clean white enforcement body + the rotating scanner ring (TASKS 20.6's read), cool blue lamps.
+## The patrol's body, and the pack that warns of the strike.
+##
+## The roster names the tell: "Granules pack toward one bright point before the
+## strike." The window is short — the FSM holds windup for 0.35 s — so the warning
+## has to be legible at a glance, which a tinted capsule never was.
+##
+## The SCAN RING stays either way: it is the reach of the tag check, an affordance
+## the player routes around, and it belongs to the enemy rather than to the model.
 func _build_visual() -> void:
-	super._build_visual()
+	if FloraRig.has_rig("naturalizer"):
+		var rigged := FloraRig.new()
+		rigged.name = "NaturalizerBody"
+		add_child(rigged)
+		if rigged.setup("naturalizer"):
+			_rig = rigged
+		else:
+			rigged.queue_free()
+	if _rig == null:
+		super._build_visual()
 	if _mesh != null and _mesh.material_override is StandardMaterial3D:
 		var m := _mesh.material_override as StandardMaterial3D
 		m.albedo_color = Color(0.92, 0.94, 0.96)
@@ -239,3 +258,17 @@ func _process(delta: float) -> void:
 	# @rendering_only — the scanner line sweep, pure cosmetics
 	if _scan_ring != null and is_instance_valid(_scan_ring):
 		_scan_ring.rotate_y(delta * 2.4)
+
+
+## Each state the granules have something to say about.
+func _enter_state(state: String) -> void:
+	super._enter_state(state)
+	if _rig == null or not is_instance_valid(_rig):
+		return
+	match state:
+		"windup":
+			_rig.play("naturalizer_pack")
+		"charge", "impact":
+			_rig.play("naturalizer_strike")
+		"recover", "stagger", "search", "return":
+			_rig.play("naturalizer_standdown")
