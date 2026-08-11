@@ -1072,6 +1072,9 @@ func _ready() -> void:
 			"--test-capbage-retrieve":
 				ran_test = true
 				await _test_capbage_retrieve()
+			"--test-building-materials":
+				ran_test = true
+				await _test_building_materials()
 			"--test-flora-rig-plays":
 				ran_test = true
 				await _test_flora_rig_plays()
@@ -2155,6 +2158,7 @@ func _run_all_tests() -> void:
 	await _test_blind_floor()
 	await _test_conceal_stops_strikes()
 	await _test_capbage_retrieve()
+	await _test_building_materials()
 	await _test_flora_rig_plays()
 	await _test_climbvine_return_wears_its_species()
 	await _test_basin_fill_proof()
@@ -54598,6 +54602,81 @@ func _test_climbvine_return_wears_its_species() -> void:
 
 	vine.queue_free()
 	await get_tree().process_frame
+
+
+## THE BUILDINGS HAVE SOMEWHERE TO BE PAINTED.
+##
+## Every surface on the procedural architecture was a flat albedo colour, so there
+## was nowhere for an artist to put a brush. The concept sheet names ten materials
+## and seven decay overlays and draws the overlays ON a base, so the library holds
+## them as separate paintable tiles and composes them — which is also where the
+## variations come from, seventy surfaces out of seventeen files.
+func _test_building_materials() -> void:
+	_test_name = "Building Materials"
+	_assert_true(BuildingMaterialLibrary.is_available(),
+		"the shader and every tile the sheet names are present")
+	_assert_equals(BuildingMaterialLibrary.BASES.size(), 10,
+		"ten materials, as the sheet names them")
+	_assert_equals(BuildingMaterialLibrary.DECAYS.size(), 7,
+		"seven decay overlays, as the sheet names them")
+
+	# every tile is a real image with pixels in it, not a placeholder that loads
+	var checked := 0
+	for id_v in (BuildingMaterialLibrary.BASES + BuildingMaterialLibrary.DECAYS):
+		var tex: Texture2D = BuildingMaterialLibrary.tile_texture(str(id_v))
+		_assert_true(tex != null, "%s loads" % str(id_v))
+		if tex == null:
+			continue
+		checked += 1
+		_assert_true(tex.get_width() >= 64 and tex.get_height() >= 64,
+			"%s is a usable tile (%dx%d)" % [str(id_v), tex.get_width(), tex.get_height()])
+	_assert_equals(checked, 17, "all seventeen tiles were inspected")
+
+	# THE OPEN MATERIALS HAVE HOLES. A grating that arrives solid is a wall, and
+	# the level behind it stops being visible through the thing you can see through.
+	for open_id in ["base_03_crosshatch_grating", "base_09_voronoi_screen"]:
+		var tex: Texture2D = BuildingMaterialLibrary.tile_texture(open_id)
+		if tex == null:
+			continue
+		var img := tex.get_image()
+		var clear := 0
+		var total := 0
+		for y in range(0, img.get_height(), 2):
+			for x in range(0, img.get_width(), 2):
+				total += 1
+				if img.get_pixel(x, y).a < 0.5:
+					clear += 1
+		_assert_true(total > 0, "%s has pixels to sample" % open_id)
+		_assert_true(clear > total / 10,
+			"%s is open, not solid (%d of %d clear)" % [open_id, clear, total])
+
+	# A SEED CHANGES THE SURFACE. Variation with no extra texture is the whole
+	# reason the offsets exist; if the seed did nothing, a street of these would
+	# read as one stamp repeated.
+	var a := BuildingMaterialLibrary.surface("base_01_riveted_panel",
+		"decay_01_bleed_streaks", 0.6, 1)
+	var b := BuildingMaterialLibrary.surface("base_01_riveted_panel",
+		"decay_01_bleed_streaks", 0.6, 2)
+	_assert_true(a != null and b != null, "the library builds surfaces")
+	if a != null and b != null:
+		_assert_true(
+			a.get_shader_parameter("base_offset") != b.get_shader_parameter("base_offset"),
+			"two seeds put the tile in two different places")
+		# ...and the SAME seed must not, or a level stops rebuilding the same way
+		var again := BuildingMaterialLibrary.surface("base_01_riveted_panel",
+			"decay_01_bleed_streaks", 0.6, 1)
+		_assert_equals(again.get_shader_parameter("base_offset"),
+			a.get_shader_parameter("base_offset"),
+			"the same seed rebuilds the same wall")
+
+	# Every role a generator batches by resolves to something, including ones the
+	# library has never heard of — an unrecognised batch is still a wall.
+	for role in ["mass", "trim", "service", "inset", "rust", "no_such_role"]:
+		_assert_true(BuildingMaterialLibrary.for_role(role, 3) != null,
+			"role '%s' resolves to a surface" % role)
+
+	_assert_equals(BuildingMaterialLibrary.all_variations().size(), 70,
+		"ten materials by seven overlays is seventy variations")
 
 
 func _test_flora_rig_plays() -> void:
