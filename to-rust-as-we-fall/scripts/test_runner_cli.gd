@@ -55577,12 +55577,12 @@ func _test_flora_rig_plays() -> void:
 		if b_skel != null:
 			# THE LIGHT IS THE WARNING, so the assertion follows the light. The
 			# granules are anatomy — coloured beads suspended in the envelope, on
-			# the sheet's inert panel as much as its primed one — and they used to
-			# be emissive flash cards, so counting lit "gran" bones measured the
-			# warning only while that was true. It stopped being true and the
-			# check had to move rather than relax: the core is what blazes, and a
-			# bomb sitting there already bright has spent the two or three seconds
-			# everyone nearby was owed.
+			# the sheet's inert panel as much as on its primed one — so how many
+			# of them are present says nothing about whether the creature is
+			# armed. The core is the thing that blazes, and a bomb sitting there
+			# already bright has spent the two or three seconds everyone nearby
+			# was owed. Naming the bone rather than a prefix also keeps the check
+			# from passing by looping over nothing.
 			var core := b_skel.find_bone("core_0")
 			_assert_true(core >= 0, "the Flare's core is its own bone, so it can be OFF")
 			if core >= 0:
@@ -56037,12 +56037,13 @@ func _test_flora_rig_plays() -> void:
 	# beat the coil it winds up with, or the two poses read as the same animal
 	# doing the same thing and the player cannot tell a threat from a corpse.
 	# FIRE CLEARS A STRETCH, NOT THE COLONY. The roster promises a burned span with
-	# wax still standing either side of it, and that it grows back. Carrying ONE
-	# plate bone the old rig could only scale the whole mat to 0.001 — a regional
-	# burn was not merely unauthored, it was unriggable, and nothing survived to
-	# read as a scar. So the assertion is that ONE region collapses and the OTHERS
-	# DO NOT: a burn clip that took everything would satisfy any name check and any
-	# "did something move" check, and it is exactly what was there before.
+	# wax still standing either side of it, and that it grows back. A mat carrying
+	# a single plate bone can only scale as a whole, which makes a regional burn
+	# unriggable rather than merely unauthored and leaves nothing behind to read as
+	# a scar — so the partition is the mechanism, and this is what proves it works.
+	# The assertion is that ONE region collapses and the OTHERS DO NOT: a burn clip
+	# that took the whole colony would satisfy any name check and any
+	# "did something move" check alike.
 	# THE BURST MUST NOT READ AS BEING EATEN. The brief is explicit that the
 	# post-burst Flare "remains alive, deflated, and visibly recovering", and the
 	# old clip ended on a UNIFORM membrane scale of 0.35 — the whole creature a
