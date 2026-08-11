@@ -53611,6 +53611,39 @@ func _test_flora_rig_plays() -> void:
 	mat.queue_free()
 	await get_tree().process_frame
 
+	# The Flure is the one plant whose transition the GAME already drives: its
+	# registry phase goes ready -> spent when a lure is used up. The spec calls that
+	# a collapse ("collapses from the core outward"), so spending it has to play the
+	# collapse rather than dim the same shape's glow.
+	var lure = Flure.new()
+	lure.configure(null, Vector3.ZERO, [])
+	get_tree().root.add_child(lure)
+	await get_tree().process_frame
+
+	var lure_rig = lure.get("_rig")
+	_assert_true(lure_rig != null, "the Flure builds its RIGGED body, not a static piece")
+	if lure_rig != null:
+		var lure_clips: PackedStringArray = lure_rig.call("clips")
+		_assert_true(lure_clips.has("flure_spend"),
+			"it carries its collapse (%s)" % str(lure_clips))
+		for clip_name in lure_clips:
+			_assert_true(str(clip_name).begins_with("flure_"),
+				"it advertises only its own clips (found %s)" % str(clip_name))
+		var lure_player: AnimationPlayer = lure_rig.get("_player")
+		_assert_true(lure_player != null, "the rigged flure has an AnimationPlayer")
+		if lure_player != null:
+			# a placed flure stands READY as modelled; arriving at the state it is
+			# already in must not animate anything
+			lure.call("_apply_runtime_surface", {"phase": Flure.PHASE_READY})
+			_assert_equals(str(lure_player.current_animation), "",
+				"a ready flure is not playing anything")
+			lure.call("_apply_runtime_surface", {"phase": Flure.PHASE_SPENT})
+			_assert_equals(str(lure_player.current_animation), "flure_spend",
+				"spending it plays the collapse")
+
+	lure.queue_free()
+	await get_tree().process_frame
+
 	# THE REST POSE MUST BE THE IDLE STATE. A bone rests at scale 1.0 and a flash
 	# card has to be modelled at its full visual size for the atlas to allot it any
 	# texels, so a body that has played nothing renders its completion flare unless
@@ -53618,7 +53651,7 @@ func _test_flora_rig_plays() -> void:
 	# signal that means "the work took", and the flash firing by going OUT. Nothing
 	# else catches it: the clips are correct, the rig gate passes, and every other
 	# assertion here is about a body that has already been told to play something.
-	for species in ["scarpet", "capbage", "hushbloom", "seefern"]:
+	for species in ["scarpet", "capbage", "hushbloom", "seefern", "flure"]:
 		var body := FloraRig.new()
 		get_tree().root.add_child(body)
 		if not body.setup(species):

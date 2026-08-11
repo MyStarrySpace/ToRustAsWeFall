@@ -49,6 +49,13 @@ var allow_deferred_targets := false
 var _active := false
 var _enemy_resolver: Callable = Callable()   # id -> Enemy node; the loader installs it
 var _glow: MeshInstance3D
+var _rig: FloraRig = null
+## Which transition the body has already played. A phase refresh runs on every
+## restore, and a clip restarted each time would keep resetting a plant that is
+## simply still spent. It starts at READY because the body is MODELLED ready —
+## a plant placed upright and open has not just been tended, and playing the
+## tending on arrival would flash a completion nobody worked for.
+var _played_phase := PHASE_READY
 var _glow_mat: StandardMaterial3D
 var _body: Node3D
 var _lure_target_ids: Array = []
@@ -142,7 +149,24 @@ func _build_glow() -> MeshInstance3D:
 ## Flure (iron-bronze collar + filament core). A LOCAL child, so it rides chunk
 ## warps and the outline exactly like the glow. If the library is unavailable the
 ## glow sphere alone still works (the pulse/outline contracts don't change).
+## The rigged body where one exists, the static piece otherwise.
+##
+## Spending a flure is a COLLAPSE, and the spec describes it as one: the plant
+## "collapses from the core outward", the petals lose their sheen, the core dries
+## and cracks. That is something the player watches happen, so it plays as a clip
+## rather than reading as a change in how brightly the same shape glows.
 func _build_body() -> Node3D:
+	if FloraRig.has_rig("flure"):
+		var rigged := FloraRig.new()
+		rigged.name = "FlureBody"
+		add_child(rigged)
+		if rigged.setup("flure"):
+			_rig = rigged
+			if _glow != null:
+				_glow.position = Vector3(0.0, 0.88, 0.0)
+				_glow.scale = Vector3.ONE * 0.4
+			return rigged
+		rigged.queue_free()
 	var body := ArchetypePieceLibrary.instantiate("flure")
 	if body == null:
 		return null
@@ -1499,6 +1523,7 @@ func _apply_runtime_surface(saved: Dictionary) -> void:
 				_glow_mat.emission_energy_multiplier = 0.12
 			_:
 				_glow_mat.emission_energy_multiplier = 0.5
+	_play_phase_clip(phase)
 	# Registry truth owns enablement. In particular, READY does not override a scenario that has
 	# deliberately disabled a future-stage flower.
 	if one_shot:
@@ -1563,3 +1588,19 @@ func _exit_tree() -> void:
 	if _gs != null and _gs.has_signal("character_arrived") \
 			and _gs.character_arrived.is_connected(_on_lure_target_arrived):
 		_gs.character_arrived.disconnect(_on_lure_target_arrived)
+
+
+## Play the transition a phase names, once per arrival at that phase.
+##
+## Cosmetic only: the registry owns the phase and the scheduler owns when it
+## commits, so nothing waits on the clip and the lure works whether or not the
+## petals have finished folding.
+func _play_phase_clip(phase: String) -> void:
+	if _rig == null or not is_instance_valid(_rig) or phase == _played_phase:
+		return
+	_played_phase = phase
+	match phase:
+		PHASE_SPENT:
+			_rig.play("flure_spend")
+		PHASE_READY:
+			_rig.play("flure_tend")
