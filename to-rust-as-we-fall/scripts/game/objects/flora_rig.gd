@@ -41,6 +41,7 @@ const SPECIES_ARMATURES := {
 	"tangler": "Tangler_Armature",
 	"flare": "Flare_Armature",
 	"naturalizer": "Naturalizer_Armature",
+	"redactor": "Redactor_Armature",
 }
 
 ## Bodies that do not live under resources/models/flora.
@@ -49,6 +50,7 @@ const SPECIES_SCENE_OVERRIDE := {
 	"tangler": "res://resources/models/fauna/tangler.gltf",
 	"flare": "res://resources/models/fauna/flare.gltf",
 	"naturalizer": "res://resources/models/fauna/naturalizer.gltf",
+	"redactor": "res://resources/models/fauna/redactor.gltf",
 }
 
 static var _packed := {}
