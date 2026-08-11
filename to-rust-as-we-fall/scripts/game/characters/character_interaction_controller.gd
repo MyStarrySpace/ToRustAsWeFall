@@ -71,6 +71,24 @@ func _bind_game_state_arrival() -> void:
 				"character_arrived", _on_game_state_character_arrived):
 		_arrival_game_state.connect(
 			"character_arrived", _on_game_state_character_arrived)
+	# A body that goes down on its way to something is not going to arrive, and the order it was
+	# carrying dies with it. Without this the object it was sent to keeps wearing the queued glow
+	# for the rest of the run: a standing promise about a character who cannot keep it.
+	if is_instance_valid(_arrival_game_state) 			and _arrival_game_state.has_signal("character_downed") 			and not _arrival_game_state.is_connected(
+				"character_downed", _on_game_state_character_downed):
+		_arrival_game_state.connect(
+			"character_downed", _on_game_state_character_downed)
+
+
+## The one place an approach is abandoned because its actor cannot make it. Routed through
+## the same cancel every other abandonment uses, so the queued feedback, the target and the request
+## owner all come down together rather than one of them being forgotten.
+func _on_game_state_character_downed(id: String) -> void:
+	if active_target == null:
+		return
+	if id != _interactor_id and id != _request_owner_id:
+		return
+	cancel_active_target()
 
 
 func _on_game_state_character_arrived(id: String) -> void:

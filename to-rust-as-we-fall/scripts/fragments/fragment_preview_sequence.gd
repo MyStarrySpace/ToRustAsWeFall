@@ -3775,7 +3775,10 @@ func _restore_default_note() -> void:
 		return
 	_note_label.text = _note_default if _show_default_note else ""
 	if _status_margin != null:
-		_status_margin.visible = _show_default_note
+		# The panel follows its TEXT, not the opt-in flag. A fragment that wants notes but has no
+		# standing line to show leaves an empty framed box sitting over the level otherwise, which
+		# reads as a piece of broken UI rather than as "nothing to report".
+		_status_margin.visible = _note_label.text != ""
 
 func _position_party_for_chunk() -> void:
 	var positions := DEFAULT_SPAWNS.duplicate(true)

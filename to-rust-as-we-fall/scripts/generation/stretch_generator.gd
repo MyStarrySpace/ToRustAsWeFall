@@ -1815,6 +1815,14 @@ static func _place_realized_content_on_navigation(
 		anchors: Dictionary
 	) -> Dictionary:
 	var errors: Array[String] = []
+	# Cells the water takes. Loose content does not get seated on them: anything the flow would carry
+	# off has no business sitting calmly in it, and a crate that survives a current tells the player
+	# the flow is scenery. A placement that WANTS to be in the flow says so with in_flow, which is how
+	# wreckage and snagged bodies stay legal.
+	var flow_cells := {}
+	for risk_v in (navigation_grid.get("risk_cell_list", []) as Array):
+		if risk_v is Array and (risk_v as Array).size() >= 2:
+			flow_cells["%d:%d" % [int(risk_v[0]), int(risk_v[1])]] = true
 	if str(navigation_grid.get("contract_id", "")) \
 			!= GridWorld.GRID_DATA_CONTRACT_ID:
 		return {
@@ -1891,6 +1899,7 @@ static func _place_realized_content_on_navigation(
 					or (a_cell.y == b_cell.y and a_cell.x < b_cell.x)
 			)
 			var chosen := {}
+			var wants_flow := bool(placement.get("in_flow", false))
 			for candidate_v in ordered_candidates:
 				if not (candidate_v is Dictionary):
 					continue
@@ -1899,6 +1908,10 @@ static func _place_realized_content_on_navigation(
 					"cell": candidate.get("cell", Vector2i.ZERO),
 					"level": int(candidate.get("level", -1)),
 				}
+				if not wants_flow:
+					var flow_cell: Vector2i = vertex["cell"]
+					if flow_cells.has("%d:%d" % [flow_cell.x, flow_cell.y]):
+						continue
 				var vertex_key := _interaction_vertex_key(vertex)
 				if used_vertices.has(vertex_key):
 					continue

@@ -120,6 +120,11 @@ const PARTY_IDS := ["aster", "peris", "endo"]
 
 var _props_root: Node3D
 var _realized_root: Node3D
+## Marker name -> the piece realized at it. An interactable's OWN body is the thing its outline
+## should wrap, and after the helix warp there is no way to find it by position: the deck run is a
+## single huge mesh whose bounds sit right under every fixture, so a nearest-mesh collect wraps the
+## walkway instead of the valve. Remembering what was built where is the only reliable link.
+var _marker_pieces: Dictionary = {}
 var _piece_aabbs: Dictionary = {}
 var _placed_count := 0
 var _unresolved: Array = []
@@ -314,6 +319,7 @@ func _realize_piece(marker: Node3D) -> void:
 	var piece := _spawn_piece(pid, marker.global_transform)
 	if piece == null:
 		return
+	_marker_pieces[str(marker.name)] = piece
 	_stamp(piece, str(marker.get_meta("mount", "floor")),
 		str(marker.get_meta("cluster", pid)), bool(marker.get_meta("embed_ok", false)))
 	var accent := str(marker.get_meta("accent", ""))
@@ -778,10 +784,17 @@ func _water_shader_res() -> Shader:
 func _is_water_mat(sm: StandardMaterial3D) -> bool:
 	return sm.emission_enabled and sm.emission.b > sm.emission.r * 1.4
 
+## The wash shader multiplies its texture by water_color, and it ships with the water blue this
+## level reads by. Adopting a piece's own albedo raw hands it a near-white multiplier, so the sheets
+## come out as pale pixels sitting on the deck instead of water. Tint the piece's colour THROUGH the
+## shader's blue: a white sheet becomes water, and a piece painted its own shade keeps that shade
+## relative to the others.
+const WATER_TINT := Color(0.35, 0.75, 0.85)   # the wash shader's own water_color default
+
 func _to_water_shader_mat(sm: StandardMaterial3D) -> ShaderMaterial:
 	var mat := ShaderMaterial.new()
 	mat.shader = _water_shader_res()
-	mat.set_shader_parameter("water_color", sm.albedo_color)
+	mat.set_shader_parameter("water_color", sm.albedo_color * WATER_TINT)
 	if sm.albedo_texture != null:
 		mat.set_shader_parameter("albedo_tex", sm.albedo_texture)
 		mat.set_shader_parameter("has_tex", true)
@@ -1538,8 +1551,12 @@ func _build_interactables() -> void:
 			Interactable.InteractableType.TIMED_ACTION)
 		den_stash.consequence_preview = "Something drags salvage in here. The work takes as long as it takes."
 		_wire_trigger(den_stash, _on_den_stash)
+	# Salvage sits in the GAP past section 1, not inside it. Loose supplies left in a wash section
+	# would have gone down the spiral with everything else the water takes; a crate sitting calmly
+	# mid-current tells the player the flood is scenery. It stays mid-stretch, and the sections either
+	# side of it still price how long anyone can afford to stand here working.
 	var stash := _add_interactable(self, "SunkenStash",
-		"Pry the sunken stash loose", Vector3(14.2, DECK_TOP, 6.4),
+		"Pry the sunken stash loose", Vector3(18.0, DECK_TOP, 6.4),
 		"SALVAGE THE STASH", "", 2.2, true, 1.5,
 		Interactable.InteractableType.TIMED_ACTION)
 	stash.consequence_preview = "The crews left supplies mid-stretch. The water decides how long you get."
@@ -1623,6 +1640,19 @@ func _wire_warped_outlines() -> void:
 						maxf(1.2, float(it.get("interaction_radius")))
 					) != null:
 					continue
+		# Its own body first: the piece realized at the marker that shares this interactable's name
+		# (or that name + "Body", the convention where the fixture and its trigger are separate
+		# markers). Only when there is no such piece does the positional collect get a turn, and on
+		# a warped run that collect is what wraps the whole deck.
+		var own_body = _marker_pieces.get(str(it.name), null)
+		if own_body == null:
+			own_body = _marker_pieces.get(str(it.name) + "Body", null)
+		if own_body != null and is_instance_valid(own_body):
+			var body_meshes := OutlineFeedbackManager.collect_mesh_instances(own_body)
+			if not body_meshes.is_empty() and _outline_interactable_meshes(
+					it as Node3D, body_meshes, str(it.name) + "Body",
+					maxf(1.2, float(it.get("interaction_radius")))) != null:
+				continue
 		_auto_outline_interactable(it, self, (it as Node3D).global_position,
 			maxf(1.2, float(it.get("interaction_radius"))))
 
