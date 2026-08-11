@@ -871,6 +871,9 @@ func _ready() -> void:
 			"--test-displacement-reroute":
 				ran_test = true
 				_test_displacement_reroute()
+			"--test-arrival-tick-exact-position":
+				ran_test = true
+				_test_arrival_tick_exact_position()
 			"--test-cross-level-replay":
 				ran_test = true
 				_test_cross_level_replay()
@@ -2103,6 +2106,7 @@ func _run_all_tests() -> void:
 	_test_stop_during_a_wait()
 	await _test_roam_is_salted_per_enemy()
 	_test_cross_level_replay()
+	_test_arrival_tick_exact_position()
 	await _test_dwell_follows_its_scheduler()
 	await _test_showcase_gallery()
 	await _test_set_piece_showcase()
@@ -47808,6 +47812,59 @@ func _test_dwell_follows_its_scheduler() -> void:
 ##
 ## When it does not, a replayed run puts somebody on the wrong floor while every recorded command
 ## still reads as executed, and the two histories disagree about where a character is standing.
+## AT THE TICK IT IS DUE, A BODY IS EXACTLY ON ITS WAYPOINT. Position is not stepped forward frame by
+## frame; it is read back from the schedule, so asking where someone is at the moment they are due at
+## a corner should answer with that corner, not a point near it.
+##
+## It matters because other systems key off those same ticks. Detection is predicted by solving
+## straight segments between waypoints, and cell claims are stamped from them. A body that is a few
+## centimetres past a corner at the tick it was due there is on a different cell than the one the
+## schedule reserved for it, and the disagreement surfaces later as a guard that saw someone it
+## should not have, or two bodies briefly claiming the same square.
+##
+## The LAST waypoint answers from a different branch (any tick at or past the end returns the final
+## point), so it is the corners in the MIDDLE that need saying.
+func _test_arrival_tick_exact_position() -> void:
+	_test_name = "Arrival Tick Exact Position"
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.scheduler = sched
+	gs.register_character("c", Vector3(0, 0.5, 0), 2.0, {})
+
+	# Deliberately uneven legs and uneven timings: equal spacing can hide an off-by-one that only
+	# shows when the segments differ.
+	var path: Array[Vector3] = [
+		Vector3(0.0, 0.5, 0.0),
+		Vector3(3.0, 0.5, 0.0),
+		Vector3(3.0, 0.5, 7.0),
+		Vector3(-2.0, 0.5, 7.0),
+		Vector3(-2.0, 0.5, 1.0),
+	]
+	var ticks: Array[float] = [0.0, 1.5, 4.0, 4.75, 9.0]
+	gs._start_movement("c", path, ticks)
+
+	# Every corner in the middle, asked for at exactly the tick it is due.
+	var worst := 0.0
+	var worst_at := -1
+	for idx in range(1, path.size() - 1):
+		sched.advance_ticks(ticks[idx] - sched.get_current_tick())
+		var off := gs.get_position("c").distance_to(path[idx])
+		if off > worst:
+			worst = off
+			worst_at = idx
+	_assert_true(worst < 0.0001,
+		("at the tick a body is due at a corner it stands on that corner (worst %.6f at waypoint %d)")
+			% [worst, worst_at])
+
+	# And the schedule is still honoured between corners: halfway through a leg in time is halfway
+	# along it in space, so the exactness above is not a body that simply stopped moving.
+	var mid_tick := (ticks[1] + ticks[2]) * 0.5
+	sched.advance_ticks(mid_tick - sched.get_current_tick())
+	var midpoint := path[1].lerp(path[2], 0.5)
+	_assert_true(gs.get_position("c").distance_to(midpoint) < 0.0001,
+		"and halfway through a leg in time it is halfway along that leg in space")
+
+
 func _test_cross_level_replay() -> void:
 	_test_name = "Cross Level Replay"
 	var grid_data := {
