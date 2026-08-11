@@ -14,10 +14,13 @@
 	],
 	"nodes":[
 		{
+			"name":"colony_0"
+		},
+		{
 			"name":"carpet_0",
 			"translation":[
 				0,
-				0.030000001192092896,
+				0.029999999329447746,
 				0
 			]
 		},
@@ -25,7 +28,7 @@
 			"name":"chain_0",
 			"translation":[
 				0,
-				0.12000000476837158,
+				0.11999999731779099,
 				0
 			]
 		},
@@ -38,14 +41,6 @@
 			]
 		},
 		{
-			"children":[
-				0,
-				1,
-				2
-			],
-			"name":"colony_0"
-		},
-		{
 			"mesh":0,
 			"name":"CandidRigged",
 			"skin":0
@@ -53,6 +48,9 @@
 		{
 			"children":[
 				4,
+				0,
+				1,
+				2,
 				3
 			],
 			"name":"Candid_Armature"
@@ -64,84 +62,84 @@
 				{
 					"sampler":0,
 					"target":{
-						"node":3,
+						"node":0,
 						"path":"translation"
 					}
 				},
 				{
 					"sampler":1,
 					"target":{
-						"node":3,
+						"node":0,
 						"path":"rotation"
 					}
 				},
 				{
 					"sampler":2,
 					"target":{
-						"node":3,
+						"node":0,
 						"path":"scale"
 					}
 				},
 				{
 					"sampler":3,
 					"target":{
-						"node":0,
+						"node":1,
 						"path":"translation"
 					}
 				},
 				{
 					"sampler":4,
 					"target":{
-						"node":0,
+						"node":1,
 						"path":"rotation"
 					}
 				},
 				{
 					"sampler":5,
 					"target":{
-						"node":0,
+						"node":1,
 						"path":"scale"
 					}
 				},
 				{
 					"sampler":6,
 					"target":{
-						"node":1,
+						"node":2,
 						"path":"translation"
 					}
 				},
 				{
 					"sampler":7,
 					"target":{
-						"node":1,
+						"node":2,
 						"path":"rotation"
 					}
 				},
 				{
 					"sampler":8,
 					"target":{
-						"node":1,
+						"node":2,
 						"path":"scale"
 					}
 				},
 				{
 					"sampler":9,
 					"target":{
-						"node":2,
+						"node":3,
 						"path":"translation"
 					}
 				},
 				{
 					"sampler":10,
 					"target":{
-						"node":2,
+						"node":3,
 						"path":"rotation"
 					}
 				},
 				{
 					"sampler":11,
 					"target":{
-						"node":2,
+						"node":3,
 						"path":"scale"
 					}
 				}
@@ -215,84 +213,84 @@
 				{
 					"sampler":0,
 					"target":{
-						"node":3,
+						"node":0,
 						"path":"translation"
 					}
 				},
 				{
 					"sampler":1,
 					"target":{
-						"node":3,
+						"node":0,
 						"path":"rotation"
 					}
 				},
 				{
 					"sampler":2,
 					"target":{
-						"node":3,
+						"node":0,
 						"path":"scale"
 					}
 				},
 				{
 					"sampler":3,
 					"target":{
-						"node":0,
+						"node":1,
 						"path":"translation"
 					}
 				},
 				{
 					"sampler":4,
 					"target":{
-						"node":0,
+						"node":1,
 						"path":"rotation"
 					}
 				},
 				{
 					"sampler":5,
 					"target":{
-						"node":0,
+						"node":1,
 						"path":"scale"
 					}
 				},
 				{
 					"sampler":6,
 					"target":{
-						"node":1,
+						"node":2,
 						"path":"translation"
 					}
 				},
 				{
 					"sampler":7,
 					"target":{
-						"node":1,
+						"node":2,
 						"path":"rotation"
 					}
 				},
 				{
 					"sampler":8,
 					"target":{
-						"node":1,
+						"node":2,
 						"path":"scale"
 					}
 				},
 				{
 					"sampler":9,
 					"target":{
-						"node":2,
+						"node":3,
 						"path":"translation"
 					}
 				},
 				{
 					"sampler":10,
 					"target":{
-						"node":2,
+						"node":3,
 						"path":"rotation"
 					}
 				},
 				{
 					"sampler":11,
 					"target":{
-						"node":2,
+						"node":3,
 						"path":"scale"
 					}
 				}
@@ -366,84 +364,84 @@
 				{
 					"sampler":0,
 					"target":{
-						"node":3,
+						"node":0,
 						"path":"translation"
 					}
 				},
 				{
 					"sampler":1,
 					"target":{
-						"node":3,
+						"node":0,
 						"path":"rotation"
 					}
 				},
 				{
 					"sampler":2,
 					"target":{
-						"node":3,
+						"node":0,
 						"path":"scale"
 					}
 				},
 				{
 					"sampler":3,
 					"target":{
-						"node":0,
+						"node":1,
 						"path":"translation"
 					}
 				},
 				{
 					"sampler":4,
 					"target":{
-						"node":0,
+						"node":1,
 						"path":"rotation"
 					}
 				},
 				{
 					"sampler":5,
 					"target":{
-						"node":0,
+						"node":1,
 						"path":"scale"
 					}
 				},
 				{
 					"sampler":6,
 					"target":{
-						"node":1,
+						"node":2,
 						"path":"translation"
 					}
 				},
 				{
 					"sampler":7,
 					"target":{
-						"node":1,
+						"node":2,
 						"path":"rotation"
 					}
 				},
 				{
 					"sampler":8,
 					"target":{
-						"node":1,
+						"node":2,
 						"path":"scale"
 					}
 				},
 				{
 					"sampler":9,
 					"target":{
-						"node":2,
+						"node":3,
 						"path":"translation"
 					}
 				},
 				{
 					"sampler":10,
 					"target":{
-						"node":2,
+						"node":3,
 						"path":"rotation"
 					}
 				},
 				{
 					"sampler":11,
 					"target":{
-						"node":2,
+						"node":3,
 						"path":"scale"
 					}
 				}
@@ -461,6 +459,21 @@
 					"output":9
 				},
 				{
+					"input":17,
+					"interpolation":"STEP",
+					"output":10
+				},
+				{
+					"input":17,
+					"interpolation":"STEP",
+					"output":11
+				},
+				{
+					"input":17,
+					"interpolation":"STEP",
+					"output":9
+				},
+				{
 					"input":18,
 					"interpolation":"LINEAR",
 					"output":19
@@ -468,7 +481,7 @@
 				{
 					"input":17,
 					"interpolation":"STEP",
-					"output":20
+					"output":12
 				},
 				{
 					"input":17,
@@ -476,24 +489,9 @@
 					"output":9
 				},
 				{
-					"input":17,
-					"interpolation":"STEP",
-					"output":10
-				},
-				{
-					"input":17,
-					"interpolation":"STEP",
-					"output":21
-				},
-				{
-					"input":17,
-					"interpolation":"STEP",
-					"output":9
-				},
-				{
-					"input":17,
-					"interpolation":"STEP",
-					"output":10
+					"input":18,
+					"interpolation":"LINEAR",
+					"output":19
 				},
 				{
 					"input":17,
@@ -506,9 +504,9 @@
 					"output":9
 				},
 				{
-					"input":17,
-					"interpolation":"STEP",
-					"output":10
+					"input":18,
+					"interpolation":"LINEAR",
+					"output":19
 				}
 			]
 		},
@@ -517,84 +515,84 @@
 				{
 					"sampler":0,
 					"target":{
-						"node":3,
+						"node":0,
 						"path":"translation"
 					}
 				},
 				{
 					"sampler":1,
 					"target":{
-						"node":3,
+						"node":0,
 						"path":"rotation"
 					}
 				},
 				{
 					"sampler":2,
 					"target":{
-						"node":3,
+						"node":0,
 						"path":"scale"
 					}
 				},
 				{
 					"sampler":3,
 					"target":{
-						"node":0,
+						"node":1,
 						"path":"translation"
 					}
 				},
 				{
 					"sampler":4,
 					"target":{
-						"node":0,
+						"node":1,
 						"path":"rotation"
 					}
 				},
 				{
 					"sampler":5,
 					"target":{
-						"node":0,
+						"node":1,
 						"path":"scale"
 					}
 				},
 				{
 					"sampler":6,
 					"target":{
-						"node":1,
+						"node":2,
 						"path":"translation"
 					}
 				},
 				{
 					"sampler":7,
 					"target":{
-						"node":1,
+						"node":2,
 						"path":"rotation"
 					}
 				},
 				{
 					"sampler":8,
 					"target":{
-						"node":1,
+						"node":2,
 						"path":"scale"
 					}
 				},
 				{
 					"sampler":9,
 					"target":{
-						"node":2,
+						"node":3,
 						"path":"translation"
 					}
 				},
 				{
 					"sampler":10,
 					"target":{
-						"node":2,
+						"node":3,
 						"path":"rotation"
 					}
 				},
 				{
 					"sampler":11,
 					"target":{
-						"node":2,
+						"node":3,
 						"path":"scale"
 					}
 				}
@@ -644,7 +642,7 @@
 				{
 					"input":18,
 					"interpolation":"LINEAR",
-					"output":22
+					"output":20
 				},
 				{
 					"input":17,
@@ -659,7 +657,7 @@
 				{
 					"input":18,
 					"interpolation":"LINEAR",
-					"output":23
+					"output":21
 				}
 			]
 		}
@@ -713,10 +711,10 @@
 		{
 			"inverseBindMatrices":6,
 			"joints":[
-				3,
 				0,
 				1,
-				2
+				2,
+				3
 			],
 			"name":"Candid_Armature"
 		}
@@ -879,23 +877,11 @@
 		{
 			"bufferView":20,
 			"componentType":5126,
-			"count":2,
-			"type":"VEC3"
-		},
-		{
-			"bufferView":21,
-			"componentType":5126,
-			"count":2,
-			"type":"VEC3"
-		},
-		{
-			"bufferView":22,
-			"componentType":5126,
 			"count":53,
 			"type":"VEC3"
 		},
 		{
-			"bufferView":23,
+			"bufferView":21,
 			"componentType":5126,
 			"count":53,
 			"type":"VEC3"
@@ -1010,23 +996,13 @@
 		},
 		{
 			"buffer":0,
-			"byteLength":24,
+			"byteLength":636,
 			"byteOffset":5260
 		},
 		{
 			"buffer":0,
-			"byteLength":24,
-			"byteOffset":5284
-		},
-		{
-			"buffer":0,
 			"byteLength":636,
-			"byteOffset":5308
-		},
-		{
-			"buffer":0,
-			"byteLength":636,
-			"byteOffset":5944
+			"byteOffset":5896
 		}
 	],
 	"samplers":[
@@ -1037,7 +1013,7 @@
 	],
 	"buffers":[
 		{
-			"byteLength":6580,
+			"byteLength":6532,
 			"uri":"candid.bin"
 		}
 	]
