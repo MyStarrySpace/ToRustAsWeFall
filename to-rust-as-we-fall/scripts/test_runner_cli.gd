@@ -30062,6 +30062,26 @@ func _test_grid_levels() -> void:
 	_assert_equals(grid.grid_to_world(Vector2i(5, 5), 1).y, 4.0, "Level 1 sits one level_height up")
 	_assert_equals(grid.world_to_grid(grid.grid_to_world(Vector2i(5, 5), 1)), Vector2i(5, 5), "world_to_grid maps to the same cell on any floor")
 
+	# Whether the grid is STACKED at all, which is what decides if a world Y carries
+	# a floor. A move that arrives while its character cannot accept it has its
+	# intent rewritten, and on a stacked grid that rewrite has to target the floor
+	# the click's height implies rather than the one the body is standing on.
+	# has_method FIRST: calling a method that does not exist prints a non-fatal
+	# error and ABANDONS the rest of this function, so the assertions below would
+	# never run and the test would still report itself passed.
+	_assert_true(grid.has_method("is_multi_level"),
+		"the grid can be asked whether it is stacked")
+	_assert_true(grid.is_multi_level(), "a two-floor grid reports itself stacked")
+	var flat := GridWorld.new()
+	flat.create_room(6, 6)
+	_assert_true(not flat.is_multi_level(), "a single-floor grid does not")
+	var unspaced := GridWorld.new()
+	unspaced.create_room(6, 6)
+	unspaced.set_level_count(3)
+	unspaced.level_height = 0.0
+	_assert_true(not unspaced.is_multi_level(),
+		"floors with no height between them are not stacked either — level_for_y cannot separate them")
+
 	# Ladder/ramp links between floors.
 	grid.add_inter_level_link(Vector2i(3, 3), 0, 1, "ladder")
 	_assert_true(grid.can_traverse_link(Vector2i(3, 3), 0, 1) and grid.can_traverse_link(Vector2i(3, 3), 1, 0),
