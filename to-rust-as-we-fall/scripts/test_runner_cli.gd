@@ -53611,6 +53611,44 @@ func _test_flora_rig_plays() -> void:
 	mat.queue_free()
 	await get_tree().process_frame
 
+	# THE REST POSE MUST BE THE IDLE STATE. A bone rests at scale 1.0 and a flash
+	# card has to be modelled at its full visual size for the atlas to allot it any
+	# texels, so a body that has played nothing renders its completion flare unless
+	# the exported rest pose says otherwise — every plant in the world wearing the
+	# signal that means "the work took", and the flash firing by going OUT. Nothing
+	# else catches it: the clips are correct, the rig gate passes, and every other
+	# assertion here is about a body that has already been told to play something.
+	for species in ["scarpet", "capbage", "hushbloom", "seefern"]:
+		var body := FloraRig.new()
+		get_tree().root.add_child(body)
+		if not body.setup(species):
+			_assert_true(false, "%s has a rigged body to check at rest" % species)
+			body.queue_free()
+			continue
+		var skeletons: Array = []
+		var stack: Array = [body]
+		while not stack.is_empty():
+			var n = stack.pop_back()
+			if n is Skeleton3D:
+				skeletons.append(n)
+			for c in n.get_children():
+				stack.append(c)
+		_assert_true(not skeletons.is_empty(), "%s body has a Skeleton3D" % species)
+		var flashes := 0
+		for sk in skeletons:
+			for b in (sk as Skeleton3D).get_bone_count():
+				var bone_name := str((sk as Skeleton3D).get_bone_name(b))
+				if bone_name.findn("flash") < 0:
+					continue
+				flashes += 1
+				var s: Vector3 = (sk as Skeleton3D).get_bone_pose_scale(b)
+				_assert_true(maxf(s.x, maxf(s.y, s.z)) < 0.01,
+					"%s rests with %s SHUT, not wearing its flare (scale %.3f)"
+						% [species, bone_name, s.x])
+		_assert_true(flashes > 0, "%s has a flash bone to hold shut" % species)
+		body.queue_free()
+		await get_tree().process_frame
+
 func _test_capbage_retrieve() -> void:
 	_test_name = "Capbage Retrieve"
 	var wall0 := Time.get_ticks_msec()

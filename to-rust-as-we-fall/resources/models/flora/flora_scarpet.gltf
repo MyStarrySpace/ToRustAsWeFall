@@ -97,9 +97,9 @@
 		{
 			"name":"scflash_0",
 			"scale":[
-				1,
-				0.9999999403953552,
-				1
+				0.0010000000474974513,
+				0.0009999999310821295,
+				0.0010000000474974513
 			],
 			"translation":[
 				0,
@@ -654,21 +654,6 @@
 				{
 					"input":21,
 					"interpolation":"STEP",
-					"output":15
-				},
-				{
-					"input":21,
-					"interpolation":"STEP",
-					"output":9
-				},
-				{
-					"input":21,
-					"interpolation":"STEP",
-					"output":25
-				},
-				{
-					"input":21,
-					"interpolation":"STEP",
 					"output":27
 				},
 				{
@@ -724,7 +709,22 @@
 				{
 					"input":21,
 					"interpolation":"STEP",
+					"output":25
+				},
+				{
+					"input":21,
+					"interpolation":"STEP",
 					"output":31
+				},
+				{
+					"input":21,
+					"interpolation":"STEP",
+					"output":9
+				},
+				{
+					"input":21,
+					"interpolation":"STEP",
+					"output":32
 				}
 			]
 		}
@@ -1038,6 +1038,12 @@
 			"componentType":5126,
 			"count":2,
 			"type":"VEC3"
+		},
+		{
+			"bufferView":32,
+			"componentType":5126,
+			"count":2,
+			"type":"VEC3"
 		}
 	],
 	"bufferViews":[
@@ -1206,6 +1212,11 @@
 			"buffer":0,
 			"byteLength":24,
 			"byteOffset":9592
+		},
+		{
+			"buffer":0,
+			"byteLength":24,
+			"byteOffset":9616
 		}
 	],
 	"samplers":[
@@ -1216,7 +1227,7 @@
 	],
 	"buffers":[
 		{
-			"byteLength":9616,
+			"byteLength":9640,
 			"uri":"flora_scarpet.bin"
 		}
 	]
