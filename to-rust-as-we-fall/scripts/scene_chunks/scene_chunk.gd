@@ -1891,11 +1891,28 @@ func _collect_meshes_near(node: Node, position: Vector3, radius: float, for_inte
 		var owner_ia := _owning_interactable(mi)
 		if owner_ia != null and owner_ia != for_interactable:
 			continue
+		# The ground an object stands on is not part of the object. Levels built from tiled runs put
+		# a floor plank within collect range of every fixture, and a collected plank does double
+		# damage: the outline draws a slab of walkway around the thing, and the merged pick body
+		# grows until hovering empty deck lights it. Pieces stamped as structure stay out of every
+		# object's outline set.
+		if _structure_stamped(mi):
+			continue
 		var world_aabb: AABB = mi.global_transform * mi.mesh.get_aabb()
 		var center := world_aabb.position + world_aabb.size * 0.5
 		if center.distance_to(position) <= radius:
 			out.append(mi)
 	return out
+
+## Whether a mesh belongs to a piece stamped as STRUCTURE (walkway, wall, channel run) — the stamp
+## sits on the piece root, so walk the ancestry.
+func _structure_stamped(node: Node) -> bool:
+	var cur := node
+	while cur != null:
+		if cur.has_meta("cluster") and str(cur.get_meta("cluster")).begins_with("structure_"):
+			return true
+		cur = cur.get_parent()
+	return false
 
 ## The interactable a node belongs to (nearest ancestor with the interactable signature), or null.
 func _owning_interactable(node: Node) -> Node:

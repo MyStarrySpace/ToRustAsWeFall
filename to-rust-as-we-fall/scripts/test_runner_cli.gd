@@ -18,6 +18,7 @@ const TEST_TIER_WINDOWED := "windowed"
 const TEST_TIER_HEADLESS := "headless"
 const TEST_TIER_DIAGNOSTIC := "diagnostic"
 const TEST_TIER_OVERRIDES := {
+	"--test-wash-outline-capture": TEST_TIER_WINDOWED,
 	"--test-player-contract": TEST_TIER_WINDOWED,
 	"--test-player-observation": TEST_TIER_WINDOWED,
 	"--test-movement-route-status-render": TEST_TIER_WINDOWED,
@@ -898,6 +899,15 @@ func _ready() -> void:
 			"--test-parked-detector-sees-approach":
 				ran_test = true
 				_test_parked_detector_sees_approach()
+			"--test-wash-outline-capture":
+				ran_test = true
+				await _test_wash_outline_capture()
+			"--test-outline-mask-clears":
+				ran_test = true
+				await _test_outline_mask_clears()
+			"--test-outline-body-extent":
+				ran_test = true
+				await _test_outline_body_extent()
 			"--test-chunk-unload-scheduler-clean":
 				ran_test = true
 				await _test_chunk_unload_scheduler_clean()
@@ -2118,6 +2128,8 @@ func _run_all_tests() -> void:
 	await _test_outline_selection_ownership()
 	await _test_outline_target_swap_keeps_hover()
 	await _test_chunk_unload_scheduler_clean()
+	await _test_outline_body_extent()
+	await _test_outline_mask_clears()
 	_test_parked_detector_sees_approach()
 	await _test_stagger_does_not_chase_a_corpse()
 	await _test_pagination_boundaries()

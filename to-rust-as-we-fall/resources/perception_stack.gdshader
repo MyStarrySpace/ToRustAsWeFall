@@ -179,6 +179,24 @@ float los_baked(vec3 src, vec3 world_pos) {
 	return total / wsum;
 }
 
+// PENUMBRA for the depth-marched path, so a warped scene's fog edge rolls the way a flat scene's
+// does. The baked path averages a ring of source taps; the depth path has no occluder mask to
+// weight taps with, so a tap standing inside a wall cannot be told from one in the open. Taking the
+// MOST visible tap sidesteps that: a buried tap reads occluded and simply loses, and the shadow
+// edge softens by the ring radius instead of stair-stepping along whatever silhouette the depth
+// buffer caught. Fully visible fragments return on the centre ray alone and pay nothing extra.
+float los_depth(vec3 src, vec3 world_pos, sampler2D depth, mat4 view, mat4 proj, mat4 inv_proj, mat4 inv_view, vec3 cam) {
+	float vis = los_visible(src, world_pos, depth, view, proj, inv_proj, inv_view, cam);
+	if (los_penumbra <= 0.001 || vis >= 0.999) { return vis; }
+	vec2 ring[3] = vec2[](vec2(1.0, 0.0), vec2(-0.5, 0.866), vec2(-0.5, -0.866));
+	for (int i = 0; i < 3; i++) {
+		vec3 tap = src + vec3(ring[i].x, 0.0, ring[i].y) * los_penumbra;
+		vis = max(vis, los_visible(tap, world_pos, depth, view, proj, inv_proj, inv_view, cam));
+		if (vis >= 0.999) { break; }
+	}
+	return vis;
+}
+
 void vertex() {
 	POSITION = vec4(VERTEX.xy, 1.0, 1.0);
 }
@@ -204,7 +222,7 @@ void fragment() {
 			if (los_enabled && source_blend < 0.999) {
 				float vis = occ_baked_enabled
 					? los_baked(src, world_pos)
-					: los_visible(src, world_pos, depth_tex, VIEW_MATRIX, PROJECTION_MATRIX, INV_PROJECTION_MATRIX, INV_VIEW_MATRIX, INV_VIEW_MATRIX[3].xyz);
+					: los_depth(src, world_pos, depth_tex, VIEW_MATRIX, PROJECTION_MATRIX, INV_PROJECTION_MATRIX, INV_VIEW_MATRIX, INV_VIEW_MATRIX[3].xyz);
 				source_blend = max(source_blend, 1.0 - vis);
 			}
 			data_blend = min(data_blend, source_blend);
@@ -262,7 +280,7 @@ void fragment() {
 			if (los_enabled && source_blend < 0.999) {
 				float vis = occ_baked_enabled
 					? los_baked(src, world_pos)
-					: los_visible(src, world_pos, depth_tex, VIEW_MATRIX, PROJECTION_MATRIX, INV_PROJECTION_MATRIX, INV_VIEW_MATRIX, INV_VIEW_MATRIX[3].xyz);
+					: los_depth(src, world_pos, depth_tex, VIEW_MATRIX, PROJECTION_MATRIX, INV_PROJECTION_MATRIX, INV_VIEW_MATRIX, INV_VIEW_MATRIX[3].xyz);
 				source_blend = max(source_blend, 1.0 - vis);
 			}
 			fog_blend = min(fog_blend, source_blend);

@@ -1481,6 +1481,9 @@ func _build_interactables() -> void:
 		"HOLD THE VALVE", "", 1.1, false, 1.6,
 		Interactable.InteractableType.INSPECTION)
 	exam_valve.consequence_preview = "The last locked stretch. You know what this wheel does by now."
+	# "You know what this wheel does by now" needs a wheel to know: the exam site wears the same
+	# water_control body its siblings were placed with, riding the interactable so the warp carries it.
+	_give_interactable_body(exam_valve, "water_control")
 	_wire_trigger(exam_valve, _on_exam_valve)
 	var exam_rx := EmpReceiver.new()
 	exam_rx.name = "ExamValveEmpReceiver"
@@ -1538,6 +1541,7 @@ func _build_interactables() -> void:
 		Interactable.InteractableType.TIMED_ACTION)
 	transfer_cache.consequence_preview = "The transfer crew left their kit mid-stretch. Only a held channel gives you long enough."
 	_wire_trigger(transfer_cache, _on_transfer_cache)
+	_give_interactable_body(transfer_cache, "forage_cache")
 	# THE DEN STASHES: each offshoot's deep pocket pays — and standing in a
 	# den is standing in something's home. Same push-your-luck grammar as the
 	# span stashes; the price here is the dweller, not the water.
@@ -1840,18 +1844,45 @@ func _build_checkpoint_vines() -> void:
 				coil.scale = Vector3(0.5, 0.5, 0.5)
 				coil.rotation.x = -0.55
 				(coil_host as Node3D).add_child(coil)
+		# The bottom mouth has no rope until the drop commits, so it is dormant AND bodiless at
+		# boot -- there is honestly nothing there to outline. Its coil arrives with the rope.
+		up.set_meta("outline_visibility_contract", "dormant_until_enabled")
 		_checkpoint_vines.append({"drop": drop, "up": up, "down": down})
 
 ## The drop is the checkpoint commitment: the party stood at the chunk end and
 ## released the rope. Both mouths arm; the state is DERIVED from the logged
 ## drop trigger, so replay re-arms them identically.
+## A fixture the player interacts with wears its own library-piece body, parented under the
+## interactable so the helix warp carries them together. The body is what the outline wraps; without
+## one, the wire either lights nothing or borrows whatever geometry stands nearby.
+func _give_interactable_body(interactable: Node3D, piece_id: String) -> void:
+	if interactable == null:
+		return
+	var body := ArchetypePieceLibrary.instantiate(piece_id)
+	if body == null:
+		return
+	interactable.add_child(body)
+
+
 func _on_rope_dropped(i: int) -> void:
 	if i < 0 or i >= _checkpoint_vines.size():
 		return
 	_ropes_dropped[i] = true
 	var vine: Dictionary = _checkpoint_vines[i]
-	(vine["up"] as CrawlTunnel).set_interaction_enabled(true)
+	var up_mouth := vine["up"] as CrawlTunnel
+	up_mouth.set_interaction_enabled(true)
 	(vine["down"] as CrawlTunnel).set_interaction_enabled(true)
+	# The rope exists now, so the bottom mouth gets its body and its outline: the same coil the top
+	# anchors carry, arriving with the drop rather than standing at an empty wall before it.
+	if up_mouth.get("_outline_target") == null:
+		var coil := ArchetypePieceLibrary.instantiate("climbvine")
+		if coil != null:
+			coil.scale = Vector3(0.5, 0.5, 0.5)
+			coil.rotation.x = 0.55
+			up_mouth.add_child(coil)
+			_outline_interactable_meshes(up_mouth,
+				OutlineFeedbackManager.collect_mesh_instances(coil),
+				str(up_mouth.name), 1.6)
 	_show_note("The sloperope drops. The way back up is yours now.", 2.6)
 	_set_preview_step("wash_ascent_rope_%d" % (i + 1))
 

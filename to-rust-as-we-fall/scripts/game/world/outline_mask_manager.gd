@@ -233,11 +233,15 @@ func _refresh_visibility() -> void:
 	if _quad != null:
 		_quad.visible = active
 	# Don't re-render an empty viewport every frame: outline pass renders while anything is highlighted, the glow
-	# pass only while something is QUEUED (the rarer state).
+	# pass only while something is QUEUED (the rarer state). Going quiet takes ONE more frame, not zero:
+	# a render target keeps whatever it last drew, so stopping at the moment a glow ends freezes that
+	# glow INTO the texture — and the quad still composites it whenever anything else lights up, so a
+	# finished interaction's halo haunts every later hover. UPDATE_ONCE paints the now-empty pass
+	# clear first, then it sleeps.
 	if _sub != null:
-		_sub.render_target_update_mode = SubViewport.UPDATE_ALWAYS if active else SubViewport.UPDATE_DISABLED
+		_sub.render_target_update_mode = SubViewport.UPDATE_ALWAYS if active else SubViewport.UPDATE_ONCE
 	if _glow_sub != null:
-		_glow_sub.render_target_update_mode = SubViewport.UPDATE_ALWAYS if any_glow else SubViewport.UPDATE_DISABLED
+		_glow_sub.render_target_update_mode = SubViewport.UPDATE_ALWAYS if any_glow else SubViewport.UPDATE_ONCE
 
 ## Per-surface fill material: a flat opaque tint, with alpha-cutout discard when the source surface is transparent
 ## (so foliage/decals mask to the leaf shape, not the bounding quad).
