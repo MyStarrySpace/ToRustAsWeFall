@@ -10713,23 +10713,38 @@ func _test_branch_point_sockets() -> void:
 	var built: Dictionary = filled["branch_point"]
 
 	# THE LAW: nothing that charges blood is ever on the safe way through.
+	# The claims below are the safe-route law itself -- a clean way through, and a priced arm inside
+	# its cap. They are made INSIDE loops, so a fork that filled "ok" with no arms would retire the
+	# whole law silently while this test still reported green. Count what gets inspected and say so.
+	var safe_arms_seen := 0
+	var safe_sockets_seen := 0
 	for arm_v in (built["arms"] as Array):
 		var arm: Dictionary = arm_v
 		if str(arm["class"]) != "safe":
 			continue
+		safe_arms_seen += 1
 		for socket_v in (arm["sockets"] as Array):
+			safe_sockets_seen += 1
 			_assert_equals(str((socket_v as Dictionary)["route_class"]), "clean",
 				"every socket on the safe arm holds a clean fragment")
 		_assert_equals(float(arm["hp_cost"]), 0.0, "the safe arm charges nothing at all")
+	_assert_true(safe_arms_seen > 0 and safe_sockets_seen > 0,
+		"a filled fork actually HAS a safe arm carrying fragments (%d arms, %d sockets)" % [
+			safe_arms_seen, safe_sockets_seen])
 
 	# A priced arm never charges more than its tier allows, however many sockets it carries.
+	var priced_arms_seen := 0
 	for arm_v in (built["arms"] as Array):
 		var arm: Dictionary = arm_v
 		if str(arm["class"]) == "safe":
 			continue
+		priced_arms_seen += 1
 		_assert_true(float(arm["hp_cost"]) <= float(arm["hp_cap"]) + 0.001,
 			"a priced arm stays inside its cap (%.1f <= %.1f)" % [
 				float(arm["hp_cost"]), float(arm["hp_cap"])])
+	_assert_true(priced_arms_seen > 0,
+		("and the fork offers a priced arm to compare it against -- a fork with only one kind "
+		+ "of arm is not a choice"))
 
 	# The tier caps what a hard run HANDS BACK, never what it takes: a harder tier must not be a
 	# damage slider.
