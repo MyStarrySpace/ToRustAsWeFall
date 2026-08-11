@@ -39,11 +39,15 @@ Mother Flure: its two frames are exactly the "pre-bloom (default state on entry)
 |---|---|---|---|
 | ENT-001 | Sapscrap — the three-palp C3 body, a squat lens on three clamping limbs | `build_sapscrap.py` | not yet checked |
 | ENT-004 | Crust — a pale slab on a wall under a dense hexagonal pore array | `build_crust.py` | **checked, and it holds**: the pore field is ONE drawn card and only the dilating mouths are modelled |
+| ENT-005 | Candid — a bleached floor disc carrying all three strata: scattered buds, budded chains, and standing rods | `build_candid.py` | structure matches; not pixel-checked |
 | ENT-008 (cloaked / revealed) | Redactor | `build_redactor.py` | yes — it cites the card |
+| ENT-009 | Gnawer — a low dark quadruped with a heme-red ring maw and the enzyme haze standing off it | `build_gnawer.py` | tell matches; silhouette not checked |
+| ENT-010 | Spiker — a rooted pyramidal neuron: splayed basal roots, an apical trunk, a crown of branches | `build_spiker.py` | tell matches; silhouette not checked |
 | ENT-011 | Hidra — a pale segmented helix wound along a conduit run | `build_hidra.py` | **rebuilt to match** |
 | ENT-012 | Flare — a translucent membrane with three granule classes banked inside | `build_flare.py` | **diverges; a correction was attempted and reverted** |
 
-ENT-002, 003, 005, 006, 007, 009, 010, 013 are the remaining eight and are **not yet mapped**.
+ENT-002, 003, 006, 007 and 013 are the remaining five, covering Ferrules, Meebs, Tanglers,
+Naturalizers and Toxos in some order. They are **not yet mapped**.
 Identify them from the roster in `reference-docs/fauna_roster.md`; the card numbering does NOT follow
 the roster order (ENT-011 is the Hidra, third in the roster; ENT-012 the Flare, tenth). ENT-013 is a
 segmented crescent body with one dark aperture and two pale bumps aft — most likely the Toxo, whose
