@@ -1247,6 +1247,21 @@
 					"output":9
 				},
 				{
+					"input":31,
+					"interpolation":"STEP",
+					"output":13
+				},
+				{
+					"input":31,
+					"interpolation":"STEP",
+					"output":12
+				},
+				{
+					"input":31,
+					"interpolation":"STEP",
+					"output":9
+				},
+				{
 					"input":32,
 					"interpolation":"LINEAR",
 					"output":33
@@ -1262,9 +1277,9 @@
 					"output":9
 				},
 				{
-					"input":31,
-					"interpolation":"STEP",
-					"output":13
+					"input":32,
+					"interpolation":"LINEAR",
+					"output":33
 				},
 				{
 					"input":31,
@@ -1277,9 +1292,9 @@
 					"output":9
 				},
 				{
-					"input":31,
-					"interpolation":"STEP",
-					"output":13
+					"input":32,
+					"interpolation":"LINEAR",
+					"output":33
 				},
 				{
 					"input":31,
@@ -1292,9 +1307,9 @@
 					"output":9
 				},
 				{
-					"input":31,
-					"interpolation":"STEP",
-					"output":13
+					"input":32,
+					"interpolation":"LINEAR",
+					"output":33
 				},
 				{
 					"input":31,
@@ -1307,9 +1322,9 @@
 					"output":9
 				},
 				{
-					"input":31,
-					"interpolation":"STEP",
-					"output":13
+					"input":32,
+					"interpolation":"LINEAR",
+					"output":33
 				},
 				{
 					"input":31,
@@ -1322,9 +1337,9 @@
 					"output":9
 				},
 				{
-					"input":31,
-					"interpolation":"STEP",
-					"output":13
+					"input":32,
+					"interpolation":"LINEAR",
+					"output":33
 				},
 				{
 					"input":31,
@@ -1337,9 +1352,9 @@
 					"output":9
 				},
 				{
-					"input":31,
-					"interpolation":"STEP",
-					"output":13
+					"input":32,
+					"interpolation":"LINEAR",
+					"output":33
 				},
 				{
 					"input":31,
@@ -1352,9 +1367,9 @@
 					"output":9
 				},
 				{
-					"input":31,
-					"interpolation":"STEP",
-					"output":13
+					"input":32,
+					"interpolation":"LINEAR",
+					"output":33
 				},
 				{
 					"input":31,
@@ -1367,9 +1382,9 @@
 					"output":9
 				},
 				{
-					"input":31,
-					"interpolation":"STEP",
-					"output":13
+					"input":32,
+					"interpolation":"LINEAR",
+					"output":33
 				},
 				{
 					"input":31,
@@ -1382,9 +1397,9 @@
 					"output":9
 				},
 				{
-					"input":31,
-					"interpolation":"STEP",
-					"output":13
+					"input":32,
+					"interpolation":"LINEAR",
+					"output":33
 				},
 				{
 					"input":31,
@@ -1397,9 +1412,9 @@
 					"output":9
 				},
 				{
-					"input":31,
-					"interpolation":"STEP",
-					"output":13
+					"input":32,
+					"interpolation":"LINEAR",
+					"output":33
 				},
 				{
 					"input":31,
@@ -1412,9 +1427,9 @@
 					"output":9
 				},
 				{
-					"input":31,
-					"interpolation":"STEP",
-					"output":13
+					"input":32,
+					"interpolation":"LINEAR",
+					"output":33
 				},
 				{
 					"input":31,
@@ -1427,9 +1442,9 @@
 					"output":9
 				},
 				{
-					"input":31,
-					"interpolation":"STEP",
-					"output":13
+					"input":32,
+					"interpolation":"LINEAR",
+					"output":33
 				},
 				{
 					"input":31,
@@ -1442,9 +1457,9 @@
 					"output":9
 				},
 				{
-					"input":31,
-					"interpolation":"STEP",
-					"output":13
+					"input":32,
+					"interpolation":"LINEAR",
+					"output":33
 				},
 				{
 					"input":31,
@@ -1457,9 +1472,9 @@
 					"output":9
 				},
 				{
-					"input":31,
-					"interpolation":"STEP",
-					"output":13
+					"input":32,
+					"interpolation":"LINEAR",
+					"output":33
 				},
 				{
 					"input":31,
@@ -1472,9 +1487,9 @@
 					"output":9
 				},
 				{
-					"input":31,
-					"interpolation":"STEP",
-					"output":13
+					"input":32,
+					"interpolation":"LINEAR",
+					"output":33
 				},
 				{
 					"input":31,
@@ -1489,22 +1504,662 @@
 				{
 					"input":31,
 					"interpolation":"STEP",
-					"output":13
-				},
-				{
-					"input":31,
-					"interpolation":"STEP",
 					"output":50
+				}
+			]
+		},
+		{
+			"channels":[
+				{
+					"sampler":0,
+					"target":{
+						"node":17,
+						"path":"translation"
+					}
 				},
 				{
-					"input":31,
+					"sampler":1,
+					"target":{
+						"node":17,
+						"path":"rotation"
+					}
+				},
+				{
+					"sampler":2,
+					"target":{
+						"node":17,
+						"path":"scale"
+					}
+				},
+				{
+					"sampler":3,
+					"target":{
+						"node":0,
+						"path":"translation"
+					}
+				},
+				{
+					"sampler":4,
+					"target":{
+						"node":0,
+						"path":"rotation"
+					}
+				},
+				{
+					"sampler":5,
+					"target":{
+						"node":0,
+						"path":"scale"
+					}
+				},
+				{
+					"sampler":6,
+					"target":{
+						"node":1,
+						"path":"translation"
+					}
+				},
+				{
+					"sampler":7,
+					"target":{
+						"node":1,
+						"path":"rotation"
+					}
+				},
+				{
+					"sampler":8,
+					"target":{
+						"node":1,
+						"path":"scale"
+					}
+				},
+				{
+					"sampler":9,
+					"target":{
+						"node":2,
+						"path":"translation"
+					}
+				},
+				{
+					"sampler":10,
+					"target":{
+						"node":2,
+						"path":"rotation"
+					}
+				},
+				{
+					"sampler":11,
+					"target":{
+						"node":2,
+						"path":"scale"
+					}
+				},
+				{
+					"sampler":12,
+					"target":{
+						"node":3,
+						"path":"translation"
+					}
+				},
+				{
+					"sampler":13,
+					"target":{
+						"node":3,
+						"path":"rotation"
+					}
+				},
+				{
+					"sampler":14,
+					"target":{
+						"node":3,
+						"path":"scale"
+					}
+				},
+				{
+					"sampler":15,
+					"target":{
+						"node":4,
+						"path":"translation"
+					}
+				},
+				{
+					"sampler":16,
+					"target":{
+						"node":4,
+						"path":"rotation"
+					}
+				},
+				{
+					"sampler":17,
+					"target":{
+						"node":4,
+						"path":"scale"
+					}
+				},
+				{
+					"sampler":18,
+					"target":{
+						"node":5,
+						"path":"translation"
+					}
+				},
+				{
+					"sampler":19,
+					"target":{
+						"node":5,
+						"path":"rotation"
+					}
+				},
+				{
+					"sampler":20,
+					"target":{
+						"node":5,
+						"path":"scale"
+					}
+				},
+				{
+					"sampler":21,
+					"target":{
+						"node":6,
+						"path":"translation"
+					}
+				},
+				{
+					"sampler":22,
+					"target":{
+						"node":6,
+						"path":"rotation"
+					}
+				},
+				{
+					"sampler":23,
+					"target":{
+						"node":6,
+						"path":"scale"
+					}
+				},
+				{
+					"sampler":24,
+					"target":{
+						"node":7,
+						"path":"translation"
+					}
+				},
+				{
+					"sampler":25,
+					"target":{
+						"node":7,
+						"path":"rotation"
+					}
+				},
+				{
+					"sampler":26,
+					"target":{
+						"node":7,
+						"path":"scale"
+					}
+				},
+				{
+					"sampler":27,
+					"target":{
+						"node":8,
+						"path":"translation"
+					}
+				},
+				{
+					"sampler":28,
+					"target":{
+						"node":8,
+						"path":"rotation"
+					}
+				},
+				{
+					"sampler":29,
+					"target":{
+						"node":8,
+						"path":"scale"
+					}
+				},
+				{
+					"sampler":30,
+					"target":{
+						"node":9,
+						"path":"translation"
+					}
+				},
+				{
+					"sampler":31,
+					"target":{
+						"node":9,
+						"path":"rotation"
+					}
+				},
+				{
+					"sampler":32,
+					"target":{
+						"node":9,
+						"path":"scale"
+					}
+				},
+				{
+					"sampler":33,
+					"target":{
+						"node":10,
+						"path":"translation"
+					}
+				},
+				{
+					"sampler":34,
+					"target":{
+						"node":10,
+						"path":"rotation"
+					}
+				},
+				{
+					"sampler":35,
+					"target":{
+						"node":10,
+						"path":"scale"
+					}
+				},
+				{
+					"sampler":36,
+					"target":{
+						"node":11,
+						"path":"translation"
+					}
+				},
+				{
+					"sampler":37,
+					"target":{
+						"node":11,
+						"path":"rotation"
+					}
+				},
+				{
+					"sampler":38,
+					"target":{
+						"node":11,
+						"path":"scale"
+					}
+				},
+				{
+					"sampler":39,
+					"target":{
+						"node":12,
+						"path":"translation"
+					}
+				},
+				{
+					"sampler":40,
+					"target":{
+						"node":12,
+						"path":"rotation"
+					}
+				},
+				{
+					"sampler":41,
+					"target":{
+						"node":12,
+						"path":"scale"
+					}
+				},
+				{
+					"sampler":42,
+					"target":{
+						"node":13,
+						"path":"translation"
+					}
+				},
+				{
+					"sampler":43,
+					"target":{
+						"node":13,
+						"path":"rotation"
+					}
+				},
+				{
+					"sampler":44,
+					"target":{
+						"node":13,
+						"path":"scale"
+					}
+				},
+				{
+					"sampler":45,
+					"target":{
+						"node":14,
+						"path":"translation"
+					}
+				},
+				{
+					"sampler":46,
+					"target":{
+						"node":14,
+						"path":"rotation"
+					}
+				},
+				{
+					"sampler":47,
+					"target":{
+						"node":14,
+						"path":"scale"
+					}
+				},
+				{
+					"sampler":48,
+					"target":{
+						"node":15,
+						"path":"translation"
+					}
+				},
+				{
+					"sampler":49,
+					"target":{
+						"node":15,
+						"path":"rotation"
+					}
+				},
+				{
+					"sampler":50,
+					"target":{
+						"node":15,
+						"path":"scale"
+					}
+				},
+				{
+					"sampler":51,
+					"target":{
+						"node":16,
+						"path":"translation"
+					}
+				},
+				{
+					"sampler":52,
+					"target":{
+						"node":16,
+						"path":"rotation"
+					}
+				},
+				{
+					"sampler":53,
+					"target":{
+						"node":16,
+						"path":"scale"
+					}
+				}
+			],
+			"name":"scarpet_burn",
+			"samplers":[
+				{
+					"input":51,
+					"interpolation":"STEP",
+					"output":8
+				},
+				{
+					"input":51,
 					"interpolation":"STEP",
 					"output":9
 				},
 				{
-					"input":31,
+					"input":51,
 					"interpolation":"STEP",
-					"output":51
+					"output":13
+				},
+				{
+					"input":51,
+					"interpolation":"STEP",
+					"output":12
+				},
+				{
+					"input":51,
+					"interpolation":"STEP",
+					"output":9
+				},
+				{
+					"input":52,
+					"interpolation":"LINEAR",
+					"output":53
+				},
+				{
+					"input":51,
+					"interpolation":"STEP",
+					"output":34
+				},
+				{
+					"input":51,
+					"interpolation":"STEP",
+					"output":9
+				},
+				{
+					"input":52,
+					"interpolation":"LINEAR",
+					"output":53
+				},
+				{
+					"input":51,
+					"interpolation":"STEP",
+					"output":35
+				},
+				{
+					"input":51,
+					"interpolation":"STEP",
+					"output":9
+				},
+				{
+					"input":52,
+					"interpolation":"LINEAR",
+					"output":53
+				},
+				{
+					"input":51,
+					"interpolation":"STEP",
+					"output":36
+				},
+				{
+					"input":51,
+					"interpolation":"STEP",
+					"output":9
+				},
+				{
+					"input":52,
+					"interpolation":"LINEAR",
+					"output":53
+				},
+				{
+					"input":51,
+					"interpolation":"STEP",
+					"output":37
+				},
+				{
+					"input":51,
+					"interpolation":"STEP",
+					"output":9
+				},
+				{
+					"input":52,
+					"interpolation":"LINEAR",
+					"output":53
+				},
+				{
+					"input":51,
+					"interpolation":"STEP",
+					"output":38
+				},
+				{
+					"input":51,
+					"interpolation":"STEP",
+					"output":9
+				},
+				{
+					"input":52,
+					"interpolation":"LINEAR",
+					"output":53
+				},
+				{
+					"input":51,
+					"interpolation":"STEP",
+					"output":39
+				},
+				{
+					"input":51,
+					"interpolation":"STEP",
+					"output":9
+				},
+				{
+					"input":52,
+					"interpolation":"LINEAR",
+					"output":53
+				},
+				{
+					"input":51,
+					"interpolation":"STEP",
+					"output":40
+				},
+				{
+					"input":51,
+					"interpolation":"STEP",
+					"output":9
+				},
+				{
+					"input":52,
+					"interpolation":"LINEAR",
+					"output":53
+				},
+				{
+					"input":51,
+					"interpolation":"STEP",
+					"output":41
+				},
+				{
+					"input":51,
+					"interpolation":"STEP",
+					"output":9
+				},
+				{
+					"input":52,
+					"interpolation":"LINEAR",
+					"output":53
+				},
+				{
+					"input":51,
+					"interpolation":"STEP",
+					"output":42
+				},
+				{
+					"input":51,
+					"interpolation":"STEP",
+					"output":9
+				},
+				{
+					"input":52,
+					"interpolation":"LINEAR",
+					"output":53
+				},
+				{
+					"input":51,
+					"interpolation":"STEP",
+					"output":43
+				},
+				{
+					"input":51,
+					"interpolation":"STEP",
+					"output":9
+				},
+				{
+					"input":52,
+					"interpolation":"LINEAR",
+					"output":53
+				},
+				{
+					"input":51,
+					"interpolation":"STEP",
+					"output":44
+				},
+				{
+					"input":51,
+					"interpolation":"STEP",
+					"output":9
+				},
+				{
+					"input":52,
+					"interpolation":"LINEAR",
+					"output":53
+				},
+				{
+					"input":51,
+					"interpolation":"STEP",
+					"output":45
+				},
+				{
+					"input":51,
+					"interpolation":"STEP",
+					"output":9
+				},
+				{
+					"input":52,
+					"interpolation":"LINEAR",
+					"output":53
+				},
+				{
+					"input":51,
+					"interpolation":"STEP",
+					"output":46
+				},
+				{
+					"input":51,
+					"interpolation":"STEP",
+					"output":9
+				},
+				{
+					"input":52,
+					"interpolation":"LINEAR",
+					"output":53
+				},
+				{
+					"input":51,
+					"interpolation":"STEP",
+					"output":47
+				},
+				{
+					"input":51,
+					"interpolation":"STEP",
+					"output":9
+				},
+				{
+					"input":52,
+					"interpolation":"LINEAR",
+					"output":53
+				},
+				{
+					"input":51,
+					"interpolation":"STEP",
+					"output":48
+				},
+				{
+					"input":51,
+					"interpolation":"STEP",
+					"output":9
+				},
+				{
+					"input":52,
+					"interpolation":"LINEAR",
+					"output":53
+				},
+				{
+					"input":51,
+					"interpolation":"STEP",
+					"output":49
+				},
+				{
+					"input":51,
+					"interpolation":"STEP",
+					"output":9
+				},
+				{
+					"input":51,
+					"interpolation":"STEP",
+					"output":50
 				}
 			]
 		}
@@ -1947,6 +2602,30 @@
 			"bufferView":51,
 			"componentType":5126,
 			"count":2,
+			"max":[
+				2.4166666666666665
+			],
+			"min":[
+				0.041666666666666664
+			],
+			"type":"SCALAR"
+		},
+		{
+			"bufferView":52,
+			"componentType":5126,
+			"count":58,
+			"max":[
+				2.4166666666666665
+			],
+			"min":[
+				0.041666666666666664
+			],
+			"type":"SCALAR"
+		},
+		{
+			"bufferView":53,
+			"componentType":5126,
+			"count":58,
 			"type":"VEC3"
 		}
 	],
@@ -2214,8 +2893,18 @@
 		},
 		{
 			"buffer":0,
-			"byteLength":24,
+			"byteLength":8,
 			"byteOffset":12912
+		},
+		{
+			"buffer":0,
+			"byteLength":232,
+			"byteOffset":12920
+		},
+		{
+			"buffer":0,
+			"byteLength":696,
+			"byteOffset":13152
 		}
 	],
 	"samplers":[
@@ -2226,7 +2915,7 @@
 	],
 	"buffers":[
 		{
-			"byteLength":12936,
+			"byteLength":13848,
 			"uri":"flora_scarpet.bin"
 		}
 	]
