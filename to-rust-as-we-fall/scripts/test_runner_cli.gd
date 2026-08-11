@@ -54207,6 +54207,40 @@ func _test_flora_rig_plays() -> void:
 	grappler.queue_free()
 	await get_tree().process_frame
 
+	# The FLARE, whose warning is the whole counterplay. Its granules must rest
+	# DARK and its membrane unswollen: the roster calls an untriggered one INERT,
+	# and a bomb that sits there already bright has spent the two or three seconds
+	# everyone nearby was owed.
+	var bomb := FloraRig.new()
+	get_tree().root.add_child(bomb)
+	var bomb_built := bomb.setup("flare")
+	_assert_true(bomb_built, "the flare has a rigged body")
+	if bomb_built:
+		var b_clips: PackedStringArray = bomb.clips()
+		for wanted in ["flare_prime", "flare_burst"]:
+			_assert_true(b_clips.has(wanted),
+				"the flare carries %s (%s)" % [wanted, str(b_clips)])
+		var b_skel: Skeleton3D = null
+		var bstack: Array = [bomb]
+		while not bstack.is_empty():
+			var n = bstack.pop_back()
+			if n is Skeleton3D:
+				b_skel = n
+			for c in n.get_children():
+				bstack.append(c)
+		if b_skel != null:
+			var bright := 0
+			for b in b_skel.get_bone_count():
+				var bn := str(b_skel.get_bone_name(b))
+				if (bn.begins_with("gran") or bn.begins_with("burst")) 						and b_skel.get_bone_pose_scale(b).x > 0.01:
+					bright += 1
+			_assert_equals(bright, 0, "and rests INERT, granules dark")
+			var mb := b_skel.find_bone("memb_0")
+			_assert_true(mb >= 0 and absf(b_skel.get_bone_pose_scale(mb).x - 1.0) < 0.01,
+				"with its membrane unswollen")
+	bomb.queue_free()
+	await get_tree().process_frame
+
 	# THE OUTLINE HAS TO WEAR THE POSE. The mask renders private COPIES of an
 	# object's meshes; a copy without the source's skin draws bind space, so a
 	# rigged plant is outlined in the shape it was modelled in rather than the one

@@ -39,12 +39,14 @@ const SPECIES_ARMATURES := {
 	# kind of clip, so it rides the same bridge rather than growing a second.
 	"spiker": "Spiker_Armature",
 	"tangler": "Tangler_Armature",
+	"flare": "Flare_Armature",
 }
 
 ## Bodies that do not live under resources/models/flora.
 const SPECIES_SCENE_OVERRIDE := {
 	"spiker": "res://resources/models/fauna/spiker.gltf",
 	"tangler": "res://resources/models/fauna/tangler.gltf",
+	"flare": "res://resources/models/fauna/flare.gltf",
 }
 
 static var _packed := {}

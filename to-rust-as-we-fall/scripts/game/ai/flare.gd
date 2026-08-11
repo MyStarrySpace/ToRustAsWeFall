@@ -35,6 +35,8 @@ extends Enemy
 ## implemented. `pop()` exposes the deliberate trigger so a fragment that does have an ignition
 ## source can wire it without this class pretending to own one.
 
+var _rig: FloraRig = null
+
 signal primed(trigger_ids: Array)
 signal burst(at_position: Vector3, hit_ids: Array)
 
@@ -229,3 +231,40 @@ func _exit_tree() -> void:
 	var sched = _get_scheduler()
 	if sched != null:
 		sched.cancel_tag(_burst_tag())
+
+
+## The body, and the countdown the room is owed.
+##
+## The roster makes the warning the counterplay: "The membrane swells and
+## brightens for two or three seconds. Leave the radius, do not cluster near one,
+## or pop it on purpose." The burst hits friend and foe, so everyone standing
+## nearby is entitled to see it coming.
+##
+## Cosmetic. The prime window and the burst radius live in the data layer; the
+## membrane only shows what the scheduler has already decided.
+func _build_visual() -> void:
+	if not FloraRig.has_rig("flare"):
+		super._build_visual()
+		return
+	var rigged := FloraRig.new()
+	rigged.name = "FlareBody"
+	add_child(rigged)
+	if not rigged.setup("flare"):
+		rigged.queue_free()
+		super._build_visual()
+		return
+	_rig = rigged
+	if not primed.is_connected(_on_primed_shown):
+		primed.connect(_on_primed_shown)
+	if not burst.is_connected(_on_burst_shown):
+		burst.connect(_on_burst_shown)
+
+
+func _on_primed_shown(_trigger_ids: Array) -> void:
+	if _rig != null and is_instance_valid(_rig):
+		_rig.play("flare_prime")
+
+
+func _on_burst_shown(_at_position: Vector3, _hit_ids: Array) -> void:
+	if _rig != null and is_instance_valid(_rig):
+		_rig.play("flare_burst")
