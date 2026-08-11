@@ -20,6 +20,13 @@ var _chunk_provider: Callable = Callable()
 var _active := false
 var _marks: Array = []
 var _built_for := -1
+var _ghosts: Array = []
+var _ghosts_built_for := -1
+
+## The workings she saw from the overlook, handed back as FADED shapes rather than marks: a wheel
+## reads as a wheel. Same register, same rule -- it says WHERE she saw a thing, never what it does or
+## when the water comes. Dim and unlit so it never competes with an object actually in front of you.
+const GHOST_COLOR := Color(0.36, 0.91, 0.5, 0.22)
 
 func setup(game_state, chunk_provider: Callable) -> void:
 	_gs = game_state
@@ -43,14 +50,64 @@ func _process(_delta: float) -> void:
 		_clear()
 		return
 	var points: Array = chunk.call("get_peris_flora_marks")
-	if points.size() == _built_for:
+	if points.size() != _built_for:
+		_clear()
+		_built_for = points.size()
+		for p in points:
+			_marks.append(_spawn_mark(p as Vector3))
+	_refresh_ghosts(chunk)
+
+## Faded copies of the remembered workings. Rebuilt only when the remembered SET changes, and the
+## copies track their sources every frame so a warped scene (or a piece that moves) keeps its ghost
+## on the object rather than beside it.
+func _refresh_ghosts(chunk) -> void:
+	if not chunk.has_method("get_peris_memory_ghosts"):
+		_clear_ghosts()
 		return
-	_clear()
-	_built_for = points.size()
-	for p in points:
-		_marks.append(_spawn_mark(p as Vector3))
+	var remembered: Array = chunk.call("get_peris_memory_ghosts")
+	if remembered.size() != _ghosts_built_for:
+		_clear_ghosts()
+		_ghosts_built_for = remembered.size()
+		for entry_v in remembered:
+			var entry: Dictionary = entry_v
+			for mesh_v in (entry.get("meshes", []) as Array):
+				if not (mesh_v is MeshInstance3D) or (mesh_v as MeshInstance3D).mesh == null:
+					continue
+				_ghosts.append(_spawn_ghost(mesh_v as MeshInstance3D))
+	for ghost_v in _ghosts:
+		var ghost: Dictionary = ghost_v
+		if is_instance_valid(ghost["copy"]) and is_instance_valid(ghost["src"]):
+			(ghost["copy"] as MeshInstance3D).global_transform = 				(ghost["src"] as MeshInstance3D).global_transform
+
+func _clear_ghosts() -> void:
+	for ghost_v in _ghosts:
+		var ghost: Dictionary = ghost_v
+		if is_instance_valid(ghost["copy"]):
+			(ghost["copy"] as Node).queue_free()
+	_ghosts.clear()
+	_ghosts_built_for = -1
+
+func _spawn_ghost(src: MeshInstance3D) -> Dictionary:
+	var copy := MeshInstance3D.new()
+	copy.mesh = src.mesh
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.albedo_color = GHOST_COLOR
+	mat.emission_enabled = true
+	mat.emission = Color(GHOST_COLOR.r, GHOST_COLOR.g, GHOST_COLOR.b)
+	mat.emission_energy_multiplier = 0.5
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	# Above the perception quad, or a memory drawn under the veil is a memory nobody sees.
+	mat.render_priority = 127
+	copy.material_override = mat
+	copy.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(copy)
+	copy.global_transform = src.global_transform
+	return {"copy": copy, "src": src}
 
 func _clear() -> void:
+	_clear_ghosts()
 	for m in _marks:
 		if is_instance_valid(m):
 			(m as Node).queue_free()

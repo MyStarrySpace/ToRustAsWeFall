@@ -1359,6 +1359,30 @@ func get_peris_flora_marks() -> Array:
 			out.append((marker as Node3D).position)
 	return out
 
+## WHAT PERIS REMEMBERS OF THE WORKINGS. The party reads this spiral from the overlook before they
+## ever set foot on it, so she has seen where the wheels and the stores are long before the climb
+## reaches them. Her register hands that back as faded shapes: the objects she saw, where she saw
+## them, and nothing about what they do or when anything floods (the canon-mechanics ruling stands —
+## memory says WHERE, never the answer).
+##
+## Gated on the overlook the same way the flora marks are: before the intro has happened she has not
+## been anywhere to remember from, and the register is honestly empty.
+func get_peris_memory_ghosts() -> Array:
+	if not _intro_done:
+		return []
+	var out: Array = []
+	for it in _interactables:
+		if not (is_instance_valid(it) and it is Node3D):
+			continue
+		var target = it.get("_outline_target") if ("_outline_target" in it) else null
+		if target == null or not is_instance_valid(target) 				or not target.has_method("get_highlight_meshes"):
+			continue
+		var meshes: Array = target.call("get_highlight_meshes")
+		if meshes.is_empty():
+			continue
+		out.append({"node": it, "meshes": meshes})
+	return out
+
 ## Arm (or re-arm) the kit cadences. Called from reset_preview_state — the host
 ## invokes that after build and on every reload, so play and headless match.
 func reset_preview_state() -> void:

@@ -67,7 +67,11 @@ uniform float los_penumbra = 0.85;   // source tap-ring radius (m) — the fog e
 uniform bool fog_enabled = false;
 uniform float fog_clear_radius = 14.0;
 uniform float fog_blend_width = 5.0;
-uniform vec3 fog_color = vec3(0.15, 0.1, 0.07);
+// Unseen ground is BLACK, and it has to land black on both pipelines. Authored colours are encoded
+// for whichever renderer is active, which LIFTS a value as it encodes it -- 0.15 arrives near 0.42 on
+// the sRGB path, a mid-tan the player reads as fog that glows. Authoring near zero survives the
+// encode: dark stays dark either way, with just enough blue to read as depth rather than a dead pixel.
+uniform vec3 fog_color = vec3(0.015, 0.015, 0.022);
 uniform float fog_desaturation = 0.8;
 uniform float los_thickness = 2.4;   // max depth gap for a sampled surface to count as CROSSING the ray
 
@@ -288,11 +292,13 @@ void fragment() {
 		}
 
 		if (fog_blend > 0.005) {
+			// Unseen ground reaches the fog colour, which is authored nearly black. Holding part of
+			// the scene back at full blend leaves a lit deck showing through as a pale wash -- the
+			// map stays legible exactly where it is supposed to be hidden, and a bright floor fogs
+			// LIGHTER than a dark one. The ramp still rolls: partial blend is partial fog.
 			float lum = dot(current, vec3(0.3, 0.59, 0.11));
 			vec3 desat = mix(current, vec3(lum), fog_desaturation * fog_blend);
-			vec3 fogged = mix(desat, pipe_color(fog_color), fog_blend * 0.7);
-			fogged = mix(fogged, vec3(dot(fogged, vec3(0.3, 0.59, 0.11))), fog_blend * 0.3);
-			current = fogged;
+			current = mix(desat, pipe_color(fog_color), fog_blend);
 		}
 	}
 
