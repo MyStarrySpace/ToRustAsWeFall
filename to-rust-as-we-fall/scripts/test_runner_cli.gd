@@ -871,6 +871,9 @@ func _ready() -> void:
 			"--test-displacement-reroute":
 				ran_test = true
 				_test_displacement_reroute()
+			"--test-stagger-does-not-chase-a-corpse":
+				ran_test = true
+				await _test_stagger_does_not_chase_a_corpse()
 			"--test-parked-detector-sees-approach":
 				ran_test = true
 				_test_parked_detector_sees_approach()
@@ -2075,6 +2078,7 @@ func _run_all_tests() -> void:
 	await _test_basin_deck_is_not_one_way()
 	await _test_outline_selection_ownership()
 	_test_parked_detector_sees_approach()
+	await _test_stagger_does_not_chase_a_corpse()
 	await _test_dwell_follows_its_scheduler()
 	await _test_showcase_gallery()
 	await _test_set_piece_showcase()
@@ -47728,6 +47732,54 @@ func _test_dwell_follows_its_scheduler() -> void:
 ## that bites is a guard that WALKED somewhere, arrived, and settled -- a sentry taking post, a guard
 ## drawn to a lure -- and only then does someone creep up on it. To a player that guard looks alert;
 ## it must behave that way.
+## BEING HIT MID-ATTACK IS AN INTERRUPTION, NOT AMNESIA -- BUT IT IS ALSO A RE-DECISION. Taking damage
+## while attacking staggers the enemy, which is the player's counterplay: the strike is cancelled and
+## there is a window. When the stagger ends the enemy picks up where it left off.
+##
+## What it must not do is pick up an errand with nothing left to chase. If whoever it was attacking went
+## down during that window -- felled by someone else, or by the same blast -- then resuming the chase
+## means running at a body on the floor, which reads as broken to anyone watching. The enemy is
+## supposed to lose the thread and start looking instead.
+func _test_stagger_does_not_chase_a_corpse() -> void:
+	_test_name = "Stagger Does Not Chase A Corpse"
+	var ctx := _make_attack_ctx(100.0, false)
+	var sched: EventScheduler = ctx["sched"]
+	var gs: GameState = ctx["gs"]
+	var enemy: Enemy = ctx["enemy"]
+	var holder: Node3D = ctx["holder"]
+	await get_tree().process_frame
+
+	# Let it commit to the attack.
+	var engaged := false
+	for _i in range(400):
+		sched.advance_ticks(0.05)
+		if enemy.get_state() in ["pursuit", "windup", "charge"]:
+			engaged = true
+			break
+	_assert_true(engaged, "the guard commits to an attack (state: %s)" % enemy.get_state())
+
+	# The player's counterplay: hit it mid-attack.
+	enemy.take_damage(5.0)
+	_assert_equals(enemy.get_state(), "stagger", "hitting it mid-attack interrupts the strike")
+
+	# Inside that window the target goes down -- and stays down.
+	gs.adjust_stat("aster", "hp", -200.0)
+	_assert_true(float(gs.get_stat("aster", "hp")) <= 0.0, "the target is down")
+
+	# Ride out the stagger.
+	for _i in range(400):
+		sched.advance_ticks(0.05)
+		if enemy.get_state() != "stagger":
+			break
+	_assert_true(enemy.get_state() != "stagger", "the stagger ends")
+	_assert_true(enemy.get_state() not in ["pursuit", "windup", "charge", "impact"],
+		("it does not resume the attack on a body that is already down (state: %s)")
+			% enemy.get_state())
+
+	holder.queue_free()
+	await get_tree().process_frame
+
+
 func _test_parked_detector_sees_approach() -> void:
 	_test_name = "Parked Detector Sees Approach"
 	var sched := EventScheduler.new()
