@@ -163,8 +163,8 @@ func _build_body() -> Node3D:
 		if rigged.setup("flure"):
 			_rig = rigged
 			# The halo belongs to the CORE, so it rides the core's bone: parked at
-			# a fixed height it would hang in the air where the head used to be
-			# once the stem has folded the head away.
+			# a fixed height it would hang in the air at the head's upright
+			# position while the stem folds the head away beneath it.
 			if _glow != null:
 				_glow.scale = Vector3.ONE * 0.4
 				if not rigged.attach_to_bone(_glow, "core_0"):

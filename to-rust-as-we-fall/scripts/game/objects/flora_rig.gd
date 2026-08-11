@@ -149,8 +149,8 @@ func rest() -> void:
 
 
 ## Hang `node` off a named bone so it rides the animation. A child of the body
-## alone keeps its own local transform and stays where the part used to be once
-## the part has moved.
+## alone keeps its own local transform, so it holds the bone's REST position while
+## the bone itself moves away from it.
 func attach_to_bone(node: Node3D, bone_name: String) -> bool:
 	for sk in _skeletons():
 		var idx := sk.find_bone(bone_name)

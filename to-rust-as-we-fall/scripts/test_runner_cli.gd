@@ -53915,9 +53915,9 @@ func _test_flora_rig_plays() -> void:
 						% [species, bone_name, s.x])
 		_assert_true(flashes > 0, "%s has a flash bone to hold shut" % species)
 
-		# A CLIP MUST START WHERE THE BODY RESTS. An armature is left standing in
-		# whatever the previous clip finished on, so a bone a new clip does not
-		# pose at t=0 can be keyed at the old clip's value — and the transition
+		# A CLIP MUST START WHERE THE BODY RESTS. An armature stands in whatever
+		# pose the last clip to touch it finished on, so a bone a clip does not
+		# pose at t=0 can be keyed at a value from elsewhere — and the transition
 		# then opens by snapping to a pose the plant was never in.
 		var rest_player: AnimationPlayer = body.get("_player")
 		if rest_player != null:
