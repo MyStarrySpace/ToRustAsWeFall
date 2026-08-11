@@ -14,11 +14,9 @@ extends Node3D
 ## commits; nothing here is ever waited on, and no gameplay truth is read back out
 ## of an animation (the fast-forward invariance law).
 ##
-## Each species ships its OWN gltf. Exporting them together looked tidier and was
-## wrong: the exporter samples every armature in the file over every clip, so each
-## species' animations carried constant rest-pose tracks for all the others' bones.
-## A plant that dropped its siblings then could not resolve those tracks, and a
-## single suite run printed 7401 warnings about it.
+## Each species ships its OWN gltf. A file holding several rigs gives every clip
+## in it tracks for every armature, so a body built for one species arrives
+## carrying the others' bones and warns for each track it cannot resolve.
 
 ## species id -> the armature node carrying its skin, in that species' own gltf
 const SPECIES_ARMATURES := {
