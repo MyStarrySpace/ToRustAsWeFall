@@ -20274,6 +20274,20 @@ func _drive_scene_real_input(instance: Node, beat_actions: Dictionary, max_iters
 				"positions": stalled_positions,
 				"hp": stalled_hp,
 			}
+			# A stall is usually a GATE refusing, and a gate refuses on specific grounds. Positions
+			# alone leave the reader guessing which clause said no; these are the ones party gates
+			# actually test, so the report names the reason instead of implying it.
+			var gate_state := {}
+			for gate_id in ["aster", "peris"]:
+				if not stalled_state.characters.has(gate_id):
+					continue
+				gate_state[gate_id] = {
+					"at_shelter": stalled_state.has_method("is_at_shelter") 						and bool(stalled_state.is_at_shelter(gate_id)),
+					"downed": bool(stalled_state.is_downed(gate_id)),
+					"atp": float(stalled_state.get_stat(gate_id, "atp")),
+					"level": int(stalled_state.get_character_level(gate_id)),
+				}
+			stall_diagnostics["party_gate"] = gate_state
 			if stalled_state.event_log != null:
 				var hp_events: Array = []
 				for logged_event in stalled_state.event_log.events:
