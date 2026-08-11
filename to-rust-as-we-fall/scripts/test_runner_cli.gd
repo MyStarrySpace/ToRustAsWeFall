@@ -1066,6 +1066,9 @@ func _ready() -> void:
 			"--test-flora-rig-plays":
 				ran_test = true
 				await _test_flora_rig_plays()
+			"--test-climbvine-return-species":
+				ran_test = true
+				await _test_climbvine_return_wears_its_species()
 			"--test-basin-fill-proof":
 				ran_test = true
 				await _test_basin_fill_proof()
@@ -2139,6 +2142,7 @@ func _run_all_tests() -> void:
 	await _test_conceal_stops_strikes()
 	await _test_capbage_retrieve()
 	await _test_flora_rig_plays()
+	await _test_climbvine_return_wears_its_species()
 	await _test_basin_fill_proof()
 	await _test_sprint_gap()
 	await _test_run_stamina_budget()
@@ -54304,6 +54308,55 @@ func _persona_shesez(inst, gs, chunk, grid, party: Array, pseed: int, notes: Arr
 ## you, still clicks, still passes its contract, and simply never moves. So this
 ## drives the real seam — the concealment pass asking a Capbage whether someone is
 ## inside it — and asserts the transition reaches the AnimationPlayer.
+## THE PLANT A MECHANIC IS NAMED FOR IS THE PLANT ON SCREEN.
+##
+## ClimbvineReturn is the Climbvine's traversal verb: Peris tends the upper plant,
+## a vine grows down the slope, and the party climbs it. The species has a body of
+## its own -- a rope of internodes wearing rootlet bundles at every node, which is
+## the affordance signal the spec builds the whole plant around -- so both the
+## tended anchor and the deployed length are that body.
+func _test_climbvine_return_wears_its_species() -> void:
+	_test_name = "Climbvine Return Wears Its Species"
+	var gs = GameState.new()
+	var sched = EventScheduler.new()
+	gs.scheduler = sched
+	var vine = ClimbvineReturn.new()
+	add_child(vine)
+	var ok := bool(vine.configure(gs, sched, Vector3.ZERO, Vector3(0.0, 4.0, 0.0),
+		Vector3.ZERO, Vector3(0.0, 4.0, 0.0), {}))
+	_assert_true(ok, "the return configures")
+	if not ok:
+		vine.queue_free()
+		await get_tree().process_frame
+		return
+	await get_tree().process_frame
+
+	var reported := str((vine.get_state() as Dictionary).get("visual_source", ""))
+	_assert_true(reported.contains("climbvine"),
+		"it reports the Climbvine as what it is showing (%s)" % reported)
+
+	# A rigged body brings a Skeleton3D; a subset of loose meshes lifted out of some
+	# other plant does not. That is the difference the assertion is looking for.
+	for part_name in ["_anchor_visual", "_vine_visual"]:
+		var part = vine.get(part_name)
+		_assert_true(part != null, "%s exists" % part_name)
+		if part == null:
+			continue
+		var skeletons := 0
+		var stack: Array = [part]
+		while not stack.is_empty():
+			var node = stack.pop_back()
+			if node is Skeleton3D:
+				skeletons += 1
+			for child in node.get_children():
+				stack.append(child)
+		_assert_true(skeletons > 0,
+			"%s is the rigged Climbvine body, not loose meshes" % part_name)
+
+	vine.queue_free()
+	await get_tree().process_frame
+
+
 func _test_flora_rig_plays() -> void:
 	_test_name = "Flora Rig Plays"
 	var cap = Capbage.new()

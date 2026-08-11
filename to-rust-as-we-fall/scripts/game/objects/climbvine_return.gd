@@ -3,17 +3,19 @@ extends Node3D
 
 ## Gated, one-way recovery traversal (P-KIT).
 ##
-## Peris tends the already-reached UPPER anchor. Scheduler ticks then reveal an externally-authored
-## pothos vine downward. Only after deployment does the LOWER interaction accept a selected/active
+## Peris tends the already-reached UPPER anchor. Scheduler ticks then reveal the Climbvine growing
+## downward. Only after deployment does the LOWER interaction accept a selected/active
 ## group, and every accepted rider enters GameState's logged external-traversal state until it
 ## physically reaches the upper endpoint. There is deliberately no upper->lower traversal verb.
 
-const PothosScene := preload("res://resources/models/peris-sim/plants/plant_pothos.gltf")
-const POTHOS_SOURCE_PATH := "res://resources/models/peris-sim/plants/plant_pothos.gltf"
+const FloraRigScript := preload("res://scripts/game/objects/flora_rig.gd")
+const CLIMBVINE_SPECIES := "climbvine"
+const CLIMBVINE_SOURCE_PATH := "res://resources/models/flora/flora_climbvine.gltf"
 const STATE_CONTRACT := "climbvine_return/v1"
 const TENDER := "peris"
 const DEFAULT_DEPLOY_STEPS := 10
-const POTHOS_MODEL_HEIGHT := 1.9
+## The body runs from its base at the origin to its fresh tip, along +Y.
+const CLIMBVINE_MODEL_HEIGHT := 3.0
 const RECEIPT_AUTHORITY_VERSION := 1
 const RECEIPT_POSITION_EPSILON := 0.001
 const RECEIPT_TICK_EPSILON := 0.000001
@@ -54,6 +56,7 @@ var _upper_interactable: Interactable
 var _lower_interactable: Interactable
 var _anchor_visual: Node3D
 var _vine_visual: Node3D
+var _anchor_rig = null
 var _upper_outline = null
 var _lower_outline = null
 var _runtime_built := false
@@ -689,7 +692,7 @@ func get_state() -> Dictionary:
 		"deployment_duration": _deployment_duration,
 		"climb_duration": _climb_duration,
 		"active_climbs": active,
-		"visual_source": POTHOS_SOURCE_PATH,
+		"visual_source": CLIMBVINE_SOURCE_PATH,
 	}
 
 
@@ -753,18 +756,9 @@ func _ensure_runtime() -> void:
 	if _runtime_built:
 		return
 	_runtime_built = true
-	_anchor_visual = _build_pothos_subset(
-		"UpperAnchorPothos",
-		["Pot", "Soil", "Vine_000", "Vine_004", "Vine_010",
-		 "PothosLeaf_000", "PothosLeaf_024", "PothosLeaf_072"]
-	)
+	_anchor_visual = _build_climbvine_body("UpperAnchorClimbvine", false)
 	add_child(_anchor_visual)
-	_vine_visual = _build_pothos_subset(
-		"DeployedPothosVine",
-		["Vine_000", "Vine_004", "Vine_010", "Vine_018", "Vine_026", "Vine_034",
-		 "PothosLeaf_000", "PothosLeaf_024", "PothosLeaf_048", "PothosLeaf_072",
-		 "PothosLeaf_108", "PothosLeaf_144", "PothosLeaf_180"]
-	)
+	_vine_visual = _build_climbvine_body("DeployedClimbvine", true)
 	add_child(_vine_visual)
 
 	_upper_interactable = _make_interactable(
@@ -808,19 +802,25 @@ func _make_interactable(
 	return interactable
 
 
-func _build_pothos_subset(label: String, part_names: Array) -> Node3D:
-	var subset := Node3D.new()
-	subset.name = label
-	var source = PothosScene.instantiate()
-	for part_name in part_names:
-		var part := source.find_child(str(part_name), true, false)
-		if part is MeshInstance3D:
-			var copy := (part as MeshInstance3D).duplicate() as MeshInstance3D
-			if copy != null:
-				subset.add_child(copy)
-				copy.transform = (part as MeshInstance3D).transform
-	source.free()
-	return subset
+## The species' own body, in a wrapper whose origin is the placement point.
+##
+## An anchor is placed at its base, which is where the plant grips. A deployed
+## length is placed at the MIDDLE of the span it covers, so the wrapper carries
+## the body up by half its height and the growth math can keep working in span
+## midpoints.
+func _build_climbvine_body(label: String, centred: bool) -> Node3D:
+	var wrapper := Node3D.new()
+	wrapper.name = label
+	var body = FloraRigScript.new()
+	wrapper.add_child(body)
+	if not body.setup(CLIMBVINE_SPECIES):
+		body.queue_free()
+		return wrapper
+	if centred:
+		body.position = Vector3(0.0, -CLIMBVINE_MODEL_HEIGHT * 0.5, 0.0)
+	else:
+		_anchor_rig = body
+	return wrapper
 
 
 func _apply_endpoint_layout() -> void:
@@ -913,6 +913,8 @@ func _refresh_from_game_state(force_rearm_dormant: bool = false) -> void:
 		_apply_dormant_presentation(force_rearm_dormant or phase_changed)
 	elif phase == &"deploying":
 		_set_gate_interactions(false, false)
+		if phase_changed and _anchor_rig != null:
+			_anchor_rig.play("climbvine_tend")
 		if progress_changed or phase_changed:
 			_apply_vine_progress(progress)
 			deployment_progressed.emit(_return_id, progress)
@@ -945,7 +947,8 @@ func _apply_vine_progress(progress: float) -> void:
 	var deployed_end := _upper_render.lerp(_lower_render, p)
 	_vine_visual.position = _upper_render.lerp(deployed_end, 0.5)
 	_vine_visual.basis = _basis_with_y(down.normalized())
-	_vine_visual.scale = Vector3(0.38, maxf(0.01, full_length * p / POTHOS_MODEL_HEIGHT), 0.38)
+	_vine_visual.scale = Vector3(1.0,
+		maxf(0.01, full_length * p / CLIMBVINE_MODEL_HEIGHT), 1.0)
 
 
 func _basis_with_y(y_axis: Vector3) -> Basis:
