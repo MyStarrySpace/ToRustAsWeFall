@@ -898,6 +898,9 @@ func _ready() -> void:
 			"--test-parked-detector-sees-approach":
 				ran_test = true
 				_test_parked_detector_sees_approach()
+			"--test-outline-target-swap-keeps-hover":
+				ran_test = true
+				await _test_outline_target_swap_keeps_hover()
 			"--test-outline-selection-ownership":
 				ran_test = true
 				await _test_outline_selection_ownership()
@@ -2101,6 +2104,7 @@ func _run_all_tests() -> void:
 	_test_rally_across_floors()
 	await _test_basin_deck_is_not_one_way()
 	await _test_outline_selection_ownership()
+	await _test_outline_target_swap_keeps_hover()
 	_test_parked_detector_sees_approach()
 	await _test_stagger_does_not_chase_a_corpse()
 	await _test_pagination_boundaries()
@@ -48305,6 +48309,56 @@ func _test_parked_detector_sees_approach() -> void:
 			break
 	_assert_equals(spotted[0], "guard->aster",
 		"a guard that has already taken post still spots someone walking up to it")
+
+
+## THE OUTLINE FOLLOWS THE BODY IT IS POINTING AT. An interactable is a meshless zone; the geometry
+## the player sees lit is a separate wrapper it points to, and some objects swap that wrapper while
+## the game is running -- a piece that grows its mesh once tended, a prop restyled by its district.
+##
+## The pointer is not the light. If the wrapper changes hands while the pointer is resting on the
+## object, whatever it now points at has to pick up the highlight already being shown, or hovering
+## something that changes underneath you leaves it dark while the cursor still says it is there.
+func _test_outline_target_swap_keeps_hover() -> void:
+	_test_name = "Outline Target Swap Keeps Hover"
+	var host := Node3D.new()
+	add_child(host)
+	var it := Interactable.new()
+	host.add_child(it)
+
+	var first := OutlineSurfaceTarget.new()
+	host.add_child(first)
+	var first_mesh := MeshInstance3D.new()
+	first_mesh.mesh = BoxMesh.new()
+	first.add_child(first_mesh)
+
+	var second := OutlineSurfaceTarget.new()
+	host.add_child(second)
+	var second_mesh := MeshInstance3D.new()
+	second_mesh.mesh = BoxMesh.new()
+	second.add_child(second_mesh)
+	await get_tree().process_frame
+	first.register_highlight_mesh(first_mesh)
+	second.register_highlight_mesh(second_mesh)
+
+	it.set_outline_target(first)
+	it.set_hover_feedback(true)
+	_assert_true(first.has_active_mesh_outline(),
+		"hovering the object lights the geometry it points at")
+	_assert_true(not second.has_active_mesh_outline(),
+		"and nothing else is lit yet")
+
+	# The object swaps the geometry it points at, with the pointer still resting on it.
+	it.set_outline_target(second)
+	_assert_true(second.has_active_mesh_outline(),
+		"the geometry it now points at picks up the hover it was already showing")
+
+	# And letting go still turns it off, through whichever wrapper it points at.
+	it.set_hover_feedback(false)
+	_assert_true(not second.has_active_mesh_outline(),
+		"moving the pointer away puts it out again")
+
+	host.queue_free()
+	await get_tree().process_frame
 
 
 func _test_outline_selection_ownership() -> void:
