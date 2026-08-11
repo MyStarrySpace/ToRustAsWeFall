@@ -902,6 +902,9 @@ func _ready() -> void:
 			"--test-wash-outline-capture":
 				ran_test = true
 				await _test_wash_outline_capture()
+			"--test-path-source-precedence":
+				ran_test = true
+				await _test_path_source_precedence()
 			"--test-pause-defers-never-drops":
 				ran_test = true
 				_test_pause_defers_never_drops()
@@ -2141,6 +2144,7 @@ func _run_all_tests() -> void:
 	await _test_outline_mask_clears()
 	_test_cover_mid_run()
 	_test_pause_defers_never_drops()
+	await _test_path_source_precedence()
 	_test_parked_detector_sees_approach()
 	await _test_stagger_does_not_chase_a_corpse()
 	await _test_pagination_boundaries()
@@ -48537,6 +48541,63 @@ func _cover_fixture() -> Dictionary:
 ## a finished scene forever with nothing left to fire. "Nothing happened while paused" is what both
 ## the correct and the broken version look like from outside, so the pending work is what gets
 ## asserted, not the silence.
+## THE RIBBON SHOWS WHERE THEY ARE ACTUALLY GOING. A path line has two possible sources: the data
+## layer, which is where a character is really walking, and a handed-in list of points, which exists
+## for previews and editors that move things outside the data layer.
+##
+## The walk wins while there is one. The ribbon is the game's promise about a click, so a ribbon
+## pointing at a destination nobody is heading for is worse than no ribbon at all -- and the handed-in
+## list only gets to speak once nobody is walking.
+func _test_path_source_precedence() -> void:
+	_test_name = "Path Source Precedence"
+	var host := Node3D.new()
+	add_child(host)
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.scheduler = sched
+	gs.register_character("aster", Vector3(0.0, 0.5, 0.0), 2.0, {})
+
+	var pr := PathRenderer.new()
+	host.add_child(pr)
+	await get_tree().process_frame
+	pr.setup(gs, "aster", Color(0.4, 0.8, 1.0))
+
+	# CONTROL FIRST. A walk must produce a real multi-point ribbon, or every claim below is made
+	# about an empty line and agrees with anything. (An earlier attempt at this test read the wrong
+	# accessor, drew nothing, and "passed".)
+	gs.command_move_to_pos("aster", Vector3(0.0, 0.5, 12.0))
+	sched.advance_ticks(0.1)
+	var walking: Array = pr._remaining_points()
+	_assert_true(walking.size() >= 2,
+		"CONTROL: a live walk draws a real ribbon (%d points)" % walking.size())
+
+	# A handed-in list pointing somewhere else entirely, while the walk is still running.
+	var elsewhere: Array[Vector3] = [Vector3(40.0, 0.5, 40.0), Vector3(48.0, 0.5, 40.0)]
+	pr.set_explicit_path(elsewhere)
+	var during: Array = pr._remaining_points()
+	_assert_true(during.size() >= 2, "the ribbon still draws while walking (%d points)" % during.size())
+	var strayed := 0.0
+	for point_v in during:
+		strayed = maxf(strayed, absf((point_v as Vector3).x))
+	_assert_true(strayed < 5.0,
+		("the ribbon follows the walk the character is on, not a list handed in over the top of it "
+		+ "(strayed %.1f m across)") % strayed)
+
+	# Once nobody is walking, the handed-in list is the only thing left to say anything.
+	gs.command_stop("aster")
+	pr.set_explicit_path(elsewhere)
+	var after: Array = pr._remaining_points()
+	var reaches_elsewhere := false
+	for point_v in after:
+		if absf((point_v as Vector3).x) > 20.0:
+			reaches_elsewhere = true
+	_assert_true(reaches_elsewhere,
+		"with nobody walking, the handed-in list is what the ribbon draws (%d points)" % after.size())
+
+	host.queue_free()
+	await get_tree().process_frame
+
+
 func _test_pause_defers_never_drops() -> void:
 	_test_name = "Pause Defers Never Drops"
 	var sched := EventScheduler.new()
