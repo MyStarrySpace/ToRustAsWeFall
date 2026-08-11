@@ -54470,6 +54470,54 @@ func _test_flora_rig_plays() -> void:
 	hidden.queue_free()
 	await get_tree().process_frame
 
+	# The CANDID colony. The roster builds it out of three strata and then takes
+	# them away IN ORDER — "fire burns the canopy down a layer" — so a colony must
+	# rest with all three standing, and burning must remove them one at a time
+	# rather than clearing the patch in one go.
+	var colony := FloraRig.new()
+	get_tree().root.add_child(colony)
+	var colony_built := colony.setup("candid")
+	_assert_true(colony_built, "the candid colony has a rigged body")
+	if colony_built:
+		var c_clips: PackedStringArray = colony.clips()
+		for wanted in ["candid_burn_canopy", "candid_burn_chains", "candid_retreat"]:
+			_assert_true(c_clips.has(wanted),
+				"the colony carries %s (%s)" % [wanted, str(c_clips)])
+		var c_skel: Skeleton3D = null
+		var cstack: Array = [colony]
+		while not cstack.is_empty():
+			var n = cstack.pop_back()
+			if n is Skeleton3D:
+				c_skel = n
+			for c in n.get_children():
+				cstack.append(c)
+		if c_skel != null:
+			var standing := 0
+			for nm in ["carpet_0", "chain_0", "canopy_0"]:
+				var bi := c_skel.find_bone(nm)
+				if bi >= 0 and c_skel.get_bone_pose_scale(bi).x > 0.5:
+					standing += 1
+			_assert_equals(standing, 3, "and rests with all three strata standing")
+		var c_player: AnimationPlayer = colony.get("_player")
+		if c_player != null and c_player.has_animation("candid_burn_canopy"):
+			# the first burn takes the CANOPY and leaves the rest: a clip that
+			# cleared everything would make the layered burn a single step
+			var fire: Animation = c_player.get_animation("candid_burn_canopy")
+			var cleared: Array = []
+			for ti in fire.get_track_count():
+				if fire.track_get_type(ti) != Animation.TYPE_SCALE_3D:
+					continue
+				var keys := fire.track_get_key_count(ti)
+				if keys < 1:
+					continue
+				var last = fire.track_get_key_value(ti, keys - 1)
+				if last is Vector3 and (last as Vector3).x < 0.01:
+					cleared.append(str(fire.track_get_path(ti)).get_slice(":", 1))
+			_assert_equals(cleared.size(), 1,
+				"and its first burn takes ONE stratum (%s)" % str(cleared))
+	colony.queue_free()
+	await get_tree().process_frame
+
 	# THE OUTLINE HAS TO WEAR THE POSE. The mask renders private COPIES of an
 	# object's meshes; a copy without the source's skin draws bind space, so a
 	# rigged plant is outlined in the shape it was modelled in rather than the one

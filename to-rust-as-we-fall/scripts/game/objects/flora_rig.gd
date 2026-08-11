@@ -42,6 +42,7 @@ const SPECIES_ARMATURES := {
 	"flare": "Flare_Armature",
 	"naturalizer": "Naturalizer_Armature",
 	"redactor": "Redactor_Armature",
+	"candid": "Candid_Armature",
 }
 
 ## Bodies that do not live under resources/models/flora.
@@ -51,6 +52,7 @@ const SPECIES_SCENE_OVERRIDE := {
 	"flare": "res://resources/models/fauna/flare.gltf",
 	"naturalizer": "res://resources/models/fauna/naturalizer.gltf",
 	"redactor": "res://resources/models/fauna/redactor.gltf",
+	"candid": "res://resources/models/fauna/candid.gltf",
 }
 
 static var _packed := {}
