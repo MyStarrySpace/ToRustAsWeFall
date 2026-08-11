@@ -54909,6 +54909,25 @@ func _test_flora_rig_plays() -> void:
 				_assert_true(after > before * 1.2,
 					"tending visibly thickens the section it readies (%.2f -> %.2f)"
 						% [before, after])
+	# THE ROOTLETS ARE DRAWN, so their transparency has to survive the import. A
+	# card whose material comes in opaque renders as the rectangle it is cut from,
+	# and the bundle that carries the plant's whole affordance becomes four slabs.
+	var surfaces_seen := 0
+	for mesh_v in cv.meshes():
+		var mesh_instance := mesh_v as MeshInstance3D
+		if mesh_instance == null or mesh_instance.mesh == null:
+			continue
+		for surface in range(mesh_instance.mesh.get_surface_count()):
+			var card_mat := mesh_instance.mesh.surface_get_material(surface) as BaseMaterial3D
+			if card_mat == null:
+				continue
+			surfaces_seen += 1
+			_assert_true(
+				card_mat.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED,
+				"the Climbvine's cards keep their cutout (surface %d)" % surface)
+	# a loop over nothing agrees with everything
+	_assert_true(surfaces_seen > 0, "the cutout check found surfaces to look at")
+
 	cv.queue_free()
 	await get_tree().process_frame
 
