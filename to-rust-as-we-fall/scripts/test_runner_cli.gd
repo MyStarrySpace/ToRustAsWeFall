@@ -871,6 +871,9 @@ func _ready() -> void:
 			"--test-displacement-reroute":
 				ran_test = true
 				_test_displacement_reroute()
+			"--test-pagination-boundaries":
+				ran_test = true
+				await _test_pagination_boundaries()
 			"--test-stagger-does-not-chase-a-corpse":
 				ran_test = true
 				await _test_stagger_does_not_chase_a_corpse()
@@ -2079,6 +2082,7 @@ func _run_all_tests() -> void:
 	await _test_outline_selection_ownership()
 	_test_parked_detector_sees_approach()
 	await _test_stagger_does_not_chase_a_corpse()
+	await _test_pagination_boundaries()
 	await _test_dwell_follows_its_scheduler()
 	await _test_showcase_gallery()
 	await _test_set_piece_showcase()
@@ -47740,6 +47744,84 @@ func _test_dwell_follows_its_scheduler() -> void:
 ## down during that window -- felled by someone else, or by the same blast -- then resuming the chase
 ## means running at a body on the floor, which reads as broken to anyone watching. The enemy is
 ## supposed to lose the thread and start looking instead.
+## EVERY WORD REACHES THE PLAYER EXACTLY ONCE. Pagination decides where a long line is cut into the
+## pages someone clicks through, and the one thing it may never do is lose a word between two pages or
+## show the same words twice. That is unreadable in a way no flag catches: the box looks fine, the
+## line is just quietly wrong.
+##
+## The awkward inputs are what break it. Prose with no sentence-ending punctuation at all offers no
+## boundary to cut on, so there has to be a hard break; a sentence that ends inside a quote or a
+## bracket has its stop one or two characters before the gap; and a line sitting exactly on the
+## threshold must not be split for the sake of one character.
+func _test_pagination_boundaries() -> void:
+	_test_name = "Pagination Boundaries"
+	var box = load("res://scripts/ui/dialogue_box.gd").new()
+	add_child(box)
+	await get_tree().process_frame
+	var limit: int = box.PAGE_MAX_CHARS
+
+	# The invariant worth guarding above all: the pages TILE the line. Checked on every shape below.
+	var tiles := func(text: String, label: String) -> void:
+		var pages: Array = box._paginate(text)
+		_assert_true(pages.size() > 0, "%s paginates into at least one page" % label)
+		var cursor := 0
+		var contiguous := true
+		for page_v in pages:
+			var page: Vector2i = page_v
+			if page.x != cursor or page.y < page.x:
+				contiguous = false
+				break
+			cursor = page.y
+		_assert_true(contiguous and cursor == text.length(),
+			"%s: the pages tile the whole line, no word dropped or repeated" % label)
+
+	# Exactly at the threshold: one page. One character over is allowed to split, but must still tile.
+	var exact := "a".repeat(limit)
+	_assert_equals((box._paginate(exact) as Array).size(), 1,
+		"a line sitting exactly on the limit is left as one page")
+	tiles.call(exact, "exactly at the limit")
+	tiles.call("a".repeat(limit + 1), "one character over the limit")
+
+	# No punctuation anywhere: there is no sentence boundary to cut on, so it hard-breaks.
+	var unbroken := "word ".repeat(120)
+	var unbroken_pages: Array = box._paginate(unbroken)
+	_assert_true(unbroken_pages.size() > 1,
+		"prose with no sentence ending still pages instead of overflowing (got %d)"
+			% unbroken_pages.size())
+	var widest := 0
+	for page_v in unbroken_pages:
+		widest = maxi(widest, (page_v as Vector2i).y - (page_v as Vector2i).x)
+	_assert_true(widest <= limit,
+		"and no page runs past the limit it is paging to (widest %d)" % widest)
+	tiles.call(unbroken, "no punctuation")
+
+	# A stop that sits inside a quote or a bracket: the cut belongs after the closing mark, never
+	# between the full stop and the quote that closes the same sentence.
+	# EVERY sentence here ends inside its quotes, so stepping over the closing quote is the only thing
+	# that can produce a boundary at all. If it does not, there is nothing to cut on and the page
+	# falls mid-phrase wherever the hard break happens to land.
+	var quoted := ""
+	for _i in range(8):
+		quoted += "\"They said the seal would hold through the night shift.\" "
+	var quoted_pages: Array = box._paginate(quoted)
+	tiles.call(quoted, "quoted sentences")
+	# The stop of a quoted sentence sits two characters before the gap ( . " space ), so a cut that
+	# respects it starts the next page just past that gap. If the closing quote is not stepped over,
+	# no boundary is found there at all and the page falls wherever the hard break lands instead.
+	var every_cut_after_a_sentence := true
+	for page_v in quoted_pages:
+		var cut: int = (page_v as Vector2i).x
+		if cut == 0:
+			continue
+		if not (cut >= 3 and quoted[cut - 1] == " " and quoted[cut - 2] == "\"" 				and quoted[cut - 3] == "."):
+			every_cut_after_a_sentence = false
+	_assert_true(every_cut_after_a_sentence,
+		"every page break lands just past a sentence that ends inside quotes, never mid-phrase")
+
+	box.queue_free()
+	await get_tree().process_frame
+
+
 func _test_stagger_does_not_chase_a_corpse() -> void:
 	_test_name = "Stagger Does Not Chase A Corpse"
 	var ctx := _make_attack_ctx(100.0, false)
