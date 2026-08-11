@@ -54963,6 +54963,67 @@ func _test_flora_rig_plays() -> void:
 				_assert_true(after > before * 1.2,
 					"tending visibly thickens the section it readies (%.2f -> %.2f)"
 						% [before, after])
+	# THE MOTHER FLURE holds the game's one set-piece bloom, and the thing the spec
+	# makes load-bearing is that the offshoots light IN SEQUENCE -- "a Flure across
+	# the room responds to Peris's tending of the central body, then another, then
+	# another" -- because that is what makes the root network visible. A cascade
+	# that fires all at once is a light switch, so the ORDER is asserted, not just
+	# the clip's existence.
+	var mf := FloraRig.new()
+	get_tree().root.add_child(mf)
+	var mf_built := mf.setup("mother_flure")
+	_assert_true(mf_built, "the Mother Flure has a rigged body")
+	if mf_built:
+		var mf_clips: PackedStringArray = mf.clips()
+		for wanted in ["mother_flure_tend", "mother_flure_bloom"]:
+			_assert_true(mf_clips.has(wanted),
+				"she carries %s (%s)" % [wanted, str(mf_clips)])
+		var mf_player: AnimationPlayer = mf.get("_player")
+		var mf_skels: Array[Skeleton3D] = mf.call("_skeletons")
+		_assert_true(mf_skels.size() > 0, "her body carries a skeleton")
+		if mf_player != null and mf_skels.size() > 0:
+			var skel: Skeleton3D = mf_skels[0]
+			# A chamber nobody has tended is DARK. Every offshoot's throw and the
+			# haze are shut, or the cascade has nothing left to say.
+			for i in range(6):
+				var glow := skel.find_bone("glow%d_0" % i)
+				_assert_true(glow >= 0, "offshoot %d has its own throw" % i)
+				if glow >= 0:
+					_assert_true(skel.get_bone_pose_scale(glow).x < 0.1,
+						"offshoot %d is dark before anyone tends her" % i)
+			# Now drive the tending and read WHEN each one lights.
+			var lit_at := []
+			for i in range(6):
+				lit_at.append(-1.0)
+			var tend_len: float = mf_player.get_animation("mother_flure_tend").length
+			mf_player.play("mother_flure_tend")
+			var steps := 26
+			for step in range(steps + 1):
+				var at: float = tend_len * float(step) / float(steps)
+				mf_player.seek(at, true)
+				await get_tree().process_frame
+				for i in range(6):
+					var b := skel.find_bone("glow%d_0" % i)
+					if b >= 0 and lit_at[i] < 0.0 							and skel.get_bone_pose_scale(b).x > 0.5:
+						lit_at[i] = at
+			var all_lit := true
+			for i in range(6):
+				if lit_at[i] < 0.0:
+					all_lit = false
+			_assert_true(all_lit, "the tending lights every offshoot (%s)" % str(lit_at))
+			if all_lit:
+				var in_order := true
+				for i in range(5):
+					if lit_at[i + 1] <= lit_at[i]:
+						in_order = false
+				_assert_true(in_order,
+					"they light one after another, not together (%s)" % str(lit_at))
+				_assert_true(lit_at[5] - lit_at[0] > 2.0,
+					"the cascade takes time to cross her roots (%.1fs)"
+						% (lit_at[5] - lit_at[0]))
+	mf.queue_free()
+	await get_tree().process_frame
+
 	# THE ROOTLETS ARE DRAWN, so their transparency has to survive the import. A
 	# card whose material comes in opaque renders as the rectangle it is cut from,
 	# and the bundle that carries the plant's whole affordance becomes four slabs.

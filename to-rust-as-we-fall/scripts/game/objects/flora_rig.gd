@@ -27,6 +27,10 @@ const SPECIES_ARMATURES := {
 	"flure": "Flure_Armature",
 	"gasafoetida": "Gasafoetida_Armature",
 	"climbvine": "Climbvine_Armature",
+	# One specimen in the whole game. Her bloom is a set piece rather than a
+	# species behaviour, but it is a state change like any other and it rides
+	# the same bridge.
+	"mother_flure": "MotherFlure_Armature",
 	# What a tended Gasafoetida hands you: a held item, not a plant, but the
 	# same rigged body playing the same kind of clip.
 	"gaspod": "GasPod_Armature",

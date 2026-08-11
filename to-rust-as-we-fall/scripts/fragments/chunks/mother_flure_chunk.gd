@@ -1,5 +1,6 @@
 extends "res://scripts/scene_chunks/scene_chunk.gd"
 
+const FloraRigScript := preload("res://scripts/game/objects/flora_rig.gd")
 const MOTHER_PORTAL_FRAME_SCENE := preload(
 	"res://scenes/props/mother_flure/portal_frame.tscn"
 )
@@ -272,7 +273,9 @@ var _exit_interactable
 var _body_materials: Dictionary = {}
 var _body_labels: Dictionary = {}
 var _body_interactables: Dictionary = {}
-var _mother_bloom_materials: Array[StandardMaterial3D] = []
+var _mother_rig = null
+var _mother_outline_target: Node = null
+var _mother_presented := ""
 var _repair_point_materials: Dictionary = {}
 var _repair_point_labels: Dictionary = {}
 var _exit_material: StandardMaterial3D
@@ -2122,29 +2125,34 @@ func _build_exit_handoff() -> void:
 		_on_exit_handoff_interacted.bind(_exit_interactable)
 	)
 
+## Her body, and the offshoots that are the same plant.
+##
+## The organism is ONE modelled thing: the collapsed trumpet on its stalk, the root
+## lobes, the fingers that reach out under the floor, and the six offshoots those
+## fingers surface into. Placing the offshoots as separate props would lose the
+## only point the set piece has to make -- "the connectedness of the root system
+## becomes visible" is a claim about geometry, and it is only true if they are
+## built as one plant.
 func _build_mother() -> void:
-	for i in range(3):
-		_add_box(self, MOTHER_POS + Vector3(-1.0 + float(i), 0.45, 0.0), Vector3(1.1, 0.9, 2.2), Color(0.24, 0.18, 0.12))
-	for bloom_offset in [Vector3(-1.4, 1.8, 0.8), Vector3(-0.2, 2.15, -0.5), Vector3(1.0, 1.9, 0.4), Vector3(0.2, 2.5, 0.0)]:
-		var bloom := MeshInstance3D.new()
-		var mesh := SphereMesh.new()
-		mesh.radius = 0.42
-		mesh.height = 0.84
-		bloom.mesh = mesh
-		var material := StandardMaterial3D.new()
-		material.albedo_color = Color(0.56, 0.46, 0.22)
-		material.emission_enabled = true
-		material.emission = Color(0.82, 0.58, 0.24)
-		material.emission_energy_multiplier = 0.12
-		bloom.material_override = material
-		bloom.position = MOTHER_POS + bloom_offset
-		add_child(bloom)
-		_mother_bloom_materials.append(material)
+	var rigged = FloraRigScript.new()
+	rigged.name = "MotherFlureBody"
+	add_child(rigged)
+	if rigged.setup("mother_flure"):
+		_mother_rig = rigged
+		rigged.position = MOTHER_POS
+	else:
+		rigged.queue_free()
 	_mother_interactable = _add_interactable(
 		self, "MotherTendInteractable", "Tend Mother Flure",
 		MOTHER_POS + Vector3(-2.2, 0.4, 0.0), "TEND", "peris",
 		MOTHER_TEND_SECONDS, true, 2.0, Interactable.InteractableType.TIMED_ACTION
 	)
+	# The tend control is a meshless zone, so what the player hovers and clicks has
+	# to be HER: the outline is wrapped around the body's own meshes and linked both
+	# ways, rather than a ring floating at the interaction point.
+	if _mother_rig != null and is_instance_valid(_mother_rig):
+		_mother_outline_target = _outline_interactable_meshes(
+			_mother_interactable, _mother_rig.meshes(), "MotherFlure", 3.0)
 	_mother_interactable.set_pre_trigger_validator(
 		_validate_mother_tend_trigger.bind(_mother_interactable)
 	)
@@ -2407,24 +2415,33 @@ func _update_body_visuals() -> void:
 			]
 			_body_labels[body_id].modulate = Color(0.52, 0.48, 0.44) if remaining <= 0 else Color(0.82, 0.74, 0.66)
 
+## What the Mother is doing, expressed as the two transitions she has.
+##
+## Her states are not a brightness ladder. The load starting to move is when the
+## network wakes, and the tending is when she opens -- so installing the gear runs
+## the cascade that lights her offshoots one after another, and tending her runs
+## the bloom. Clips fire on ENTERING a phase, never on every refresh, or the
+## cascade would restart from its first offshoot each time anything else in the
+## chamber changed.
+##
+## Cosmetic, like every clip: the authoritative phase is what the callers below
+## read, and nothing here is waited on.
 func _update_mother_visuals() -> void:
-	for material in _mother_bloom_materials:
-		if _mother_tended:
-			material.albedo_color = Color(0.82, 0.68, 0.26)
-			material.emission = Color(1.0, 0.82, 0.34)
-			material.emission_energy_multiplier = 1.1
-		elif _gear_installed:
-			material.albedo_color = Color(0.68, 0.56, 0.22)
-			material.emission = Color(0.96, 0.74, 0.3)
-			material.emission_energy_multiplier = 0.52
-		elif not _repair_attempts.is_empty():
-			material.albedo_color = Color(0.62, 0.42, 0.24)
-			material.emission = Color(0.88, 0.34, 0.22)
-			material.emission_energy_multiplier = 0.28
-		else:
-			material.albedo_color = Color(0.56, 0.46, 0.22)
-			material.emission = Color(0.82, 0.58, 0.24)
-			material.emission_energy_multiplier = 0.12
+	var phase := "dormant"
+	if _mother_tended:
+		phase = "bloomed"
+	elif _gear_installed:
+		phase = "waking"
+	if phase != _mother_presented:
+		_mother_presented = phase
+		if _mother_rig != null and is_instance_valid(_mother_rig):
+			match phase:
+				"waking":
+					_mother_rig.play("mother_flure_tend")
+				"bloomed":
+					_mother_rig.play("mother_flure_bloom")
+				_:
+					_mother_rig.rest()
 	for repair_id in REPAIR_POINT_ORDER:
 		if not _repair_point_materials.has(repair_id):
 			continue
