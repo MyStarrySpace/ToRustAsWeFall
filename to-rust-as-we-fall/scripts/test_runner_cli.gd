@@ -914,6 +914,9 @@ func _ready() -> void:
 			"--test-cover-mid-run":
 				ran_test = true
 				_test_cover_mid_run()
+			"--test-loose-salvage-out-of-the-current":
+				ran_test = true
+				await _test_no_loose_salvage_stands_in_the_current()
 			"--test-hover-route-truthful":
 				ran_test = true
 				await _test_hover_route_never_promises_an_unreachable_deck()
@@ -2153,6 +2156,7 @@ func _run_all_tests() -> void:
 	await _test_outline_mask_clears()
 	await _test_death_offers_a_way_out()
 	await _test_hover_route_never_promises_an_unreachable_deck()
+	await _test_no_loose_salvage_stands_in_the_current()
 	_test_cover_mid_run()
 	_test_pause_defers_never_drops()
 	await _test_path_source_precedence()
@@ -48828,6 +48832,40 @@ func _test_cover_mid_run() -> void:
 	_assert_true((run["spotted"] as Array)[0],
 		"stepping back out of cover is spotted -- the recompute runs both ways")
 
+
+## Director's ruling: nothing loose sits in a current, because the water would have taken it. A crate
+## standing calmly mid-surge tells the player the flood is scenery, which un-teaches the one thing
+## every wash section is there to teach. Fixed hardware is bolted down and exempt; this is about what
+## the current could carry off.
+func _test_no_loose_salvage_stands_in_the_current() -> void:
+	_test_name = "No Loose Salvage Stands In The Current"
+	var inst = await _instantiate_preview_chunk_and_wait("wash_ascent", 6)
+	if inst == null:
+		_assert_true(false, "wash_ascent preview instantiates")
+		return
+
+	var marked: Array = []
+	for node in inst.find_children("*", "", true, false):
+		if node.has_meta("loose_salvage_at"):
+			marked.append(node)
+	# Without this the sweep below would pass by finding nothing, which is exactly how a mark that
+	# stopped being applied would retire the ruling in silence.
+	_assert_true(marked.size() >= 4,
+		"the stretch's loose salvage is marked (found %d)" % marked.size())
+
+	var chunk_script = load("res://scripts/fragments/chunks/wash_ascent_chunk.gd")
+	for node in marked:
+		var at: Vector3 = node.get_meta("loose_salvage_at")
+		_assert_true(not chunk_script.surge_covers(at),
+			"%s is out of the surge (s %.1f, z %.1f)" % [node.name, at.x, at.z])
+
+	# The predicate itself has to be able to say yes, or every claim above is vacuous.
+	_assert_true(chunk_script.surge_covers(Vector3(32.0, 0.1, 6.8)),
+		"the surge predicate does catch a point inside a flooded span")
+	_assert_true(not chunk_script.surge_covers(Vector3(32.0, 0.1, 10.5)),
+		"the surge predicate spares an alcove beside the same flooded span")
+
+	await _dispose_scene(inst)
 
 ## The hover verb is a PROMISE about what right-click will do. A point that resolves to a walkable
 ## cell is not the same as a point the character can reach: `resolve_navigation_location` snaps to

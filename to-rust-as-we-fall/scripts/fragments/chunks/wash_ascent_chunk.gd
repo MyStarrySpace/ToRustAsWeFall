@@ -41,6 +41,11 @@ const PARTY_RESOURCE_GRANT := preload("res://scripts/game/objects/party_resource
 const DECK_W := 173.0
 const DECK_D := 8.0
 const DECK_TOP := 0.1
+## The transfer crew's tool drop, staged on the dry ground before the keyed crossing -- where a crew
+## facing that crossing would have set their kit down. It sits in the gap between sections 2 and 3,
+## so the water still prices the salvage from both sides: reaching it costs a crossing and leaving
+## costs another, and the beat spent working is a beat committed between two runs of water.
+const TRANSFER_CACHE_AT := Vector3(26.0, DECK_TOP, 6.8)
 const LANE_CENTER := 4.0    # authoring z that sits on the helix centreline (lane 0)
 
 const ACCENTS := {
@@ -617,6 +622,25 @@ func _s_in_wash_span(s: float) -> bool:
 		if s >= float(sec["s0"]) and s <= float(sec["s1"]):
 			return true
 	return false
+
+## True when the surge actually covers a point: inside a section's span AND within the flooded
+## width. Both halves matter -- an alcove sits at a washed arc distance but stands off the lane the
+## water runs down, as far out of the current as the wall beside it.
+static func surge_covers(flat_pos: Vector3) -> bool:
+	if absf(flat_pos.z - WASH_Z_CENTER) > WASH_Z_HALF:
+		return false
+	for sec in WASH_SECTIONS:
+		if flat_pos.x >= float(sec["s0"]) and flat_pos.x <= float(sec["s1"]):
+			return true
+	return false
+
+## Marks something the current could carry off. The water takes what it can lift, so a crate sitting
+## calmly in a flooded span tells the player the flood is scenery -- loose salvage is authored into
+## the GAPS, where the sections either side still price how long anyone can afford to stand there
+## working. Fixed hardware is bolted down and may stand in the water; this mark is only for what
+## would have gone down the spiral with everything else.
+func _mark_loose_salvage(node: Node, flat_pos: Vector3) -> void:
+	node.set_meta("loose_salvage_at", flat_pos)
 
 func _wall_variant_ids() -> Array:
 	return ["wall_panel_tile", "wall_panel_tile_b", "wall_panel_tile", "wall_panel_tile_c"]
@@ -1556,16 +1580,17 @@ func _build_interactables() -> void:
 		_on_valve()
 		return true
 	valve.add_child(valve_rx)
-	# PUSH-YOUR-LUCK: a salvage dwell INSIDE section 1's span. No character
-	# gate — the CADENCE is the gate: the work beat only fits if you read the
-	# beat first. One-shot, pays the party in ATP.
+	# PUSH-YOUR-LUCK: a salvage dwell on the dry ground between sections 2 and 3.
+	# No character gate — the CADENCE is the gate, priced across the approach and
+	# the exit rather than under the water. One-shot, pays the party in ATP.
 	var transfer_cache := _add_interactable(self, "TransferCache",
-		"Pry the transfer crew's tool drop loose", Vector3(32.0, DECK_TOP, 6.8),
+		"Pry the transfer crew's tool drop loose", TRANSFER_CACHE_AT,
 		"SALVAGE THE DROP", "", 2.2, true, 1.5,
 		Interactable.InteractableType.TIMED_ACTION)
-	transfer_cache.consequence_preview = "The transfer crew left their kit mid-stretch. Only a held channel gives you long enough."
+	transfer_cache.consequence_preview = "The transfer crew set their kit down before the crossing. Water on both sides of you."
 	_wire_trigger(transfer_cache, _on_transfer_cache)
 	_give_interactable_body(transfer_cache, "forage_cache")
+	_mark_loose_salvage(transfer_cache, TRANSFER_CACHE_AT)
 	# THE DEN STASHES: each offshoot's deep pocket pays — and standing in a
 	# den is standing in something's home. Same push-your-luck grammar as the
 	# span stashes; the price here is the dweller, not the water.
@@ -1579,6 +1604,8 @@ func _build_interactables() -> void:
 			Interactable.InteractableType.TIMED_ACTION)
 		den_stash.consequence_preview = "Something drags salvage in here. The work takes as long as it takes."
 		_wire_trigger(den_stash, _on_den_stash)
+		_mark_loose_salvage(den_stash, Vector3(deep.position.x + deep.size.x * 0.5,
+			DECK_TOP, deep.position.y + 0.5))
 	# Salvage sits in the GAP past section 1, not inside it. Loose supplies left in a wash section
 	# would have gone down the spiral with everything else the water takes; a crate sitting calmly
 	# mid-current tells the player the flood is scenery. It stays mid-stretch, and the sections either
@@ -1589,6 +1616,7 @@ func _build_interactables() -> void:
 		Interactable.InteractableType.TIMED_ACTION)
 	stash.consequence_preview = "The crews left supplies mid-stretch. The water decides how long you get."
 	_wire_trigger(stash, _on_sunken_stash)
+	_mark_loose_salvage(stash, Vector3(18.0, DECK_TOP, 6.4))
 	# THE FIRST SHELTER (director: a stretch is bookended by TWO shelters —
 	# one at the base, one at the summit connecting to the next stretch).
 	# The base camp's dwelling sits just past the deck edge over the outfall
