@@ -871,6 +871,9 @@ func _ready() -> void:
 			"--test-displacement-reroute":
 				ran_test = true
 				_test_displacement_reroute()
+			"--test-parked-detector-sees-approach":
+				ran_test = true
+				_test_parked_detector_sees_approach()
 			"--test-outline-selection-ownership":
 				ran_test = true
 				await _test_outline_selection_ownership()
@@ -2071,6 +2074,7 @@ func _run_all_tests() -> void:
 	_test_rally_across_floors()
 	await _test_basin_deck_is_not_one_way()
 	await _test_outline_selection_ownership()
+	_test_parked_detector_sees_approach()
 	await _test_dwell_follows_its_scheduler()
 	await _test_showcase_gallery()
 	await _test_set_piece_showcase()
@@ -47715,6 +47719,48 @@ func _test_dwell_follows_its_scheduler() -> void:
 ## outline down with it. If moving the mouse away cancelled the queued glow, the player would lose
 ## sight of the thing they just ordered someone to go and touch; if finishing the walk cleared the
 ## outline while the pointer was still resting on the object, it would go dark under the cursor.
+## A GUARD THAT HAS STOPPED WALKING IS STILL LOOKING. Detection is predicted, not polled: the pair's
+## paths are solved ahead of time for when they first come within range. A body that has finished its
+## route has no path left, so unless its parked position is carried forward as a segment of its own,
+## the solver has nothing to intersect and the guard goes permanently blind exactly where it stands.
+##
+## This is the sneaky half of that: both bodies STARTING still is easy and already covered. The case
+## that bites is a guard that WALKED somewhere, arrived, and settled -- a sentry taking post, a guard
+## drawn to a lure -- and only then does someone creep up on it. To a player that guard looks alert;
+## it must behave that way.
+func _test_parked_detector_sees_approach() -> void:
+	_test_name = "Parked Detector Sees Approach"
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.scheduler = sched
+	gs.register_character("guard", Vector3(0.0, 0.5, 0.0), 3.0, {"detection_range": 5.0})
+	gs.register_character("aster", Vector3(24.0, 0.5, 0.0), 3.0, {})
+	gs.set_detection_targets("guard", ["aster"])
+
+	var spotted := [""]
+	gs.detection_predicted.connect(func(detector_id: String, target_id: String):
+		if spotted[0] == "":
+			spotted[0] = "%s->%s" % [detector_id, target_id])
+
+	# The guard sets off for its post, and the target starts closing WHILE it is still walking. This
+	# ordering is the whole point: the pair is solved once, here, and nothing solves it again when the
+	# guard arrives. So the answer has to already know where the guard will be standing afterwards.
+	gs.command_move_to_pos("guard", Vector3(6.0, 0.5, 0.0))
+	for _i in range(6):
+		sched.advance_ticks(0.05)
+	_assert_true(gs.is_moving("guard"), "the guard is still on its way to the post")
+	gs.command_move_to_pos("aster", Vector3(7.0, 0.5, 0.0))
+	_assert_equals(spotted[0], "", "nobody has been seen yet")
+
+	# The target closes from far enough out that it only arrives after the guard has settled.
+	for _i in range(600):
+		sched.advance_ticks(0.05)
+		if spotted[0] != "":
+			break
+	_assert_equals(spotted[0], "guard->aster",
+		"a guard that has already taken post still spots someone walking up to it")
+
+
 func _test_outline_selection_ownership() -> void:
 	_test_name = "Outline Selection Ownership"
 	var host := Node3D.new()
