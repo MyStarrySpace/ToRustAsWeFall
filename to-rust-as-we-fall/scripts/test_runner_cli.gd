@@ -871,6 +871,12 @@ func _ready() -> void:
 			"--test-displacement-reroute":
 				ran_test = true
 				_test_displacement_reroute()
+			"--test-basin-deck-is-not-one-way":
+				ran_test = true
+				await _test_basin_deck_is_not_one_way()
+			"--test-rally-across-floors":
+				ran_test = true
+				_test_rally_across_floors()
 			"--test-floor-change-never-strands":
 				ran_test = true
 				_test_floor_change_never_strands()
@@ -2059,6 +2065,8 @@ func _run_all_tests() -> void:
 	_test_displacement_reroute()
 	_test_displacement_never_strands()
 	_test_floor_change_never_strands()
+	_test_rally_across_floors()
+	await _test_basin_deck_is_not_one_way()
 	await _test_dwell_follows_its_scheduler()
 	await _test_showcase_gallery()
 	await _test_set_piece_showcase()
@@ -47680,6 +47688,113 @@ func _test_dwell_follows_its_scheduler() -> void:
 ## the identical displacement with none of the protection -- and from an unwalkable cell no route
 ## exists to anywhere, so every later order is refused while the character looks perfectly healthy.
 ## That is a softlock, and which of the two you get depends only on whether you happened to be moving.
+## A RALLY MUST REACH A MEMBER WHO IS ON ANOTHER FLOOR. Calling the party together is the one order
+## whose whole purpose is to collect people who are not where you are, and a member who took the
+## ladder is exactly the member most in need of collecting.
+##
+## A ladder is a typed edge on the grid, so a route from the balcony to the floor below exists and a
+## single character asked to walk there takes it. The rally checks each member's route on that
+## member's own floor, so the one upstairs is reported as having no route at all -- and because
+## nothing moves her, every later rally refuses her the same way, forever.
+## THE WAY BACK OFF THE DECK. The Basin tells the player to climb before the water rises ("HIGH
+## leaves only the decks"), so a member standing up there is playing it correctly. What must never
+## happen is that the climb is a one-way trip: if the rise covered the way down for good, the party
+## could not be gathered again and the run would be over with nothing on screen saying so.
+##
+## The water is allowed to cut the route -- that is the pressure the level is built on. It just has
+## to give it back.
+func _test_basin_deck_is_not_one_way() -> void:
+	_test_name = "Basin Deck Is Not One Way"
+	var inst = await _instantiate_preview_chunk_and_wait("basin_fill_proof", 30)
+	if inst == null:
+		_assert_true(false, "the basin fill proof instantiates")
+		return
+	var gs = inst.get("_game_state")
+	var grid = gs.grid if gs != null else null
+	if gs == null or grid == null:
+		_assert_true(false, "the basin exposes its game state and grid")
+		inst.queue_free()
+		await get_tree().process_frame
+		return
+
+	var upper: Dictionary = grid.level_allowed.get(1, {}) as Dictionary
+	_assert_true(not upper.is_empty(), "the basin has an upper deck to climb to")
+	var deck := Vector2i(10, 0)
+	_assert_true(grid.is_walkable(deck.x, deck.y, {}, {}, 1),
+		"the sampled deck cell is ground a member can stand on")
+	var below := Vector2i(9, 3)
+
+	# Walk the whole rota rather than one instant: a route that exists only while drained is exactly
+	# the route that stranded somebody when it filled.
+	var open_phases: Array = []
+	var closed_phases: Array = []
+	for phase in range(30):
+		inst.headless_advance(1.0, 0.1)
+		if (grid.find_multi_level_path(deck, 1, below, 0) as Array).size() >= 2:
+			open_phases.append(phase)
+		else:
+			closed_phases.append(phase)
+	_assert_true(not open_phases.is_empty(),
+		("a member on the deck can get back down at some point in the rota -- the climb is not a "
+		+ "one-way trip (open: %d/30)") % open_phases.size())
+	# The cut has to be a passing thing. A long unbroken stretch with no way down is a member the
+	# party cannot collect, which reads to a player as the run quietly refusing to continue.
+	var longest_closed := 0
+	var run_len := 0
+	for phase in range(30):
+		if closed_phases.has(phase):
+			run_len += 1
+			longest_closed = maxi(longest_closed, run_len)
+		else:
+			run_len = 0
+	_assert_true(longest_closed <= 15,
+		("the water gives the route back rather than closing it for the whole rota (longest "
+		+ "unbroken closed stretch: %ds of 30)") % longest_closed)
+
+	inst.queue_free()
+	await get_tree().process_frame
+
+
+func _test_rally_across_floors() -> void:
+	_test_name = "Rally Across Floors"
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.scheduler = sched
+	var grid := GridWorld.from_data({
+		"contract_id": GridWorld.GRID_DATA_CONTRACT_ID,
+		"origin": [0.0, 0.0, 0.0], "cell_size": 1.0, "width": 12, "height": 12,
+		"level_count": 2, "level_height": 3.0,
+		"walkable_regions": [{"min": [0.5, 0.5], "max": [11.5, 11.5]}],
+	})
+	grid.allow_cell_region_on_level(Vector2i(3, 3), Vector2i(8, 8), 1)
+	var ladder := Vector2i(4, 4)
+	grid.add_inter_level_link(ladder, 0, 1, "ladder")
+	grid.add_inter_level_link(ladder, 1, 0, "ladder")
+	gs.grid = grid
+
+	# One member took the ladder up; the rest are downstairs, and so is the rally point.
+	gs.register_character("aster", grid.grid_to_world(Vector2i(6, 9), 0), 2.0, {"hp": 100.0})
+	gs.register_character("endo", grid.grid_to_world(Vector2i(7, 9), 0), 2.0, {"hp": 100.0})
+	gs.register_character("peris", grid.grid_to_world(Vector2i(6, 6), 1), 2.0, {"hp": 100.0})
+	gs.set_character_level("peris", 1)
+	_assert_equals(gs.get_character_level("peris"), 1, "peris stands on the upper floor")
+
+	var route := grid.find_multi_level_path(Vector2i(6, 6), 1, Vector2i(6, 9), 0)
+	_assert_true(route.size() >= 2,
+		"a route down the ladder exists for a single character (got %d waypoints)" % route.size())
+
+	var party: Array[String] = ["aster", "endo", "peris"]
+	var target := grid.grid_to_world(Vector2i(6, 9), 0)
+	var preflight: Dictionary = gs.compute_rally_preflight(party, target)
+	var blocked: Dictionary = preflight.get("blocked_reasons", {}) as Dictionary
+	var peris_reason := str((blocked.get("peris", {}) as Dictionary).get("reason_code", ""))
+	_assert_true(peris_reason != "route_missing",
+		("a rally reaches the member who is upstairs -- the ladder is a route (got: %s)")
+			% (peris_reason if peris_reason != "" else "accepted"))
+	_assert_true(blocked.is_empty(),
+		"and the whole party answers one rally (blocked: %s)" % str(blocked.keys()))
+
+
 func _test_floor_change_never_strands() -> void:
 	_test_name = "Floor Change Never Strands"
 	var sched := EventScheduler.new()
