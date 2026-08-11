@@ -61568,24 +61568,24 @@ func _test_enemy() -> void:
 	# Move target within range via command (triggers predictive detection)
 	gs.command_move_to_pos("aster", Vector3(1, 0, 0))
 
-	# Predictive detection should fire.
+	# Predictive detection should fire. The "!" over the spotted character is the player's only
+	# warning that something has seen them, and it is BRIEF -- the enemy leaves the alert beat within
+	# a second or two. So watch for it WHILE the detection happens rather than looking once at the
+	# end, by which point it has been taken down again and nothing can be concluded from its absence.
+	var alert_was_shown := false
 	for i in range(10):
 		scheduler.advance(0.5)
 		await get_tree().process_frame
+		for child in target.get_children():
+			if child is Label3D and (child as Label3D).text == "!":
+				alert_was_shown = true
 
 	var combat_states := ["alert", "pursuit", "windup", "charge", "impact", "recover"]
 	_assert_true(enemy.get_state() in combat_states,
 		"Detects target within range (got: %s)" % enemy.get_state())
-
-	# Check for alert label ("!") on the target (may already have transitioned)
-	var has_alert := false
-	for child in target.get_children():
-		if child is Label3D and child.text == "!":
-			has_alert = true
-	if enemy.get_state() == "alert":
-		_assert_true(has_alert, "Alert '!' appears on target")
-	else:
-		_assert_true(true, "Alert '!' appeared then removed (now in %s)" % enemy.get_state())
+	_assert_true(alert_was_shown,
+		"the spotted character wears the '!' at the moment they are seen (ended in %s)"
+			% enemy.get_state())
 
 	# Advance through the full attack cycle
 	for i in range(20):
