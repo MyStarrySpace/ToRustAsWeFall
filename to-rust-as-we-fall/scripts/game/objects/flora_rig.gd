@@ -29,6 +29,9 @@ const SPECIES_ARMATURES := {
 	# What a tended Gasafoetida hands you: a held item, not a plant, but the
 	# same rigged body playing the same kind of clip.
 	"gaspod": "GasPod_Armature",
+	# The cut length a tended Climbvine gives up: carried it keeps its curve,
+	# slung between anchors it hangs.
+	"vinecut": "VineCut_Armature",
 }
 
 static var _packed := {}

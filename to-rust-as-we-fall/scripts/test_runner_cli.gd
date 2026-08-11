@@ -53957,6 +53957,37 @@ func _test_flora_rig_plays() -> void:
 	pod.queue_free()
 	await get_tree().process_frame
 
+	# The CLIMBVINE CUTTING: the third held tool the taxonomy names. It rests in the
+	# curve a cut rope keeps and hangs in a catenary when slung, so both clips must
+	# open on the pose it actually rests in.
+	var cut := FloraRig.new()
+	get_tree().root.add_child(cut)
+	var cut_built := cut.setup("vinecut")
+	_assert_true(cut_built, "the harvested cutting has a rigged body")
+	if cut_built:
+		var cut_clips: PackedStringArray = cut.clips()
+		for wanted in ["vinecut_sling", "vinecut_gather"]:
+			_assert_true(cut_clips.has(wanted),
+				"the cutting carries %s (%s)" % [wanted, str(cut_clips)])
+		# a rope that rests dead straight is a rod; the carried curve is parked
+		var cut_skel: Skeleton3D = null
+		var cstack: Array = [cut]
+		while not cstack.is_empty():
+			var n = cstack.pop_back()
+			if n is Skeleton3D:
+				cut_skel = n
+			for c in n.get_children():
+				cstack.append(c)
+		_assert_true(cut_skel != null, "the cutting has a Skeleton3D")
+		if cut_skel != null:
+			var bent := 0
+			for b in cut_skel.get_bone_count():
+				if str(cut_skel.get_bone_name(b)).begins_with("vine") 						and cut_skel.get_bone_pose_rotation(b).get_euler().length() > 0.05:
+					bent += 1
+			_assert_true(bent > 0, "and rests in a curve rather than dead straight")
+	cut.queue_free()
+	await get_tree().process_frame
+
 	# THE OUTLINE HAS TO WEAR THE POSE. The mask renders private COPIES of an
 	# object's meshes; a copy without the source's skin draws bind space, so a
 	# rigged plant is outlined in the shape it was modelled in rather than the one
