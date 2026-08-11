@@ -902,6 +902,9 @@ func _ready() -> void:
 			"--test-wash-outline-capture":
 				ran_test = true
 				await _test_wash_outline_capture()
+			"--test-cover-mid-run":
+				ran_test = true
+				_test_cover_mid_run()
 			"--test-outline-mask-clears":
 				ran_test = true
 				await _test_outline_mask_clears()
@@ -2130,6 +2133,7 @@ func _run_all_tests() -> void:
 	await _test_chunk_unload_scheduler_clean()
 	await _test_outline_body_extent()
 	await _test_outline_mask_clears()
+	_test_cover_mid_run()
 	_test_parked_detector_sees_approach()
 	await _test_stagger_does_not_chase_a_corpse()
 	await _test_pagination_boundaries()
@@ -48496,6 +48500,72 @@ func _test_wash_outline_capture() -> void:
 ## target keeps whatever it last drew. So the moment a pass goes quiet matters: stopping it dead
 ## freezes the final frame -- glow and all -- into the texture, and the composite happily samples
 ## that ghost whenever anything else lights up. Going quiet must paint one clear frame first.
+## Build the one detection scenario this file keeps re-using: a guard, a runner, a booked sighting.
+## Returns everything a phase needs to steer it. The shape is copied from the parked-detector test
+## because that fixture PROVABLY fires; phases mutate it one step at a time so that if a phase goes
+## quiet, the step that silenced it is the finding.
+func _cover_fixture() -> Dictionary:
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.scheduler = sched
+	gs.register_character("guard", Vector3(0.0, 0.5, 0.0), 3.0, {"detection_range": 5.0})
+	gs.register_character("aster", Vector3(24.0, 0.5, 0.0), 3.0, {})
+	gs.set_detection_targets("guard", ["aster"])
+	var spotted := [false]
+	gs.detection_predicted.connect(func(_d: String, _t: String): spotted[0] = true)
+	return {"sched": sched, "gs": gs, "spotted": spotted}
+
+## DUCKING INTO COVER MID-RUN HAS TO COUNT. Detection is booked ahead: the moment a runner starts
+## moving, the tick they come into view is already scheduled. Cover is read from where a body
+## stands, so it changes mid-run -- and if taking cover does not tear up the booking, the hide
+## mechanic fails in the only moment that matters: doing the right thing one step ahead of a guard,
+## and being seen anyway by an appointment made before you got there.
+func _test_cover_mid_run() -> void:
+	_test_name = "Cover Mid Run"
+
+	# CONTROL -- the exact movements the parked-detector test proves: guard takes post, runner
+	# approaches, sighting fires. Every later phase is this scenario plus one change.
+	var control := _cover_fixture()
+	(control["gs"] as GameState).command_move_to_pos("guard", Vector3(6.0, 0.5, 0.0))
+	for _i in range(200):
+		(control["sched"] as EventScheduler).advance_ticks(0.05)
+	(control["gs"] as GameState).command_move_to_pos("aster", Vector3(7.0, 0.5, 0.0))
+	for _i in range(400):
+		(control["sched"] as EventScheduler).advance_ticks(0.05)
+		if (control["spotted"] as Array)[0]:
+			break
+	_assert_true((control["spotted"] as Array)[0],
+		"CONTROL: the open approach is spotted (the fixture fires before anything is concluded from it)")
+
+	# COVER TAKEN MID-RUN -- same movements, but the runner reaches full concealment before the
+	# booked sighting lands. The booking must die with the exposure.
+	var run := _cover_fixture()
+	(run["gs"] as GameState).command_move_to_pos("guard", Vector3(6.0, 0.5, 0.0))
+	for _i in range(200):
+		(run["sched"] as EventScheduler).advance_ticks(0.05)
+	(run["gs"] as GameState).command_move_to_pos("aster", Vector3(7.0, 0.5, 0.0))
+	for _i in range(20):
+		(run["sched"] as EventScheduler).advance_ticks(0.05)
+	_assert_true(not (run["spotted"] as Array)[0],
+		"the sighting has not landed when cover is taken (still mid-run)")
+	(run["gs"] as GameState).set_character_concealment("aster", GameState.CONCEAL_FULL)
+	for _i in range(400):
+		(run["sched"] as EventScheduler).advance_ticks(0.05)
+		if (run["spotted"] as Array)[0]:
+			break
+	_assert_true(not (run["spotted"] as Array)[0],
+		"reaching cover mid-run cancels the sighting that was already booked")
+
+	# And cover is a place, not a permanent state: stepping out re-books the sighting.
+	(run["gs"] as GameState).set_character_concealment("aster", GameState.CONCEAL_NONE)
+	for _i in range(400):
+		(run["sched"] as EventScheduler).advance_ticks(0.05)
+		if (run["spotted"] as Array)[0]:
+			break
+	_assert_true((run["spotted"] as Array)[0],
+		"stepping back out of cover is spotted -- the recompute runs both ways")
+
+
 func _test_outline_mask_clears() -> void:
 	_test_name = "Outline Mask Clears"
 	var host := Node3D.new()
