@@ -53,6 +53,9 @@ var _web_e2e_pending_navigation_edges: Dictionary = {}
 var _web_e2e_level_transitions: Dictionary = {}
 var _web_e2e_content_fingerprint: Dictionary = {}
 var _web_e2e_gameplay_build_fingerprint: Dictionary = {}
+## Set once the fingerprint has been answered and could not be produced. The bridge is polled
+## continuously, so an unanswerable fingerprint must be attempted once rather than per poll.
+var _web_e2e_gameplay_build_fingerprint_unavailable := false
 var _web_e2e_movement_continuity = MovementContinuityTrackerScript.new()
 var _web_e2e_continuity_game_state = null
 var _web_e2e_continuity_entry_id := ""
@@ -541,9 +544,17 @@ func _web_e2e_content_fingerprint_result() -> Dictionary:
 func _web_e2e_gameplay_build_fingerprint_result() -> Dictionary:
 	if not _web_e2e_gameplay_build_fingerprint.is_empty():
 		return _web_e2e_gameplay_build_fingerprint.duplicate(true)
+	if _web_e2e_gameplay_build_fingerprint_unavailable:
+		return {}
 	var result: Dictionary = ContentFingerprintScript.gameplay_build()
 	if not bool(result.get("ok", false)):
-		push_error("Web E2E gameplay build fingerprint failed: %s" % str(
+		# The fingerprint hashes the project's SOURCE files, which an exported build does not carry
+		# -- project.godot ships as project.binary, and scripts ship compiled. Answering is a
+		# once-per-session question, but the bridge asks it on every poll: left uncached, a failure
+		# re-walks the whole inventory and logs again every couple of seconds, burying the very
+		# diagnostics the bridge exists to publish.
+		_web_e2e_gameplay_build_fingerprint_unavailable = true
+		push_error("Web E2E gameplay build fingerprint unavailable: %s" % str(
 			result.get("error", "unknown error")))
 		return {}
 	_web_e2e_gameplay_build_fingerprint = {

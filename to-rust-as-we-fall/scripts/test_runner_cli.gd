@@ -914,6 +914,9 @@ func _ready() -> void:
 			"--test-cover-mid-run":
 				ran_test = true
 				_test_cover_mid_run()
+			"--test-hover-route-truthful":
+				ran_test = true
+				await _test_hover_route_never_promises_an_unreachable_deck()
 			"--test-death-offers-a-way-out":
 				ran_test = true
 				await _test_death_offers_a_way_out()
@@ -2149,6 +2152,7 @@ func _run_all_tests() -> void:
 	await _test_outline_body_extent()
 	await _test_outline_mask_clears()
 	await _test_death_offers_a_way_out()
+	await _test_hover_route_never_promises_an_unreachable_deck()
 	_test_cover_mid_run()
 	_test_pause_defers_never_drops()
 	await _test_path_source_precedence()
@@ -48824,6 +48828,61 @@ func _test_cover_mid_run() -> void:
 	_assert_true((run["spotted"] as Array)[0],
 		"stepping back out of cover is spotted -- the recompute runs both ways")
 
+
+## The hover verb is a PROMISE about what right-click will do. A point that resolves to a walkable
+## cell is not the same as a point the character can reach: `resolve_navigation_location` snaps to
+## the nearest walkable cell, which answers "is there floor there", never "can I get there". A
+## same-floor target across an impassable split satisfies the first and fails the second, so the
+## hover must run the route before it says WALK ROUTE.
+func _test_hover_route_never_promises_an_unreachable_deck() -> void:
+	_test_name = "Hover Route Never Promises An Unreachable Deck"
+	var gs := GameState.new()
+	var grid := GridWorld.new()
+	grid.create_room(20, 12)
+	# A full-height wall splits the floor into two walkable islands with no crossing.
+	for z in range(0, 12):
+		grid.dynamic_blockers[Vector2i(10, z)] = true
+	gs.grid = grid
+
+	var holder := Node3D.new()
+	add_child(holder)
+	var player = load("res://scripts/game/characters/player.gd").new()
+	player.game_state = gs
+	player.char_id = "aster"
+	holder.add_child(player)
+	await get_tree().process_frame
+
+	var start_cell := Vector2i(3, 6)
+	var stranded_cell := Vector2i(16, 6)
+	var reachable_cell := Vector2i(6, 8)
+	gs.register_character("aster", grid.grid_to_world(start_cell), 3.0, {})
+	var stranded_world: Vector3 = grid.grid_to_world(stranded_cell)
+	var reachable_world: Vector3 = grid.grid_to_world(reachable_cell)
+
+	# Fixture controls. Without these the scenario could be wrong in the direction that makes the
+	# hover look correct -- an unwalkable target, or one that happens to be reachable after all.
+	_assert_true(grid.is_walkable(stranded_cell.x, stranded_cell.y, {}, {}, 0),
+		"the far island is walkable floor")
+	_assert_true(not gs.resolve_navigation_location("aster", stranded_world).is_empty(),
+		"the far island resolves to a navigation location (this is what fools the hover)")
+	_assert_true(grid.find_path(start_cell, stranded_cell).is_empty(),
+		"no route actually reaches the far island")
+	_assert_true(not grid.find_path(start_cell, reachable_cell).is_empty(),
+		"a route does reach the near point")
+
+	_assert_equals(str(player._route_consequence_for_hit(stranded_world)), "NO ROUTE",
+		"hovering an unreachable same-floor point says NO ROUTE")
+	# The positive control: the fix must distinguish, not refuse everything.
+	_assert_equals(str(player._route_consequence_for_hit(reachable_world)), "WALK ROUTE",
+		"hovering a reachable same-floor point still promises the walk")
+
+	# The contradiction the player met: the hover offered a route the commit then refused.
+	gs.command_move_to_pos("aster", stranded_world)
+	var movement = gs.characters["aster"].movement
+	_assert_true(movement == null, "the commit refuses the unreachable point, as the hover now does")
+
+	holder.queue_free()
+	await get_tree().process_frame
 
 ## Death in story mode is a recoverable state, so the screen that announces it must also offer the
 ## way back out. A player who loses a body early has one correct move available -- take the level

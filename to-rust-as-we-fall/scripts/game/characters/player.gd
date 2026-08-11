@@ -650,6 +650,17 @@ func _route_consequence_for_hit(ground_hit: Vector3) -> String:
 		"level", game_state.get_character_level(char_id)))
 	var route_consequence := "WALK ROUTE"
 	if target_level == game_state.get_character_level(char_id):
+		# A resolved location only reports that there is floor there -- it snaps to the nearest
+		# walkable cell, which a stranded island satisfies as readily as a connected deck. Promising
+		# a walk is a claim about a ROUTE, so the route answers it, and it is the same one the hover
+		# ribbon draws: a verb the ribbon cannot back is the lie the player right-clicks into.
+		if (game_state.compute_preview_path(char_id, data_hit) as Array).size() < 2:
+			var here := game_state.grid.world_to_grid(game_state.get_position(char_id))
+			var there_v: Variant = location.get("cell", null)
+			var there: Vector2i = there_v if there_v is Vector2i else here
+			# Standing on the target is not a missing route, it is an arrival.
+			if there != here:
+				return "NO ROUTE"
 		route_consequence = "WALK ROUTE"
 	else:
 		var preview := game_state.compute_preview_navigation(char_id, data_hit)
