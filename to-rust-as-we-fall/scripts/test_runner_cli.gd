@@ -55504,9 +55504,58 @@ func _test_flora_rig_plays() -> void:
 	_assert_true(turret_built, "the spiker has a rigged body")
 	if turret_built:
 		var t_clips: PackedStringArray = turret.clips()
-		for wanted in ["spiker_charge", "spiker_discharge", "spiker_sever"]:
+		for wanted in ["spiker_charge", "spiker_discharge", "spiker_sever",
+				"spiker_break"]:
 			_assert_true(t_clips.has(wanted),
 				"the spiker carries %s (%s)" % [wanted, str(t_clips)])
+
+		# A WRECK IS A POSE OF THE SAME TREE. The damaged panel is the fourth read
+		# on all three of its sheets — trunk given way and leaning, crown branches
+		# sheared to jagged stumps, everything still attached drooping — and house
+		# law forbids answering that by swapping in a second, broken body. So the
+		# assertion is that ONE clip does all three at once: the trunk turns, some
+		# branch tips go, and the ones that remain are bent rather than untouched.
+		# Sever is NOT this. That is the sightline breaking and the charge dying
+		# where it stood, which leaves the tree standing and healthy.
+		var t_skels: Array[Skeleton3D] = turret.call("_skeletons")
+		var t_player: AnimationPlayer = turret.get("_player")
+		if t_skels.size() > 0 and t_player != null and t_clips.has("spiker_break"):
+			var tk: Skeleton3D = t_skels[0]
+			var lean := tk.find_bone("trunk_1")
+			_assert_true(lean >= 0, "the spiker's trunk is a chain that can give way")
+			turret.rest()
+			await get_tree().process_frame
+			var upright: Quaternion = tk.get_bone_pose_rotation(maxi(lean, 0))
+			var tips: Array = []
+			for i in range(7):
+				var tb := tk.find_bone("br%d_2" % i)
+				if tb >= 0:
+					tips.append(tb)
+			_assert_true(tips.size() >= 6,
+				"its crown branches carry outer segments that can shear (%d)" % tips.size())
+			var standing: Array = []
+			for tb in tips:
+				standing.append(tk.get_bone_pose_scale(tb).x)
+
+			var bl: float = t_player.get_animation("spiker_break").length
+			t_player.play("spiker_break")
+			t_player.seek(bl, true)
+			await get_tree().process_frame
+			if lean >= 0:
+				var turned: Quaternion = tk.get_bone_pose_rotation(lean)
+				_assert_true(2.0 * acos(clampf(absf(turned.dot(upright)), -1.0, 1.0)) > 0.15,
+					"a broken Spiker's trunk has given way")
+			var sheared := 0
+			var bent := 0
+			for i in range(tips.size()):
+				if tk.get_bone_pose_scale(tips[i]).x < float(standing[i]) * 0.2:
+					sheared += 1
+				else:
+					bent += 1
+			_assert_true(sheared >= 2,
+				"branches have sheared to stumps (%d)" % sheared)
+			_assert_true(bent >= 2,
+				"and the crown is not simply gone — some branches remain (%d)" % bent)
 		var t_skel: Skeleton3D = null
 		var tstack: Array = [turret]
 		while not tstack.is_empty():
