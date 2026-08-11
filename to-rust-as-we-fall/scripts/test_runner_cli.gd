@@ -48009,8 +48009,9 @@ func _test_stop_during_a_wait() -> void:
 		"it never reaches the destination the cancelled route was heading for")
 
 
-func _test_patrol_cycles() -> void:
-	_test_name = "Patrol Cycles"
+## Walk one authored beat and report the posts reached, in order. Taking the clock step as an argument
+## is what lets the same beat be walked at 1x and at 10x and the two answers compared.
+func _patrol_visit_probe(step: float) -> Array:
 	var host := Node3D.new()
 	add_child(host)
 	var sched := EventScheduler.new()
@@ -48037,36 +48038,67 @@ func _test_patrol_cycles() -> void:
 	enemy.set_patrol(route)
 
 	# Watch which posts it actually REACHES, in order, rather than reading its bookkeeping.
-	var visits: Array[int] = []
+	var visits: Array[Dictionary] = []
 	for _i in range(4000):
-		sched.advance_ticks(0.05)
+		sched.advance_ticks(step)
 		var here := gs.get_position("sentry")
 		for idx in range(route.size()):
 			if here.distance_to(route[idx]) < 0.6:
-				if visits.is_empty() or visits[visits.size() - 1] != idx:
-					visits.append(idx)
+				if visits.is_empty() or int(visits[visits.size() - 1]["post"]) != idx:
+					visits.append({"post": idx, "tick": float(sched.get_current_tick())})
 				break
 		if visits.size() >= 5:
 			break
 
+	host.queue_free()
+	return visits
+
+
+func _test_patrol_cycles() -> void:
+	_test_name = "Patrol Cycles"
+	var visits: Array = await _patrol_visit_probe(0.05)
+	var posts: Array = []
+	for entry in visits:
+		posts.append(int(entry["post"]))
 	_assert_true(visits.size() >= 4,
-		"the sentry keeps walking its beat rather than stopping at a post (visited %s)" % str(visits))
+		"the sentry keeps walking its beat rather than stopping at a post (visited %s)" % str(posts))
 	var reached := {}
-	for idx in visits:
+	for idx in posts:
 		reached[idx] = true
-	_assert_equals(reached.size(), route.size(),
+	_assert_equals(reached.size(), 3,
 		"it reaches every post on the route, not just the first leg (%s)" % str(visits))
-	# The loop itself: some post is visited a SECOND time, which only happens if the route comes round.
 	var came_round := false
-	for idx in range(visits.size()):
-		for jdx in range(idx + 1, visits.size()):
-			if visits[idx] == visits[jdx]:
+	for idx in range(posts.size()):
+		for jdx in range(idx + 1, posts.size()):
+			if posts[idx] == posts[jdx]:
 				came_round = true
 	_assert_true(came_round,
-		"and the beat comes round again instead of ending at the last post (%s)" % str(visits))
+		"and the beat comes round again instead of ending at the last post (%s)" % str(posts))
 
-	host.queue_free()
-	await get_tree().process_frame
+	## HOLDING F MUST NOT CHANGE THE BEAT. Fast-forward multiplies the clock, not the game: a patrol
+	## watched at speed has to walk the same route in the same order as one watched in real time. If a
+	## coarse step lands past a whole leg, the guard skips a post -- and a player who fast-forwards
+	## past a sentry gets a different patrol from the one they timed their run against, which makes
+	## the route unlearnable exactly when they are trying to use what they learned.
+	var coarse: Array = await _patrol_visit_probe(0.37)
+	var shared: int = mini(visits.size(), coarse.size())
+	_assert_true(shared >= 3,
+		"the fast-forwarded beat gets far enough to compare (fine %s, coarse %s)" % [
+			str(visits), str(coarse)])
+	var same_order := true
+	var worst_drift := 0.0
+	for idx in range(shared):
+		if int(visits[idx]["post"]) != int(coarse[idx]["post"]):
+			same_order = false
+		worst_drift = maxf(worst_drift,
+			absf(float(visits[idx]["tick"]) - float(coarse[idx]["tick"])))
+	_assert_true(same_order,
+		"a patrol watched at speed walks the same posts in the same order")
+	# Order alone is guaranteed by the waypoint list, so it cannot tell whether the clock changed the
+	# beat. WHEN each post is reached is the part fast-forward could actually distort.
+	_assert_true(worst_drift < 1.0,
+		("and reaches them at the same times -- holding F multiplies the clock, not the patrol "
+		+ "(worst drift %.2fs)") % worst_drift)
 
 
 func _test_style_cps_composition() -> void:
