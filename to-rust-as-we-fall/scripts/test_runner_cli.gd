@@ -53738,6 +53738,38 @@ func _test_flora_rig_plays() -> void:
 					"%s rests with %s SHUT, not wearing its flare (scale %.3f)"
 						% [species, bone_name, s.x])
 		_assert_true(flashes > 0, "%s has a flash bone to hold shut" % species)
+
+		# A CLIP MUST START WHERE THE BODY RESTS. An armature is left standing in
+		# whatever the previous clip finished on, so a bone a new clip does not
+		# pose at t=0 can be keyed at the old clip's value — and the transition
+		# then opens by snapping to a pose the plant was never in.
+		var rest_player: AnimationPlayer = body.get("_player")
+		if rest_player != null:
+			var popping: Array = []
+			for sk in skeletons:
+				var skel: Skeleton3D = sk
+				for clip_name in rest_player.get_animation_list():
+					var anim: Animation = rest_player.get_animation(str(clip_name))
+					for ti in anim.get_track_count():
+						if anim.track_get_type(ti) != Animation.TYPE_SCALE_3D:
+							continue
+						if anim.track_get_key_count(ti) <= 0:
+							continue
+						var bone := str(anim.track_get_path(ti)).get_slice(":", 1)
+						var bi := skel.find_bone(bone)
+						if bi < 0:
+							continue
+						var first = anim.track_get_key_value(ti, 0)
+						var at_rest: Vector3 = skel.get_bone_pose_scale(bi)
+						if not (first is Vector3) 								or (first as Vector3).distance_to(at_rest) >= 0.01:
+							popping.append("%s/%s %s->%s"
+								% [clip_name, bone, str(at_rest), str(first)])
+			# one verdict per species: a per-track assertion floods the log with
+			# thousands of lines for a body the size of the Capbage's
+			_assert_equals(popping.size(), 0,
+				"%s: every clip opens at the pose the body rests in (%s)"
+					% [species, ", ".join(popping.slice(0, 4))])
+
 		body.queue_free()
 		await get_tree().process_frame
 

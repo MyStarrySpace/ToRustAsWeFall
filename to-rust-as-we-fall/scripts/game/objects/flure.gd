@@ -162,9 +162,13 @@ func _build_body() -> Node3D:
 		add_child(rigged)
 		if rigged.setup("flure"):
 			_rig = rigged
+			# The halo belongs to the CORE, so it rides the core's bone: parked at
+			# a fixed height it would hang in the air where the head used to be
+			# once the stem has folded the head away.
 			if _glow != null:
-				_glow.position = Vector3(0.0, 0.88, 0.0)
 				_glow.scale = Vector3.ONE * 0.4
+				if not rigged.attach_to_bone(_glow, "core_0"):
+					_glow.position = Vector3(0.0, 0.88, 0.0)
 			return rigged
 		rigged.queue_free()
 	var body := ArchetypePieceLibrary.instantiate("flure")
@@ -1603,4 +1607,7 @@ func _play_phase_clip(phase: String) -> void:
 		PHASE_SPENT:
 			_rig.play("flure_spend")
 		PHASE_READY:
-			_rig.play("flure_tend")
+			# Re-arming is not tending. The body is modelled ready, so it goes
+			# straight back to that without playing the tending — which would
+			# otherwise fire the completion flare for work nobody did.
+			_rig.rest()

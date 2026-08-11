@@ -132,3 +132,46 @@ func meshes() -> Array:
 		for c in n.get_children():
 			stack.append(c)
 	return out
+
+
+## Put the body back in the state it was modelled in, at once and without playing
+## anything. A plant that re-arms has not just been tended, so replaying its tend
+## would fire the completion flare for work nobody did; and the rest pose IS the
+## ready state, so restoring it is the whole job.
+func rest() -> void:
+	if _player != null:
+		_player.stop()
+	for node in _skeletons():
+		node.reset_bone_poses()
+
+
+## Hang `node` off a named bone so it rides the animation. A child of the body
+## alone keeps its own local transform and stays where the part used to be once
+## the part has moved.
+func attach_to_bone(node: Node3D, bone_name: String) -> bool:
+	for sk in _skeletons():
+		var idx := sk.find_bone(bone_name)
+		if idx < 0:
+			continue
+		var hook := BoneAttachment3D.new()
+		hook.name = "%sHook" % bone_name
+		sk.add_child(hook)
+		hook.bone_name = bone_name
+		if node.get_parent() != null:
+			node.get_parent().remove_child(node)
+		hook.add_child(node)
+		node.transform = Transform3D.IDENTITY
+		return true
+	return false
+
+
+func _skeletons() -> Array[Skeleton3D]:
+	var out: Array[Skeleton3D] = []
+	var stack: Array = [self]
+	while not stack.is_empty():
+		var n = stack.pop_back()
+		if n is Skeleton3D:
+			out.append(n)
+		for c in n.get_children():
+			stack.append(c)
+	return out
