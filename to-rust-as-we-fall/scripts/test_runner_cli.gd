@@ -55888,7 +55888,7 @@ func _test_flora_rig_plays() -> void:
 	# actually loads, with the assertion in front rather than a guard around it.
 	for beast in [
 			{"id": "hidra", "clips": ["hidra_unspool"]},
-			{"id": "crust", "clips": ["crust_dilate", "crust_burn"]},
+			{"id": "crust", "clips": ["crust_dilate", "crust_burn", "crust_regrow"]},
 			{"id": "meeb", "clips": ["meeb_cup", "meeb_feed", "meeb_collapse"]},
 			{"id": "gnawer", "clips": ["gnawer_haze", "gnawer_bite"]},
 			{"id": "toxo", "clips": ["toxo_extend", "toxo_pierce", "toxo_curl"]},
@@ -56006,6 +56006,65 @@ func _test_flora_rig_plays() -> void:
 	# living body ever closes it — so the assertion is comparative: the curl must
 	# beat the coil it winds up with, or the two poses read as the same animal
 	# doing the same thing and the player cannot tell a threat from a corpse.
+	# FIRE CLEARS A STRETCH, NOT THE COLONY. The roster promises a burned span with
+	# wax still standing either side of it, and that it grows back. Carrying ONE
+	# plate bone the old rig could only scale the whole mat to 0.001 — a regional
+	# burn was not merely unauthored, it was unriggable, and nothing survived to
+	# read as a scar. So the assertion is that ONE region collapses and the OTHERS
+	# DO NOT: a burn clip that took everything would satisfy any name check and any
+	# "did something move" check, and it is exactly what was there before.
+	var crust := FloraRig.new()
+	get_tree().root.add_child(crust)
+	var crust_built := crust.setup("crust")
+	_assert_true(crust_built, "the Crust has a rigged body")
+	if crust_built:
+		var cskels: Array[Skeleton3D] = crust.call("_skeletons")
+		var cplayer: AnimationPlayer = crust.get("_player")
+		if cskels.size() > 0 and cplayer != null:
+			var cskel: Skeleton3D = cskels[0]
+			var regions := {}
+			for region in ["left", "mid", "right"]:
+				var b := cskel.find_bone("%s_0" % region)
+				if b >= 0:
+					regions[region] = b
+			_assert_true(regions.size() == 3,
+				"the mat is partitioned into regions (%d)" % regions.size())
+			if regions.size() == 3:
+				crust.rest()
+				await get_tree().process_frame
+				var whole := {}
+				for region in regions.keys():
+					whole[region] = cskel.get_bone_pose_scale(int(regions[region])).x
+
+				var burn_len: float = cplayer.get_animation("crust_burn").length
+				cplayer.play("crust_burn")
+				cplayer.seek(burn_len, true)
+				await get_tree().process_frame
+				var gone := cskel.get_bone_pose_scale(int(regions["left"])).x
+				_assert_true(gone < float(whole["left"]) * 0.2,
+					"fire clears the burned span (%.3f -> %.3f)"
+						% [float(whole["left"]), gone])
+				var survivors := 0
+				for region in ["mid", "right"]:
+					if cskel.get_bone_pose_scale(int(regions[region])).x > float(whole[region]) * 0.8:
+						survivors += 1
+				_assert_true(survivors == 2,
+					"and the wax stands either side of it (%d/2 regions survived)"
+						% survivors)
+
+				# and it grows back — honest only because the burn is regional; the
+				# reverse of a whole-colony collapse is a mat popping into being
+				var regrow_len: float = cplayer.get_animation("crust_regrow").length
+				cplayer.play("crust_regrow")
+				cplayer.seek(regrow_len, true)
+				await get_tree().process_frame
+				_assert_true(
+					cskel.get_bone_pose_scale(int(regions["left"])).x > float(whole["left"]) * 0.8,
+					"and the cleared stretch grows back (%.3f)"
+						% cskel.get_bone_pose_scale(int(regions["left"])).x)
+	crust.queue_free()
+	await get_tree().process_frame
+
 	var dead_toxo := FloraRig.new()
 	get_tree().root.add_child(dead_toxo)
 	var toxo_built := dead_toxo.setup("toxo")
