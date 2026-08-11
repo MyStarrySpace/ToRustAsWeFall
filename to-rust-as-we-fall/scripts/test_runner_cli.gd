@@ -48523,6 +48523,10 @@ func _test_wash_outline_capture() -> void:
 		cam.global_position = Vector3(9.6, 7.5, 9.5)
 		cam.look_at(Vector3(9.6, 0.5, 1.5), Vector3.UP)
 
+	# WHICH RENDERER MATTERS HERE. Authored colours are encoded for the active pipeline, and the two
+	# pipelines take opposite branches -- a fog colour tuned on Forward+ can arrive lifted (and pale)
+	# in the browser, which is a Compatibility renderer. Run this capture BOTH ways when touching the
+	# perception stack: `--rendering-method gl_compatibility` is the web build's path on a desktop.
 	# The preview boots with all three perception overlays ON, and they repaint the whole frame --
 	# a capture taken through them shows the data schematic, not the level. Turn them off so what
 	# lands on disk is the art a player sees, then hold the reveal.
