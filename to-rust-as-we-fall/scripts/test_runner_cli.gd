@@ -9256,6 +9256,10 @@ const MOVEMENT_TELEPORT_ALLOWED := [
 
 func _test_movement_discipline() -> void:
 	_test_name = "Movement Discipline"
+	# This lint only speaks when it finds an offender, so a scan that reads NOTHING reports a clean
+	# bill of health: rename a directory or break the listing and the rule stops being enforced with
+	# nothing to show for it. Count what was actually read and say so.
+	var scanned := 0
 	for dir_path in MOVEMENT_TELEPORT_BANNED_DIRS:
 		for file_name in _movement_discipline_scripts(str(dir_path)):
 			var full: String = dir_path + str(file_name)
@@ -9264,10 +9268,13 @@ func _test_movement_discipline() -> void:
 			var src := FileAccess.get_file_as_string(full)
 			if src == "":
 				continue
+			scanned += 1
 			for offender in _movement_teleport_offenders(src):
 				_assert_true(false,
 					"%s: %s teleports a body -- level content commands movement" % [
 						file_name, offender])
+	_assert_true(scanned > 0,
+		"the discipline lint actually read the level scripts it polices (scanned %d)" % scanned)
 	var runner := FileAccess.get_file_as_string("res://scripts/test_runner_cli.gd")
 	var debt := runner.count("snap_character_to")
 	# The ledger constant and its two mentions in this function are themselves matches; subtract them
