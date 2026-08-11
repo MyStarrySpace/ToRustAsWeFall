@@ -902,6 +902,9 @@ func _ready() -> void:
 			"--test-wash-outline-capture":
 				ran_test = true
 				await _test_wash_outline_capture()
+			"--test-pause-defers-never-drops":
+				ran_test = true
+				_test_pause_defers_never_drops()
 			"--test-cover-mid-run":
 				ran_test = true
 				_test_cover_mid_run()
@@ -2137,6 +2140,7 @@ func _run_all_tests() -> void:
 	await _test_outline_body_extent()
 	await _test_outline_mask_clears()
 	_test_cover_mid_run()
+	_test_pause_defers_never_drops()
 	_test_parked_detector_sees_approach()
 	await _test_stagger_does_not_chase_a_corpse()
 	await _test_pagination_boundaries()
@@ -48524,6 +48528,57 @@ func _cover_fixture() -> Dictionary:
 ## stands, so it changes mid-run -- and if taking cover does not tear up the booking, the hide
 ## mechanic fails in the only moment that matters: doing the right thing one step ahead of a guard,
 ## and being seen anyway by an appointment made before you got there.
+## PAUSE HOLDS THE STORY, IT DOES NOT EAT IT. A scene's ending is a callback booked on the gameplay
+## lane -- the fade completes, the deadline fires, the next scene loads. Pausing stops that lane, and
+## it should: hitting pause must not skip you into the next scene.
+##
+## The failure that matters is the other one. If pausing DROPPED what was booked rather than holding
+## it, the scene would come back from the pause with its ending gone, and the player would stand in
+## a finished scene forever with nothing left to fire. "Nothing happened while paused" is what both
+## the correct and the broken version look like from outside, so the pending work is what gets
+## asserted, not the silence.
+func _test_pause_defers_never_drops() -> void:
+	_test_name = "Pause Defers Never Drops"
+	var sched := EventScheduler.new()
+	var fired := [0]
+	sched.schedule_after(2.0, func(): fired[0] += 1, "scene_transition")
+	_assert_true(int(sched.pending_count()) > 0,
+		"the scene's ending is booked before the pause")
+
+	# PAUSE: the lane stops. Nothing fires -- and the booking is still THERE, which is the half a
+	# silent test cannot tell apart from having lost it.
+	sched.set_speed(0.0)
+	for _i in range(120):
+		sched.advance(0.05)
+	_assert_equals(fired[0], 0, "a paused scene does not end itself")
+	_assert_true(int(sched.pending_count()) > 0,
+		"and its ending is still booked, not dropped on the floor")
+
+	# RESUME: the held ending arrives.
+	sched.set_speed(1.0)
+	for _i in range(120):
+		sched.advance(0.05)
+		if fired[0] > 0:
+			break
+	_assert_equals(fired[0], 1, "resuming delivers the ending that was waiting, exactly once")
+
+	# And a scene that was ALREADY overdue when it resumed still ends -- a long pause past the
+	# deadline must not leave the callback stranded behind its own tick.
+	var late_sched := EventScheduler.new()
+	var late_fired := [0]
+	late_sched.schedule_after(1.0, func(): late_fired[0] += 1, "late_transition")
+	late_sched.set_speed(0.0)
+	for _i in range(200):
+		late_sched.advance(0.05)
+	_assert_equals(late_fired[0], 0, "a long pause holds an overdue ending too")
+	late_sched.set_speed(1.0)
+	for _i in range(60):
+		late_sched.advance(0.05)
+		if late_fired[0] > 0:
+			break
+	_assert_equals(late_fired[0], 1, "and it lands on resume rather than being skipped")
+
+
 func _test_cover_mid_run() -> void:
 	_test_name = "Cover Mid Run"
 
