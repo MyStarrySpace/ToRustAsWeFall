@@ -3,8 +3,8 @@ extends RefCounted
 
 ## The surface library the procedurally-drawn architecture wears.
 ##
-## The buildings are built in GDScript, and every face on them used to be a flat
-## albedo colour — there was nowhere for an artist to put a brush. The materials
+## The buildings are built in GDScript, and a face on them is a drawn surface
+## rather than a flat albedo colour, so there is somewhere for an artist to paint. The materials
 ## now live as ordinary PNG tiles under `resources/materials/building/`, generated
 ## by `blender/materials/build_building_materials.py` from the concept sheet
 ## (`reference-images/architecture/sheets/materials_decay.png`) and hand-paintable
