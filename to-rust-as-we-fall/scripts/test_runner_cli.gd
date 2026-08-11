@@ -898,6 +898,12 @@ func _ready() -> void:
 			"--test-parked-detector-sees-approach":
 				ran_test = true
 				_test_parked_detector_sees_approach()
+			"--test-chunk-unload-scheduler-clean":
+				ran_test = true
+				await _test_chunk_unload_scheduler_clean()
+			"--drive-chunk-unload":
+				ran_test = true
+				await _drive_chunk_unload_child()
 			"--test-outline-target-swap-keeps-hover":
 				ran_test = true
 				await _test_outline_target_swap_keeps_hover()
@@ -1879,6 +1885,9 @@ func _ready() -> void:
 			"--test-peris-scene-transition":
 				ran_test = true
 				await _test_peris_scene_transition()
+			"--drive-script-scan":
+				ran_test = true
+				await _drive_script_scan()
 			"--drive-peris-transition":
 				ran_test = true
 				await _drive_peris_transition_child()
@@ -2105,6 +2114,7 @@ func _run_all_tests() -> void:
 	await _test_basin_deck_is_not_one_way()
 	await _test_outline_selection_ownership()
 	await _test_outline_target_swap_keeps_hover()
+	await _test_chunk_unload_scheduler_clean()
 	_test_parked_detector_sees_approach()
 	await _test_stagger_does_not_chase_a_corpse()
 	await _test_pagination_boundaries()
@@ -2439,9 +2449,76 @@ func _run_all_tests() -> void:
 
 # --- Test: Syntax ---
 # If we got this far, GDScript compiled successfully.
+## Load every script in the project and prove it compiled.
+##
+## This has to run in a CHILD process, for the same reason the Peris transition
+## guard does: a parse error is announced by the engine and then execution carries
+## on, so nothing in-process is left holding a value that says it happened. Two
+## in-process attempts are ruled out by construction and not worth trying again --
+## a plain `ResourceLoader.load` returns the cached compile for any script a scene
+## already pulled in, so a broken file answers with its last good version; and
+## loading 280 scripts with CACHE_MODE_IGNORE segfaults the engine outright.
+##
+## The child loads every script in a process where NOTHING is cached yet and the
+## parent reads what the engine said about them.
+func _assert_every_script_compiles() -> void:
+	var exe := OS.get_executable_path()
+	if exe == "":
+		_assert_true(false, "Executable path available for the script-compile scan")
+		return
+	var out: Array = []
+	var args := PackedStringArray(["--headless", "--path", ".", "--", "--drive-script-scan"])
+	var code := OS.execute(exe, args, out, true)   # read_stderr → the parse errors
+	var log := ""
+	for line in out:
+		log += str(line)
+	var seen := 0
+	for raw in log.split("\n"):
+		if raw.begins_with("[SCRIPT-SCAN] files="):
+			seen = int(raw.get_slice("=", 1))
+	var broken: Array = []
+	for raw in log.split("\n"):
+		if raw.contains("Parse Error") or raw.contains("Failed to load script"):
+			broken.append(raw.strip_edges())
+	# a scan that walked nothing would agree that nothing is broken
+	_assert_true(seen > 200,
+		"the scan reached the script tree (%d files, exit %d)" % [seen, code])
+	if not broken.is_empty():
+		for raw in broken:
+			print("  [script-scan] %s" % raw)
+	_assert_true(broken.is_empty(),
+		"All GDScript files compiled without errors (%d complaints)" % broken.size())
+
+
+## Child entry for the scan above (run via --drive-script-scan). Asks for every
+## script by name, so a file no scene happens to reference is compiled too -- a
+## broken chunk is exactly the kind that nothing else touches until someone opens
+## the level it belongs to.
+func _drive_script_scan() -> void:
+	var seen := 0
+	var dirs: Array = ["res://scripts/"]
+	while not dirs.is_empty():
+		var dir_path: String = dirs.pop_back()
+		var dir := DirAccess.open(dir_path)
+		if dir == null:
+			continue
+		dir.list_dir_begin()
+		var entry := dir.get_next()
+		while entry != "":
+			if dir.current_is_dir():
+				dirs.append(dir_path + entry + "/")
+			elif entry.ends_with(".gd"):
+				seen += 1
+				ResourceLoader.load(dir_path + entry, "Script")
+			entry = dir.get_next()
+		dir.list_dir_end()
+	print("[SCRIPT-SCAN] files=%d" % seen)
+	get_tree().quit(0)
+
+
 func _test_syntax() -> void:
 	_test_name = "Syntax Check"
-	_assert_true(true, "All GDScript files compiled without errors")
+	_assert_every_script_compiles()
 	_assert_true(not InputHints.physical_key_localization_supported("Web", false),
 		"Web display server skips unsupported physical-key localization")
 	_assert_true(not InputHints.physical_key_localization_supported("headless", false),
@@ -48318,6 +48395,86 @@ func _test_parked_detector_sees_approach() -> void:
 ## The pointer is not the light. If the wrapper changes hands while the pointer is resting on the
 ## object, whatever it now points at has to pick up the highlight already being shown, or hovering
 ## something that changes underneath you leaves it dark while the cursor still says it is there.
+## CLOSING A FRAGMENT DOES NOT LEAVE ITS CLOCKWORK RUNNING. A chunk books work on the scheduler --
+## a water phase, a mechanism beat -- and the scheduler belongs to the scene, so it outlives the
+## chunk. Unloading only frees the chunk; whatever it had booked is still in the queue with the
+## freed nodes captured inside it.
+##
+## This has to run in a CHILD process. A callback firing against a freed node is a non-fatal
+## GDScript error: it prints and execution carries on, so the same check in-process reports PASSED
+## while the errors scroll past. The parent reads the child's log instead.
+func _test_chunk_unload_scheduler_clean() -> void:
+	_test_name = "Chunk Unload Scheduler Clean"
+	var exe := OS.get_executable_path()
+	if exe == "":
+		_assert_true(false, "Executable path available for the subprocess unload guard")
+		return
+	var out: Array = []
+	var args := PackedStringArray(["--headless", "--path", ".", "--", "--drive-chunk-unload"])
+	var code := OS.execute(exe, args, out, true)
+	var log := ""
+	for line in out:
+		log += str(line)
+	var had_work := log.contains("[CHUNK-UNLOAD-CHILD] pending_before_free=true")
+	var freed := log.contains("[CHUNK-UNLOAD-CHILD] freed=true")
+	var crashed := log.contains("on a null value")
+	var lambda_freed := log.contains("Lambda capture at index")
+	if crashed or lambda_freed:
+		var shown := 0
+		for raw in log.split("
+"):
+			if (raw.contains("on a null value") or raw.contains("Lambda capture at index")) and shown < 4:
+				print("  [unload-leak] %s" % raw.strip_edges())
+				shown += 1
+	# Liveness first: a guard that tears down an idle chunk proves nothing, so the child has to show
+	# the queue was genuinely non-empty at the moment it let go.
+	_assert_true(had_work,
+		"the child frees the chunk while its booked work is still queued (exit %d)" % code)
+	_assert_true(freed, "and the chunk is actually gone before the clock runs on")
+	_assert_true(not crashed,
+		"running the clock past a closed fragment derefs nothing it left behind")
+	_assert_true(not lambda_freed,
+		"and no delayed callback outlives the chunk that booked it")
+
+
+## Child entry for the guard above (--drive-chunk-unload). Loads a fragment whose mechanisms book
+## real scheduler work, frees it with that work still queued, then runs the clock well past when the
+## work was due so anything left behind fires against the freed nodes.
+func _drive_chunk_unload_child() -> void:
+	_test_name = "Chunk Unload (child)"
+	var inst = await _instantiate_preview_chunk_and_wait("basin_fill_proof", 30)
+	if inst == null:
+		print("[CHUNK-UNLOAD-CHILD] instantiate=false")
+		return
+	var gs = inst.get("_game_state")
+	var sched = gs.scheduler if gs != null else null
+	if sched == null:
+		print("[CHUNK-UNLOAD-CHILD] scheduler=false")
+		return
+	# Let the fragment get its mechanisms going so there is really something in the queue.
+	for _i in range(40):
+		inst.headless_advance(0.1)
+		await get_tree().process_frame
+	var pending_before := int(sched.pending_count())
+	print("[CHUNK-UNLOAD-CHILD] pending_before_free=%s (%d)" % [
+		str(pending_before > 0), pending_before])
+
+	var chunk := _find_fragment_chunk_root(inst)
+	if chunk != null:
+		chunk.queue_free()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	print("[CHUNK-UNLOAD-CHILD] freed=true")
+
+	# Run the clock well past everything that was booked, so leftovers fire now rather than never.
+	for _i in range(200):
+		sched.advance_ticks(0.1)
+		await get_tree().process_frame
+	print("[CHUNK-UNLOAD-CHILD] survived=true")
+	inst.queue_free()
+	await get_tree().process_frame
+
+
 func _test_outline_target_swap_keeps_hover() -> void:
 	_test_name = "Outline Target Swap Keeps Hover"
 	var host := Node3D.new()
