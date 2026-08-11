@@ -902,6 +902,9 @@ func _ready() -> void:
 			"--test-wash-outline-capture":
 				ran_test = true
 				await _test_wash_outline_capture()
+			"--test-derived-cover-survives-replay":
+				ran_test = true
+				_test_derived_cover_survives_replay()
 			"--test-path-source-precedence":
 				ran_test = true
 				await _test_path_source_precedence()
@@ -2145,6 +2148,7 @@ func _run_all_tests() -> void:
 	_test_cover_mid_run()
 	_test_pause_defers_never_drops()
 	await _test_path_source_precedence()
+	_test_derived_cover_survives_replay()
 	_test_parked_detector_sees_approach()
 	await _test_stagger_does_not_chase_a_corpse()
 	await _test_pagination_boundaries()
@@ -48548,6 +48552,78 @@ func _cover_fixture() -> Dictionary:
 ## The walk wins while there is one. The ribbon is the game's promise about a click, so a ribbon
 ## pointing at a destination nobody is heading for is worse than no ribbon at all -- and the handed-in
 ## list only gets to speak once nobody is walking.
+## HIDING REPLAYS AS HIDING. Whether a body is in cover is never written to the log. A chunk reads
+## each position every frame and decides it -- so the log records only the walk, and the replay has to
+## arrive at the same hidden/exposed answer on its own. Nothing anywhere records "aster was hidden".
+##
+## That makes this a claim about MOVEMENT fidelity, which is what the log actually carries: if a
+## replayed body stands where the original stood at the same tick, then every rule read off position
+## agrees too -- cover here, and detection downstream of it, which is where a divergence would
+## actually hurt. The cover rule below is the lure relay's own (distance to the offshoot), applied to
+## both runs so neither side gets a different question.
+##
+## The log is wired at CONSTRUCTION. A log attached to a session already in progress holds movement
+## for bodies it never saw registered, and replay then walks nobody: that mistake reads exactly like
+## a determinism bug (measured: replay_has_aster=false while the live body stood in cover).
+func _test_derived_cover_survives_replay() -> void:
+	_test_name = "Derived Cover Survives Replay"
+	# The offshoot's shape and radius, seated inside this fixture's own grid. (Lifting the relay's
+	# literal coordinate put it outside the walkable region, so the walk had nowhere to arrive.)
+	var hide_pos := Vector3(34.0, 0.5, 12.0)
+	var hide_radius := 2.4
+	var in_cover := func(p: Vector3) -> bool:
+		return Vector2(p.x - hide_pos.x, p.z - hide_pos.z).length() <= hide_radius
+
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.scheduler = sched
+	gs.event_log = EventLog.new()                 # from the start, so registration is IN the log
+	var grid_data := {
+		"contract_id": GridWorld.GRID_DATA_CONTRACT_ID,
+		"origin": [0.0, 0.0, 0.0], "cell_size": 1.0, "width": 48, "height": 24,
+		"walkable_regions": [{"min": [0.5, 0.5], "max": [47.5, 23.5]}],
+	}
+	gs.grid = GridWorld.from_data(grid_data)
+	gs.register_character("aster", Vector3(5.0, 0.5, 12.0), 3.0, {})
+	gs.command_move_to_pos("aster", hide_pos)
+
+	var live: Array = []
+	for _i in range(700):
+		sched.advance_ticks(0.05)
+		live.append({
+			"tick": float(sched.get_current_tick()),
+			"covered": bool(in_cover.call(gs.get_position("aster"))),
+		})
+
+	# LIVENESS: the walk has to actually reach cover, and the verdict has to CHANGE during the run.
+	# Two runs that agree a body was never hidden agree about nothing worth asserting.
+	var covered_count := 0
+	for sample in live:
+		if bool(sample["covered"]):
+			covered_count += 1
+	_assert_true(covered_count > 0,
+		"the walk reaches cover in the live run (%d of %d ticks)" % [covered_count, live.size()])
+	_assert_true(covered_count < live.size(),
+		"and it starts outside it, so the verdict actually changes during the run")
+
+	# Replay the log into a fresh world and ask the SAME question at the SAME ticks.
+	var replayed = GameState.replay(gs.event_log, GridWorld.from_data(grid_data))
+	_assert_true(replayed.characters.has("aster"),
+		"the replay rebuilds the body that walked (a log without its registration replays nobody)")
+	var mismatches: Array = []
+	for sample in live:
+		var want := float(sample["tick"])
+		if replayed.scheduler != null:
+			var delta := want - float(replayed.scheduler.get_current_tick())
+			if delta > 0.0:
+				replayed.scheduler.advance_ticks(delta)
+		if bool(in_cover.call(replayed.get_position("aster"))) != bool(sample["covered"]):
+			mismatches.append("t=%.2f" % want)
+	_assert_true(mismatches.is_empty(),
+		("cover reads the same at every tick of the replay (%d of %d disagree, first: %s)")
+			% [mismatches.size(), live.size(), str(mismatches.slice(0, 3))])
+
+
 func _test_path_source_precedence() -> void:
 	_test_name = "Path Source Precedence"
 	var host := Node3D.new()
