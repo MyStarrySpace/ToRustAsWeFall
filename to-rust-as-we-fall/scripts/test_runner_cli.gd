@@ -914,6 +914,9 @@ func _ready() -> void:
 			"--test-cover-mid-run":
 				ran_test = true
 				_test_cover_mid_run()
+			"--test-emphasis-reveal-follows-camera":
+				ran_test = true
+				await _test_emphasis_reveal_follows_the_camera()
 			"--test-status-label-range":
 				ran_test = true
 				await _test_status_labels_do_not_stack_across_the_spiral()
@@ -2161,6 +2164,7 @@ func _run_all_tests() -> void:
 	await _test_hover_route_never_promises_an_unreachable_deck()
 	await _test_no_loose_salvage_stands_in_the_current()
 	await _test_status_labels_do_not_stack_across_the_spiral()
+	await _test_emphasis_reveal_follows_the_camera()
 	_test_cover_mid_run()
 	_test_pause_defers_never_drops()
 	await _test_path_source_precedence()
@@ -48836,6 +48840,69 @@ func _test_cover_mid_run() -> void:
 	_assert_true((run["spotted"] as Array)[0],
 		"stepping back out of cover is spotted -- the recompute runs both ways")
 
+
+## The see-through dissolve keeps a hole around whatever the camera watches, so the player is never
+## lost behind a wall. A consequence emphasis swings the camera onto a mechanism across the level
+## while the character stays put -- and with the reveal still centred on the character, whatever
+## stands between the camera and the mechanism draws solid. That is the shot ending up inside the
+## scenery, which is what the director met on completing the first sluice.
+func _test_emphasis_reveal_follows_the_camera() -> void:
+	_test_name = "Emphasis Reveal Follows The Camera"
+	var host := Node3D.new()
+	add_child(host)
+	var mgr := CameraOcclusionManager.new()
+	host.add_child(mgr)
+	var stand_in := Node3D.new()
+	host.add_child(stand_in)
+	stand_in.global_position = Vector3(2.0, 0.0, 3.0)
+	mgr.set_player(stand_in)
+	await get_tree().process_frame
+
+	# The control: with no emphasis the reveal belongs to the watched body.
+	_assert_true(mgr._watch_pos().distance_to(Vector3(2.0, 0.0, 3.0)) < 0.01,
+		"the reveal centres on the watched character by default")
+
+	var focus := Vector3(40.0, 1.0, -12.0)
+	mgr.set_focus_override(focus)
+	_assert_true(mgr._watch_pos().distance_to(focus) < 0.01,
+		"an emphasis moves the reveal onto what the camera is actually looking at")
+	# Without this the reveal would stay parked on the mechanism after the camera returned, and the
+	# player would walk around behind permanently solid walls.
+	mgr.clear_focus_override()
+	_assert_true(mgr._watch_pos().distance_to(Vector3(2.0, 0.0, 3.0)) < 0.01,
+		"releasing the emphasis hands the reveal back to the character")
+
+	host.queue_free()
+	await get_tree().process_frame
+
+	# The half above proves the manager can aim. This proves the CONTROLLER can find it to aim --
+	# which is where the first attempt silently failed: it resolved through the tree's current scene,
+	# so under any host that is not the running scene it found nothing and the fix did nothing.
+	# `emphasize_target` itself returns early under headless by design (presentation must never pause
+	# an invisible simulation), so the resolution seam is what a headless test can honestly cover.
+	var stage := Node3D.new()
+	add_child(stage)
+	var scene_mgr := CameraOcclusionManager.new()
+	stage.add_child(scene_mgr)
+	var body := Node3D.new()
+	stage.add_child(body)
+	body.global_position = Vector3(1.0, 0.0, 1.0)
+	scene_mgr.set_player(body)
+	var controller := ConsequencePresentationController.new()
+	stage.add_child(controller)
+	await get_tree().process_frame
+
+	_assert_true(CameraOcclusionManager.find_for(controller) == scene_mgr,
+		"the controller resolves its own scene's occlusion manager")
+	controller._set_occlusion_focus(Vector3(30.0, 2.0, -5.0))
+	_assert_true(scene_mgr._watch_pos().distance_to(Vector3(30.0, 2.0, -5.0)) < 0.01,
+		"the controller actually aims the reveal it resolved")
+	controller._set_occlusion_focus(null)
+	_assert_true(scene_mgr._watch_pos().distance_to(Vector3(1.0, 0.0, 1.0)) < 0.01,
+		"and releases it back to the body")
+
+	stage.queue_free()
+	await get_tree().process_frame
 
 ## A billboard is drawn the same size whichever turn of the spiral it belongs to, so a status readout
 ## with no range competes for the frame with the mechanism at the player's feet. Several turns share

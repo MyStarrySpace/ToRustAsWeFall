@@ -312,6 +312,10 @@ func emphasize_target(
 	var token := _emphasis_token
 	_emphasis_active = true
 	_emphasis_uses_focus = pause_gameplay
+	# The see-through dissolve keeps a hole around whatever the camera is watching. For the length of
+	# this emphasis that is the target, not the character the player left standing elsewhere.
+	_set_occlusion_focus(target_node.global_position
+		+ Vector3.UP * float(opts.get("focus_height", 0.7)))
 	if pause_gameplay and _begin_focus.is_valid():
 		_begin_focus.call(target_node)
 	else:
@@ -350,9 +354,22 @@ func _finish_emphasis_if_token(token: int) -> void:
 		_finish_emphasis()
 
 
+## Find the scene's occlusion manager and aim its reveal, or release it. Absent one (a headless test,
+## a standalone chunk) this is simply a no-op, the same way the outline mask degrades.
+func _set_occlusion_focus(pos) -> void:
+	var mgr := CameraOcclusionManager.find_for(self)
+	if mgr == null:
+		return
+	if pos == null:
+		mgr.clear_focus_override()
+	else:
+		mgr.set_focus_override(pos as Vector3)
+
+
 func _finish_emphasis() -> void:
 	if not _emphasis_active:
 		return
+	_set_occlusion_focus(null)
 	if _ui_scheduler != null:
 		_ui_scheduler.cancel_tag(EMPHASIS_TAG)
 	if _emphasis_uses_focus and _finish_focus.is_valid():

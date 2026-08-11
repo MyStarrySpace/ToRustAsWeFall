@@ -21,6 +21,9 @@ var game_state                       # GameState; reads get_render_position(watc
 var watch_id := ""                   # the lead/active character whose position the level reveals around
 ## ...or from a plain node (fallback when there's no GameState).
 var _player_node: Node3D
+## Where the reveal is centred while the camera's subject is not the watched character. INF means the
+## camera is back on that character and the reveal follows them again.
+var _focus_override := Vector3.INF
 
 # apply_to() is intentionally more than a one-shot material conversion. Preview chunks restore and
 # replace presentation materials as their authoritative state changes; without a small lifecycle seam,
@@ -30,6 +33,18 @@ var _player_node: Node3D
 # without an explicit teardown handshake.
 var _tracked_geometry: Dictionary = {} # instance id -> {node: WeakRef, outline_safe_clip: bool}
 
+## Resolve the manager for a node's scene by walking up its ancestry, the same way the outline mask is
+## found. A scene-root lookup is not equivalent: under a test host, or any time this scene is not the
+## tree's current one, that finds a different scene's managers or none at all.
+static func find_for(context: Node) -> CameraOcclusionManager:
+	var node := context
+	while node != null:
+		for child in node.get_children():
+			if child is CameraOcclusionManager:
+				return child as CameraOcclusionManager
+		node = node.get_parent()
+	return null
+
 func set_player(node: Node3D) -> void:
 	_player_node = node
 	sync_now()
@@ -37,6 +52,20 @@ func set_player(node: Node3D) -> void:
 func set_watch(state, char_id: String) -> void:
 	game_state = state
 	watch_id = char_id
+	sync_now()
+
+## Aim the reveal somewhere other than the watched character, for as long as the camera's SUBJECT is
+## something other than that character. A consequence emphasis swings the camera onto a mechanism
+## across the level; the character it was following stays behind, and with the reveal still centred
+## there, whatever stands between the camera and the mechanism is drawn solid -- the shot ends up
+## inside the scenery it should have dissolved. The reveal belongs to whatever the camera is looking
+## at, not to whoever the player was steering.
+func set_focus_override(pos: Vector3) -> void:
+	_focus_override = pos
+	sync_now()
+
+func clear_focus_override() -> void:
+	_focus_override = Vector3.INF
 	sync_now()
 
 func _process(_delta: float) -> void:
@@ -58,6 +87,8 @@ func sync_now() -> void:
 		RenderingServer.global_shader_parameter_set(PLAYER_PARAM, pos)
 
 func _watch_pos() -> Vector3:
+	if _focus_override.is_finite():
+		return _focus_override
 	if game_state != null:
 		# Track the watched (active/lead) character; if its id isn't set/registered yet, fall back to ANY
 		# registered character so the reveal centre is never left stale at the origin (the "hole is in the
