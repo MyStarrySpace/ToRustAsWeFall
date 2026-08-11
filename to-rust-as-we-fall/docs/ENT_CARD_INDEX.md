@@ -35,36 +35,51 @@ Mother Flure: its two frames are exactly the "pre-bloom (default state on entry)
 
 ## Fauna — identified so far
 
-| Card | Species | Build | Checked against the card? |
+| Card | Species | Build | Against the card? |
 |---|---|---|---|
+| ENT-001 | Sapscrap — the three-palp C3 body, a squat lens on three clamping limbs | `build_sapscrap.py` | not yet checked |
+| ENT-004 | Crust — a pale slab on a wall under a dense hexagonal pore array | `build_crust.py` | **checked, and it holds**: the pore field is ONE drawn card and only the dilating mouths are modelled |
 | ENT-008 (cloaked / revealed) | Redactor | `build_redactor.py` | yes — it cites the card |
-| ENT-011 | **Hidra** | `build_hidra.py` | **no — and it does not match** |
-| ENT-012 | **Flare** | `build_flare.py` | **no — and it diverges** |
+| ENT-011 | Hidra — a pale segmented helix wound along a conduit run | `build_hidra.py` | **rebuilt to match** |
+| ENT-012 | Flare — a translucent membrane with three granule classes banked inside | `build_flare.py` | **diverges; a correction was attempted and reverted** |
 
-ENT-001..007, ENT-009, ENT-010, ENT-013 are the remaining ten single-state fauna and are **not yet
-mapped**. Identify them from the roster in `reference-docs/fauna_roster.md` (Sapscraps, Ferrules,
-Hidras, Crusts, Candids, Meebs, Gnawers, Spikers, Tanglers, Flares, Naturalizers, Redactors, Toxos);
-the card numbering does NOT follow the roster order.
+ENT-002, 003, 005, 006, 007, 009, 010, 013 are the remaining eight and are **not yet mapped**.
+Identify them from the roster in `reference-docs/fauna_roster.md`; the card numbering does NOT follow
+the roster order (ENT-011 is the Hidra, third in the roster; ENT-012 the Flare, tenth). ENT-013 is a
+segmented crescent body with one dark aperture and two pale bumps aft — most likely the Toxo, whose
+"crescent body carries an apical conoid invasion complex", but it has not been confirmed.
 
 ### The two confirmed divergences
 
-**Hidra (ENT-011).** The card is a pale, smooth, long segmented helix wound round a straight core,
-lying along a conduit run — something a player walks past. The build is a dark bronze worm carrying
-three blades per segment in C3 and a lit cutting edge. C3 is the **Sapscrap's** geometry (its body is
-the siderophore's C3 symmetry); a Hidra is the hydroxamate iron-cage propeller, and the propeller is
-the helix. The lit edge is invented: the roster gives the Hidra no tell of its own, because being
-SEEN is the whole event — it is a reveal-gate, not a fight. A correction pass removed the blades and
-the lit edge and repainted it pale, and still did not reach the card's read; it was reverted rather
-than shipped half-done. What it needs is the geometry rebuilt as a helix around a visible core, not
-a recolour.
+**Hidra (ENT-011) — FIXED.** It had been built as a Sapscrap: three blades per segment in C3, which
+is that animal's geometry (card ENT-001 is the real thing, three palps and all), plus a lit cutting
+edge invented outright — the roster gives the Hidra no tell of its own, because being SEEN is the
+whole event. It is now twenty short links winding three turns along the conduit it passes for, with
+the curvature and torsion solved from the coil the card draws.
 
-**Flare (ENT-012).** The card is a translucent membrane with the granule classes visible INSIDE it —
-cream, mint and purple granules around larger pale nuclear lobes. The build moved its granules proud
-of an opaque skin, because sealed inside an opaque body they were invisible and "the membrane
-brightens" had nothing to show. That was a reasonable answer to the wrong constraint: the fauna
-material is an alpha CUTOUT, so real translucency is not available, but the granule field is
-repetition and repetition is drawn — a granule card riding just proud of the surface would read as
-granules seen through a membrane without needing transparency.
+The lesson that got it there: **measure the coil, do not derive it.** Where a pose-built helix's axis
+lands depends on bone-frame conventions, and three separate derivations put the cable at 38 degrees to
+the animal — a helix beside the cabling instead of around it. The build now reads the axis off the
+parked body (centroid, then the dominant direction of the spread) and moves the conduit onto it, so
+retuning the coil moves the cable with it.
+
+**Flare (ENT-012) — still open.** The card is a translucent membrane with the granule classes visible
+INSIDE it: cream, mint and purple beads around larger pale nuclear lobes. The build has three emissive
+beads stuck proud of an opaque skin, because sealed inside an opaque body they were invisible and "the
+membrane brightens" had nothing to show. The material is an alpha CUTOUT, so real translucency is not
+available at all.
+
+An attempt to replace the beads with per-class granule CARDS riding just proud of the membrane was
+made and **reverted**: at any card size that stays inside the body's silhouette the beads read as a
+few large blobs rather than a field, and the body narrows above and below its widest ring, so a card
+scaled off the maximum radius hangs off the edges and stops reading as anything under a skin.
+
+**Where the next attempt should start:** the Crust already solves this shape of problem. Its pore
+field is painted into the body's own surface with a `register_detail` painter and only the few pores
+that MOVE are modelled. Do the same here — draw the granule field into the membrane's texture so the
+density and the three colours come from the card, and keep three small emissive cards on the existing
+per-class bones purely for the lighting sequence the prime clip needs. The palette already carries
+`flare_granule_azur` / `_specific` / `_tertiary` for it.
 
 ## The rule this index serves
 
