@@ -56476,7 +56476,6 @@ func _test_flora_rig_plays() -> void:
 			_assert_equals(popping.size(), 0,
 				"%s: every clip opens at rest or on another clip's ending (%s)"
 					% [species, ", ".join(popping.slice(0, 4))])
-					% [species, ", ".join(popping.slice(0, 4))])
 
 		body.queue_free()
 		await get_tree().process_frame
