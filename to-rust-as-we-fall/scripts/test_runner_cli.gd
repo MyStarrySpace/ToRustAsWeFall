@@ -53702,6 +53702,36 @@ func _test_flora_rig_plays() -> void:
 	pods.queue_free()
 	await get_tree().process_frame
 
+	# THE OUTLINE HAS TO WEAR THE POSE. The mask renders private COPIES of an
+	# object's meshes; a copy without the source's skin draws bind space, so a
+	# rigged plant is outlined in the shape it was modelled in rather than the one
+	# on screen — and every part a clip only ever hides, a flash card parked at
+	# nothing, is drawn full size from the moment the plant is placed.
+	var mask := OutlineMaskManager.new()
+	get_tree().root.add_child(mask)
+	var outlined := FloraRig.new()
+	get_tree().root.add_child(outlined)
+	if outlined.setup("flure"):
+		await get_tree().process_frame
+		var rig_meshes: Array = outlined.meshes()
+		_assert_true(not rig_meshes.is_empty(), "the rigged body offers meshes to outline")
+		mask.register(1, rig_meshes, Color.WHITE, false)
+		var made: Array = (mask.get("_entries") as Dictionary).get(1, {}).get("copies", [])
+		_assert_true(not made.is_empty(), "the mask made copies of them")
+		var skinned := 0
+		for record in made:
+			var copy := record["copy"] as MeshInstance3D
+			var src := record["src"] as MeshInstance3D
+			if src.skin == null:
+				continue
+			if copy.skin != null and copy.get_node_or_null(copy.skeleton) is Skeleton3D:
+				skinned += 1
+		_assert_true(skinned > 0,
+			"a skinned source gives the mask a SKINNED copy, so the outline follows the pose")
+	outlined.queue_free()
+	mask.queue_free()
+	await get_tree().process_frame
+
 	# THE REST POSE MUST BE THE IDLE STATE. A bone rests at scale 1.0 and a flash
 	# card has to be modelled at its full visual size for the atlas to allot it any
 	# texels, so a body that has played nothing renders its completion flare unless

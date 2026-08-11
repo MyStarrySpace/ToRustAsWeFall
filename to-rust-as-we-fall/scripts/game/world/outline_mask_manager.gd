@@ -118,8 +118,28 @@ func register(key: int, meshes: Array, color: Color, glow_on: bool = false) -> v
 	_entries[key] = {"color": color, "glow": glow_on, "copies": copies, "glow_copies": glow_copies}
 	_refresh_visibility()
 
+## The Skeleton3D a skinned mesh draws through, or null when it is not skinned.
+func _source_skeleton(src: MeshInstance3D) -> Skeleton3D:
+	if src.skin == null:
+		return null
+	var path := src.skeleton
+	if path.is_empty():
+		return null
+	return src.get_node_or_null(path) as Skeleton3D
+
+
+## Where a mask copy has to sit to land on its source. A skinned mesh is placed by
+## its SKELETON — its own transform says nothing about where the deformed surface
+## ends up.
+func _follow_transform(entry: Dictionary, src: MeshInstance3D) -> Transform3D:
+	var skel = entry.get("skel")
+	if skel != null and is_instance_valid(skel):
+		return (skel as Skeleton3D).global_transform
+	return src.global_transform
+
+
 ## Mesh copies of `meshes` parented into `vp`, filled flat with `color`, transform synced once. Returned as
-## [{copy, src}] so _process can keep each copy tracking its source.
+## [{copy, src, skel}] so _process can keep each copy tracking its source.
 func _spawn_copies(vp: SubViewport, meshes: Array, color: Color) -> Array:
 	var copies: Array = []
 	for m in meshes:
@@ -137,7 +157,17 @@ func _spawn_copies(vp: SubViewport, meshes: Array, color: Color) -> Array:
 		_apply_fill_materials(copy, src, color)
 		vp.add_child(copy)
 		copy.global_transform = src.global_transform
-		copies.append({"copy": copy, "src": src})
+		# A SKINNED source draws where its skeleton puts it, not where its own
+		# vertices sit. Without the skin the copy renders BIND space, so the
+		# silhouette is the pose the piece was modelled in rather than the one on
+		# screen — an upright plant outlined over a collapsed one, and every part a
+		# clip only ever hides (a flash card parked at nothing) drawn at full size.
+		var skel := _source_skeleton(src)
+		if skel != null and src.skin != null:
+			copy.skin = src.skin
+			copy.skeleton = copy.get_path_to(skel)
+			copy.global_transform = skel.global_transform
+		copies.append({"copy": copy, "src": src, "skel": skel})
 	return copies
 
 func set_color(key: int, color: Color, glow_on: bool = false) -> void:
@@ -283,7 +313,7 @@ func _process(_delta: float) -> void:
 				continue
 			var copy := c["copy"] as MeshInstance3D
 			var src := c["src"] as MeshInstance3D
-			copy.global_transform = src.global_transform
+			copy.global_transform = _follow_transform(c, src)
 			copy_count += 1
 			alive = true
 		for c in e["glow_copies"]:
@@ -291,7 +321,7 @@ func _process(_delta: float) -> void:
 				continue
 			var gcopy := c["copy"] as MeshInstance3D
 			var gsrc := c["src"] as MeshInstance3D
-			gcopy.global_transform = gsrc.global_transform
+			gcopy.global_transform = _follow_transform(c, gsrc)
 			copy_count += 1
 		# The source object was freed (chunk reload) — drop the stale registration.
 		if not alive and not e["copies"].is_empty():
