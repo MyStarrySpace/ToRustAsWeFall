@@ -55561,12 +55561,26 @@ func _test_flora_rig_plays() -> void:
 			for c in n.get_children():
 				bstack.append(c)
 		if b_skel != null:
-			var bright := 0
-			for b in b_skel.get_bone_count():
-				var bn := str(b_skel.get_bone_name(b))
-				if (bn.begins_with("gran") or bn.begins_with("burst")) 						and b_skel.get_bone_pose_scale(b).x > 0.01:
-					bright += 1
-			_assert_equals(bright, 0, "and rests INERT, granules dark")
+			# THE LIGHT IS THE WARNING, so the assertion follows the light. The
+			# granules are anatomy — coloured beads suspended in the envelope, on
+			# the sheet's inert panel as much as its primed one — and they used to
+			# be emissive flash cards, so counting lit "gran" bones measured the
+			# warning only while that was true. It stopped being true and the
+			# check had to move rather than relax: the core is what blazes, and a
+			# bomb sitting there already bright has spent the two or three seconds
+			# everyone nearby was owed.
+			var core := b_skel.find_bone("core_0")
+			_assert_true(core >= 0, "the Flare's core is its own bone, so it can be OFF")
+			if core >= 0:
+				_assert_true(b_skel.get_bone_pose_scale(core).x < 0.05,
+					"and rests INERT, its core dark (%.3f)"
+						% b_skel.get_bone_pose_scale(core).x)
+			var memb_b := b_skel.find_bone("memb_0")
+			_assert_true(memb_b >= 0, "and its envelope is a bone")
+			if memb_b >= 0:
+				_assert_true(absf(b_skel.get_bone_pose_scale(memb_b).x - 1.0) < 0.08,
+					"with the membrane unswollen (%.2f)"
+						% b_skel.get_bone_pose_scale(memb_b).x)
 			var mb := b_skel.find_bone("memb_0")
 			_assert_true(mb >= 0 and absf(b_skel.get_bone_pose_scale(mb).x - 1.0) < 0.01,
 				"with its membrane unswollen")
@@ -55891,6 +55905,8 @@ func _test_flora_rig_plays() -> void:
 			{"id": "crust", "clips": ["crust_dilate", "crust_burn", "crust_regrow"]},
 			{"id": "meeb", "clips": ["meeb_cup", "meeb_feed", "meeb_collapse"]},
 			{"id": "gnawer", "clips": ["gnawer_haze", "gnawer_bite"]},
+			{"id": "flare", "clips": ["flare_prime", "flare_burst", "flare_spent",
+				"flare_recover", "flare_settle"]},
 			{"id": "toxo", "clips": ["toxo_extend", "toxo_pierce", "toxo_curl"]},
 		]:
 		var beast_id := str(beast["id"])
@@ -56013,6 +56029,55 @@ func _test_flora_rig_plays() -> void:
 	# read as a scar. So the assertion is that ONE region collapses and the OTHERS
 	# DO NOT: a burn clip that took everything would satisfy any name check and any
 	# "did something move" check, and it is exactly what was there before.
+	# THE BURST MUST NOT READ AS BEING EATEN. The brief is explicit that the
+	# post-burst Flare "remains alive, deflated, and visibly recovering", and the
+	# old clip ended on a UNIFORM membrane scale of 0.35 — the whole creature a
+	# third of its size, holding the shape it started in, which is what consumed
+	# looks like. A scalar shrink and a collapse are indistinguishable to any test
+	# that only asks whether the bone moved, so this asks WHICH WAY it moved: flat
+	# on the axis that runs up the body, WIDER on the two that do not.
+	var flare := FloraRig.new()
+	get_tree().root.add_child(flare)
+	var flare_built := flare.setup("flare")
+	_assert_true(flare_built, "the Flare has a rigged body")
+	if flare_built:
+		var fskels: Array[Skeleton3D] = flare.call("_skeletons")
+		var fplayer: AnimationPlayer = flare.get("_player")
+		if fskels.size() > 0 and fplayer != null:
+			var fskel: Skeleton3D = fskels[0]
+			var memb := fskel.find_bone("memb_0")
+			var seat := fskel.find_bone("gran0_0_0")
+			_assert_true(memb >= 0, "the Flare's envelope is a bone")
+			_assert_true(seat >= 0, "its granules ride seats that can shed them")
+			if memb >= 0 and seat >= 0:
+				flare.rest()
+				await get_tree().process_frame
+				var held := fskel.get_bone_pose_scale(seat).y
+
+				var spent_len: float = fplayer.get_animation("flare_spent").length
+				fplayer.play("flare_spent")
+				fplayer.seek(spent_len, true)
+				await get_tree().process_frame
+				var sp := fskel.get_bone_pose_scale(memb)
+				_assert_true(sp.y < 0.3,
+					"a spent Flare has collapsed (%.2f)" % sp.y)
+				_assert_true(sp.x > 1.2 and sp.z > 1.2,
+					"and SPREAD rather than shrunk — it is deflated, not eaten (%.2f, %.2f)"
+						% [sp.x, sp.z])
+				_assert_true(fskel.get_bone_pose_scale(seat).y > held + 0.2,
+					"and its granules have been shed clear of it (%.2f -> %.2f)"
+						% [held, fskel.get_bone_pose_scale(seat).y])
+
+				var rec_len: float = fplayer.get_animation("flare_recover").length
+				fplayer.play("flare_recover")
+				fplayer.seek(rec_len, true)
+				await get_tree().process_frame
+				var rp := fskel.get_bone_pose_scale(memb)
+				_assert_true(absf(rp.y - 1.0) < 0.12 and absf(rp.x - 1.0) < 0.12,
+					"and it visibly recovers to a whole body (%.2f, %.2f)" % [rp.x, rp.y])
+	flare.queue_free()
+	await get_tree().process_frame
+
 	var crust := FloraRig.new()
 	get_tree().root.add_child(crust)
 	var crust_built := crust.setup("crust")
