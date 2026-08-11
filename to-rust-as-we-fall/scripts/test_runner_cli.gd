@@ -55945,6 +55945,56 @@ func _test_flora_rig_plays() -> void:
 				_assert_true(fallen.x > fallen.z + 0.10,
 					"and spread unevenly, so it is not a disc (%.2f vs %.2f)"
 						% [fallen.x, fallen.z])
+				# A WARNING PER MOUTH. The sheet's Meeb is mouths aimed in different
+				# directions, and the roster's counterplay is sidestepping the LINE
+				# — so the tell has to appear on the cup facing the target, not
+				# always on the forward one. Authored for cup 0 alone, five of the
+				# six bone pairs were never touched by any clip and the creature
+				# could only warn straight ahead. Named clips are not enough here:
+				# six clips that all pose cup 0 would pass any name check, so each
+				# is asserted to open ITS OWN mouth and leave the others shut.
+				var cup_bones: Array = []
+				for k in range(6):
+					var cb := mskel.find_bone("cup%d_0" % k)
+					if cb >= 0:
+						cup_bones.append(cb)
+				_assert_true(cup_bones.size() == 6,
+					"the Meeb carries a bone per mouth (%d)" % cup_bones.size())
+				if cup_bones.size() == 6:
+					var shut: Array = []
+					dead_meeb.rest()
+					await get_tree().process_frame
+					for cb in cup_bones:
+						shut.append(mskel.get_bone_pose_scale(cb).x)
+					for k in range(6):
+						var warn := "meeb_cup_%d" % k
+						var strike := "meeb_feed_%d" % k
+						_assert_true(mplayer.has_animation(warn),
+							"mouth %d can warn (%s)" % [k, warn])
+						_assert_true(mplayer.has_animation(strike),
+							"mouth %d can strike (%s)" % [k, strike])
+						if not mplayer.has_animation(warn):
+							continue
+						var wl: float = mplayer.get_animation(warn).length
+						mplayer.play(warn)
+						mplayer.seek(wl, true)
+						await get_tree().process_frame
+						var opened := mskel.get_bone_pose_scale(cup_bones[k]).x
+						_assert_true(opened > float(shut[k]) + 0.10,
+							"%s opens mouth %d (%.2f -> %.2f)"
+								% [warn, k, float(shut[k]), opened])
+						var others_shut := true
+						var loud := -1
+						for j in range(6):
+							if j == k:
+								continue
+							if mskel.get_bone_pose_scale(cup_bones[j]).x > float(shut[j]) + 0.10:
+								others_shut = false
+								loud = j
+						_assert_true(others_shut,
+							"%s warns on mouth %d ALONE (mouth %d also opened)"
+								% [warn, k, loud])
+
 	dead_meeb.queue_free()
 	await get_tree().process_frame
 
