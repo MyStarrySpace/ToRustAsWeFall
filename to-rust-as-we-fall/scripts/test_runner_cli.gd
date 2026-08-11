@@ -1085,6 +1085,9 @@ func _ready() -> void:
 			"--test-capbage-retrieve":
 				ran_test = true
 				await _test_capbage_retrieve()
+			"--test-architecture-pieces":
+				ran_test = true
+				await _test_architecture_pieces()
 			"--test-building-materials":
 				ran_test = true
 				await _test_building_materials()
@@ -2174,6 +2177,7 @@ func _run_all_tests() -> void:
 	await _test_blind_floor()
 	await _test_conceal_stops_strikes()
 	await _test_capbage_retrieve()
+	await _test_architecture_pieces()
 	await _test_building_materials()
 	await _test_flora_rig_plays()
 	await _test_climbvine_return_wears_its_species()
@@ -54859,6 +54863,74 @@ func _test_climbvine_return_wears_its_species() -> void:
 ## and seven decay overlays and draws the overlays ON a base, so the library holds
 ## them as separate paintable tiles and composes them — which is also where the
 ## variations come from, seventy surfaces out of seventeen files.
+## THE ARCHITECTURE SHEETS HAVE TO BE REACHABLE, or they are thirty-five meshes
+## nobody can place. Same contract the archetype pieces answer to: every id
+## instantiates, carries geometry, and is a BODY -- no collision, no interactables.
+func _test_architecture_pieces() -> void:
+	_test_name = "Architecture Pieces"
+	var ids := ArchetypePieceLibrary.architecture_ids()
+	_assert_true(ids.size() >= 30,
+		"the sheets provide their pieces (%d)" % ids.size())
+
+	var failed: Array = []
+	var meshless: Array = []
+	var verbful: Array = []
+	for id_v in ids:
+		var id := str(id_v)
+		_assert_true(ArchetypePieceLibrary.has_piece(id), "%s is askable" % id)
+		var piece := ArchetypePieceLibrary.instantiate(id)
+		if piece == null:
+			failed.append(id)
+			continue
+		var meshes := 0
+		var verbs := 0
+		var stack: Array = [piece]
+		while not stack.is_empty():
+			var n: Node = stack.pop_back()
+			if n is MeshInstance3D and (n as MeshInstance3D).mesh != null:
+				meshes += 1
+			if n is CollisionObject3D or n.has_signal("interacted"):
+				verbs += 1
+			for c in n.get_children():
+				stack.append(c)
+		if meshes == 0:
+			meshless.append(id)
+		if verbs > 0:
+			verbful.append(id)
+		piece.free()
+	_assert_true(failed.is_empty(), "every sheet piece instantiates (failed: %s)" % str(failed))
+	_assert_true(meshless.is_empty(), "every sheet piece carries geometry (meshless: %s)" % str(meshless))
+	_assert_true(verbful.is_empty(),
+		"sheet pieces are BODIES — no collision or interactables (verbful: %s)" % str(verbful))
+
+	# A DISTRICT'S OWN STYLING STILL WINS. The architecture set is consulted last
+	# on purpose: a district that styles its own grate must not have the shared
+	# sheet answer over it.
+	ArchetypePieceLibrary.set_district("channels")
+	var grate := ArchetypePieceLibrary.instantiate("deck_grate")
+	_assert_true(grate != null, "the channels still answer for their own grate")
+	if grate != null:
+		grate.free()
+
+	# The five rigged doors load and carry their clips, through the same bridge
+	# every other rigged body uses.
+	for door_id in ArchetypePieceLibrary.DOOR_SCENES.keys():
+		var path := str(ArchetypePieceLibrary.DOOR_SCENES[door_id])
+		_assert_true(ResourceLoader.exists(path), "%s ships (%s)" % [door_id, path])
+		if not ResourceLoader.exists(path):
+			continue
+		var packed = load(path)
+		_assert_true(packed is PackedScene, "%s loads as a scene" % door_id)
+		if packed is PackedScene:
+			var inst = (packed as PackedScene).instantiate()
+			var player: AnimationPlayer = inst.find_child("AnimationPlayer", true, false)
+			_assert_true(player != null, "%s carries an AnimationPlayer" % door_id)
+			if player != null:
+				_assert_true(player.get_animation_list().size() > 0,
+					"%s carries at least one clip" % door_id)
+			inst.free()
+
+
 func _test_building_materials() -> void:
 	_test_name = "Building Materials"
 	_assert_true(BuildingMaterialLibrary.is_available(),

@@ -84,6 +84,84 @@ const DRESSING_MANIFEST := {
 ## A district set also protects hand-modeled work: the archetype batch regen owns
 ## only its own gltf, so it can never clobber a district piece (the portal family
 ## wore a rejected batch read for weeks when the chain owned those ids).
+## The ARCHITECTURE sets: windows, columns, projections, doors, signage and the
+## district signforms, built from reference-images/architecture/sheets. They are
+## archetype-level -- every district has windows -- but they do not live in the
+## one archetype gltf, because each sheet is its own build and a rigged door has
+## to ship in a file of its own (NLA_TRACKS samples every armature in a file over
+## every clip).
+##
+## So they resolve like an extra shared source, AFTER a district's own styling and
+## BEFORE the archetype set: a district that styles its own windows still wins.
+const ARCHITECTURE_SETS := [
+	{
+		"path": "res://resources/models/architecture/window_pieces.gltf",
+		"pieces": {
+			"window_membrane_pore": "WindowMembranePore",
+			"window_capillary_slits": "WindowCapillarySlits",
+			"window_balcony_bay": "WindowBalconyBay",
+			"window_drawer_band": "WindowDrawerBand",
+			"window_rolling_shutter": "WindowRollingShutter",
+			"window_honeycomb_cell": "WindowHoneycombCell",
+			"window_rose_aperture": "WindowRoseAperture",
+			"window_rose_vent": "WindowRoseVent",
+		},
+	},
+	{
+		"path": "res://resources/models/architecture/column_pieces.gltf",
+		"pieces": {
+			"column_tree": "ColumnTree",
+			"column_mushroom": "ColumnMushroom",
+			"column_load_pier": "ColumnLoadPier",
+			"column_buttress_fin": "ColumnButtressFin",
+			"column_vine_wall": "ColumnVineWall",
+			"column_strut_conduit": "ColumnStrutConduit",
+		},
+	},
+	{
+		"path": "res://resources/models/architecture/projection_pieces.gltf",
+		"pieces": {
+			"proj_membrane_awning": "ProjMembraneAwning",
+			"proj_slat_canopy": "ProjSlatCanopy",
+			"proj_balcony_slab": "ProjBalconySlab",
+			"proj_sign_bracket": "ProjSignBracket",
+			"proj_nostand_ledge": "ProjNoStandLedge",
+			"proj_entry_hood": "ProjEntryHood",
+			"proj_transit_viaduct": "ProjTransitViaduct",
+		},
+	},
+	{
+		"path": "res://resources/models/architecture/signage_pieces.gltf",
+		"pieces": {
+			"sign_placards": "SignPlacards",
+			"sign_sector_designator": "SignSectorDesignator",
+			"sign_status_board": "SignStatusBoard",
+			"sign_toll_projection": "SignTollProjection",
+			"sign_district_emblems": "SignDistrictEmblems",
+		},
+	},
+	{
+		"path": "res://resources/models/architecture/signform_pieces.gltf",
+		"pieces": {
+			"signform_wall_plaque": "SignformWallPlaque",
+			"signform_arch_banner": "SignformArchBanner",
+			"signform_hanging_oval": "SignformHangingOval",
+			"signform_monument": "SignformMonument",
+		},
+	},
+]
+
+## The rigged doors, one file each. They are listed apart from the sets above
+## because a caller wanting a door wants its ARMATURE too, and that arrives
+## through the rigged-body bridge rather than as a bare mesh clone.
+const DOOR_SCENES := {
+	"door_iris_pore": "res://resources/models/architecture/door_iris_pore.gltf",
+	"door_slab": "res://resources/models/architecture/door_slab_door.gltf",
+	"door_scan_arch": "res://resources/models/architecture/door_scan_arch.gltf",
+	"door_toll_gate": "res://resources/models/architecture/door_toll_gate.gltf",
+	"door_blast_bulkhead": "res://resources/models/architecture/door_blast_bulkhead.gltf",
+}
+
 const DISTRICT_PIECES := {
 	"channels": {
 		"path": "res://resources/models/channels/channels_pieces.gltf",
@@ -212,7 +290,27 @@ static func _district_source(content_id: String) -> Dictionary:
 		var owned: Dictionary = set_data.get("pieces", {})
 		if owned.has(content_id):
 			return {"path": str(set_data["path"]), "node": str(owned[content_id])}
+	return _architecture_source(content_id)
+
+
+## {path, node} for an architecture-sheet piece, or {} if no sheet names it.
+## Consulted last, so a district that styles its own window still answers first.
+static func _architecture_source(content_id: String) -> Dictionary:
+	for set_data in ARCHITECTURE_SETS:
+		var owned: Dictionary = set_data["pieces"]
+		if owned.has(content_id):
+			return {"path": str(set_data["path"]), "node": str(owned[content_id])}
 	return {}
+
+
+## Every id the architecture sheets provide.
+static func architecture_ids() -> Array:
+	var out: Array = []
+	for set_data in ARCHITECTURE_SETS:
+		for key in (set_data["pieces"] as Dictionary).keys():
+			out.append(str(key))
+	out.sort()
+	return out
 
 # Only the PackedScene is cached; each call instantiates, clones the named
 # piece, and frees the scratch instance — a live never-in-tree template Node
