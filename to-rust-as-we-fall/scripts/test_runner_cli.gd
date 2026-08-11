@@ -53644,6 +53644,44 @@ func _test_flora_rig_plays() -> void:
 	lure.queue_free()
 	await get_tree().process_frame
 
+	# Gasafoetida is the only species with an IDLE transition — the taxonomy makes
+	# the cluster's breathing readable at close range — and its combustion is
+	# SEROTINOUS: the pods go one after another, not all at once. A cluster that
+	# emptied in a single frame would be one bang instead of the sequence the spec
+	# describes, so the clip is checked for pods leaving at DIFFERENT times.
+	var pods := FloraRig.new()
+	get_tree().root.add_child(pods)
+	_assert_true(pods.setup("gasafoetida"), "the Gasafoetida has a rigged body")
+	var pod_clips: PackedStringArray = pods.clips()
+	for wanted in ["gasafoetida_breathe", "gasafoetida_combust", "gasafoetida_harvest"]:
+		_assert_true(pod_clips.has(wanted), "it carries %s (%s)" % [wanted, str(pod_clips)])
+	var pod_player: AnimationPlayer = pods.get("_player")
+	if pod_player != null and pod_player.has_animation("gasafoetida_combust"):
+		var burn: Animation = pod_player.get_animation("gasafoetida_combust")
+		# when does each pod's scale first collapse? distinct times = a sequence
+		var gone_at: Array = []
+		for ti in burn.get_track_count():
+			# a skeleton's scale track is TYPE_SCALE_3D and its path ends in the
+			# BONE name, so matching on a ":scale" suffix finds nothing at all
+			if burn.track_get_type(ti) != Animation.TYPE_SCALE_3D:
+				continue
+			if str(burn.track_get_path(ti)).find("pod") < 0:
+				continue
+			for ki in burn.track_get_key_count(ti):
+				var v = burn.track_get_key_value(ti, ki)
+				if v is Vector3 and (v as Vector3).x < 0.01:
+					gone_at.append(snappedf(burn.track_get_key_time(ti, ki), 0.01))
+					break
+		var distinct := {}
+		for moment in gone_at:
+			distinct[moment] = true
+		_assert_true(gone_at.size() >= 5,
+			"every pod in the cluster goes (got %d)" % gone_at.size())
+		_assert_equals(distinct.size(), gone_at.size(),
+			"the pods go IN SEQUENCE, no two at the same moment (%s)" % str(gone_at))
+	pods.queue_free()
+	await get_tree().process_frame
+
 	# THE REST POSE MUST BE THE IDLE STATE. A bone rests at scale 1.0 and a flash
 	# card has to be modelled at its full visual size for the atlas to allot it any
 	# texels, so a body that has played nothing renders its completion flare unless
@@ -53651,7 +53689,8 @@ func _test_flora_rig_plays() -> void:
 	# signal that means "the work took", and the flash firing by going OUT. Nothing
 	# else catches it: the clips are correct, the rig gate passes, and every other
 	# assertion here is about a body that has already been told to play something.
-	for species in ["scarpet", "capbage", "hushbloom", "seefern", "flure"]:
+	for species in ["scarpet", "capbage", "hushbloom", "seefern", "flure",
+			"gasafoetida"]:
 		var body := FloraRig.new()
 		get_tree().root.add_child(body)
 		if not body.setup(species):

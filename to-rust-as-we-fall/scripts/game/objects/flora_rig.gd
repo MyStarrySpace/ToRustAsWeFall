@@ -25,6 +25,7 @@ const SPECIES_ARMATURES := {
 	"hushbloom": "Hushbloom_Armature",
 	"scarpet": "Scarpet_Armature",
 	"flure": "Flure_Armature",
+	"gasafoetida": "Gasafoetida_Armature",
 }
 
 static var _packed := {}
