@@ -62723,10 +62723,13 @@ func _test_detection_equivalence() -> void:
 				break
 		if not found:
 			all_matched_a = false
-	if bf_a.size() == pred_a.size() and bf_a.size() > 0:
+	# The scenario has to actually produce sightings, or every claim below is made about an empty
+	# list and agrees with anything. A mismatch in counts is already a failure above, so there is
+	# nothing here for a passing "skipped" marker to say.
+	_assert_true(bf_a.size() > 0,
+		"Line-10: the scenario produces detections to compare (got %d)" % bf_a.size())
+	if bf_a.size() == pred_a.size():
 		_assert_true(all_matched_a, "Line-10: all detections match within 0.05s")
-	else:
-		_assert_true(true, "Line-10: count mismatch — skipping match check")
 
 	# Test B: 10 units in a circle converging on center
 	var setup_b: Array[Dictionary] = []
