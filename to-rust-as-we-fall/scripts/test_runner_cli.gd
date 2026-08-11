@@ -871,6 +871,9 @@ func _ready() -> void:
 			"--test-displacement-reroute":
 				ran_test = true
 				_test_displacement_reroute()
+			"--test-outline-selection-ownership":
+				ran_test = true
+				await _test_outline_selection_ownership()
 			"--test-basin-deck-is-not-one-way":
 				ran_test = true
 				await _test_basin_deck_is_not_one_way()
@@ -2067,6 +2070,7 @@ func _run_all_tests() -> void:
 	_test_floor_change_never_strands()
 	_test_rally_across_floors()
 	await _test_basin_deck_is_not_one_way()
+	await _test_outline_selection_ownership()
 	await _test_dwell_follows_its_scheduler()
 	await _test_showcase_gallery()
 	await _test_set_piece_showcase()
@@ -47703,6 +47707,59 @@ func _test_dwell_follows_its_scheduler() -> void:
 ##
 ## The water is allowed to cut the route -- that is the pressure the level is built on. It just has
 ## to give it back.
+## WHO OWNS THE OUTLINE. Two independent things ask for it: HOVER (the pointer is over this, or the
+## player is holding the reveal key) and QUEUE (the player clicked it and somebody is walking there).
+## They come and go in any order, so each has to hold its own claim.
+##
+## The failure both halves guard is the same shape -- one owner releasing and taking the other's
+## outline down with it. If moving the mouse away cancelled the queued glow, the player would lose
+## sight of the thing they just ordered someone to go and touch; if finishing the walk cleared the
+## outline while the pointer was still resting on the object, it would go dark under the cursor.
+func _test_outline_selection_ownership() -> void:
+	_test_name = "Outline Selection Ownership"
+	var host := Node3D.new()
+	add_child(host)
+	await get_tree().process_frame
+	var target := OutlineSurfaceTarget.new()
+	host.add_child(target)
+	var mesh := MeshInstance3D.new()
+	mesh.mesh = BoxMesh.new()
+	target.add_child(mesh)
+	await get_tree().process_frame
+	target.register_highlight_mesh(mesh)
+
+	# HOVER ALONE: comes up, and goes down again when the pointer leaves.
+	target.set_highlight(true)
+	_assert_true(target.has_active_mesh_outline(), "hovering an object outlines it")
+	target.set_highlight(false)
+	_assert_true(not target.has_active_mesh_outline(), "and the outline goes when the pointer leaves")
+
+	# QUEUE HOLDS IT (#9). The click is what matters here: while somebody is walking to this object
+	# the player must keep seeing which object it was, whatever the pointer does in the meantime.
+	target.set_highlight(true)
+	target.begin_queued_feedback(Vector3.ZERO, Color(0.2, 0.8, 1.0))
+	_assert_true(target.is_selected_feedback_active(), "clicking it marks it queued")
+	target.set_highlight(false)
+	_assert_true(target.has_active_mesh_outline(),
+		"the queued object stays outlined after the pointer moves away -- the order is still standing")
+
+	# AND THE QUEUE RELEASING DOES NOT TAKE HOVER WITH IT (#10). Arriving ends the queue, but if the
+	# pointer is still resting on the object it must not go dark under the cursor.
+	target.set_highlight(true)
+	target.complete_queued_feedback()
+	_assert_true(not target.is_selected_feedback_active(), "arriving ends the queue")
+	_assert_true(target.has_active_mesh_outline(),
+		"and the object the pointer still rests on keeps its hover outline")
+
+	# With both owners released, nothing is left holding it.
+	target.set_highlight(false)
+	_assert_true(not target.has_active_mesh_outline(),
+		"once neither hover nor queue wants it, the outline is gone")
+
+	host.queue_free()
+	await get_tree().process_frame
+
+
 func _test_basin_deck_is_not_one_way() -> void:
 	_test_name = "Basin Deck Is Not One Way"
 	var inst = await _instantiate_preview_chunk_and_wait("basin_fill_proof", 30)
