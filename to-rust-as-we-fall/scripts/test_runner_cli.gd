@@ -871,6 +871,9 @@ func _ready() -> void:
 			"--test-displacement-reroute":
 				ran_test = true
 				_test_displacement_reroute()
+			"--test-style-cps-composition":
+				ran_test = true
+				await _test_style_cps_composition()
 			"--test-pagination-boundaries":
 				ran_test = true
 				await _test_pagination_boundaries()
@@ -2083,6 +2086,7 @@ func _run_all_tests() -> void:
 	_test_parked_detector_sees_approach()
 	await _test_stagger_does_not_chase_a_corpse()
 	await _test_pagination_boundaries()
+	await _test_style_cps_composition()
 	await _test_dwell_follows_its_scheduler()
 	await _test_showcase_gallery()
 	await _test_set_piece_showcase()
@@ -47753,6 +47757,74 @@ func _test_dwell_follows_its_scheduler() -> void:
 ## boundary to cut on, so there has to be a hard break; a sentence that ends inside a quote or a
 ## bracket has its stop one or two characters before the gap; and a line sitting exactly on the
 ## threshold must not be split for the sake of one character.
+## HOW FAST A LINE TYPES IS TWO DECISIONS, AND BOTH GET A SAY. The writing sets one: a whisper crawls,
+## a poem is slower than speech, a broken fragment slower still -- that pacing is the line's delivery,
+## not decoration. The player sets the other, through the text-speed accessibility preset.
+##
+## They MULTIPLY. The failure this guards is one silently replacing the other: make the preset the
+## last word and every whisper suddenly reads at conversational speed, losing the authored pacing
+## with nothing to show for it; make the style the last word and the accessibility preference stops
+## working on exactly the slow lines someone most likely turned it up for.
+func _test_style_cps_composition() -> void:
+	_test_name = "Style CPS Composition"
+	# Settings is a registered autoload, so its absence is a failure rather than a reason to skip:
+	# a test that can quietly decline to run is a test that stops guarding anything.
+	var settings = get_node_or_null("/root/Settings")
+	_assert_true(settings != null, "the Settings autoload is available to read the text-speed preset")
+	if settings == null:
+		return
+	# Settings is a live autoload shared by every test in the run, so the preset this test moves has
+	# to be put back exactly as found. It is stored as a plain field with no getter, so read the field.
+	var restore_speed: int = int(settings.text_speed)
+
+	var box = load("res://scripts/ui/dialogue_box.gd").new()
+	add_child(box)
+	await get_tree().process_frame
+	box.chars_per_second = 100.0
+	settings.set_text_speed(GameSettings.TextSpeed.NORMAL)
+
+	# The authored pacing, with the player's preference left at neutral.
+	box._style = "normal"
+	var plain := float(box._effective_cps())
+	_assert_true(plain > 0.0, "a plain line types at the authored rate (%.1f)" % plain)
+	box._style = "poem"
+	var poem := float(box._effective_cps())
+	box._style = "fragment"
+	var fragment := float(box._effective_cps())
+	box._style = "whisper"
+	var whisper := float(box._effective_cps())
+	_assert_true(poem < plain, "a poem is slower than speech (%.1f < %.1f)" % [poem, plain])
+	_assert_true(fragment < poem, "a broken fragment is slower than a poem (%.1f < %.1f)" % [fragment, poem])
+	_assert_true(whisper < fragment, "a whisper is the slowest of them (%.1f < %.1f)" % [whisper, fragment])
+
+	# Now the player asks for faster text. Every style must move WITH it, and stay in the same order:
+	# the preference scales the delivery, it does not flatten it.
+	settings.set_text_speed(GameSettings.TextSpeed.FAST)
+	box._style = "normal"
+	var plain_fast := float(box._effective_cps())
+	box._style = "whisper"
+	var whisper_fast := float(box._effective_cps())
+	_assert_true(plain_fast > plain,
+		"turning text speed up speeds ordinary lines (%.1f > %.1f)" % [plain_fast, plain])
+	_assert_true(whisper_fast > whisper,
+		"and it speeds whispers too -- the preference is not ignored on styled lines (%.1f > %.1f)"
+			% [whisper_fast, whisper])
+	_assert_true(whisper_fast < plain_fast,
+		("but a whisper is still slower than speech at the same setting -- the authored pacing "
+		+ "survives the preference (%.1f < %.1f)") % [whisper_fast, plain_fast])
+
+	# The two factors compose rather than one winning: the ratio the writing asked for is preserved.
+	_assert_true(absf((whisper / plain) - (whisper_fast / plain_fast)) < 0.001,
+		"the style's share of the speed is the same at any setting (%.3f vs %.3f)" % [
+			whisper / plain, whisper_fast / plain_fast])
+
+	settings.set_text_speed(restore_speed)
+	_assert_equals(int(settings.text_speed), restore_speed,
+		"the shared text-speed preset is left exactly as this test found it")
+	box.queue_free()
+	await get_tree().process_frame
+
+
 func _test_pagination_boundaries() -> void:
 	_test_name = "Pagination Boundaries"
 	var box = load("res://scripts/ui/dialogue_box.gd").new()
