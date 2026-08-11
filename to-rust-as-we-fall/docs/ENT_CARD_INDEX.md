@@ -1,17 +1,24 @@
-# ENT concept cards — what each one is, and which build answers it
+# ENT previews — what each one is, and which build answers it
 
-The cards live in `blender/previews/` (gitignored, alongside the other art sources). They are the
-VISUAL authority: the written specs in `reference-docs/flora_image_prompts.md` and the fauna roster
-say what a thing does, and the card says what it looks like. Where they differ, the card decides
-silhouette, colour and scale.
+The previews live in `blender/previews/` (gitignored, alongside the other art sources).
 
-This index exists because ten of the thirteen fauna were modelled without anyone opening their card.
-The flora builders all cite theirs in a comment; only `build_redactor.py` does among the fauna. Two
-concrete costs of that are recorded below.
+**They are BLOCKOUTS, not concept art** (director, 2026-08-11). Most are rectangles and cylinders
+standing in for a thing that has not been designed yet, and the fauna in particular have no concept
+art at all. So a preview is authoritative for STRUCTURE — how many parts, how they are arranged, what
+changes between states — and for nothing else. It does not decide surface, finish or detail, and
+matching one pixel for pixel would mean shipping the blockout.
 
-## Flora — every one card-checked
+That still makes them worth opening before modelling: one of them caught a creature built as an
+entirely different animal. But the earlier framing in this file — that a preview "decides silhouette,
+colour and scale" — was wrong and is corrected here.
 
-| Card | States | Species | Build |
+This index exists because ten of the thirteen fauna were modelled without anyone opening their
+preview. The flora builders all cite theirs in a comment; only `build_redactor.py` does among the
+fauna.
+
+## Flora — every one preview-checked
+
+| Preview | States | Species | Build |
 |---|---|---|---|
 | ENT-014 | wild / tended / stressed | Seefern | `build_flora_rigged.py` |
 | ENT-015 | wild / tended / senescent | Scarpet | `build_flora_rigged.py` |
@@ -33,9 +40,9 @@ are small dark nubs at closely spaced nodes rather than fans a quarter of the vi
 Mother Flure: its two frames are exactly the "pre-bloom (default state on entry)" and "bloom moment
 (the set-piece climax)" her spec names.
 
-## Fauna — identified so far
+## Fauna — identified so far (no concept art exists for any of them)
 
-| Card | Species | Build | Against the card? |
+| Preview | Species | Build | Against the preview? |
 |---|---|---|---|
 | ENT-001 | Sapscrap — the three-palp C3 body, a squat lens on three clamping limbs | `build_sapscrap.py` | not yet checked |
 | ENT-004 | Crust — a pale slab on a wall under a dense hexagonal pore array | `build_crust.py` | **checked, and it holds**: the pore field is ONE drawn card and only the dilating mouths are modelled |
@@ -67,8 +74,9 @@ the animal — a helix beside the cabling instead of around it. The build now re
 parked body (centroid, then the dominant direction of the spread) and moves the conduit onto it, so
 retuning the coil moves the cable with it.
 
-**Flare (ENT-012) — still open.** The card is a translucent membrane with the granule classes visible
-INSIDE it: cream, mint and purple beads around larger pale nuclear lobes. The build has three emissive
+**Flare (ENT-012) — still open.** The preview is a translucent sphere with granule beads inside it in
+three colours, around larger pale lobes — but it is a blockout, so "translucent" is how the blockout
+was thrown together rather than a decision anyone made. The build has three emissive
 beads stuck proud of an opaque skin, because sealed inside an opaque body they were invisible and "the
 membrane brightens" had nothing to show. The material is an alpha CUTOUT, so real translucency is not
 available at all.
@@ -87,7 +95,9 @@ per-class bones purely for the lighting sequence the prime clip needs. The palet
 
 ## The rule this index serves
 
-Open the card before modelling, and cite it in the builder's docstring the way the flora builders
-do. A written spec tells you what a thing is for; only the card tells you what it looks like, and
-"eyeball the rendered cards against the ENT references" is not satisfiable if nobody knows which
-reference belongs to which build.
+Open the preview before modelling, and cite it in the builder's docstring the way the flora builders
+do — it is the cheapest way to notice you are building the wrong animal. Then treat it as what it is:
+a blockout that fixes the arrangement of parts and nothing about how they should look.
+
+Where a creature has no concept art, the design is still owed. Do not read finish into a cylinder,
+and do not ship a model that has merely reproduced one.
