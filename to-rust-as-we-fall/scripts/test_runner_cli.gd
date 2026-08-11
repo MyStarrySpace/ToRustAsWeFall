@@ -871,6 +871,9 @@ func _ready() -> void:
 			"--test-displacement-reroute":
 				ran_test = true
 				_test_displacement_reroute()
+			"--test-stop-during-a-wait":
+				ran_test = true
+				_test_stop_during_a_wait()
 			"--test-patrol-cycles":
 				ran_test = true
 				await _test_patrol_cycles()
@@ -2091,6 +2094,7 @@ func _run_all_tests() -> void:
 	await _test_pagination_boundaries()
 	await _test_style_cps_composition()
 	await _test_patrol_cycles()
+	_test_stop_during_a_wait()
 	await _test_dwell_follows_its_scheduler()
 	await _test_showcase_gallery()
 	await _test_set_piece_showcase()
@@ -47773,6 +47777,44 @@ func _test_dwell_follows_its_scheduler() -> void:
 ## end and comes back round, indefinitely. If the route runs off the end of its list instead, the
 ## guard walks to its last waypoint and stands there forever -- a patrol the player can simply wait
 ## out, and a stretch of map that quietly stops being watched.
+## STOP MEANS STOP, EVEN MID-PAUSE. A route can carry a deliberate wait: two waypoints at the same
+## place, spanning time, so the body stands still on purpose partway along. Ordering someone to stop
+## during that pause looks like it does nothing -- they were already standing still -- and that is
+## exactly where it can go wrong.
+##
+## The route is scheduled by tick, so the leg after the pause is already timed. If the stop cancels
+## the walk without also dropping what was scheduled, the body waits out the rest of the pause and
+## then calmly resumes a journey the player cancelled, which reads as an order being ignored.
+func _test_stop_during_a_wait() -> void:
+	_test_name = "Stop During A Wait"
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.scheduler = sched
+	gs.register_character("c", Vector3(0, 0.5, 0), 2.0, {})
+	var pause_at := Vector3(3.0, 0.5, 0.0)
+	var far := Vector3(6.0, 0.5, 0.0)
+	# Walk to pause_at by tick 1, stand there until tick 3, then carry on to far by tick 4.
+	var path: Array[Vector3] = [Vector3(0, 0.5, 0), pause_at, pause_at, far]
+	var ticks: Array[float] = [0.0, 1.0, 3.0, 4.0]
+	gs._start_movement("c", path, ticks)
+
+	# Step into the middle of the pause and call it off there.
+	sched.advance_ticks(2.0)
+	_assert_true(gs.get_position("c").distance_to(pause_at) < 0.001,
+		"the body is standing at its pause when the order is cancelled")
+	gs.command_stop("c")
+	_assert_true(not gs.is_moving("c"), "the stop takes effect immediately")
+
+	# Run well past both the end of the pause and the arrival the route had scheduled.
+	sched.advance_ticks(4.0)
+	_assert_true(gs.get_position("c").distance_to(pause_at) < 0.001,
+		("the body is still where it was stopped, not carried on to the rest of a cancelled route "
+		+ "(at %s)") % str(gs.get_position("c")))
+	_assert_true(not gs.is_moving("c"), "and it has not started moving again on its own")
+	_assert_true(gs.get_position("c").distance_to(far) > 0.5,
+		"it never reaches the destination the cancelled route was heading for")
+
+
 func _test_patrol_cycles() -> void:
 	_test_name = "Patrol Cycles"
 	var host := Node3D.new()
