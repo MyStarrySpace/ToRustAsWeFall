@@ -32,6 +32,9 @@ const SPECIES_ARMATURES := {
 	# The cut length a tended Climbvine gives up: carried it keeps its curve,
 	# slung between anchors it hangs.
 	"vinecut": "VineCut_Armature",
+	# A cut rachis of the stun plant: jostled it folds and fires, the same wave
+	# the growing plant uses, because it is the same leaf.
+	"sample": "Sample_Armature",
 }
 
 static var _packed := {}

@@ -53988,6 +53988,32 @@ func _test_flora_rig_plays() -> void:
 	cut.queue_free()
 	await get_tree().process_frame
 
+	# The HUSHBLOOM SAMPLE, the last of the three held tools. Jostling it fires the
+	# stun, so a sample that arrives already discharged is a tool nobody spent —
+	# its release must be parked shut like every other flare in the roster.
+	var sample := FloraRig.new()
+	get_tree().root.add_child(sample)
+	var sample_built := sample.setup("sample")
+	_assert_true(sample_built, "the cut sample has a rigged body")
+	if sample_built:
+		var s_clips: PackedStringArray = sample.clips()
+		_assert_true(s_clips.has("sample_fire"),
+			"the sample carries its release (%s)" % str(s_clips))
+		var s_skel: Skeleton3D = null
+		var sstack: Array = [sample]
+		while not sstack.is_empty():
+			var n = sstack.pop_back()
+			if n is Skeleton3D:
+				s_skel = n
+			for c in n.get_children():
+				sstack.append(c)
+		if s_skel != null:
+			var fl := s_skel.find_bone("hsflash_0")
+			_assert_true(fl >= 0 and s_skel.get_bone_pose_scale(fl).x < 0.01,
+				"and rests with its release SHUT, not already fired")
+	sample.queue_free()
+	await get_tree().process_frame
+
 	# THE OUTLINE HAS TO WEAR THE POSE. The mask renders private COPIES of an
 	# object's meshes; a copy without the source's skin draws bind space, so a
 	# rigged plant is outlined in the shape it was modelled in rather than the one
