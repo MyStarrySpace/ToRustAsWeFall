@@ -914,6 +914,9 @@ func _ready() -> void:
 			"--test-cover-mid-run":
 				ran_test = true
 				_test_cover_mid_run()
+			"--test-status-label-range":
+				ran_test = true
+				await _test_status_labels_do_not_stack_across_the_spiral()
 			"--test-loose-salvage-out-of-the-current":
 				ran_test = true
 				await _test_no_loose_salvage_stands_in_the_current()
@@ -2157,6 +2160,7 @@ func _run_all_tests() -> void:
 	await _test_death_offers_a_way_out()
 	await _test_hover_route_never_promises_an_unreachable_deck()
 	await _test_no_loose_salvage_stands_in_the_current()
+	await _test_status_labels_do_not_stack_across_the_spiral()
 	_test_cover_mid_run()
 	_test_pause_defers_never_drops()
 	await _test_path_source_precedence()
@@ -48832,6 +48836,40 @@ func _test_cover_mid_run() -> void:
 	_assert_true((run["spotted"] as Array)[0],
 		"stepping back out of cover is spotted -- the recompute runs both ways")
 
+
+## A billboard is drawn the same size whichever turn of the spiral it belongs to, so a status readout
+## with no range competes for the frame with the mechanism at the player's feet. Several turns share
+## one sightline here; without ranges the labels stack into a wall of text over a dark level.
+func _test_status_labels_do_not_stack_across_the_spiral() -> void:
+	_test_name = "Status Labels Do Not Stack Across The Spiral"
+	var inst = await _instantiate_preview_chunk_and_wait("generated_stretch", 8)
+	if inst == null:
+		_assert_true(false, "the generated stretch preview instantiates")
+		return
+
+	# Scoped to the PERSISTENT mechanism readouts. Transient popups (damage feedback) live for a
+	# second and are not what crowds a frame, so a blanket sweep over every Label3D would be
+	# asserting the wrong thing rather than a stricter version of the right one.
+	var labels: Array = []
+	for node in inst.find_children("*Status", "Label3D", true, false):
+		labels.append(node)
+	_assert_true(labels.size() >= 3,
+		"the stretch builds persistent mechanism readouts to check (found %d)" % labels.size())
+
+	var unranged: Array[String] = []
+	for label in labels:
+		var l := label as Label3D
+		if l.visibility_range_end <= 0.0:
+			unranged.append(l.name)
+		else:
+			_assert_true(l.visibility_range_fade_mode
+					!= GeometryInstance3D.VISIBILITY_RANGE_FADE_DISABLED,
+				"%s fades out rather than popping" % l.name)
+	_assert_true(unranged.is_empty(),
+		"every mechanism readout carries a range, so none is drawn from another turn: %s"
+			% str(unranged))
+
+	await _dispose_scene(inst)
 
 ## Director's ruling: nothing loose sits in a current, because the water would have taken it. A crate
 ## standing calmly mid-surge tells the player the flood is scenery, which un-teaches the one thing

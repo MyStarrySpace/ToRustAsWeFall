@@ -43,6 +43,11 @@ const HYDRAULIC_SPEC_ID := "generated_teaching_channels_shelter_1_to_2"
 const HYDRAULIC_WATER_COLOR := Color(0.08, 0.42, 0.58)
 const HYDRAULIC_ACTIVE_COLOR := Color(0.24, 0.88, 1.0)
 const HYDRAULIC_CONTROL_COLOR := Color(0.94, 0.55, 0.18)
+## How far a hydraulic control's status readout carries. The stretch spirals, so several turns share
+## one sightline and a billboard drawn for a mechanism two turns away is the same size as the one at
+## the player's feet -- without a range they stack into a wall of text over a dark level. The
+## landmark light stays unranged: finding the mechanism is its job, reading its state is the label's.
+const HYDRAULIC_LABEL_RANGE := 22.0
 const HYDRAULIC_READY_COLOR := Color(0.42, 0.88, 0.54)
 const HYDRAULIC_BLOCKER_TAG := "generated_cistern_bridge_gap"
 const HYDRAULIC_NEXT_HIGHLIGHT_REASON := "hydraulic_next_step"
@@ -6257,8 +6262,13 @@ func _build_hydraulic_control(
 		interactable.input_ray_pickable = false
 	var label_height := 4.55 if primary_landmark else 2.05
 	var status_label := _add_label(
-		self, label, position + Vector3(0.0, label_height, 0.0), color.lightened(0.28)
+		self,
+		label,
+		position + Vector3(0.0, label_height, 0.0),
+		color.lightened(0.28),
+		HYDRAULIC_LABEL_RANGE
 	)
+	status_label.name = "%sStatus" % node_name
 	return {
 		"interactable": interactable,
 		"housing": housing,

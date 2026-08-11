@@ -1575,11 +1575,17 @@ func _add_light(
 	parent.add_child(light)
 	return light
 
+## A world-space readout. `visibility_range` is the distance past which it fades out; leave it at 0
+## for a label that should read from anywhere. Give it a range wherever many labelled things share a
+## sightline -- a stacked or spiralled level puts several turns in frame at once, and a billboard is
+## the same size whichever turn it belongs to, so the ones the player cannot act on crowd out the
+## level behind them.
 func _add_label(
 	parent: Node3D,
 	text: String,
 	position: Vector3,
-	color := Color(0.82, 0.86, 0.92)
+	color := Color(0.82, 0.86, 0.92),
+	visibility_range := 0.0
 ) -> Label3D:
 	var label := Label3D.new()
 	label.text = text
@@ -1590,6 +1596,10 @@ func _add_label(
 	label.outline_modulate = Color(0.0, 0.0, 0.0, 0.55)
 	label.outline_size = 8
 	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	if visibility_range > 0.0:
+		label.visibility_range_end = visibility_range
+		label.visibility_range_end_margin = maxf(1.0, visibility_range * 0.25)
+		label.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
 	parent.add_child(label)
 	return label
 
