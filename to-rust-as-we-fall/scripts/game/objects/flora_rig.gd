@@ -35,6 +35,14 @@ const SPECIES_ARMATURES := {
 	# A cut rachis of the stun plant: jostled it folds and fires, the same wave
 	# the growing plant uses, because it is the same leaf.
 	"sample": "Sample_Armature",
+	# Not flora. The rooted turret is rigged the same way and plays the same
+	# kind of clip, so it rides the same bridge rather than growing a second.
+	"spiker": "Spiker_Armature",
+}
+
+## Bodies that do not live under resources/models/flora.
+const SPECIES_SCENE_OVERRIDE := {
+	"spiker": "res://resources/models/fauna/spiker.gltf",
 }
 
 static var _packed := {}
@@ -45,6 +53,8 @@ var _armature: Node3D = null
 
 
 static func scene_path(species_id: String) -> String:
+	if SPECIES_SCENE_OVERRIDE.has(species_id):
+		return str(SPECIES_SCENE_OVERRIDE[species_id])
 	return "res://resources/models/flora/flora_%s.gltf" % species_id
 
 

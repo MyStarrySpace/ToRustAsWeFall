@@ -33,6 +33,8 @@ signal discharged(target_id: String, at_position: Vector3)
 ## mid-leg without sampling time.
 const LOS_SAMPLES_PER_LEG := 2
 
+var _rig: FloraRig = null
+
 @export var connection_delay := 1.8
 @export var discharge_damage := 12.0
 
@@ -276,3 +278,49 @@ func _exit_tree() -> void:
 	if sched != null:
 		sched.cancel_tag(_discharge_tag())
 		sched.cancel_tag(_los_tag())
+
+
+## The rooted body, and the clips its own connection drives.
+##
+## The roster gives the read: "One branch brightens, then a visible filament and
+## traveling charge show the lock and its progress." The charge climbing the
+## branch IS the delay the player is racing, so it plays off the same signals the
+## connection already emits rather than being timed a second time here.
+##
+## Cosmetic only. The connection, its delay and its damage live in the data layer;
+## breaking line of sight severs it whether or not the beads have caught up.
+func _build_visual() -> void:
+	if not FloraRig.has_rig("spiker"):
+		super._build_visual()
+		return
+	var rigged := FloraRig.new()
+	rigged.name = "SpikerBody"
+	add_child(rigged)
+	if not rigged.setup("spiker"):
+		rigged.queue_free()
+		super._build_visual()
+		return
+	_rig = rigged
+	# _mesh stays null, so the base class's squash-and-punch pulses no-op: a body
+	# rooted to the floor reads by what its branches do, not by bouncing.
+	if not connection_opened.is_connected(_on_connection_shown):
+		connection_opened.connect(_on_connection_shown)
+	if not connection_severed.is_connected(_on_connection_dropped):
+		connection_severed.connect(_on_connection_dropped)
+	if not discharged.is_connected(_on_connection_fired):
+		discharged.connect(_on_connection_fired)
+
+
+func _on_connection_shown(_target_id: String) -> void:
+	if _rig != null and is_instance_valid(_rig):
+		_rig.play("spiker_charge")
+
+
+func _on_connection_dropped(_target_id: String, _reason: String) -> void:
+	if _rig != null and is_instance_valid(_rig):
+		_rig.play("spiker_sever")
+
+
+func _on_connection_fired(_target_id: String, _at_position: Vector3) -> void:
+	if _rig != null and is_instance_valid(_rig):
+		_rig.play("spiker_discharge")

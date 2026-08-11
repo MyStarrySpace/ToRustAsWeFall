@@ -54066,6 +54066,37 @@ func _test_flora_rig_plays() -> void:
 	sample.queue_free()
 	await get_tree().process_frame
 
+	# The SPIKER, the first fauna on this bridge. Its charge climbing the branch is
+	# the delay the player races, so the beads must be DARK on a turret that has
+	# locked onto nothing — one that arrives already lit is a countdown nobody
+	# started.
+	var turret := FloraRig.new()
+	get_tree().root.add_child(turret)
+	var turret_built := turret.setup("spiker")
+	_assert_true(turret_built, "the spiker has a rigged body")
+	if turret_built:
+		var t_clips: PackedStringArray = turret.clips()
+		for wanted in ["spiker_charge", "spiker_discharge", "spiker_sever"]:
+			_assert_true(t_clips.has(wanted),
+				"the spiker carries %s (%s)" % [wanted, str(t_clips)])
+		var t_skel: Skeleton3D = null
+		var tstack: Array = [turret]
+		while not tstack.is_empty():
+			var n = tstack.pop_back()
+			if n is Skeleton3D:
+				t_skel = n
+			for c in n.get_children():
+				tstack.append(c)
+		if t_skel != null:
+			var lit := 0
+			for b in t_skel.get_bone_count():
+				var bn := str(t_skel.get_bone_name(b))
+				if (bn.begins_with("bead") or bn.begins_with("tip")) 						and t_skel.get_bone_pose_scale(b).x > 0.01:
+					lit += 1
+			_assert_equals(lit, 0, "and rests with its charge dark, locked onto nothing")
+	turret.queue_free()
+	await get_tree().process_frame
+
 	# THE OUTLINE HAS TO WEAR THE POSE. The mask renders private COPIES of an
 	# object's meshes; a copy without the source's skin draws bind space, so a
 	# rigged plant is outlined in the shape it was modelled in rather than the one
