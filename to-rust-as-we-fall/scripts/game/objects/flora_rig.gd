@@ -26,6 +26,9 @@ const SPECIES_ARMATURES := {
 	"scarpet": "Scarpet_Armature",
 	"flure": "Flure_Armature",
 	"gasafoetida": "Gasafoetida_Armature",
+	# What a tended Gasafoetida hands you: a held item, not a plant, but the
+	# same rigged body playing the same kind of clip.
+	"gaspod": "GasPod_Armature",
 }
 
 static var _packed := {}

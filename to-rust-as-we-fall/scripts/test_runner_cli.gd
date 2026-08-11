@@ -53817,6 +53817,37 @@ func _test_flora_rig_plays() -> void:
 	pods.queue_free()
 	await get_tree().process_frame
 
+	# The GAS POD: what tending a Gasafoetida produces. Its seal is present at rest
+	# and burns down to the char modelled under it, and its gas is drawn puffs that
+	# must be parked shut — a pod that arrives already venting is a repellent
+	# nobody spent.
+	var pod := FloraRig.new()
+	get_tree().root.add_child(pod)
+	if pod.setup("gaspod"):
+		var pclips: PackedStringArray = pod.clips()
+		for wanted in ["gaspod_emit", "gaspod_spend"]:
+			_assert_true(pclips.has(wanted), "the pod carries %s (%s)" % [wanted, str(pclips)])
+		var pskel: Skeleton3D = null
+		var pstack: Array = [pod]
+		while not pstack.is_empty():
+			var n = pstack.pop_back()
+			if n is Skeleton3D:
+				pskel = n
+			for c in n.get_children():
+				pstack.append(c)
+		_assert_true(pskel != null, "the pod has a Skeleton3D")
+		if pskel != null:
+			var sealed := pskel.find_bone("seal_0")
+			_assert_true(sealed >= 0 and pskel.get_bone_pose_scale(sealed).x > 0.5,
+				"an unused pod still wears its resin seal")
+			var venting := 0
+			for b in pskel.get_bone_count():
+				if str(pskel.get_bone_name(b)).begins_with("puff") 						and pskel.get_bone_pose_scale(b).x > 0.01:
+					venting += 1
+			_assert_equals(venting, 0, "and is not already venting")
+	pod.queue_free()
+	await get_tree().process_frame
+
 	# THE OUTLINE HAS TO WEAR THE POSE. The mask renders private COPIES of an
 	# object's meshes; a copy without the source's skin draws bind space, so a
 	# rigged plant is outlined in the shape it was modelled in rather than the one
