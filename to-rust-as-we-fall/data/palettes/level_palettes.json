@@ -10,7 +10,7 @@
     "character_ownership_note": "per-character tints stay in code (HUD contract), not here"
   },
   "channels": {
-    "_district": "Plumbing Power Project (GDD 4.4) \u2014 dark wet iron, luminous water, teal flora",
+    "_district": "Plumbing Power Project (GDD 4.4) — dark wet iron, luminous water, teal flora",
     "ground": "#101216",
     "iron": "#1a1c21",
     "iron_dark": "#121317",
@@ -46,7 +46,7 @@
     "pipe_joint": "#5a7399"
   },
   "greenfields": {
-    "_district": "Greenfields Collective \u2014 PROPOSED starter row; refine when its chunks build",
+    "_district": "Greenfields Collective — PROPOSED starter row; refine when its chunks build",
     "ground": "#16241a",
     "structure": "#2e4433",
     "flora": "#5ce87f",
@@ -54,7 +54,7 @@
     "water": "#66d9c2"
   },
   "stacks": {
-    "_district": "The Open Files Initiative \u2014 PROPOSED from the existing chunk look",
+    "_district": "The Open Files Initiative — PROPOSED from the existing chunk look",
     "ground": "#1c1a16",
     "structure": "#332e26",
     "paper": "#d9c9a3",
@@ -62,7 +62,7 @@
     "rust": "#4d2a14"
   },
   "aghora": {
-    "_district": "The Aghora \u2014 PROPOSED: the counterfeit agora's magenta neon over dark stacks",
+    "_district": "The Aghora — PROPOSED: the counterfeit agora's magenta neon over dark stacks",
     "ground": "#171219",
     "structure": "#2b2130",
     "neon": "#e64ccc",
@@ -70,7 +70,7 @@
     "lamp": "#f2b34d"
   },
   "endo_junction": {
-    "_district": "Endo's junction \u2014 PROPOSED: glowing cave, teal plants, work iron",
+    "_district": "Endo's junction — PROPOSED: glowing cave, teal plants, work iron",
     "ground": "#131a1c",
     "rock": "#223033",
     "flora": "#33d9bf",
@@ -78,7 +78,7 @@
     "lamp": "#b36610"
   },
   "species": {
-    "_district": "CANONICAL FLORA SPECIES COLORS (flora_taxonomy.md) \u2014 district-independent; a species keeps its identity in every level",
+    "_district": "CANONICAL FLORA SPECIES COLORS (flora_taxonomy.md) — district-independent; a species keeps its identity in every level",
     "hushbloom_bloom": "#d6cce6",
     "hushbloom_stem": "#7a8468",
     "scarpet_green": "#6f6b4e",
@@ -90,6 +90,7 @@
     "seefern_vein": "#33d9bf",
     "climbvine_fiber": "#c4b393",
     "climbvine_node": "#3a2f24",
+    "climbvine_leaf": "#6d8a4a",
     "gasafoetida_stalk": "#54603c",
     "gasafoetida_pod": "#b0a95c",
     "forget_me_not_blue": "#6f8fd9",

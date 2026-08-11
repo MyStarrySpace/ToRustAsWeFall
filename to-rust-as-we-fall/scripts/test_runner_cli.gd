@@ -55181,6 +55181,50 @@ func _test_flora_rig_plays() -> void:
 	mf.queue_free()
 	await get_tree().process_frame
 
+	# WHAT A TENDED CLIMBVINE LOOKS LIKE IS THE POINT OF TENDING IT. Cards
+	# ENT-020_naturally and _tended are the same vine on the same wall, and the only
+	# difference between them is that the tended one has broken out in leaf -- so a
+	# wild vine carries none, a tended one carries them all, and the flush arrives
+	# along the vine rather than switching on everywhere at once.
+	if cv_built:
+		# the readying assertion above left the tend clip applied, and a body that
+		# is mid-tend is not a wild one
+		cv.rest()
+		await get_tree().process_frame
+		var leaf_skels: Array[Skeleton3D] = cv.call("_skeletons")
+		if leaf_skels.size() > 0:
+			var lskel: Skeleton3D = leaf_skels[0]
+			var leaf_bones: Array = []
+			for i in range(16):
+				var b := lskel.find_bone("leaf%d_0" % i)
+				if b >= 0:
+					leaf_bones.append(b)
+			_assert_true(leaf_bones.size() >= 6,
+				"the vine carries sprigs to flush (%d)" % leaf_bones.size())
+			var showing := 0
+			for b in leaf_bones:
+				if lskel.get_bone_pose_scale(b).x > 0.5:
+					showing += 1
+			_assert_true(showing == 0,
+				"a wild Climbvine carries no leaf (%d showing)" % showing)
+			var cv_p: AnimationPlayer = cv.get("_player")
+			var tend_len: float = cv_p.get_animation("climbvine_tend").length
+			var counts := []
+			for frac in [0.45, 1.0]:
+				cv_p.play("climbvine_tend")
+				cv_p.seek(tend_len * frac, true)
+				await get_tree().process_frame
+				var n := 0
+				for b in leaf_bones:
+					if lskel.get_bone_pose_scale(b).x > 0.5:
+						n += 1
+				counts.append(n)
+			_assert_true(int(counts[1]) == leaf_bones.size(),
+				"a tended one is in leaf all the way up (%d/%d)"
+					% [int(counts[1]), leaf_bones.size()])
+			_assert_true(int(counts[0]) > 0 and int(counts[0]) < leaf_bones.size(),
+				"the flush arrives along the vine, not all at once (%s)" % str(counts))
+
 	# THE ROOTLETS ARE DRAWN, so their transparency has to survive the import. A
 	# card whose material comes in opaque renders as the rectangle it is cut from,
 	# and the bundle that carries the plant's whole affordance becomes four slabs.
