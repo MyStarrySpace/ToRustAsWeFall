@@ -53880,7 +53880,13 @@ func _test_flora_rig_plays() -> void:
 	# nobody spent.
 	var pod := FloraRig.new()
 	get_tree().root.add_child(pod)
-	if pod.setup("gaspod"):
+	# ASSERT the body, never merely guard on it: setup() returns false for an
+	# unknown species, an unloadable gltf and a renamed armature alike — the three
+	# ways this asset can go missing — so a bare `if` turns every check below into
+	# a silent skip and the suite still reports itself green.
+	var pod_built := pod.setup("gaspod")
+	_assert_true(pod_built, "the tended pod has a rigged body")
+	if pod_built:
 		var pclips: PackedStringArray = pod.clips()
 		for wanted in ["gaspod_emit", "gaspod_spend"]:
 			_assert_true(pclips.has(wanted), "the pod carries %s (%s)" % [wanted, str(pclips)])
