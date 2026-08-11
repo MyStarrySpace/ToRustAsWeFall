@@ -55794,9 +55794,9 @@ func _test_flora_rig_plays() -> void:
 	for beast in [
 			{"id": "hidra", "clips": ["hidra_unspool"]},
 			{"id": "crust", "clips": ["crust_dilate", "crust_burn"]},
-			{"id": "meeb", "clips": ["meeb_cup", "meeb_feed"]},
+			{"id": "meeb", "clips": ["meeb_cup", "meeb_feed", "meeb_collapse"]},
 			{"id": "gnawer", "clips": ["gnawer_haze", "gnawer_bite"]},
-			{"id": "toxo", "clips": ["toxo_extend", "toxo_pierce"]},
+			{"id": "toxo", "clips": ["toxo_extend", "toxo_pierce", "toxo_curl"]},
 		]:
 		var beast_id := str(beast["id"])
 		var body := FloraRig.new()
@@ -55813,6 +55813,103 @@ func _test_flora_rig_plays() -> void:
 					"%s advertises only its own clips (found %s)" % [beast_id, clip_name])
 		body.queue_free()
 		await get_tree().process_frame
+
+	# A DEATH READ IS THE POSE A PLAYER SEES FROM ACROSS A ROOM, and it is the one
+	# that can rot without anyone noticing: a clip whose poses are all identical
+	# ships, loads, plays, holds its name in the list above, and moves nothing.
+	# Every other assertion here would still pass. So the two death states are
+	# checked for the SHAPE their affordance sheets ask of them, not their names.
+	var dead_meeb := FloraRig.new()
+	get_tree().root.add_child(dead_meeb)
+	var meeb_built := dead_meeb.setup("meeb")
+	_assert_true(meeb_built, "the Meeb has a rigged body to collapse")
+	if meeb_built:
+		var mskels: Array[Skeleton3D] = dead_meeb.call("_skeletons")
+		_assert_true(mskels.size() > 0, "the Meeb carries a skeleton")
+		if mskels.size() > 0:
+			var mskel: Skeleton3D = mskels[0]
+			var dome := mskel.find_bone("body_1")
+			_assert_true(dome >= 0, "the Meeb's dome is its own bone")
+			var mplayer: AnimationPlayer = dead_meeb.get("_player")
+			if dome >= 0 and mplayer != null:
+				dead_meeb.rest()
+				await get_tree().process_frame
+				var standing := mskel.get_bone_pose_scale(dome)
+				_assert_true(absf(standing.y - 1.0) < 0.05,
+					"a living Meeb holds its dome up (%.2f)" % standing.y)
+
+				var fall_len: float = mplayer.get_animation("meeb_collapse").length
+				mplayer.play("meeb_collapse")
+				mplayer.seek(fall_len, true)
+				await get_tree().process_frame
+				var fallen := mskel.get_bone_pose_scale(dome)
+				# FLAT and WIDE, which is one motion in two axes — the difference
+				# between a body spreading out and a body merely getting smaller.
+				_assert_true(fallen.y < 0.25,
+					"a dead Meeb's dome has gone flat (%.2f)" % fallen.y)
+				_assert_true(fallen.x > 1.15,
+					"and spread rather than shrunk (%.2f)" % fallen.x)
+				# and NOT concentrically: scaled about its own axis the body lands
+				# as a disc with a hard rim, which reads as a plate, not a corpse
+				_assert_true(fallen.x > fallen.z + 0.10,
+					"and spread unevenly, so it is not a disc (%.2f vs %.2f)"
+						% [fallen.x, fallen.z])
+	dead_meeb.queue_free()
+	await get_tree().process_frame
+
+	# The Toxo's defeat is the crescent it already is, closed further than the
+	# living body ever closes it — so the assertion is comparative: the curl must
+	# beat the coil it winds up with, or the two poses read as the same animal
+	# doing the same thing and the player cannot tell a threat from a corpse.
+	var dead_toxo := FloraRig.new()
+	get_tree().root.add_child(dead_toxo)
+	var toxo_built := dead_toxo.setup("toxo")
+	_assert_true(toxo_built, "the Toxo has a rigged body to curl")
+	if toxo_built:
+		var tskels: Array[Skeleton3D] = dead_toxo.call("_skeletons")
+		var tplayer: AnimationPlayer = dead_toxo.get("_player")
+		if tskels.size() > 0 and tplayer != null:
+			var tskel: Skeleton3D = tskels[0]
+			var spine: Array = []
+			for i in range(1, 5):
+				var b := tskel.find_bone("body_%d" % i)
+				if b >= 0:
+					spine.append(b)
+			_assert_true(spine.size() >= 3,
+				"the crescent is a chain that can close (%d bones)" % spine.size())
+
+			# Measured as displacement FROM REST, never as the absolute pose. A bone
+			# whose rest direction is not +Y carries a large constant rotation by
+			# construction, so absolute angles are mostly that constant and the two
+			# clips come out looking almost alike however differently they pose.
+			dead_toxo.rest()
+			await get_tree().process_frame
+			var at_rest: Array = []
+			for b in spine:
+				at_rest.append(tskel.get_bone_pose_rotation(b))
+
+			var bend := func(clip: String) -> float:
+				var anim_len: float = tplayer.get_animation(clip).length
+				tplayer.play(clip)
+				tplayer.seek(anim_len, true)
+				await get_tree().process_frame
+				var total := 0.0
+				for i in range(spine.size()):
+					var q := tskel.get_bone_pose_rotation(spine[i])
+					var r: Quaternion = at_rest[i]
+					total += 2.0 * acos(clampf(absf(q.dot(r)), -1.0, 1.0))
+				return total
+
+			if spine.size() >= 3:
+				var coiled: float = await bend.call("toxo_extend")
+				var curled: float = await bend.call("toxo_curl")
+				_assert_true(coiled > 0.05,
+					"winding up bends the crescent at all (%.3f rad)" % coiled)
+				_assert_true(curled > coiled * 1.5,
+					"defeat closes it past anything the living body does (%.3f vs %.3f rad)"
+						% [curled, coiled])
+	dead_toxo.queue_free()
+	await get_tree().process_frame
 
 	# THE OUTLINE HAS TO WEAR THE POSE. The mask renders private COPIES of an
 	# object's meshes; a copy without the source's skin draws bind space, so a
