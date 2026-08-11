@@ -54786,6 +54786,54 @@ func _test_flora_rig_plays() -> void:
 	colony.queue_free()
 	await get_tree().process_frame
 
+	# THE CLIMBVINE is the seventh tendable species and the one whose tending has a
+	# PRODUCT: the section above the worked node thickens until it can be taken.
+	# So the body is asked for the whole cycle, and for the one thing a static
+	# render cannot show — that a plant which has played nothing is not already
+	# wearing the flare that means a tending finished.
+	var cv := FloraRig.new()
+	get_tree().root.add_child(cv)
+	var cv_built := cv.setup("climbvine")
+	_assert_true(cv_built, "the Climbvine has a rigged body")
+	if cv_built:
+		var cv_clips: PackedStringArray = cv.clips()
+		for wanted in ["climbvine_tend", "climbvine_harvest", "climbvine_wither"]:
+			_assert_true(cv_clips.has(wanted),
+				"the Climbvine carries %s (%s)" % [wanted, str(cv_clips)])
+		for clip_name in cv_clips:
+			_assert_true(str(clip_name).begins_with("climbvine_"),
+				"it advertises only its own clips (found %s)" % clip_name)
+		var cv_skels: Array[Skeleton3D] = cv.call("_skeletons")
+		_assert_true(cv_skels.size() > 0, "the Climbvine body carries a skeleton")
+		for skel in cv_skels:
+			var flash_bone := skel.find_bone("flash_0")
+			_assert_true(flash_bone >= 0, "the tending flare has its own bone")
+			if flash_bone >= 0:
+				var parked: float = skel.get_bone_pose_scale(flash_bone).x
+				_assert_true(parked < 0.05,
+					"an untended Climbvine is not wearing its completion flare (%.3f)"
+						% parked)
+			# The readying has to be REAL. "As she tends, the next vine to harvest
+			# visibly readies - its fibres thicken": the section above the worked
+			# node is what the player watches, so the tend clip is driven and the
+			# section is measured, rather than the clip merely being declared.
+			var ready_bone := skel.find_bone("vine_8")
+			_assert_true(ready_bone >= 0,
+				"the section a tending readies has its own bone")
+			if ready_bone >= 0:
+				var before: float = skel.get_bone_pose_scale(ready_bone).x
+				var cv_player: AnimationPlayer = cv.get("_player")
+				cv_player.play("climbvine_tend")
+				cv_player.seek(cv_player.get_animation("climbvine_tend").length * 0.88,
+					true)
+				await get_tree().process_frame
+				var after: float = skel.get_bone_pose_scale(ready_bone).x
+				_assert_true(after > before * 1.2,
+					"tending visibly thickens the section it readies (%.2f -> %.2f)"
+						% [before, after])
+	cv.queue_free()
+	await get_tree().process_frame
+
 	# THE REST OF THE ROSTER. Each of these carries a pre-attack tell the roster
 	# names, and the tell is only a warning if the creature is NOT already wearing
 	# it — so every one is checked for the clips it owes and for a body that
