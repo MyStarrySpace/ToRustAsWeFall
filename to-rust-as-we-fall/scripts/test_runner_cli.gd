@@ -20740,11 +20740,25 @@ func _elevator_realinput_beats(instance: Node) -> Dictionary:
 			) == 2
 	# Climb prompt zone (HOLD_ACTION dwell) — now at the landing under where the span gave way (~BRIDGE_COLLAPSE_X).
 	beats["climb_attempt"] = func(): _synthetic_player_move_click(instance, Vector3(float(instance.BRIDGE_COLLAPSE_X), float(instance.BELOW_Y), 0.0))
-	# The shelter reads are optional world-building. Peris tends the plant directly;
-	# the removed annex checklist and reward menu are intentionally absent.
+	# The shelter reads are optional world-building, but the plant is a PARTY gate: it answers only
+	# when BOTH bodies are inside the shelter rect. Peris works it, so she is the one selected for the
+	# click -- but sending her alone leaves the gate shut with no visible refusal, which is exactly
+	# how this leg stalled here. Gather the party first, then tend.
+	var junction_rallied := [false]
 	beats["junction_arrive"] = func():
 		if instance._dialogue.is_active():
 			return
+		var junction_gs = instance.get("_game_state")
+		if junction_gs != null:
+			var party_gathered := true
+			for member_id in ["aster", "peris"]:
+				if junction_gs.characters.has(member_id) 						and not bool(junction_gs.is_at_shelter(member_id)):
+					party_gathered = false
+			if not party_gathered:
+				if not junction_rallied[0]:
+					junction_rallied[0] = int(instance._selection_controller.headless_commit_rally(
+						instance.JUNCTION_SHELTER_CENTER)) >= 2
+				return
 		var target: Node = instance._junction_plant_interactable
 		var junction_selection: Array = instance._hud.get_selected_ids()
 		if junction_selection.size() != 1 or str(junction_selection[0]) != "peris" \
@@ -48509,6 +48523,14 @@ func _test_wash_outline_capture() -> void:
 		cam.global_position = Vector3(9.6, 7.5, 9.5)
 		cam.look_at(Vector3(9.6, 0.5, 1.5), Vector3.UP)
 
+	# The preview boots with all three perception overlays ON, and they repaint the whole frame --
+	# a capture taken through them shows the data schematic, not the level. Turn them off so what
+	# lands on disk is the art a player sees, then hold the reveal.
+	if inst.has_method("headless_set_overlay_state"):
+		for overlay_id in ["aster", "peris", "endo"]:
+			inst.call("headless_set_overlay_state", overlay_id, false)
+		for _i in range(4):
+			await get_tree().process_frame
 	# Hold the reveal: every interactable lights its outline, which is exactly the surface under test.
 	if inst.has_method("_on_highlight_held"):
 		inst.call("_on_highlight_held", true)
@@ -56100,6 +56122,69 @@ func _test_flora_rig_plays() -> void:
 	# looks like. A scalar shrink and a collapse are indistinguishable to any test
 	# that only asks whether the bone moved, so this asks WHICH WAY it moved: flat
 	# on the axis that runs up the body, WIDER on the two that do not.
+	# A POD THAT NEVER OPENS CANNOT BE HARVESTED FROM. The sheet studies the pod
+	# three ways — sealed, bored open into a resin-lipped cup, and cut away to show
+	# the shell is empty — because the OPEN state is the affordance the player acts
+	# on. A cluster that jumps from sealed straight to a missing pod never shows
+	# the moment it was offering something. And fire is not the end of this plant:
+	# the charred crown puts out green buds, which is the roster's whole point
+	# about burning it.
+	var gasa := FloraRig.new()
+	get_tree().root.add_child(gasa)
+	var gasa_built := gasa.setup("gasafoetida")
+	_assert_true(gasa_built, "the Gasafoetida has a rigged body")
+	if gasa_built:
+		var g_clips: PackedStringArray = gasa.clips()
+		for wanted in ["gasafoetida_open", "gasafoetida_recover"]:
+			_assert_true(g_clips.has(wanted),
+				"it carries %s (%s)" % [wanted, str(g_clips)])
+		var g_skels: Array[Skeleton3D] = gasa.call("_skeletons")
+		var g_player: AnimationPlayer = gasa.get("_player")
+		if g_skels.size() > 0 and g_player != null and g_clips.has("gasafoetida_open"):
+			var gk: Skeleton3D = g_skels[0]
+			var scales: Array = []
+			for i in range(6):
+				for k in range(3):
+					var cb := gk.find_bone("crown%d_%d_0" % [i, k])
+					if cb >= 0:
+						scales.append(cb)
+			_assert_true(scales.size() >= 12,
+				"each pod's mouth is closed by scales that can part (%d)" % scales.size())
+			var bud := gk.find_bone("bud_0")
+			_assert_true(bud >= 0, "and it carries buds to come back with")
+
+			gasa.rest()
+			await get_tree().process_frame
+			var shut: Array = []
+			for cb in scales:
+				shut.append(gk.get_bone_pose_rotation(cb))
+			_assert_true(bud < 0 or gk.get_bone_pose_scale(bud).x < 0.05,
+				"a standing cluster shows no buds")
+
+			var ol: float = g_player.get_animation("gasafoetida_open").length
+			g_player.play("gasafoetida_open")
+			g_player.seek(ol, true)
+			await get_tree().process_frame
+			var parted := 0
+			for i in range(scales.size()):
+				var q := gk.get_bone_pose_rotation(scales[i])
+				var r: Quaternion = shut[i]
+				if 2.0 * acos(clampf(absf(q.dot(r)), -1.0, 1.0)) > 0.2:
+					parted += 1
+			_assert_true(parted >= scales.size() - 2,
+				"opening parts the crowns (%d/%d)" % [parted, scales.size()])
+
+			if bud >= 0 and g_clips.has("gasafoetida_recover"):
+				var rl: float = g_player.get_animation("gasafoetida_recover").length
+				g_player.play("gasafoetida_recover")
+				g_player.seek(rl, true)
+				await get_tree().process_frame
+				_assert_true(gk.get_bone_pose_scale(bud).x > 0.7,
+					"and a burnt one comes back in bud (%.2f)"
+						% gk.get_bone_pose_scale(bud).x)
+	gasa.queue_free()
+	await get_tree().process_frame
+
 	var flare := FloraRig.new()
 	get_tree().root.add_child(flare)
 	var flare_built := flare.setup("flare")
@@ -56311,35 +56396,86 @@ func _test_flora_rig_plays() -> void:
 						% [species, bone_name, s.x])
 		_assert_true(flashes > 0, "%s has a flash bone to hold shut" % species)
 
-		# A CLIP MUST START WHERE THE BODY RESTS. An armature stands in whatever
-		# pose the last clip to touch it finished on, so a bone a clip does not
-		# pose at t=0 can be keyed at a value from elsewhere — and the transition
-		# then opens by snapping to a pose the plant was never in.
+		# A CLIP MUST OPEN ON A POSE THE BODY CAN ACTUALLY BE IN. An armature stands
+		# in whatever pose the last clip to touch it finished on, so a bone a clip
+		# does not pose at t=0 gets keyed at a value from elsewhere and the
+		# transition opens by snapping to a pose the plant was never in.
+		#
+		# Resting is the usual answer, but it is not the only legitimate one: a
+		# CONTINUATION clip deliberately opens where another clip left off — a
+		# regrowth begins on the burnt body, a recovery on the spent one, a
+		# feeding on the pose the warning ended in. Demanding rest from those would
+		# forbid a pattern the roster needs, so the rule is the wider and stricter
+		# one: a clip opens at rest, or it opens exactly on some other clip's
+		# ENDING. An opening that matches neither is the accident this is hunting —
+		# it names a pose that nothing in the body ever produces.
 		var rest_player: AnimationPlayer = body.get("_player")
 		if rest_player != null:
 			var popping: Array = []
 			for sk in skeletons:
 				var skel: Skeleton3D = sk
+				var opens := {}
+				var ends := {}
 				for clip_name in rest_player.get_animation_list():
-					var anim: Animation = rest_player.get_animation(str(clip_name))
+					var name := str(clip_name)
+					var anim: Animation = rest_player.get_animation(name)
+					var first_pose := {}
+					var last_pose := {}
 					for ti in anim.get_track_count():
 						if anim.track_get_type(ti) != Animation.TYPE_SCALE_3D:
 							continue
-						if anim.track_get_key_count(ti) <= 0:
+						var keys := anim.track_get_key_count(ti)
+						if keys <= 0:
 							continue
 						var bone := str(anim.track_get_path(ti)).get_slice(":", 1)
-						var bi := skel.find_bone(bone)
-						if bi < 0:
+						if skel.find_bone(bone) < 0:
 							continue
-						var first = anim.track_get_key_value(ti, 0)
-						var at_rest: Vector3 = skel.get_bone_pose_scale(bi)
-						if not (first is Vector3) 								or (first as Vector3).distance_to(at_rest) >= 0.01:
-							popping.append("%s/%s %s->%s"
-								% [clip_name, bone, str(at_rest), str(first)])
+						var f = anim.track_get_key_value(ti, 0)
+						var l = anim.track_get_key_value(ti, keys - 1)
+						if f is Vector3:
+							first_pose[bone] = f
+						if l is Vector3:
+							last_pose[bone] = l
+					opens[name] = first_pose
+					ends[name] = last_pose
+				for clip_v in opens.keys():
+					var name := str(clip_v)
+					var first_pose: Dictionary = opens[name]
+					var off_rest: Array = []
+					for bone_v in first_pose.keys():
+						var bone := str(bone_v)
+						var at_rest: Vector3 = skel.get_bone_pose_scale(skel.find_bone(bone))
+						if (first_pose[bone] as Vector3).distance_to(at_rest) >= 0.01:
+							off_rest.append("%s/%s %s->%s"
+								% [name, bone, str(at_rest), str(first_pose[bone])])
+					if off_rest.is_empty():
+						continue
+					var continues_from := ""
+					for other_v in ends.keys():
+						var other := str(other_v)
+						if other == name:
+							continue
+						var end_pose: Dictionary = ends[other]
+						var matches := true
+						for bone_v2 in first_pose.keys():
+							var bone2 := str(bone_v2)
+							if not end_pose.has(bone2):
+								matches = false
+								break
+							if (first_pose[bone2] as Vector3).distance_to(
+									end_pose[bone2] as Vector3) >= 0.01:
+								matches = false
+								break
+						if matches:
+							continues_from = other
+							break
+					if continues_from.is_empty():
+						popping.append_array(off_rest)
 			# one verdict per species: a per-track assertion floods the log with
 			# thousands of lines for a body the size of the Capbage's
 			_assert_equals(popping.size(), 0,
-				"%s: every clip opens at the pose the body rests in (%s)"
+				"%s: every clip opens at rest or on another clip's ending (%s)"
+					% [species, ", ".join(popping.slice(0, 4))])
 					% [species, ", ".join(popping.slice(0, 4))])
 
 		body.queue_free()
