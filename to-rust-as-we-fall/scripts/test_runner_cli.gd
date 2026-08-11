@@ -48850,6 +48850,11 @@ func _test_death_offers_a_way_out() -> void:
 	var button_text := str(reset_button.get("text"))
 	_assert_true(button_text.strip_edges() != "", "the reset control names what it does")
 
+	# `visible` is a flag, not a rect. A centered Control whose offsets were never set lays out at
+	# zero size, reports visible, and occupies no pixels the player can aim at.
+	_assert_true(reset_button.size.x > 0.0 and reset_button.size.y > 0.0,
+		"the reset control has a rect the player can click")
+
 	# Guidance is a SECOND line: the epitaph alone tells the player what happened, never what to do.
 	var epitaph := ""
 	var guidance := ""
@@ -48863,6 +48868,19 @@ func _test_death_offers_a_way_out() -> void:
 			guidance = text
 	_assert_true(guidance != "", "the death screen says what to do next, not only what happened")
 	_assert_true(guidance != epitaph, "the guidance is its own line, not a repeat of the epitaph")
+
+	# Three centered controls anchored to the same point stack on top of each other unless each is
+	# offset clear of the others, which no visibility flag reports.
+	var rects: Array[Rect2] = []
+	for label in overlay.find_children("*", "Label", true, false):
+		var control := label as Control
+		if str((label as Label).text).strip_edges() != "":
+			rects.append(Rect2(control.global_position, control.size))
+	rects.append(Rect2(reset_button.global_position, reset_button.size))
+	for i in range(rects.size()):
+		for j in range(i + 1, rects.size()):
+			_assert_true(not rects[i].intersects(rects[j]),
+				"death screen line %d does not sit on top of line %d" % [i, j])
 
 	# A control that emits nothing is scenery. The overlay asks; the host owns the scene change.
 	_assert_true(overlay.has_signal("reset_requested"),
