@@ -871,6 +871,9 @@ func _ready() -> void:
 			"--test-displacement-reroute":
 				ran_test = true
 				_test_displacement_reroute()
+			"--test-patrol-cycles":
+				ran_test = true
+				await _test_patrol_cycles()
 			"--test-style-cps-composition":
 				ran_test = true
 				await _test_style_cps_composition()
@@ -2087,6 +2090,7 @@ func _run_all_tests() -> void:
 	await _test_stagger_does_not_chase_a_corpse()
 	await _test_pagination_boundaries()
 	await _test_style_cps_composition()
+	await _test_patrol_cycles()
 	await _test_dwell_follows_its_scheduler()
 	await _test_showcase_gallery()
 	await _test_set_piece_showcase()
@@ -47765,6 +47769,70 @@ func _test_dwell_follows_its_scheduler() -> void:
 ## last word and every whisper suddenly reads at conversational speed, losing the authored pacing
 ## with nothing to show for it; make the style the last word and the accessibility preference stops
 ## working on exactly the slow lines someone most likely turned it up for.
+## A PATROL IS A LOOP, NOT AN ERRAND. An authored route is a guard walking a beat: it reaches the far
+## end and comes back round, indefinitely. If the route runs off the end of its list instead, the
+## guard walks to its last waypoint and stands there forever -- a patrol the player can simply wait
+## out, and a stretch of map that quietly stops being watched.
+func _test_patrol_cycles() -> void:
+	_test_name = "Patrol Cycles"
+	var host := Node3D.new()
+	add_child(host)
+	var sched := EventScheduler.new()
+	var gs := GameState.new()
+	gs.scheduler = sched
+	gs.grid = GridWorld.from_data({
+		"contract_id": GridWorld.GRID_DATA_CONTRACT_ID,
+		"origin": [0.0, 0.0, 0.0], "cell_size": 1.0, "width": 16, "height": 16,
+		"walkable_regions": [{"min": [0.5, 0.5], "max": [15.5, 15.5]}],
+	})
+	var route: Array[Vector3] = [
+		gs.grid.grid_to_world(Vector2i(2, 2)),
+		gs.grid.grid_to_world(Vector2i(10, 2)),
+		gs.grid.grid_to_world(Vector2i(10, 10)),
+	]
+	var enemy := Enemy.new()
+	enemy.game_state = gs
+	enemy.char_id = "sentry"
+	enemy._detection_targets = []
+	host.add_child(enemy)
+	await get_tree().process_frame
+	gs.register_character("sentry", route[0], 6.0, {})
+	enemy.activate()
+	enemy.set_patrol(route)
+
+	# Watch which posts it actually REACHES, in order, rather than reading its bookkeeping.
+	var visits: Array[int] = []
+	for _i in range(4000):
+		sched.advance_ticks(0.05)
+		var here := gs.get_position("sentry")
+		for idx in range(route.size()):
+			if here.distance_to(route[idx]) < 0.6:
+				if visits.is_empty() or visits[visits.size() - 1] != idx:
+					visits.append(idx)
+				break
+		if visits.size() >= 5:
+			break
+
+	_assert_true(visits.size() >= 4,
+		"the sentry keeps walking its beat rather than stopping at a post (visited %s)" % str(visits))
+	var reached := {}
+	for idx in visits:
+		reached[idx] = true
+	_assert_equals(reached.size(), route.size(),
+		"it reaches every post on the route, not just the first leg (%s)" % str(visits))
+	# The loop itself: some post is visited a SECOND time, which only happens if the route comes round.
+	var came_round := false
+	for idx in range(visits.size()):
+		for jdx in range(idx + 1, visits.size()):
+			if visits[idx] == visits[jdx]:
+				came_round = true
+	_assert_true(came_round,
+		"and the beat comes round again instead of ending at the last post (%s)" % str(visits))
+
+	host.queue_free()
+	await get_tree().process_frame
+
+
 func _test_style_cps_composition() -> void:
 	_test_name = "Style CPS Composition"
 	# Settings is a registered autoload, so its absence is a failure rather than a reason to skip:
@@ -54350,6 +54418,56 @@ func _test_flora_rig_plays() -> void:
 					swung += 1
 			_assert_equals(swung, 0, "with its granules still spread, not packed")
 	patrol.queue_free()
+	await get_tree().process_frame
+
+	# The REDACTOR. Card ENT-008 ships it cloaked and revealed, and the roster puts
+	# the encounter in the reveal: it "drifts cloaked as a slice of wall". So it
+	# must rest PRESSED FLAT — one that spawned standing is a stealth threat whose
+	# stealth was spent before the player entered the room.
+	var hidden := FloraRig.new()
+	get_tree().root.add_child(hidden)
+	var hidden_built := hidden.setup("redactor")
+	_assert_true(hidden_built, "the redactor has a rigged body")
+	if hidden_built:
+		var h_clips: PackedStringArray = hidden.clips()
+		for wanted in ["redactor_reveal", "redactor_cloak"]:
+			_assert_true(h_clips.has(wanted),
+				"the redactor carries %s (%s)" % [wanted, str(h_clips)])
+		var h_skel: Skeleton3D = null
+		var hstack: Array = [hidden]
+		while not hstack.is_empty():
+			var n = hstack.pop_back()
+			if n is Skeleton3D:
+				h_skel = n
+			for c in n.get_children():
+				hstack.append(c)
+		if h_skel != null:
+			var cara := h_skel.find_bone("cara_0")
+			_assert_true(cara >= 0 and h_skel.get_bone_pose_scale(cara).x < 0.6,
+				"and rests PRESSED FLAT against the surface it is copying")
+			# The rest pose IS the folded one, so "pose equals rest" is what correct
+			# looks like and asserting otherwise tests nothing. What is worth
+			# proving is that the reveal actually unfolds it: the legs must end
+			# the clip somewhere other than where they began.
+			var h_player: AnimationPlayer = hidden.get("_player")
+			if h_player != null and h_player.has_animation("redactor_reveal"):
+				var show: Animation = h_player.get_animation("redactor_reveal")
+				var moved := 0
+				for ti in show.get_track_count():
+					if show.track_get_type(ti) != Animation.TYPE_ROTATION_3D:
+						continue
+					if str(show.track_get_path(ti)).find("leg") < 0:
+						continue
+					var keys := show.track_get_key_count(ti)
+					if keys < 2:
+						continue
+					var first = show.track_get_key_value(ti, 0)
+					var last = show.track_get_key_value(ti, keys - 1)
+					if first is Quaternion and last is Quaternion 							and (first as Quaternion).angle_to(last) > 0.2:
+						moved += 1
+				_assert_true(moved > 0,
+					"and its reveal actually unfolds the legs (%d moved)" % moved)
+	hidden.queue_free()
 	await get_tree().process_frame
 
 	# THE OUTLINE HAS TO WEAR THE POSE. The mask renders private COPIES of an
