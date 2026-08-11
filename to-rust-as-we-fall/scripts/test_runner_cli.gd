@@ -48414,6 +48414,157 @@ func _test_parked_detector_sees_approach() -> void:
 ## This has to run in a CHILD process. A callback firing against a freed node is a non-fatal
 ## GDScript error: it prints and execution carries on, so the same check in-process reports PASSED
 ## while the errors scroll past. The parent reads the child's log instead.
+## AN OUTLINE WRAPS THE OBJECT, NOT THE NEIGHBOURHOOD. The outline draws whole meshes and the hover
+## body is the box around them, so every mesh that sneaks into an object's outline set makes the
+## thing light up bigger and from further away. On a tiled level the floor is the mesh that sneaks:
+## a plank sits within collect range of every fixture that stands on it.
+##
+## Two claims per wired interactable: nothing in its outline set is stamped structure, and the box
+## around the set stays the size of a fixture rather than a stretch of walkway.
+## EYEBALL CAPTURE (windowed only, not in --test-all): the wash ascent with the reveal held, so
+## every interactable wears its outline at once. The acceptance question is visual -- does each
+## outline hug its fixture, or does it swallow walkway -- so the deliverable is a PNG to look at,
+## alongside the headless extent assertions that hold the same law numerically.
+func _test_wash_outline_capture() -> void:
+	_test_name = "Wash Outline Capture"
+	if DisplayServer.get_name() == "headless":
+		_record_skip("Wash outline capture needs a display; run without --headless")
+		return
+	var inst = await _instantiate_preview_chunk_and_wait("wash_ascent", 30)
+	if inst == null:
+		_assert_true(false, "the wash ascent instantiates")
+		return
+	for _i in range(10):
+		await get_tree().process_frame
+
+	# Frame the maintenance bay (the valve + terminal cluster) from a gameplay-ish angle.
+	var cameras: Array = inst.find_children("*", "Camera3D", true, false)
+	if not cameras.is_empty():
+		var cam := cameras[0] as Camera3D
+		cam.global_position = Vector3(9.6, 7.5, 9.5)
+		cam.look_at(Vector3(9.6, 0.5, 1.5), Vector3.UP)
+
+	# Hold the reveal: every interactable lights its outline, which is exactly the surface under test.
+	if inst.has_method("_on_highlight_held"):
+		inst.call("_on_highlight_held", true)
+	for _i in range(14):
+		await get_tree().process_frame
+
+	var img := get_viewport().get_texture().get_image()
+	# user://, like every other capture here. res:// writes the screenshot and its
+	# Godot import sidecar straight into the project root, which is the pollution
+	# --test-project-hygiene exists to catch — and it caught this one.
+	img.save_png("user://vr_wash_outline.png")
+	print("[WASH-OUTLINE-CAPTURE] wrote vr_wash_outline.png %dx%d" % [img.get_width(), img.get_height()])
+	_assert_true(FileAccess.file_exists("user://vr_wash_outline.png"),
+		"the capture landed on disk for eyeballing")
+
+	if inst.has_method("_on_highlight_held"):
+		inst.call("_on_highlight_held", false)
+	inst.queue_free()
+	await get_tree().process_frame
+
+
+## A FINISHED GLOW LEAVES NO GHOST. The outline passes render into offscreen targets, and a render
+## target keeps whatever it last drew. So the moment a pass goes quiet matters: stopping it dead
+## freezes the final frame -- glow and all -- into the texture, and the composite happily samples
+## that ghost whenever anything else lights up. Going quiet must paint one clear frame first.
+func _test_outline_mask_clears() -> void:
+	_test_name = "Outline Mask Clears"
+	var host := Node3D.new()
+	add_child(host)
+	var manager := OutlineMaskManager.new()
+	host.add_child(manager)
+	var mesh := MeshInstance3D.new()
+	mesh.mesh = BoxMesh.new()
+	host.add_child(mesh)
+	await get_tree().process_frame
+
+	manager.register(1, [mesh], Color(0.2, 0.8, 1.0), true)
+	var sub_vp = manager.get("_sub")
+	var glow_vp = manager.get("_glow_sub")
+	_assert_true(sub_vp != null and glow_vp != null, "the mask passes exist once something registers")
+	_assert_equals(int(sub_vp.render_target_update_mode), int(SubViewport.UPDATE_ALWAYS),
+		"a live outline renders its pass every frame")
+	_assert_equals(int(glow_vp.render_target_update_mode), int(SubViewport.UPDATE_ALWAYS),
+		"a live glow renders its pass every frame")
+
+	# The glow ends but the outline stays (arrival: the hover survives the queue). The glow pass may
+	# stop -- AFTER one clearing frame, or the dead glow stays baked into its texture and shows
+	# through the still-visible quad.
+	manager.set_color(1, Color(0.2, 0.8, 1.0), false)
+	_assert_equals(int(glow_vp.render_target_update_mode), int(SubViewport.UPDATE_ONCE),
+		"a glow that just ended paints one clearing frame instead of freezing its last one")
+	_assert_true(bool(manager.get("_quad").visible),
+		"while the outline itself is still owed, the composite stays up")
+
+	# Everything clears: the quad hides, and the outline pass also takes its clearing frame.
+	manager.unregister(1)
+	_assert_true(not bool(manager.get("_quad").visible), "with nothing highlighted the composite hides")
+	_assert_equals(int(sub_vp.render_target_update_mode), int(SubViewport.UPDATE_ONCE),
+		"the outline pass clears itself on the way out too")
+
+	host.queue_free()
+	await get_tree().process_frame
+
+
+func _test_outline_body_extent() -> void:
+	_test_name = "Outline Body Extent"
+	var inst = await _instantiate_preview_chunk_and_wait("wash_ascent", 30)
+	if inst == null:
+		_assert_true(false, "the wash ascent instantiates")
+		return
+	# The outline rewire waits for the warp to land; let the deferred pass run.
+	for _i in range(6):
+		await get_tree().process_frame
+	var chunk := _find_fragment_chunk_root(inst)
+	if chunk == null:
+		_assert_true(false, "the wash ascent exposes its chunk")
+		inst.queue_free()
+		await get_tree().process_frame
+		return
+
+	var interactables: Array = chunk.get("_interactables") if "_interactables" in chunk else []
+	var wired := 0
+	var floor_grabs: Array = []
+	var oversized: Array = []
+	for it_v in interactables:
+		if not (is_instance_valid(it_v) and it_v is Node3D):
+			continue
+		var target = it_v.get("_outline_target") if ("_outline_target" in it_v) else null
+		if target == null or not is_instance_valid(target) 				or not target.has_method("get_highlight_meshes"):
+			continue
+		var meshes: Array = target.call("get_highlight_meshes")
+		if meshes.is_empty():
+			continue
+		wired += 1
+		var bounds := AABB()
+		var first := true
+		for mesh_v in meshes:
+			if not (mesh_v is MeshInstance3D) or (mesh_v as MeshInstance3D).mesh == null:
+				continue
+			var mi := mesh_v as MeshInstance3D
+			if chunk.call("_structure_stamped", mi):
+				floor_grabs.append("%s<-%s" % [str(it_v.name), str(mi.name)])
+			var world_aabb: AABB = mi.global_transform * mi.mesh.get_aabb()
+			bounds = world_aabb if first else bounds.merge(world_aabb)
+			first = false
+		var span := maxf(bounds.size.x, bounds.size.z)
+		print("[OUTLINE-EXTENT] %-22s meshes=%d span=%.2f size=%s" % [
+			str(it_v.name), meshes.size(), span, str(bounds.size)])
+		if span > 6.0:
+			oversized.append("%s (%.1fm)" % [str(it_v.name), span])
+
+	_assert_true(wired > 0, "the wash ascent wires outline bodies to inspect (%d)" % wired)
+	_assert_true(floor_grabs.is_empty(),
+		"no object's outline set contains a structure-stamped mesh (%s)" % str(floor_grabs))
+	_assert_true(oversized.is_empty(),
+		("every outline body is fixture-sized, not a stretch of walkway (%s)") % str(oversized))
+
+	inst.queue_free()
+	await get_tree().process_frame
+
+
 func _test_chunk_unload_scheduler_clean() -> void:
 	_test_name = "Chunk Unload Scheduler Clean"
 	var exe := OS.get_executable_path()
