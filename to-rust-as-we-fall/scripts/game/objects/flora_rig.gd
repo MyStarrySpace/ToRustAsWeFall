@@ -43,6 +43,11 @@ const SPECIES_ARMATURES := {
 	"naturalizer": "Naturalizer_Armature",
 	"redactor": "Redactor_Armature",
 	"candid": "Candid_Armature",
+	"hidra": "Hidra_Armature",
+	"crust": "Crust_Armature",
+	"meeb": "Meeb_Armature",
+	"gnawer": "Gnawer_Armature",
+	"toxo": "Toxo_Armature",
 }
 
 ## Bodies that do not live under resources/models/flora.
@@ -53,6 +58,11 @@ const SPECIES_SCENE_OVERRIDE := {
 	"naturalizer": "res://resources/models/fauna/naturalizer.gltf",
 	"redactor": "res://resources/models/fauna/redactor.gltf",
 	"candid": "res://resources/models/fauna/candid.gltf",
+	"hidra": "res://resources/models/fauna/hidra.gltf",
+	"crust": "res://resources/models/fauna/crust.gltf",
+	"meeb": "res://resources/models/fauna/meeb.gltf",
+	"gnawer": "res://resources/models/fauna/gnawer.gltf",
+	"toxo": "res://resources/models/fauna/toxo.gltf",
 }
 
 static var _packed := {}

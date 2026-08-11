@@ -54697,6 +54697,33 @@ func _test_flora_rig_plays() -> void:
 	colony.queue_free()
 	await get_tree().process_frame
 
+	# THE REST OF THE ROSTER. Each of these carries a pre-attack tell the roster
+	# names, and the tell is only a warning if the creature is NOT already wearing
+	# it — so every one is checked for the clips it owes and for a body that
+	# actually loads, with the assertion in front rather than a guard around it.
+	for beast in [
+			{"id": "hidra", "clips": ["hidra_unspool"]},
+			{"id": "crust", "clips": ["crust_dilate", "crust_burn"]},
+			{"id": "meeb", "clips": ["meeb_cup", "meeb_feed"]},
+			{"id": "gnawer", "clips": ["gnawer_haze", "gnawer_bite"]},
+			{"id": "toxo", "clips": ["toxo_extend", "toxo_pierce"]},
+		]:
+		var beast_id := str(beast["id"])
+		var body := FloraRig.new()
+		get_tree().root.add_child(body)
+		var built := body.setup(beast_id)
+		_assert_true(built, "%s has a rigged body" % beast_id)
+		if built:
+			var got: PackedStringArray = body.clips()
+			for wanted in (beast["clips"] as Array):
+				_assert_true(got.has(str(wanted)),
+					"%s carries %s (%s)" % [beast_id, str(wanted), str(got)])
+			for clip_name in got:
+				_assert_true(str(clip_name).begins_with(beast_id + "_"),
+					"%s advertises only its own clips (found %s)" % [beast_id, clip_name])
+		body.queue_free()
+		await get_tree().process_frame
+
 	# THE OUTLINE HAS TO WEAR THE POSE. The mask renders private COPIES of an
 	# object's meshes; a copy without the source's skin draws bind space, so a
 	# rigged plant is outlined in the shape it was modelled in rather than the one
