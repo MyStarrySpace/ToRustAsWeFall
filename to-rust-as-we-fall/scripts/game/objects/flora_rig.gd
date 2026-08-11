@@ -38,11 +38,13 @@ const SPECIES_ARMATURES := {
 	# Not flora. The rooted turret is rigged the same way and plays the same
 	# kind of clip, so it rides the same bridge rather than growing a second.
 	"spiker": "Spiker_Armature",
+	"tangler": "Tangler_Armature",
 }
 
 ## Bodies that do not live under resources/models/flora.
 const SPECIES_SCENE_OVERRIDE := {
 	"spiker": "res://resources/models/fauna/spiker.gltf",
+	"tangler": "res://resources/models/fauna/tangler.gltf",
 }
 
 static var _packed := {}

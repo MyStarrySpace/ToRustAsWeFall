@@ -32,6 +32,8 @@ extends Enemy
 ## property, and the decoy hand-off only exists if the lock can still see who started running. So it
 ## keeps scanning through ALERT and PURSUIT (it is still creeping) and drops it for the snap itself --
 ## windup, charge, impact, recover -- because a snap already underway is already underway.
+var _rig: FloraRig = null
+
 const TANGLER_SCANNING_STATES := [
 	"idle", "roam", "patrol", "lured", "search", "return", "alert", "pursuit",
 ]
@@ -129,3 +131,40 @@ func _exit_tree() -> void:
 		game_state.running_changed.disconnect(_on_running_changed)
 	if game_state.has_signal("detection_predicted") 			and game_state.detection_predicted.is_connected(_on_detection_predicted_lock):
 		game_state.detection_predicted.disconnect(_on_detection_predicted_lock)
+
+
+## The grappler's body, and the uncoil that IS its counterplay.
+##
+## The roster promises "a clear step-away window", and the window is already real
+## in the data layer — windup_duration holds the attack open. What was missing was
+## anything to look at: the filaments now straighten across that window, so a
+## player reads the time from the creature instead of guessing it.
+##
+## Cosmetic. The FSM owns the window and the strike; the filaments only show them.
+func _build_visual() -> void:
+	if not FloraRig.has_rig("tangler"):
+		super._build_visual()
+		return
+	var rigged := FloraRig.new()
+	rigged.name = "TanglerBody"
+	add_child(rigged)
+	if not rigged.setup("tangler"):
+		rigged.queue_free()
+		super._build_visual()
+		return
+	_rig = rigged
+
+
+## Each state the filaments have something to say about. Anything else leaves them
+## where the last clip put them, which is what a creature between beats looks like.
+func _enter_state(state: String) -> void:
+	super._enter_state(state)
+	if _rig == null or not is_instance_valid(_rig):
+		return
+	match state:
+		"windup":
+			_rig.play("tangler_uncoil")
+		"charge", "impact":
+			_rig.play("tangler_snap")
+		"recover", "stagger", "search", "return":
+			_rig.play("tangler_recoil")

@@ -54179,6 +54179,34 @@ func _test_flora_rig_plays() -> void:
 	turret.queue_free()
 	await get_tree().process_frame
 
+	# The TANGLER, whose counterplay is the uncoil itself. Its filaments must rest
+	# CURLED — a grappler that arrives already reaching has spent the step-away
+	# window the roster promises before the player ever saw it.
+	var grappler := FloraRig.new()
+	get_tree().root.add_child(grappler)
+	var grappler_built := grappler.setup("tangler")
+	_assert_true(grappler_built, "the tangler has a rigged body")
+	if grappler_built:
+		var g_clips: PackedStringArray = grappler.clips()
+		_assert_true(g_clips.has("tangler_uncoil"),
+			"the tangler carries its uncoil (%s)" % str(g_clips))
+		var g_skel: Skeleton3D = null
+		var gstack: Array = [grappler]
+		while not gstack.is_empty():
+			var n = gstack.pop_back()
+			if n is Skeleton3D:
+				g_skel = n
+			for c in n.get_children():
+				gstack.append(c)
+		if g_skel != null:
+			var held := 0
+			for b in g_skel.get_bone_count():
+				if str(g_skel.get_bone_name(b)).begins_with("fil") 						and g_skel.get_bone_pose_rotation(b).get_euler().x > 0.1:
+					held += 1
+			_assert_true(held > 0, "and rests with its filaments CURLED, not reaching")
+	grappler.queue_free()
+	await get_tree().process_frame
+
 	# THE OUTLINE HAS TO WEAR THE POSE. The mask renders private COPIES of an
 	# object's meshes; a copy without the source's skin draws bind space, so a
 	# rigged plant is outlined in the shape it was modelled in rather than the one
