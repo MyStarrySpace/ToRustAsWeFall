@@ -48468,6 +48468,21 @@ func _test_wash_outline_capture() -> void:
 	# --test-project-hygiene exists to catch — and it caught this one.
 	img.save_png("user://vr_wash_outline.png")
 	print("[WASH-OUTLINE-CAPTURE] wrote vr_wash_outline.png %dx%d" % [img.get_width(), img.get_height()])
+
+	# SECOND SHOT: the FOG BOUNDARY. The bay shot is all clear ground (the party stands in it), so
+	# it can never show the fog edge's quality. Pull high and wide over the spiral with the party
+	# far below one edge of frame, so the clear-radius boundary crosses mid-frame -- the exact edge
+	# whose softness the depth-path penumbra is answerable for.
+	if not cameras.is_empty():
+		var far_cam := cameras[0] as Camera3D
+		far_cam.global_position = Vector3(26.0, 26.0, 30.0)
+		far_cam.look_at(Vector3(30.0, 0.5, 4.0), Vector3.UP)
+	for _i in range(14):
+		await get_tree().process_frame
+	var fog_img := get_viewport().get_texture().get_image()
+	fog_img.save_png("user://vr_wash_fog_edge.png")
+	print("[WASH-OUTLINE-CAPTURE] wrote vr_wash_fog_edge.png %dx%d" % [
+		fog_img.get_width(), fog_img.get_height()])
 	_assert_true(FileAccess.file_exists("user://vr_wash_outline.png"),
 		"the capture landed on disk for eyeballing")
 
