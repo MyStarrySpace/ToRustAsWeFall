@@ -54353,6 +54353,31 @@ func _test_climbvine_return_wears_its_species() -> void:
 		_assert_true(skeletons > 0,
 			"%s is the rigged Climbvine body, not loose meshes" % part_name)
 
+	# AND IT HAS TO REACH. A deployed vine is what the party climbs, so at full
+	# deployment the body spans the drop -- a vine hanging half way down is a
+	# traversal the player can see and cannot take.
+	vine.call("_apply_vine_progress", 1.0)
+	await get_tree().process_frame
+	var lo := INF
+	var hi := -INF
+	var stack2: Array = [vine.get("_vine_visual")]
+	while not stack2.is_empty():
+		var node = stack2.pop_back()
+		if node is VisualInstance3D:
+			var box: AABB = (node as VisualInstance3D).get_aabb()
+			var xform: Transform3D = (node as Node3D).global_transform
+			for corner in range(8):
+				var world: Vector3 = xform * box.get_endpoint(corner)
+				lo = minf(lo, world.y)
+				hi = maxf(hi, world.y)
+		for child in node.get_children():
+			stack2.append(child)
+	_assert_true(is_finite(lo) and is_finite(hi), "the deployed vine has geometry")
+	if is_finite(lo) and is_finite(hi):
+		# the span runs 0 -> 4 in Y; a tolerance of a rootlet bundle either side
+		_assert_true(lo < 0.4, "it reaches the lower deck (bottom at %.2f)" % lo)
+		_assert_true(hi > 3.6, "it starts at the tended anchor (top at %.2f)" % hi)
+
 	vine.queue_free()
 	await get_tree().process_frame
 
