@@ -2062,7 +2062,11 @@ func _input_binding_contract(actions: Array) -> Dictionary:
 
 func _preview_control_help_text() -> String:
 	var labels := _input_binding_contract(PREVIEW_CONTROL_ACTIONS)
-	return "%s move  %s/%s/%s/%s or %s pan  %s/%s/%s focus  Ctrl+%s/%s/%s group  %s cycle  %s party abilities  %s drop  %s transfer  %s retrieve  %s/%s/%s overlays  %s drawer  %s route  %s dodge  %s pause  %s run  %s reload  %s hide" % [
+	# HOLD-to-rally comes second, right after the plain move. It is the one order that takes the whole
+	# party somewhere, and leaving it untaught costs the player a separate walk per character across a
+	# stretch that asks no further decision of them -- which is exactly how the channels exit played.
+	return "%s move  hold %s move ALL  %s/%s/%s/%s or %s pan  %s/%s/%s focus  Ctrl+%s/%s/%s group  %s cycle  %s party abilities  %s drop  %s transfer  %s retrieve  %s/%s/%s overlays  %s drawer  %s route  %s dodge  %s pause  %s run  %s reload  %s hide" % [
+		labels.get("command", ""),
 		labels.get("command", ""),
 		labels.get("camera_pan_forward", ""), labels.get("camera_pan_left", ""),
 		labels.get("camera_pan_back", ""), labels.get("camera_pan_right", ""),

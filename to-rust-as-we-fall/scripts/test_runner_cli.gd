@@ -914,6 +914,9 @@ func _ready() -> void:
 			"--test-cover-mid-run":
 				ran_test = true
 				_test_cover_mid_run()
+			"--test-party-move-is-taught":
+				ran_test = true
+				await _test_the_party_move_is_taught()
 			"--test-shelter-prerequisite-copy":
 				ran_test = true
 				await _test_shelter_advertises_the_prerequisite_in_the_way()
@@ -48852,6 +48855,37 @@ func _test_cover_mid_run() -> void:
 	_assert_true((run["spotted"] as Array)[0],
 		"stepping back out of cover is spotted -- the recompute runs both ways")
 
+
+## A whole-party move exists and is bound, but a control nobody is told about is a control nobody has.
+## Left untaught it costs a separate walk per character across ground that asks no further decision --
+## the several minutes the director spent shuttling three bodies to the channels exit one at a time.
+func _test_the_party_move_is_taught() -> void:
+	_test_name = "The Party Move Is Taught"
+	var inst = await _instantiate_preview_chunk_and_wait("generated_stretch", 8)
+	if inst == null:
+		_assert_true(false, "the generated stretch preview instantiates")
+		return
+
+	# The control: this stretch really does field a party worth moving together. If it ever ships
+	# single-handed the teaching requirement below stops meaning anything.
+	# `get_party()` reports the SELECTION, and the preview boots single-selected -- which is itself
+	# half the reported problem. The roster is what makes a whole-party order worth teaching, so count
+	# the bodies actually registered.
+	var gs = inst.get("_game_state")
+	var roster := 0
+	if gs != null:
+		for cid in ["aster", "peris", "endo"]:
+			if (gs.characters as Dictionary).has(cid):
+				roster += 1
+	_assert_true(roster > 1,
+		"the stretch fields more than one body to move (%d)" % roster)
+
+	var help := str(inst.call("_preview_control_help_text")).to_lower()
+	_assert_true(help != "", "the preview publishes control help at all")
+	_assert_true(help.contains("all") or help.contains("rally") or help.contains("party move"),
+		"the control help names the order that moves the whole party")
+
+	await _dispose_scene(inst)
 
 ## The shelter is gated by two prerequisites and the water is only the second one -- the command tests
 ## the mandatory branch spans FIRST. Advertising readiness from the hydraulic state alone put a green
