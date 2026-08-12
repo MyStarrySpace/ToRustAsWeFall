@@ -2467,3 +2467,38 @@ Scarpet's three files changed — every other flora piece rebuilt byte-identical
 **Also settled: the VineCut cannot be judged.** It has NO concept sheet — that is
 precisely why its leaflessness is an open director call. With images as the spec,
 there is nothing to check it against, so it stays blocked rather than guessed at.
+
+### mother flure — my card read was WRONG, and the real finding is a park pose
+
+I called this piece "a small crumpled brown head with four tiny satellites, reads as
+broken". Measuring it by bone group says otherwise:
+
+    petal   radius 0.65..1.02   z 2.53..3.38     <- the crown IS large, and on top
+    stalk   radius 0.13..1.14   z 0.00..2.15
+    vein    radius 4.67         z 0.01           <- a flat ground card 9.3 ACROSS
+    haze    radius 0.91..2.91   off  1.68..3.13
+
+The plant is about 2 wide and 3.4 tall — good proportions against its sheet. It
+rendered tiny because the card framed to BOUNDS, and the bounds include a ground
+card three times the plant's own width. Exactly the Gnawer-haze trap, and my FOURTH
+wrong reading off a render this session.
+
+**Fixed the instrument:** the card renderer now frames on the 90th percentile of the
+vertex cloud rather than the bounding box, so far-flung auxiliary geometry cannot
+drive the camera back. Re-rendered, the MotherFlure reads at a sensible size.
+
+**The real defect, now visible: she is PARKED CLOSED.** `rig.park(mf_arm, mf_dormant)`
+folds every petal over the core — deliberately, and the comment says so: "What droops
+when she is dormant is the CROWN closing over the core". The sheet draws her OPEN in
+all four views: a flaring bouquet of about twelve trumpet petals. This is the
+park-pose-is-the-idle-panel defect class, which this project has now hit repeatedly.
+
+**DIRECTOR CALL WANTED, because it trades against gameplay.** The build already has
+`mf_open` and `mf_settled`, the latter described as "what the chamber looks like for
+the rest of the game -- the trumpet stays open". Parking her at `mf_settled` would
+match the sheet. But the bloom is a REVEAL, and a plant that starts open has already
+spent it. Same shape as the Tangler's walk-under span: sheet fidelity against a
+gameplay beat, and not mine to settle quietly.
+
+Also still off the sheet whichever way that goes: the base blades read as thin dark
+spikes where the drawing has broad dark-green triangular blades.
