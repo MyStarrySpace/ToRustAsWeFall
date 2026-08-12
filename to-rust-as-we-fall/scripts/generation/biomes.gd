@@ -228,7 +228,14 @@ const BIOMES := {
 const VISUAL_HIERARCHY_BY_BIOME := {
 	"channels": {
 		"contract_id": "generated_visual_hierarchy_v1",
-		"floor_tint": [0.38, 0.46, 0.46, 1.0],
+		# A floor tint is a MULTIPLIER on the district's tile, and deck_metal averages 0.22, so the
+		# tint's whole range buys less than it looks like it does: measured on the deck's own pixels
+		# in the channels stretch, 0.38/0.46/0.46 renders at u8 0 — darker than the empty background
+		# behind the level (u8 7) — and the largest hue-preserving tint that stays inside [0,1]
+		# reaches u8 2. The channels hue is the ratio 0.83 : 1 : 1, held here at the cap.
+		"floor_tint": [0.83, 1.0, 1.0, 1.0],
+		# Lower numbers than the deck's and still several times brighter on screen: the brink drops
+		# the tile and wears its tint neat, so these two lines are not comparable as written.
 		"edge_tint": [0.62, 0.74, 0.74, 1.0],
 		"risk_tint": [0.42, 0.27, 0.18, 1.0],
 		"background_color": [0.008, 0.015, 0.019, 1.0],
