@@ -56514,11 +56514,10 @@ func _test_flora_rig_plays() -> void:
 				nstack.append(c)
 		if n_skel != null:
 			# The CONTRACT is that a rest pose exists and the clips move it. What
-			# the pose looks like belongs to the concept sheet, not to an assert:
-			# this block used to require a bone named syn_0 scaled to nothing, and
-			# both halves of that were the build's invention rather than the
-			# sheet's animal. Naming anatomy in a test is what makes correcting a
-			# model against its reference read as a regression.
+			# that pose LOOKS like belongs to the concept sheet, not to an assert,
+			# and neither does which bones a build reaches it with. Naming anatomy
+			# here is what makes correcting a model against its reference read as
+			# a regression.
 			_assert_true(n_skel.get_bone_count() > 0,
 				"the naturalizer's skeleton reaches the runtime")
 	patrol.queue_free()
@@ -56546,12 +56545,11 @@ func _test_flora_rig_plays() -> void:
 			for c in n.get_children():
 				hstack.append(c)
 		if h_skel != null:
-			# It used to be required to rest SCALED DOWN — one implementation of
-			# "cloaked", written before anyone read the cloaked sheet, which draws
-			# a tall shard standing against a wall rather than a body pressed into
-			# it. The build now folds and stands instead of flattening, and the
-			# assert called that a regression. The behaviour worth holding is
-			# below: the reveal has to actually unfold it.
+			# The cloaked SHAPE is the sheet's ruling — it draws a tall shard
+			# standing against a wall — and a build may fold, stand or flatten to
+			# reach it. Pinning one of those here would make every other one read
+			# as a regression. The behaviour worth holding is below: the reveal
+			# has to actually unfold it.
 			_assert_true(h_skel.get_bone_count() > 0,
 				"the redactor's skeleton reaches the runtime")
 			# The rest pose IS the folded one, so "pose equals rest" is what correct
@@ -57094,14 +57092,12 @@ func _test_flora_rig_plays() -> void:
 				# Both clips must MOVE the crescent — that is the contract, and it
 				# is what a runtime can rely on.
 				#
-				# What used to be here compared the two against each other and
-				# called defeat the tighter one. It measured each pose as a
-				# distance FROM REST, so it only held while rest was a slack
-				# body: once the rest pose became the hooked comma every drawn
-				# panel shows, curl sat NEARER rest than extend did and the
-				# comparison inverted. A metric anchored to the rest pose cannot
-				# outlive a correction to the rest pose, and which of two poses
-				# closes further is the sheet's ruling, not a runtime invariant.
+				# Deliberately no comparison BETWEEN them. Each bend here is
+				# measured as a distance from the rest pose, which makes such a
+				# comparison a statement about where rest sits rather than about
+				# the clips: move rest and the ordering can invert while both
+				# clips still do exactly what they should. Which pose closes
+				# further is the sheet's ruling, not a runtime invariant.
 				_assert_true(coiled > 0.05,
 					"winding up bends the crescent at all (%.3f rad)" % coiled)
 				_assert_true(curled > 0.05,
