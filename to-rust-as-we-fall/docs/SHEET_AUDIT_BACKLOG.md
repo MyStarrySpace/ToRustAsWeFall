@@ -1334,3 +1334,40 @@ indistinguishable from a fix until someone looks.
   EVIDENCE: LIGHTEST MASS: resolved. In the q34 render 29.5% of creature pixels exceed luminance 140 and the mask shows all of them on the body plates; carapace samples run 164,175,180 against a 42,45,48 background, mean shell luminance 105.5 across the whole creature. Nothing else in frame competes — this is a real change and it reads. ELONGATED / SEGMENTED / HEAD END / FACING: resolved. Body aspect is about 3.4:1 along its axis versus the sheet's ~3.5:1; seven raised plate bands separated by recessed seams run head to tail; the front tapers to a cone with a pale amber tip and the rear closes in a blunt dome — the same polarity as the sheet, whose head is likewise the tapered amber-tipped end and whose biggest dorsal orbs sit toward the blunt end. CRYSTALLINE: not delivered. The sheet's shell is a dense low-poly facet lattice you can see INTO — panels tinted violet, teal, copper and grey, internal structure visible behind them (crop at 560,200). The render's shell is smooth opaque plating with soft gradient shading and no facet subdivision, no translucency, no colour variation beyond a single cool grey-blue. The sheet also carries the head-end furniture the render lacks: a spike ring and an appendage cluster around the mouth.
 - **BROKEN BY THE FIX.** INTRODUCED BY THE AMBER WORK, CONTRADICTED BY THE SHEET: every amber disc now carries a hard-edged, saturated dark brown/orange RIM RING drawn tight around it (measured at row y=145: 122,72,46 and 175,110,48 immediately outside the cream fill, a serrated bezel visible in the 10x crop at 195,130). The sheet's orbs have no border of any kind — they are pure gradients that bleed outward and light the surrounding facets warm. A dark ring reads as a socket or bezel seating an opaque part, which is the visual inverse of a glow, so the rim actively fights the thing claim 1 was supposed to deliver. This is the one element the fix appears to have added that the sheet directly contradicts.
 - **BROKEN BY THE FIX.** LOW CONFIDENCE, NOT SHEET-CONTRADICTED, DO NOT CHARGE AS A DEFECT WITHOUT A SECOND CAMERA: in Clip_redactor_reveal_side.png there is a near-black region on the head-end face around x 195-230, y 172-202 whose boundary is a fine salt-and-pepper STIPPLE, unlike every other edge in either render, which is a clean polygon edge. That stipple pattern is what coincident surfaces or shadow acne look like. The innocent explanation is equally available and probably likelier: that file is an axial view straight down the body (the body foreshortens to 109 px tall), so the seven segment rings and their dark recessed seams compress onto each other and alias. Flagging it only so someone points a non-axial camera at the head-end seams once; I am not calling it a defect. Related: because that view is axial, it carries almost no evidence for any of the three claims (4.23% amber, only two legs at full extension) and should not be read as corroborating the q34 render.
+
+### meeb dark panels — why my measurement passed while the defect stayed
+
+I reported this fixed on the strength of "119 bore faces, 0 sitting on the skin".
+The number was true. The panels are still there. The re-audit pins down what they
+actually are, and it rules out everything I had assumed:
+
+- **axis-aligned, dead-straight edges** (one border held a constant column over 26
+  rows), **internally uniform**, flipping from >=175 skin value to ~(75,90,72) in a
+  SINGLE pixel, and **cutting across the facet shading around them**.
+
+Straight axis-aligned borders on a curved lumpy body are not lighting and not
+curvature. That is a face-level assignment showing through — so the panels come
+from which faces carry which material, or from `box_uv` sampling, and NOT from the
+bore-wall test I "fixed".
+
+**Why my test passed anyway.** It asked whether a bore face sits outside
+`_surface_dist` along its OWN direction. That bisects the lathe for a crossing —
+and on a lumpy body a direction that grazes a lump returns a FAR crossing, so a
+face genuinely out on the skin measures as comfortably inside and never trips the
+check. The test is only sound where the surface is convex along the sample ray.
+
+**Next pass:** dump every face's material index with its position and normal, and
+find the ones carrying I_BORE whose normal points OUTWARD (away from CENTRE). An
+outward-facing bore face is a panel by definition, and that test does not depend
+on `_surface_dist` at all.
+
+### meeb lips — measured flush, still a detached ring in the render
+
+Also unresolved, and the two facts sit uncomfortably together: every lip vertex
+measures at or below the surface (0 of 384 proud, worst 1 mm inside), yet the
+re-audit finds a bucket-handle hoop over the top cup with **24 px of pure
+background enclosed beneath it at y=112**, persisting across six scanlines, and
+the cup's own rim not starting until 12 px lower. It describes TWO concentric
+ribbons — so there is a second ring in the mesh that my lip-range measurement did
+not cover. Find what builds it before touching `lips_bm()` again; the lip itself
+has now absorbed three fixes for a defect that keeps turning out to be elsewhere.
