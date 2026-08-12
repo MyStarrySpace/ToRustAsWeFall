@@ -1134,3 +1134,37 @@ boundaries — paint, not shading.
 - **RESOLVED.** REST pose was a shallow open banana with the conoid retracted; every drawn panel shows a closed comma hooked back under the body with the conoid OUT
   EVIDENCE: SHEET: the turnaround's two profile panels and the affordance sheet's idle panel all draw the same comma — the mass sweeps up and over into a rounded posterior dome, then the ventral edge returns forward as a tapering hook whose tip ends under the head, enclosing a deep U of negative space; the silhouette panel (top-right of the affordance sheet) is that hook read as a solid black comma. The gold conoid is always OUT: a stepped screw projecting free of the head into open space, unmistakable in all four turnaround panels. PREVIOUS BUILD (Rest_toxo_q34.png / _side.png, same two cameras): exactly the reported defect — q34 is a shallow crescent bending maybe 90 deg with no enclosed space and both ends open, and the conoid is a single pale speck at the head; the side camera shows a squat chunky blob with nothing projecting at all. CURRENT BUILD (Rest_V_toxo_q34.png): the body now sweeps roughly 260-280 deg — from the collar at upper-left it arcs right, down the right side, around the bottom and back up to a tapering tail tip at lower-left that points back toward the head, enclosing a large open bay of background on the left. That is the sheet's comma, hook returned under the head. The conoid is fully extended: a cream stepped spike standing clear of an ochre collar ring, reading as its own free-standing feature against the background rather than a nub on the head. Rest_V_toxo_side.png shows the same extended conoid and is a near-edge-on view of the same curl (the tail arrives toward camera and reads as the small rounded green nub overlapping the body's lower-left) — not a contradiction, and the old/new pair at that same camera changed in the same direction. Two caveats that are NOT this finding and were present in the earlier build too: the tube is close to uniform girth all the way round rather than the sheet's fat posterior dome plus thin blade-like hook, and the tail tip is a blunt rounded cap rather than the sheet's sharp point. Also pre-existing, not caused by this fix: the trio of large cream-gold sensory bulbs the sheet draws flanking the conoid base in every panel is absent — the head shows only the gold collar band, a dark brown apical cap and one small brown bump; NEW_toxo.png from the earlier build shows the same bare head, so the pose work did not remove them, it only made their absence visible.
 - **REGRESSION (introduced by the rebuild).** Extending the conoid overshot its drawn form. The sheet draws a stout radially-symmetric screw: widest at the base, stacked concentric rings stepping down to a needle point, about a quarter of total body length and roughly as long as the head is wide. The render's conoid is a near-constant-width flat staircase with lateral zig-zag offsets, no base-to-tip taper, presenting the same thin blade profile in both the q34 and the side camera (so it is not a cone of rings), and it runs about twice as long relative to body girth as the sheet's — it reads as a spear or antenna rather than the drill the sheet draws. The previous build's conoid was a small compact stepped nub, so this proportion and profile are new with this rebuild.
+
+### meeb — the free-hoop finding, measured to a number (2026-08-12)
+
+The audit said the cup lips still stand off as free hoops with background visible
+through the arches. Chasing it produced two useless metrics and then one that
+works, which is the part worth keeping.
+
+**The metric that works.** A free hoop puts SKY THROUGH the silhouette, so: per
+image column, count background pixels that have body BOTH above and below them.
+Background around the object never qualifies; only a hole does.
+
+    before  1582 px enclosed
+    after    917 px enclosed   (-42%)
+
+**What the fix did and did not do.** Each lip vertex now sits at the body's own
+surface along ITS OWN direction rather than on a flat plane cut across a curved
+body. Measured on the lip range in isolation — recorded deliberately, because the
+nucleus and vacuoles stand proud BY DESIGN and swamped the earlier number —
+**0 of 384 lip verts stand proud, worst is 1 mm INSIDE**. So the lips are flush
+and the remaining 917 px is NOT them.
+
+**What is still unknown.** Something else on this body encloses sky. Candidates
+not yet eliminated: the foot lobes at the skirt, an organelle breaking the limb,
+or a cup bored near enough the silhouette to open through it. Do not assume it is
+the lip again — that has been measured out.
+
+**Two metrics that did NOT work, recorded so nobody rebuilds them:**
+- Whole-mesh standoff from the surface. Cannot isolate the defect: the nucleus
+  and vacuoles are proud by design and dominate the count (93 verts >4 mm, worst
+  130 mm, almost all legitimate).
+- A fixed frame-fraction crop to sample "the halo" or "the arch". The render
+  camera frames to the object's bounds, so changing the object's size zooms the
+  image and the same crop stops covering the same region — it reported a WIDENED
+  Candid halo as narrower.
