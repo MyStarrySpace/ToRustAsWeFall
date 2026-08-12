@@ -2572,3 +2572,36 @@ stalk wound and none on the crown.
 
 Gates: UV audit 11 of 11 PASS, rig PASS 65 bones, scene load green. Only the
 Gasafoetida's four files changed — every other flora piece rebuilt byte-identical.
+
+### gasafoetida crown — the resin now WEEPS
+
+The pods were sealed with a flat resin lid and the plant's only drip sat at the
+stalk's wound, so the crown read as six tan caps. On every view of the sheet the
+resin does not just cap the cone — it RUNS, gold beads swelling over the lip and
+down the flank, and that drip is the crown's whole read at a glance.
+
+Two runs per pod now, at varied lengths so they do not read as a machined pattern,
+tapering as a drip does. Twelve drips across the crown.
+
+**Not changed, and worth saying why.** The sheet's resin samples at `#76612a`, hue 43;
+the build's `ga_resin` derives from `flure_core` `#e08a2a`, hue 32 — eleven degrees
+more orange, and it renders peach rather than gold. I did not repoint it, for two
+reasons: `flure_core` is a SHARED species colour that the Flure also uses, so moving
+it would silently restyle another piece; and the lightness and saturation halves of
+that comparison are confounded (the sheet is a lit render, the palette entry is
+albedo), which is the exact error that produced several wrong readings earlier today.
+Hue is the part that survives the confound and eleven degrees is modest. If the crown
+should read gold rather than peach, the fix is a Gasafoetida-specific resin entry, not
+a change to `flure_core`.
+
+Still off the sheet: the pods are SMOOTH where the drawing has overlapping scales.
+That is repetition, so by the alpha-card law it is texture rather than geometry —
+`register_detail` exists for exactly this and no flora piece uses it yet.
+
+Gates: UV audit 11 of 11 PASS, rig PASS 65 bones with no dead bones or orphans, scene
+load 8996/0.
+
+**A testing note worth keeping:** the first scene-load run after this rebuild reported
+STATUS FAILED with `Failed: 0` — a contradiction. Re-running twice gives ALL PASSED.
+It was racing Godot's re-import of the gltf that had just been written. Do not trust a
+scene-load result taken immediately after an asset rebuild; re-run it.
