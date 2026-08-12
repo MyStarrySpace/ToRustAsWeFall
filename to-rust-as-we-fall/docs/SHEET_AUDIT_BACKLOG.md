@@ -2212,3 +2212,37 @@ constraint on the Tangler?
 
 Gates: UV audit PASS, weld PASS (flipped 0, coincident 0, nonmanifold 0), rig PASS
 63 bones, scene load 8996/0.
+
+### a contact sheet of every model — and three wrong readings of it
+
+`C:\tmp\fauna_cards\` now holds one 3/4 card per fauna species plus `_ALL_FAUNA.png`,
+rendered with matched lighting and framed to bounds. Worth keeping as a habit: the
+whole roster on one page shows things no per-species metric does.
+
+**But I then made three claims from it and all three were wrong.** Recording them
+because the pattern matters more than the claims:
+
+1. *"The Hidra has a bare black BAR that looks untextured — probably a missing
+   material."* No. It is the CONDUIT: `"the conduit run it is pretending to be part
+   of"`. The Hidra is camouflaged as cable on a pipe, so its perch ships with it by
+   design. The object has one material across all 410 faces; nothing is missing.
+2. *"Spiker is a mass of fine modelled thread roots — a violation of the alpha-card
+   law."* No. Spiker is 436 verts total and its filament mat is already
+   `"one drawn card, never a hundred modelled roots"`. The threads I was looking at
+   ARE the card's alpha art. The law was already being followed.
+3. *"Candid is dense modelled repetition that should be drawn."* No. Candid already
+   registers `candid_bleach`, `candid_dendrite` and `candid_strand` card art for its
+   drawn elements, and its 17 beaded chains are the organism's body — pearl-strings
+   of budded cells, which is what the sheet ranks shoulder to shoulder. Its 6216
+   verts are heavy but they are the animal, not decoration.
+
+**The lesson: a 420 px render is evidence about what a piece LOOKS like and no
+evidence at all about how it is BUILT.** Every one of those three claims would have
+sent someone to rewrite a build script that was already correct. Read the build
+before asserting construction — it costs one grep.
+
+What the sheet DOES support, being careful to claim only what a render can carry:
+`crust`, `flare`, `tangler` and `toxo` read clearly; `meeb`, `gnawer` and
+`naturalizer` read weakly at card size; `redactor` does not read as a creature at
+all. Those are statements about legibility, which is exactly what an image can
+settle — and `redactor` is the one worth a new sheet most.
