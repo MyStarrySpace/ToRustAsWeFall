@@ -2144,3 +2144,36 @@ four-view turnarounds that split correctly:
 And **gnawer side is -1%**, which is the contract rebuild landing exactly where it
 was aimed. That is the first time any creature in this project has been shown to
 match its sheet on a measured axis.
+
+### meeb proportions — measured, narrowed, and the cups had to come with it
+
+The roster audit's clearest trustworthy signal was meeb front W/H 1.47 against the
+sheet's 1.03 — 43% too wide for its height, a squat box where the sheet has a
+settled but upright mass. That had been an eyeball impression for several passes;
+this is the first measured statement of it.
+
+`H = 0.52` is the brief's stated small-dog size, so the width is what gives:
+`BODY_R` 0.30 -> 0.22.
+
+**It did not build.** `cup 5 did not open the shell (18 faces)` — six bores of
+radius 0.105 do not fit a body of radius 0.22. Worth noting because the failure is
+informative rather than annoying: the cups are a fixed FRACTION of the body (0.105 /
+0.30 = a third of its width, which is how the sheet draws them), so narrowing the
+body without narrowing them is not a smaller Meeb, it is a different animal. The
+whole cup family scales by the same 0.733: `CUP_R` 0.077, `CUP_DEPTH` 0.110,
+`SHAFT_DEPTH` 0.139, nucleus 0.077, beads 0.029.
+
+Result, and it moved on BOTH axes although only one was targeted:
+
+| | before | now | sheet | error |
+|---|---|---|---|---|
+| front W/H | 1.47 | **1.16** | 1.03 | +43% -> **+13%** |
+| side L/H  | 1.40 | **1.12** | 1.23 | +14% -> **-9%**  |
+
+Not a match, and I am not calling it one — 13% still reads. But it is inside the
+band where the remaining error could plausibly be the lips and organelles that ride
+proud of the body rather than the body itself, which is a different fix and wants
+measuring separately.
+
+Gates: UV audit PASS, weld PASS (flipped 0, coincident 0, nonmanifold 0), rig PASS
+14 bones, scene load 8996/0.
