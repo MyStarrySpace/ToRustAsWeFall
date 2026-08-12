@@ -393,7 +393,8 @@ func _build_chunk() -> void:
 
 	# Everything _build_generated_nodes adds (markers, labels, content, interactables, outline targets) is authored
 	# FLAT; capture the boundary so the warp pass below re-seats only those children onto the helix — the floor
-	# (warped at the vertex level in _build_walkable_floor) and the fill light keep their own transforms.
+	# (warped per vertex in _build_walkable_floor) and the fill light are placed already warped, and taking the
+	# warp a second time would carry them off the deck.
 	var flat_child_start := get_child_count()
 	_build_spatial_features()
 	_build_theme_landmarks()
@@ -4383,9 +4384,17 @@ func _build_foundation() -> void:
 	var min_point := _vec3(bounds.get("min", []), bounds_center - bounds_size * 0.5)
 	var theme: Dictionary = _spec.get("area_theme", {})
 	var hierarchy := _visual_hierarchy()
+	# The fill hangs 8 m above the middle of the deck — expressed, like every other placement in this
+	# chunk, in the FLAT authoring frame and put where it belongs by the coord map. The deck's own
+	# vertices take that warp one at a time, so a fill left flat would hang off the side of the helix
+	# instead of over the walkway: on a 76-unit spiral the flat midpoint lands 40 m from the warped
+	# deck's centre, past the light's own range, and the deck it is meant to fill gets nothing. Height
+	# rides through as a lift, so the light keeps its 8 m of clearance over the deck at that arc, and
+	# lighting a floor from above rather than from the spiral's axis is what puts light on an upward-
+	# facing surface at all. A flat stretch warps through identity and is placed exactly as authored.
 	_decorative_fill_light = _add_light(
 		self,
-		Vector3(bounds_center.x, min_point.y + 8.0, bounds_center.z),
+		_warp_pos(Vector3(bounds_center.x, min_point.y + 8.0, bounds_center.z)),
 		_color_from_array(theme.get("light_color", []), Color(0.72, 0.86, 0.96)),
 		float(theme.get("light_energy", 1.25))
 			* float(hierarchy.get("decorative_fill_scale", 0.34)),
