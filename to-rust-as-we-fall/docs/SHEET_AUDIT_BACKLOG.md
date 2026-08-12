@@ -1205,3 +1205,22 @@ inside); cutter leaves a blind floor at `surf - CUP_DEPTH`; bore material reache
 no outer-skin face (0 of 119); remaining enclosed sky is correct geometry. Two
 separate fixes went into the LIP for a defect it did not have — measuring instead
 of looking is what ended that.
+
+### candid colonnade — adding columns does NOT add strips (tested, negative result)
+
+The PARTIAL says the silhouette resolves 11-13 strips against the sheet's 18, so
+the obvious move is more columns. It is wrong, and measured:
+
+| arrangement | distinct strips in the colonnade band |
+| --- | --- |
+| 17 columns over 3 radii (as built) | **12** |
+| 27 columns over 4 radii | **10** — worse |
+
+Columns at different radii hide behind one another, so extra bodies fill the GAPS
+that made the strips countable in the first place. The sheet's 18 comes from one
+dense arc with daylight between neighbours, not from more columns — its depth is
+read from the canopy above and the bud field below, not from ranks of posts.
+
+Reverted to 17. **Do not raise CHAINS to chase the count.** If this is worth
+closing, the lever is spacing and radius spread within a single arc, or accepting
+that a low-poly silhouette will not resolve an illustration's column count.
