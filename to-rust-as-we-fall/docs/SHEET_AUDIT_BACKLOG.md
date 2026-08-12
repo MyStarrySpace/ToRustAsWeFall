@@ -2275,3 +2275,47 @@ real per-build figure means running each build's own declaration through the new
 field, which is the follow-up.
 
 Of roughly fourteen `rig.validate` call sites, most pass only `(piece, arm)`.
+
+### sapscrap UVs — diagnosed precisely, NOT yet fixed
+
+Director: the Sapscrap concept art is approved and the UVs are what need correcting.
+Here is exactly what is wrong, and three fixes that do not work, so the next attempt
+does not repeat them.
+
+**The defect.** Of four objects, three are clean (`Mouth_Ring` 11 islands,
+`MouthVoid` 1, `Teeth` 191 — all zero folds, zero gutter violations, zero out of
+bounds). `Sapscrap_Segment_Shell` reports **SELF_OVERLAP: 2 folded texels** across 42
+islands, at texels (431,81) and (432,76) at 512.
+
+The two faces are **52** (8-gon, UV area 0.00087) and **55** (6-gon, UV area
+0.00035). They share **zero vertices and zero UV corners**, so this is not two
+adjacent faces touching along a seam — it is two unrelated faces of the shell landing
+on the same texels. Both project to near-degenerate SLIVERS; face 52's UV outline
+visibly doubles back on itself.
+
+**Three fixes that do not work** (all measured by re-projecting and counting folds):
+
+| attempt | result |
+|---|---|
+| lower `angle_limit` 60 -> 45 -> 33 -> 25 | 4 -> 18 -> 26 -> 6 folds. WORSE, not better |
+| triangulate before projecting | 115 folds at 60 deg, 58 at 45 |
+| raise `island_margin` 0.02 -> 0.05 -> 0.09 | 4 -> 1 -> 2 folds. Best but not zero |
+
+Note the triangulation number is inflated: more triangles means more shared edges, and
+a texel centre lying exactly on a shared edge counts as inside BOTH faces under an
+even-odd point-in-polygon test. **That is a false-positive mode in the fold check
+itself** and should be fixed there (exclude texels whose owners share an edge) before
+anyone trusts a large fold count. It does not explain the Sapscrap's 2, because those
+two faces share nothing.
+
+**Also worth knowing: `smart_project` is not deterministic here.** Re-projecting at
+the shipped settings gives 4 folds where the shipped file has 2, so any fix that
+relies on re-running it cannot guarantee the result.
+
+**What to try next**, in order: an explicit `bpy.ops.uv.pack_islands` pass with a real
+margin AFTER smart_project (the standard way to guarantee separation, and the one
+thing not tried); failing that, hand-seam the shell so those two slivers fall in
+different islands by construction rather than by packing luck.
+
+I did not ship a change. Margin 0.05 is a measurable improvement but not a fix, and
+given the projector's non-determinism it would be luck rather than a correction.
