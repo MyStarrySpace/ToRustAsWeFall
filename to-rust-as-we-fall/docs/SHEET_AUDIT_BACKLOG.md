@@ -2373,3 +2373,35 @@ windup squashes and pulls back, the lunge leaves the ground and carries forward,
 the bite recovers to its start height and position — is intact after the UV rework,
 which is the thing worth confirming: re-unwrapping and repainting a rigged piece is
 exactly where a silent break would hide.
+
+### flora audit — clean, and the density law is now ENFORCED rather than merely satisfied
+
+First flora sweep with instruments that can actually fail.
+
+**UV gate: 11 of 11 clean.** Every piece in `flora_rigged.blend` passes — no folds, no
+hard overlap, no gutter violations, nothing outside 0..1. The `pack_islands` defect
+found on the Sapscrap does not appear here.
+
+**Rig validator: 11 of 11 PASS** — no dead bones, no orphan vertices, every mesh
+actually bound (which only became a real check this session).
+
+**The density law was satisfied everywhere, but only enforced in places.** Probing
+with no declaration listed nine pieces with undeclared chains, which looked alarming;
+reading the build showed it declares for 7 of 8 call sites, so that list was mostly
+my probe's artefact — the same overclaim I made on the fauna and caught. The genuine
+gaps were two trunk chains and one piece:
+
+- Flure declared `petal*` and `blade*` but not `stem` — 3 bones over `FL_STEM_SEG` 3,
+  exactly at budget, so compliant but unchecked
+- Gasafoetida declared `gleaf*` but not `stalk` — 3 over `GA_STALK_SEG` 3, same
+- GasPod declares nothing, and has NO multi-bone chains at all, so there is nothing
+  to declare and its omission is harmless
+
+`stem` and `stalk` are now declared. Both still PASS and both pieces report zero
+undeclared chains. Nothing was over budget, so this changes no geometry — it means a
+later edit to either the bone count or the segment count can no longer break the law
+silently, which is the whole point of a declaration.
+
+Verified against the live blend rather than by rebuilding: a full flora regen would
+rewrite every flora asset for a two-line change, and the pipeline law warns that batch
+regen clobbers hand work.
