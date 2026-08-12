@@ -1371,3 +1371,25 @@ the cup's own rim not starting until 12 px lower. It describes TWO concentric
 ribbons — so there is a second ring in the mesh that my lip-range measurement did
 not cover. Find what builds it before touching `lips_bm()` again; the lip itself
 has now absorbed three fixes for a defect that keeps turning out to be elsewhere.
+
+### meeb nucleus — cannot be seated deeper; needs a smaller one or roomier shafts
+
+The nucleus stands 71 mm proud: its island reaches z=0.577 on a body whose crown
+ends at 0.506, on an animal 520 mm tall. The re-audit's "projects clear of the
+body's silhouette" is exactly right, and the sheet has it SWELLING the flank from
+within rather than sitting on it.
+
+It is the third placement in `build_meeb.py` measured off `_surface_dist`, and it
+has the same fault as the bore test and the lip ring: a grazing ray on a lumpy
+body returns a FAR crossing, so the seat lands outside the local skin.
+
+**But the obvious fix does not build.** Seating deeper at `radius * 0.86` and again
+at `* 0.70` makes `_organelle_seat` fail outright — no clear seat exists at all
+(gap -0.0139, then -0.0026). Six shafts converge inside this body and a 0.105
+sphere pushed further in fouls one of them wherever it is put. `* 0.55` is the
+deepest that builds.
+
+**So closing this needs a smaller nucleus or shafts that leave room, not a deeper
+seat.** Shrinking it is the cheaper lever and the sheet's nucleus is not enormous;
+the alternative is shortening `CUP_DEPTH` so the shafts stop sooner. Do not just
+turn the seat constant up — it has been tried twice and it fails the build.
