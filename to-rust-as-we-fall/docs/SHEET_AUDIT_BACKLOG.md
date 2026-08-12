@@ -1372,24 +1372,56 @@ ribbons — so there is a second ring in the mesh that my lip-range measurement 
 not cover. Find what builds it before touching `lips_bm()` again; the lip itself
 has now absorbed three fixes for a defect that keeps turning out to be elsewhere.
 
-### meeb nucleus — cannot be seated deeper; needs a smaller one or roomier shafts
+### meeb nucleus — CORRECTION: it was never a measurement bug
 
-The nucleus stands 71 mm proud: its island reaches z=0.577 on a body whose crown
-ends at 0.506, on an animal 520 mm tall. The re-audit's "projects clear of the
-body's silhouette" is exactly right, and the sheet has it SWELLING the flank from
-within rather than sitting on it.
+I claimed the nucleus stood proud because `_surface_dist` bisects a non-monotone
+predicate and so returns a FAR skin crossing on a grazing ray, and I wrote that
+theory into this file and into the build script's comments. **It is false.** A
+nearest-crossing implementation, marching out in fixed steps and bisecting only
+inside the first bracket, was written and compared against the original over 4000
+random directions: **they disagree on zero of them.** This body is star-shaped
+about `CENTRE`, so there is only ever one crossing and the original was right all
+along. The no-op function has been removed.
 
-It is the third placement in `build_meeb.py` measured off `_surface_dist`, and it
-has the same fault as the bore test and the lip ring: a grazing ray on a lumpy
-body returns a FAR crossing, so the seat lands outside the local skin.
+The nucleus stood proud for a plain reason: it is seated `0.55 * radius` under the
+skin while being `radius` across, so it stands `0.45 * radius` proud along its own
+seat normal — deliberately, as the comment on `LIP_RANGE` already said. What was
+actually wrong is that the seat was allowed to swing to near-vertical, so a lump
+the turnaround draws as a LATERAL flank bulge came out sitting on the crown at
+z=0.577 against a body ending at 0.506. Constraining its band to the flank puts it
+at z=0.112..0.325 — inside the silhouette, bulging sideways, as drawn.
 
-**But the obvious fix does not build.** Seating deeper at `radius * 0.86` and again
-at `* 0.70` makes `_organelle_seat` fail outright — no clear seat exists at all
-(gap -0.0139, then -0.0026). Six shafts converge inside this body and a 0.105
-sphere pushed further in fouls one of them wherever it is put. `* 0.55` is the
-deepest that builds.
+The related claim that the two failed deeper seats (0.86, 0.70) proved a shaft
+collision **stands** — that part was measured and is still true. It is simply not
+evidence of a measurement bug.
 
-**So closing this needs a smaller nucleus or shafts that leave room, not a deeper
-seat.** Shrinking it is the cheaper lever and the sheet's nucleus is not enormous;
-the alternative is shortening `CUP_DEPTH` so the shafts stop sooner. Do not just
-turn the seat constant up — it has been tried twice and it fails the build.
+### meeb organelles — every bead landed in the same place
+
+`_organelle_seat` scored 400 random candidates and returned the ARGMAX. The
+best-clearing spot on this body is the same spot whatever the seed, so nine beads
+with nine different seeds piled into one patch of crown and read as a row of cream
+spikes breaking the silhouette. Measured: bead z spanned 0.446..0.544 on a body
+0..0.506. It now takes the FIRST seat that clears, plus a separation test against
+already-placed lumps, and they span 0.237..0.542 across the flanks.
+
+Nucleus colour was sampled off the turnaround rather than guessed: the sheet runs
+about 1.00 : 1.04 : 0.69 (red and green level, a lighter khaki of the body's hue)
+where the model had 1.00 : 1.27 : 0.60, which is what made it read as a chunk of
+lime sitting on the animal.
+
+### meeb — UV GATE IS RED, and the earlier PASS was not telling the truth
+
+**Do not treat this piece as shipped.** At its real 256 atlas the gate reports
+HARD_OVERLAP: 10141 overlapping texels and **396 faces with UVs outside 0..1**,
+spread across every material — 241/400 membrane, 63/97 bore, 14/20 nucleus,
+74/180 vacuole, 4/6 enzyme. That is the whole unwrap spilling, not a local defect.
+
+Two things hid it. The object carried no `atlas_px`, so the gate audited at
+whatever resolution the caller passed and the number moved with the flag; and the
+organelles are appended AFTER the unwrap, so that geometry never enters the
+layout. It now declares `atlas_px = 256` so the gate is self-describing.
+
+It is NOT caused by this pass: rebuilt with the original 5 beads it fails the same
+way (overlap 2489, 354 outside). Per the pipeline law the fix belongs in the
+PACKER, not in nudging this piece's islands — every append-after-unwrap piece will
+have it, and unwrap must run AFTER all geometry is appended.
