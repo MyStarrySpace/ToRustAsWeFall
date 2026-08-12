@@ -2605,3 +2605,33 @@ load 8996/0.
 STATUS FAILED with `Failed: 0` — a contradiction. Re-running twice gives ALL PASSED.
 It was racing Godot's re-import of the gltf that had just been written. Do not trust a
 scene-load result taken immediately after an asset rebuild; re-run it.
+
+### gasafoetida pods — scales, drawn not modelled
+
+The last structural gap on this piece. Every sheet view gives the pods an artichoke
+skin: rows of plates lapping over each other, lighter across each face and dark where
+the row below tucks under. The build made them smooth prisms, so the crown read as six
+plain eggs.
+
+Scales are REPETITION, so by the alpha-card law they belong in the texture — modelling
+a hundred lapping plates would spend triangles to produce a worse read and alias to
+mush at this size. `register_detail` exists for exactly this and **no flora piece had
+used it**; `gasafoetida_scale` is the first, applied to all three pod prisms.
+
+Took two passes, and the failure is worth recording. The first drew a shadow line at
+the top of each row and a lit gradient below it — which produced horizontal BANDS, a
+striped egg rather than an artichoke, because every scale in a row shared one gradient
+and merged with its neighbours. Scales need a SIDE SEAM: a dark column at each plate's
+edge is what separates it from the one beside it and lets the staggered rows read as
+lapping. Plates also narrowed from a quarter of the island's width to a sixth, so six
+go round a pod instead of four.
+
+Only `GasafoetidaRigged_tex.png` changed — the geometry is untouched, which is the
+point: this is a paint change standing in for geometry the law says not to build.
+
+Gates: UV audit 11 of 11 PASS, rig PASS 65 bones, scene load 8996/0 ALL PASSED.
+
+The Gasafoetida is now matched to its sheet on every structural count I raised —
+fronds, resin drips, pod scales. The one open item is chromatic: its resin renders
+peach where the sheet reads gold, and fixing that needs a species-specific resin entry
+rather than moving the shared `flure_core`.
