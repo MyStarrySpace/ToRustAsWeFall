@@ -1963,3 +1963,54 @@ Front band profile: the model peaks at 100% at 40% down and falls to 71% at the
 feet; the sheet climbs monotonically to 100% AT the feet. That is the
 "T-where-the-sheet-is-a-triangle" finding expressed as a number an agent can be
 held to.
+
+### first run of the proportion contract — 6 parts measured, 6 REJECTED, 0 confirmed
+
+Every part's measurements were rejected by its adversarial checker. That is the
+process working, not failing, and the failures shared one root cause.
+
+**A part measured off the SILHOUETTE is measured wrong.** The carapace agent
+reported its dorsal skirt reaching y_frac 0.690; its checker traced the front edge
+row by row, found it descends monotonically with no local minimum, and identified
+the region as an unbroken FORELIMB running into a bone-tan foot. The torso agent's
+two "measured confirmations" were likewise matches to limbs. Both traced the outline
+and attributed it to their own part. You cannot tell which part owns an outline
+pixel without reasoning about occlusion.
+
+Two cheap tests catch it:
+- **Sum test** — a part cannot be wider than the whole animal at the same height.
+  The carapace skirt came out 0.482 m across where the entire front silhouette spans
+  0.475 m: 7 mm wider than everything, leaving negative room for the two forelegs
+  plainly visible there.
+- **Cross-view consistency** — a symmetric assembly must give the same outer extreme
+  front and rear. Front said 0.690, rear said 0.582. The rear view, where the limb
+  tucks inboard and the part is unoccluded, was the honest read.
+
+**MY CONTRACT WAS NOT SELF-CONSISTENT, and the agents caught it.** I fixed the hood
+ridge at Z=0.40 while stating a target box height of 0.305 — a ridge cannot sit at
+0.40 on an animal 0.305 tall. Agents split over it: one derived a self-consistent
+0.410 m height from the fixed seam, another reconciled to 0.298 through a ground
+plane. A contract that different parts resolve differently is exactly the drift this
+method exists to prevent.
+
+A second conflict is real rather than arithmetic: the fixed rear ridge
+(0, -0.22, 0.36) puts the crest 0.10-0.13 m ABOVE where the sheet shows it (Z~0.268
+at that Y). The sheet and the seam genuinely disagree. The part that owns that seam
+surfaced the conflict instead of silently building to one of them, which is the
+right behaviour.
+
+Both lessons are now stages 5 and 6 of the method in
+`blender/skills/creature-pipeline/SKILL.md`: require each agent to name WHICH VIEW
+each bound was read from and why that view is unoccluded for its part, run the sum
+test before reporting, and **have one agent try to break the contract before any
+part is measured**.
+
+Worth keeping: the feet checker validated its own tooling by reproducing the brief's
+published band profile (28 43 54 66 75 81 87 87 90 100 against the stated
+27 43 54 66 75 81 86 86 89 100) before trusting its own numbers. That self-check
+should be required.
+
+**NEXT:** fix the contract (resolve the 0.305-vs-0.40 height and the rear-ridge
+conflict), then re-run. The measured parameters from this run are in the workflow
+journal and are reusable once the frame is settled — the disputes are about
+attribution and scale, not about the sheet being unreadable.
