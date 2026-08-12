@@ -1409,19 +1409,48 @@ about 1.00 : 1.04 : 0.69 (red and green level, a lighter khaki of the body's hue
 where the model had 1.00 : 1.27 : 0.60, which is what made it read as a chunk of
 lime sitting on the animal.
 
-### meeb — UV GATE IS RED, and the earlier PASS was not telling the truth
+### CORRECTION: the Meeb's UV gate was never red — and the gate was half blind
 
-**Do not treat this piece as shipped.** At its real 256 atlas the gate reports
-HARD_OVERLAP: 10141 overlapping texels and **396 faces with UVs outside 0..1**,
-spread across every material — 241/400 membrane, 63/97 bore, 14/20 nucleus,
-74/180 vacuole, 4/6 enzyme. That is the whole unwrap spilling, not a local defect.
+I reported last iteration that the Meeb fails the UV gate with 10141 overlapping
+texels and 396 faces outside 0..1, and said the fix belonged in the packer. **Both
+halves were wrong**, and the second one mattered more than the first.
 
-Two things hid it. The object carried no `atlas_px`, so the gate audited at
-whatever resolution the caller passed and the number moved with the flag; and the
-organelles are appended AFTER the unwrap, so that geometry never enters the
-layout. It now declares `atlas_px = 256` so the gate is self-describing.
+The Meeb is not an atlas piece. Its gltf references FIVE images — one small tiling
+noise per material — so UVs outside 0..1 are the tiling doing its job, and two
+faces on the same texel of DIFFERENT images is not overlap at all. The library
+holds two families, and it is worth writing down which is which:
 
-It is NOT caused by this pass: rebuilt with the original 5 beads it fails the same
-way (overlap 2489, 354 outside). Per the pipeline law the fix belongs in the
-PACKER, not in nudging this piece's islands — every append-after-unwrap piece will
-have it, and unwrap must run AFTER all geometry is appended.
+- **single packed atlas** (`<Piece>Rigged_tex.png`): candid, gnawer, hidra,
+  naturalizer, redactor, toxo
+- **material-per-part tiling noise**: crust, flare, meeb, spiker, tangler
+
+`MeebRigged_tex.png` / `_emissive.png` sit in `resources/models/fauna/` and are
+referenced by nothing. They are stale and should be deleted once someone confirms
+no scene loads them by path.
+
+**The gate itself had two defects, both found by trying to make it go red.**
+
+1. **It could not see a fold inside one island.** `cover[texel]` held a SET of
+   island indices and overlap was "more than one island on a texel", so a shell
+   folded onto itself contributed the same index twice and read as clean. Stacking
+   EVERY face of hidra onto one circle in UV space — total overlap, full area —
+   was reported `ok`. That is the ordinary failure of a bad unwrap and the exact
+   thing that makes a piece unpaintable. It now counts FACES per texel too and
+   reports `SELF_OVERLAP`; the same injection now fails.
+2. **It audited multi-texture pieces as if they were atlases**, which is where the
+   Meeb's phantom 10141 came from. It now classifies by the distinct BASE COLOUR
+   image and skips non-atlas pieces loudly as `not_an_atlas`, naming the images so
+   a single-atlas piece that has accidentally been split still shows up.
+
+The classifier had to follow the Base Color LINK rather than count image nodes:
+counting nodes treats an `_emissive.png` sidecar as a second texture, and that
+misread four of the six real atlas pieces as multi-texture — switching the audit
+off for them. Verified after the fix: all six audit for real at `folded_texels: 0`,
+meeb and spiker skip, and the injected fold still fails.
+
+**The gate lives at `blender/skills/paintable-exports/scripts/uv_audit.py`, which
+is gitignored.** This entry is the only durable record of the change.
+
+The lesson is the one this backlog keeps relearning: a green from an instrument
+nobody has tried to make go red is not evidence. Two of my three "PASS" readings
+on the Meeb this session came from an audit that could not have failed it.
