@@ -2358,3 +2358,18 @@ Scene load 8996/0.
 Caveat: `gate_sapscrap.py` could not run — it drives the LIVE Blender session over MCP
 and expects `Sapscrap_Rig` loaded there. That is an environment mismatch, not a result;
 run it with the Sapscrap open to get its verdict.
+
+### sapscrap — species gate verdict: PASSED (the caveat is closed)
+
+`gate_sapscrap.py` could not run in the previous entry because it drives the LIVE
+Blender session and the Sapscrap was not loaded there. With `sapscrap.blend` open it
+runs and returns `"passed": true`, all eight checks green: `windup_squash`,
+`windup_rearward`, `lunge_chains`, `lunge_airborne`, `lunge_forward`,
+`lunge_unsquash`, `bite_recover_h`, `bite_recover_x`.
+
+So the piece is clean on every instrument it has: species gate PASSED, UV audit PASS
+(after the `pack_islands` fix), scene load 8996/0. The animation contract — that the
+windup squashes and pulls back, the lunge leaves the ground and carries forward, and
+the bite recovers to its start height and position — is intact after the UV rework,
+which is the thing worth confirming: re-unwrapping and repainting a rigged piece is
+exactly where a silent break would hide.
