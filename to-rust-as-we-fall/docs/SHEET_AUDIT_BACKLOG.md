@@ -657,8 +657,8 @@ each other, which is the signature.
 
 | build | verts | open | seam pairs | verdict |
 | --- | --- | --- | --- | --- |
-| hidra | 810 | 774 | **732** | the coil is 62 abutting prisms — visibly loose blocks |
-| gnawer | 234 | 32 | **12** | four leg chains |
+| hidra | 810 | 774 | **732** | 62 abutting prisms along a helix — FIXED 2026-08-11, now 444 verts / 42 open / 0 seams |
+| gnawer | 234 | 32 | 12 | NOT a defect — see below |
 | toxo | 194 | 12 | 0 | fixed 2026-08-11 (was 92 open) |
 | candid, crust, flare, meeb, naturalizer, redactor, spiker, tangler | — | — | 0 | clean; their open edges are card perimeters and designed openings (the Meeb's bored cups, the Crust's craters) |
 
@@ -692,7 +692,33 @@ landed. They were adjusting proportions on a body that was never one surface.
 4. **Re-audit UVs after.** A rebuild invalidates them, and the packer's tube
    island is new.
 
-Gnawer is the same defect at four legs, plus a real behavioural change the
-review caught: the shin currently swings RIGIDLY about the knee and would shear
-after a conversion, so its clips need re-checking rather than assuming the
-silhouette holds.
+### The Gnawer's twelve are a FALSE POSITIVE — the detector's, and mine
+
+Located them: three haze stations, each building TWO crossed cards at one centre
+(`axis='Z'` and `axis='Y'`, `build_gnawer.py:216-221`). Two quads sharing a
+centre also share edge MIDPOINTS at ±s/2 on their common axis, which is the key
+the detector clusters on. Three stations × two sides × two edges = twelve.
+Crossed billboard cards are supposed to intersect; nothing is unwelded and the
+legs are fine. The auto-drafted plan proposed converting four leg chains that do
+not have the defect, and this file previously said the same. Measure where a
+seam IS before restructuring a rig around the count.
+
+**Corollary for the detector:** coincident edge MIDPOINTS are necessary but not
+sufficient. A genuine unwelded ring shows a whole ring's worth of edges (5 or 6
+for these bodies); two edges in a cluster means crossed cards. Read the cluster
+SIZE, not just the total.
+
+### Where the weld boundary goes (the Hidra, applied and verified)
+
+Exclusive weights put the entire crease between two bones on ONE span, so which
+span is the whole decision. A bone takes its own joint, pinch and swell — rings
+3i..3i+2 — leaving the crease on the swell-to-next-joint span, the longest in the
+link at 0.45 of its length. Claiming the ring at the bone's TIP instead drops it
+on the 12 mm pinch, where a 33 degree bend folds the quad back through itself.
+Verified by rendering mid-`hidra_unspool`: joints continuous, no inversion.
+
+`Builder.tube` now takes ONE NAME PER SPAN as well as one name for the run, so
+the Hidra keeps its alternating `hd_recess` / `hd_body` banding. The rings stay
+shared; only the paint groups divide, one per contiguous run of a name. That is
+safe because UVs are per-LOOP, so the ring where two materials meet holds a
+different corner key in each group without either tearing.
