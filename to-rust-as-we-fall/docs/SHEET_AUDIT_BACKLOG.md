@@ -1585,3 +1585,43 @@ carries either defect.
 Still open from the seamscan cluster: whether a hole is caught depends on the
 caller passing an EXACT `expect_open`; a caller that passes the observed count
 cannot detect one. That is a calling-convention weakness, not a measurement gap.
+
+### naturalizer windows — attempted, REVERTED, and what it proved
+
+Two things were established and one attempt failed. Recording all three so the
+next person starts from the measurement rather than the guess.
+
+**PROVED — the windows were placed INSIDE the body.** The shell is lofted from
+rings at (z, r) = (0.17, 0.43) (0.26, 0.46) (0.355, 0.45) (0.375, 0.446)
+(0.47, 0.35) (0.55, 0.18). `_field_at` places each window at a hand-typed radius
+of `SHELL_R * 0.50..0.56` — 0.23 to 0.26 — while the shell at those heights is
+0.35 to 0.45. The cards therefore sit well inside the carapace and surface only
+where the dome curves past them. That is the mechanism behind the audit's "needle
+SLIVERS lying over the blue plates" and the shard that crosses two plate seams:
+they are not shaped wrong, they are buried and clipping out.
+
+**PROVED — the distribution fix works and is measurable.** Heights ran 0.39..0.475
+on a shell spanning 0.17..0.55, i.e. the top 22%, which is exactly the audit's
+band profile of 24/59/61/40/13/9/9/6/0/0. Spreading them down the shell with a
+golden-angle azimuth took it to 66% of shell height, and the render confirms beds
+on all four sides instead of one rear-crown mass.
+
+**FAILED — a card cannot be made to sit in a curved shell by moving it.** With the
+windows on the true surface radius the render showed them standing proud as
+floating discs all round, which is WORSE than the old clustered read. Pulling the
+radius back from 0.995 to 0.90 of the shell changed almost nothing. Several
+windows also rendered as thin slivers, which says my (0, tilt, azimuth) Euler does
+not match the Builder's card rotation convention — I guessed it rather than
+reading it.
+
+REVERTED to the committed geometry; `naturalizer.gltf`/`.bin` are byte-identical
+to HEAD. A visible regression is not worth a measured improvement on one axis.
+
+**The correct fix is the graft law, not a better card position.** Every sheet shows
+each bed sunk in a socket behind a raised rim. That is `aperture()` cutting the
+shell, the granule field bridged onto the ring both parts own, and unwrap LAST —
+the same procedure that fixed the Sapscrap. Whoever takes it should also read the
+Builder's card rotation convention rather than guessing, and fix the two remaining
+UNRESOLVED items with it: the beds are all one duplicated stamp (byte-identical
+19x21 islands) and the fill is a flat axis-aligned checkerboard where the sheet
+has ~40 discrete round beads each with its own highlight.
