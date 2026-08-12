@@ -1918,3 +1918,48 @@ the head/neck instead of over the foreleg and the paired plates still form a V
 above the skull; the sprawl arrives as a flat-topped shoulder BOOM (a T where the
 sheet is a triangle); and two rounded knob-lobes flank the skull on an animal the
 sheet builds entirely from hard flat facets.
+
+## THE PROPORTION CONTRACT (director's method, 2026-08-12)
+
+Looking at the Gnawer: *"it looks so derpy and the proportions are so off. Why don't
+you find the points, the seams where each body part connects, and then send out a
+gang of subagents, each one to model a different part to match up with the seam,
+telling it to cross-reference and measure against the reference sheet by marking
+where the bounds of the shapes in each view are."*
+
+The cause is a PROCESS failure, not a modelling one. Parts had been nudged one
+dimension at a time, each change eyeballed against the LAST RENDER rather than the
+whole animal measured against the sheet. Every individual tweak looks like an
+improvement and the silhouette still reads wrong.
+
+Written up in full at `blender/skills/creature-pipeline/SKILL.md` — **which is
+gitignored, so this is the tracked copy of the method:**
+
+1. **Measure the sheet first.** Split the turnaround into views by empty columns;
+   record each view's aspect and a band profile (width at each tenth of height, as a
+   percentage of that view's width). Render the current model and measure it THE
+   SAME WAY. Key the model's mask off the CORNER PIXEL, never a luminance threshold
+   — a dark creature on a dark backdrop keys as the whole frame and reports a
+   perfect 1.00 aspect for every view, which is what happened on the first attempt.
+2. **Name the seams before splitting the work.** Centre, normal, radius and segment
+   count per joint, handed verbatim to every agent that meets it. Two agents cannot
+   disagree about where the neck is if the neck ring is a constant they were both
+   given. (This is the graft law applied to task decomposition.)
+3. **Fan out, one agent per part**, each held to its own measured bounds and
+   returning PARAMETERS, not meshes — deterministic, no two agents writing one file,
+   and every part's contribution reviewable as a diff of numbers.
+4. **Verify at the whole-animal level.** The acceptance test is the aspect and band
+   profile of the ASSEMBLED silhouette in every view, not "does each part look like
+   its crop".
+
+Measured Gnawer deltas that motivated it:
+
+| view | model | sheet | error |
+|---|---|---|---|
+| front/rear W/H | 1.70 | 1.34 | 27% too wide for its height |
+| side W/H | 1.44 | 2.03 | 29% too short for its length |
+
+Front band profile: the model peaks at 100% at 40% down and falls to 71% at the
+feet; the sheet climbs monotonically to 100% AT the feet. That is the
+"T-where-the-sheet-is-a-triangle" finding expressed as a number an agent can be
+held to.
