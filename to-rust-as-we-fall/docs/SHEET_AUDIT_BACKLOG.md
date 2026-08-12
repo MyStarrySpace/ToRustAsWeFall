@@ -1861,3 +1861,24 @@ scripts, the archetype manifest and the shipped gltfs:
 not in `blender/fauna`, not in the archetype manifest, not mentioned in any build
 script. It is one of the 13 canonical threats (renamed from Verdings). That is the
 next piece to model.
+
+### CORRECTION to the coverage survey — there is no gap, and two director rulings
+
+**Aembers is not a missing model, it is a retired NAME.** The chain is
+Verdings -> Aembers -> **Ferrules**, and the Ferrule is modeled
+(`blender/fauna/ferrule/build_ferrule_v3.py`, v3 committed). `aembers.png` survives
+in `reference-images/concept/fauna/` only because concept-image files deliberately
+keep the OLD names and must not be renamed — which is exactly the trap that made a
+retired name look like an unmodelled species. Check a name against the rename table
+in `docs/concept-prompts/fauna.md` before calling anything a coverage gap.
+
+So the corrected result: **every species with a concept sheet has a model.**
+Coverage is complete; the remaining work is bringing existing models up to their
+sheets, which is what this backlog tracks.
+
+**Director ruling (viewport, 2026-08-12): NATURALIZERS ARE MORE HUMANOID.** The
+current build is a four-legged armoured dome, and that is the wrong body plan. It
+is deferred rather than iterated — do not spend more passes on its shell, windows
+or feet until the humanoid form is designed. The socket/aperture work committed
+just before this ruling stands on its own as the proof that graft and atlas
+compose; it should be treated as pipeline evidence, not as Naturalizer progress.
