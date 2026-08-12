@@ -1882,3 +1882,39 @@ is deferred rather than iterated — do not spend more passes on its shell, wind
 or feet until the humanoid form is designed. The socket/aperture work committed
 just before this ruling stands on its own as the proof that graft and atlas
 compose; it should be treated as pipeline evidence, not as Naturalizer progress.
+
+### gnawer red glyphs — RESOLVED, and it was a PLUS SIGN
+
+The finding said the flank carried "bold saturated RED cross glyphs" where the
+sheet has no red anywhere. Both halves were literally true in the source, and the
+cross was not a metaphor:
+
+`_pore_art` drew each pore as the five texels `(0,0) (1,0) (-1,0) (0,1) (0,-1)`,
+which IS a plus sign, in `vein_ridge` on `vein_bark`. Measured off the palette:
+`vein_ridge` = `#5c1c1f`, **hue 357**; `vein_bark` = `#331214`, **hue 356** — the
+audit's "hue 359-0, pure red" exactly. Meanwhile every warm pixel on the sheet is
+hue 9-32 ochre seam-work totalling 0.07% of the turnaround side view.
+
+A pore is now ONE dark texel with a single high-side neighbour — a pit, not a
+glyph — keyed to `rust` (`#42210f`, **hue 21**), inside the sheet's own warm band.
+
+Measured after: **0 red pixels on the body in all four turnaround views**, out of
+~175,000 body pixels each. Honest caveat: I did not re-render the committed version
+under the same lights, so that 0 is not a paired before/after — but the palette
+swap from hue 357 to hue 21 is certain at source, and the audit's own render
+measured 305 red pixels in one flank patch.
+
+The atlas still carries ~760 hue-350-8 texels. Those are the HAZE card, the enzyme
+cloud, whose centre is authored in `lamp_red` (hue 6). That island is authored at
+full size so the atlas allots it texels, and its bones are parked shut — it is not
+on the body in rest, which is why the render measures zero. Leaving it: the cloud
+is the one thing on this animal that is meant to be hot.
+
+Gates: UV audit PASS (folded 0, hard 0), weld PASS (flipped 0, coincident 0,
+nonmanifold 0), rig PASS 14 bones, scene load 9004/0.
+
+Still open on the Gnawer, all silhouette rather than paint: the blade root sits at
+the head/neck instead of over the foreleg and the paired plates still form a V
+above the skull; the sprawl arrives as a flat-topped shoulder BOOM (a T where the
+sheet is a triangle); and two rounded knob-lobes flank the skull on an animal the
+sheet builds entirely from hard flat facets.
