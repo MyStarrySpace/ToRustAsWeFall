@@ -1012,3 +1012,26 @@ REST STATE: MATCHES_IDLE_PANEL - upheld. The sheet draws no leaves and no flare 
   EVIDENCE: At whorl rows the turnaround's left figure spans 110-124 px against a 37-41 px internode (~3.0x stalk width, ragged and forking; the affordance sheet's silhouette panel is bristling along its whole length). The side render - the face-on view for these cards, since it shows the X meander, so the camera is along -Y - spans 19-22 px at whorl rows against a 13-17 px stalk, ~1.3-1.6x. Corrections to the reviewer: there are THREE cards per node, not two, and reach is 0.096-0.144 m against a 0.10-0.13 m stalk, a full stalk width, not half. The length is right; CV_ROOT_ANGLES = (54.5deg, 118.6deg, -90deg) all point within ~35deg of the vine AXIS, so almost none of that reach projects sideways. Their 'solid chips' note holds for another reason: at 96 px/m a 0.1x0.12 m card is ~10x12 texels carrying max(4, pw//3)=4 hairs.
 - **minor / structure.** The small lateral lens/oval pads on the internodes are absent from the build.
   EVIDENCE: Visible once per internode on the silhouette in all four turnaround figures and in the affordance wall panel (they add 4-8 px to a 38 px internode). build_climbvine_rigged emits only limbs, rootlet cards, leaf cards and the flash card - no pad geometry. Downgraded to minor: at 0.2 stalk widths on a 0.10 m tube these are ~2 px at the render's scale and sub-texel at 96 px/m.
+
+### gasafoetida — the sealed pod still shows its cavity (diagnosed, not fixed)
+
+The idle plant wears a black bored-out hole down every pod, which is the read its
+sheet keeps for AFTER the burn. Diagnosed by recolouring `ga_char` to magenta and
+rebuilding: the dots turned magenta, so the black is the cavity floor seen
+straight down an open mouth. Not a texture bug, not the resin, not texel
+starvation — three hypotheses that were each tested and each wrong.
+
+**Why no plug fixes it.** The pod is three stacked prisms with `cap_top=False`, so
+the mouth is genuinely open at `GA_POD_TOP`, r=0.032. A stopper sitting IN that
+mouth cannot close it from above: seen from any raised angle there is a ring of
+open cavity around the stopper. Widening it and then making it overhang both
+shrank the hole without closing it.
+
+**The fix.** A sealed serotinous cone has NO opening at rest, so the mouth needs a
+CAP — a `ga_pod` disc at `GA_POD_TOP` on its own bone (`seal%d_0`), parked at 1.0
+and scaled to 0.001 by `gasafoetida_open` and `gasafoetida_combust`. That is the
+same parked-scale grammar the Seefern's eye cards and the Naturalizer's granule
+windows already use, and it keeps the build's own principle that "the crown bores
+open" needs something to open ONTO. It is rig plumbing — geometry, a bone per pod,
+weights, and two pose updates — rather than a value change, which is why it is
+written down here instead of guessed at a fifth time.
