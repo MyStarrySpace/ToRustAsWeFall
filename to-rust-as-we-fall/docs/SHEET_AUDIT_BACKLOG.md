@@ -854,3 +854,46 @@ lighting, and dark materials mistaken for gaps.
   EVIDENCE: SHEET (both hero zoom and turnaround front view): the margin is a scalloped chain of small lumps, some clearly individual part-formed cells, running into the masonry cracks. RENDER (side and q34): the outline is a smooth spline with 3-5 broad lobes and nothing below lobe scale except 72-segment stair-stepping. Matches the source exactly - `_margin_r` is four sine terms at harmonics 3, 5, 8, 2 (amplitudes .16/.10/.06/.05), so no feature smaller than 1/8 of the circumference can exist.
 - **minor / structure.** The lattice is machine-regular where the sheet's is irregular. (Confirmed only in this corrected form - see the rejected sub-claim about a centre-left size gradient.)
   EVIDENCE: RENDER: all 34 holes measure 21-22 px wide and every centre-to-centre spacing is 35.0 +/- 0.5 px (1.4% jitter). SHEET turnaround front view: measured centre spacings 92.0, 94.0, 97.5, 100.5, 101.0, 101.5, 102.5, 107.5 px - about +/-8% jitter - plus a fringe of visibly smaller, part-formed marginal cells around the rim (top-right of the hero zoom, top-left of the front view) that the render has no equivalent of; its field simply stops at full-size cells.
+
+### redactor — the rebuild brief (read both sheets before starting)
+
+`redactors-cloaked-v2.png` and `redactors-revealed-v2.png`. The two states are
+nearly two bodies, and the encounter IS the change between them, so the rig
+carries the whole thing.
+
+**Cloaked.** A tall curved SICKLE-SHARD standing against a wall — roughly two to
+three metres, wide and swept at the top into two horns, tapering to a point that
+touches the floor. It wears the WALL's tiling, not its own skin, and a refraction
+ripple runs down the seam where its two halves meet. It reads as architecture; a
+player walks past it. Nothing in the build carries this form today.
+
+**Revealed.** A long, low, segmented arthropod lying horizontal: a pale
+crystalline carapace — the LIGHTEST mass in the frame, not the darkest — faceted
+into plates, with roughly nine large amber orbs glowing THROUGH the shell along
+its length, biggest at the head end and diminishing rearward, plus a lit orb at
+the snout tip. Six-plus long thin jointed legs, each ending in a fine claw, spanning
+well beyond the body. A distinct head end: the body tapers and has a facing.
+
+**What the build has instead:** a radially symmetric near-black dome, stub legs
+with no length or joints, no amber anywhere in any state, no head, no taper, no
+segmentation, no sickle.
+
+**How to build it, given what now exists:**
+
+- The body is `Builder.tube` with per-span parts — a segmented arthropod is
+  exactly the shape that facility was added for, and it gets the plate banding
+  for free while staying one welded surface.
+- The orbs are DRAWN (they repeat, and they are glows seen through a shell), on
+  the same card-with-emissive arrangement the Naturalizer's granule windows use.
+  Give each its own bone if they need to light in sequence.
+- The legs are tubes, hip-knee-foot, with the crease at the knee — and their
+  claws must be GRAFTED, not appended at the foot ring's centre, which is the
+  shortcut the Naturalizer still owes.
+- The cloak/reveal is one rigged transition, not two meshes swapped. The shard is
+  the creature folded: legs drawn in along the body, carapace closed, the whole
+  thing stood on end. Reveal unfolds it. Park it CLOAKED — a Redactor that spawns
+  standing has spent its stealth before the player arrives.
+- Palette: the carapace is PALE (near-white crystalline with cool blue-grey and
+  faint violet), amber `species/flure_core` and `channels/lamp` for the orbs. The
+  current near-black is inverted from the sheet and it is the material, not the
+  render light.
