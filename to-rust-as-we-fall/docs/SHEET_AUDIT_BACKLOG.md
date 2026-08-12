@@ -1668,3 +1668,32 @@ the beds do not glow.
 Gates: UV audit PASS (folded 0, hard 0), weld PASS (flipped 0, coincident 0,
 nonmanifold 0), rig PASS 20 bones — and that rig PASS now means the mesh is really
 bound, which it did not mean before this session.
+
+### naturalizer glow — the asset was already right; the RIM was the real defect
+
+The audit read "they did not glow" as one finding. It is two, and separating them
+matters because one of them is not a model defect at all.
+
+**Not a defect: emission is wired and always was.** The blend's material links the
+emissive image into the Principled emission at strength 4.0, and the export
+carries `emissiveTexture` + `emissiveFactor [1,1,1]` +
+`KHR_materials_emissive_strength 4`. The audit suspected this itself ("points at
+emission not reaching this render path at all rather than at the beds
+specifically") and it was right. Whether spill appears is a property of the render
+path's GI/bloom, not of the asset, and no amount of mask work changes it.
+
+**A real defect: the mask cut to pure black exactly where the glow had to show.**
+The art `continue`d at the rim without ever writing an emission value, so the
+window lip — the one surface both sheets show catching warm light from the field
+it closes over — carried no emission at all. The lip now takes a warm value
+falling off outward to the card edge, and its albedo brightens slightly toward the
+field. Measured on the exported mask: non-black 2891 -> 3193 texels, and the low
+end of the range drops from p10 35 to p10 25 as the falloff now runs out into the
+lip instead of stopping dead.
+
+Gates after: UV audit PASS (folded 0, hard 0), weld PASS, rig PASS 20 bones.
+
+The lesson worth keeping: "it does not glow in the render" was a true observation
+that pointed at the wrong subsystem. The mask defect underneath it was real and
+narrow, and it was findable only by checking the wiring FIRST and believing the
+result instead of re-authoring the whole mask.
