@@ -1185,3 +1185,23 @@ whether the sheet's cup PLACEMENT puts a mouth up there at all. Its silhouette
 panel is a solid lobed blob with no ring anywhere in the outline, which suggests
 the arrangement, not the rim, is what differs. Check `_cup_dir` against the
 turnaround before touching lip geometry again.
+
+**Tilt is NOT the lever (tested, negative result).** The obvious hypothesis — the
+top cup is aimed slightly rearward, so swing it forward — is wrong. Sky enclosed
+by the silhouette, measured:
+
+| `_cup_dir(1)` | enclosed sky |
+| --- | --- |
+| `(0.05, 0.12, 1.0)` as authored | **917 px** |
+| `(0.05, -0.16, 1.0)` forward | 1087 px — clearly worse |
+| `(0.05, 0.40, 1.0)` further back | 928 px — the top blob splits in two, flanks grow |
+
+A near-vertical mouth on a domed body seen from a raised camera simply shows its
+far rim. That is the shape, not a misaim. Reverted to the authored value, which is
+also the best of the three. **Do not tune this number again.**
+
+**The Meeb chain is closed.** Lips flush (0 of 384 verts proud, worst 1 mm
+inside); cutter leaves a blind floor at `surf - CUP_DEPTH`; bore material reaches
+no outer-skin face (0 of 119); remaining enclosed sky is correct geometry. Two
+separate fixes went into the LIP for a defect it did not have — measuring instead
+of looking is what ended that.
