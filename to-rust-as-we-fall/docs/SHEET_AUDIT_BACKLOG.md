@@ -1625,3 +1625,46 @@ Builder's card rotation convention rather than guessing, and fix the two remaini
 UNRESOLVED items with it: the beds are all one duplicated stamp (byte-identical
 19x21 islands) and the fill is a flat axis-aligned checkerboard where the sheet
 has ~40 discrete round beads each with its own highlight.
+
+### naturalizer granules — one finding RESOLVED, one measurably improved
+
+Two of the audit's items needed no aperture work, so they were taken while the
+graft/atlas blocker stands.
+
+**RESOLVED — "all eight beds are now pixel-identical".** They shared one card-art
+function, so every island was the same stamp and the shell read as a repeated
+decal. Each window now takes its own seed, which moves the packing, shifts the hot
+spot off centre and varies the lozenge aspect. Measured by running all nine art
+functions over a blank 19x21 tile and comparing: **36 identical pairs of 36 → 0
+of 36.**
+
+**IMPROVED, NOT RESOLVED — "a flat woven checkerboard rather than packed spheres".**
+The first attempt kept a rigid `int(x / 3)` lattice and took its colour from a
+per-cell hash, so alternating light and dark cells in square rows read as weave
+however round each cell was shaded. Staggering odd rows and jittering each centre
+a quarter-cell was NOT enough — a jittered lattice is still a lattice, and the
+3-px repeat only fell 0.498 → 0.429. Beads are now dart-thrown against a minimum
+separation and each pixel shaded from its NEAREST bead, which is what packing
+actually looks like.
+
+Head to head, over all nine beds:
+
+| | identical pairs | 3-px repeat | highlights/bed |
+|---|---|---|---|
+| shipped | 36/36 | 0.498 | 16.0 |
+| lattice + jitter | 0/36 | 0.429 | 32.7 |
+| dart-thrown | **0/36** | **0.351** | 23.7 |
+
+Stated plainly: 0.351 is a 30% reduction, not zero, and some periodicity is
+inherent to any packed field — the sheet's own beds would measure above zero too.
+The render does now read as irregular granular clusters rather than weave, so I am
+calling this improved and leaving the finding open rather than claiming it.
+
+Still open on this piece, all needing the aperture work: the windows sit as flat
+cards on the crown rather than sunk in sockets, they overlap into one mass, the
+distribution is clustered (proved fixable, reverted — see the entry above), and
+the beds do not glow.
+
+Gates: UV audit PASS (folded 0, hard 0), weld PASS (flipped 0, coincident 0,
+nonmanifold 0), rig PASS 20 bones — and that rig PASS now means the mesh is really
+bound, which it did not mean before this session.
