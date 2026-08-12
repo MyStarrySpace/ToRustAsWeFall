@@ -2635,3 +2635,49 @@ The Gasafoetida is now matched to its sheet on every structural count I raised �
 fronds, resin drips, pod scales. The one open item is chromatic: its resin renders
 peach where the sheet reads gold, and fixing that needs a species-specific resin entry
 rather than moving the shared `flure_core`.
+
+## SAPSCRAP — the approved art settles maw-vs-tripod, and the model is the wrong read
+
+Director: the Sapscrap concept art is APPROVED. There is far more of it than the
+top-level sweep found — `reference-images/concept/fauna/` has `action-sheets/` and
+`silhouettes/` SUBDIRECTORIES that my coverage survey never scanned:
+
+    action-sheets/sapscraps-three-arm-bud-idle-windup-01.png
+    action-sheets/sapscraps-folded-bud-idle-windup-01.png
+    action-sheets/sapscraps-chelation-lunge-01.png
+    action-sheets/sapscraps-tail-launch-motion-01..03
+    silhouettes/sapscraps-enemy-read-exploration-01.png
+    silhouettes/sapscraps-exploration-01, -02-hybrids, -fodder-exploration-01
+
+**What the approved sheet shows.** A THREE-ARMED BUD: three long tapering claw-arms
+rising from a central hub, dark violet and hard-faceted, with MAGENTA glowing seams
+running the length of each arm, PALE CREAM disc nodules set into the inner face
+(two per arm), and a SMALL BLACK circular maw at the hub's centre. The sheet gives
+both poses: idle with the arms up and closed, windup with them splayed out and low.
+
+**What the build is.** A maw-dominant lumpy sphere: a large toothed mouth ring
+filling the front, a `Sapscrap_Teeth` object of individual fangs, and short stubby
+limbs. `Sapscrap_Segment_Shell`, `Sapscrap_Mouth_Ring`, `Sapscrap_MouthVoid`,
+`Sapscrap_Teeth`.
+
+**This settles the open "Sapscrap maw-vs-tripod" director call: it is the TRIPOD.**
+The maw is a small dark hole at the hub, not the animal's face. There are NO teeth on
+any view.
+
+**A correction I nearly shipped.** My card render came out flat grey and I was about
+to report the piece as untextured. It is not: `sapscrap_shell.png` means `#3d2330`,
+hue 330, with 100% of its texels above saturation 0.25 — a properly violet shell. The
+textures exist, load, and are linked to Base Color on all three materials. The grey is
+MY card renderer failing to show them for this piece; the other fauna and flora render
+textured through the same script, so it is specific to these materials. Do not act on
+the grey.
+
+`sapscrap_claw.png` IS desaturated — `#635b4e`, hue 36, sat 0.12, nothing above 0.25.
+That is the teeth material, which the sheet does not have at all, so it is moot if the
+body plan is rebuilt.
+
+**Scope, stated honestly:** this is a body-plan rebuild, not a tuning pass. The UV fix
+and the passing species gate stand — the animation contract (windup/lunge/bite) is
+intact and the sheet's own idle/windup poses map onto it — but the geometry needs
+rebuilding around three arms and a hub. That wants a fresh session, not the tail of
+this one.
