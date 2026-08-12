@@ -2177,3 +2177,38 @@ measuring separately.
 
 Gates: UV audit PASS, weld PASS (flipped 0, coincident 0, nonmanifold 0), rig PASS
 14 bones, scene load 8996/0.
+
+### tangler — depth fixed, and the residual width is a GAMEPLAY constraint
+
+The audit said side L/H 0.44 against a sheet whose four views all measure 0.90-1.09.
+Looking at the sheet settles what that means: the Tangler is an arch that rears up
+on long hooked tendrils which splay in ALL directions, several reaching clearly fore
+and aft. That is why every view reads about as wide as tall. The build's toes reached
+only 0.32 from their anchor — stubs under the arch's feet contributing almost no
+depth, so the animal was a flat hoop.
+
+Toes lengthened to 0.78 and their splay biased toward Y (the arch already spans X, so
+toes reaching along X only make it wider):
+
+| | before | step 1 | now | sheet |
+|---|---|---|---|---|
+| side L/H  | 0.44 | 0.94 | **0.95** | 0.90-1.09 |
+| front W/H | 1.11 | 1.49 | **1.25** | 0.90-1.09 |
+
+Side is now IN BAND, from -60% error to -8%. **Front got worse**, and I am not going
+to pretend otherwise: it was 1.11, a hair over the band, and it is now 1.25, about
+15% over. Lengthening the toes bought depth and cost width; biasing the splay to Y
+recovered most but not all of it.
+
+**The residual is `SPAN = 1.30` — "foot to foot: an arch a character walks under".**
+That is a GAMEPLAY affordance, not a free proportion knob: the player is supposed to
+be able to pass beneath this thing. Bringing the front aspect inside the band means
+either narrowing the arch, which risks the affordance, or raising it, which changes
+the animal's size. Neither is mine to decide quietly, so it is flagged here rather
+than tuned away.
+
+DIRECTOR CALL WANTED: is the walk-under span or the sheet silhouette the binding
+constraint on the Tangler?
+
+Gates: UV audit PASS, weld PASS (flipped 0, coincident 0, nonmanifold 0), rig PASS
+63 bones, scene load 8996/0.
