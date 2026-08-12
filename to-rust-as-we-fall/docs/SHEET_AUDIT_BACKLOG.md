@@ -1487,3 +1487,71 @@ path from material state, and that is where the difference lives.
 lost wiring and the export path is dropping it. If no, the file is stale like the
 other ten. The sidecar tool's naming mismatch is worth fixing either way — a guard
 that can never match a filename is another gate that cannot go red.
+
+## Red-proofing every asset gate: 14 confirmed blind spots
+
+Six instruments were each given a defect they SHOULD reject, and every claimed
+blind spot was then attacked by an independent adversary trying to refute it.
+14 survived. Two were fixed immediately; the rest are recorded below.
+
+### FIXED — rig.validate() could not fail an UNBOUND mesh
+
+`validate()` read `mesh_ob.vertex_groups` and `arm.data.bones` as two independent
+lists and cross-checked them BY NAME. It never asked whether the mesh was attached
+to the armature. Remove the ARMATURE modifier outright, or leave it in place with
+`.object = None`, and the report came back **byte-identical to a healthy rig** —
+`{"bones":4,"dead_bones":[],"orphan_verts":0,"problems":[],"verdict":"PASS"}` —
+while a posed depsgraph showed all 6216 vertices frozen and every bone moving
+nothing. Total rig failure reported as success, and `build_*.py` hard-gates on that
+verdict before saving and exporting.
+
+Nothing downstream caught it either: the gltf exported clean, still reported
+`"skins": 1`, and Godot's `FloraRig.setup()` only looks up nodes by NAME, so the
+whole chain stayed green. Name-matching also passed a mesh bound to a completely
+different armature.
+
+`validate()` now checks the modifier and compares armature IDENTITY, not names.
+Red-proofed in both directions: baseline PASS; modifier removed, `.object = None`,
+and bound-to-wrong-armature all FAIL. All 11 rigged fauna still PASS — none was
+actually broken, but nothing had been proving it.
+
+### FIXED — the `not_an_atlas` skip was an escape hatch (my regression)
+
+Added earlier this session, it scored 9 missed of 9 probes. A piece folded onto
+itself was confirmed RED, then passed by adding one extra base-colour image, and
+passed again by setting `ob["no_atlas"]`. A gate with a bypass is worse than no
+gate, because it reports the bypass as a PASS.
+
+The blanket skip is gone. The two families need no special case once the
+measurement is keyed by MATERIAL — overlap only means anything between faces
+sampling the same image. What genuinely cannot be judged is a TILING material,
+where UVs leave 0..1 and repeats are the intent; those are excluded per material
+and NAMED in a `tiling_materials` field, rather than waving a whole piece through.
+
+Verified both ways: all 11 fauna clean (folded 0, hard 0); the injected fold still
+fails; and both escape hatches now FAIL identically at 22882 folded texels.
+
+### STILL OPEN — 12 further blind spots
+
+**seamscan.py (4 missed)** — the topology checker does not catch a HOLE (one
+interior face deleted from a watertight body), an INSIDE-OUT FACE (reversed
+normal), or an UNWELDED SEAM WITH A REAL GAP at 0.0015 / 0.003 / 0.010 / 0.050 m.
+The last is described as the canonical failure the script exists for. This is the
+most serious open cluster: the `--test-lattice-holes` red-shell renderer exists
+precisely because winding and exposure are invisible to topology counts, but
+seamscan is what runs per-piece.
+
+**uv_audit gutter path (4 missed)** — two islands merely TOUCHING with coincident
+corner UVs are not caught. Worse, a caught violation can be MASKED: adding one
+zero-area sliver face to an already-red piece suppressed it. NaN UVs also pass.
+
+**rig.validate density rule (3 missed)** — the "bones may not exceed the
+subdivisions they deform" law is enforced only when `weight_chain_strip` is used.
+Hand-weighted via `assign_exclusive_weights`, an 8-bones-over-3-subdivisions
+violation passes. A one-letter typo in the declaration key (`{'leafs': 3}` for a
+chain named `leaf`) silently disables the check for that chain — a misspelling
+turns the rule off rather than erroring.
+
+The pattern across all six instruments: each gate measures the thing it was written
+to measure and reports PASS on everything it was never taught to look at. Treat any
+green from an untested instrument as unknown, not as evidence.
