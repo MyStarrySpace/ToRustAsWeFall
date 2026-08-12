@@ -2681,3 +2681,42 @@ and the passing species gate stand — the animation contract (windup/lunge/bite
 intact and the sheet's own idle/windup poses map onto it — but the geometry needs
 rebuilding around three arms and a hub. That wants a fresh session, not the tail of
 this one.
+
+### I OVERWROTE THE SAPSCRAP SOURCE BLEND — what happened, and the recovery
+
+Trying the maw-shrink toward the approved tripod sheet, I ran `build_sapscrap.py`
+and saved the result over `blender/fauna/sapscrap/sapscrap.blend`. **That was a
+mistake and it destroyed the source file.**
+
+`build_sapscrap.py` produces TWO objects: `Sapscrap_Segment_Shell` and
+`Sapscrap_Teeth`. The blend on disk held FOUR — those two plus `Sapscrap_Mouth_Ring`
+and `Sapscrap_MouthVoid`. Reverting my change and rebuilding at the ORIGINAL maw
+values produces the same two, which proves the missing pair never came from the
+current chain: the shipped asset was hand-worked beyond it. The shipped gltf says so
+plainly — it carries `Sapscrap_Segment_Shell.002`, a duplicate suffix that only
+appears when objects are duplicated in a session, and its bones are named
+`Sapscrap_Bone_Arm_L` etc., which the chain's rig stage does not produce.
+
+Blender's `.blend1` backup did not help: it keeps only ONE previous version, and by
+the time I looked it had already been overwritten by my first save.
+
+**This is exactly the pipeline law I was warned by:** the exec-chain regenerates
+wholesale, so any hand-modelled refinement not in the chain is silently clobbered,
+and the rule is to DIFF THE PIECE SIGNATURES against the committed file BEFORE
+shipping a rebuild. I diffed after.
+
+**What is safe.** The shipped asset is UNTOUCHED and complete — git reports the
+`resources/models/fauna/sapscrap/` directory clean, and its gltf still holds all four
+meshes. The game is unaffected. Nothing was committed from the broken state.
+
+**Recovery.** The gltf round-trips: importing it into an empty file restores four
+meshes, `Sapscrap_Rig`, and all four actions — `Sapscrap_Idle`, `Sapscrap_Windup`,
+`Sapscrap_Lunge`, `Sapscrap_Bite`. Saved as
+`blender/fauna/sapscrap/sapscrap_recovered_from_gltf.blend`, deliberately NOT over
+`sapscrap.blend`, so the choice of which to keep is the director's.
+
+**The maw change is reverted** — `MAW_OUTER` and `MAW_THROAT` are back at 0.295 and
+0.190. The tripod finding stands and is unaffected by this: the approved sheet shows
+three arms and a small hub maw, and the build is still maw-dominant. But that rebuild
+must start from the RECOVERED file or from a chain that actually reproduces all four
+objects, not from `build_sapscrap.py` as it stands.
