@@ -2246,3 +2246,32 @@ What the sheet DOES support, being careful to claim only what a render can carry
 `naturalizer` read weakly at card size; `redactor` does not read as a creature at
 all. Those are statements about legibility, which is exactly what an image can
 settle — and `redactor` is the one worth a new sheet most.
+
+### FIXED — the density rule was switched off by a typo, and is unenforced by omission
+
+The standing law is "a chain may not carry more bones than the thing it deforms has
+subdivisions". `rig.validate` checked it as
+`count = len([n for n in bone_names if n.startswith(prefix + "_")])` and failed when
+`count > segs`. A MISSPELLED prefix matches zero bones, and `0 > segs` is never true,
+so declaring `{'leafs': 3}` against bones named `leaf_0..` silently switched the rule
+off for that chain — a one-letter error that reads as compliance. This was blind spot
+3 from the gate audit and it is now closed: a declared prefix matching no bone is a
+failure in its own right.
+
+Red-proofed on a real rig: baseline PASS, a prefix that matches nothing FAILs. All 11
+fauna still validate PASS, so nothing regressed.
+
+**The larger gap is omission, not typos.** Several builds call `rig.validate(piece,
+arm)` with no declaration at all, which leaves the density law unenforced for every
+chain in those pieces. `validate` now returns `undeclared_chains` so a PASS can no
+longer be mistaken for "the density law holds here". It is reported rather than
+failed, because forcing it would break every build that has never declared anything.
+
+Stated carefully, because it is easy to overread: probing with NO declaration reports
+tangler 16 chains, naturalizer 4, meeb 1 — but those are UPPER BOUNDS, not confirmed
+gaps. Naturalizer's build does declare its legs (`dict(("leg%d" % i, 2) ...)`), so its
+four would not appear when validate is called the way the build calls it. Getting the
+real per-build figure means running each build's own declaration through the new
+field, which is the follow-up.
+
+Of roughly fourteen `rig.validate` call sites, most pass only `(piece, arm)`.
