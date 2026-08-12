@@ -2436,3 +2436,34 @@ material seam rather than a swelling.
 Gates: UV audit 11 of 11 PASS, rig PASS 22 bones, scene load green. Only the
 Climbvine's four files changed — every other flora piece rebuilt byte-identical, so
 the chain is deterministic and this did not disturb anything else.
+
+### scarpet — the sparseness was DELIBERATE, and the doc it cited is not the spec
+
+The card read as a dirty plate: a dark disc with sparse specks. The sheet is a pale
+cream stepped pad PACKED with bushy sage-and-rust tufts shoulder to shoulder across
+most of its surface.
+
+The sparseness was not an oversight. `_sc_tufts` kept the clumps small and few on
+purpose, and said why in its own comment — the brief's "never a mound", "avoid dense
+lawn grass", let the pale plate substrate show. **The prose and the drawing
+disagree.** Under the director's ruling the drawing wins: the docs were the
+springboards that GENERATED the sheets, not a specification of them.
+
+Tufts 16 -> 45, across five rings instead of three. The brief's real point survives
+at this density anyway — they are still discrete clumps at mixed heights with crust
+visible between them, not a continuous mown lawn. That is worth saying because the
+comment was defending something true; it was just defending it against the wrong
+authority.
+
+Not fixed, and visible on the card:
+- the tufts CLUSTER CENTRALLY where the sheet spreads them over the whole pad, so the
+  outer third is bare
+- a large DARK CRESCENT covers roughly a third of the pad; the sheet's plate is
+  uniformly pale with a stepped edge and has no dark region anywhere
+
+Gates: UV audit 11 of 11 PASS, rig PASS 47 bones, scene load green. Only the
+Scarpet's three files changed — every other flora piece rebuilt byte-identical.
+
+**Also settled: the VineCut cannot be judged.** It has NO concept sheet — that is
+precisely why its leaflessness is an open director call. With images as the spec,
+there is nothing to check it against, so it stays blocked rather than guessed at.
