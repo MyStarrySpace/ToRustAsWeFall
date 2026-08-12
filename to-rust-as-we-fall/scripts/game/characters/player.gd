@@ -432,14 +432,23 @@ func submit_captured_short_command(command_record: Dictionary) -> bool:
 			"event_position", Vector3.INF)
 		var event_position := event_position_v as Vector3 \
 			if event_position_v is Vector3 else Vector3.INF
+		# A target can decline for two very different reasons, and they must not be told the same way.
+		# It may be STALE -- gone, moved, or something other than what the player was shown -- which is
+		# what the message below describes. Or it may have understood the command perfectly and refused it on
+		# its own terms ("the route crosses an open cut; work the lit EXTEND terminal first"), in
+		# which case the refusal already spoke, synchronously, on the way through. Overwriting that
+		# with a staleness notice tells the player their click missed, when in truth it landed and was
+		# answered -- and it hides the one sentence that says what to do about it.
+		var refusal_before := _last_move_refusal
 		if target != null and is_instance_valid(target) \
 				and target.is_inside_tree() \
 				and target.get_viewport() == get_viewport() \
 				and target.has_method("submit_pointer_command") \
 				and bool(target.call("submit_pointer_command", event_position)):
 			return true
-		present_move_refusal(
-			"COMMAND REFUSED // the shown target is no longer available.")
+		if _last_move_refusal == refusal_before:
+			present_move_refusal(
+				"COMMAND REFUSED // the shown target is no longer available.")
 		return false
 	if kind == "ground":
 		var ground_v: Variant = command_record.get("ground", {})
@@ -1194,12 +1203,15 @@ func _update_path_preview(hit: Vector3) -> void:
 	_path_preview.game_state = game_state
 	if game_state.coord_map != null:
 		hit = _ground_hit_to_data(hit)   # plan in the flat data frame; the ribbon warps back to the helix
-	if game_state.is_moving(char_id):
-		if GridWorld._fx_debug:
-			GridWorld._pf_trace("[preview] clear — %s is MOVING (committed ribbon shows instead)" % char_id)
-		_clear_path_preview()
-		PerformanceTrace.end(&"nav", &"player.path_preview", perf_started, "moving", 0)
-		return
+	# While the character walks, its COMMITTED ribbon is already on screen and a preview ribbon would
+	# compete with it -- so the RIBBON is suppressed. The BINDING is not: the hover verb keeps being
+	# drawn either way, and a verb whose evaluation was thrown away is one the click cannot honour.
+	# It falls back to a fresh raycast against a character that has moved since, whose height gate has
+	# moved with it, and answers a different question than the verb the player read. Retargeting
+	# mid-walk is the commonest thing in this control scheme, which is why the lie read as occasional.
+	var suppress_ribbon := game_state.is_moving(char_id)
+	if suppress_ribbon and GridWorld._fx_debug:
+		GridWorld._pf_trace("[preview] ribbon suppressed — %s is MOVING (binding still resolved)" % char_id)
 	# Recompute only when the hovered DATA-grid identity changes. Level is part of that identity for
 	# stacked nodes, and graph revision invalidates the cache when Basin topology changes beneath a
 	# stationary cursor.
@@ -1217,7 +1229,10 @@ func _update_path_preview(hit: Vector3) -> void:
 	_preview_last_graph_revision = graph_revision
 	if group_move and game_state.get_party().size() > 1:
 		_path_preview.clear_explicit_path()  # the per-member previews replace the single one
-		_update_party_preview(hit)
+		if suppress_ribbon:
+			_clear_party_preview()
+		else:
+			_update_party_preview(hit)
 		# Group commit consumes the same snapped anchor cell the party preview used.
 		var group_target := hit
 		if game_state.grid != null:
@@ -1235,7 +1250,10 @@ func _update_path_preview(hit: Vector3) -> void:
 	if GridWorld._fx_debug:
 		GridWorld._pf_trace("[preview] hit=%s cell=%s char=%s -> compute_preview_path = %d pts: %s" % [str(hit), str(cell), char_id, path.size(), str(path)])
 	if path.size() >= 2:
-		_path_preview.set_explicit_path(path, 1)  # from_index 1: the renderer prepends the live start point
+		if suppress_ribbon:
+			_path_preview.clear_explicit_path()
+		else:
+			_path_preview.set_explicit_path(path, 1)  # from_index 1: the renderer prepends the live start point
 		var endpoint: Vector3 = path[path.size() - 1]
 		preview_move_target = endpoint
 		_preview_commit_target = game_state.coord_map.to_world(endpoint) \

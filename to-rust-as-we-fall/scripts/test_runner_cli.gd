@@ -914,6 +914,12 @@ func _ready() -> void:
 			"--test-cover-mid-run":
 				ran_test = true
 				_test_cover_mid_run()
+			"--test-specific-refusal-survives":
+				ran_test = true
+				await _test_a_specific_refusal_is_not_overwritten()
+			"--test-hover-binding-survives-a-walk":
+				ran_test = true
+				await _test_hover_binding_survives_a_walk()
 			"--test-emphasis-reveal-follows-camera":
 				ran_test = true
 				await _test_emphasis_reveal_follows_the_camera()
@@ -2165,6 +2171,8 @@ func _run_all_tests() -> void:
 	await _test_no_loose_salvage_stands_in_the_current()
 	await _test_status_labels_do_not_stack_across_the_spiral()
 	await _test_emphasis_reveal_follows_the_camera()
+	await _test_hover_binding_survives_a_walk()
+	await _test_a_specific_refusal_is_not_overwritten()
 	_test_cover_mid_run()
 	_test_pause_defers_never_drops()
 	await _test_path_source_precedence()
@@ -48840,6 +48848,138 @@ func _test_cover_mid_run() -> void:
 	_assert_true((run["spotted"] as Array)[0],
 		"stepping back out of cover is spotted -- the recompute runs both ways")
 
+
+## A target declines for two different reasons and they must not read the same. STALE means the thing
+## shown is gone. REFUSED means it understood the command and answered on its own terms -- and that
+## answer is the only sentence telling the player what to do instead. Overwriting it with a staleness
+## notice reports a miss for a click that landed, which is what the director met at the locked shelter.
+func _test_a_specific_refusal_is_not_overwritten() -> void:
+	_test_name = "A Specific Refusal Is Not Overwritten"
+	var scheduler := EventScheduler.new()
+	var gs := GameState.new()
+	gs.scheduler = scheduler
+	gs.event_log = EventLog.new()
+	var grid := GridWorld.new()
+	grid.create_room(12, 12)
+	gs.grid = grid
+	var holder := Node3D.new()
+	add_child(holder)
+	var player = preload("res://scenes/game/player_character.tscn").instantiate()
+	player.game_state = gs
+	player.char_id = "aster"
+	holder.add_child(player)
+	gs.register_character("aster", grid.grid_to_world(Vector2i(3, 3)), 3.0, {})
+	await get_tree().process_frame
+
+	var specific := "The route crosses an open cut. Work the lit EXTEND terminal first."
+
+	# Two stub targets that both DECLINE the pointer command. One answers on its own terms on the way
+	# through, exactly as a gated interactable does; the other simply says no. Both go through the
+	# real submit_captured_short_command path.
+	var speaking_src := GDScript.new()
+	speaking_src.source_code = (
+		"extends StaticBody3D\n"
+		+ "var player_ref\n"
+		+ "var reason := \"\"\n"
+		+ "func submit_pointer_command(_pos):\n"
+		+ "\tif player_ref != null:\n"
+		+ "\t\tplayer_ref.present_move_refusal(reason)\n"
+		+ "\treturn false\n"
+	)
+	speaking_src.reload()
+	var silent_src := GDScript.new()
+	silent_src.source_code = (
+		"extends StaticBody3D\n"
+		+ "func submit_pointer_command(_pos):\n"
+		+ "\treturn false\n"
+	)
+	silent_src.reload()
+
+	var speaking := StaticBody3D.new()
+	speaking.set_script(speaking_src)
+	holder.add_child(speaking)
+	speaking.player_ref = player
+	speaking.reason = specific
+	var silent := StaticBody3D.new()
+	silent.set_script(silent_src)
+	holder.add_child(silent)
+	await get_tree().process_frame
+
+	# The CONTROL: a target that declines without explaining still earns the staleness notice, so the
+	# assertion below is about which message wins, not about the message disappearing.
+	player.present_move_refusal("")
+	player.submit_captured_short_command({
+		"contract": "captured_short_command/v1",
+		"kind": "surface",
+		"target": silent,
+		"event_position": Vector3(1.0, 0.0, 1.0),
+	})
+	_assert_true(player._last_move_refusal.begins_with("COMMAND REFUSED"),
+		"a target that declines silently still reports the staleness notice")
+
+	player.present_move_refusal("")
+	player.submit_captured_short_command({
+		"contract": "captured_short_command/v1",
+		"kind": "surface",
+		"target": speaking,
+		"event_position": Vector3(1.0, 0.0, 1.0),
+	})
+	_assert_equals(player._last_move_refusal, specific,
+		"a target that answered on its own terms keeps its answer")
+
+	holder.queue_free()
+	await get_tree().process_frame
+
+## A hover verb is a promise the CLICK has to be able to keep, and it keeps it by cashing the same
+## evaluation the hover made. While a character walks, the preview RIBBON is suppressed so it does not
+## compete with the committed one -- but the verb keeps being drawn, so the binding behind it must
+## survive too. Without it the click re-raycasts against a character that has moved (and on the helix,
+## whose height-acceptance ceiling has descended with it) and answers a different question than the
+## verb the player read. Retargeting mid-walk is the commonest action in this control scheme.
+func _test_hover_binding_survives_a_walk() -> void:
+	_test_name = "Hover Binding Survives A Walk"
+	var scheduler := EventScheduler.new()
+	var gs := GameState.new()
+	gs.scheduler = scheduler
+	gs.event_log = EventLog.new()
+	var grid := GridWorld.new()
+	grid.create_room(20, 12)
+	gs.grid = grid
+	var holder := Node3D.new()
+	add_child(holder)
+	# The player SCENE, not the bare script: `_mesh` is `$Mesh`, so a script-only instance aborts
+	# _ready on a null and never builds the preview renderer this test is about.
+	var player = preload("res://scenes/game/player_character.tscn").instantiate()
+	player.game_state = gs
+	player.char_id = "aster"
+	holder.add_child(player)
+	await get_tree().process_frame
+
+	gs.register_character("aster", grid.grid_to_world(Vector2i(2, 6)), 3.0, {})
+	var far: Vector3 = grid.grid_to_world(Vector2i(15, 6))
+
+	# Standing still: hovering a reachable point binds it, which is the baseline the walk must match.
+	var nav: Dictionary = gs.compute_preview_navigation("aster", far)
+	var nav_path: Array = nav.get("path", [])
+	_assert_true(nav_path.size() >= 2,
+		"the fixture route exists at all (preview nav returned %d pts)" % nav_path.size())
+	player._update_path_preview(far)
+	var parked_location: Dictionary = player._preview_commit_location
+	_assert_true(not parked_location.is_empty(),
+		"a hover while parked binds the target the click will commit (renderer=%s)"
+			% str(player._path_preview != null))
+
+	# Now walk, and hover somewhere else mid-stride.
+	gs.command_move_to_pos("aster", grid.grid_to_world(Vector2i(2, 10)))
+	_assert_true(gs.is_moving("aster"), "the character is actually walking (the control)")
+	player._preview_commit_location = {}
+	player._preview_last_cell = Vector2i(0x7fffffff, 0x7fffffff)
+	player._update_path_preview(far)
+	_assert_true(not (player._preview_commit_location as Dictionary).is_empty(),
+		"a hover DURING a walk still binds, so the verb it draws is one the click can honour")
+
+	holder.queue_free()
+	await get_tree().process_frame
 
 ## The see-through dissolve keeps a hole around whatever the camera watches, so the player is never
 ## lost behind a wall. A consequence emphasis swings the camera onto a mechanism across the level
