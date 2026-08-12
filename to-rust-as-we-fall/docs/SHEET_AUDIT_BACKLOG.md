@@ -2014,3 +2014,42 @@ should be required.
 conflict), then re-run. The measured parameters from this run are in the workflow
 journal and are reusable once the frame is settled — the disputes are about
 attribution and scale, not about the sheet being unreadable.
+
+### gnawer rebuilt against the contract — and BOTH acceptance tests were invalid
+
+The body is now built from `docs/GNAWER_SEAM_CONTRACT.md` rather than from typed-in
+guesses: spine stations, neck, jaw hinge, four hip/shoulder rings and four ankle
+rings all take their contract values (mirrored, since the contract is +Y forward and
+this build is -Y forward). The old constants made an animal 0.95 long and 0.315 tall
+where the sheet's is 0.833 by 0.410.
+
+**The T is gone.** `_knee` carried the knee to 3.20x the hip's X at Z 0.265 — nearly
+as wide as the FOOT and high up — so the silhouette hit full width at knee height and
+held it flat. The knee is now interpolated between the hip seam and the ankle ring,
+a touch proud of the straight line, so the widening is gentle and continuous. The
+render confirms it: low, broad, splayed, no V above the skull, no shoulder bar, the
+pale jaw slab hanging below.
+
+**But both ways I tried to MEASURE it were wrong, and this matters more than the fix.**
+
+1. **Render-derived aspect is not comparable to the sheet.** The turnaround renders
+   orbit a perspective camera fitted to object radius, so the projected aspect is not
+   the orthographic aspect the sheet's views carry. It reported side aspect 0.84
+   while the data-level length/height was 0.822/0.410 = 2.00, which MATCHES the
+   sheet's 2.03. Every render-derived proportion number in this backlog before this
+   entry — including the 1.70 / 1.44 deltas that motivated the whole rebuild — is
+   suspect for the same reason.
+2. **Naive mesh bounds are contaminated.** The mesh measures 1.794 long against a
+   contract spanning 0.822, because the HAZE cloud cards are authored at full size
+   and parked shut. They are invisible in rest and they dominate the bounding box.
+   That is also why the animal occupies a fraction of the render frame: the camera
+   frames to include the cloud.
+
+**The acceptance test must therefore: render ORTHOGRAPHIC from the sheet's own view
+directions, and exclude non-body geometry (haze, and anything else authored at full
+size but parked).** Until it does, "matches the sheet's aspect" is not a claim this
+project can currently make about any creature. Fixing that instrument is the next
+piece of work, ahead of any further proportion tuning.
+
+Gates on the rebuild: UV audit PASS, weld PASS (flipped 0, coincident 0, nonmanifold
+0), rig PASS 14 bones, scene load 8996/0.
