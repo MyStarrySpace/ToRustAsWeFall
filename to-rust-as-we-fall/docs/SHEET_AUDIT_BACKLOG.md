@@ -1745,3 +1745,44 @@ The graft law's procedure (measure, delineate, open, build FROM the ring, weld,
 unwrap LAST, verify) is now actually executable end to end. Unwrap-last matters
 more than ever: the per-face fallback is applied at `finish()`, so all topology
 must be done before it.
+
+### the graft fallback was too coarse — a hole now keeps its seat
+
+The first version of the unblock dropped a WOUNDED group whole and threw all its
+survivors onto the flat per-face path. Measured against the Naturalizer, that is
+unacceptable: an aperture anywhere in its plated shell would have cost the whole
+shell its plate detail.
+
+It is also unnecessary. The layouts derive position from the slot INDEX, not from
+the length of the face list — `for k, fidx in enumerate(g["side_faces"][r])` — so
+a cut face can keep its SEAT, marked -1, and the row is laid out exactly as before
+with the missing seat skipped. A hole costs nothing structurally.
+
+On the same graft test, dropping the group vs holding the seats:
+
+| | faces cut | loose faces | islands |
+|---|---|---|---|
+| drop whole group | (whole group) | 69 | 69 |
+| hold the seats | 4 | 39 | 43 |
+
+The host keeps its tube unwrap; only the geometry the graft CREATED — which
+genuinely belongs to no group — falls to per-face. UV gate PASS either way.
+
+**A regression I introduced and caught by checking instead of assuming.** The
+"which faces are already covered" sweep read `faces`, `side_faces`, `face` and the
+caps, but NOT `strips` — which is how the annulus kind stores its faces. Every
+ring face was therefore reclassified as loose and given a redundant per-face island
+on top of a perfectly good group layout, and the Naturalizer — which grafts nothing
+— rebuilt differently as a result.
+
+I nearly shipped that with a plausible story attached: the piece looked fine in the
+render, the UV gate passed at 104 islands with folded 0 and hard 0, and I had a
+tidy explanation ready that 36 faces must previously have had no UV at all. The
+measurement that killed it was comparing degenerate UVs between the committed and
+new gltf: **both had zero UV verts at the origin**, so nothing had been broken
+before and the change was mine. Any kind that stores faces under a new key must be
+added to that sweep or it will be quietly re-unwrapped.
+
+All three rebuilt fauna are now byte-identical to HEAD with no `[ATLAS]` lines,
+which is the real acceptance test for a change that is supposed to affect only
+grafted pieces. Scene load 9004/0.
