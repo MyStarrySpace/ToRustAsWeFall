@@ -4423,9 +4423,12 @@ func _build_floor_surface(grid, lvl: int, cells: Array, risk: Dictionary, cell: 
 	st_main.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var st_risk := SurfaceTool.new()
 	st_risk.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var st_edge := SurfaceTool.new()
+	st_edge.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var st_transition := SurfaceTool.new()
 	st_transition.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var has_risk := false
+	var has_edge := false
 	var has_transition := false
 	var h := cell * 0.5
 	var transition: Dictionary = _spec.get("zone_transition", {})
@@ -4440,6 +4443,19 @@ func _build_floor_surface(grid, lvl: int, cells: Array, risk: Dictionary, cell: 
 		cell * 3.0,
 		float(transition.get("length_cells", 6)) * cell
 	)
+	# WHERE THE DECK ACTUALLY ENDS. A brink is a property of the emitted SURFACE, not of the walkable
+	# set: a branch gap and a feature-owned cell are both real openings, so the cells beside them are
+	# brinks even though the grid calls their neighbours walkable. Skipping either test here gives the
+	# tile at the lip of a drop the same read as one in the middle of the deck, which is the whole
+	# thing the brink surface exists to prevent.
+	var emitted_cells := {}
+	for cp in cells:
+		var scan := Vector2i(int((cp as Array)[0]), int((cp as Array)[1]))
+		if _branch_gap_cells.has(scan):
+			continue
+		if _spatial_feature_replaces_flat_cell(grid.grid_to_world(scan, lvl), lvl):
+			continue
+		emitted_cells[scan] = true
 	for cp in cells:
 		var v := Vector2i(int((cp as Array)[0]), int((cp as Array)[1]))
 		# Mandatory branch output replaces this authored tile. The data cell remains in GridWorld so the
@@ -4450,6 +4466,14 @@ func _build_floor_surface(grid, lvl: int, cells: Array, risk: Dictionary, cell: 
 		if _spatial_feature_replaces_flat_cell(w, lvl):
 			continue
 		var is_risk: bool = risk.has(v)
+		# Orthogonal only. A diagonal neighbour touches at a corner, which is not a walkable seam and
+		# not something the player can step across, so a missing one does not make this tile a brink.
+		var is_edge: bool = (
+			not emitted_cells.has(v + Vector2i(1, 0))
+			or not emitted_cells.has(v + Vector2i(-1, 0))
+			or not emitted_cells.has(v + Vector2i(0, 1))
+			or not emitted_cells.has(v + Vector2i(0, -1))
+		)
 		if is_risk:
 			has_risk = true
 
@@ -4487,7 +4511,17 @@ func _build_floor_surface(grid, lvl: int, cells: Array, risk: Dictionary, cell: 
 				corner_blends.append(clampf(corner_distance / transition_length, 0.0, 1.0))
 			_add_floor_slab(st_transition, corners, 0.16, corner_blends)
 		else:
-			_add_floor_slab(st_risk if is_risk else st_main, corners, 0.16)
+			# A RISK cell that is also a brink stays on the risk surface. The rust tint is the only
+			# carrier of "this tile hurts", and nothing else in the frame says it; the brink read
+			# survives the loss because the risk tint is already the most separated floor colour from
+			# the void, so the tile's outer boundary still draws itself against the drop.
+			var target := st_main
+			if is_risk:
+				target = st_risk
+			elif is_edge:
+				target = st_edge
+				has_edge = true
+			_add_floor_slab(target, corners, 0.16)
 	var theme: Dictionary = _spec.get("area_theme", {})
 	var hierarchy := _visual_hierarchy()
 	var floor_tile := str(theme.get("floor_tile", "deck_metal"))
@@ -4501,6 +4535,15 @@ func _build_floor_surface(grid, lvl: int, cells: Array, risk: Dictionary, cell: 
 		),
 		lvl
 	)
+	if has_edge:
+		_commit_floor_surface(
+			st_edge,
+			"GeneratedFloorEdge_L%d" % lvl,
+			_generated_floor_edge_material(
+				_color_from_array(hierarchy.get("edge_tint", []), Color(0.62, 0.74, 0.74))
+			),
+			lvl
+		)
 	if has_risk:
 		_commit_floor_surface(
 			st_risk,
@@ -4518,6 +4561,19 @@ func _build_floor_surface(grid, lvl: int, cells: Array, risk: Dictionary, cell: 
 			_zone_transition_floor_material(transition),
 			lvl
 		)
+
+
+## The brink is PAINT, and paint covers the tread. It carries the deck tint lifted toward its own
+## light rather than a second material's colour, so the walkway still reads as one surface with a
+## marked border. Dropping the tile is what lets the tint reach the frame at all: the deck tile
+## averages 0.22 brightness, so a tinted deck slab in a district capped at 0.42 ambient renders at
+## roughly one 8-bit step above black, and a rim built that way is invisible however it is tinted.
+func _generated_floor_edge_material(tint: Color) -> StandardMaterial3D:
+	var material := StandardMaterial3D.new()
+	material.albedo_color = tint
+	material.roughness = 0.88
+	material.cull_mode = BaseMaterial3D.CULL_DISABLED
+	return material
 
 
 func _generated_floor_material(tile_name: String, tint: Color) -> StandardMaterial3D:

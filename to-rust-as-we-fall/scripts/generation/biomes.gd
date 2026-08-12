@@ -229,6 +229,7 @@ const VISUAL_HIERARCHY_BY_BIOME := {
 	"channels": {
 		"contract_id": "generated_visual_hierarchy_v1",
 		"floor_tint": [0.38, 0.46, 0.46, 1.0],
+		"edge_tint": [0.62, 0.74, 0.74, 1.0],
 		"risk_tint": [0.42, 0.27, 0.18, 1.0],
 		"background_color": [0.008, 0.015, 0.019, 1.0],
 		"ambient_color": [0.12, 0.20, 0.21, 1.0],
@@ -248,6 +249,7 @@ const VISUAL_HIERARCHY_BY_BIOME := {
 	"stacks": {
 		"contract_id": "generated_visual_hierarchy_v1",
 		"floor_tint": [0.37, 0.41, 0.48, 1.0],
+		"edge_tint": [0.61, 0.67, 0.77, 1.0],
 		"risk_tint": [0.36, 0.27, 0.22, 1.0],
 		"background_color": [0.009, 0.013, 0.022, 1.0],
 		"ambient_color": [0.12, 0.15, 0.22, 1.0],
@@ -267,6 +269,7 @@ const VISUAL_HIERARCHY_BY_BIOME := {
 	"garden": {
 		"contract_id": "generated_visual_hierarchy_v1",
 		"floor_tint": [0.32, 0.41, 0.32, 1.0],
+		"edge_tint": [0.53, 0.67, 0.53, 1.0],
 		"risk_tint": [0.41, 0.33, 0.20, 1.0],
 		"background_color": [0.008, 0.016, 0.012, 1.0],
 		"ambient_color": [0.13, 0.21, 0.15, 1.0],
@@ -286,6 +289,7 @@ const VISUAL_HIERARCHY_BY_BIOME := {
 	"cleanstreets": {
 		"contract_id": "generated_visual_hierarchy_v1",
 		"floor_tint": [0.46, 0.45, 0.40, 1.0],
+		"edge_tint": [0.74, 0.73, 0.65, 1.0],
 		"risk_tint": [0.34, 0.37, 0.39, 1.0],
 		"background_color": [0.015, 0.015, 0.013, 1.0],
 		"ambient_color": [0.22, 0.20, 0.16, 1.0],
@@ -305,6 +309,7 @@ const VISUAL_HIERARCHY_BY_BIOME := {
 	"deadzone": {
 		"contract_id": "generated_visual_hierarchy_v1",
 		"floor_tint": [0.39, 0.31, 0.29, 1.0],
+		"edge_tint": [0.64, 0.52, 0.49, 1.0],
 		"risk_tint": [0.29, 0.28, 0.27, 1.0],
 		"background_color": [0.014, 0.009, 0.009, 1.0],
 		"ambient_color": [0.20, 0.14, 0.13, 1.0],
@@ -412,7 +417,8 @@ static func validate() -> Dictionary:
 		if str(hierarchy.get("contract_id", "")) != "generated_visual_hierarchy_v1":
 			errors.append("Biome '%s' has no generated visual hierarchy contract" % id)
 		for color_field in [
-			"floor_tint", "risk_tint", "background_color", "ambient_color", "directional_color"
+			"floor_tint", "edge_tint", "risk_tint",
+			"background_color", "ambient_color", "directional_color"
 		]:
 			var color_value: Variant = hierarchy.get(color_field, [])
 			if not (color_value is Array) or (color_value as Array).size() < 3:

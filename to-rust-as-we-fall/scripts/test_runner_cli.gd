@@ -932,6 +932,9 @@ func _ready() -> void:
 			"--test-status-label-range":
 				ran_test = true
 				await _test_status_labels_do_not_stack_across_the_spiral()
+			"--test-deck-edge-reads":
+				ran_test = true
+				await _test_deck_edge_reads_apart_from_deck_interior()
 			"--test-loose-salvage-out-of-the-current":
 				ran_test = true
 				await _test_no_loose_salvage_stands_in_the_current()
@@ -2176,6 +2179,7 @@ func _run_all_tests() -> void:
 	await _test_hover_route_never_promises_an_unreachable_deck()
 	await _test_no_loose_salvage_stands_in_the_current()
 	await _test_status_labels_do_not_stack_across_the_spiral()
+	await _test_deck_edge_reads_apart_from_deck_interior()
 	await _test_emphasis_reveal_follows_the_camera()
 	await _test_hover_binding_survives_a_walk()
 	await _test_a_specific_refusal_is_not_overwritten()
@@ -49151,6 +49155,244 @@ func _test_status_labels_do_not_stack_across_the_spiral() -> void:
 			% str(unranged))
 
 	await _dispose_scene(inst)
+
+## A deck EDGE and a deck INTERIOR must not be one merged surface wearing one material: that makes
+## the last tile before a drop look exactly like a tile in the middle of the walkway, and the player
+## cannot see where the floor stops. Lighting cannot answer it — the district already runs at its
+## ambient and directional ceilings. The brink needs its own surface with its own colour, and that
+## colour needs to differ by enough to survive a dark district, which is what this measures.
+func _test_deck_edge_reads_apart_from_deck_interior() -> void:
+	_test_name = "Deck Edge Reads Apart From Deck Interior"
+	var inst = await _instantiate_preview_chunk_and_wait("generated_stretch", 8)
+	if inst == null:
+		_assert_true(false, "the generated stretch preview instantiates")
+		return
+	var chunk := _find_fragment_chunk_root(inst)
+	if chunk == null:
+		_assert_true(false, "the preview exposes its stretch chunk")
+		await _dispose_scene(inst)
+		return
+
+	# WHICH cells the brink surface owes a tile is worked out here from the chunk's OWN inputs — the
+	# walkable cells, the branch gaps, the feature-owned cells — and never read back off the mesh, so
+	# the number the surface has to hit is arrived at independently of the surface. A brink is a
+	# property of the EMITTED deck rather than of the walkable set: a branch gap and a feature opening
+	# are real holes in the floor, so the tiles beside them end the walkway even though the grid still
+	# calls their neighbours walkable. Measuring the walkable perimeter instead hands the tile at the
+	# lip of a drop the interior's material, which is the read this whole surface exists to prevent.
+	var nav: Dictionary = chunk._nav_grid()
+	var grid = GridWorld.from_data(nav)
+	var cell_size := float(nav.get("cell_size", 1.0))
+	var risk := {}
+	for r in nav.get("risk_cell_list", []):
+		if r is Dictionary and r.has("cell"):
+			risk[Vector2i(int((r.cell as Array)[0]), int((r.cell as Array)[1]))] = true
+	var cells_by_level := {}
+	var level_cells: Array = nav.get("level_cells", [])
+	if level_cells.is_empty():
+		cells_by_level[0] = nav.get("walkable_cells", [])
+	else:
+		for entry_v in level_cells:
+			if entry_v is Dictionary:
+				var entry_dict := entry_v as Dictionary
+				cells_by_level[int(entry_dict.get("level", 0))] = entry_dict.get("cells", [])
+	_assert_true(not cells_by_level.is_empty(),
+		"the stretch publishes the walkable cells its floor is built from")
+
+	var transition_spec: Dictionary = chunk._spec.get("zone_transition", {})
+	var entry_node: Dictionary = chunk._find_node("entry")
+	var entry_flat: Vector3 = chunk._anchor_position("entry")
+	var transition_length := maxf(
+		cell_size * 3.0,
+		float(transition_spec.get("length_cells", 6)) * cell_size
+	)
+	# A floor slab is a closed box of twelve triangles, so a surface's tile count is its vertex count
+	# over thirty-six. The divisor is checked against each live mesh below rather than trusted.
+	var slab_verts := 36
+	var expected_edge_cells := 0
+	var expected_interior_cells := 0
+	var gap_owed_brink := 0
+	for level_v in cells_by_level.keys():
+		var lvl := int(level_v)
+		var walkable := {}
+		for cp in (cells_by_level[level_v] as Array):
+			walkable[Vector2i(int((cp as Array)[0]), int((cp as Array)[1]))] = true
+		var emitted := {}
+		for cell_v in walkable.keys():
+			var c := cell_v as Vector2i
+			if chunk._branch_gap_cells.has(c):
+				continue
+			if chunk._spatial_feature_replaces_flat_cell(grid.grid_to_world(c, lvl), lvl):
+				continue
+			emitted[c] = true
+		var transition_enabled := (
+			not transition_spec.is_empty()
+			and not entry_node.is_empty()
+			and int(entry_node.get("elevation_index", 0)) == lvl
+		)
+		var expected := {"main": 0, "edge": 0, "risk": 0, "transition": 0}
+		for cell_v in emitted.keys():
+			var c := cell_v as Vector2i
+			var w: Vector3 = grid.grid_to_world(c, lvl)
+			var is_risk: bool = risk.has(c)
+			var is_edge := (
+				not emitted.has(c + Vector2i(1, 0))
+				or not emitted.has(c + Vector2i(-1, 0))
+				or not emitted.has(c + Vector2i(0, 1))
+				or not emitted.has(c + Vector2i(0, -1))
+			)
+			var walkable_edge := (
+				not walkable.has(c + Vector2i(1, 0))
+				or not walkable.has(c + Vector2i(-1, 0))
+				or not walkable.has(c + Vector2i(0, 1))
+				or not walkable.has(c + Vector2i(0, -1))
+			)
+			var distance := Vector2(w.x - entry_flat.x, w.z - entry_flat.z).length()
+			if transition_enabled and not is_risk \
+					and distance <= transition_length + cell_size * 0.5:
+				expected["transition"] = int(expected["transition"]) + 1
+			elif is_risk:
+				expected["risk"] = int(expected["risk"]) + 1
+			elif is_edge:
+				expected["edge"] = int(expected["edge"]) + 1
+				if not walkable_edge:
+					gap_owed_brink += 1
+			else:
+				expected["main"] = int(expected["main"]) + 1
+		var surfaces := {
+			"main": "GeneratedFloor_L%d" % lvl,
+			"edge": "GeneratedFloorEdge_L%d" % lvl,
+			"risk": "GeneratedFloorRisk_L%d" % lvl,
+			"transition": "GeneratedZoneTransition_L%d" % lvl,
+		}
+		var built := 0
+		for key in surfaces.keys():
+			var surface_name := str(surfaces[key])
+			var verts := _floor_surface_vertex_count_named(chunk, surface_name)
+			_assert_true(verts % slab_verts == 0,
+				"%s is built from whole floor slabs (%d vertices)" % [surface_name, verts])
+			var tiles := verts / slab_verts
+			built += tiles
+			_assert_true(tiles == int(expected[key]),
+				"%s tiles exactly the cells that classify to it (%d built vs %d expected)"
+					% [surface_name, tiles, int(expected[key])])
+		expected_edge_cells += int(expected["edge"])
+		expected_interior_cells += int(expected["main"])
+		# The four surfaces PARTITION the emitted deck. Per-surface counts alone would still agree
+		# with a cell tiled onto two surfaces and another dropped from all of them.
+		_assert_true(built == emitted.size(),
+			("level %d's floor surfaces partition the deck: %d tiles for %d emitted cells"
+				+ " (%d walkable, %d owned by a gap or a feature)")
+				% [lvl, built, emitted.size(), walkable.size(), walkable.size() - emitted.size()])
+
+	# CONTROL. A one-cell-wide level is all brink and a sealed one has none; against either, every
+	# count above would agree while saying nothing. And unless some brink is owed to a hole in the
+	# deck, a naive walkable perimeter would answer identically and the counts could not tell them
+	# apart either.
+	_assert_true(expected_edge_cells > 0 and expected_interior_cells > 0,
+		"the level has a perimeter AND an interior to tell apart (%d brink / %d inner cells)"
+			% [expected_edge_cells, expected_interior_cells])
+	_assert_true(gap_owed_brink > 0,
+		("brink tiles owed to a branch gap or a feature opening, which a walkable-perimeter"
+			+ " measurement would miss: %d") % gap_owed_brink)
+
+	var edge_mesh: MeshInstance3D = null
+	var main_mesh: MeshInstance3D = null
+	for node in chunk.find_children("GeneratedFloorEdge_*", "MeshInstance3D", true, false):
+		edge_mesh = node as MeshInstance3D
+		break
+	for node in chunk.find_children("GeneratedFloor_*", "MeshInstance3D", true, false):
+		main_mesh = node as MeshInstance3D
+		break
+	_assert_true(edge_mesh != null, "the stretch commits a brink surface of its own")
+	_assert_true(main_mesh != null, "the stretch still commits its interior floor surface")
+	if edge_mesh == null or main_mesh == null:
+		await _dispose_scene(inst)
+		return
+
+	var edge_mat := edge_mesh.material_override as StandardMaterial3D
+	var main_mat := main_mesh.material_override as StandardMaterial3D
+	_assert_true(edge_mat != null and main_mat != null,
+		"both floor surfaces carry a readable material")
+	if edge_mat == null or main_mat == null:
+		await _dispose_scene(inst)
+		return
+	# Two separate things have to hold, and each one alone lets the defect back. The district must
+	# DECLARE a rim colour of its own — a rim that borrows floor_tint has no identity and reverts
+	# the moment the surfaces are lit the same.
+	var tint_delta := maxf(
+		absf(edge_mat.albedo_color.r - main_mat.albedo_color.r),
+		maxf(
+			absf(edge_mat.albedo_color.g - main_mat.albedo_color.g),
+			absf(edge_mat.albedo_color.b - main_mat.albedo_color.b)
+		)
+	)
+	_assert_true(tint_delta >= 0.15,
+		"the district declares a rim tint distinct from its floor tint (widest channel gap %.3f)"
+			% tint_delta)
+	# And what reaches the frame is the tint TIMES the tile it multiplies, and the deck tile averages
+	# about a fifth. Comparing the raw tints alone would let a rim that wears the dark deck tile pass
+	# on a paper difference the player never sees, so both sides are measured as effective albedo.
+	var edge_albedo := _effective_surface_albedo(edge_mat)
+	var main_albedo := _effective_surface_albedo(main_mat)
+	_assert_true(edge_albedo.a > 0.0 and main_albedo.a > 0.0,
+		"both floor albedos are measurable (a tile texture that will not read makes this vacuous)")
+	var edge_lum := _albedo_luminance(edge_albedo)
+	var main_lum := _albedo_luminance(main_albedo)
+	_assert_true(edge_lum >= main_lum * 3.0,
+		"the brink is several times the deck's effective albedo (rim %.3f vs deck %.3f)"
+			% [edge_lum, main_lum])
+	_assert_true(edge_lum - main_lum >= 0.3,
+		"and the gap is wide enough to survive a dark district (%.3f)" % (edge_lum - main_lum))
+
+	await _dispose_scene(inst)
+
+## The vertex count of one named floor surface, or zero when the chunk committed no such surface —
+## an empty SurfaceTool commit creates no node at all, so absent and empty are the same statement.
+func _floor_surface_vertex_count_named(parent: Node, node_name: String) -> int:
+	for node in parent.find_children(node_name, "MeshInstance3D", true, false):
+		return _floor_surface_vertex_count(node as MeshInstance3D)
+	return 0
+
+func _floor_surface_vertex_count(mi: MeshInstance3D) -> int:
+	if mi.mesh == null:
+		return 0
+	var total := 0
+	for s in range(mi.mesh.get_surface_count()):
+		var arrays: Array = mi.mesh.surface_get_arrays(s)
+		total += (arrays[Mesh.ARRAY_VERTEX] as PackedVector3Array).size()
+	return total
+
+## The colour a lit surface actually returns: its tint multiplied by the mean of the tile it wears.
+## Alpha reports whether the measurement succeeded, so a texture that cannot be read fails loudly
+## instead of silently scoring as untextured white.
+func _effective_surface_albedo(mat: StandardMaterial3D) -> Color:
+	var tint := mat.albedo_color
+	if mat.albedo_texture == null:
+		return Color(tint.r, tint.g, tint.b, 1.0)
+	var img: Image = mat.albedo_texture.get_image()
+	if img == null:
+		return Color(0.0, 0.0, 0.0, 0.0)
+	if img.is_compressed():
+		if img.decompress() != OK:
+			return Color(0.0, 0.0, 0.0, 0.0)
+	var r := 0.0
+	var g := 0.0
+	var b := 0.0
+	var n := 0
+	for y in range(img.get_height()):
+		for x in range(img.get_width()):
+			var c := img.get_pixel(x, y)
+			r += c.r
+			g += c.g
+			b += c.b
+			n += 1
+	if n == 0:
+		return Color(0.0, 0.0, 0.0, 0.0)
+	return Color(tint.r * r / n, tint.g * g / n, tint.b * b / n, 1.0)
+
+func _albedo_luminance(c: Color) -> float:
+	return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b
 
 ## Director's ruling: nothing loose sits in a current, because the water would have taken it. A crate
 ## standing calmly mid-surge tells the player the flood is scenery, which un-teaches the one thing
