@@ -2053,3 +2053,51 @@ piece of work, ahead of any further proportion tuning.
 
 Gates on the rebuild: UV audit PASS, weld PASS (flipped 0, coincident 0, nonmanifold
 0), rig PASS 14 bones, scene load 8996/0.
+
+### THE ACCEPTANCE TEST NOW EXISTS — orthographic, parked geometry excluded
+
+`blender/skills/creature-pipeline/scripts/measure_silhouette.py`. Run it as
+`blender -b <species>.blend --python measure_silhouette.py`. It prints the front
+(X across Z) and side (Y across Z) aspects and band profiles in the SAME form a
+concept turnaround is measured in, so the two are directly comparable.
+
+It replaces two instruments that were both wrong and both flattered the model:
+
+- **Rendering a turnaround and measuring the image.** The camera is PERSPECTIVE with
+  its distance fitted to object radius, so the projected aspect is not the
+  orthographic aspect a sheet carries. No camera is involved now — an orthographic
+  silhouette is just a projection of the mesh, so there is no perspective to get
+  wrong.
+- **Raw mesh bounds.** Geometry authored at full size and PARKED SHUT dominates the
+  box. The Gnawer's enzyme cloud made the body measure 1.494 long against a 0.822
+  contract.
+
+Parked geometry is found by POSE SCALE, not by name — any bone whose pose scale
+collapses below 0.15 is parked, and vertices whose dominant bone is parked are
+dropped. On the Gnawer that correctly identifies `haze0_0, haze1_0, haze2_0` and
+drops 24 verts. It generalises to any species that parks anything.
+
+**What it says about the Gnawer, which is not what the old rulers said:**
+
+| | old (render) | now | sheet |
+|---|---|---|---|
+| side L/H | 0.84 | **2.00** | 2.03 |
+| front W/H | 1.68 | **1.03** | 1.34 |
+
+Side is a match. The front is genuinely TOO NARROW — the opposite of what every
+earlier measurement claimed, and a real defect the bad rulers hid. The front band
+profile now climbs 37 65 61 64 75 84 81 88 92 **100**, so the T is genuinely gone
+and the widest point is at the feet; but the top bands are too broad against the
+sheet's 27 43 54, i.e. the hood is too wide at the crown.
+
+**First sweep across the roster with a valid ruler:**
+
+    meeb         front 1.47  side 1.40
+    candid       front 6.80  side 5.77
+    naturalizer  front 2.53  side 2.49
+    crust        front 1.16  side 0.20
+
+These are unaudited against their own sheets — that comparison is the next job, and
+it is now possible for the first time. Candid at 6.80 and Crust at 0.20 are extreme
+enough to be worth checking early; both may be correct (a floor colony is wide and
+flat, a wall crust is a plate) but neither has ever been measured.
