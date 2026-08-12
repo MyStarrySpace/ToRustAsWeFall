@@ -1697,3 +1697,51 @@ The lesson worth keeping: "it does not glow in the render" was a true observatio
 that pointed at the wrong subsystem. The mask defect underneath it was real and
 narrow, and it was findable only by checking the wiring FIRST and believing the
 result instead of re-authoring the whole mask.
+
+## UNBLOCKED — graft and atlas now compose, so welding is possible
+
+This has been the owed pipeline item behind several stalled pieces, including the
+Naturalizer's windows. It is cleared, with a known and measured cost.
+
+**The failure.** `Builder.finish()` serializes every paint group against final
+indices by dereferencing `f.index` on live BMFace refs. A graft DELETES host faces,
+so those refs are dead and `finish()` raised `ReferenceError` and took the build
+down. Separately, the faces a graft CREATES — the zipper `aperture()` lays round
+its cut, the quads `bridge()` builds between two rings — belong to no group at all,
+carry no UV, and sample whatever sits at (0,0) in the atlas.
+
+**The fix, and the trade.** A group's layout is STRUCTURAL: a tube lays out rows of
+a known length, a box its six named quads. A group that has lost faces cannot just
+be pruned and unwrapped anyway — the rows would misalign and the piece would sample
+the WRONG texels, which is worse than not unwrapping it. So a wounded group is
+dropped whole and its survivors fall through, with every graft-created face, to a
+per-face path: each gets its own small island keyed off the part id already stored
+on the face, and paints flat in its own colour. Both fallbacks announce themselves
+(`[ATLAS] ...`) rather than happening silently.
+
+**Proved end to end** on a host tube with a spout grafted out of its flank:
+
+```
+GRAFT ok=True faces 34 -> 69
+WELD flipped=0 coincident=0 nonmanifold=0
+[ATLAS] 1 group(s) lost faces to a graft; their 30 surviving faces are unwrapped one per island
+[ATLAS] 69 face(s) outside every paint group given their own island
+FINISH ok, faces=69
+UVGATE verdict=PASS status=ok folded=0 hard=0 islands=69
+```
+
+**No regression:** meeb and candid rebuild BYTE-IDENTICAL to their committed gltfs,
+and neither prints an `[ATLAS]` line — the new paths cannot fire on a piece that
+does not graft.
+
+**The cost, stated plainly.** A grafted host loses its structural unwrap and falls
+back to flat per-face colour over the whole group that was cut. For a zipper band
+flat is the honest result and matches the project's look; for a shell carrying
+plate detail it is a real loss. Preserving a structural layout THROUGH a graft
+needs hole-aware layout functions — a tube that can lay out a row with a face
+missing — which is the next piece of work if the fallback proves too coarse.
+
+The graft law's procedure (measure, delineate, open, build FROM the ring, weld,
+unwrap LAST, verify) is now actually executable end to end. Unwrap-last matters
+more than ever: the per-face fallback is applied at `finish()`, so all topology
+must be done before it.
