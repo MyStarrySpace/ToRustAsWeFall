@@ -2101,3 +2101,46 @@ These are unaudited against their own sheets — that comparison is the next job
 it is now possible for the first time. Candid at 6.80 and Crust at 0.20 are extreme
 enough to be worth checking early; both may be correct (a floor colony is wide and
 flat, a wall crust is a plate) but neither has ever been measured.
+
+### FIRST ROSTER AUDIT WITH A VALID RULER (2026-08-12)
+
+`measure_sheet.py` measures a concept turnaround the same way
+`measure_silhouette.py` measures a mesh, so the two produce directly comparable
+numbers and "does the model match the sheet" stops being a matter of opinion. Both
+live in `blender/skills/creature-pipeline/scripts/`.
+
+| species | front model/sheet | side model/sheet | worst |
+|---|---|---|---|
+| crust   | 1.16 / 0.25  **+364%** | 0.20 / 0.91  -78% | front |
+| tangler | 1.11 / 0.90  +23%      | 0.44 / 1.09  **-60%** | side |
+| meeb    | 1.47 / 1.03  **+43%**  | 1.40 / 1.23  +14% | front |
+| flare   | 0.96 / 0.70  **+37%**  | 1.01 / 1.08  -6%  | front |
+| candid  | 6.80 / 7.44  -9%       | 5.77 / 7.44  -22% | - |
+| spiker  | 1.13 / 1.31  -14%      | 1.13 / 1.33  -15% | - |
+| gnawer  | 1.03 / 1.21  -15%      | 2.00 / 2.03  **-1%** | - |
+
+**Read these with two caveats, both real:**
+
+1. **The view-matching is a heuristic.** The model's front is compared to the sheet's
+   NARROWEST view and its side to the WIDEST, which holds for a quadruped with a
+   proper four-view turnaround but need not hold for a wall plate or a floor colony.
+   Crust is wall terrain and Candid is a floor colony; their extreme numbers may be
+   the heuristic failing rather than the model being wrong. Check those two by eye
+   against their sheets before touching geometry.
+2. **Candid's sheet did not split.** It returned ONE merged view (narrowest ==
+   widest == 7.44), so its views run together with no empty column between them. Its
+   row is not trustworthy until the splitter handles that sheet.
+
+**The trustworthy signals are meeb, flare and tangler** — all three have clean
+four-view turnarounds that split correctly:
+
+- **meeb front +43%** — the model is far too wide for its height. This agrees with
+  what the eye already said about that piece: the sheet's Meeb is a TALL domed body
+  with splayed feet, and the build is squat and boxy. A measured confirmation of a
+  defect that was previously only an impression.
+- **tangler side -60%** — the model is far too tall for its length.
+- **flare front +37%** — too wide for its height.
+
+And **gnawer side is -1%**, which is the contract rebuild landing exactly where it
+was aimed. That is the first time any creature in this project has been shown to
+match its sheet on a measured axis.
