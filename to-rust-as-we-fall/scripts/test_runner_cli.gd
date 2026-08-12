@@ -72896,12 +72896,23 @@ func _inflam_step(inst: Node, chunk: Node, node_name: String, actor: String) -> 
 	# The visible click first resolves routed arrival and only then begins the
 	# authored work beat. Observe the production receipt instead of guessing how
 	# many scheduler slices those two player-visible phases require.
+	# Routed arrival and the authored work beat are two separate spans, so they
+	# get two separate budgets. Sharing one lets a long walk eat the hold and the
+	# interactable never fires, which looks like a broken puzzle and is a broken
+	# clock.
 	var waited := 0.0
+	var walk_budget := 12.0
+	while not bool(fired[0]) and gs.is_moving(actor) and waited < walk_budget:
+		var walk_delta := minf(0.05, walk_budget - waited)
+		inst.headless_advance(walk_delta, walk_delta)
+		waited += walk_delta
+	var dwelled := 0.0
 	var interaction_budget := maxf(0.5, float(it.get("dwell_time")) + 1.0)
-	while not bool(fired[0]) and waited < interaction_budget:
-		var delta := minf(0.05, interaction_budget - waited)
+	while not bool(fired[0]) and dwelled < interaction_budget:
+		var delta := minf(0.05, interaction_budget - dwelled)
 		inst.headless_advance(delta, delta)
-		waited += delta
+		dwelled += delta
+	waited += dwelled
 	if it.interacted.is_connected(on_interacted):
 		it.interacted.disconnect(on_interacted)
 	var stall_diag := ""
