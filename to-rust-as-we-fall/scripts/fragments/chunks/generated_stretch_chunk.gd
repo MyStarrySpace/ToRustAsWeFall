@@ -272,6 +272,9 @@ var _bridge_cargo_seated_position := Vector3.ZERO
 var _bridge_cargo_flat_yaw := 0.0
 var _hydraulic_spillway_catch: MeshInstance3D
 var _hydraulic_exit_beacon: MeshInstance3D
+## Which prerequisite the shelter is currently advertising, so the copy repaints on a change instead
+## of every frame.
+var _exit_copy_signature := ""
 var _hydraulic_spillway_link: Node3D
 var _hydraulic_exit_link: Node3D
 var _hydraulic_spillway_food_cache: Dictionary = {}
@@ -2234,7 +2237,33 @@ func _process(delta: float) -> void:
 	_update_spillway_delivery_visual()
 	_sync_hydraulic_bridge_blocker()
 	_ensure_theme_hazard_tick()
+	_refresh_exit_copy_if_prerequisite_changed()
 	_publish_generated_runtime_authority()
+
+
+## The shelter advertises whichever prerequisite is actually in the way, and a branch span seating is
+## not a hydraulic event -- the visual pass that writes that copy is driven by water. Without this the
+## door would go on saying EXTEND FIRST after the player had gone and done exactly that. Kept cheap by
+## comparing a signature and repainting only on a change; once every span is bridged the phase lookup
+## is skipped entirely and the steady-state cost is one boolean loop.
+func _refresh_exit_copy_if_prerequisite_changed() -> void:
+	if _hydraulic_exit_beacon == null or not is_instance_valid(_hydraulic_exit_beacon):
+		return
+	var span_phase := ""
+	if not _all_mandatory_branch_spans_bridged():
+		span_phase = str(_required_unresolved_branch_action_before_node(
+			"exit_shelter").get("runtime_phase", "dormant"))
+	var signature := "%s|%s|%s|%s|%s" % [
+		span_phase,
+		str(_first_sluice_open),
+		str(_cistern_bridge_installed),
+		str(_borrowed_current_diverted),
+		str(_main_current_restored),
+	]
+	if signature == _exit_copy_signature:
+		return
+	_exit_copy_signature = signature
+	_apply_hydraulic_visual_state()
 
 
 ## Generated flora uses the same positional hide tiers as data-authored chunks.
@@ -7796,7 +7825,15 @@ func _apply_hydraulic_visual_state() -> void:
 			1.15 if catch_ready else 0.55
 		)
 	if _hydraulic_exit_beacon != null and is_instance_valid(_hydraulic_exit_beacon):
-		var exit_ready := bool(_hydraulic_state().get("hydraulic_exit_unlocked", false))
+		# The shelter is gated by TWO prerequisites and the water is only the second one. The command
+		# checks the mandatory branch spans FIRST (_query_generated_node_interaction_gate), and both of
+		# this spec's spans name exit_shelter -- so a run with the current restored but a span still
+		# unbridged is refused. Advertising readiness from the hydraulic state alone let the beacon go
+		# green, the label read OPEN, and the verb say ENTER SHELTER over a door that would not open.
+		# What the player is told has to come from what the command actually asks.
+		var exit_blocking_span := _required_unresolved_branch_action_before_node("exit_shelter")
+		var exit_water_ready := bool(_hydraulic_state().get("hydraulic_exit_unlocked", false))
+		var exit_ready := exit_water_ready and exit_blocking_span.is_empty()
 		var exit_color := HYDRAULIC_READY_COLOR if exit_ready else HYDRAULIC_CONTROL_COLOR
 		_hydraulic_exit_beacon.material_override = _make_material(
 			exit_color.darkened(0.6), exit_color, 1.35 if exit_ready else 0.5
@@ -7806,15 +7843,22 @@ func _apply_hydraulic_visual_state() -> void:
 		if exit_target != null and exit_target.has_method("get_interaction_delegate"):
 			exit_interactable = exit_target.call("get_interaction_delegate")
 		if exit_interactable != null:
-			_set_interactable_copy(
-				exit_interactable,
-				"ENTER SHELTER" if exit_ready else "SHELTER LOCKED",
-				(
-					"Follow the restored main current into the shelter"
-					if exit_ready
-					else "Restore the main current before entering the shelter"
+			# Name the prerequisite that is actually in the way, in the same words the refusal uses.
+			var exit_label := "ENTER SHELTER"
+			var exit_note := "Follow the restored main current into the shelter"
+			if not exit_blocking_span.is_empty():
+				var span_extending := str(
+					exit_blocking_span.get("runtime_phase", "dormant")) == "extending"
+				exit_label = "SPAN EXTENDING" if span_extending else "EXTEND FIRST"
+				exit_note = (
+					"The lit branch span is still extending; wait for it to seat."
+					if span_extending
+					else "The route crosses an open cut. Work the lit EXTEND terminal first."
 				)
-			)
+			elif not exit_water_ready:
+				exit_label = "SHELTER LOCKED"
+				exit_note = "Restore the main current before entering the shelter"
+			_set_interactable_copy(exit_interactable, exit_label, exit_note)
 		_set_hydraulic_status_label(
 			_hydraulic_exit_label,
 			"SHELTER ROUTE // OPEN" if exit_ready else "SHELTER CHANNEL // DRY",
@@ -10724,7 +10768,10 @@ func _announce_generated_stretch_complete() -> void:
 		_show_message("STRETCH COMPLETE — canonical shelter rest has started.", 4.5)
 		_show_note("SHELTER SECURED // Recovery now follows the normal timed rest lifecycle.", 5.0)
 	else:
-		_show_message("STRETCH COMPLETE — the ready party reached shelter without spending ATP.", 4.5)
+		# `paid_rest` reads the rest plan and nothing else, so this can only speak about the rest
+		# charge. Scarcity drains ATP on its own schedule and is counted nowhere near here -- claiming
+		# no ATP was spent contradicts a meter the player just watched fall.
+		_show_message("STRETCH COMPLETE — the party reached shelter with nobody needing rest.", 4.5)
 		_show_note("SHELTER SECURED // No recovery was needed; no rest charge was taken.", 5.0)
 
 

@@ -914,6 +914,9 @@ func _ready() -> void:
 			"--test-cover-mid-run":
 				ran_test = true
 				_test_cover_mid_run()
+			"--test-shelter-prerequisite-copy":
+				ran_test = true
+				await _test_shelter_advertises_the_prerequisite_in_the_way()
 			"--test-specific-refusal-survives":
 				ran_test = true
 				await _test_a_specific_refusal_is_not_overwritten()
@@ -2173,6 +2176,7 @@ func _run_all_tests() -> void:
 	await _test_emphasis_reveal_follows_the_camera()
 	await _test_hover_binding_survives_a_walk()
 	await _test_a_specific_refusal_is_not_overwritten()
+	await _test_shelter_advertises_the_prerequisite_in_the_way()
 	_test_cover_mid_run()
 	_test_pause_defers_never_drops()
 	await _test_path_source_precedence()
@@ -48848,6 +48852,42 @@ func _test_cover_mid_run() -> void:
 	_assert_true((run["spotted"] as Array)[0],
 		"stepping back out of cover is spotted -- the recompute runs both ways")
 
+
+## The shelter is gated by two prerequisites and the water is only the second one -- the command tests
+## the mandatory branch spans FIRST. Advertising readiness from the hydraulic state alone put a green
+## beacon and "ENTER SHELTER" on a door that would refuse, which is the walk the director took.
+func _test_shelter_advertises_the_prerequisite_in_the_way() -> void:
+	_test_name = "Shelter Advertises The Prerequisite In The Way"
+	var inst = await _instantiate_preview_chunk_and_wait("generated_stretch", 8)
+	if inst == null:
+		_assert_true(false, "the generated stretch preview instantiates")
+		return
+	var chunk = inst.get("_active_chunk")
+	_assert_true(chunk != null, "the chunk is loaded")
+	if chunk == null:
+		await _dispose_scene(inst)
+		return
+
+	# The control: at boot the mandatory spans are unbridged, which is exactly the state that used to
+	# advertise ENTER SHELTER. If this ever reports bridged the scenario has stopped covering the bug.
+	var spans_bridged: bool = chunk.call("_all_mandatory_branch_spans_bridged")
+	_assert_true(not spans_bridged,
+		"at boot a mandatory span is still unbridged (the state that produced the report)")
+
+	var exit_target = (chunk.get("_node_targets") as Dictionary).get("exit_shelter", null)
+	var exit_interactable = null
+	if exit_target != null and exit_target.has_method("get_interaction_delegate"):
+		exit_interactable = exit_target.call("get_interaction_delegate")
+	_assert_true(exit_interactable != null, "the exit shelter has an interactable to advertise on")
+	if exit_interactable != null:
+		var label := str(exit_interactable.get("tutorial_label"))
+		var note := str(exit_interactable.get("description"))
+		_assert_true(label != "ENTER SHELTER",
+			"a shelter behind an unresolved span does not advertise ENTER SHELTER (said '%s')" % label)
+		_assert_true(note.to_upper().contains("EXTEND") or note.to_upper().contains("SPAN"),
+			"the copy names the prerequisite in the way (said '%s')" % note)
+
+	await _dispose_scene(inst)
 
 ## A target declines for two different reasons and they must not read the same. STALE means the thing
 ## shown is gone. REFUSED means it understood the command and answered on its own terms -- and that
