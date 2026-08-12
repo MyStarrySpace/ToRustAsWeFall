@@ -2502,3 +2502,43 @@ gameplay beat, and not mine to settle quietly.
 
 Also still off the sheet whichever way that goes: the base blades read as thin dark
 spikes where the drawing has broad dark-green triangular blades.
+
+### flora re-judged with the fixed card framing, and the Gasafoetida measured
+
+Re-rendering all eleven with percentile framing changes the verdict on several. With
+the camera no longer driven back by ground cards and haze:
+
+- **Capbage, Climbvine, Seefern, GasPod** read well
+- **Scarpet** reads as a dense tufted pad (after the densification)
+- **MotherFlure** is correctly proportioned and parked closed — the open call is with
+  the director
+- **VineCut** has no sheet, so it stays blocked
+- **Sample** is a test piece, not a species
+- **Gasafoetida** is the remaining piece with a sheet that clearly does not match
+
+**Gasafoetida vs its sheet.** The drawing is a tall rich-green column topped by a
+green disc bearing six DARK-GREEN SCALED artichoke cones with GOLDEN RESIN dripping
+off their tips, standing in a rosette of lush FEATHERY fern fronds that curl at the
+tips, over a pebbly litter. The build gives pale smooth cream pods and hair-thin
+wireframe fronds.
+
+Sampled off the sheet: pod body `#6d6646` / `#59563d`, hue 50-53, lightness 0.30-0.35;
+stalk `#313d18`, hue 81; frond `#333821`, hue 75; resin `#76612a`, hue 43. The
+build's `gasafoetida_pod` is `#b0a95c`, hue 55 — **the hue matches**.
+
+**I am NOT retuning the colour on that comparison, and the reason matters:** the sheet
+is a LIT RENDER and the palette entry is ALBEDO. Comparing them directly is the same
+apples-to-oranges error that produced several wrong readings earlier today. The
+pod-to-stalk lightness RATIO is about 1.7-2x in both, which is the part that survives
+the confound, and it agrees.
+
+The defensible gaps are structural, not chromatic:
+- the pods are SMOOTH where the sheet's are covered in overlapping scales
+- the golden resin drips off every pod tip on the sheet; the build has one small drip
+  at the stalk wound and none on the crown
+- the base fronds are hair-thin single strands where the sheet has broad feathery
+  fronds with paired pinnae and curled tips, dense enough to form a rosette
+
+That last one is the same too-small-repetition failure as the Climbvine's rootlets and
+the Scarpet's tufts — three pieces now, all with correct structure built below the
+size at which it reads.
