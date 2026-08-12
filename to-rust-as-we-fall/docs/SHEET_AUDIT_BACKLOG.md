@@ -2319,3 +2319,42 @@ different islands by construction rather than by packing luck.
 
 I did not ship a change. Margin 0.05 is a measurable improvement but not a fix, and
 given the projector's non-determinism it would be luck rather than a correction.
+
+### sapscrap UVs — FIXED, and the gate's last false positive with it
+
+Director: the Sapscrap art is approved and the UVs are what need correcting. Done.
+
+**The fix is an explicit `pack_islands` pass after `smart_project`.** The shell shipped
+with faces 52 (8-gon) and 55 (6-gon) — sharing no vertex and no UV corner — projecting
+to near-degenerate slivers that landed on the same two texels. `smart_project`'s own
+`island_margin` does not guarantee separation. Measured across the alternatives:
+
+| attempt | folds |
+|---|---|
+| shipped (`angle_limit` 60, `island_margin` 0.02) | 2 |
+| lower `angle_limit` 45 / 33 / 25 | 18 / 26 / 6 |
+| triangulate first | 115 |
+| raise `island_margin` 0.05 / 0.09 | 1 / 2 |
+| **explicit `pack_islands(margin=0.02)`** | **0** |
+
+It also lifts coverage from about 114k texels to 132k, because packing tighter uses
+the sheet better. Note `smart_project` is NOT deterministic here — re-projecting at
+the shipped settings gives 4 folds where the file had 2 — which is why a fix that
+merely tunes its parameters could never be trusted.
+
+**And the gate's own false positive is closed.** After the pack pass the audit still
+reported 1 fold, on texel (350,82) owned by faces 9 and 219 — which share 2 vertices,
+i.e. an EDGE. A texel centre landing exactly on a shared edge tests inside both faces
+under an even-odd point-in-polygon rule, so adjacency was being counted as folding.
+That is why triangulating a shell took an apparent 4 folds to 115: the artefact scales
+with mesh density. The fold check now ignores pairs that share an edge.
+
+Verified both directions: Sapscrap **UV AUDIT PASS**; the injected total-fold red proof
+still FAILs; candid, gnawer, meeb, naturalizer and hidra all still PASS.
+
+Repainted and re-exported (`sapscrap.bin`, `sapscrap_shell.png`, `sapscrap_claw.png`).
+Scene load 8996/0.
+
+Caveat: `gate_sapscrap.py` could not run — it drives the LIVE Blender session over MCP
+and expects `Sapscrap_Rig` loaded there. That is an environment mismatch, not a result;
+run it with the Sapscrap open to get its verdict.
