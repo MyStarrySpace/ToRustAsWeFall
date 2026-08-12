@@ -1816,3 +1816,48 @@ Still open and needing the (now unblocked) aperture work: the windows lie ON the
 shell rather than sunk in sockets behind a raised rim.
 
 UV audit PASS (folded 0, hard 0), weld PASS, rig PASS 20 bones, scene load 9004/0.
+
+### naturalizer — windows are real sockets now, and the toes are blunt
+
+**Sockets (the aperture work, now that graft/atlas compose).** Each window is an
+actual APERTURE cut in the shell, its ring bridged inward to a smaller one — that
+bridge IS the rim the sheets show every bed sunk behind. The granule field stays a
+CARD at the socket floor: the socket holds the form, the pixel art is the
+repetition, which is the split the alpha-card law asks for. 8 sockets cut; 30 shell
+faces lose their seats (held open, so the shell keeps its layout) and 260 faces the
+graft created take per-face islands.
+
+**A trap worth naming: graft-created faces have NO part id.** `aperture()` and
+`bridge()` build faces without touching the part layer, so they all read back as id
+0 — and id 0 is simply whatever sits FIRST in `PARTS`, which here is `chair_pink`.
+Eight sockets turned the entire carapace pink and maroon. Inferring the part from a
+neighbour is NOT enough: a graft rebuilds the host faces around its cut into the
+zipper, so a loose face's neighbours are usually loose too (260 of 473 faces here).
+The fix that works is tagging what the graft made AT THE CALL SITE, where the host
+material is known: `b._tag([f for f in b.bm.faces if f not in before], "nz_shell")`.
+Anyone grafting into a painted piece must do this or the piece paints as PARTS[0].
+
+**Toes (director, viewport).** "What's with the tiny toes? I don't think they'll be
+visible to the player." Correct, and the cause was the TAPER, not the length: they
+ran 0.022 -> 0.010, ending in points that are a couple of pixels at the distance
+this animal is actually seen from. The sheet draws no points — each foot is three
+chunky faceted blocks nearly as thick as they are long. Their base width was
+already about right against the leg (48% of leg diameter vs the sheet's ~55%), so
+they are now blunt (0.030 -> 0.023) rather than longer.
+
+UV audit PASS, weld PASS (flipped 0, coincident 0, nonmanifold 0), rig PASS 20 bones.
+
+### coverage survey — one species has concept art and no model
+
+Checked every sheet in `reference-images/concept/{fauna,flora}` against the build
+scripts, the archetype manifest and the shipped gltfs:
+
+- fauna: candid, crust, flare, gnawer, hidra, meeb, naturalizer, redactor, spiker,
+  tangler, toxo all have `build_*.py`; ferrule (v3) and sapscrap have their own dirs
+- flora: capbage, climbvine, gasafoetida, mother-flure, scarpet, seefern, hushbloom
+  ship as `flora_*.gltf`; ForgetMeNots and ResolutionRoots exist as archetype pieces
+
+**AEMBERS is the only gap** — `aembers.png` exists, and there is no model anywhere:
+not in `blender/fauna`, not in the archetype manifest, not mentioned in any build
+script. It is one of the 13 canonical threats (renamed from Verdings). That is the
+next piece to model.
