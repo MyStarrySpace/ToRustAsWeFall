@@ -1454,3 +1454,36 @@ is gitignored.** This entry is the only durable record of the change.
 The lesson is the one this backlog keeps relearning: a green from an instrument
 nobody has tried to make go red is not evidence. Two of my three "PASS" readings
 on the Meeb this session came from an audit that could not have failed it.
+
+### eleven unreferenced texture files, and one anomaly I could not settle
+
+Scanning every fauna gltf for images present on disk but absent from its `images`
+list turns up eleven:
+
+- `CrustRigged_{tex,emissive}.png`, `FlareRigged_{tex,emissive}.png`,
+  `MeebRigged_{tex,emissive}.png`, `SpikerRigged_{tex,emissive}.png`,
+  `TanglerRigged_{tex,emissive}.png` — the five MULTI-TEXTURE species. Their gltfs
+  reference a small tiling noise per material, so these packed-atlas files are
+  leftovers from an earlier pipeline. Safe to delete once someone confirms no
+  scene loads them by path; they are tracked, so it is reversible.
+- `HidraRigged_emissive.png` — this one is NOT in the same category and I could
+  not resolve it.
+
+**The Hidra anomaly, stated honestly.** It has an emissive map on disk that its
+gltf does not reference, while gnawer, toxo, redactor and naturalizer all wire
+theirs. Candid has no emissive file at all and is correctly bare. So hidra is the
+only piece with a map and no wiring.
+
+I do NOT know whether that is a defect. Against it: the map holds 18 non-black
+pixels out of 16384, consistent with a near-empty map that is correctly unused.
+Also, `tools/gltf_wire_material_sidecars.py` reports "No material sidecars found"
+for it — the tool expects `<albedo>_emissive.png` (i.e. `HidraRigged_tex_emissive`)
+while the exporter writes `<Piece>Rigged_emissive.png`, so the tool cannot see any
+of these files and is not what wired the other four. Neither `build_hidra.py` nor
+`build_gnawer.py` mentions emission, so the wiring is decided inside the export
+path from material state, and that is where the difference lives.
+
+**Open question for whoever picks this up:** does the Hidra glow? If yes this is
+lost wiring and the export path is dropping it. If no, the file is stale like the
+other ten. The sidecar tool's naming mismatch is worth fixing either way — a guard
+that can never match a filename is another gate that cannot go red.
