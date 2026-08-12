@@ -1,0 +1,193 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1000" font-family="sans-serif">
+  <style>
+    .grid { stroke: #d0d0d0; stroke-width: 0.5; fill: none; }
+    .gridmaj { stroke: #888; stroke-width: 0.8; fill: none; }
+    .body { fill: none; stroke: #2b2b2b; stroke-width: 2; }
+    .accent { fill: #ffaa28; stroke: #cc7a00; stroke-width: 1; opacity: 0.9; }
+    .scarf { fill: #9a8d6f; stroke: #6f6750; stroke-width: 1; opacity: 0.85; }
+    .tunic { fill: #a39073; stroke: #8a785b; stroke-width: 1; }
+    .pants { fill: #1e1e22; stroke: #050507; stroke-width: 1; }
+    .boots { fill: #4a3520; stroke: #2a1d10; stroke-width: 1; }
+    .skin  { fill: #6b4a32; stroke: #3a2818; stroke-width: 1; }
+    .hair  { fill: #1a0f08; stroke: #000; stroke-width: 1; }
+    .label { font-size: 14px; fill: #2b2b2b; }
+    .measure { stroke: #c33; stroke-width: 1; fill: none; }
+    .measure-label { font-size: 13px; fill: #c33; font-weight: bold; }
+    .h-num { font-size: 18px; fill: #2b2b2b; font-weight: bold; }
+    .note { font-size: 11px; fill: #555; }
+    .title { font-size: 22px; fill: #1a1a1a; font-weight: bold; }
+  </style>
+
+  <text x="20" y="32" class="title">PERIS — Proportion Measurement (6.5 heads tall, ~1.65m total)</text>
+  <text x="20" y="56" class="note">Each unit H = head height = 0.254m. Total figure 6.5H = 1.65m.</text>
+
+  <!-- Grid: every 100px = 1H -->
+  <g>
+    <!-- horizontal head-unit lines, with H labels on left -->
+    <line x1="100" y1="100" x2="500" y2="100" class="gridmaj"/>
+    <text x="60" y="106" class="h-num">0H</text>
+    <text x="510" y="106" class="label">top of head / scarf peak</text>
+
+    <line x1="100" y1="200" x2="500" y2="200" class="gridmaj"/>
+    <text x="60" y="206" class="h-num">1H</text>
+    <text x="510" y="206" class="label">chin / jaw bottom</text>
+
+    <line x1="100" y1="240" x2="500" y2="240" class="grid"/>
+    <text x="510" y="246" class="note">1.15H — neck base / shoulders top</text>
+
+    <line x1="100" y1="300" x2="500" y2="300" class="gridmaj"/>
+    <text x="60" y="306" class="h-num">2H</text>
+    <text x="510" y="306" class="label">mid-chest (sternum)</text>
+
+    <line x1="100" y1="380" x2="500" y2="380" class="grid"/>
+    <text x="510" y="386" class="note">2.8H — sash / waist</text>
+
+    <line x1="100" y1="400" x2="500" y2="400" class="gridmaj"/>
+    <text x="60" y="406" class="h-num">3H</text>
+    <text x="510" y="406" class="label">tunic hem / mid-hip</text>
+
+    <line x1="100" y1="500" x2="500" y2="500" class="gridmaj"/>
+    <text x="60" y="506" class="h-num">4H</text>
+    <text x="510" y="506" class="label">mid-thigh</text>
+
+    <line x1="100" y1="600" x2="500" y2="600" class="gridmaj"/>
+    <text x="60" y="606" class="h-num">5H</text>
+    <text x="510" y="606" class="label">knee</text>
+
+    <line x1="100" y1="700" x2="500" y2="700" class="gridmaj"/>
+    <text x="60" y="706" class="h-num">6H</text>
+    <text x="510" y="706" class="label">ankle / boot top</text>
+
+    <line x1="100" y1="750" x2="500" y2="750" class="gridmaj"/>
+    <text x="60" y="756" class="h-num">6.5H</text>
+    <text x="510" y="756" class="label">ground / sole</text>
+  </g>
+
+  <!-- Character silhouette (front view, simplified) -->
+  <g transform="translate(0,0)">
+    <!-- Head -->
+    <ellipse cx="300" cy="155" rx="38" ry="50" class="skin"/>
+    <!-- Scarf dome/wrap -->
+    <path d="M 248,135 Q 248,90 300,90 Q 352,90 352,135 L 352,180 Q 348,200 320,200 Q 318,180 318,160 Q 320,150 325,140 L 280,140 Q 280,150 280,160 Q 280,180 280,200 Q 252,200 248,180 Z"
+          class="scarf"/>
+    <!-- Bangs -->
+    <path d="M 280,142 L 320,142 L 318,158 L 282,158 Z" class="hair"/>
+    <!-- Eyes -->
+    <ellipse cx="288" cy="160" rx="5" ry="3" fill="#eae5db" stroke="#000" stroke-width="0.5"/>
+    <ellipse cx="312" cy="160" rx="5" ry="3" fill="#eae5db" stroke="#000" stroke-width="0.5"/>
+    <ellipse cx="288" cy="160" rx="2" ry="2" fill="#1a0e08"/>
+    <ellipse cx="312" cy="160" rx="2" ry="2" fill="#1a0e08"/>
+    <!-- Yellow scarf glow -->
+    <path d="M 270,210 L 330,210 L 320,255 L 300,275 L 280,255 Z" class="accent"/>
+    <!-- Tunic -->
+    <path d="M 248,240 L 352,240 L 360,400 L 240,400 Z" class="tunic"/>
+    <!-- Wrap detail -->
+    <path d="M 252,250 L 305,260 L 300,310 L 260,310 Z" class="tunic" opacity="0.8" stroke-dasharray="2"/>
+    <!-- Sash -->
+    <path d="M 245,375 L 355,375 L 358,395 L 242,395 Z" fill="#40361f" stroke="#1f1810"/>
+    <!-- Sash tie -->
+    <rect x="265" y="395" width="9" height="35" fill="#40361f"/>
+    <rect x="320" y="395" width="9" height="28" fill="#40361f"/>
+    <!-- Arms (sleeves) -->
+    <path d="M 240,245 L 220,400 L 245,400 L 260,250 Z" class="tunic"/>
+    <path d="M 360,245 L 380,400 L 355,400 L 340,250 Z" class="tunic"/>
+    <!-- Hands -->
+    <ellipse cx="225" cy="412" rx="14" ry="12" class="skin"/>
+    <ellipse cx="375" cy="412" rx="14" ry="12" class="skin"/>
+    <!-- Wide-leg pants -->
+    <path d="M 250,400 L 358,400 L 380,700 L 320,700 L 300,500 L 280,700 L 220,700 Z" class="pants"/>
+    <!-- Boots -->
+    <path d="M 220,700 L 285,700 L 295,750 L 210,750 Z" class="boots"/>
+    <path d="M 315,700 L 380,700 L 390,750 L 305,750 Z" class="boots"/>
+    <!-- Braids (hanging in front) -->
+    <g class="hair">
+      <ellipse cx="265" cy="220" rx="12" ry="10"/>
+      <ellipse cx="265" cy="245" rx="11" ry="9"/>
+      <ellipse cx="265" cy="270" rx="12" ry="10"/>
+      <ellipse cx="266" cy="295" rx="11" ry="9"/>
+      <ellipse cx="266" cy="320" rx="12" ry="10"/>
+      <ellipse cx="267" cy="345" rx="11" ry="9"/>
+      <ellipse cx="267" cy="370" rx="10" ry="8"/>
+      <ellipse cx="335" cy="220" rx="12" ry="10"/>
+      <ellipse cx="335" cy="245" rx="11" ry="9"/>
+      <ellipse cx="335" cy="270" rx="12" ry="10"/>
+      <ellipse cx="334" cy="295" rx="11" ry="9"/>
+      <ellipse cx="334" cy="320" rx="12" ry="10"/>
+      <ellipse cx="333" cy="345" rx="11" ry="9"/>
+      <ellipse cx="333" cy="370" rx="10" ry="8"/>
+    </g>
+  </g>
+
+  <!-- Width measurements (right side) -->
+  <g>
+    <!-- Head width 1.5H -->
+    <line x1="262" y1="60" x2="338" y2="60" class="measure" marker-end="url(#arrowhead)" marker-start="url(#arrowhead)"/>
+    <text x="270" y="56" class="measure-label">head W = 1.5H wide</text>
+    <line x1="262" y1="55" x2="262" y2="100" class="measure"/>
+    <line x1="338" y1="55" x2="338" y2="100" class="measure"/>
+
+    <!-- Shoulder width 2.0H -->
+    <line x1="248" y1="240" x2="352" y2="240" class="measure"/>
+    <text x="380" y="246" class="measure-label">shoulders = 2.0H</text>
+
+    <!-- Hip width 1.6H -->
+    <line x1="248" y1="395" x2="358" y2="395" class="measure"/>
+    <text x="395" y="402" class="measure-label">hip = 1.6H (after sash)</text>
+
+    <!-- Pant cuff width 1.6H each leg flared -->
+    <line x1="220" y1="700" x2="285" y2="700" class="measure"/>
+    <text x="180" y="690" class="measure-label">pant cuff = 0.9H wide</text>
+  </g>
+
+  <!-- Marker for arrows -->
+  <defs>
+    <marker id="arrowhead" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
+      <polygon points="0 0, 6 3, 0 6" fill="#c33"/>
+    </marker>
+  </defs>
+
+  <!-- Notes panel on right -->
+  <g transform="translate(540, 100)">
+    <rect x="0" y="0" width="240" height="640" fill="#fafaf6" stroke="#888"/>
+    <text x="10" y="22" class="title">VERTICAL BREAKDOWN</text>
+    <text x="10" y="55" class="label">0.00H — top of scarf peak</text>
+    <text x="10" y="75" class="label">0.85H — eyes / mid-face</text>
+    <text x="10" y="95" class="label">1.00H — chin</text>
+    <text x="10" y="115" class="label">1.10H — yellow scarf wraps neck</text>
+    <text x="10" y="135" class="label">1.20H — collarbone / shoulder</text>
+    <text x="10" y="160" class="label">2.00H — sternum / mid-chest</text>
+    <text x="10" y="185" class="label">2.80H — sash belt</text>
+    <text x="10" y="210" class="label">3.00H — tunic hem / hip</text>
+    <text x="10" y="235" class="label">3.20H — sash tie ends hang here</text>
+    <text x="10" y="260" class="label">3.50H — braid tips end</text>
+    <text x="10" y="285" class="label">4.00H — mid-thigh</text>
+    <text x="10" y="310" class="label">5.00H — knee (pants narrow here)</text>
+    <text x="10" y="335" class="label">5.50H — pants flare widens</text>
+    <text x="10" y="365" class="label">6.00H — ankle / boot top</text>
+    <text x="10" y="390" class="label">6.50H — ground</text>
+
+    <text x="10" y="430" class="title" font-size="18">KEY RATIOS</text>
+    <text x="10" y="455" class="label">Head H : Body 6.5H = 1:6.5 (anime)</text>
+    <text x="10" y="475" class="label">Head W : Body shoulders = 1:1.33</text>
+    <text x="10" y="495" class="label">Tunic length: shoulder→hip = 1.85H</text>
+    <text x="10" y="515" class="label">Pants length: hip→ankle = 3.0H</text>
+    <text x="10" y="535" class="label">Arm length: shoulder→hand = 1.85H</text>
+    <text x="10" y="555" class="label">Braid length: temple→tip = 2.3H</text>
+    <text x="10" y="575" class="label">Boot height = 0.5H</text>
+    <text x="10" y="595" class="label">Pant flare bottom = 0.9H wide each</text>
+
+    <text x="10" y="625" class="note">Aster = same scaffold but 7H total (taller)</text>
+  </g>
+
+  <!-- Lock proportions panel bottom -->
+  <g transform="translate(20, 800)">
+    <text x="0" y="0" class="title" font-size="18">CURRENT BUILD vs TARGET (deltas to fix)</text>
+    <text x="0" y="25" class="label">• Head was ~0.36 tall × 0.30 wide → ratio 1.20. Target: 1.10 (slightly wider, less elongated).</text>
+    <text x="0" y="45" class="label">• Body was 1.77m unscaled then 0.72× = 1.27m total. Should be 1.65m → scale 0.94, not 0.72.</text>
+    <text x="0" y="65" class="label">• Arms were placed at z=1.05 (mid-coat). Should be at z=1.20 (shoulder ring).</text>
+    <text x="0" y="85" class="label">• Hands clipped through coat skirt. Hand z must end above coat hem (z=0.55 OK if coat ends at 0.4).</text>
+    <text x="0" y="105" class="label">• Pants taper opposite of reference: ref flares wider at bottom; current narrows.</text>
+    <text x="0" y="125" class="label">• Eyes were too small. Target: eye width 0.05H × 0.04H height, slightly larger pupils.</text>
+    <text x="0" y="145" class="label">• Chain curve passed through coat. Curve must hang OUTSIDE the coat front, not behind it.</text>
+  </g>
+</svg>

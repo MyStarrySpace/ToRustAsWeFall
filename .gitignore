@@ -52,32 +52,16 @@ to-rust-as-we-fall/*_decomposition.json
 to-rust-as-we-fall/diag_*.gd
 to-rust-as-we-fall/diag_*.gd.uid
 
-# Art-tool working directories (source lives here; game-ready exports go in
-# to-rust-as-we-fall/resources/). Too large / scratch for version control.
-asesprite/
-# Blender: generated content stays out; AUTHORED models are the source of truth
-# (director 2026-08-12: concept images -> blender model) and are TRACKED.
-# The authored set is ~3 MB total — the .blend1 backups never match *.blend.
-blender/**
-!blender/fauna/
-!blender/fauna/*.blend
-!blender/fauna/sapscrap/
-!blender/fauna/sapscrap/sapscrap.blend
-!blender/fauna/ferrule/
-!blender/fauna/ferrule/ferrule_v3.blend
-!blender/archetypes/
-!blender/archetypes/flora_rigged.blend
-blockbench/
-crocotile/
-kitbash-tool/
-
-# Design research / reference images (not used by the game at runtime).
-# Kept on disk outside the game folder, out of version control.
-reference-images/
-
-# Canonical design docs (GDD, taxonomies) copied in for reference — consult before adding/naming
-# game content (see .claude/CLAUDE.md). Large/source; mirror of the Downloads originals, untracked.
-reference-docs/
+# Art SOURCE is version-controlled (director 2026-08-12: the whole project commits;
+# .blend/.fbx ride Git LFS — see .gitattributes). What stays OUT is regenerable OUTPUT:
+# Blender's auto-backups, render-frame dumps, and animation preview clips, all of which
+# rebuild from the committed .blend masters.
+*.blend1
+blender/**/*frames*/
+blender/elevator/hallway_*/
+blender/elevator/cam*.png
+blender/**/*.gif
+blender/**/*.mp4
 
 # Generated reports + run artifacts
 to-rust-as-we-fall/reports/
@@ -111,3 +95,7 @@ node_modules/
 # Browser-play driver scratch. Must live INSIDE to-rust-as-we-fall/ so node resolves
 # @playwright/test from its node_modules; the scratchpad dir cannot. Recipe: docs/TESTING.md.
 to-rust-as-we-fall/.playtmp/
+
+# Session scratch at the game root (same class as the png pollution patterns above)
+to-rust-as-we-fall/tmp/
+to-rust-as-we-fall/*.jpg

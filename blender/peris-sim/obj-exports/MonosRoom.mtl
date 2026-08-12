@@ -1,0 +1,42 @@
+# Blender 5.1.1 MTL File: 'None'
+# www.blender.org
+
+newmtl MonosConsoleTex
+Ns 10.000005
+Ka 1.000000 1.000000 1.000000
+Ks 0.500000 0.500000 0.500000
+Ni 1.500000
+d 1.000000
+illum 2
+map_Kd MonosConsole_tex.png
+map_Ke MonosConsole_emissive.png
+
+newmtl MonosPortalTex
+Ns 10.000005
+Ka 1.000000 1.000000 1.000000
+Ks 0.500000 0.500000 0.500000
+Ni 1.500000
+d 1.000000
+illum 2
+map_Kd MonosPortal_tex.png
+map_Ke MonosPortal_emissive.png
+
+newmtl MonosRoomShellTex
+Ns 10.000005
+Ka 1.000000 1.000000 1.000000
+Ks 0.500000 0.500000 0.500000
+Ni 1.500000
+d 1.000000
+illum 2
+map_Kd MonosRoomShell_tex.png
+map_Ke MonosRoomShell_emissive.png
+
+newmtl MonosShelfTex
+Ns 10.000005
+Ka 1.000000 1.000000 1.000000
+Ks 0.500000 0.500000 0.500000
+Ke 0.000000 0.000000 0.000000
+Ni 1.500000
+d 1.000000
+illum 2
+map_Kd MonosShelf_tex.png

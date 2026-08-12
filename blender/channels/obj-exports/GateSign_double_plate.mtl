@@ -1,0 +1,12 @@
+# Blender 5.1.1 MTL File: 'None'
+# www.blender.org
+
+newmtl GateSign_double_plateTex
+Ns 10.000005
+Ka 1.000000 1.000000 1.000000
+Ks 0.500000 0.500000 0.500000
+Ni 1.500000
+d 1.000000
+illum 2
+map_Kd GateSign_double_plate_tex.png
+map_Ke GateSign_double_plate_emissive.png

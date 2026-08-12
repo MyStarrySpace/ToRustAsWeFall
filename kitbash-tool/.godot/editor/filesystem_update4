@@ -1,0 +1,8 @@
+res://scripts/editor/editor_hud.gd
+res://scripts/editor/level_editor.gd
+res://scripts/editor/beveled_box.gd
+res://scripts/editor/csg_editor.gd
+res://scripts/editor/csg_editor_hud.gd
+res://scripts/editor/csg_presets.gd
+res://scripts/editor/csg_materials.gd
+res://scripts/editor/editor_camera.gd

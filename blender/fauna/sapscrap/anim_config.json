@@ -1,0 +1,35 @@
+{
+ "rig": "Sapscrap_Rig",
+ "out": "c:/Users/quest/Programming/Games/ToRustAsWeFall/blender/fauna/sapscrap/anim_frames",
+ "margin": 1.9,
+ "azimuth": 62,
+ "elevation": 10,
+ "fps": 24,
+ "actions": [
+  {
+   "name": "Sapscrap_Idle",
+   "short": "idle",
+   "start": 1,
+   "end": 64,
+   "step": 2
+  },
+  {
+   "name": "Sapscrap_Windup",
+   "short": "windup",
+   "start": 1,
+   "end": 18
+  },
+  {
+   "name": "Sapscrap_Lunge",
+   "short": "lunge",
+   "start": 1,
+   "end": 18
+  },
+  {
+   "name": "Sapscrap_Bite",
+   "short": "bite",
+   "start": 1,
+   "end": 22
+  }
+ ]
+}

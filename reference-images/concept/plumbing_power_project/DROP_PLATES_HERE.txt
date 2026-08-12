@@ -1,0 +1,15 @@
+Drop the seven generated concept plates from the 2026-07-27 session here
+(any filenames work; suggested):
+
+  portal_and_console.png   - segmented masonry ring in wooden frame + pedestal console
+  pad_rings.png            - concentric pad, wood wedges + twin purple neon grooves
+  water_channel.png        - hex-grate/plank deck section, cyan water, block banks
+  reservoir_platform.png   - riveted caisson in the drum, crown ring above
+  terminal.png             - wood-core-in-straps console, green matrix head
+  shelter_room.png         - the dwelling interior (lantern, shelf, hex vents)
+  organics_wall.png        - lobed vein trunk + vascular web + biolume colony
+
+They exist in the Claude conversation (and your generator's history). The
+builders that were made FROM them: blender/archetypes/concept_pass1.py +
+concept_flora.py; textual decompositions:
+to-rust-as-we-fall/docs/concept-prompts/plumbing_power_project.md.

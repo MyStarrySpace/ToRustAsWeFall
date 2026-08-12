@@ -1,0 +1,52 @@
+# Blender 5.1.1 MTL File: 'stylized_plant_pothos_v27.blend'
+# www.blender.org
+
+newmtl PotMat
+Ns 360.000000
+Ka 1.000000 1.000000 1.000000
+Kd 0.920000 0.920000 0.900000
+Ks 0.200000 0.200000 0.200000
+Ke 0.000000 0.000000 0.000000
+Ni 1.500000
+d 1.000000
+illum 2
+
+newmtl PothosLeafMat
+Ns 202.500000
+Ka 1.000000 1.000000 1.000000
+Ks 0.500000 0.500000 0.500000
+Ke 0.000000 0.000000 0.000000
+Ni 1.500000
+d 1.000000
+illum 2
+map_Kd C:/tex_audit_pothos_PothosLeafTex.png
+
+newmtl PothosStemMat
+Ns 90.000000
+Ka 1.000000 1.000000 1.000000
+Kd 0.320000 0.420000 0.180000
+Ks 0.500000 0.500000 0.500000
+Ke 0.000000 0.000000 0.000000
+Ni 1.500000
+d 1.000000
+illum 2
+
+newmtl SaucerMat
+Ns 360.000000
+Ka 1.000000 1.000000 1.000000
+Kd 0.920000 0.920000 0.900000
+Ks 0.200000 0.200000 0.200000
+Ke 0.000000 0.000000 0.000000
+Ni 1.500000
+d 1.000000
+illum 2
+
+newmtl SoilMat
+Ns 22.499992
+Ka 1.000000 1.000000 1.000000
+Ks 0.200000 0.200000 0.200000
+Ke 0.000000 0.000000 0.000000
+Ni 1.500000
+d 1.000000
+illum 2
+map_Kd C:/Users/quest/Programming/Games/ToRustAsWeFall/blender/peris-sim/textures/pothos/SoilTex.png

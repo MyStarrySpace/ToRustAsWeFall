@@ -1,0 +1,42 @@
+# Blender 5.1.1 MTL File: 'stylized_plant_spider_v3.blend'
+# www.blender.org
+
+newmtl LeafMat
+Ns 22.499992
+Ka 1.000000 1.000000 1.000000
+Ks 0.200000 0.200000 0.200000
+Ke 0.000000 0.000000 0.000000
+Ni 1.500000
+illum 2
+map_Kd C:/Users/quest/Programming/Games/ToRustAsWeFall/blender/peris-sim/textures/spider/LeafTex.png
+map_d C:/Users/quest/Programming/Games/ToRustAsWeFall/blender/peris-sim/textures/spider/LeafTex.png
+
+newmtl PotMat
+Ns 22.499992
+Ka 1.000000 1.000000 1.000000
+Ks 0.200000 0.200000 0.200000
+Ke 0.000000 0.000000 0.000000
+Ni 1.500000
+d 1.000000
+illum 2
+map_Kd C:/Users/quest/Programming/Games/ToRustAsWeFall/blender/peris-sim/textures/spider/PotTex.png
+
+newmtl SaucerMat
+Ns 22.499992
+Ka 1.000000 1.000000 1.000000
+Ks 0.200000 0.200000 0.200000
+Ke 0.000000 0.000000 0.000000
+Ni 1.500000
+d 1.000000
+illum 2
+map_Kd C:/Users/quest/Programming/Games/ToRustAsWeFall/blender/peris-sim/textures/spider/SaucerTex.png
+
+newmtl SoilMat
+Ns 22.499992
+Ka 1.000000 1.000000 1.000000
+Ks 0.200000 0.200000 0.200000
+Ke 0.000000 0.000000 0.000000
+Ni 1.500000
+d 1.000000
+illum 2
+map_Kd C:/Users/quest/Programming/Games/ToRustAsWeFall/blender/peris-sim/textures/spider/SoilTex.png

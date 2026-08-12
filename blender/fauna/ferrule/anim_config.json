@@ -1,0 +1,35 @@
+{
+ "rig": "Ferrule_Rig",
+ "out": "c:/Users/quest/Programming/Games/ToRustAsWeFall/blender/fauna/ferrule/anim_frames",
+ "margin": 1.9,
+ "azimuth": 78,
+ "elevation": 12,
+ "fps": 24,
+ "actions": [
+  {
+   "name": "Ferrule_Idle",
+   "short": "idle",
+   "start": 1,
+   "end": 64,
+   "step": 2
+  },
+  {
+   "name": "Ferrule_Compress",
+   "short": "compress",
+   "start": 1,
+   "end": 18
+  },
+  {
+   "name": "Ferrule_Spring",
+   "short": "spring",
+   "start": 1,
+   "end": 20
+  },
+  {
+   "name": "Ferrule_Latch",
+   "short": "latch",
+   "start": 1,
+   "end": 22
+  }
+ ]
+}
