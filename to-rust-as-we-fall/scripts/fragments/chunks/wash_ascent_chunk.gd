@@ -155,6 +155,12 @@ var _phase := "ready"
 var _intro_fall_core_radius := -1.0   # widest authored shaft offset — tests pin the CENTER fall
 
 func _build_chunk() -> void:
+	# This is a Channels scene, and piece ids resolve through the ACTIVE district — a process-wide
+	# setting the library documents as the building scene's to claim. Left unclaimed, the deck, the
+	# walls and the rails all resolve from whichever district the previous scene left active, which
+	# builds a different level without a single error. The build owns its inputs; it does not trust
+	# boot order for one of them.
+	ArchetypePieceLibrary.set_district("channels")
 	_props_root = PROPS_SCENE.instantiate()
 	_props_root.visible = false          # markers are data; the realized root is the scene
 	add_child(_props_root)
@@ -1139,9 +1145,12 @@ func _build_wash_channels() -> void:
 		# s, spanning the whole walkway width, hidden at idle. Integer section
 		# spans mean the bands cover the kill zone EXACTLY, mouth-to-mouth.
 		for k in range(int(s1 - s0)):
+			# Variant choice uses the project's own arithmetic, like every other tile pick in this
+			# chunk (see _deck_tile_id) — engine hash() is stable per engine version but is owned by
+			# the engine, and the level's exact look must be a function of committed code alone.
 			var band := _spawn_water_band(
 				["water_band_deck", "water_band_deck_b", "water_band_deck_c"][
-					absi(hash(int(round(s0)) + k)) % 3], s0 + float(k))
+					absi((int(round(s0)) + k) * 31 + 17) % 3], s0 + float(k))
 			if band != null:
 				_stamp(band, "floor", "structure_channel", true)
 				band.visible = false
@@ -1152,7 +1161,7 @@ func _build_wash_channels() -> void:
 	while t0 + 1.0 <= _channel_span.y + 0.001:
 		var trough := _spawn_water_band(
 			["water_band_trough", "water_band_trough_b", "water_band_trough_c"][
-				absi(hash(int(round(t0 * 2.0)))) % 3], t0)
+				absi(int(round(t0 * 2.0)) * 13 + 7) % 3], t0)
 		if trough != null:
 			_stamp(trough, "floor", "structure_channel", true)
 			trough.visible = false
