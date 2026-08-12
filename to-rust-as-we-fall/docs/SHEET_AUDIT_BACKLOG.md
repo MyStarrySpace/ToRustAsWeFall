@@ -1168,3 +1168,20 @@ the lip again — that has been measured out.
   camera frames to the object's bounds, so changing the object's size zooms the
   image and the same crop stops covering the same region — it reported a WIDENED
   Candid halo as narrower.
+
+**Localised (2026-08-12).** Flood-filling the enclosed sky into blobs puts
+**630 of the 917 px in ONE blob at the top cup** (x213-276, y111-126), with 175
+and 64 px at the right-flank rims and two specks elsewhere.
+
+Combined with the lip measuring flush (0 of 384 verts proud) and the cutter
+leaving a blind floor at `surf - CUP_DEPTH`, that rules out both a standoff and a
+see-through. What is left is geometry that is CORRECT and still reads wrong: the
+rim of a rear-facing cup lies on the far surface and projects above the crown from
+a raised camera, so the line of sight between rim and crown passes over the body
+and lands on background. A rim on the far side of a lumpy body, seen over the top.
+
+So the remaining question is not "is the lip proud" — that is measured out — but
+whether the sheet's cup PLACEMENT puts a mouth up there at all. Its silhouette
+panel is a solid lobed blob with no ring anywhere in the outline, which suggests
+the arrangement, not the rim, is what differs. Check `_cup_dir` against the
+turnaround before touching lip geometry again.
