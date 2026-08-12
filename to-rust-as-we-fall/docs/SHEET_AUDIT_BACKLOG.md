@@ -1224,3 +1224,28 @@ read from the canopy above and the bud field below, not from ranks of posts.
 Reverted to 17. **Do not raise CHAINS to chase the count.** If this is worth
 closing, the lever is spacing and radius spread within a single arc, or accepting
 that a low-poly silhouette will not resolve an illustration's column count.
+
+### redactor — two PARTIALs are an artefact of MY audit, not the model
+
+The verification sweep rendered every species at its PARKED pose and handed that
+against findings written for the revealed animal. For the Redactor the parked pose
+is deliberately the CLOAK — a folded shard with every light shut — so the audit
+was measuring the wrong state and correctly reported no amber and stub legs.
+
+Measured both states:
+
+| state | amber share | width |
+| --- | --- | --- |
+| cloaked (parked, what the audit saw) | **0.0%** | 96 px |
+| revealed (`redactor_reveal`, end) | **10.2%** | 235 px |
+| the sheet's revealed panel | 8.7% | — |
+
+So the orbs are built and land within two points of the sheet, and the legs do
+extend — the cloak simply retracts them, which is the state working as designed.
+The reviewer half-caught this itself, noting the sibling reveal render "measuring
+7.5% amber, a near-exact match", and still had to score the render it was given.
+
+**Method fix for any future sweep:** audit a species in the state the FINDING is
+about. A rest render is the right evidence for a rest-state finding and the wrong
+evidence for anything else — and for a creature whose rest state is a hidden form,
+it is the wrong evidence for almost everything.
