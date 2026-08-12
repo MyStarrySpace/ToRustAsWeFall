@@ -623,7 +623,9 @@ func _hydraulic_enabled() -> bool:
 func _hydraulic_help() -> String:
 	if not _hydraulic_enabled():
 		return ""
-	return " CHANNEL PUZZLE — Route one finite current through the works to reach the shelter. The spillway lysate is an optional time-and-hand bet; a launched payload keeps its captured route even if you turn the valve back early."
+	# The spillway bet and the launched payload's held route are both things to find out by doing
+	# them. A banner that states the goal leaves the level something to teach.
+	return " CHANNEL PUZZLE — One current, and it only runs one way at a time. Get it to the shelter."
 
 
 func _theme_help() -> String:
