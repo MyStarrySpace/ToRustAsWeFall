@@ -2542,3 +2542,33 @@ The defensible gaps are structural, not chromatic:
 That last one is the same too-small-repetition failure as the Climbvine's rootlets and
 the Scarpet's tufts — three pieces now, all with correct structure built below the
 size at which it reads.
+
+### gasafoetida fronds — the size was only a third of it; the ART was a comb
+
+Three changes, and the first two alone would have made the piece worse:
+
+1. **Size.** `GA_LEAF_WHORLS` ran 11 fronds at lengths 0.30 and 0.24 — hair-thin
+   strands round the stalk's foot. Now 15 at 0.62 and 0.50. Cards are drawn at half
+   their length wide, so lengthening broadens them too.
+2. **Angle.** `tilt = 1.16` rad splayed them almost horizontally; lengthened, they
+   read as flat scaffolding sticking out of the base. Now 0.92 for the lower whorl
+   and 0.78 for the upper, so the rosette rises and layers.
+3. **The art, which was the actual problem.** `_gasafoetida_leaf_art` drew its teeth
+   as SINGLE-PIXEL rows at up to eleven intervals — a bare rachis with a few bars
+   across it. At the old size that read as a wireframe speck; enlarged, it read as a
+   TV aerial. Pinnae now run every other row, staggered left and right so the sides
+   interleave, tapering quadratically to the tip. The frond fills its own silhouette
+   and reads as feathery.
+
+Worth stating plainly: after step 1 the piece looked WORSE than before, and after
+step 2 it still read as aerials. Bigger wrong is still wrong. The lesson from the
+Climbvine — "the repetition was built too small to read" — was only two thirds
+right here; the third part is that the drawn element has to be drawn correctly at
+any size, and a comb never becomes a fern by growing.
+
+Still off the sheet: the pods are smooth where the drawing has overlapping scales,
+and golden resin drips off every pod tip there while the build has one drip at the
+stalk wound and none on the crown.
+
+Gates: UV audit 11 of 11 PASS, rig PASS 65 bones, scene load green. Only the
+Gasafoetida's four files changed — every other flora piece rebuilt byte-identical.
