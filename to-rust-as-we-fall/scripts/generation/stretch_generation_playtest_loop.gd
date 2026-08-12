@@ -44,11 +44,9 @@ const PARTY_OFFSETS := {
 	"peris": Vector3(-1.4, 0.0, 1.1),
 	"endo": Vector3(-1.4, 0.0, -1.1),
 }
-const CHARACTER_SPEEDS := {
-	"aster": 3.2,
-	"peris": 3.0,
-	"endo": 2.8,
-}
+# Walk speeds read the cast registry, so the playtest loop times routes with the same
+# speeds every real run uses.
+static var CHARACTER_SPEEDS: Dictionary = StretchCapabilities.attribute_table(PARTY_IDS, "move_speed")
 
 func generate_and_playtest(settings: Dictionary, tree: SceneTree, options := {}) -> Dictionary:
 	var result := _base_result()

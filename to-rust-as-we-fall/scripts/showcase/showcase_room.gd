@@ -48,23 +48,13 @@ const START_CELLS := {
 	"endo": Vector2i(3, 20),
 }
 
-const CHARACTER_DISPLAY_NAMES := {
-	"aster": "Aster",
-	"peris": "Peris",
-	"endo": "Endo",
-}
+const SHOWCASE_PARTY_IDS := ["aster", "peris", "endo"]
 
-const CHARACTER_COLORS := {
-	"aster": Color(0.29, 0.62, 1.0),
-	"peris": Color(1.0, 0.67, 0.27),
-	"endo": Color(0.4, 0.72, 0.55),
-}
-
-const CHARACTER_SPEEDS := {
-	"aster": 3.4,
-	"peris": 3.4,
-	"endo": 2.6,
-}
+# Character identity (display name, tint, walk speed) reads the one cast authority so the
+# showcase moves and reads exactly like the preview shell and the real levels.
+static var CHARACTER_DISPLAY_NAMES: Dictionary = StretchCapabilities.attribute_table(SHOWCASE_PARTY_IDS, "name")
+static var CHARACTER_COLORS: Dictionary = StretchCapabilities.attribute_table(SHOWCASE_PARTY_IDS, "color")
+static var CHARACTER_SPEEDS: Dictionary = StretchCapabilities.attribute_table(SHOWCASE_PARTY_IDS, "move_speed")
 
 const FOLLOW_OFFSETS := {
 	"aster": Vector3(-1.6, 0.0, 0.9),

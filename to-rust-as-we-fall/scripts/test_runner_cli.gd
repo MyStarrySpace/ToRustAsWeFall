@@ -935,6 +935,9 @@ func _ready() -> void:
 			"--test-level-reference-integrity":
 				ran_test = true
 				_test_level_reference_integrity()
+			"--test-character-roster-integrity":
+				ran_test = true
+				_test_character_roster_integrity()
 			"--test-loose-salvage-out-of-the-current":
 				ran_test = true
 				await _test_no_loose_salvage_stands_in_the_current()
@@ -2182,6 +2185,7 @@ func _run_all_tests() -> void:
 	await _test_decorative_fill_light_reaches_the_deck()
 	await _test_the_party_move_is_taught()
 	_test_level_reference_integrity()
+	_test_character_roster_integrity()
 	await _test_emphasis_reveal_follows_the_camera()
 	await _test_hover_binding_survives_a_walk()
 	await _test_a_specific_refusal_is_not_overwritten()
@@ -49238,6 +49242,132 @@ func _test_level_reference_integrity() -> void:
 		"no derived artifact outlives its spec: %s" % str(report.get("orphans", [])))
 	_assert_equals((report.get("unreferenced", []) as Array).size(), 0,
 		"no spec exists that nothing consumes: %s" % str(report.get("unreferenced", [])))
+
+## The character roster integrity sweep. StretchCapabilities.CHARACTER_REGISTRY is the
+## single character authority; everything that names cast ids or copies identity
+## attributes must agree with it. Claims: (1) every roster-style array const in scripts/
+## names only registry-known ids — the scan IS the site list, so a fresh const is covered
+## the day it appears; (2) every per-character attribute-table LITERAL in scripts/ matches
+## the registry byte-for-byte; (3) every RECRUIT_ORDER id is known (identity is registered
+## even where the kit grants nothing); (4) liveness floors, so an empty scan cannot pass.
+func _test_character_roster_integrity() -> void:
+	_test_name = "Character Roster Integrity"
+	var caps = load("res://scripts/generation/stretch_capabilities.gd")
+	var branch = load("res://scripts/generation/run_branch_decisions.gd")
+	var registry: Dictionary = caps.CHARACTER_REGISTRY
+
+	# Liveness: the registry itself is a real cast.
+	_assert_true(registry.size() >= 10,
+		"the registry knows the canonical cast (%d ids)" % registry.size())
+
+	# (3) Every recruit the run can deal is KNOWN. Capabilities may be empty; identity may not.
+	for id_v in (branch.RECRUIT_ORDER as Array):
+		_assert_true(bool(caps.is_known(str(id_v))),
+			"RECRUIT_ORDER id '%s' has a registry entry" % str(id_v))
+	_assert_true(not bool(caps.is_known("ghost_cell")),
+		"an unmade id is not known — unknown and known-but-plain stay distinct")
+	_assert_equals((caps.character_capabilities("marco") as Array).size(), 0,
+		"a known recruit without a wired kit grants zero capabilities")
+
+	var script_paths: Array = []
+	_walk_gd_files("res://scripts", script_paths)
+	_assert_true(script_paths.size() >= 100,
+		"the sweep read a real project (%d scripts)" % script_paths.size())
+
+	# (1) Roster-style consts: any const whose NAME speaks of party/roster/recruit/
+	# character-ids and whose value is an array is held to registry-known ids. Persona
+	# rosters name playtest personalities and *_ACTIONS lists name input actions — both
+	# are excluded by name, not by site.
+	var roster_const_re := RegEx.create_from_string("(?m)^const\\s+(\\w+)\\s*:?=\\s*\\[")
+	var quoted_id_re := RegEx.create_from_string("\"([A-Za-z0-9_]+)\"")
+	var roster_consts_checked := 0
+	var roster_sites: Array[String] = []
+	for path_v in script_paths:
+		var path := str(path_v)
+		var source := FileAccess.get_file_as_string(path)
+		for m in roster_const_re.search_all(source):
+			var const_name := m.get_string(1)
+			var is_roster_name: bool = const_name.contains("PARTY") \
+				or const_name.contains("ROSTER") or const_name.contains("RECRUIT") \
+				or const_name.contains("CHARACTER_IDS")
+			if not is_roster_name or const_name.contains("PERSONA") or const_name.contains("ACTIONS"):
+				continue
+			var close := source.find("]", m.get_end(0))
+			if close < 0:
+				continue
+			roster_consts_checked += 1
+			roster_sites.append("%s:%s" % [path, const_name])
+			for id_m in quoted_id_re.search_all(source.substr(m.get_end(0), close - m.get_end(0))):
+				var member_id := id_m.get_string(1)
+				_assert_true(registry.has(member_id),
+					"%s in %s names only registry-known ids (found '%s')"
+						% [const_name, path, member_id])
+	_assert_true(roster_consts_checked >= 3,
+		"the roster-const scan found real sites (%d consts): %s"
+			% [roster_consts_checked, str(roster_sites)])
+
+	# (2) Attribute-table literals: a const table that spells out per-character speeds,
+	# tints, or display names is a copy of the registry and must equal it byte-for-byte.
+	# Tables that READ the registry (static var builders) carry no literals and are exempt
+	# by construction.
+	var table_attributes := {
+		"CHARACTER_SPEEDS": "move_speed",
+		"CHARACTER_COLORS": "color",
+		"CHARACTER_TINTS": "color",
+		"CHARACTER_DISPLAY_NAMES": "name",
+	}
+	var speed_entry_re := RegEx.create_from_string("\"(\\w+)\"\\s*:\\s*([0-9.]+)")
+	var color_entry_re := RegEx.create_from_string("\"(\\w+)\"\\s*:\\s*Color\\(([^)]*)\\)")
+	var name_entry_re := RegEx.create_from_string("\"(\\w+)\"\\s*:\\s*\"([^\"]*)\"")
+	var tables_checked := 0
+	var table_entries_checked := 0
+	for path_v in script_paths:
+		var path := str(path_v)
+		var source := FileAccess.get_file_as_string(path)
+		for table_name in table_attributes.keys():
+			var table_re := RegEx.create_from_string(
+				"(?m)^const\\s+%s\\s*:?=\\s*\\{" % str(table_name))
+			var tm := table_re.search(source)
+			if tm == null:
+				continue
+			var block_close := source.find("}", tm.get_end(0))
+			if block_close < 0:
+				continue
+			tables_checked += 1
+			var block := source.substr(tm.get_end(0), block_close - tm.get_end(0))
+			var attribute := str(table_attributes[table_name])
+			var entry_re: RegEx = speed_entry_re
+			if attribute == "color":
+				entry_re = color_entry_re
+			elif attribute == "name":
+				entry_re = name_entry_re
+			for em in entry_re.search_all(block):
+				var member_id := em.get_string(1)
+				table_entries_checked += 1
+				_assert_true(registry.has(member_id) \
+						and (registry[member_id] as Dictionary).has(attribute),
+					"%s in %s: '%s' has a registry %s" % [table_name, path, member_id, attribute])
+				if not registry.has(member_id) \
+						or not (registry[member_id] as Dictionary).has(attribute):
+					continue
+				var authored: Variant = (registry[member_id] as Dictionary)[attribute]
+				var literal: Variant = em.get_string(2)
+				if attribute == "color":
+					var channels: Array[float] = []
+					for part in str(literal).split(","):
+						channels.append(str(part).strip_edges().to_float())
+					while channels.size() < 4:
+						channels.append(1.0)
+					literal = Color(channels[0], channels[1], channels[2], channels[3])
+				elif attribute == "move_speed":
+					literal = str(literal).to_float()
+				_assert_true(literal == authored,
+					"%s in %s: '%s' matches the registry (%s vs %s)"
+						% [table_name, path, member_id, str(literal), str(authored)])
+	_assert_true(tables_checked >= 3 and table_entries_checked >= 9,
+		"the attribute-table scan found real literals (%d tables, %d entries)"
+			% [tables_checked, table_entries_checked])
+
 
 func _test_decorative_fill_light_reaches_the_deck() -> void:
 	_test_name = "Decorative Fill Light Reaches The Deck"

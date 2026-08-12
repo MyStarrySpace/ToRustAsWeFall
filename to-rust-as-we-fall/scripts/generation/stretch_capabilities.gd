@@ -17,25 +17,40 @@ extends RefCounted
 ## placeholders. The "spotlight" loadout is the union of the ENABLED roster's capabilities, so e.g.
 ## `combat` exists only if a microglia/T-reg fighter is enabled.
 
-# id -> {name, cell_type, class_code, capabilities[], abilities{ id: {name, grants} }, recruit}
+# id -> {name, cell_type, class_code, capabilities[], abilities{ id: {name, grants} }, recruit,
+#        color?, move_speed?, runtime_wired?}
+#
+# This registry is the single character AUTHORITY, and it answers two separate questions:
+#   KNOWN   — is this id a canonical cast member at all? (every canonical id has an entry)
+#   CAPABLE — what does the character mechanically grant? (capabilities may be empty)
+# A character can be known while granting nothing; only an id with no entry is unknown.
+#
+# Per-character identity attributes (color, move_speed, display name) live here too, so every
+# scene table reads one authority instead of hand-copying values. `runtime_wired: false` marks
+# a canon identity without a spawnable runtime kit: such ids never enter normalize_roster's
+# enabled set, so naming one in a roster generates exactly as if the id were absent.
 const CHARACTER_REGISTRY := {
 	"aster": {
 		"name": "Aster", "cell_type": "astrocyte", "class_code": "AST", "recruit": 1,
+		"color": Color(0.29, 0.62, 1.0), "move_speed": 3.2,
 		"capabilities": ["data", "electrical", "overlay", "terminal", "scan", "timing", "signal", "ast_class"],
 		"abilities": {"emp": {"name": "EMP", "grants": "electrical"}},
 	},
 	"peris": {
 		"name": "Peris", "cell_type": "pericyte", "class_code": "PCT", "recruit": 1,
+		"color": Color(1.0, 0.67, 0.27), "move_speed": 3.0,
 		"capabilities": ["flora", "carry", "physical", "protect", "cover", "tend", "pct_class"],
 		"abilities": {"wrap": {"name": "Wrap", "grants": "protect"}},
 	},
 	"endo": {
 		"name": "Endo", "cell_type": "endothelial", "class_code": "ENT", "recruit": 2,
+		"color": Color(0.4, 0.72, 0.55), "move_speed": 2.8,
 		"capabilities": ["barrier", "junction", "repair", "gear", "carry", "endo", "ent_class"],
 		"abilities": {},
 	},
 	"myke": {
 		"name": "Myke", "cell_type": "microglia", "class_code": "MCG", "recruit": 3,
+		"color": Color(0.85, 0.36, 0.2), "move_speed": 3.1,
 		"capabilities": ["redirect", "impact", "force", "carry", "physical", "tend", "class_other"],
 		"abilities": {
 			"inflame": {"name": "Inflame", "grants": "redirect", "runtime_status": "authored_fragment"},
@@ -55,6 +70,49 @@ const CHARACTER_REGISTRY := {
 		"abilities": {
 			"suppress": {"name": "Suppress", "grants": "redirect", "runtime_status": "authored_fragment"},
 		},
+	},
+	# Roguelike recruits (GDD §15.4 "DLC-exclusive characters"; dlc_roguelike_mode.md).
+	# Each is registered as canon IDENTITY. The GDD marks every one of these kits
+	# "(preliminary)" and authors no ability against the capability tokens above, so each
+	# carries an explicitly empty capability set rather than a guessed mapping. Marco's
+	# roguelike persona name ("Makrov Mage") is a mode-specific label owned by
+	# RunBranchDecisions.DISPLAY_NAMES, not a second canonical name.
+	"marco": {
+		# GDD §3.7: recurring NPC, monocyte cadet ("Monos" is the institutional tag);
+		# §15.4 lists him "Marco (Macrophage)". §5.5: his institutional class is MOC.
+		"name": "Marco", "cell_type": "macrophage", "class_code": "MOC", "recruit": 6,
+		"capabilities": [], "abilities": {}, "runtime_wired": false,
+	},
+	"brobla": {
+		# GDD §15.4.2 "Brobla (Fibroblast)": log-writing construction worker at the Mother
+		# Flure site. §5.5 leaves the construction class code "to be assigned", so none is set.
+		"name": "Brobla", "cell_type": "fibroblast", "recruit": 7,
+		"capabilities": [], "abilities": {}, "runtime_wired": false,
+	},
+	"vasca": {
+		# GDD §15.4.3 "Vasca (Vascular smooth muscle)": flow control and pathing.
+		"name": "Vasca", "cell_type": "vascular smooth muscle", "recruit": 8,
+		"capabilities": [], "abilities": {}, "runtime_wired": false,
+	},
+	"senchy": {
+		# GDD §15.4.4 "Senchy (Mesenchymal)": adaptive versatility, cutting-crew survivor.
+		"name": "Senchy", "cell_type": "mesenchymal", "recruit": 9,
+		"capabilities": [], "abilities": {}, "runtime_wired": false,
+	},
+	"swan": {
+		# GDD §15.4.5 "Swan (Schwann cell)": PNS insulation specialist, kit-cousin to Oli.
+		"name": "Swan", "cell_type": "Schwann cell", "recruit": 10,
+		"capabilities": [], "abilities": {}, "runtime_wired": false,
+	},
+	"ninj": {
+		# GDD §15.4.6 "Ninj (Meninges)": concealment and shock absorption stances.
+		"name": "Ninj", "cell_type": "meninges", "recruit": 11,
+		"capabilities": [], "abilities": {}, "runtime_wired": false,
+	},
+	"pendy": {
+		# GDD §15.4.7 "Pendy (Ependymal)": CSF circulation, fluid routes and hidden passages.
+		"name": "Pendy", "cell_type": "ependymal", "recruit": 12,
+		"capabilities": [], "abilities": {}, "runtime_wired": false,
 	},
 }
 
@@ -96,9 +154,52 @@ const CONTENT_CAPABILITIES := {
 }
 
 
-## The capabilities a single registered character provides.
+## True when the id names a canonical cast member (an entry in CHARACTER_REGISTRY),
+## regardless of what that character can do. Enemies and generated runtime ids are
+## NOT cast members and report false.
+static func is_known(id: String) -> bool:
+	return CHARACTER_REGISTRY.has(str(id))
+
+
+## The capabilities a single registered character provides. An UNKNOWN id is a caller
+## bug (a typo, or an id the registry never learned) and reports loudly; a KNOWN
+## character whose kit grants nothing returns an empty set silently — unknown and
+## known-but-plain must never look identical.
 static func character_capabilities(id: String) -> Array:
-	return (CHARACTER_REGISTRY.get(str(id), {}) as Dictionary).get("capabilities", [])
+	var key := str(id)
+	if not CHARACTER_REGISTRY.has(key):
+		push_error("StretchCapabilities.character_capabilities: unknown character id '%s'" % key)
+		return []
+	return (CHARACTER_REGISTRY[key] as Dictionary).get("capabilities", [])
+
+
+## The character's display name (the roguelike persona layer may override it per mode).
+static func display_name(id: String) -> String:
+	return str((CHARACTER_REGISTRY.get(str(id), {}) as Dictionary).get("name", str(id).capitalize()))
+
+
+## The character's ownership tint (portraits, path ribbons, queued-interaction glow).
+static func character_color(id: String, fallback := Color(0.68, 0.72, 0.78)) -> Color:
+	var value: Variant = (CHARACTER_REGISTRY.get(str(id), {}) as Dictionary).get("color", null)
+	return value if value is Color else fallback
+
+
+## The character's base walk speed in world units per second.
+static func move_speed(id: String, fallback := 3.0) -> float:
+	var value: Variant = (CHARACTER_REGISTRY.get(str(id), {}) as Dictionary).get("move_speed", null)
+	return float(value) if (value is float or value is int) else fallback
+
+
+## A per-character attribute table ({id: value}) for scene code that wants a dictionary
+## in hand (portrait loops, speed lookups). Ids whose entry does not define the attribute
+## are omitted rather than defaulted, so a built table mirrors exactly what is authored.
+static func attribute_table(ids: Array, attribute: String) -> Dictionary:
+	var out := {}
+	for id in ids:
+		var entry: Dictionary = CHARACTER_REGISTRY.get(str(id), {})
+		if entry.has(attribute):
+			out[str(id)] = entry[attribute]
+	return out
 
 
 ## SPECIALIST capabilities = any capability NO bare-pair member (Aster/Peris) provides on
@@ -137,10 +238,13 @@ static func normalize_roster(roster) -> Dictionary:
 	return {"enabled": enabled}
 
 
-## Append a roster id only if it is a real registered character and not already present —
-## an unknown id (typo, stale save) is dropped so it can never become a ghost party member.
+## Append a roster id only if it is a runtime-wired cast character and not already present —
+## an unknown id (typo, stale save) is dropped so it can never become a ghost party member,
+## and a known identity without a spawnable runtime kit (`runtime_wired: false`) is held out
+## of the enabled set so naming it changes nothing about generation.
 static func _add_known(enabled: Array, id: String) -> void:
-	if CHARACTER_REGISTRY.has(id) and not enabled.has(id):
+	var entry: Dictionary = CHARACTER_REGISTRY.get(id, {})
+	if not entry.is_empty() and bool(entry.get("runtime_wired", true)) and not enabled.has(id):
 		enabled.append(id)
 
 

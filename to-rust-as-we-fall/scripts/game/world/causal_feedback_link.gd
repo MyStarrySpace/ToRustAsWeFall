@@ -22,11 +22,9 @@ const VALID_MODES := [MODE_PREDICTED, MODE_ACTIVE, MODE_READY, MODE_WARNING, MOD
 const VISIBILITY_CONTEXTUAL := "contextual"
 const VISIBILITY_HOVER_ONLY := "hover_only"
 const VALID_VISIBILITY_POLICIES := [VISIBILITY_CONTEXTUAL, VISIBILITY_HOVER_ONLY]
-const CHARACTER_TINTS := {
-	"aster": Color(0.29, 0.62, 1.0),
-	"peris": Color(1.0, 0.67, 0.27),
-	"endo": Color(0.4, 0.72, 0.55),
-}
+# Ownership tints read the cast registry, matching portraits and path ribbons.
+static var CHARACTER_TINTS: Dictionary = StretchCapabilities.attribute_table(
+	["aster", "peris", "endo"], "color")
 
 var source: Node3D = null
 var target: Node3D = null

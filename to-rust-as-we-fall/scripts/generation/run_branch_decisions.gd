@@ -19,15 +19,15 @@ const CORE_PAIR := ["aster", "peris"]          # the shadow pair — always in t
 # DLC-exclusive cells. Recruit offers the next un-joined one. (Ron is an NPC, not playable; "Monos" is the
 # institution's tag for Marco the Macrophage, who goes by "Makrov Mage" in roguelike mode.)
 const RECRUIT_ORDER := ["endo", "myke", "oli", "tyreg", "marco", "brobla", "vasca", "senchy", "swan", "ninj", "pendy"]
-# Roguelike personas / display names where they differ from the bare id.
+# Roguelike PERSONA names, only where the mode's label differs from the canonical cast name
+# (which lives in StretchCapabilities.CHARACTER_REGISTRY and is the fallback).
 const DISPLAY_NAMES := {
-	"marco": "Makrov Mage", "endo": "Endo", "myke": "Myke", "oli": "Oli", "tyreg": "Tyreg",
-	"brobla": "Brobla", "vasca": "Vasca", "senchy": "Senchy", "swan": "Swan", "ninj": "Ninj", "pendy": "Pendy",
+	"marco": "Makrov Mage",
 }
 const GEAR_POOL := ["hushbloom", "seefern"]   # only live tool flora may enter the salvage reward pool
 
 static func display_name(id: String) -> String:
-	return str(DISPLAY_NAMES.get(id, id.capitalize()))
+	return str(DISPLAY_NAMES.get(id, StretchCapabilities.display_name(id)))
 
 ## decide({depth, seed, roster}) -> { pattern, prompt, options:[{id,label,desc,risk,settings,reward}, ...] }
 ## `options[0]` is the COSTLY/risky path, `options[1]` the safe path.

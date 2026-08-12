@@ -8023,7 +8023,17 @@ var party: Array[String] = []
 ## Scripted split members ignored by party_move.
 var _split_members: Array[String] = []
 
+## Every party member must name a real character: either one registered in THIS GameState
+## (scripted casts, escorts, and test fixtures register ids like "ron" or "lead" before
+## forming a party) or a canonical cast id from the character registry. Anything else is a
+## typo that would otherwise surface much later as a gate that never opens, so it reports
+## loudly here. Validation only — the member is still accepted, and register_character
+## itself never checks the cast registry (enemies and generated ids are its normal input).
 func set_party(members: Array) -> void:
+	for m in members:
+		var member_id := String(m)
+		if not characters.has(member_id) and not StretchCapabilities.is_known(member_id):
+			push_error("GameState.set_party: unknown party member '%s' — not a registered character and not a canonical cast id" % member_id)
 	_emit(GameEvent.KIND_SET_PARTY, {"members": members.duplicate()})
 	party.clear()
 	for m in members:

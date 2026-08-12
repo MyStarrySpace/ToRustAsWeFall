@@ -319,6 +319,10 @@ const NO_VISION_SOURCE := Vector3(0.0, 0.0, -9999.0)
 ## unregistered when absent so a parked invisible body never claims grid cells (parked
 ## characters are cooperative-pathfinding obstacles) in fragments that predate them.
 const OPT_IN_CHARACTER_IDS := ["myke"]
+# These three tables spell out the cast registry's identity attributes
+# (StretchCapabilities.CHARACTER_REGISTRY) as consts so they stay usable in constant
+# expressions. --test-character-roster-integrity holds every entry byte-for-byte equal
+# to the registry, so an edit here that skips the registry goes red.
 const CHARACTER_DISPLAY_NAMES := {
 	"aster": "Aster",
 	"peris": "Peris",
