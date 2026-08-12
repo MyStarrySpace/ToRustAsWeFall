@@ -1555,3 +1555,33 @@ turns the rule off rather than erroring.
 The pattern across all six instruments: each gate measures the thing it was written
 to measure and reports PASS on everything it was never taught to look at. Treat any
 green from an untested instrument as unknown, not as evidence.
+
+### FIXED — the weld gate could not see an inside-out face or an unwelded seam
+
+`graft.weld_report()` (which `assert_welded()` fronts, and which the "parts join at
+a shared edge loop" law names as the verify step) counted open edges, non-manifold
+edges and islands. All three are blind to WINDING: a reversed face has identical
+edge topology, so every count is unchanged. That defect is invisible in a solid
+render from outside and reads as a hole from the other side — one of the things the
+red-shell `--test-lattice-holes` renderer exists to find, but that runs on lattices,
+not per-piece at build time.
+
+It was also possible for two rings to sit exactly on top of each other, never
+joined, and pass: welded geometry shares ONE vertex, but two coincident boundary
+vertices read as welded to the eye and to a render, and the open-edge total can
+already be nonzero for a piece with legitimate boundaries (the Meeb declares 264).
+
+Two checks added:
+- **winding** — two faces on a manifold edge must traverse it in opposite
+  directions; same direction means one is inside out.
+- **unwelded seam** — a boundary vertex coincident with another boundary vertex.
+
+Red-proofed on a subdivided cube: baseline PASS; one reversed face FAILs with 4
+flipped edges; a deleted face FAILs on open edges; a duplicated-then-detached face
+FAILs with 4 coincident boundary vertices. All 11 shipped fauna report
+`flipped=0 coincident=0 nonmanifold=0`, so nothing regressed and nothing shipped
+carries either defect.
+
+Still open from the seamscan cluster: whether a hole is caught depends on the
+caller passing an EXACT `expect_open`; a caller that passes the observed count
+cannot detect one. That is a calling-convention weakness, not a measurement gap.
