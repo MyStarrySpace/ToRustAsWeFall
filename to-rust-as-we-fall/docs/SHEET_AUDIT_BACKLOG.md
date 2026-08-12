@@ -1786,3 +1786,33 @@ added to that sweep or it will be quietly re-unwrapped.
 All three rebuilt fauna are now byte-identical to HEAD with no `[ATLAS]` lines,
 which is the real acceptance test for a change that is supposed to affect only
 grafted pieces. Scene load 9004/0.
+
+### naturalizer windows — RESOLVED (distribution and overlap), by reading the convention
+
+The two previous attempts failed because I GUESSED `Builder.card`'s rotation
+convention. Reading it settles it: for `axis='Z'` the quad is built in the XY plane
+and rotated by `Rz @ Ry @ Rx`, so its normal comes out
+`(cos rz * sin ry, sin rz * sin ry, cos ry)`. Setting that equal to a surface
+normal at azimuth `a` and elevation `theta` gives **ry = pi/2 - theta** and
+**rz = pi/2 - a**. I had been passing `(0, theta, a)` — the obvious guess — which
+points every card somewhere arbitrary. That, not the radius, is why they rendered
+as slivers standing off the shell.
+
+With the real convention plus a golden-angle spread down the shell's useful span:
+
+| | shipped | now |
+|---|---|---|
+| bed z span | 22% of shell height | **66%** |
+| pairs overlapping (of 36) | many, one amber mass | **0** |
+| min centre separation | — | 0.278 m vs a 0.24 m card |
+
+RESOLVED: "the beds overlap and intersect into a single continuous amber mass"
+(0 of 36 pairs now closer than a card width) and the sliver read, since the cards
+now lie along the dome's own normal. The distribution finding goes from one rear
+crown cluster to windows wrapping the crown and both flanks, each isolated by blue
+shell — the sheet's read.
+
+Still open and needing the (now unblocked) aperture work: the windows lie ON the
+shell rather than sunk in sockets behind a raised rim.
+
+UV audit PASS (folded 0, hard 0), weld PASS, rig PASS 20 bones, scene load 9004/0.
