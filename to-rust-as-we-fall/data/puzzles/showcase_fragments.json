@@ -835,7 +835,7 @@
 			"display_name": "Generated Teaching Stretch",
 			"scene": "res://scenes/fragments/fragment_preview.tscn",
 			"preview_chunk": "generated_stretch",
-			"preview_chunk_config": {"spec_path": "res://data/generated_stretches/generated_teaching_channels_shelter_1_to_2.json"},
+			"preview_chunk_config": {"spec_path": "res://data/generated_stretches/generated_sample_teaching_first_fork.json"},
 			"kind": "survival",
 			"tags": ["generated", "archetype", "stretch", "shelter", "chunk"],
 			"setup": [
@@ -856,7 +856,7 @@
 						{"type": "assert_path", "path": "character_stats.aster.hp", "op": "==", "value": 100.0},
 						{"type": "assert_path", "path": "character_stats.peris.sta", "op": "==", "value": 100.0},
 						{"type": "assert_path", "path": "chunk.generation.contract_id", "op": "==", "value": "stretch_generation_v1"},
-						{"type": "assert_path", "path": "chunk.generation.spec_id", "op": "==", "value": "generated_teaching_channels_shelter_1_to_2"},
+						{"type": "assert_path", "path": "chunk.generation.spec_id", "op": "==", "value": "generated_sample_teaching_first_fork"},
 						{"type": "assert_path", "path": "chunk.generation.world_slot.entry_shelter_id", "op": "==", "value": "shelter_1"},
 						{"type": "assert_path", "path": "chunk.generation.world_slot.exit_shelter_id", "op": "==", "value": "shelter_2"}
 					]
@@ -869,18 +869,12 @@
 						{"type": "call_chunk", "method": "reset_preview_state"},
 						{"type": "call_chunk", "method": "run_generated_golden_path"},
 						{"type": "assert_path", "path": "chunk.shelter_rested", "op": "==", "value": true},
-						{"type": "assert_path", "path": "chunk.route_phase", "op": "==", "value": "shelter_cutscene"},
-						{"type": "assert_path", "path": "chunk.shelter_cutscene.phase", "op": "==", "value": "playing"},
-						{"type": "advance", "seconds": 20.0},
+						{"type": "assert_path", "path": "chunk.route_choice", "op": "==", "value": "golden_path"},
 						{"type": "assert_path", "path": "chunk.route_phase", "op": "==", "value": "complete"},
-						{"type": "assert_path", "path": "chunk.shelter_cutscene.phase", "op": "==", "value": "complete"},
-						{"type": "assert_path", "path": "chunk.shelter_cutscene.completion_count", "op": "==", "value": 1},
-						{"type": "assert_path", "path": "chunk.shelter_cutscene.completed_tick", "op": ">=", "value": 0.0},
+						{"type": "assert_path", "path": "chunk.last_outcome", "op": "==", "value": "success"},
 						{"type": "assert_path", "path": "chunk.completion_ready", "op": "==", "value": true},
 						{"type": "assert_path", "path": "chunk.first_shelter_beat_fired", "op": "==", "value": true},
-						{"type": "assert_path", "path": "chunk.borrowed_current_diverted", "op": "==", "value": false},
-						{"type": "assert_path", "path": "chunk.main_current_restored", "op": "==", "value": true},
-						{"type": "assert_path", "path": "chunk.hydraulic_exit_unlocked", "op": "==", "value": true}
+						{"type": "assert_path", "path": "current_step", "op": "==", "value": "generated_stretch_complete"}
 					]
 				},
 				{
@@ -892,11 +886,8 @@
 						{"type": "call_chunk", "method": "run_generated_shadow_path"},
 						{"type": "assert_path", "path": "chunk.shelter_rested", "op": "==", "value": true},
 						{"type": "assert_path", "path": "chunk.route_choice", "op": "==", "value": "shadow_path"},
-						{"type": "assert_path", "path": "chunk.shelter_cutscene.phase", "op": "==", "value": "playing"},
-						{"type": "advance", "seconds": 20.0},
 						{"type": "assert_path", "path": "chunk.route_phase", "op": "==", "value": "complete"},
-						{"type": "assert_path", "path": "chunk.shelter_rested", "op": "==", "value": true},
-						{"type": "assert_path", "path": "chunk.shelter_cutscene.completion_count", "op": "==", "value": 1},
+						{"type": "assert_path", "path": "chunk.completion_ready", "op": "==", "value": true},
 						{"type": "assert_path", "path": "chunk.last_outcome", "op": "==", "value": "success"}
 					]
 				},

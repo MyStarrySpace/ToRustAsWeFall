@@ -52,10 +52,10 @@ func _run() -> void:
 		"autonomous focus switch updates the watched character immediately")
 	check(manager.published_watch.distance_to(Vector3(9.0, 0.0, -3.0)) < 0.001,
 		"focus switch publishes Peris to the occlusion shader in the same frame")
-	var hydraulic_driver: Node = GeneratedInputDriverScript.new()
-	hydraulic_driver.set("case_id", "teaching_channels_spiral")
-	check(str(hydraulic_driver.call("_preferred_active_character")) == "peris",
-		"autonomous hydraulic play selects its actual Peris actor as camera lead")
+	var teaching_driver: Node = GeneratedInputDriverScript.new()
+	teaching_driver.set("case_id", GeneratedInputDriverScript.AUTHORED_TEACHING_CASE_ID)
+	check(str(teaching_driver.call("_preferred_active_character")) == "peris",
+		"autonomous teaching play selects its actual Peris actor as camera lead")
 	var focus_fixture := PreviewFocusFixture.new()
 	var aster_node := Node3D.new()
 	var peris_node := Node3D.new()
@@ -66,20 +66,20 @@ func _run() -> void:
 	focus_fixture.add_child(focus_fixture._camera)
 	focus_fixture._camera.target = peris_node
 	focus_fixture._occlusion_mgr = manager
-	check(bool(hydraulic_driver.call(
+	check(bool(teaching_driver.call(
 		"_autonomous_focus_matches", focus_fixture, "peris"
 	)), "autonomous focus contract covers both Peris camera target and occlusion watch")
 	focus_fixture._camera.target = aster_node
-	check(not bool(hydraulic_driver.call(
+	check(not bool(teaching_driver.call(
 		"_autonomous_focus_matches", focus_fixture, "peris"
 	)), "focus regression detects a camera that drifts back to Aster")
 	focus_fixture._camera.target = peris_node
 	focus_fixture._occlusion_mgr = null
-	check(not bool(hydraulic_driver.call(
+	check(not bool(teaching_driver.call(
 		"_autonomous_focus_matches", focus_fixture, "peris"
 	)), "focus regression detects a missing see-through shader manager")
 	focus_fixture.free()
-	hydraulic_driver.free()
+	teaching_driver.free()
 
 	var visual_root := Node3D.new()
 	visual_root.set_meta("camera_occlusion_outline_safe_clip", true)

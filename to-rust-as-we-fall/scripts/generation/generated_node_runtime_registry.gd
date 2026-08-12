@@ -13,15 +13,11 @@ const HANDLER_NONE := ""
 const HANDLER_PHYSICAL_LYSATE := "physical_lysate_pickup_v1"
 const HANDLER_PHYSICAL_PAYLOAD := "physical_carried_payload_v1"
 const HANDLER_CANONICAL_SHELTER_ARRIVAL := "canonical_shelter_arrival_v1"
-const HANDLER_HYDRAULIC_SPILLWAY := "authored_hydraulic_spillway_food_v1"
-
-const HYDRAULIC_SPEC_ID := "generated_teaching_channels_shelter_1_to_2"
 
 const IMPLEMENTED_HANDLERS := {
 	HANDLER_PHYSICAL_LYSATE: true,
 	HANDLER_PHYSICAL_PAYLOAD: true,
 	HANDLER_CANONICAL_SHELTER_ARRIVAL: true,
-	HANDLER_HYDRAULIC_SPILLWAY: true,
 }
 
 # A palette entry describes a design-system noun; it does not prove that the
@@ -95,13 +91,11 @@ static func generated_content_omission(category: String, content_id: String) -> 
 	}
 
 
-static func handler_for_node(node: Dictionary, spec_id := "") -> String:
+static func handler_for_node(node: Dictionary, _spec_id := "") -> String:
 	var node_id := str(node.get("id", ""))
 	var role := str(node.get("role", ""))
 	if node_id == "exit_shelter" or role in ["shelter", "shelter_arrival"]:
 		return HANDLER_CANONICAL_SHELTER_ARRIVAL
-	if spec_id == HYDRAULIC_SPEC_ID and node_id == "node_04":
-		return HANDLER_HYDRAULIC_SPILLWAY
 	if (
 		str(node.get("survival_kind", "")) == "forage"
 		or str(node.get("reward_kind", "")) == "food"
@@ -140,8 +134,6 @@ static func action_label(handler_id: String) -> String:
 			return "TAKE LOAD"
 		HANDLER_CANONICAL_SHELTER_ARRIVAL:
 			return "ENTER SHELTER"
-		HANDLER_HYDRAULIC_SPILLWAY:
-			return "CATCH LYSATE"
 	return ""
 
 
@@ -172,14 +164,6 @@ static func handler_approach(handler_id: String) -> Dictionary:
 			return {
 				"approach_id": "canonical_shelter_arrival",
 				"kind": "shelter_arrival",
-				"party": "any",
-				"risk": "safe",
-				"blocked": false,
-			}
-		HANDLER_HYDRAULIC_SPILLWAY:
-			return {
-				"approach_id": "catch_hydraulic_lysate",
-				"kind": "authored_hydraulic",
 				"party": "any",
 				"risk": "safe",
 				"blocked": false,

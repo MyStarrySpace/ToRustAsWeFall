@@ -259,7 +259,7 @@ const CampaignOrderScript = preload("res://scripts/system/campaign/campaign_orde
 const StretchGenerationPlaytestLoopScript = preload("res://scripts/generation/stretch_generation_playtest_loop.gd")
 const PlaythroughAnimationHtmlRendererScript = preload("res://scripts/generation/playthrough_animation_html_renderer.gd")
 const PUZZLE_FRAGMENT_CATALOG_PATH := "res://data/puzzles/showcase_fragments.json"
-const GENERATED_STRETCH_SPEC_PATH := "res://data/generated_stretches/generated_teaching_channels_shelter_1_to_2.json"
+const GENERATED_STRETCH_SPEC_PATH := "res://data/generated_stretches/generated_sample_teaching_first_fork.json"
 const GENERATED_CHAIN_NESTED_POC_SPEC_PATH := "res://data/generated_stretches/generated_chain_nested_poc_shelter_2_to_3.json"
 const GENERATED_RANDOM_WALK_POC_SPEC_PATH := "res://data/generated_stretches/generated_random_walk_poc_shelter_3_to_4.json"
 const MOTHER_HACK_DWELL_SECONDS := 0.6
@@ -917,9 +917,6 @@ func _ready() -> void:
 			"--test-party-move-is-taught":
 				ran_test = true
 				await _test_the_party_move_is_taught()
-			"--test-shelter-prerequisite-copy":
-				ran_test = true
-				await _test_shelter_advertises_the_prerequisite_in_the_way()
 			"--test-specific-refusal-survives":
 				ran_test = true
 				await _test_a_specific_refusal_is_not_overwritten()
@@ -929,15 +926,15 @@ func _ready() -> void:
 			"--test-emphasis-reveal-follows-camera":
 				ran_test = true
 				await _test_emphasis_reveal_follows_the_camera()
-			"--test-status-label-range":
-				ran_test = true
-				await _test_status_labels_do_not_stack_across_the_spiral()
 			"--test-deck-edge-reads":
 				ran_test = true
 				await _test_deck_edge_reads_apart_from_deck_interior()
 			"--test-deck-fill-light":
 				ran_test = true
 				await _test_decorative_fill_light_reaches_the_deck()
+			"--test-level-reference-integrity":
+				ran_test = true
+				_test_level_reference_integrity()
 			"--test-loose-salvage-out-of-the-current":
 				ran_test = true
 				await _test_no_loose_salvage_stands_in_the_current()
@@ -2181,13 +2178,13 @@ func _run_all_tests() -> void:
 	await _test_death_offers_a_way_out()
 	await _test_hover_route_never_promises_an_unreachable_deck()
 	await _test_no_loose_salvage_stands_in_the_current()
-	await _test_status_labels_do_not_stack_across_the_spiral()
 	await _test_deck_edge_reads_apart_from_deck_interior()
 	await _test_decorative_fill_light_reaches_the_deck()
+	await _test_the_party_move_is_taught()
+	_test_level_reference_integrity()
 	await _test_emphasis_reveal_follows_the_camera()
 	await _test_hover_binding_survives_a_walk()
 	await _test_a_specific_refusal_is_not_overwritten()
-	await _test_shelter_advertises_the_prerequisite_in_the_way()
 	_test_cover_mid_run()
 	_test_pause_defers_never_drops()
 	await _test_path_source_precedence()
@@ -3811,28 +3808,6 @@ func _assert_level_editor_plan_browser(editor_instance: Node) -> void:
 			"%s plan graybox exposes anchors" % plan_id)
 		_assert_true(bool(per_plan_state.get("collisions_disabled", false)),
 			"%s plan graybox remains read-only" % plan_id)
-		if plan_id == "generated_teaching_channels_shelter_1_to_2":
-			_assert_true(bool(per_plan_state.get("generated", false)),
-				"Generated stretch appears as a generated plan")
-			var plan_graybox: Dictionary = per_plan_state.get("graybox", {})
-			_assert_equals(str(plan_graybox.get("contract_id", "")), "generated_stretch_graybox_v1",
-				"Generated plan exposes the spatial graybox contract")
-			_assert_true(bool(plan_graybox.get("supports_click_to_move", false)),
-				"Generated plan graybox declares click-to-move support")
-			# This committed plan is a TEACHING stretch, which is FLAT by design (verticality is tier-gated to
-			# hard/setpiece) — so it should NOT declare multiple elevations.
-			_assert_true(not bool(plan_graybox.get("supports_multiple_elevations", false)),
-				"A teaching plan graybox is single-level (verticality is tier-gated)")
-			_assert_true(int(plan_graybox.get("content_placement_count", 0)) > 0,
-				"Generated plan graybox exposes placed flora/enemy/structure content")
-			var generation: Dictionary = per_plan_state.get("generation", {})
-			_assert_equals(str(generation.get("spec_id", "")), "generated_teaching_channels_shelter_1_to_2",
-				"Generated plan exposes its stretch spec id")
-			var generated_slot: Dictionary = per_plan_state.get("world_slot", {})
-			_assert_equals(str(generated_slot.get("entry_shelter_id", "")), "shelter_1",
-				"Generated plan exposes entry shelter metadata")
-			_assert_equals(str(generated_slot.get("exit_shelter_id", "")), "shelter_2",
-				"Generated plan exposes exit shelter metadata")
 		if plan_id == "generated_chain_nested_poc_shelter_2_to_3":
 			_assert_true(bool(per_plan_state.get("generated", false)),
 				"Chain/nested generated proof appears as a generated plan")
@@ -4786,7 +4761,7 @@ func _test_archetype_generation() -> void:
 	_assert_true(first_content_node_found, "Generated graybox includes placed flora/enemy/structure content")
 
 	var loaded_fixture := StretchGeneratorScript.load_spec(GENERATED_STRETCH_SPEC_PATH)
-	_assert_equals(str(loaded_fixture.get("id", "")), "generated_teaching_channels_shelter_1_to_2",
+	_assert_equals(str(loaded_fixture.get("id", "")), "generated_sample_teaching_first_fork",
 		"Saved generated fixture spec loads")
 	_assert_equals(str(loaded_fixture.get("schema", "")), "trawf_generated_stretch_spec_v1",
 		"Saved generated fixture uses the stretch spec schema")
@@ -5759,8 +5734,8 @@ func _assert_official_generated_replay_artifact_parity() -> void:
 		file_name = spec_dir.get_next()
 	spec_dir.list_dir_end()
 	spec_ids.sort()
-	_assert_equals(spec_ids.size(), 9,
-		"Replay parity covers all nine committed generated baselines")
+	_assert_equals(spec_ids.size(), 8,
+		"Replay parity covers all eight committed generated baselines")
 	var repository_root := ProjectSettings.globalize_path("res://") \
 		.path_join("..").simplify_path()
 	for spec_id in spec_ids:
@@ -9212,7 +9187,7 @@ const COMMENT_STYLE_LEDGER := {
 	"fragments/chunks/boss_showcase_chunk.gd": 1,
 	"fragments/chunks/channels_wash_intro_chunk.gd": 1,
 	"fragments/chunks/flora_garden_chunk.gd": 2,
-	"fragments/chunks/generated_stretch_chunk.gd": 8,
+	"fragments/chunks/generated_stretch_chunk.gd": 7,
 	"fragments/chunks/lockout_chase_chunk.gd": 1,
 	"fragments/chunks/push_lab_chunk.gd": 1,
 	"fragments/chunks/puzzle_atom_chunk.gd": 2,
@@ -12333,16 +12308,6 @@ func _test_generated_food_modes() -> void:
 		var state: Dictionary = chunk.get_preview_state()
 		_assert_equals(str(state.get("game_mode", "")), mode_id,
 			"%s settings configuration reaches the generated chunk" % mode_id.capitalize())
-		var hydraulic_exit_beacon_v: Variant = chunk.get("_hydraulic_exit_beacon")
-		var hydraulic_exit_beacon := hydraulic_exit_beacon_v as MeshInstance3D \
-			if hydraulic_exit_beacon_v is MeshInstance3D else null
-		_assert_true(
-			hydraulic_exit_beacon != null
-				and bool(hydraulic_exit_beacon.get_meta(
-					"camera_occlusion_exempt", false))
-				and hydraulic_exit_beacon.material_override is BaseMaterial3D,
-			"%s keeps the generated shelter beacon as a human-visible BaseMaterial command surface"
-				% mode_id.capitalize())
 		geometry_fingerprints[mode_id] = JSON.stringify({
 			"grid": chunk.get_grid_data(),
 			"graybox": chunk.get_graybox_state(),
@@ -12361,8 +12326,6 @@ func _test_generated_food_modes() -> void:
 			"branch_cache_count": int(state.get("branch_cache_count", 0)),
 			"physical_food_cache_count": int(state.get("physical_food_cache_count", 0)),
 			"physical_food_opportunity_count": int(state.get("physical_food_opportunity_count", 0)),
-			"hydraulic_enabled": bool(state.get("hydraulic_enabled", false)),
-			"hydraulic_spillway_food_enabled": bool(state.get("hydraulic_spillway_food_enabled", false)),
 			"spatial_fixture_count": int(state.get("spatial_fixture_count", 0)),
 			"themed_landmark_count": int(state.get("themed_landmark_count", 0)),
 			"themed_setpiece_count": int(state.get("themed_setpiece_count", 0)),
@@ -12389,25 +12352,6 @@ func _test_generated_food_modes() -> void:
 			"The comparison fixture retains a real optional food-route decision"
 		)
 		if mode_id == GameSettings.GAME_MODE_NEUTRAL:
-			var spatial_profile: Dictionary = chunk.get_generation_spec().get("settings", {}).get("spatial_profile", {})
-			_assert_equals(int(spatial_profile.get("slot_pitch", 0)), 14,
-				"The teaching stretch uses the authored wider room pitch")
-			_assert_true(float(spatial_profile.get("spiral_descent_per_turn", 0.0)) >= 10.0,
-				"The teaching helix keeps enough vertical separation between turns")
-			_assert_equals(navigation_branches.size(), 3,
-				"The teaching stretch exposes three distinct causal side-feed alcoves")
-			var golden_route_segments := maxi(
-				0,
-				(generation_spec.get("headless", {}).get("golden_path", []) as Array).size() - 1
-			)
-			_assert_true(
-				int(state.get("spatial_fixture_count", 0))
-					>= expected_reward_branch_count + golden_route_segments,
-				"Side-feed bays and mandatory-route datums fill the expanded space")
-			var entry_pos: Vector3 = chunk.get_generated_node_position("entry")
-			var exit_pos: Vector3 = chunk.get_generated_node_position("exit_shelter")
-			_assert_true(absf(exit_pos.x - entry_pos.x) >= 65.0,
-				"The expanded teaching route spans at least 65 gameplay units")
 			var spatial_grid = GridWorld.from_data(chunk.get_grid_data())
 			for generated_node in chunk.get_generation_spec().get("nodes", []):
 				var node_pos := _vec3_from_array((generated_node as Dictionary).get("position", []), Vector3.INF)
@@ -12521,7 +12465,7 @@ func _test_generated_food_modes() -> void:
 			_assert_true(is_equal_approx(float(state.get("effective_party_atp", 0.0)), 12.0),
 				"%s movement and waiting do not drain ATP" % mode_id.capitalize())
 
-		# Earn access to the optional cache through the hydraulic teaching path.
+		# Earn access to the optional cache along the emitted golden path.
 		# Its branch sits beyond the first mandatory span, so trying to walk there
 		# directly from the entry must fail by design.
 		# Walk the emitted golden-path PREFIX instead of a hand-counted schedule. The spec owns which
@@ -12547,15 +12491,16 @@ func _test_generated_food_modes() -> void:
 				"_apply_solution_world_actions_before_node",
 				solution, target_node, consumed_solution_actions))
 			return applied == int(declared_actions_before.call(target_node))
-		var hydraulic_prelude_ready := bool(apply_boundary.call("node_01"))
+		var prelude_ready := bool(apply_boundary.call("node_01"))
 		for leg in [
 			{"route": "main_00_01", "node": "node_01", "next_boundary": "node_02"},
 			{"route": "main_01_02", "node": "node_02", "next_boundary": "node_03"},
-			{"route": "main_02_03", "node": "", "next_boundary": ""},
+			{"route": "main_02_03", "node": "node_03", "next_boundary": "node_04"},
+			{"route": "main_03_04", "node": "node_04", "next_boundary": ""},
 		]:
-			if not hydraulic_prelude_ready:
+			if not prelude_ready:
 				break
-			hydraulic_prelude_ready = bool(chunk.call(
+			prelude_ready = bool(chunk.call(
 				"_headless_traverse_generated_route", str((leg as Dictionary)["route"])))
 			# Only a node that actually BUILT an interactable can be activated; a layout-only node
 			# reports headless_missing_interactable, which is not a failure (the shipped golden-path
@@ -12565,14 +12510,14 @@ func _test_generated_food_modes() -> void:
 			var leg_node := str((leg as Dictionary)["node"])
 			var node_interactables_v: Variant = chunk.get("_node_interactables")
 			var leg_is_serviceable := node_interactables_v is Dictionary 				and (node_interactables_v as Dictionary).has(leg_node)
-			if hydraulic_prelude_ready and leg_node != "" and leg_is_serviceable:
-				hydraulic_prelude_ready = bool(chunk.call(
+			if prelude_ready and leg_node != "" and leg_is_serviceable:
+				prelude_ready = bool(chunk.call(
 					"_headless_activate_generated_node", leg_node))
 			var next_boundary := str((leg as Dictionary)["next_boundary"])
-			if hydraulic_prelude_ready and next_boundary != "":
-				hydraulic_prelude_ready = bool(apply_boundary.call(next_boundary))
+			if prelude_ready and next_boundary != "":
+				prelude_ready = bool(apply_boundary.call(next_boundary))
 		_assert_true(
-			hydraulic_prelude_ready,
+			prelude_ready,
 			"%s physically reaches the optional-cache decision point"
 			% mode_id.capitalize()
 		)
@@ -12667,58 +12612,6 @@ func _test_generated_food_modes() -> void:
 						float(inst.get_preview_character_stat(other_id, "atp")), 4.0),
 						"Endocytosis does not grant party-wide ATP to %s" % other_id)
 
-		# Hydraulic forage follows the same physical transaction in every mode.
-		var spillway_cache: Dictionary = chunk.get("_hydraulic_spillway_food_cache")
-		var prepared_spillway := hydraulic_prelude_ready
-		var diverter_control_v: Variant = chunk.get("_hydraulic_diverter_control")
-		prepared_spillway = (
-			prepared_spillway
-			and diverter_control_v is Node
-			and bool(chunk.call(
-				"_headless_trigger_hydraulic_control", diverter_control_v as Node
-			))
-		)
-		var spillway_launch_tick := float(chunk.get("_spillway_delivery_launch_tick"))
-		prepared_spillway = (
-			prepared_spillway
-			and spillway_launch_tick >= 0.0
-			and bool(chunk.call(
-				"_headless_advance_scheduler_to", spillway_launch_tick + 2.6
-			))
-			and str(chunk.get_preview_state().get("spillway_delivery_phase", "")) == "available"
-		)
-		if prepared_spillway:
-			prepared_spillway = bool(chunk.call(
-				"_headless_traverse_generated_route", "main_03_04"
-			))
-		var spillway_source: Node = spillway_cache.get("interactable", null)
-		var before_spillway_atp := float(chunk.get_preview_state().get("effective_party_atp", 0.0))
-		var spillway_collected := (
-			prepared_spillway
-			and spillway_source != null
-			and bool(chunk.call("_headless_activate_generated_node", "node_04"))
-		)
-		_assert_true(
-			spillway_collected,
-			"%s spillway forage transfers only through the arrived physical catch"
-			% mode_id.capitalize()
-		)
-		_assert_true(bool(chunk.get_preview_state().get("hydraulic_spillway_food_collected", false)),
-			"A successful spillway transfer consumes the world reward")
-		_assert_true(is_equal_approx(
-			float(chunk.get_preview_state().get("effective_party_atp", 0.0)), before_spillway_atp),
-			"Picking up spillway lysate does not directly change ATP")
-
-		# The spillway is an optional finite-current bet. Catching its payload does
-		# not secretly restore the main route, and the second mandatory branch
-		# producer is deliberately bound to the shelter boundary.
-		var main_current_restored := (
-			diverter_control_v is Node
-			and bool(chunk.call(
-				"_headless_trigger_hydraulic_control", diverter_control_v as Node
-			))
-			and bool(chunk.get_preview_state().get("main_current_restored", false))
-		)
 		var expected_exit_actions := 0
 		for action_group_v in [
 			solution.get("world_actions", []),
@@ -12735,10 +12628,7 @@ func _test_generated_food_modes() -> void:
 			"exit_shelter",
 			consumed_solution_actions
 		))
-		var exit_route_ready := (
-			main_current_restored
-			and completed_exit_actions == expected_exit_actions
-		)
+		var exit_route_ready := completed_exit_actions == expected_exit_actions
 		if exit_route_ready:
 			exit_route_ready = bool(chunk.call(
 				"_headless_traverse_generated_route", "main_04_05"
@@ -12810,7 +12700,7 @@ func _test_generated_food_modes() -> void:
 		inst.queue_free()
 		await get_tree().process_frame
 
-	# The hydraulic comparison fixture above has a separate authored solution
+	# The comparison fixture above has a separate authored solution
 	# lifecycle. Exercise the generator-owned ideal plan on a maintained stretch
 	# whose current measured travel crosses the 60-second threshold. Start from a
 	# plausible carried-over loss state with a tight ATP reserve for the observed
@@ -32246,6 +32136,15 @@ func _test_fragment_preview_registry() -> void:
 		_assert_true(Reg.CHUNK_SCENES.has(chunk),
 			"PREVIEW_ENTRIES '%s' -> registered chunk '%s'" % [String(entry.get("id", "")), chunk])
 		_assert_true(Reg.CHUNK_SCENES.get(chunk) != null, "Chunk scene for '%s' is loaded" % chunk)
+	# 1b. Every entry whose config points at a data file points at a file that EXISTS. Deleting a
+	# level's spec must go red HERE, at the registry, not later in whichever loader trips over it.
+	for entry in Reg.PREVIEW_ENTRIES:
+		var entry_config: Dictionary = entry.get("config", {})
+		var spec_path := String(entry_config.get("spec_path", ""))
+		if spec_path != "":
+			_assert_true(FileAccess.file_exists(spec_path),
+				"PREVIEW_ENTRIES '%s' spec_path exists on disk: %s"
+					% [String(entry.get("id", "")), spec_path])
 	# 2. get_preview_entry resolves each id, and an unknown id is empty (no silent fallthrough).
 	for entry in Reg.PREVIEW_ENTRIES:
 		var got: Dictionary = Reg.get_preview_entry(String(entry.get("id", "")))
@@ -48895,42 +48794,6 @@ func _test_the_party_move_is_taught() -> void:
 
 	await _dispose_scene(inst)
 
-## The shelter is gated by two prerequisites and the water is only the second one -- the command tests
-## the mandatory branch spans FIRST. Advertising readiness from the hydraulic state alone put a green
-## beacon and "ENTER SHELTER" on a door that would refuse, which is the walk the director took.
-func _test_shelter_advertises_the_prerequisite_in_the_way() -> void:
-	_test_name = "Shelter Advertises The Prerequisite In The Way"
-	var inst = await _instantiate_preview_chunk_and_wait("generated_stretch", 8)
-	if inst == null:
-		_assert_true(false, "the generated stretch preview instantiates")
-		return
-	var chunk = inst.get("_active_chunk")
-	_assert_true(chunk != null, "the chunk is loaded")
-	if chunk == null:
-		await _dispose_scene(inst)
-		return
-
-	# The control: at boot the mandatory spans are unbridged, which is exactly the state that used to
-	# advertise ENTER SHELTER. If this ever reports bridged the scenario has stopped covering the bug.
-	var spans_bridged: bool = chunk.call("_all_mandatory_branch_spans_bridged")
-	_assert_true(not spans_bridged,
-		"at boot a mandatory span is still unbridged (the state that produced the report)")
-
-	var exit_target = (chunk.get("_node_targets") as Dictionary).get("exit_shelter", null)
-	var exit_interactable = null
-	if exit_target != null and exit_target.has_method("get_interaction_delegate"):
-		exit_interactable = exit_target.call("get_interaction_delegate")
-	_assert_true(exit_interactable != null, "the exit shelter has an interactable to advertise on")
-	if exit_interactable != null:
-		var label := str(exit_interactable.get("tutorial_label"))
-		var note := str(exit_interactable.get("description"))
-		_assert_true(label != "ENTER SHELTER",
-			"a shelter behind an unresolved span does not advertise ENTER SHELTER (said '%s')" % label)
-		_assert_true(note.to_upper().contains("EXTEND") or note.to_upper().contains("SPAN"),
-			"the copy names the prerequisite in the way (said '%s')" % note)
-
-	await _dispose_scene(inst)
-
 ## A target declines for two different reasons and they must not read the same. STALE means the thing
 ## shown is gone. REFUSED means it understood the command and answered on its own terms -- and that
 ## answer is the only sentence telling the player what to do instead. Overwriting it with a staleness
@@ -49125,40 +48988,6 @@ func _test_emphasis_reveal_follows_the_camera() -> void:
 
 	stage.queue_free()
 	await get_tree().process_frame
-
-## A billboard is drawn the same size whichever turn of the spiral it belongs to, so a status readout
-## with no range competes for the frame with the mechanism at the player's feet. Several turns share
-## one sightline here; without ranges the labels stack into a wall of text over a dark level.
-func _test_status_labels_do_not_stack_across_the_spiral() -> void:
-	_test_name = "Status Labels Do Not Stack Across The Spiral"
-	var inst = await _instantiate_preview_chunk_and_wait("generated_stretch", 8)
-	if inst == null:
-		_assert_true(false, "the generated stretch preview instantiates")
-		return
-
-	# Scoped to the PERSISTENT mechanism readouts. Transient popups (damage feedback) live for a
-	# second and are not what crowds a frame, so a blanket sweep over every Label3D would be
-	# asserting the wrong thing rather than a stricter version of the right one.
-	var labels: Array = []
-	for node in inst.find_children("*Status", "Label3D", true, false):
-		labels.append(node)
-	_assert_true(labels.size() >= 3,
-		"the stretch builds persistent mechanism readouts to check (found %d)" % labels.size())
-
-	var unranged: Array[String] = []
-	for label in labels:
-		var l := label as Label3D
-		if l.visibility_range_end <= 0.0:
-			unranged.append(l.name)
-		else:
-			_assert_true(l.visibility_range_fade_mode
-					!= GeometryInstance3D.VISIBILITY_RANGE_FADE_DISABLED,
-				"%s fades out rather than popping" % l.name)
-	_assert_true(unranged.is_empty(),
-		"every mechanism readout carries a range, so none is drawn from another turn: %s"
-			% str(unranged))
-
-	await _dispose_scene(inst)
 
 ## A deck EDGE and a deck INTERIOR must not be one merged surface wearing one material: that makes
 ## the last tile before a drop look exactly like a tile in the middle of the walkway, and the player
@@ -49358,6 +49187,58 @@ func _test_deck_edge_reads_apart_from_deck_interior() -> void:
 ## and each sample scores the light's real Godot falloff times how squarely the light bears on an
 ## upward-facing tile. Both halves are load-bearing — a light parked on the spiral's axis reaches
 ## every tile at full range and still puts nothing on the floor, because it shines edge-on to it.
+## A level is NAMED in many places but exists in one. Every reference to a spec, anywhere in the
+## project, must resolve; every derived artifact must have its parent; every spec must have at least
+## one consumer. The sweep reports liveness counts because a scanner that finds nothing agrees with
+## every claim -- and it is proven able to fire against a planted fixture before the live green is
+## allowed to mean anything.
+func _test_level_reference_integrity() -> void:
+	_test_name = "Level Reference Integrity"
+	var integrity = load("res://scripts/testing/level_reference_integrity.gd")
+
+	# The CONTROL: a hermetic fixture with one good spec, one dangling reference, one orphan.
+	for d in ["user://refint", "user://refint/specs", "user://refint/specs/replays", "user://refint/scan"]:
+		DirAccess.make_dir_recursive_absolute(d)
+	var w := FileAccess.open("user://refint/specs/generated_fixture_alpha.json", FileAccess.WRITE)
+	w.store_string("{}")
+	w.close()
+	w = FileAccess.open("user://refint/specs/replays/generated_gone_spec.replay.json", FileAccess.WRITE)
+	w.store_string("{}")
+	w.close()
+	w = FileAccess.open("user://refint/scan/consumer.json", FileAccess.WRITE)
+	# The fixture reference is assembled in two pieces so this test source is not itself a match
+	# for the sweep it drives -- the guard scans scripts/ too, and caught this very line.
+	w.store_string("{\"spec_path\": \"res://data/generated_" + "stretches/generated_missing_spec.json\", \"uses\": \"generated_fixture_alpha\"}")
+	w.close()
+	var fixture: Dictionary = integrity.sweep("user://refint/specs", ["user://refint/scan"])
+	var fixture_dangling: Array = fixture.get("dangling", [])
+	_assert_equals(fixture_dangling.size(), 1, "the sweep catches a planted dangling reference")
+	if fixture_dangling.size() == 1:
+		_assert_equals(str((fixture_dangling[0] as Dictionary).get("id")), "generated_missing_spec",
+			"and names the missing spec")
+	_assert_equals((fixture.get("orphans", []) as Array).size(), 1,
+		"the sweep catches a planted orphaned artifact")
+
+	# The LIVE tree. Liveness floors first: a sweep that saw nothing must fail, not pass.
+	var report: Dictionary = integrity.sweep()
+	_assert_true(int(report.get("specs", 0)) >= 8,
+		"the project still has its specs (%d)" % int(report.get("specs", 0)))
+	_assert_true(int(report.get("files_scanned", 0)) >= 400,
+		"the sweep read a real project (%d files)" % int(report.get("files_scanned", 0)))
+	_assert_true((report.get("references", []) as Array).size() >= 15,
+		"specs are actually consumed (%d references)" % (report.get("references", []) as Array).size())
+
+	var dangling: Array = report.get("dangling", [])
+	var dangling_names: Array[String] = []
+	for entry in dangling:
+		dangling_names.append("%s -> %s" % [str((entry as Dictionary).get("file")), str((entry as Dictionary).get("id"))])
+	_assert_equals(dangling.size(), 0,
+		"no reference names a spec that does not exist: %s" % str(dangling_names))
+	_assert_equals((report.get("orphans", []) as Array).size(), 0,
+		"no derived artifact outlives its spec: %s" % str(report.get("orphans", [])))
+	_assert_equals((report.get("unreferenced", []) as Array).size(), 0,
+		"no spec exists that nothing consumes: %s" % str(report.get("unreferenced", [])))
+
 func _test_decorative_fill_light_reaches_the_deck() -> void:
 	_test_name = "Decorative Fill Light Reaches The Deck"
 	var inst = await _instantiate_preview_chunk_and_wait("generated_stretch", 8)

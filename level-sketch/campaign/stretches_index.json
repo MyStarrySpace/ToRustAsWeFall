@@ -80,16 +80,6 @@
 			"stage": 2,
 			"tier": "teaching",
 			"title": "Sample — First Fork (Teaching)"
-		},
-		{
-			"act": 1,
-			"entry": "shelter_1",
-			"exit": "shelter_2",
-			"region": "Channels",
-			"spec_id": "generated_teaching_channels_shelter_1_to_2",
-			"stage": 2,
-			"tier": "teaching",
-			"title": "Generated Teaching Channels: Shelter 1 -> Shelter 2"
 		}
 	]
 }

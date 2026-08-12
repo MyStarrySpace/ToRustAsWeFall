@@ -3,7 +3,6 @@ extends SceneTree
 const StretchGeneratorScript := preload("res://scripts/generation/stretch_generator.gd")
 
 const SPEC_PATHS := [
-	"res://data/generated_stretches/generated_teaching_channels_shelter_1_to_2.json",
 	"res://data/generated_stretches/generated_chain_nested_poc_shelter_2_to_3.json",
 	"res://data/generated_stretches/generated_random_walk_poc_shelter_3_to_4.json",
 	"res://data/generated_stretches/generated_event_walk_shelter_4_to_5.json",

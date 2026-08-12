@@ -8,24 +8,12 @@ const AtpScarcityClockScript := preload("res://scripts/system/simulation/atp_sca
 const GameSettingsScript := preload("res://scripts/system/settings.gd")
 const RuntimeRegistryScript := preload("res://scripts/generation/generated_node_runtime_registry.gd")
 const BiomesScript := preload("res://scripts/generation/biomes.gd")
-const FlowRouterValveScript := preload("res://scripts/game/objects/flow_router_valve.gd")
 const ClimbvineReturnScript := preload("res://scripts/game/objects/climbvine_return.gd")
 const BranchSpanProducerScript := preload("res://scripts/game/objects/branch_span_producer.gd")
 const GridRiskFieldScript := preload("res://scripts/game/objects/grid_risk_field.gd")
-const Shelter2StimCutsceneControllerScript := preload(
-	"res://scripts/fragments/chunks/shelter2_stim_cutscene_controller.gd"
-)
-const WaterShader := preload("res://resources/channels_water.gdshader")
 const ZoneTransitionFloorShader := preload("res://resources/zone_transition_floor.gdshader")
-const WaterTexV0 := preload("res://resources/models/channels/channels_water_v0.png")
-const WaterTexV1 := preload("res://resources/models/channels/channels_water_v1.png")
-const EnemyScript := preload("res://scripts/game/ai/enemy.gd")
-const BridgeCargoScene := preload("res://resources/models/elevator/bridge.glb")
-const LysateReclaimerScene := preload(
-	"res://scenes/fragments/infrastructure/generated_reclamation_works.tscn"
-)
 
-const DEFAULT_SPEC_PATH := "res://data/generated_stretches/generated_teaching_channels_shelter_1_to_2.json"
+const DEFAULT_SPEC_PATH := "res://data/generated_stretches/generated_sample_teaching_first_fork.json"
 const PARTY_IDS := ["aster", "peris", "endo"]
 const FULL_HP := 100.0
 const FULL_STAMINA := 100.0
@@ -38,50 +26,6 @@ const ROUTE_RISK_TICK := 0.5
 const ROUTE_RISK_DAMAGE_RATE_SCALE := 1.0
 const GENERATED_RUNTIME_AUTHORITY_VERSION := 1
 const GENERATED_RUNTIME_AUTHORITY_PREFIX := "runtime:generated_stretch:"
-const SHELTER2_STIM_CUTSCENE_AUTHORITY_KEY := "shelter2_stim_cutscene"
-const HYDRAULIC_SPEC_ID := "generated_teaching_channels_shelter_1_to_2"
-const HYDRAULIC_WATER_COLOR := Color(0.08, 0.42, 0.58)
-const HYDRAULIC_ACTIVE_COLOR := Color(0.24, 0.88, 1.0)
-const HYDRAULIC_CONTROL_COLOR := Color(0.94, 0.55, 0.18)
-## How far a hydraulic control's status readout carries. The stretch spirals, so several turns share
-## one sightline and a billboard drawn for a mechanism two turns away is the same size as the one at
-## the player's feet -- without a range they stack into a wall of text over a dark level. The
-## landmark light stays unranged: finding the mechanism is its job, reading its state is the label's.
-const HYDRAULIC_LABEL_RANGE := 22.0
-const HYDRAULIC_READY_COLOR := Color(0.42, 0.88, 0.54)
-const HYDRAULIC_BLOCKER_TAG := "generated_cistern_bridge_gap"
-const HYDRAULIC_NEXT_HIGHLIGHT_REASON := "hydraulic_next_step"
-const HYDRAULIC_CARGO_WORLD_STATE_KEY := "generated_hydraulic_bridge_cargo_phase"
-const HYDRAULIC_CARGO_MILESTONE_WORLD_STATE_KEY := "generated_hydraulic_bridge_cargo_milestone"
-const HYDRAULIC_BRIDGE_CARGO_ID := "generated_channels_bridge_cargo"
-const BRIDGE_CARGO_ELEVATED := "elevated"
-const BRIDGE_CARGO_FALLING := "falling"
-const BRIDGE_CARGO_STAGED := "staged"
-const BRIDGE_CARGO_TRANSPORTING := "transporting"
-const BRIDGE_CARGO_SEATED := "seated"
-const BRIDGE_CARGO_FALL_DURATION := 1.05
-const BRIDGE_TRANSPORT_DURATION := 3.0
-const HYDRAULIC_CATCH_RECEIPT_VERSION := 1
-const HYDRAULIC_CATCH_RECEIPT_IDLE := "idle"
-const HYDRAULIC_CATCH_RECEIPT_PENDING := "pending"
-const HYDRAULIC_CATCH_RECEIPT_COMPLETE := "complete"
-# Physics overlap is only the receipt boundary. The actual pickup enters through
-# the ordinary Interactable on the next deterministic scheduler boundary.
-const HYDRAULIC_CATCH_COMMIT_DELAY := 0.001
-const BRIDGE_SCAVENGER_DORMANT := "dormant"
-const BRIDGE_SCAVENGER_APPROACHING_RACK := "approaching_rack"
-const BRIDGE_SCAVENGER_RIDING_CARGO := "riding_cargo"
-const BRIDGE_SCAVENGER_RETREATING_TO_LYSATE := "retreating_to_lysate"
-const BRIDGE_SCAVENGER_CLEAR := "clear"
-const BRIDGE_SCAVENGER_CONTACT_EPSILON := 0.01
-const BRIDGE_SCAVENGER_INTENT_NONE := ""
-const BRIDGE_SCAVENGER_INTENT_APPROACH := "approach_rack"
-const BRIDGE_SCAVENGER_INTENT_RETREAT := "retreat_to_lysate"
-const HYDRAULIC_FLOW_FRONT_DURATION := 2.6
-const SPILLWAY_DELIVERY_IDLE := "idle"
-const SPILLWAY_DELIVERY_TRAVELING := "traveling"
-const SPILLWAY_DELIVERY_AVAILABLE := "available"
-const SPILLWAY_DELIVERY_COLLECTED := "collected"
 const RESOURCE_CLAIM_VERSION := 1
 const RESOURCE_PHASE_AVAILABLE := "available"
 const RESOURCE_PHASE_CLAIMING := "claiming"
@@ -193,7 +137,6 @@ var _risky_damage_total := 0.0
 var _pressure_taken := 0.0
 var _rests_taken := 0
 var _first_shelter_beat_fired := false
-var _shelter2_stim_cutscene_controller: RefCounted
 var _unsupported_placeholder_count := 0
 var _omitted_content_count := 0
 var _active_loadout := "spotlight"
@@ -204,81 +147,7 @@ var _node_approach_used: Dictionary = {}
 var _blocked_nodes: Array[String] = []
 var _generated_route_game_state: GameState
 
-var _hydraulic_phase := "disabled"
 var _wipe_recoveries := 0
-var _first_sluice_open := false
-var _cistern_bridge_installed := false
-var _borrowed_current_diverted := false
-var _borrowed_current_delivery_latched := false
-var _main_current_restored := false
-var _hydraulic_flow_router: Node = null
-var _spillway_delivery_phase := SPILLWAY_DELIVERY_IDLE
-var _spillway_delivery_flow_id := 0
-var _spillway_delivery_launch_tick := -1.0
-var _spillway_delivery_route: Array[Vector3] = []
-var _first_sluice_flow_start_tick := -1.0
-var _bridge_current_flow_start_tick := -1.0
-var _routed_current_flow_start_tick := -1.0
-var _hydraulic_main_water: Array[MeshInstance3D] = []
-var _hydraulic_bridge_current: Array[MeshInstance3D] = []
-var _hydraulic_main_tail: Array[MeshInstance3D] = []
-var _hydraulic_spillway_water: Array[MeshInstance3D] = []
-var _hydraulic_exit_water: Array[MeshInstance3D] = []
-var _hydraulic_first_control: Area3D
-var _hydraulic_cistern_control: Area3D
-var _hydraulic_diverter_control: Area3D
-var _hydraulic_first_target: StaticBody3D
-var _hydraulic_cistern_target: StaticBody3D
-var _hydraulic_diverter_target: StaticBody3D
-var _hydraulic_catch_target: StaticBody3D
-var _hydraulic_catch_control: Area3D
-var _hydraulic_first_label: Label3D
-var _hydraulic_cistern_label: Label3D
-var _hydraulic_diverter_label: Label3D
-var _hydraulic_exit_label: Label3D
-var _hydraulic_first_landmark_meshes: Array[MeshInstance3D] = []
-var _hydraulic_first_landmark_light: OmniLight3D
-var _hydraulic_cistern_light: OmniLight3D
-var _hydraulic_diverter_light: OmniLight3D
-var _hydraulic_catch_light: OmniLight3D
-var _hydraulic_exit_light: OmniLight3D
-var _hydraulic_cistern_effect: Node3D
-var _hydraulic_bridge_mesh: Node3D
-var _hydraulic_bridge_cargo: Node3D
-var _hydraulic_bridge_model: Node3D
-var _hydraulic_bridge_cargo_label: Label3D
-var _hydraulic_bridge_cargo_light: OmniLight3D
-var _hydraulic_cargo_route_link: Node3D
-var _hydraulic_cargo_route_source: Node3D
-var _hydraulic_cargo_route_target: Node3D
-var _hydraulic_scavenger: Node3D
-var _hydraulic_scavenger_game_state: GameState
-var _hydraulic_lysate_source: Node3D
-var _bridge_cargo_phase := BRIDGE_CARGO_ELEVATED
-var _bridge_intro_start_tick := -1.0
-var _bridge_cargo_fall_start_tick := -1.0
-var _bridge_cargo_fall_end_tick := -1.0
-var _bridge_transport_start_tick := -1.0
-var _bridge_scavenger_phase := BRIDGE_SCAVENGER_DORMANT
-var _bridge_scavenger_motion_intent := BRIDGE_SCAVENGER_INTENT_NONE
-var _bridge_scavenger_clear_recorded := false
-var _bridge_cargo_milestones: Array[Dictionary] = []
-var _hydraulic_catch_receipt: Dictionary = {}
-var _bridge_cargo_route: Array[Vector3] = []
-var _bridge_scavenger_route: Array[Vector3] = []
-var _bridge_cargo_elevated_position := Vector3.ZERO
-var _bridge_cargo_staged_position := Vector3.ZERO
-var _bridge_cargo_seated_position := Vector3.ZERO
-var _bridge_cargo_flat_yaw := 0.0
-var _hydraulic_spillway_catch: MeshInstance3D
-var _hydraulic_exit_beacon: MeshInstance3D
-## Which prerequisite the shelter is currently advertising, so the copy repaints on a change instead
-## of every frame.
-var _exit_copy_signature := ""
-var _hydraulic_spillway_link: Node3D
-var _hydraulic_exit_link: Node3D
-var _hydraulic_spillway_food_cache: Dictionary = {}
-var _hydraulic_grid_instance_id := 0
 var _preserve_carried_resources_on_detach := false
 
 
@@ -301,9 +170,7 @@ func get_generation_seed() -> int:
 
 
 func _exit_tree() -> void:
-	_detach_shelter2_stim_cutscene_controller()
 	_detach_generated_route_arrival_authority()
-	_detach_hydraulic_scavenger_authority()
 	_dispose_scarcity_clock()
 	_cancel_theme_hazard_tick()
 	if not _preserve_carried_resources_on_detach:
@@ -311,9 +178,7 @@ func _exit_tree() -> void:
 
 
 func detach_chunk_host() -> void:
-	_detach_shelter2_stim_cutscene_controller()
 	_detach_generated_route_arrival_authority()
-	_detach_hydraulic_scavenger_authority()
 	_dispose_scarcity_clock()
 	if not _preserve_carried_resources_on_detach:
 		_clear_physical_food_items()
@@ -378,7 +243,6 @@ func _build_chunk() -> void:
 	_branch_caches.clear()
 	_physical_food_spawned_count = 0
 	_nominal_food_atp = 0.0
-	_clear_hydraulic_runtime_refs()
 	_woven_nav = {}
 	_runtime_navigation_cell_delta = Vector2i.ZERO
 	_runtime_interaction_contract_errors.clear()
@@ -407,7 +271,6 @@ func _build_chunk() -> void:
 	# them onto the helix too (keeps their interactable + outline target together on the deck).
 	_build_branch_content()
 	_configure_food_branch_caches()
-	_build_hydraulic_puzzle()
 	if _coord_map != null:
 		for i in range(flat_child_start, get_child_count()):
 			_warp_child(get_child(i))
@@ -415,7 +278,6 @@ func _build_chunk() -> void:
 		# warped marker mesh has reached its final transform. The shared helper only
 		# touches targets carrying the explicit generated-source opt-in contract.
 		align_opt_in_pick_targets_to_highlights()
-	_wire_hydraulic_feedback()
 	_build_return_points()
 	_ensure_branch_span_producers_ready()
 	_register_shelter_regions()
@@ -490,80 +352,6 @@ func _game_mode_id() -> String:
 	return "neutral"
 
 
-func _is_shelter2_stim_cutscene_target() -> bool:
-	return str(_spec.get("id", "")) == HYDRAULIC_SPEC_ID
-
-
-func _ensure_shelter2_stim_cutscene_controller() -> RefCounted:
-	if not _is_shelter2_stim_cutscene_target():
-		return null
-	if _shelter2_stim_cutscene_controller == null:
-		_shelter2_stim_cutscene_controller = Shelter2StimCutsceneControllerScript.new()
-	_shelter2_stim_cutscene_controller.call(
-		"configure",
-		self,
-		host,
-		"%s:shelter2_stim" % _generated_runtime_authority_key(),
-		Callable(self, "_on_shelter2_stim_cutscene_completed"),
-		Callable(self, "_publish_generated_runtime_authority")
-	)
-	return _shelter2_stim_cutscene_controller
-
-
-func _reset_shelter2_stim_cutscene_controller() -> void:
-	if not _is_shelter2_stim_cutscene_target():
-		_detach_shelter2_stim_cutscene_controller()
-		return
-	var controller := _ensure_shelter2_stim_cutscene_controller()
-	if controller != null:
-		controller.call("reset")
-
-
-func _detach_shelter2_stim_cutscene_controller() -> void:
-	if _shelter2_stim_cutscene_controller == null:
-		return
-	_shelter2_stim_cutscene_controller.call("detach")
-	_shelter2_stim_cutscene_controller = null
-
-
-func _shelter2_stim_cutscene_state() -> Dictionary:
-	var controller := _ensure_shelter2_stim_cutscene_controller()
-	if controller == null:
-		return {}
-	return (controller.call("get_state") as Dictionary).duplicate(true)
-
-
-func _shelter2_stim_cutscene_can_present() -> bool:
-	if not _is_shelter2_stim_cutscene_target() \
-			or bool(_config.get("roguelike", false)) or host == null:
-		return false
-	var controller := _ensure_shelter2_stim_cutscene_controller()
-	return controller != null and bool(controller.call("can_present"))
-
-
-func _shelter2_stim_cutscene_placement_transform() -> Transform3D:
-	var exit_node := _find_node("exit_shelter")
-	var exit_position := _vec3(
-		exit_node.get("position", []), _anchor_position("exit_shelter")
-	)
-	var approach_position := _vec3(
-		exit_node.get("approach_position", []), exit_position + Vector3(0.0, 0.0, 1.0)
-	)
-	var base := _warp_xform(exit_position)
-	var world_forward := _warp_pos(approach_position) - base.origin
-	world_forward.y = 0.0
-	if world_forward.length_squared() <= 0.000001:
-		world_forward = base.basis.z
-		world_forward.y = 0.0
-	var local_forward := base.basis.inverse() * world_forward.normalized()
-	local_forward.y = 0.0
-	if local_forward.length_squared() <= 0.000001:
-		local_forward = Vector3.BACK
-	local_forward = local_forward.normalized()
-	var local_yaw := atan2(local_forward.x, local_forward.z)
-	return base * Transform3D(Basis(Vector3.UP, local_yaw), Vector3.ZERO)
-
-
 func _generated_completion_ready() -> bool:
 	return _shelter_rested and _route_phase == "complete" \
 		and _last_outcome == "success" and _first_shelter_beat_fired
@@ -618,18 +406,6 @@ func _scarcity_zero_atp_hp_drain() -> float:
 			"zero_atp_hp_drain", AtpScarcityClockScript.DEFAULT_ZERO_ATP_HP_DRAIN
 		))
 	)
-
-
-func _hydraulic_enabled() -> bool:
-	return str(_spec.get("id", "")) == HYDRAULIC_SPEC_ID
-
-
-func _hydraulic_help() -> String:
-	if not _hydraulic_enabled():
-		return ""
-	# The spillway bet and the launched payload's held route are both things to find out by doing
-	# them. A banner that states the goal leaves the level something to teach.
-	return " CHANNEL PUZZLE — One current, and it only runs one way at a time. Get it to the shelter."
 
 
 func _theme_help() -> String:
@@ -1581,7 +1357,7 @@ func get_scene_help() -> String:
 				str(_generation_fallback.get("error", "Generation failed.")),
 			]
 		)
-	return "%s%s  %s%s%s" % [fallback_help, layout_help, _food_economy_help(), _hydraulic_help(), _theme_help()]
+	return "%s%s  %s%s" % [fallback_help, layout_help, _food_economy_help(), _theme_help()]
 
 
 func get_default_character() -> String:
@@ -1831,14 +1607,7 @@ func _physical_food_cache_count(available_only := false) -> int:
 
 
 func _physical_food_opportunity_count(available_only := false) -> int:
-	var count := _physical_food_cache_count(available_only)
-	if _hydraulic_spillway_food_enabled():
-		if (
-			not available_only
-			or _spillway_delivery_phase == SPILLWAY_DELIVERY_AVAILABLE
-		):
-			count += 1
-	return count
+	return _physical_food_cache_count(available_only)
 
 
 func _branch_food_profiles() -> Array:
@@ -1863,64 +1632,8 @@ func _real_content_counts() -> Dictionary:
 	}
 
 
-func _hydraulic_state() -> Dictionary:
-	var enabled := _hydraulic_enabled()
-	var physical_food_enabled := _hydraulic_spillway_food_enabled()
-	var spillway_food_collected := bool(_hydraulic_spillway_food_cache.get("collected", false))
-	var exit_unlocked := (
-		not enabled
-		or (
-			_first_sluice_open
-			and _cistern_bridge_installed
-			and not _borrowed_current_diverted
-			and _main_current_restored
-		)
-	)
-	return {
-		"hydraulic_enabled": enabled,
-		"hydraulic_phase": _hydraulic_phase if enabled else "disabled",
-		"bridge_cargo_phase": _bridge_cargo_phase if enabled else "disabled",
-		"bridge_cargo_milestones": _bridge_cargo_milestones.duplicate(true),
-		"bridge_scavenger_character_id": _hydraulic_scavenger_character_id() if enabled else "",
-		"bridge_scavenger_phase": _bridge_scavenger_phase if enabled else "disabled",
-		"first_sluice_open": _first_sluice_open,
-		"cistern_bridge_installed": _cistern_bridge_installed,
-		"borrowed_current_diverted": _borrowed_current_diverted,
-		"borrowed_current_delivery_latched": _borrowed_current_delivery_latched,
-		"main_current_restored": _main_current_restored,
-		"hydraulic_exit_unlocked": exit_unlocked,
-		"hydraulic_spillway_food_enabled": physical_food_enabled,
-		"hydraulic_spillway_food_collected": spillway_food_collected,
-		"hydraulic_spillway_food_available": (
-			physical_food_enabled
-			and _spillway_delivery_phase == SPILLWAY_DELIVERY_AVAILABLE
-		),
-		"spillway_delivery_phase": _spillway_delivery_phase,
-		"spillway_delivery_in_transit": (
-			_spillway_delivery_phase == SPILLWAY_DELIVERY_TRAVELING
-		),
-		"spillway_delivery_flow_id": _spillway_delivery_flow_id,
-		"hydraulic_catch_receipt": _hydraulic_catch_receipt.duplicate(true),
-		"flow_router_state": (
-			_hydraulic_flow_router.call("get_state")
-			if _hydraulic_flow_router != null
-				and is_instance_valid(_hydraulic_flow_router)
-				and _hydraulic_flow_router.has_method("get_state")
-			else {}
-		),
-	}
-
-
-func _hydraulic_spillway_food_enabled() -> bool:
-	return (
-		_hydraulic_enabled()
-		and not _hydraulic_spillway_food_cache.is_empty()
-	)
-
-
 func get_preview_state() -> Dictionary:
 	_ensure_spec_loaded()
-	var shelter2_cutscene := _shelter2_stim_cutscene_state()
 	var generation := {
 		"generation_fallback": get_generation_fallback_state(),
 		"game_mode": _game_mode_id(),
@@ -1979,7 +1692,6 @@ func get_preview_state() -> Dictionary:
 		"shelter_reached": _shelter_reached,
 		"shelter_rested": _shelter_rested,
 		"completion_ready": _generated_completion_ready(),
-		"shelter_cutscene": shelter2_cutscene.duplicate(true),
 		"first_shelter_beat_fired": _first_shelter_beat_fired,
 		"last_outcome": _last_outcome,
 		"risky_damage_total": _risky_damage_total,
@@ -2003,7 +1715,6 @@ func get_preview_state() -> Dictionary:
 		"solution_path": get_active_solution_path(),
 		"solution_summary": _spec.get("headless", {}).get("solution_summary", {}).duplicate(true),
 	}
-	generation.merge(_hydraulic_state())
 	generation.merge(_scarcity_state())
 	var state := {
 		"game_mode": _game_mode_id(),
@@ -2026,7 +1737,6 @@ func get_preview_state() -> Dictionary:
 		"shelter_reached": _shelter_reached,
 		"shelter_rested": _shelter_rested,
 		"completion_ready": _generated_completion_ready(),
-		"shelter_cutscene": shelter2_cutscene.duplicate(true),
 		"shortcut_unlocked": _shortcut_unlocked,
 		"first_shelter_beat_fired": _first_shelter_beat_fired,
 		"last_outcome": _last_outcome,
@@ -2058,7 +1768,6 @@ func get_preview_state() -> Dictionary:
 		"navigation": generation["navigation"],
 		"generation": generation,
 	}
-	state.merge(_hydraulic_state())
 	state.merge(_scarcity_state())
 	return state
 
@@ -2116,18 +1825,6 @@ func _reset_physical_food_state() -> void:
 			var interactable = cache.get("interactable", null)
 			if interactable != null and interactable.has_method("set_interaction_enabled"):
 				interactable.call("set_interaction_enabled", true)
-	if not _hydraulic_spillway_food_cache.is_empty():
-		_hydraulic_spillway_food_cache["collected"] = false
-		# This is one persistent payload, initially upstream and invisible. It only
-		# becomes a pickup after the selected current visibly carries it to the catch.
-		_set_branch_cache_available_visual(_hydraulic_spillway_food_cache, false)
-		var spillway_interactable = _hydraulic_spillway_food_cache.get("interactable", null)
-		if (
-			spillway_interactable != null
-			and spillway_interactable.has_method("set_interaction_enabled")
-		):
-			spillway_interactable.call("set_interaction_enabled", false)
-			spillway_interactable.set("input_ray_pickable", false)
 
 
 func _configure_scarcity_clock() -> void:
@@ -2228,43 +1925,11 @@ func _scarcity_display_names(per_character: Dictionary) -> Array[String]:
 	return result
 
 
-func _process(delta: float) -> void:
-	if _shelter2_stim_cutscene_controller != null:
-		_shelter2_stim_cutscene_controller.call("process_authority")
+func _process(_delta: float) -> void:
 	_ensure_branch_span_producers_ready()
 	_update_generated_party_endpoints()
-	_update_hydraulic_cargo_sequence(delta)
-	_update_hydraulic_flow_visuals()
-	_update_spillway_delivery_visual()
-	_sync_hydraulic_bridge_blocker()
 	_ensure_theme_hazard_tick()
-	_refresh_exit_copy_if_prerequisite_changed()
 	_publish_generated_runtime_authority()
-
-
-## The shelter advertises whichever prerequisite is actually in the way, and a branch span seating is
-## not a hydraulic event -- the visual pass that writes that copy is driven by water. Without this the
-## door would go on saying EXTEND FIRST after the player had gone and done exactly that. Kept cheap by
-## comparing a signature and repainting only on a change; once every span is bridged the phase lookup
-## is skipped entirely and the steady-state cost is one boolean loop.
-func _refresh_exit_copy_if_prerequisite_changed() -> void:
-	if _hydraulic_exit_beacon == null or not is_instance_valid(_hydraulic_exit_beacon):
-		return
-	var span_phase := ""
-	if not _all_mandatory_branch_spans_bridged():
-		span_phase = str(_required_unresolved_branch_action_before_node(
-			"exit_shelter").get("runtime_phase", "dormant"))
-	var signature := "%s|%s|%s|%s|%s" % [
-		span_phase,
-		str(_first_sluice_open),
-		str(_cistern_bridge_installed),
-		str(_borrowed_current_diverted),
-		str(_main_current_restored),
-	]
-	if signature == _exit_copy_signature:
-		return
-	_exit_copy_signature = signature
-	_apply_hydraulic_visual_state()
 
 
 ## Generated flora uses the same positional hide tiers as data-authored chunks.
@@ -2330,7 +1995,7 @@ func _arm_theme_hazard_tick(delay := THEME_HAZARD_TICK) -> void:
 	delay = maxf(0.000001, delay)
 	scheduler.cancel_tag(_theme_hazard_tag())
 	_theme_hazard_armed = true
-	_theme_hazard_next_tick = _hydraulic_sequence_tick() + delay
+	_theme_hazard_next_tick = _sequence_tick() + delay
 	scheduler.schedule_after(delay, _on_theme_hazard_tick, _theme_hazard_tag())
 	_publish_generated_runtime_authority()
 
@@ -2459,7 +2124,6 @@ func _route_risk_field_state() -> Dictionary:
 
 
 func reset_preview_state() -> void:
-	_reset_shelter2_stim_cutscene_controller()
 	_cancel_scarcity_drain()
 	_cancel_theme_hazard_tick()
 	_stop_generated_party_rest()
@@ -2470,7 +2134,7 @@ func reset_preview_state() -> void:
 	# Generated and branch rewards exist before anyone interacts with them. Their
 	# exact GameState item ids are part of the reset baseline; interaction only moves
 	# those items from the source into the servicing character's hand.
-	_materialize_resource_sources(false)
+	_materialize_resource_sources()
 	_exit_shelter_transaction = _new_exit_shelter_transaction()
 	_ensure_branch_span_producers_ready()
 	for span in _branch_span_producers:
@@ -2490,7 +2154,6 @@ func reset_preview_state() -> void:
 		if infrastructure_operation != null and is_instance_valid(infrastructure_operation) \
 				and infrastructure_operation.has_method("reset_operation"):
 			infrastructure_operation.call("reset_operation")
-	_reset_hydraulic_state()
 	_route_choice = ""
 	_route_phase = "unstarted"
 	_completed_nodes.clear()
@@ -2518,8 +2181,6 @@ func reset_preview_state() -> void:
 	_reset_generated_party_positions()
 	_configure_scarcity_clock()
 	_set_preview_step("generated_stretch_ready")
-	if _hydraulic_enabled():
-		call_deferred("_introduce_first_hydraulic_step")
 	_ensure_theme_hazard_tick()
 	_ensure_generated_route_arrival_authority()
 	# Keep an immutable construction/reset baseline. A snapshot made before this stretch had any
@@ -2553,17 +2214,6 @@ func _reset_generated_interaction_receipts() -> void:
 			continue
 		cache_source.call("reset")
 		reset_instances[cache_source.get_instance_id()] = true
-	for source in [
-		_hydraulic_first_control,
-		_hydraulic_cistern_control,
-		_hydraulic_diverter_control,
-	]:
-		if source == null or not is_instance_valid(source) \
-				or reset_instances.has(source.get_instance_id()) \
-				or not source.has_method("reset"):
-			continue
-		source.call("reset")
-		reset_instances[source.get_instance_id()] = true
 
 
 ## Choose which party is solving the stretch. "spotlight" is the full party (a
@@ -2763,8 +2413,6 @@ func _generated_interactable_receipt_pending(source: Node, require_one_shot: boo
 
 
 func _generated_node_progression_is_ready(node_id: String) -> bool:
-	if _hydraulic_enabled():
-		return true
 	var predecessor := _required_progression_predecessor(node_id)
 	if predecessor == "" or _completed_nodes.has(predecessor):
 		return true
@@ -2787,21 +2435,6 @@ func _generated_node_progression_is_ready(node_id: String) -> bool:
 func _generated_chain_is_ready(node: Dictionary) -> bool:
 	var input_ref := str(node.get("runtime_chain_input_ref", ""))
 	return input_ref == "" or _produced_chain_states.has(input_ref)
-
-
-func _hydraulic_node_is_ready(node_id: String) -> bool:
-	if not _hydraulic_enabled():
-		return true
-	match node_id:
-		"node_02":
-			return _first_sluice_open
-		"node_03":
-			return _cistern_bridge_installed
-		"node_04":
-			return _spillway_delivery_phase == SPILLWAY_DELIVERY_AVAILABLE
-		"exit_shelter":
-			return bool(_hydraulic_state().get("hydraulic_exit_unlocked", false))
-	return true
 
 
 func _accepted_generated_interaction_gate() -> Dictionary:
@@ -2885,56 +2518,6 @@ func _branch_action_requires_resolution_before_node(
 		and scheduled_index <= requested_index)
 
 
-func _query_hydraulic_node_interaction_gate(node_id: String) -> Dictionary:
-	if _hydraulic_node_is_ready(node_id):
-		return _accepted_generated_interaction_gate()
-	match node_id:
-		"node_02":
-			return {
-				"accepted": false,
-				"code": "hydraulic_first_sluice_required",
-				"message": "Open the lit First Sluice before advancing the cistern.",
-				"cue": "RESOLVE FIRST // OPEN FIRST SLUICE",
-				"focus_hydraulic_action": "first_sluice",
-			}
-		"node_03":
-			return {
-				"accepted": false,
-				"code": "hydraulic_cistern_span_required",
-				"message": "Release the lit cistern control and wait for its span to seat.",
-				"cue": "RESOLVE FIRST // RELEASE CISTERN SPAN",
-				"focus_hydraulic_action": "cistern_release",
-			}
-		"node_04":
-			return {
-				"accepted": false,
-				"code": "hydraulic_spillway_delivery_required",
-				"message": (
-					"The lysate is still visibly traveling to the catch."
-					if _spillway_delivery_phase == SPILLWAY_DELIVERY_TRAVELING
-					else "Use the lit diverter if you want the optional lysate detour."
-				),
-				"cue": "RESOLVE FIRST // WAIT FOR THE LYSATE CATCH" if (
-					_spillway_delivery_phase == SPILLWAY_DELIVERY_TRAVELING
-				) else "RESOLVE FIRST // DIVERT BORROWED CURRENT",
-				"focus_hydraulic_action": "borrowed_current",
-			}
-		"exit_shelter":
-			return {
-				"accepted": false,
-				"code": "hydraulic_main_current_required",
-				"message": "Restore the main current at the lit diverter before leaving.",
-				"cue": "RESOLVE FIRST // RESTORE MAIN CURRENT",
-				"focus_hydraulic_action": "borrowed_current",
-			}
-	return {
-		"accepted": false,
-		"code": "hydraulic_state_required",
-		"message": "The visible hydraulic sequence is not ready for that action.",
-		"cue": "RESOLVE FIRST // FOLLOW THE LIT CONTROL",
-	}
-
-
 ## Authoritative, read-only interaction gate used both before route commitment
 ## and again at physical arrival. It returns data only; visual feedback lives in
 ## `_present_generated_interaction_refusal` and runs only after a real attempt.
@@ -3003,9 +2586,6 @@ func _query_generated_node_interaction_gate(
 			) else "RESOLVE FIRST // EXTEND",
 			"focus_branch_id": branch_id,
 		}
-	var hydraulic_gate := _query_hydraulic_node_interaction_gate(node_id)
-	if not bool(hydraulic_gate.get("accepted", false)):
-		return hydraulic_gate
 	if not _generated_node_progression_is_ready(node_id):
 		var predecessor := _required_progression_predecessor(node_id)
 		var predecessor_node := _find_node(predecessor)
@@ -3049,7 +2629,6 @@ func _query_generated_node_interaction_gate(
 	if handler_id in [
 		RuntimeRegistryScript.HANDLER_PHYSICAL_LYSATE,
 		RuntimeRegistryScript.HANDLER_PHYSICAL_PAYLOAD,
-		RuntimeRegistryScript.HANDLER_HYDRAULIC_SPILLWAY,
 	]:
 		if not gs.has_method("has_free_hand") \
 				or not bool(gs.call("has_free_hand", actor)):
@@ -3060,11 +2639,7 @@ func _query_generated_node_interaction_gate(
 				"cue": "RESOLVE FIRST // FREE A HAND",
 				"focus_node_id": node_id,
 			}
-		var source_id := (
-			_physical_cache_source_id(_hydraulic_spillway_food_cache)
-			if handler_id == RuntimeRegistryScript.HANDLER_HYDRAULIC_SPILLWAY
-			else _node_resource_source_id(node_id)
-		)
+		var source_id := _node_resource_source_id(node_id)
 		var claim_v: Variant = _resource_claims.get(source_id, {})
 		if not (claim_v is Dictionary) \
 				or not _resource_claim_item_is_at_source(gs, claim_v as Dictionary):
@@ -3117,12 +2692,6 @@ func _present_generated_interaction_refusal(
 					focus_target.call("set_highlight", true)
 				if focus_target.has_method("show_tutorial_label"):
 					focus_target.call("show_tutorial_label")
-	var hydraulic_action := str(result.get("focus_hydraulic_action", ""))
-	if focus_target == null and hydraulic_action != "":
-		var hydraulic_target := _hydraulic_control_for_action(hydraulic_action)
-		if hydraulic_target is Node3D and is_instance_valid(hydraulic_target):
-			focus_target = hydraulic_target as Node3D
-			_set_hydraulic_next_highlight(focus_target)
 	var focus_node_id := str(result.get("focus_node_id", ""))
 	if focus_node_id != "":
 		_highlight_node(focus_node_id, true)
@@ -3197,14 +2766,12 @@ func _rearm_generated_node_control(source: Node) -> void:
 	if source != null and source.has_method("reset"):
 		source.call("reset")
 	_apply_resource_claim_presenters()
-	_apply_hydraulic_visual_state()
 
 
 func _rearm_resource_source(source: Node) -> void:
 	if source != null and is_instance_valid(source) and source.has_method("reset"):
 		source.call("reset")
 	_apply_resource_claim_presenters()
-	_apply_hydraulic_visual_state()
 
 
 ## Generated geometry may put a later marker within clicking distance, but causal
@@ -3212,9 +2779,6 @@ func _rearm_resource_source(source: Node) -> void:
 ## that chain only after the route itself has been explicitly activated from a
 ## completed source node. This keeps every seed honest without hard-coding node ids.
 func _node_progression_ready(node_id: String) -> bool:
-	if _hydraulic_enabled():
-		# The authored Channels puzzle has its own stronger, state-based gates.
-		return true
 	var predecessor := _required_progression_predecessor(node_id)
 	if predecessor == "" or _completed_nodes.has(predecessor):
 		return true
@@ -3295,8 +2859,6 @@ func _commit_generated_node_from_receipt(node_id: String, source: Node) -> bool:
 		# their room-piece is sufficient; they never become invisible checkpoints.
 		_last_outcome = "layout_only:%s" % node_id
 		return false
-	if not _hydraulic_progress_ready(node_id):
-		return false
 	if not _completed_nodes.has(node_id) and not _node_progression_ready(node_id):
 		return false
 	if not _completed_nodes.has(node_id) and not _chain_progression_ready(node):
@@ -3330,22 +2892,6 @@ func _commit_generated_node_from_receipt(node_id: String, source: Node) -> bool:
 				node, interaction_actor, source
 			):
 				return false
-		RuntimeRegistryScript.HANDLER_HYDRAULIC_SPILLWAY:
-			if _spillway_delivery_phase == SPILLWAY_DELIVERY_TRAVELING:
-				_show_note("The routed lysate is still traveling down the spillway.", 1.8)
-				return false
-			if _spillway_delivery_phase != SPILLWAY_DELIVERY_AVAILABLE:
-				_show_note("The catch is empty. Divert the current if the detour is worth it.", 2.1)
-				return false
-			# Catching is a real inventory transfer. A full-handed character leaves the
-			# same visible payload in the catch and the optional branch remains unresolved.
-			if (
-				_hydraulic_spillway_food_enabled()
-				and not _collect_hydraulic_spillway_food_from_receipt(
-					interaction_actor, source
-				)
-			):
-				return false
 		RuntimeRegistryScript.HANDLER_CANONICAL_SHELTER_ARRIVAL:
 			if not _reach_exit_shelter():
 				return false
@@ -3374,7 +2920,7 @@ func _commit_generated_node_from_receipt(node_id: String, source: Node) -> bool:
 
 ## Update the presenter only when it was created by a concrete runtime handler
 ## binding. Completion never recolors or rescales an arbitrary mesh guessed from
-## section prose; the handler's real item/shelter/hydraulic state is the world
+## section prose; the handler's real item/shelter state is the world
 ## consequence, while this exact link only compares prediction with observation.
 func _apply_generated_section_transition(
 	node: Dictionary, animate := true, interaction_actor := ""
@@ -3471,16 +3017,6 @@ func _chain_progression_ready(node: Dictionary) -> bool:
 
 
 func _headless_activate_generated_node(node_id: String) -> bool:
-	# The spillway catch is an optional scarcity bet, not a hidden golden-path checkpoint. A minimal replay that
-	# has restored the main route truthfully walks past it without manufacturing a delivery or marking it solved.
-	if (
-		_hydraulic_enabled()
-		and node_id == "node_04"
-		and _spillway_delivery_phase == SPILLWAY_DELIVERY_IDLE
-		and bool(_hydraulic_state().get("hydraulic_exit_unlocked", false))
-	):
-		_last_outcome = "optional_node_skipped:node_04"
-		return true
 	# The generated solution can place a proven blocker before the requested
 	# physical source. A headless activation is already a deterministic journey
 	# helper, so it must execute that emitted mandatory detour through the live
@@ -3611,7 +3147,6 @@ func _headless_generated_interaction_actor(node_id: String) -> String:
 		if handler_id in [
 			RuntimeRegistryScript.HANDLER_PHYSICAL_LYSATE,
 			RuntimeRegistryScript.HANDLER_PHYSICAL_PAYLOAD,
-			RuntimeRegistryScript.HANDLER_HYDRAULIC_SPILLWAY,
 		] and (not gs.has_method("has_free_hand") or not bool(gs.call("has_free_hand", candidate))):
 			continue
 		return candidate
@@ -3789,55 +3324,10 @@ func _ordered_solution_branch_actions(solution: Dictionary = {}) -> Array:
 	return ordered
 
 
-func _run_solution_world_action(action_id: String, action: Dictionary = {}) -> bool:
+func _run_solution_world_action(_action_id: String, action: Dictionary = {}) -> bool:
 	if str(action.get("runtime_handler", "")) == "branch_span_producer":
 		return _headless_activate_branch_span(action)
-	match action_id:
-		"open_first_sluice", "open_sluice":
-			return _headless_trigger_hydraulic_control(_hydraulic_first_control)
-		"release_cistern_bridge", "release_bridge":
-			if not _first_sluice_open:
-				return false
-			# Headless playback advances the same GameState movement plans as live play.
-			# It cannot manufacture contact, cargo, or clearance from a deadline.
-			if not _advance_hydraulic_scavenger_chain_for_headless():
-				return false
-			var released := _headless_trigger_hydraulic_control(_hydraulic_cistern_control)
-			if not released or _bridge_transport_start_tick < 0.0:
-				return false
-			if not _headless_advance_scheduler_to(
-				_bridge_transport_start_tick + BRIDGE_TRANSPORT_DURATION
-			):
-				return false
-			return _cistern_bridge_installed and _bridge_cargo_phase == BRIDGE_CARGO_SEATED
-		"divert_current", "divert":
-			return _headless_trigger_hydraulic_control(_hydraulic_diverter_control)
-		"catch_spillway", "catch":
-			if _spillway_delivery_phase == SPILLWAY_DELIVERY_TRAVELING:
-				if not _headless_advance_scheduler_to(
-					_spillway_delivery_launch_tick + HYDRAULIC_FLOW_FRONT_DURATION
-				):
-					return false
-			return _headless_activate_generated_node("node_04")
-		"restore_main_current", "restore":
-			return _headless_trigger_hydraulic_control(_hydraulic_diverter_control)
 	return false
-
-
-func _headless_trigger_hydraulic_control(control: Node, actor := "") -> bool:
-	if control == null or not is_instance_valid(control):
-		return false
-	var interaction_actor := actor
-	if interaction_actor == "":
-		interaction_actor = _headless_generated_interaction_actor("")
-	if interaction_actor == "":
-		return false
-	if not _headless_move_character_to(
-		interaction_actor, _generated_interaction_data_position(control)
-	):
-		return false
-	control.set("active_character", interaction_actor)
-	return bool(control.call("_trigger", false))
 
 
 func _headless_advance_scheduler_to(target_tick: float) -> bool:
@@ -4350,9 +3840,7 @@ func _ensure_spec_loaded() -> void:
 
 
 func _clear_generated_children() -> void:
-	_detach_shelter2_stim_cutscene_controller()
 	_detach_generated_route_arrival_authority()
-	_detach_hydraulic_scavenger_authority()
 	for child in get_children():
 		child.free()
 
@@ -5070,72 +4558,15 @@ func on_game_state_snapshot_restored() -> void:
 	_ensure_branch_span_producers_ready()
 
 
-func on_dialogue_presenter_snapshot_restored() -> void:
-	if _shelter2_stim_cutscene_controller != null:
-		_shelter2_stim_cutscene_controller.call(
-			"on_dialogue_presenter_snapshot_restored"
-		)
-
-
-func _restore_shelter2_stim_cutscene_authority(saved: Dictionary) -> void:
-	if not _is_shelter2_stim_cutscene_target():
-		_detach_shelter2_stim_cutscene_controller()
-		return
-	var controller := _ensure_shelter2_stim_cutscene_controller()
-	if controller == null:
-		return
-	var legacy_completed := (
-		not saved.has(SHELTER2_STIM_CUTSCENE_AUTHORITY_KEY)
-		and bool(saved.get("shelter_rested", false))
-	)
-	var legacy_tick := float(
-		_exit_shelter_transaction.get("completed_tick", _hydraulic_sequence_tick())
-	)
-	controller.call(
-		"restore_state",
-		saved.get(SHELTER2_STIM_CUTSCENE_AUTHORITY_KEY, {}),
-		legacy_completed,
-		legacy_tick,
-		_shelter2_stim_cutscene_placement_transform()
-	)
-	if bool(controller.call("is_complete")):
-		_route_phase = "complete"
-		_last_outcome = "success"
-		_first_shelter_beat_fired = true
-	elif bool(controller.call("is_playing")):
-		_route_phase = "shelter_cutscene"
-		_last_outcome = "shelter_cutscene"
-		_first_shelter_beat_fired = false
-
-
 func _generated_runtime_authority_key() -> String:
 	var spec_id := str(_spec.get("id", "stretch"))
 	return "%s%s:%d" % [GENERATED_RUNTIME_AUTHORITY_PREFIX, spec_id, get_generation_seed()]
 
 
-func _bridge_cargo_authority_context() -> Dictionary:
-	var encoded_route: Array = []
-	for point in _bridge_cargo_route:
-		encoded_route.append(_vec3_array(point))
-	return {
-		"cargo_id": HYDRAULIC_BRIDGE_CARGO_ID,
-		"origin": _vec3_array(_bridge_cargo_elevated_position),
-		"staging": _vec3_array(_bridge_cargo_staged_position),
-		"destination": _vec3_array(_bridge_cargo_seated_position),
-		"route": encoded_route,
-		"fall_duration": BRIDGE_CARGO_FALL_DURATION,
-		"transport_duration": BRIDGE_TRANSPORT_DURATION,
-	}
-
-
 ## Complete JSON-safe generated-level truth. Costs already live on characters/items in GameState;
 ## this record owns the matching progression/topology side so a rollback cannot refund one while
-## retaining the other. Absolute ticks preserve every in-flight hydraulic and hazard commitment.
+## retaining the other. Absolute ticks preserve every in-flight hazard commitment.
 func _generated_runtime_authority_state() -> Dictionary:
-	var router_snapshot: Dictionary = {}
-	if _hydraulic_flow_router != null and is_instance_valid(_hydraulic_flow_router) \
-			and _hydraulic_flow_router.has_method("serialize_state"):
-		router_snapshot = _hydraulic_flow_router.call("serialize_state")
 	var state := {
 		"version": GENERATED_RUNTIME_AUTHORITY_VERSION,
 		"spec_id": str(_spec.get("id", "")),
@@ -5164,39 +4595,12 @@ func _generated_runtime_authority_state() -> Dictionary:
 		"enforce_stage": _enforce_stage,
 		"node_approach_used": _node_approach_used.duplicate(true),
 		"blocked_nodes": _blocked_nodes.duplicate(),
-		"hydraulic_phase": _hydraulic_phase,
-		"first_sluice_open": _first_sluice_open,
-		"cistern_bridge_installed": _cistern_bridge_installed,
-		"borrowed_current_diverted": _borrowed_current_diverted,
-		"borrowed_current_delivery_latched": _borrowed_current_delivery_latched,
-		"main_current_restored": _main_current_restored,
-		"spillway_delivery_phase": _spillway_delivery_phase,
-		"spillway_delivery_flow_id": _spillway_delivery_flow_id,
-		"spillway_delivery_launch_tick": _spillway_delivery_launch_tick,
-		"hydraulic_catch_receipt": _hydraulic_catch_receipt.duplicate(true),
-		"first_sluice_flow_start_tick": _first_sluice_flow_start_tick,
-		"bridge_current_flow_start_tick": _bridge_current_flow_start_tick,
-		"routed_current_flow_start_tick": _routed_current_flow_start_tick,
-		"bridge_cargo_phase": _bridge_cargo_phase,
-		"bridge_cargo_context": _bridge_cargo_authority_context(),
-		"bridge_intro_start_tick": _bridge_intro_start_tick,
-		"bridge_cargo_fall_start_tick": _bridge_cargo_fall_start_tick,
-		"bridge_cargo_fall_end_tick": _bridge_cargo_fall_end_tick,
-		"bridge_transport_start_tick": _bridge_transport_start_tick,
-		"bridge_scavenger_phase": _bridge_scavenger_phase,
-		"bridge_scavenger_motion_intent": _bridge_scavenger_motion_intent,
-		"bridge_scavenger_clear_recorded": _bridge_scavenger_clear_recorded,
-		"bridge_cargo_milestones": _bridge_cargo_milestones.duplicate(true),
-		"spillway_food_collected": bool(_hydraulic_spillway_food_cache.get("collected", false)),
-		"flow_router": router_snapshot,
 		"infrastructure": _infrastructure_operation_authority_state(),
 		"theme_hazard_damage_total": _theme_hazard_damage_total,
 		"theme_hazard_contacts": _theme_hazard_contacts.duplicate(true),
 		"theme_hazard_armed": _theme_hazard_armed,
 		"theme_hazard_next_tick": _theme_hazard_next_tick,
 	}
-	if _is_shelter2_stim_cutscene_target():
-		state[SHELTER2_STIM_CUTSCENE_AUTHORITY_KEY] = _shelter2_stim_cutscene_state()
 	return state
 
 
@@ -5227,11 +4631,10 @@ func _restore_generated_runtime_authority() -> bool:
 			return false
 		var baseline := _generated_runtime_baseline.duplicate(true)
 		if bool(baseline.get("theme_hazard_armed", false)):
-			baseline["theme_hazard_next_tick"] = _hydraulic_sequence_tick() + THEME_HAZARD_TICK
+			baseline["theme_hazard_next_tick"] = _sequence_tick() + THEME_HAZARD_TICK
 		gs.set_world_state(_generated_runtime_authority_key(), baseline)
 		return _restore_generated_runtime_authority()
 	_restoring_generated_authority = true
-	_cancel_bridge_cargo_events()
 	_cancel_theme_hazard_tick()
 	_route_choice = str(saved.get("route_choice", ""))
 	_route_phase = str(saved.get("route_phase", "unstarted"))
@@ -5265,107 +4668,26 @@ func _restore_generated_runtime_authority() -> bool:
 	_enforce_stage = bool(saved.get("enforce_stage", _enforce_stage))
 	_node_approach_used = (saved.get("node_approach_used", {}) as Dictionary).duplicate(true)
 	_blocked_nodes.assign(saved.get("blocked_nodes", []))
-	_hydraulic_phase = str(saved.get("hydraulic_phase", _hydraulic_phase))
-	_first_sluice_open = bool(saved.get("first_sluice_open", false))
-	_cistern_bridge_installed = bool(saved.get("cistern_bridge_installed", false))
-	_borrowed_current_diverted = bool(saved.get("borrowed_current_diverted", false))
-	_borrowed_current_delivery_latched = bool(saved.get("borrowed_current_delivery_latched", false))
-	_main_current_restored = bool(saved.get("main_current_restored", false))
-	_spillway_delivery_phase = str(saved.get("spillway_delivery_phase", SPILLWAY_DELIVERY_IDLE))
-	_spillway_delivery_flow_id = int(saved.get("spillway_delivery_flow_id", 0))
-	_spillway_delivery_launch_tick = float(saved.get("spillway_delivery_launch_tick", -1.0))
-	_hydraulic_catch_receipt = (
-		(saved.get("hydraulic_catch_receipt", {}) as Dictionary).duplicate(true)
-	)
-	_first_sluice_flow_start_tick = float(saved.get("first_sluice_flow_start_tick", -1.0))
-	_bridge_current_flow_start_tick = float(saved.get("bridge_current_flow_start_tick", -1.0))
-	_routed_current_flow_start_tick = float(saved.get("routed_current_flow_start_tick", -1.0))
-	_bridge_cargo_phase = str(saved.get("bridge_cargo_phase", BRIDGE_CARGO_ELEVATED))
-	_bridge_intro_start_tick = float(saved.get("bridge_intro_start_tick", -1.0))
-	_bridge_cargo_fall_start_tick = float(saved.get("bridge_cargo_fall_start_tick", -1.0))
-	_bridge_cargo_fall_end_tick = float(saved.get("bridge_cargo_fall_end_tick", -1.0))
-	_bridge_transport_start_tick = float(saved.get("bridge_transport_start_tick", -1.0))
-	_bridge_scavenger_phase = str(saved.get("bridge_scavenger_phase", ""))
-	_bridge_scavenger_motion_intent = str(saved.get(
-		"bridge_scavenger_motion_intent", BRIDGE_SCAVENGER_INTENT_NONE
-	))
-	if _bridge_scavenger_phase not in [
-		BRIDGE_SCAVENGER_DORMANT,
-		BRIDGE_SCAVENGER_APPROACHING_RACK,
-		BRIDGE_SCAVENGER_RIDING_CARGO,
-		BRIDGE_SCAVENGER_RETREATING_TO_LYSATE,
-		BRIDGE_SCAVENGER_CLEAR,
-	]:
-		_bridge_scavenger_phase = (
-			BRIDGE_SCAVENGER_CLEAR
-			if bool(saved.get("bridge_scavenger_clear_recorded", false))
-			else (
-				BRIDGE_SCAVENGER_DORMANT
-				if _bridge_intro_start_tick < 0.0
-				else (
-					BRIDGE_SCAVENGER_APPROACHING_RACK
-					if _bridge_cargo_phase == BRIDGE_CARGO_ELEVATED
-					else BRIDGE_SCAVENGER_RETREATING_TO_LYSATE
-				)
-			)
-		)
-	if _bridge_scavenger_motion_intent not in [
-		BRIDGE_SCAVENGER_INTENT_NONE,
-		BRIDGE_SCAVENGER_INTENT_APPROACH,
-		BRIDGE_SCAVENGER_INTENT_RETREAT,
-	]:
-		_bridge_scavenger_motion_intent = BRIDGE_SCAVENGER_INTENT_NONE
-	if not saved.has("bridge_scavenger_motion_intent"):
-		if _bridge_scavenger_phase == BRIDGE_SCAVENGER_APPROACHING_RACK:
-			_bridge_scavenger_motion_intent = BRIDGE_SCAVENGER_INTENT_APPROACH
-		elif _bridge_scavenger_phase == BRIDGE_SCAVENGER_RETREATING_TO_LYSATE:
-			_bridge_scavenger_motion_intent = BRIDGE_SCAVENGER_INTENT_RETREAT
-	_bridge_scavenger_clear_recorded = bool(saved.get("bridge_scavenger_clear_recorded", false))
-	_bridge_cargo_milestones.assign(saved.get("bridge_cargo_milestones", []))
 	_theme_hazard_damage_total = float(saved.get("theme_hazard_damage_total", 0.0))
 	_theme_hazard_contacts = (saved.get("theme_hazard_contacts", {}) as Dictionary).duplicate(true)
 	_theme_hazard_armed = bool(saved.get("theme_hazard_armed", false))
 	_theme_hazard_next_tick = float(saved.get("theme_hazard_next_tick", -1.0))
 	_restore_infrastructure_operation_authority(saved.get("infrastructure", {}))
-	if not _hydraulic_spillway_food_cache.is_empty():
-		_hydraulic_spillway_food_cache["collected"] = bool(
-			saved.get("spillway_food_collected", false)
-		)
-
-	if _hydraulic_enabled() and _ensure_hydraulic_flow_router():
-		var router_saved: Variant = saved.get("flow_router", {})
-		if router_saved is Dictionary and not router_saved.is_empty():
-			_hydraulic_flow_router.call("restore_state", router_saved, scheduler)
-	_restore_shelter2_stim_cutscene_authority(saved)
 	_reconcile_resource_claims_after_restore()
 	_reconcile_exit_shelter_transaction_after_restore()
 	_restore_generated_section_presenters()
 	_restore_resource_claim_source_presenters()
-	_restore_hydraulic_control_presenters()
-	_restore_bridge_cargo_events()
-	_restore_hydraulic_catch_receipt()
-	_apply_hydraulic_visual_state()
-	_update_hydraulic_cargo_sequence(0.0)
-	_sync_hydraulic_bridge_blocker()
 	if _shelter_reached:
 		_disable_exit_shelter_interaction()
 	else:
 		_rearm_exit_shelter_interaction()
 	if _theme_hazard_armed and scheduler != null:
-		_arm_theme_hazard_tick(maxf(0.000001, _theme_hazard_next_tick - _hydraulic_sequence_tick()))
+		_arm_theme_hazard_tick(maxf(0.000001, _theme_hazard_next_tick - _sequence_tick()))
 	_restoring_generated_authority = false
 	# Claim/exit reconciliation may have completed a transaction that a signal-time
 	# snapshot caught between its canonical sub-steps. Persist the normalized whole
 	# after restoration; unchanged records remain a GameState no-op.
 	_publish_generated_runtime_authority()
-	if _hydraulic_enabled():
-		var compatibility_event := ""
-		if not _bridge_cargo_milestones.is_empty():
-			compatibility_event = str(_bridge_cargo_milestones.back().get("event", ""))
-		# A save observer may have captured the canonical seated publication before
-		# the legacy keys were derived. Canonical authority still wins on load; bring
-		# those compatibility readers forward only after the whole record is durable.
-		_publish_bridge_cargo_compatibility(compatibility_event)
 	return true
 
 
@@ -5378,8 +4700,8 @@ func _restore_generated_section_presenters() -> void:
 		# Every generated action is a one-shot presenter, including actions that
 		# intentionally have no causal-link overlay. Same-instance rollback must
 		# retract its local `_used` latch before any restored deferred receipt can
-		# consume it again. Gating this behind `_generated_section_states` left the
-		# hydraulic catch visually enabled but permanently spent after rollback.
+		# consume it again. Gating this behind `_generated_section_states` left a
+		# one-shot control visually enabled but permanently spent after rollback.
 		var interactable: Node = _node_interactables.get(node_id, null)
 		if interactable != null and is_instance_valid(interactable) \
 				and interactable.has_method("restore_one_shot_presenter"):
@@ -5440,10 +4762,6 @@ func _restore_resource_claim_source_presenters() -> void:
 		var available := (
 			phase == RESOURCE_PHASE_AVAILABLE
 			and _resource_claim_item_is_at_source(gs, claim)
-			and (
-				not _resource_source_is_deferred(claim)
-				or _spillway_delivery_phase == SPILLWAY_DELIVERY_AVAILABLE
-			)
 		)
 		if available and source.has_method("reset"):
 			# An accepted-trigger snapshot can observe the Interactable's one-shot
@@ -5461,73 +4779,6 @@ func _restore_resource_claim_source_presenters() -> void:
 			# Generated node meshes own pointer selection; the invisible Area
 			# remains a movement/dwell delegate even after reset.
 			(source as CollisionObject3D).input_ray_pickable = false
-
-
-func _restore_hydraulic_control_presenters() -> void:
-	if not _hydraulic_enabled():
-		return
-	var first_spent := _first_sluice_open
-	var cistern_spent := (
-		_bridge_transport_start_tick >= 0.0
-		or _cistern_bridge_installed
-		or _bridge_cargo_phase in [
-			BRIDGE_CARGO_TRANSPORTING,
-			BRIDGE_CARGO_SEATED,
-		]
-	)
-	for control_state in [
-		{
-			"control": _hydraulic_first_control,
-			"spent": first_spent,
-			"enabled": not first_spent,
-		},
-		{
-			"control": _hydraulic_cistern_control,
-			"spent": cistern_spent,
-			"enabled": (
-				not cistern_spent
-				and _hydraulic_control_action_ready("cistern_release")
-			),
-		},
-	]:
-		var control: Node = control_state.get("control", null)
-		if control != null and is_instance_valid(control) \
-				and control.has_method("restore_one_shot_presenter"):
-			var spent := bool(control_state.get("spent", false))
-			control.call(
-				"restore_one_shot_presenter",
-				spent,
-				bool(control_state.get("enabled", false))
-			)
-
-
-func _restore_bridge_cargo_events() -> void:
-	var scheduler = _get_scheduler()
-	if scheduler == null or not _hydraulic_enabled():
-		return
-	_ensure_hydraulic_scavenger_authority()
-	if _hydraulic_scavenger != null and is_instance_valid(_hydraulic_scavenger) \
-			and _hydraulic_scavenger.has_method("on_game_state_snapshot_restored"):
-		_hydraulic_scavenger.call("on_game_state_snapshot_restored")
-	var now := _hydraulic_sequence_tick()
-	if _bridge_cargo_phase == BRIDGE_CARGO_FALLING:
-		if _bridge_cargo_fall_start_tick < 0.0:
-			_bridge_cargo_fall_start_tick = now
-		if _bridge_cargo_fall_end_tick < _bridge_cargo_fall_start_tick:
-			_bridge_cargo_fall_end_tick = (
-				_bridge_cargo_fall_start_tick + BRIDGE_CARGO_FALL_DURATION
-			)
-		if _bridge_cargo_fall_end_tick <= now:
-			_on_bridge_cargo_staged(false)
-		else:
-			_schedule_bridge_cargo_fall()
-	if _bridge_cargo_phase == BRIDGE_CARGO_TRANSPORTING and _bridge_transport_start_tick >= 0.0:
-		scheduler.schedule_at(
-			maxf(now + 0.000001, _bridge_transport_start_tick + BRIDGE_TRANSPORT_DURATION),
-			Callable(self, "_complete_bridge_cargo_transport"),
-			_bridge_cargo_event_tag("transport")
-		)
-	_reconcile_hydraulic_scavenger_after_restore()
 
 
 func _ensure_branch_span_producers_ready() -> void:
@@ -5869,1026 +5120,6 @@ func _set_branch_cache_available_visual(cache: Dictionary, available: bool) -> v
 		focus_light.visible = available
 
 
-func _hydraulic_scavenger_character_id() -> String:
-	return "generated_hydraulic_scavenger:%s:%d" % [
-		str(_spec.get("id", HYDRAULIC_SPEC_ID)), get_generation_seed()
-	]
-
-
-func _bridge_scavenger_fallback_position() -> Vector3:
-	if _bridge_scavenger_route.is_empty():
-		return Vector3.ZERO
-	match _bridge_scavenger_phase:
-		BRIDGE_SCAVENGER_RETREATING_TO_LYSATE:
-			return _bridge_scavenger_route[1]
-		BRIDGE_SCAVENGER_CLEAR:
-			return _bridge_scavenger_route.back()
-		_:
-			return _bridge_scavenger_route[0]
-
-
-func _attach_hydraulic_scavenger_authority(scavenger: Node3D) -> bool:
-	var gs = _get_game_state()
-	if scavenger == null or gs == null or _bridge_scavenger_route.size() < 4:
-		return false
-	var character_id := _hydraulic_scavenger_character_id()
-	scavenger.set("char_id", character_id)
-	scavenger.set("game_state", gs)
-	if not gs.characters.has(character_id):
-		gs.register_character(
-			character_id,
-			_bridge_scavenger_fallback_position(),
-			float(scavenger.get("move_speed")),
-			{"detection_range": 0.0}
-		)
-	_hydraulic_scavenger_game_state = gs
-	var arrived_callback := Callable(self, "_on_hydraulic_scavenger_arrived")
-	if not gs.character_arrived.is_connected(arrived_callback):
-		gs.character_arrived.connect(arrived_callback)
-	var ride_finished := Callable(self, "_on_bridge_scavenger_ride_finished")
-	if gs.has_signal("external_traversal_finished") 			and not gs.external_traversal_finished.is_connected(ride_finished):
-		gs.external_traversal_finished.connect(ride_finished)
-	var ride_cancelled := Callable(self, "_on_bridge_scavenger_ride_cancelled")
-	if gs.has_signal("external_traversal_cancelled") 			and not gs.external_traversal_cancelled.is_connected(ride_cancelled):
-		gs.external_traversal_cancelled.connect(ride_cancelled)
-	if scavenger.has_method("set_detection_targets"):
-		scavenger.call("set_detection_targets", [])
-	if scavenger.has_method("activate"):
-		scavenger.call("activate")
-	return gs.characters.has(character_id)
-
-
-func _ensure_hydraulic_scavenger_authority() -> bool:
-	if _hydraulic_scavenger == null or not is_instance_valid(_hydraulic_scavenger):
-		return false
-	var gs = _get_game_state()
-	var character_id := _hydraulic_scavenger_character_id()
-	if gs == null:
-		return false
-	var should_activate := false
-	if _hydraulic_scavenger_game_state != gs:
-		if _hydraulic_scavenger_game_state != null:
-			var old_callback := Callable(self, "_on_hydraulic_scavenger_arrived")
-			if _hydraulic_scavenger_game_state.character_arrived.is_connected(old_callback):
-				_hydraulic_scavenger_game_state.character_arrived.disconnect(old_callback)
-		_hydraulic_scavenger_game_state = gs
-		_hydraulic_scavenger.set("game_state", gs)
-		should_activate = true
-	if not gs.characters.has(character_id):
-		gs.register_character(
-			character_id,
-			_bridge_scavenger_fallback_position(),
-			float(_hydraulic_scavenger.get("move_speed")),
-			{"detection_range": 0.0}
-		)
-		should_activate = true
-	var arrived_callback := Callable(self, "_on_hydraulic_scavenger_arrived")
-	if not gs.character_arrived.is_connected(arrived_callback):
-		gs.character_arrived.connect(arrived_callback)
-	if should_activate and _hydraulic_scavenger.has_method("activate"):
-		_hydraulic_scavenger.call("activate")
-	return true
-
-
-func _detach_hydraulic_scavenger_authority() -> void:
-	var gs = _hydraulic_scavenger_game_state
-	var character_id := ""
-	if _hydraulic_scavenger != null and is_instance_valid(_hydraulic_scavenger):
-		character_id = str(_hydraulic_scavenger.get("char_id"))
-		if gs == null:
-			gs = _hydraulic_scavenger.get("game_state")
-	if gs != null:
-		var arrived_callback := Callable(self, "_on_hydraulic_scavenger_arrived")
-		if gs.character_arrived.is_connected(arrived_callback):
-			gs.character_arrived.disconnect(arrived_callback)
-		if character_id != "" and gs.characters.has(character_id):
-			gs.unregister_character(character_id)
-		if character_id != "" and gs.has_method("set_world_state"):
-			gs.set_world_state("runtime:enemy:%s" % character_id, {})
-	_hydraulic_scavenger_game_state = null
-
-
-func _clear_hydraulic_runtime_refs() -> void:
-	_hydraulic_main_water.clear()
-	_hydraulic_bridge_current.clear()
-	_hydraulic_main_tail.clear()
-	_hydraulic_spillway_water.clear()
-	_hydraulic_exit_water.clear()
-	_hydraulic_first_control = null
-	_hydraulic_cistern_control = null
-	_hydraulic_diverter_control = null
-	_hydraulic_first_target = null
-	_hydraulic_cistern_target = null
-	_hydraulic_diverter_target = null
-	_hydraulic_catch_target = null
-	_hydraulic_catch_control = null
-	_hydraulic_first_label = null
-	_hydraulic_cistern_label = null
-	_hydraulic_diverter_label = null
-	_hydraulic_exit_label = null
-	_hydraulic_first_landmark_meshes.clear()
-	_hydraulic_first_landmark_light = null
-	_hydraulic_cistern_light = null
-	_hydraulic_diverter_light = null
-	_hydraulic_catch_light = null
-	_hydraulic_exit_light = null
-	_hydraulic_cistern_effect = null
-	_hydraulic_bridge_mesh = null
-	_hydraulic_bridge_cargo = null
-	_hydraulic_bridge_model = null
-	_hydraulic_bridge_cargo_label = null
-	_hydraulic_bridge_cargo_light = null
-	_hydraulic_cargo_route_link = null
-	_hydraulic_cargo_route_source = null
-	_hydraulic_cargo_route_target = null
-	_hydraulic_scavenger = null
-	_hydraulic_scavenger_game_state = null
-	_hydraulic_lysate_source = null
-	_bridge_cargo_phase = BRIDGE_CARGO_ELEVATED
-	_bridge_intro_start_tick = -1.0
-	_bridge_cargo_fall_start_tick = -1.0
-	_bridge_cargo_fall_end_tick = -1.0
-	_bridge_transport_start_tick = -1.0
-	_bridge_scavenger_phase = BRIDGE_SCAVENGER_DORMANT
-	_bridge_scavenger_motion_intent = BRIDGE_SCAVENGER_INTENT_NONE
-	_bridge_scavenger_clear_recorded = false
-	_bridge_cargo_milestones.clear()
-	_bridge_cargo_route.clear()
-	_bridge_scavenger_route.clear()
-	_bridge_cargo_elevated_position = Vector3.ZERO
-	_bridge_cargo_staged_position = Vector3.ZERO
-	_bridge_cargo_seated_position = Vector3.ZERO
-	_bridge_cargo_flat_yaw = 0.0
-	_hydraulic_spillway_catch = null
-	_hydraulic_exit_beacon = null
-	_hydraulic_spillway_link = null
-	_hydraulic_exit_link = null
-	_hydraulic_spillway_food_cache.clear()
-	_hydraulic_flow_router = null
-	_spillway_delivery_phase = SPILLWAY_DELIVERY_IDLE
-	_spillway_delivery_flow_id = 0
-	_spillway_delivery_launch_tick = -1.0
-	_hydraulic_catch_receipt = _new_hydraulic_catch_receipt()
-	_spillway_delivery_route.clear()
-	_first_sluice_flow_start_tick = -1.0
-	_bridge_current_flow_start_tick = -1.0
-	_routed_current_flow_start_tick = -1.0
-	_hydraulic_grid_instance_id = 0
-
-
-func _make_hydraulic_water_material(variant := 0) -> ShaderMaterial:
-	var material := ShaderMaterial.new()
-	material.shader = WaterShader
-	material.set_shader_parameter("water_tex", WaterTexV1 if variant % 2 == 1 else WaterTexV0)
-
-	material.set_shader_parameter("water_alpha", 0.88)
-	material.set_shader_parameter("emission_strength", 2.2)
-	material.set_shader_parameter("reveal_radius", 6.0)
-	material.set_shader_parameter("reveal_min_factor", 0.45)
-	material.set_shader_parameter("reveal_softness", 0.7)
-	material.set_shader_parameter("reveal_alpha_floor", 0.14)
-	material.set_shader_parameter("reveal_emission_floor", 0.2)
-	material.set_shader_parameter("reveal_cut_above_player", 1.8)
-	material.render_priority = 127
-	return material
-
-
-func _append_hydraulic_water_path(
-	points: Array, target: Array[MeshInstance3D], prefix: String, variant_offset := 0
-) -> void:
-	for path_index in range(points.size() - 1):
-		var path_from: Vector3 = points[path_index]
-		var path_to: Vector3 = points[path_index + 1]
-		var distance := path_from.distance_to(path_to)
-		var segment_count := maxi(1, int(ceil(distance / 2.2)))
-		for segment_index in range(segment_count):
-			var a := path_from.lerp(path_to, float(segment_index) / float(segment_count))
-			var b := path_from.lerp(path_to, float(segment_index + 1) / float(segment_count))
-			var center := a.lerp(b, 0.5) + Vector3(0.0, 0.16, 0.0)
-			var segment := _add_box(
-				self,
-				center,
-				Vector3(1.5, 0.16, a.distance_to(b) * 1.08),
-				HYDRAULIC_WATER_COLOR,
-				HYDRAULIC_ACTIVE_COLOR,
-				1.2,
-				"%s_%02d_%02d" % [prefix, path_index, segment_index]
-			)
-			var delta := b - a
-			segment.rotation.y = atan2(delta.x, delta.z)
-			segment.rotation.x = -atan2(delta.y, Vector2(delta.x, delta.z).length())
-			segment.material_override = _make_hydraulic_water_material(
-				variant_offset + path_index + segment_index
-			)
-			var trough := _add_box(
-				self,
-				center - Vector3(0.0, 0.18, 0.0),
-				Vector3(1.88, 0.18, a.distance_to(b) * 1.1),
-				Color(0.045, 0.075, 0.085),
-				Color(0.08, 0.28, 0.36),
-				0.28,
-				"%sTrough_%02d_%02d" % [prefix, path_index, segment_index]
-			)
-			trough.rotation = segment.rotation
-			target.append(segment)
-
-
-func _orient_hydraulic_span(mesh: MeshInstance3D, from: Vector3, to: Vector3) -> void:
-	var delta := to - from
-	mesh.rotation.y = atan2(delta.x, delta.z)
-	mesh.rotation.x = -atan2(delta.y, Vector2(delta.x, delta.z).length())
-
-
-func _hydraulic_flat_yaw(from: Vector3, to: Vector3) -> float:
-	var delta := to - from
-	return atan2(delta.x, delta.z)
-
-
-func _set_hydraulic_flat_transform(
-	node: Node3D, flat_position: Vector3, yaw: float, pitch := 0.0, roll := 0.0
-) -> void:
-	if node == null or not is_instance_valid(node):
-		return
-	var local_basis := Basis.from_euler(Vector3(pitch, yaw, roll))
-	node.transform = _warp_xform(flat_position) * Transform3D(local_basis, Vector3.ZERO)
-
-
-func _disable_hydraulic_prop_collisions(root: Node) -> void:
-	if root == null:
-		return
-	for collision_v in root.find_children("*", "CollisionObject3D", true, false):
-		var collision := collision_v as CollisionObject3D
-		if collision == null:
-			continue
-		collision.collision_layer = 0
-		collision.collision_mask = 0
-		collision.input_ray_pickable = false
-
-
-func _build_bridge_cargo_model(bridge_length: float) -> Node3D:
-	var model := BridgeCargoScene.instantiate() as Node3D
-	if model == null:
-		return null
-	model.name = "PortableBridgeCargoModel"
-	# Reuse the elevator bridge's authored, UV-mapped deck and steelwork, but strip its
-	# enclosed corridor shell. What remains reads as one loose, water-carried bridge span.
-	for mesh_v in model.find_children("*", "MeshInstance3D", true, false):
-		var mesh := mesh_v as MeshInstance3D
-		var part_name := str(mesh.name)
-		mesh.visible = (
-			part_name.begins_with("Deck_")
-			or part_name.begins_with("Girder_")
-			or part_name.begins_with("Brace")
-			or part_name.begins_with("Sill_")
-			or part_name.begins_with("Header_")
-			or part_name.begins_with("RedStrip_")
-		)
-	model.rotation.y = -PI * 0.5
-	model.scale = Vector3(bridge_length / 12.0, 0.35, 0.80)
-	_disable_hydraulic_prop_collisions(model)
-	return model
-
-
-func _build_bridge_loading_rack(position: Vector3, yaw: float) -> void:
-	var rack := Node3D.new()
-	rack.name = "LooseBridgeLoadingRack"
-	rack.position = position
-	rack.rotation.y = yaw
-	add_child(rack)
-	var steel := Color(0.065, 0.095, 0.10)
-	for side_x in [-1.18, 1.18]:
-		for side_z in [-1.32, 1.32]:
-			_add_box(
-				rack,
-				Vector3(side_x, -1.42, side_z),
-				Vector3(0.15, 2.75, 0.15),
-				steel,
-				Color(0.13, 0.31, 0.34),
-				0.24,
-				"CargoRackPost"
-			)
-	for side_z in [-1.32, 1.32]:
-		_add_box(
-			rack,
-			Vector3(0.0, -0.28, side_z),
-			Vector3(2.55, 0.16, 0.16),
-			steel,
-			Color(0.14, 0.36, 0.38),
-			0.32,
-			"CargoRackCrossbeam"
-		)
-	# One bright, undersized shear pin tells the eye why a scavenger's weight can tip the span.
-	_add_box(
-		rack,
-		Vector3(1.18, -0.12, 1.32),
-		Vector3(0.24, 0.20, 0.24),
-		HYDRAULIC_CONTROL_COLOR.darkened(0.45),
-		HYDRAULIC_CONTROL_COLOR,
-		1.15,
-		"CargoRackShearPin"
-	)
-
-
-func _build_lysate_return_line(points: Array) -> void:
-	for index in range(points.size() - 1):
-		var from_pos: Vector3 = points[index]
-		var to_pos: Vector3 = points[index + 1]
-		var conduit := _add_box(
-			self,
-			from_pos.lerp(to_pos, 0.5) + Vector3.UP * 0.28,
-			Vector3(0.24, 0.20, from_pos.distance_to(to_pos)),
-			Color(0.04, 0.095, 0.075),
-			Color(0.42, 0.88, 0.54),
-			0.72,
-			"LysateReturnConduit_%02d" % index
-		)
-		_orient_hydraulic_span(conduit, from_pos, to_pos)
-		conduit.set_meta("visual_role", "causal_conduit")
-
-
-func _build_hydraulic_lysate_source(position: Vector3) -> Node3D:
-	var source := Node3D.new()
-	source.name = "HydraulicLysateReclaimer"
-	source.position = position
-	add_child(source)
-	var model := LysateReclaimerScene.instantiate() as Node3D
-	if model != null:
-		model.name = "ReusedReclamationWorks"
-		model.scale = Vector3.ONE * 0.34
-		_disable_hydraulic_prop_collisions(model)
-		source.add_child(model)
-	_add_box(
-		source,
-		Vector3(0.0, 0.75, 0.0),
-		Vector3(0.74, 0.82, 0.74),
-		Color(0.07, 0.16, 0.09),
-		HYDRAULIC_READY_COLOR,
-		1.55,
-		"LysateReservoirGlow"
-	)
-	_add_light(source, Vector3(0.0, 1.15, 0.0), HYDRAULIC_READY_COLOR, 0.78, 3.2)
-	_add_label(
-		source,
-		"LYSATE RECLAIMER",
-		Vector3(0.0, 2.25, 0.0),
-		HYDRAULIC_READY_COLOR.lightened(0.18)
-	)
-	return source
-
-
-func _build_hydraulic_control(
-	node_name: String,
-	description: String,
-	label: String,
-	position: Vector3,
-	color: Color,
-	primary_landmark := false,
-	one_shot := false
-) -> Dictionary:
-	var interactable := _add_interactable(
-		self,
-		node_name,
-		description,
-		position,
-		label,
-		"",
-		0.0,
-		one_shot,
-		1.65,
-		Interactable.InteractableType.INSPECTION,
-		false
-	)
-	var housing := _add_box(
-		self,
-		position + Vector3(0.0, 0.62, 0.0),
-		Vector3(0.9, 1.24, 0.78),
-		color.darkened(0.55),
-		color,
-		1.25,
-		"%sHousing" % node_name
-	)
-	var handle := _add_box(
-		self,
-		position + Vector3(0.0, 1.28, 0.0),
-		Vector3(0.24, 0.68, 0.24),
-		color.lightened(0.12),
-		color.lightened(0.22),
-		1.5,
-		"%sHandle" % node_name
-	)
-	handle.rotation.z = -0.28
-	var meshes: Array[MeshInstance3D] = [housing, handle]
-	var landmark_meshes: Array[MeshInstance3D] = []
-	var landmark_light: OmniLight3D = null
-	if primary_landmark:
-		var landmark_root := Node3D.new()
-		landmark_root.name = "%sLandmark" % node_name
-		landmark_root.position = position
-		self.add_child(landmark_root)
-		var pad := _add_box(
-			landmark_root,
-			Vector3(0.0, 0.1, 0.0),
-			Vector3(2.45, 0.12, 1.8),
-			color.darkened(0.62),
-			color,
-			1.15,
-			"%sLandmarkPad" % node_name
-		)
-		landmark_meshes.append(pad)
-		for side in [-0.92, 0.92]:
-			var post := _add_box(
-				landmark_root,
-				Vector3(side, 1.85, 0.0),
-				Vector3(0.2, 3.5, 0.2),
-				color.darkened(0.5),
-				color,
-				1.65,
-				"%sLandmarkPost" % node_name
-			)
-			landmark_meshes.append(post)
-		var header := _add_box(
-			landmark_root,
-			Vector3(0.0, 3.56, 0.0),
-			Vector3(2.04, 0.22, 0.22),
-			color.darkened(0.45),
-			color,
-			1.85,
-			"%sLandmarkHeader" % node_name
-		)
-		landmark_meshes.append(header)
-		var crown := _add_box(
-			landmark_root,
-			Vector3(0.0, 3.92, 0.0),
-			Vector3(0.58, 0.58, 0.18),
-			color.darkened(0.38),
-			color.lightened(0.14),
-			2.2,
-			"%sLandmarkCrown" % node_name
-		)
-		crown.rotation.z = PI * 0.25
-		landmark_meshes.append(crown)
-		meshes.append_array(landmark_meshes)
-		landmark_light = _add_light(
-			landmark_root, Vector3(0.0, 2.5, 0.0), color.lightened(0.12), 1.65, 5.5
-		)
-	var interaction_light := landmark_light
-	if interaction_light == null:
-		var hierarchy := _visual_hierarchy()
-		interaction_light = _add_light(
-			self,
-			position + Vector3(0.0, 1.45, 0.0),
-			color.lightened(0.12),
-			float(hierarchy.get("inactive_light_energy", 0.05)),
-			float(hierarchy.get("interactive_light_range", 4.4))
-		)
-	interaction_light.set_meta("visual_role", "interactive_focus")
-	interaction_light.set_meta("hydraulic_control", node_name)
-	var target := _add_outline_target(
-		self,
-		"%sTarget" % node_name,
-		position + Vector3(0.0, 0.8, 0.0),
-		Vector3(1.4, 1.8, 1.35),
-		meshes,
-		node_name.to_snake_case(),
-		interactable
-	)
-	if target != null and interactable.has_method("set_outline_target"):
-		interactable.call("set_outline_target", target)
-
-		interactable.input_ray_pickable = false
-	var label_height := 4.55 if primary_landmark else 2.05
-	var status_label := _add_label(
-		self,
-		label,
-		position + Vector3(0.0, label_height, 0.0),
-		color.lightened(0.28),
-		HYDRAULIC_LABEL_RANGE
-	)
-	status_label.name = "%sStatus" % node_name
-	return {
-		"interactable": interactable,
-		"housing": housing,
-		"target": target,
-		"label": status_label,
-		"landmark_meshes": landmark_meshes,
-		"landmark_light": landmark_light,
-		"interaction_light": interaction_light,
-	}
-
-
-## Low paired datum lights break the long mandatory run into readable hydraulic bays. They are deliberately below
-## character height, so they guide camera rotation and distance judgment without becoming another foreground wall.
-func _build_hydraulic_route_datums(points: Array) -> void:
-	var steel := Color(0.08, 0.15, 0.18)
-	for i in range(points.size() - 1):
-		var from_pos: Vector3 = points[i]
-		var to_pos: Vector3 = points[i + 1]
-		var datum := Node3D.new()
-		datum.name = "HydraulicRouteDatum_%02d" % (i + 1)
-		datum.position = from_pos.lerp(to_pos, 0.5)
-		add_child(datum)
-		var signal_color := HYDRAULIC_ACTIVE_COLOR.lerp(HYDRAULIC_READY_COLOR, float(i) / maxf(1.0, float(points.size() - 2)))
-		_add_box(datum, Vector3(0.0, 0.06, 0.0), Vector3(0.16, 0.05, 2.45), steel, signal_color, 0.34, "FlowDatumLine")
-		for lane_side in [-1.12, 1.12]:
-			_add_box(datum, Vector3(0.0, 0.38, lane_side), Vector3(0.18, 0.72, 0.18), steel, signal_color, 0.64, "FlowDatumBollard")
-		_spatial_fixture_count += 1
-
-
-func _build_hydraulic_puzzle() -> void:
-	if not _hydraulic_enabled():
-		return
-	var node_01 := _node_position("node_01")
-	var node_02 := _node_position("node_02")
-	var node_03 := _node_position("node_03")
-	var node_04 := _node_position("node_04")
-	var entry_pos := _node_position("entry")
-	var exit_pos := _node_position("exit_shelter")
-	if Vector3.INF in [entry_pos, node_01, node_02, node_03, node_04, exit_pos]:
-		return
-
-	_set_outline_target_enabled(_node_targets.get("entry", null), false)
-	_build_hydraulic_route_datums([entry_pos, node_01, node_02, node_03, node_04, exit_pos])
-
-	var spillway_catch_position := node_04 + Vector3(0.0, 0.0, 2.15)
-
-	var pool := _add_box(
-		self,
-		node_01 + Vector3(0.0, 0.2, 1.35),
-		Vector3(3.2, 0.18, 2.1),
-		HYDRAULIC_WATER_COLOR,
-		HYDRAULIC_ACTIVE_COLOR,
-		1.4,
-		"HydraulicCisternPool"
-	)
-	pool.material_override = _make_hydraulic_water_material(0)
-	_hydraulic_main_water.append(pool)
-	_append_hydraulic_water_path(
-		[node_01, node_02], _hydraulic_main_water, "HydraulicCisternFill", 1
-	)
-	_append_hydraulic_water_path(
-		[node_02, node_03], _hydraulic_bridge_current, "HydraulicBridgeSurge", 4
-	)
-	_append_hydraulic_water_path([node_03, node_04], _hydraulic_main_tail, "HydraulicMainTail", 7)
-	var spillway_mid := node_03.lerp(node_04, 0.5) + Vector3(0.0, 0.0, 4.5)
-	_spillway_delivery_route.assign(
-		[
-			node_03 + Vector3.UP * 0.92,
-			spillway_mid + Vector3.UP * 0.92,
-			spillway_catch_position + Vector3.UP * 0.92,
-		]
-	)
-	_append_hydraulic_water_path(
-		[node_03, spillway_mid, spillway_catch_position],
-		_hydraulic_spillway_water,
-		"HydraulicBorrowedCurrent",
-		11
-	)
-	_append_hydraulic_water_path(
-		[node_04, exit_pos], _hydraulic_exit_water, "HydraulicExitWater", 17
-	)
-
-	var bridge_from := node_02.lerp(node_03, 0.39)
-	var bridge_to := node_02.lerp(node_03, 0.61)
-	var bridge_center := bridge_from.lerp(bridge_to, 0.5)
-	var bridge_length := bridge_from.distance_to(bridge_to) * 1.06
-	var bridge_direction := (bridge_to - bridge_from).normalized()
-	_bridge_cargo_flat_yaw = _hydraulic_flat_yaw(bridge_from, bridge_to)
-	_bridge_cargo_elevated_position = node_02 + Vector3(2.15, 3.05, -2.25)
-	_bridge_cargo_staged_position = node_02 + Vector3(2.25, 0.68, -0.05)
-	_bridge_cargo_seated_position = bridge_center + Vector3(0.0, 0.38, 0.0)
-	_bridge_cargo_route.assign(
-		[
-			_bridge_cargo_staged_position,
-			bridge_from - bridge_direction * 0.35 + Vector3.UP * 0.08,
-			_bridge_cargo_seated_position,
-		]
-	)
-	var lysate_source_position := node_02 + Vector3(4.25, 0.45, -3.25)
-	_bridge_scavenger_route.assign(
-		[
-			_bridge_cargo_elevated_position - bridge_direction * 1.75 + Vector3.UP * 0.72,
-			_bridge_cargo_elevated_position + bridge_direction * 0.10 + Vector3.UP * 0.72,
-			_bridge_cargo_elevated_position
-			+ bridge_direction * 1.82
-			+ Vector3(0.0, 0.24, 0.55),
-			lysate_source_position + Vector3(0.0, 0.08, 0.0),
-		]
-	)
-	var void_mesh := _add_box(
-		self,
-		bridge_center + Vector3(0.0, 0.15, 0.0),
-		Vector3(3.25, 0.2, bridge_length),
-		Color(0.008, 0.012, 0.018),
-		Color(0.08, 0.22, 0.34),
-		0.45,
-		"CisternBridgeGap"
-	)
-	_orient_hydraulic_span(void_mesh, bridge_from, bridge_to)
-
-	# The bridge is one persistent object through every state: an elevated loose span,
-	# fallen cargo in the basin, floating cargo, then the walkable seated bridge.
-	_build_bridge_loading_rack(_bridge_cargo_elevated_position, _bridge_cargo_flat_yaw)
-	var cargo_root := Node3D.new()
-	cargo_root.name = "HydraulicBridgeCargo"
-	cargo_root.position = _bridge_cargo_elevated_position
-	cargo_root.rotation.y = _bridge_cargo_flat_yaw
-	add_child(cargo_root)
-	_hydraulic_bridge_cargo = cargo_root
-	_hydraulic_bridge_mesh = cargo_root
-	_hydraulic_bridge_model = _build_bridge_cargo_model(bridge_length)
-	if _hydraulic_bridge_model != null:
-		cargo_root.add_child(_hydraulic_bridge_model)
-	for signal_side in [-1.05, 1.05]:
-		_add_box(
-			cargo_root,
-			Vector3(signal_side, 0.30, 0.0),
-			Vector3(0.13, 0.20, 0.34),
-			HYDRAULIC_CONTROL_COLOR.darkened(0.52),
-			HYDRAULIC_CONTROL_COLOR,
-			1.25,
-			"BridgeCargoLatch"
-		)
-	_hydraulic_bridge_cargo_label = _add_label(
-		cargo_root,
-		"LOOSE BRIDGE CARGO",
-		Vector3(0.0, 1.34, 0.0),
-		HYDRAULIC_CONTROL_COLOR.lightened(0.22)
-	)
-	_hydraulic_bridge_cargo_light = _add_light(
-		cargo_root,
-		Vector3(0.0, 0.82, 0.0),
-		HYDRAULIC_CONTROL_COLOR,
-		0.62,
-		3.2
-	)
-
-	# The first landing basin and its green return pipe make the scavenger's exit causal:
-	# it clears the cargo because the lysate reclaimer beside the basin is its new goal.
-	_add_box(
-		self,
-		_bridge_cargo_staged_position - Vector3.UP * 0.42,
-		Vector3(3.15, 0.20, 2.45),
-		Color(0.025, 0.055, 0.062),
-		HYDRAULIC_ACTIVE_COLOR.darkened(0.24),
-		0.35,
-		"BridgeCargoStagingBasin"
-	)
-	_hydraulic_lysate_source = _build_hydraulic_lysate_source(lysate_source_position)
-	var basin_port := Vector3(
-		_bridge_cargo_staged_position.x,
-		node_02.y,
-		_bridge_cargo_staged_position.z - 1.0
-	)
-	_build_lysate_return_line(
-		[
-			basin_port,
-			Vector3(lysate_source_position.x, node_02.y, basin_port.z),
-			lysate_source_position,
-		]
-	)
-	_hydraulic_cargo_route_source = Node3D.new()
-	_hydraulic_cargo_route_source.name = "BridgeCargoRouteStart"
-	_hydraulic_cargo_route_source.position = _bridge_cargo_staged_position
-	add_child(_hydraulic_cargo_route_source)
-	_hydraulic_cargo_route_target = Node3D.new()
-	_hydraulic_cargo_route_target.name = "BridgeCargoRouteSeat"
-	_hydraulic_cargo_route_target.position = _bridge_cargo_seated_position
-	add_child(_hydraulic_cargo_route_target)
-
-	var scavenger := EnemyScript.new() as Node3D
-	if scavenger != null:
-		scavenger.name = "HydraulicCargoScavenger"
-		# CANONICAL IDENTITY (docs/SCAVENGER_CARGO_BEAT.md): the forager is a
-		# SAPSCRAP — roster species, library body. The base capsule and eye
-		# lights hide; the C3 palp body from the contact sheet is the read.
-		scavenger.set("display_name", "Sapscrap")
-		scavenger.set("color", Color(0.24, 0.10, 0.20))
-		scavenger.set("detection_range", 0.0)
-		scavenger.set("move_speed", 2.15)
-		scavenger.position = _bridge_scavenger_route[0]
-		add_child(scavenger)
-		var scav_body := ArchetypePieceLibrary.instantiate("sapscrap_body")
-		if scav_body != null:
-			for c in scavenger.get_children():
-				if c is MeshInstance3D:
-					(c as MeshInstance3D).visible = false
-				elif c is Light3D:
-					(c as Light3D).visible = false
-			scavenger.add_child(scav_body)
-		_hydraulic_scavenger = scavenger
-		_attach_hydraulic_scavenger_authority(scavenger)
-
-	var first_control_position := entry_pos.lerp(node_01, 0.5) + Vector3(0.0, 0.05, -0.82)
-	var first_data := _build_hydraulic_control(
-		"FirstSluiceControl",
-		"Open the first sluice and send water toward the cistern",
-		"FIRST SLUICE",
-		first_control_position,
-		HYDRAULIC_CONTROL_COLOR,
-		true,
-		true
-	)
-	_hydraulic_first_control = first_data["interactable"]
-	_hydraulic_first_target = first_data["target"]
-	_hydraulic_first_label = first_data["label"]
-	_hydraulic_first_landmark_meshes.assign(first_data.get("landmark_meshes", []))
-	_hydraulic_first_landmark_light = first_data.get("landmark_light", null)
-	_hydraulic_first_control.set_pre_trigger_validator(
-		_validate_hydraulic_control_trigger.bind(
-			"first_sluice", _hydraulic_first_control
-		)
-	)
-	_hydraulic_first_control.interacted.connect(
-		Callable(self, "open_first_sluice").bind(_hydraulic_first_control)
-	)
-
-	var cistern_data := _build_hydraulic_control(
-		"CisternReleaseControl",
-		"Release stored cistern water to carry the staged cargo downstream",
-		"RELEASE CURRENT",
-		node_02 + Vector3(1.75, 0.05, -1.35),
-		HYDRAULIC_ACTIVE_COLOR,
-		false,
-		true
-	)
-	_hydraulic_cistern_control = cistern_data["interactable"]
-	_hydraulic_cistern_target = cistern_data["target"]
-	_hydraulic_cistern_label = cistern_data["label"]
-	_hydraulic_cistern_light = cistern_data.get("interaction_light", null)
-	_hydraulic_cistern_control.set_pre_trigger_validator(
-		_validate_hydraulic_control_trigger.bind(
-			"cistern_release", _hydraulic_cistern_control
-		)
-	)
-	_hydraulic_cistern_control.interacted.connect(
-		Callable(self, "release_cistern_bridge").bind(_hydraulic_cistern_control)
-	)
-	_hydraulic_cistern_effect = _add_box(
-		self,
-		node_02 + Vector3(-1.45, 1.45, 0.1),
-		Vector3(1.6, 2.8, 1.6),
-		Color(0.08, 0.2, 0.26),
-		HYDRAULIC_ACTIVE_COLOR,
-		0.85,
-		"CisternTower"
-	)
-	var diverter_position := node_03.lerp(node_04, 0.4) + Vector3.UP * 0.05
-	var diverter_data := _build_hydraulic_control(
-		"BorrowedCurrentControl",
-		"Divert the main current through the food spillway",
-		"BORROWED CURRENT",
-		diverter_position,
-		Color(0.68, 0.42, 1.0)
-	)
-	_hydraulic_diverter_control = diverter_data["interactable"]
-	_hydraulic_diverter_target = diverter_data["target"]
-	_hydraulic_diverter_label = diverter_data["label"]
-	_hydraulic_diverter_light = diverter_data.get("interaction_light", null)
-	_hydraulic_diverter_control.set_pre_trigger_validator(
-		_validate_hydraulic_control_trigger.bind(
-			"borrowed_current", _hydraulic_diverter_control
-		)
-	)
-	_hydraulic_diverter_control.interacted.connect(
-		Callable(self, "toggle_borrowed_current").bind(_hydraulic_diverter_control)
-	)
-	_hydraulic_spillway_catch = _add_box(
-		self,
-		spillway_catch_position + Vector3(0.0, 0.42, 0.0),
-		Vector3(1.9, 0.66, 0.58),
-		Color(0.24, 0.19, 0.08),
-		HYDRAULIC_CONTROL_COLOR,
-		0.55,
-		"FoodSpillwayCatch"
-	)
-	var hierarchy := _visual_hierarchy()
-	_hydraulic_catch_light = _add_light(
-		self,
-		spillway_catch_position + Vector3(0.0, 1.35, 0.0),
-		HYDRAULIC_CONTROL_COLOR.lightened(0.12),
-		float(hierarchy.get("inactive_light_energy", 0.05)),
-		float(hierarchy.get("interactive_light_range", 4.4))
-	)
-	_hydraulic_catch_light.set_meta("visual_role", "interactive_focus")
-	_hydraulic_catch_light.set_meta("hydraulic_control", "food_spillway_catch")
-	_add_label(
-		self,
-		"FOOD SPILLWAY // CATCH",
-		spillway_catch_position + Vector3(0.0, 1.38, 0.0),
-		HYDRAULIC_CONTROL_COLOR.lightened(0.25)
-	)
-
-	var node_04_target: Node = _node_targets.get("node_04", null)
-	var node_04_interactable: Node = null
-	if node_04_target != null and node_04_target.has_method("get_interaction_delegate"):
-		node_04_interactable = node_04_target.call("get_interaction_delegate")
-	if node_04_interactable != null:
-		_hydraulic_catch_control = node_04_interactable as Area3D
-		if (
-			_hydraulic_catch_control != null
-			and not _hydraulic_catch_control.body_entered.is_connected(
-				Callable(self, "_on_hydraulic_catch_body_entered")
-			)
-		):
-			_hydraulic_catch_control.body_entered.connect(
-				Callable(self, "_on_hydraulic_catch_body_entered")
-			)
-		_set_outline_target_enabled(node_04_target, false)
-		node_04_interactable.position = spillway_catch_position
-		# This generated Interactable was registered before the authored hydraulic
-		# pass moved it from node_04's generic approach to the actual catch. Keep
-		# range validation, deterministic movement, and overlap receipts anchored
-		# to the visible physical catch rather than the stale construction point.
-		node_04_interactable.set_meta(
-			"generated_interaction_data_position", spillway_catch_position
-		)
-		var catch_label := "CATCH LYSATE"
-		var catch_description := "Catch the lysate carried by the borrowed current"
-		_set_interactable_copy(node_04_interactable, catch_label, catch_description)
-		_hydraulic_catch_target = _add_outline_target(
-			self,
-			"FoodSpillwayCatchTarget",
-			spillway_catch_position + Vector3(0.0, 2.05, 0.0),
-			Vector3(2.15, 3.9, 1.25),
-			[_hydraulic_spillway_catch],
-			"node_04",
-			node_04_interactable
-		)
-		if _hydraulic_catch_target != null:
-			# The authored hydraulic pass replaces node_04's generic target with the
-			# real catch. Preserve the generated-source alignment contract on that
-			# replacement so the pick hull follows the visible catch through a warp.
-			_hydraulic_catch_target.set_meta(
-				"align_pick_target_to_highlights_after_warp", true
-			)
-			node_04_interactable.call("set_outline_target", _hydraulic_catch_target)
-			_node_targets["node_04"] = _hydraulic_catch_target
-		node_04_interactable.set("one_shot", true)
-		var food_marker := _add_box(
-			self,
-			_spillway_delivery_route[0],
-			Vector3(0.48, 0.48, 0.48),
-			Color(0.58, 0.84, 0.42),
-			Color(0.78, 1.0, 0.56),
-			0.8,
-			"HydraulicSpillwayFood"
-		)
-		_hydraulic_spillway_food_cache = {
-			"hydraulic_spillway": true,
-			"collected": false,
-			"interactable": node_04_interactable,
-			"marker": food_marker,
-			"position": spillway_catch_position,
-		}
-		food_marker.visible = false
-	# The beacon is the interaction destination, so it must sit inside the registered
-	# shelter region rather than stopping just short of it. Otherwise a faithful
-	# click-to-walk run reaches the visible beacon and is truthfully rejected as outside.
-	var exit_beacon_route_position := node_04.lerp(exit_pos, 0.84)
-	_hydraulic_exit_beacon = _add_box(
-		self,
-		exit_beacon_route_position + Vector3(0.0, 1.15, 0.0),
-		Vector3(0.48, 2.3, 0.48),
-		Color(0.24, 0.1, 0.08),
-		HYDRAULIC_CONTROL_COLOR,
-		0.55,
-		"HydraulicExitBeacon"
-	)
-	# This is a player command surface, not tall background architecture. Keep its
-	# StandardMaterial presentation intact so both humans and the public
-	# observation boundary can see the exact shelter target. If the camera
-	# occlusion pass wraps it in a ShaderMaterial, transparency can no longer be
-	# proven and the fail-closed observer must (correctly) omit it.
-	_hydraulic_exit_beacon.set_meta("camera_occlusion_exempt", true)
-	_hydraulic_exit_light = _add_light(
-		self,
-		exit_beacon_route_position + Vector3(0.0, 1.5, 0.0),
-		HYDRAULIC_CONTROL_COLOR.lightened(0.12),
-		float(hierarchy.get("inactive_light_energy", 0.05)),
-		float(hierarchy.get("interactive_light_range", 4.4))
-	)
-	_hydraulic_exit_light.set_meta("visual_role", "interactive_focus")
-	_hydraulic_exit_light.set_meta("hydraulic_control", "exit_shelter")
-	_hydraulic_exit_label = _add_label(
-		self,
-		"SHELTER CHANNEL // DRY",
-		exit_beacon_route_position + Vector3(0.0, 2.65, 0.0),
-		HYDRAULIC_CONTROL_COLOR.lightened(0.2)
-	)
-
-	var old_exit_target: Node = _node_targets.get("exit_shelter", null)
-	var exit_interactable: Node = null
-	if old_exit_target != null and old_exit_target.has_method("get_interaction_delegate"):
-		exit_interactable = old_exit_target.call("get_interaction_delegate")
-	if exit_interactable != null:
-		_set_outline_target_enabled(old_exit_target, false)
-		exit_interactable.position = exit_beacon_route_position
-		# See the catch note above: the shelter's visible beacon is the interaction
-		# destination after this authored relocation, while the registered shelter
-		# region remains the consequence authority.
-		exit_interactable.set_meta(
-			"generated_interaction_data_position", exit_beacon_route_position
-		)
-		_set_interactable_copy(
-			exit_interactable,
-			"SHELTER LOCKED",
-			"Restore the main current before entering the shelter"
-		)
-		var exit_beacon_target := _add_outline_target(
-			self,
-			"HydraulicExitBeaconTarget",
-			exit_beacon_route_position + Vector3(0.0, 1.25, 0.0),
-			Vector3(1.5, 2.4, 1.5),
-			[_hydraulic_exit_beacon],
-			"exit_shelter",
-			exit_interactable
-		)
-		if exit_beacon_target != null:
-			exit_interactable.call("set_outline_target", exit_beacon_target)
-			_node_targets["exit_shelter"] = exit_beacon_target
-	_apply_hydraulic_visual_state()
-
-
-func _wire_hydraulic_feedback() -> void:
-	if not _hydraulic_enabled():
-		return
-	if _hydraulic_first_control != null and _hydraulic_cistern_effect != null:
-		_add_causal_feedback_link(
-			_hydraulic_first_control,
-			_hydraulic_cistern_effect,
-			HYDRAULIC_ACTIVE_COLOR,
-			{
-				"label": "SENDS WATER TO THE CISTERN",
-				"arc_height": 2.5,
-				"name": "FirstSluiceCisternLink",
-			}
-		)
-	if (
-		_hydraulic_cistern_control != null
-		and _hydraulic_cargo_route_source != null
-		and _hydraulic_cargo_route_target != null
-	):
-		_hydraulic_cargo_route_link = _add_causal_feedback_link(
-			_hydraulic_cargo_route_source,
-			_hydraulic_cargo_route_target,
-			HYDRAULIC_READY_COLOR,
-			{
-				"label": "CARGO ROUTE",
-				"show_label": false,
-				"arc_height": 0.35,
-				"dash_count": 12,
-				"path_style": "movement_chevrons",
-				"flow_speed": 1.35,
-				"visibility_policy": "hover_only",
-				"interaction_source": _hydraulic_cistern_target,
-				"name": "CisternBridgeLink",
-			}
-		)
-	if _hydraulic_diverter_control != null and _hydraulic_spillway_catch != null:
-		_hydraulic_spillway_link = _add_causal_feedback_link(
-			_hydraulic_diverter_control,
-			_hydraulic_spillway_catch,
-			Color(0.68, 0.42, 1.0),
-			{
-				"label": "DIVERTS THE ONE CURRENT TO SPILLWAY",
-				"arc_height": 3.0,
-				"name": "BorrowedCurrentSpillwayLink",
-			}
-		)
-	if _hydraulic_diverter_control != null and _hydraulic_exit_beacon != null:
-		_hydraulic_exit_link = _add_causal_feedback_link(
-			_hydraulic_diverter_control,
-			_hydraulic_exit_beacon,
-			HYDRAULIC_READY_COLOR,
-			{
-				"label": "THE SAME CURRENT FEEDS THE SHELTER",
-				"arc_height": 3.2,
-				"name": "BorrowedCurrentExitLink",
-			}
-		)
-	# The initial visual pass ran before the links existed. Refresh once more so the
-	# relationship copy starts in the same truthful state as the water and controls.
-	_ensure_hydraulic_flow_router()
-	_apply_hydraulic_visual_state()
-
-
-func _flash_hydraulic_link(link: Node3D, duration := 1.25, strength := 1.0) -> void:
-	if link != null and is_instance_valid(link):
-		link.call("flash", duration, strength)
-
-
-func _set_hydraulic_link_label(link: Node3D, text: String) -> void:
-	if link != null and is_instance_valid(link) and link.has_method("set_relationship_label"):
-		link.call("set_relationship_label", text)
-
-
-func _set_hydraulic_status_label(label: Label3D, text: String, color: Color) -> void:
-	if label == null or not is_instance_valid(label):
-		return
-	label.text = text
-	label.modulate = color
-
-
 func _set_interactable_copy(interactable: Node, label: String, description: String) -> void:
 	if interactable == null or not is_instance_valid(interactable):
 		return
@@ -6915,1280 +5146,11 @@ func _set_outline_target_enabled(target: Node, enabled: bool) -> void:
 			target.call("set_highlight", false)
 
 
-func _set_hydraulic_control_state(
-	control: Area3D, target: StaticBody3D, enabled: bool, label: String, description: String
-) -> void:
-	if control == null or not is_instance_valid(control):
-		return
-	if control.has_method("set_interaction_enabled"):
-		control.call("set_interaction_enabled", enabled)
-
-	control.input_ray_pickable = false
-	_set_outline_target_enabled(target, enabled)
-	# This object sits inside the same right-click grammar as ground movement. Keep the
-	# world-state copy concise, but name the live binding on the actionable hover prompt
-	# so the player can reach the systems question without first guessing the UI verb.
-	_set_interactable_copy(control, "{command} // %s" % label, description)
-	if control.has_method("show_tutorial_label"):
-		control.call("show_tutorial_label")
-
-
-func _hydraulic_control_for_action(action_id: String) -> Node:
-	match action_id:
-		"first_sluice":
-			return _hydraulic_first_control
-		"cistern_release":
-			return _hydraulic_cistern_control
-		"borrowed_current":
-			return _hydraulic_diverter_control
-	return null
-
-
-func _hydraulic_control_action_ready(action_id: String) -> bool:
-	match action_id:
-		"first_sluice":
-			return _hydraulic_enabled() and not _first_sluice_open
-		"cistern_release":
-			return _hydraulic_enabled() and _first_sluice_open \
-				and not _cistern_bridge_installed \
-				and _bridge_cargo_phase == BRIDGE_CARGO_STAGED \
-				and _bridge_scavenger_clear_recorded
-		"borrowed_current":
-			return _hydraulic_enabled() and _cistern_bridge_installed
-	return false
-
-
-func _validate_hydraulic_control_trigger(
-	source: Node, actor: String, action_id: String, expected_source: Node
-) -> bool:
-	return source != null \
-		and source == expected_source \
-		and source == _hydraulic_control_for_action(action_id) \
-		and _generated_actor_ready_at(source, actor) \
-		and _hydraulic_control_action_ready(action_id)
-
-
-func _hydraulic_control_receipt_pending(source: Node, action_id: String) -> bool:
-	if source == null or source != _hydraulic_control_for_action(action_id):
-		return false
-	return _generated_interactable_receipt_pending(
-		source, action_id in ["first_sluice", "cistern_release"]
-	)
-
-
-func _rearm_hydraulic_control(source: Node) -> void:
-	if source != null and source.has_method("reset"):
-		source.call("reset")
-	_apply_hydraulic_visual_state()
-
-
-func _on_hydraulic_catch_body_entered(body: Node3D) -> void:
-	# The catch is a destination, not a lever. On the layered helix, foreground
-	# deck collision can legitimately turn a click on its visible receiver into a
-	# ground-move command. Arrival therefore completes the active delivery too.
-	# The phase gate prevents ordinary traversal from consuming the beat early.
-	if not (body is CharacterBody3D):
-		return
-	if _spillway_delivery_phase != SPILLWAY_DELIVERY_AVAILABLE:
-		return
-	var interaction_actor := str(body.get("char_id")) if "char_id" in body else ""
-	if interaction_actor == "":
-		return
-	_begin_hydraulic_catch_receipt(interaction_actor)
-
-
-func _set_hydraulic_next_highlight(next_target: Node) -> void:
-	var targets: Array = [
-		_hydraulic_first_target,
-		_hydraulic_cistern_target,
-		_hydraulic_diverter_target,
-		_hydraulic_catch_target,
-		_node_targets.get("exit_shelter", null),
-	]
-	for target_v in targets:
-		var target := target_v as Node
-		if (
-			target != null
-			and is_instance_valid(target)
-			and target.has_method("set_external_highlight")
-		):
-			target.call(
-				"set_external_highlight", HYDRAULIC_NEXT_HIGHLIGHT_REASON, target == next_target
-			)
-
-
-func _set_hydraulic_focus_light(
-	light: OmniLight3D, color: Color, state: String, active_multiplier := 1.0
-) -> void:
-	if light == null or not is_instance_valid(light):
-		return
-	var hierarchy := _visual_hierarchy()
-	light.light_color = color.lightened(0.12)
-	match state:
-		"active":
-			light.light_energy = (
-				float(hierarchy.get("interactive_light_energy", 1.05)) * active_multiplier
-			)
-		"completed":
-			light.light_energy = float(hierarchy.get("completed_light_energy", 0.22))
-		_:
-			light.light_energy = float(hierarchy.get("inactive_light_energy", 0.05))
-
-
-func _hydraulic_sequence_tick() -> float:
+func _sequence_tick() -> float:
 	var scheduler = _get_scheduler()
 	if scheduler != null and scheduler.has_method("get_current_tick"):
 		return float(scheduler.get_current_tick())
 	return _get_scheduler_tick()
-
-
-func _ensure_hydraulic_flow_router() -> bool:
-	if not _hydraulic_enabled():
-		return false
-	if _hydraulic_flow_router == null or not is_instance_valid(_hydraulic_flow_router):
-		_hydraulic_flow_router = FlowRouterValveScript.new()
-		_hydraulic_flow_router.name = "BorrowedCurrentFlowRouter"
-		add_child(_hydraulic_flow_router)
-		var arrival_callback := Callable(self, "_on_hydraulic_flow_arrived")
-		if not _hydraulic_flow_router.is_connected("flow_arrived", arrival_callback):
-			_hydraulic_flow_router.connect("flow_arrived", arrival_callback)
-	var router_state: Dictionary = _hydraulic_flow_router.call("get_state")
-	if bool(router_state.get("configured", false)):
-		return true
-	var scheduler = _get_scheduler()
-	if scheduler == null:
-		return false
-	return bool(
-		_hydraulic_flow_router.call(
-			"configure",
-			scheduler,
-			&"main",
-			&"spillway",
-			&"main",
-			HYDRAULIC_FLOW_FRONT_DURATION,
-			&"generated_borrowed_current"
-		)
-	)
-
-
-func _on_hydraulic_flow_arrived(flow: Dictionary) -> void:
-	_latch_borrowed_current_delivery(flow)
-
-
-func _set_hydraulic_water_progress(
-	water_path: Array, active: bool, start_tick: float, duration := HYDRAULIC_FLOW_FRONT_DURATION
-) -> void:
-	var progress := 0.0
-	if active:
-		progress = (
-			1.0
-			if start_tick < 0.0 or duration <= 0.0
-			else clampf((_hydraulic_sequence_tick() - start_tick) / duration, 0.0, 1.0)
-		)
-	var visible_count := int(floor(progress * float(water_path.size()) + 0.0001))
-	if active and not water_path.is_empty():
-		visible_count = maxi(1, visible_count)
-	for index in range(water_path.size()):
-		var water = water_path[index]
-		if water != null and is_instance_valid(water):
-			water.visible = active and index < visible_count
-
-
-func _update_hydraulic_flow_visuals() -> void:
-	if not _hydraulic_enabled():
-		return
-	_set_hydraulic_water_progress(
-		_hydraulic_main_water, _first_sluice_open, _first_sluice_flow_start_tick
-	)
-	_set_hydraulic_water_progress(
-		_hydraulic_bridge_current,
-		_bridge_cargo_phase in [BRIDGE_CARGO_TRANSPORTING, BRIDGE_CARGO_SEATED],
-		_bridge_current_flow_start_tick
-	)
-	var main_route_water: Array = []
-	main_route_water.append_array(_hydraulic_main_tail)
-	main_route_water.append_array(_hydraulic_exit_water)
-	_set_hydraulic_water_progress(
-		main_route_water,
-		_cistern_bridge_installed and not _borrowed_current_diverted,
-		_routed_current_flow_start_tick
-	)
-	_set_hydraulic_water_progress(
-		_hydraulic_spillway_water,
-		_cistern_bridge_installed and _borrowed_current_diverted,
-		_routed_current_flow_start_tick
-	)
-
-
-func _update_spillway_delivery_visual() -> void:
-	if _hydraulic_spillway_food_cache.is_empty():
-		return
-	var marker = _hydraulic_spillway_food_cache.get("marker", null)
-	if marker == null or not is_instance_valid(marker):
-		return
-	match _spillway_delivery_phase:
-		SPILLWAY_DELIVERY_TRAVELING:
-			marker.visible = true
-			var progress := clampf(
-				(_hydraulic_sequence_tick() - _spillway_delivery_launch_tick)
-				/ HYDRAULIC_FLOW_FRONT_DURATION,
-				0.0,
-				1.0
-			)
-			var sample := _sample_hydraulic_route(_spillway_delivery_route, progress)
-			var direction: Vector3 = sample.get("direction", Vector3.FORWARD)
-			_set_hydraulic_flat_transform(
-				marker,
-				sample.get("position", _spillway_delivery_route[0]),
-				_hydraulic_flat_yaw(Vector3.ZERO, direction),
-				0.0,
-				0.12 * sin(progress * TAU * 2.0)
-			)
-		SPILLWAY_DELIVERY_AVAILABLE:
-			# Seat the traveling marker at the receiver even when the scheduler jumps
-			# directly across the arrival callback. Full previews render the exact
-			# GameState source item here; lightweight/headless hosts without that
-			# presenter retain this same carried marker as truthful fallback feedback.
-			var destination: Vector3 = (
-				_spillway_delivery_route.back()
-				if not _spillway_delivery_route.is_empty()
-				else _vec3(
-					_hydraulic_spillway_food_cache.get("position", []), Vector3.ZERO
-				)
-			)
-			var previous: Vector3 = (
-				_spillway_delivery_route[_spillway_delivery_route.size() - 2]
-				if _spillway_delivery_route.size() >= 2
-				else destination - Vector3.FORWARD
-			)
-			_set_hydraulic_flat_transform(
-				marker,
-				destination,
-				_hydraulic_flat_yaw(previous, destination)
-			)
-			var source_id := _physical_cache_source_id(_hydraulic_spillway_food_cache)
-			var claim := _resource_claims.get(source_id, {}) as Dictionary
-			var exact_item_presented := (
-				host != null
-				and host.has_method("get_preview_character_node")
-				and _resource_claim_item_is_at_source(_get_game_state(), claim)
-			)
-			marker.visible = not exact_item_presented
-		_:
-			marker.visible = false
-
-
-func _bridge_cargo_event_tag(suffix: String) -> String:
-	return "generated_bridge_cargo_%s_%d" % [suffix, get_instance_id()]
-
-
-func _hydraulic_catch_event_tag() -> String:
-	return "generated_hydraulic_catch_receipt_%d" % get_instance_id()
-
-
-func _new_hydraulic_catch_receipt() -> Dictionary:
-	return {
-		"version": HYDRAULIC_CATCH_RECEIPT_VERSION,
-		"phase": HYDRAULIC_CATCH_RECEIPT_IDLE,
-		"node_id": "node_04",
-		"source_interactable_id": "",
-		"actor_id": "",
-		"started_tick": -1.0,
-		"deadline": -1.0,
-		"completed_tick": -1.0,
-	}
-
-
-func _cancel_hydraulic_catch_receipt_event() -> void:
-	var scheduler = _get_scheduler()
-	if scheduler != null and scheduler.has_method("cancel_tag"):
-		scheduler.cancel_tag(_hydraulic_catch_event_tag())
-
-
-func _schedule_hydraulic_catch_receipt() -> bool:
-	var scheduler = _get_scheduler()
-	if scheduler == null or not scheduler.has_method("schedule_at") \
-			or str(_hydraulic_catch_receipt.get(
-				"phase", HYDRAULIC_CATCH_RECEIPT_IDLE
-			)) != HYDRAULIC_CATCH_RECEIPT_PENDING:
-		return false
-	var deadline := float(_hydraulic_catch_receipt.get("deadline", -1.0))
-	if deadline < 0.0:
-		return false
-	_cancel_hydraulic_catch_receipt_event()
-	scheduler.schedule_at(
-		maxf(_hydraulic_sequence_tick() + 0.000001, deadline),
-		Callable(self, "_complete_hydraulic_catch_receipt"),
-		_hydraulic_catch_event_tag()
-	)
-	return true
-
-
-func _begin_hydraulic_catch_receipt(actor: String) -> bool:
-	var source: Node = _node_interactables.get("node_04", null)
-	if source == null or not is_instance_valid(source) \
-			or not bool(source.get("interaction_enabled")) \
-			or not _hydraulic_node_is_ready("node_04") \
-			or not _generated_node_progression_is_ready("node_04") \
-			or not _generated_actor_occupies_interactable(source, actor):
-		return false
-	var phase := str(_hydraulic_catch_receipt.get(
-		"phase", HYDRAULIC_CATCH_RECEIPT_IDLE
-	))
-	if phase == HYDRAULIC_CATCH_RECEIPT_PENDING:
-		return str(_hydraulic_catch_receipt.get("actor_id", "")) == actor
-	if phase == HYDRAULIC_CATCH_RECEIPT_COMPLETE:
-		return false
-	var now := _hydraulic_sequence_tick()
-	var deadline := now + HYDRAULIC_CATCH_COMMIT_DELAY
-	var gs = _get_game_state()
-	if gs != null and gs.is_moving(actor):
-		deadline = maxf(
-			deadline,
-			float(gs.get_plan_end_tick(actor)) + HYDRAULIC_CATCH_COMMIT_DELAY
-		)
-	_hydraulic_catch_receipt = {
-		"version": HYDRAULIC_CATCH_RECEIPT_VERSION,
-		"phase": HYDRAULIC_CATCH_RECEIPT_PENDING,
-		"node_id": "node_04",
-		"source_interactable_id": str(source.get("data_id")),
-		"actor_id": actor,
-		"started_tick": now,
-		"deadline": deadline,
-		"completed_tick": -1.0,
-	}
-	# Persist the overlap receipt before arming its derived callback. A signal-time
-	# save can therefore reconstruct the same actor/source/deadline on a fresh node.
-	_publish_generated_runtime_authority()
-	return _schedule_hydraulic_catch_receipt()
-
-
-func _complete_hydraulic_catch_receipt() -> void:
-	if str(_hydraulic_catch_receipt.get(
-		"phase", HYDRAULIC_CATCH_RECEIPT_IDLE
-	)) != HYDRAULIC_CATCH_RECEIPT_PENDING:
-		return
-	var deadline := float(_hydraulic_catch_receipt.get("deadline", -1.0))
-	if deadline < 0.0 or _hydraulic_sequence_tick() + 0.000001 < deadline:
-		return
-	var source: Node = _node_interactables.get("node_04", null)
-	var actor := str(_hydraulic_catch_receipt.get("actor_id", ""))
-	if source == null or not is_instance_valid(source) \
-			or str(source.get("data_id")) != str(_hydraulic_catch_receipt.get(
-				"source_interactable_id", ""
-			)) \
-			or not _validate_generated_node_trigger(source, actor, "node_04", source):
-		_hydraulic_catch_receipt = _new_hydraulic_catch_receipt()
-		_publish_generated_runtime_authority()
-		return
-	source.set("active_character", actor)
-	if not bool(source.call("_trigger", false)):
-		_hydraulic_catch_receipt = _new_hydraulic_catch_receipt()
-		_publish_generated_runtime_authority()
-
-
-func _restore_hydraulic_catch_receipt() -> void:
-	_cancel_hydraulic_catch_receipt_event()
-	if _hydraulic_catch_receipt.is_empty() \
-			or int(_hydraulic_catch_receipt.get("version", 0)) \
-				!= HYDRAULIC_CATCH_RECEIPT_VERSION \
-			or str(_hydraulic_catch_receipt.get("node_id", "")) != "node_04" \
-			or str(_hydraulic_catch_receipt.get(
-				"phase", HYDRAULIC_CATCH_RECEIPT_IDLE
-			)) not in [
-				HYDRAULIC_CATCH_RECEIPT_IDLE,
-				HYDRAULIC_CATCH_RECEIPT_PENDING,
-				HYDRAULIC_CATCH_RECEIPT_COMPLETE,
-			]:
-		_hydraulic_catch_receipt = _new_hydraulic_catch_receipt()
-		return
-	if str(_hydraulic_catch_receipt.get(
-		"phase", HYDRAULIC_CATCH_RECEIPT_IDLE
-	)) == HYDRAULIC_CATCH_RECEIPT_PENDING:
-		_schedule_hydraulic_catch_receipt()
-
-
-func _cancel_bridge_cargo_events() -> void:
-	var scheduler = _get_scheduler()
-	if scheduler == null or not scheduler.has_method("cancel_tag"):
-		return
-	scheduler.cancel_tag(_bridge_cargo_event_tag("fall"))
-	scheduler.cancel_tag(_bridge_cargo_event_tag("transport"))
-	scheduler.cancel_tag(_hydraulic_catch_event_tag())
-
-
-func _schedule_bridge_cargo_fall() -> bool:
-	var scheduler = _get_scheduler()
-	if scheduler == null or not scheduler.has_method("schedule_at") \
-			or _bridge_cargo_fall_end_tick < 0.0:
-		return false
-	var tag := _bridge_cargo_event_tag("fall")
-	if scheduler.has_method("cancel_tag"):
-		scheduler.cancel_tag(tag)
-	scheduler.schedule_at(
-		maxf(_hydraulic_sequence_tick() + 0.000001, _bridge_cargo_fall_end_tick),
-		Callable(self, "_on_bridge_cargo_staged"),
-		tag
-	)
-	return true
-
-
-func _schedule_bridge_cargo_transport() -> bool:
-	var scheduler = _get_scheduler()
-	if scheduler == null or not scheduler.has_method("schedule_at"):
-		return false
-	var tag := _bridge_cargo_event_tag("transport")
-	if scheduler.has_method("cancel_tag"):
-		scheduler.cancel_tag(tag)
-	scheduler.schedule_at(
-		_bridge_transport_start_tick + BRIDGE_TRANSPORT_DURATION,
-		Callable(self, "_complete_bridge_cargo_transport"),
-		tag
-	)
-	return true
-
-
-func _record_bridge_cargo_milestone(event_id: String, publish := true) -> void:
-	if not _bridge_cargo_milestones.is_empty() \
-			and str(_bridge_cargo_milestones.back().get("event", "")) == event_id:
-		return
-	var tick := _hydraulic_sequence_tick()
-	var sequence_tick := 0.0
-	if _bridge_intro_start_tick >= 0.0:
-		sequence_tick = maxf(0.0, tick - _bridge_intro_start_tick)
-	_bridge_cargo_milestones.append(
-		{
-			"event": event_id,
-			"phase": _bridge_cargo_phase,
-			"tick": snappedf(tick, 0.001),
-			"sequence_tick": snappedf(sequence_tick, 0.001),
-		}
-	)
-	if publish:
-		_publish_generated_runtime_authority()
-		_publish_bridge_cargo_compatibility(event_id)
-
-
-func _publish_bridge_cargo_compatibility(event_id: String) -> void:
-	var gs = _get_game_state()
-	if gs == null or not gs.has_method("set_world_state"):
-		return
-	gs.set_world_state(HYDRAULIC_CARGO_WORLD_STATE_KEY, _bridge_cargo_phase)
-	gs.set_world_state(
-		HYDRAULIC_CARGO_MILESTONE_WORLD_STATE_KEY,
-		{
-			"event": event_id,
-			"phase": _bridge_cargo_phase,
-			"serial": _bridge_cargo_milestones.size(),
-		}
-	)
-
-
-func _sample_hydraulic_route(points: Array[Vector3], progress: float) -> Dictionary:
-	if points.is_empty():
-		return {"position": Vector3.ZERO, "direction": Vector3.FORWARD}
-	if points.size() == 1:
-		return {"position": points[0], "direction": Vector3.FORWARD}
-	var scaled := clampf(progress, 0.0, 1.0) * float(points.size() - 1)
-	var segment := mini(int(floor(scaled)), points.size() - 2)
-	var local_t := scaled - float(segment)
-	var from_pos := points[segment]
-	var to_pos := points[segment + 1]
-	return {
-		"position": from_pos.lerp(to_pos, local_t),
-		"direction": (to_pos - from_pos).normalized(),
-	}
-
-
-func _hydraulic_scavenger_state() -> GameState:
-	var gs = _get_game_state()
-	return gs as GameState if gs is GameState else null
-
-
-func _bridge_scavenger_is_at_route_index(index: int) -> bool:
-	var gs := _hydraulic_scavenger_state()
-	if gs == null or index < 0 or index >= _bridge_scavenger_route.size():
-		return false
-	var character_id := _hydraulic_scavenger_character_id()
-	return (
-		gs.characters.has(character_id)
-		and gs.get_position(character_id).distance_to(_bridge_scavenger_route[index])
-		<= BRIDGE_SCAVENGER_CONTACT_EPSILON
-	)
-
-
-func _command_hydraulic_scavenger_motion(intent: String, publish := true) -> bool:
-	if not _ensure_hydraulic_scavenger_authority():
-		return false
-	var gs := _hydraulic_scavenger_state()
-	var character_id := _hydraulic_scavenger_character_id()
-	if gs == null or not gs.characters.has(character_id):
-		return false
-	var path: Array[Vector3] = []
-	match intent:
-		BRIDGE_SCAVENGER_INTENT_APPROACH:
-			path.assign([_bridge_scavenger_route[1]])
-		BRIDGE_SCAVENGER_INTENT_RETREAT:
-			path.assign([_bridge_scavenger_route[2], _bridge_scavenger_route[3]])
-		_:
-			return false
-	gs.command_walk_path(character_id, path)
-	var reached_destination := (
-		_bridge_scavenger_is_at_route_index(1)
-		if intent == BRIDGE_SCAVENGER_INTENT_APPROACH
-		else _bridge_scavenger_is_at_route_index(3)
-	)
-	var accepted := gs.is_moving(character_id) or reached_destination
-	if accepted and _bridge_scavenger_motion_intent == intent:
-		_bridge_scavenger_motion_intent = BRIDGE_SCAVENGER_INTENT_NONE
-		if publish:
-			_publish_generated_runtime_authority()
-	return accepted
-
-
-func _start_hydraulic_scavenger_approach() -> bool:
-	if not _hydraulic_enabled() or not _first_sluice_open:
-		return false
-	if _bridge_scavenger_phase == BRIDGE_SCAVENGER_DORMANT:
-		_bridge_scavenger_phase = BRIDGE_SCAVENGER_APPROACHING_RACK
-		_bridge_scavenger_motion_intent = BRIDGE_SCAVENGER_INTENT_APPROACH
-		if _bridge_intro_start_tick < 0.0:
-			_bridge_intro_start_tick = _hydraulic_sequence_tick()
-		# Publish the pending command first. A save taken from this signal resumes it;
-		# a later explicit stop has no pending intent and therefore stays interrupted.
-		_publish_generated_runtime_authority()
-	elif _bridge_scavenger_phase != BRIDGE_SCAVENGER_APPROACHING_RACK:
-		return false
-	if _bridge_scavenger_is_at_route_index(1):
-		_on_bridge_scavenger_contact()
-		return _bridge_cargo_phase != BRIDGE_CARGO_ELEVATED
-	var gs := _hydraulic_scavenger_state()
-	var character_id := _hydraulic_scavenger_character_id()
-	if gs != null and gs.characters.has(character_id) and gs.is_moving(character_id):
-		return true
-	if _bridge_scavenger_motion_intent != BRIDGE_SCAVENGER_INTENT_APPROACH:
-		return false
-	return _command_hydraulic_scavenger_motion(BRIDGE_SCAVENGER_INTENT_APPROACH)
-
-
-func _on_hydraulic_scavenger_arrived(character_id: String) -> void:
-	if character_id != _hydraulic_scavenger_character_id():
-		return
-	match _bridge_scavenger_phase:
-		BRIDGE_SCAVENGER_APPROACHING_RACK:
-			if _bridge_scavenger_is_at_route_index(1):
-				_on_bridge_scavenger_contact()
-		BRIDGE_SCAVENGER_RETREATING_TO_LYSATE:
-			if _bridge_scavenger_is_at_route_index(3):
-				_on_bridge_scavenger_cleared()
-
-
-func _reconcile_hydraulic_scavenger_after_restore() -> void:
-	if not _ensure_hydraulic_scavenger_authority():
-		return
-	var gs := _hydraulic_scavenger_state()
-	var character_id := _hydraulic_scavenger_character_id()
-	if gs == null or not gs.characters.has(character_id):
-		return
-	match _bridge_scavenger_phase:
-		BRIDGE_SCAVENGER_APPROACHING_RACK:
-			if _bridge_scavenger_is_at_route_index(1):
-				_on_bridge_scavenger_contact(false)
-			elif gs.is_moving(character_id):
-				_bridge_scavenger_motion_intent = BRIDGE_SCAVENGER_INTENT_NONE
-			elif _bridge_scavenger_motion_intent == BRIDGE_SCAVENGER_INTENT_APPROACH:
-				_command_hydraulic_scavenger_motion(BRIDGE_SCAVENGER_INTENT_APPROACH, false)
-		BRIDGE_SCAVENGER_RIDING_CARGO:
-			if gs.is_external_traversal_active(character_id):
-				pass  # the locked ride resumes with the scheduler
-			else:
-				var now := _hydraulic_sequence_tick()
-				if _bridge_cargo_fall_end_tick >= 0.0 and now < _bridge_cargo_fall_end_tick:
-					_begin_bridge_scavenger_ride(false, _bridge_cargo_fall_end_tick - now)
-				else:
-					_bridge_scavenger_phase = BRIDGE_SCAVENGER_RETREATING_TO_LYSATE
-					_bridge_scavenger_motion_intent = BRIDGE_SCAVENGER_INTENT_RETREAT
-					_command_hydraulic_scavenger_motion(BRIDGE_SCAVENGER_INTENT_RETREAT, false)
-		BRIDGE_SCAVENGER_RETREATING_TO_LYSATE:
-			if _bridge_scavenger_is_at_route_index(3):
-				_on_bridge_scavenger_cleared(false)
-			elif gs.is_moving(character_id):
-				_bridge_scavenger_motion_intent = BRIDGE_SCAVENGER_INTENT_NONE
-			elif _bridge_scavenger_motion_intent == BRIDGE_SCAVENGER_INTENT_RETREAT:
-				_command_hydraulic_scavenger_motion(BRIDGE_SCAVENGER_INTENT_RETREAT, false)
-		BRIDGE_SCAVENGER_CLEAR:
-			_bridge_scavenger_clear_recorded = true
-			_bridge_scavenger_motion_intent = BRIDGE_SCAVENGER_INTENT_NONE
-
-
-func _reset_hydraulic_scavenger_body() -> void:
-	if not _ensure_hydraulic_scavenger_authority():
-		return
-	var gs := _hydraulic_scavenger_state()
-	var character_id := _hydraulic_scavenger_character_id()
-	if gs == null or not gs.characters.has(character_id):
-		return
-	var was_dead := (
-		_hydraulic_scavenger.has_method("get_state")
-		and str(_hydraulic_scavenger.call("get_state")) == "dead"
-	)
-	if not was_dead and not gs.is_moving(character_id) \
-			and gs.get_position(character_id).is_equal_approx(_bridge_scavenger_route[0]):
-		# The construction warp already seated the fresh presenter. Avoid replacing
-		# its render transform with flat data before the host installs coord_map.
-		return
-	# A plain data-layer snap intentionally preserves a character's current floor/Y.
-	# This scavenger starts on an elevated loading rack and ends at the low lysate basin,
-	# so an ordinary re-post would leave its data body several metres below its model and
-	# make the next approach take a hidden vertical detour. Re-register the same stable body
-	# at its exact authored 3D post as part of the explicit level reset.
-	gs.command_stop(character_id)
-	gs.unregister_character(character_id)
-	gs.register_character(
-		character_id,
-		_bridge_scavenger_route[0],
-		float(_hydraulic_scavenger.get("move_speed")),
-		{"detection_range": 0.0}
-	)
-	if was_dead:
-		gs.set_world_state("runtime:enemy:%s" % character_id, {})
-		_hydraulic_scavenger.call("on_game_state_snapshot_restored")
-	_hydraulic_scavenger.call("activate")
-	if _hydraulic_scavenger.has_method("re_post"):
-		_hydraulic_scavenger.call("re_post", _bridge_scavenger_route[0])
-	if _hydraulic_scavenger.has_method("on_game_state_snapshot_restored"):
-		_hydraulic_scavenger.call("on_game_state_snapshot_restored")
-
-
-func _update_hydraulic_cargo_pose(_intro_elapsed: float, now: float) -> void:
-	if _hydraulic_bridge_cargo == null or not is_instance_valid(_hydraulic_bridge_cargo):
-		return
-	match _bridge_cargo_phase:
-		BRIDGE_CARGO_ELEVATED:
-			_set_hydraulic_flat_transform(
-				_hydraulic_bridge_cargo,
-				_bridge_cargo_elevated_position,
-				_bridge_cargo_flat_yaw
-			)
-		BRIDGE_CARGO_FALLING:
-			var fall_duration := maxf(
-				0.000001, _bridge_cargo_fall_end_tick - _bridge_cargo_fall_start_tick
-			)
-			var fall_t := clampf(
-				(now - _bridge_cargo_fall_start_tick) / fall_duration,
-				0.0,
-				1.0
-			)
-			var eased := smoothstep(0.0, 1.0, fall_t)
-			var fall_position := _bridge_cargo_elevated_position.lerp(
-				_bridge_cargo_staged_position, eased
-			)
-			fall_position.z += sin(fall_t * PI) * 0.34
-			_set_hydraulic_flat_transform(
-				_hydraulic_bridge_cargo,
-				fall_position,
-				_bridge_cargo_flat_yaw,
-				-0.12 * sin(fall_t * PI),
-				0.18 * eased
-			)
-		BRIDGE_CARGO_STAGED:
-			_set_hydraulic_flat_transform(
-				_hydraulic_bridge_cargo,
-				_bridge_cargo_staged_position,
-				_bridge_cargo_flat_yaw,
-				0.0,
-				0.18
-			)
-		BRIDGE_CARGO_TRANSPORTING:
-			var transport_t := clampf(
-				(now - _bridge_transport_start_tick) / BRIDGE_TRANSPORT_DURATION, 0.0, 1.0
-			)
-			var route_sample := _sample_hydraulic_route(
-				_bridge_cargo_route, smoothstep(0.0, 1.0, transport_t)
-			)
-			var cargo_position: Vector3 = route_sample["position"]
-			cargo_position.y += (
-				0.11 * sin(transport_t * PI * 5.0) * sin(transport_t * PI)
-			)
-			var direction: Vector3 = route_sample["direction"]
-			_set_hydraulic_flat_transform(
-				_hydraulic_bridge_cargo,
-				cargo_position,
-				_hydraulic_flat_yaw(Vector3.ZERO, direction),
-				0.035 * sin(transport_t * PI * 4.0),
-				lerpf(0.18, 0.0, transport_t)
-			)
-		BRIDGE_CARGO_SEATED:
-			_set_hydraulic_flat_transform(
-				_hydraulic_bridge_cargo,
-				_bridge_cargo_seated_position,
-				_bridge_cargo_flat_yaw
-			)
-
-
-## THE RIDE (docs/SCAVENGER_CARGO_BEAT.md, settled decision): the Sapscrap does
-## not jump clear — it rides the cargo down on ONE locked GameState traversal
-## spanning exactly the fall window, then steps off at the route's ground
-## waypoint and begins the retreat. Same authority family as the Channel carry,
-## so every save seam restores the same way it does for swept bodies.
-func _begin_bridge_scavenger_ride(publish := true, duration_override := -1.0) -> void:
-	var gs := _hydraulic_scavenger_state()
-	var character_id := _hydraulic_scavenger_character_id()
-	if gs == null or not gs.characters.has(character_id) 			or _bridge_scavenger_route.size() < 4:
-		return
-	var render_origin: Vector3 = gs.get_render_position(character_id) 		if gs.has_method("get_render_position") else gs.get_position(character_id)
-	var destination: Vector3 = _bridge_scavenger_route[2]
-	var duration := duration_override if duration_override > 0.0 		else BRIDGE_CARGO_FALL_DURATION
-	gs.command_external_traversal(character_id,
-		_bridge_scavenger_ride_traversal_id(), destination, render_origin,
-		destination, maxf(0.05, duration), &"locked")
-	if publish:
-		_publish_generated_runtime_authority()
-
-
-func _bridge_scavenger_ride_traversal_id() -> StringName:
-	return StringName("bridge_cargo_ride:%s" % _hydraulic_scavenger_character_id())
-
-
-func _on_bridge_scavenger_ride_finished(character_id: String, traversal_id: StringName) -> void:
-	if character_id != _hydraulic_scavenger_character_id() 			or traversal_id != _bridge_scavenger_ride_traversal_id() 			or _bridge_scavenger_phase != BRIDGE_SCAVENGER_RIDING_CARGO:
-		return
-	_bridge_scavenger_phase = BRIDGE_SCAVENGER_RETREATING_TO_LYSATE
-	_bridge_scavenger_motion_intent = BRIDGE_SCAVENGER_INTENT_RETREAT
-	_command_hydraulic_scavenger_motion(BRIDGE_SCAVENGER_INTENT_RETREAT)
-	_publish_generated_runtime_authority()
-
-
-func _on_bridge_scavenger_ride_cancelled(
-	character_id: String, traversal_id: StringName, _reason: StringName
-) -> void:
-	if character_id != _hydraulic_scavenger_character_id() 			or traversal_id != _bridge_scavenger_ride_traversal_id() 			or _bridge_scavenger_phase != BRIDGE_SCAVENGER_RIDING_CARGO:
-		return
-	# A cancelled ride (restore churn, forced stop) never strands the beat: the
-	# reconcile pass re-commands the remaining ride or lands the retreat.
-	_bridge_scavenger_motion_intent = BRIDGE_SCAVENGER_INTENT_NONE
-
-
-func _on_bridge_scavenger_contact(publish := true) -> void:
-	if not _hydraulic_enabled() \
-			or _bridge_intro_start_tick < 0.0 \
-			or _bridge_cargo_phase != BRIDGE_CARGO_ELEVATED \
-			or _bridge_scavenger_phase != BRIDGE_SCAVENGER_APPROACHING_RACK \
-			or not _bridge_scavenger_is_at_route_index(1):
-		return
-	_bridge_scavenger_phase = BRIDGE_SCAVENGER_RIDING_CARGO
-	_bridge_scavenger_motion_intent = BRIDGE_SCAVENGER_INTENT_NONE
-	_bridge_cargo_phase = BRIDGE_CARGO_FALLING
-	_bridge_cargo_fall_start_tick = _hydraulic_sequence_tick()
-	_bridge_cargo_fall_end_tick = _bridge_cargo_fall_start_tick + BRIDGE_CARGO_FALL_DURATION
-	_record_bridge_cargo_milestone("scavenger_dislodged_cargo", false)
-	_schedule_bridge_cargo_fall()
-	_apply_hydraulic_visual_state()
-	if publish:
-		_publish_generated_runtime_authority()
-		_publish_bridge_cargo_compatibility("scavenger_dislodged_cargo")
-	_begin_bridge_scavenger_ride(publish)
-	if publish:
-		_hydraulic_focus(_hydraulic_bridge_cargo, false, 2.2)
-		_request_preview_shake(0.12, 7.5)
-
-
-func _on_bridge_cargo_staged(publish := true) -> void:
-	if not _hydraulic_enabled() or _bridge_cargo_phase != BRIDGE_CARGO_FALLING \
-			or _bridge_cargo_fall_end_tick < 0.0 \
-			or _hydraulic_sequence_tick() + 0.000001 < _bridge_cargo_fall_end_tick:
-		return
-	_bridge_cargo_phase = BRIDGE_CARGO_STAGED
-	_record_bridge_cargo_milestone("cargo_staged_in_basin", false)
-	_apply_hydraulic_visual_state()
-	if publish:
-		_publish_generated_runtime_authority()
-		_publish_bridge_cargo_compatibility("cargo_staged_in_basin")
-		_request_preview_shake(0.16, 6.5)
-
-
-func _on_bridge_scavenger_cleared(publish := true) -> void:
-	if not _hydraulic_enabled() \
-			or _bridge_scavenger_clear_recorded \
-			or _bridge_scavenger_phase != BRIDGE_SCAVENGER_RETREATING_TO_LYSATE \
-			or not _bridge_scavenger_is_at_route_index(3):
-		return
-	_bridge_scavenger_phase = BRIDGE_SCAVENGER_CLEAR
-	_bridge_scavenger_motion_intent = BRIDGE_SCAVENGER_INTENT_NONE
-	_bridge_scavenger_clear_recorded = true
-	_record_bridge_cargo_milestone("scavenger_reached_lysate_source", false)
-	_apply_hydraulic_visual_state()
-	if publish:
-		_publish_generated_runtime_authority()
-		_publish_bridge_cargo_compatibility("scavenger_reached_lysate_source")
-
-
-func _update_hydraulic_cargo_sequence(_delta := 0.0) -> void:
-	if not _hydraulic_enabled() or _hydraulic_bridge_cargo == null:
-		return
-	var scheduler = _get_scheduler()
-	if scheduler != null and scheduler.has_method("is_paused") and scheduler.is_paused():
-		return
-	var now := _hydraulic_sequence_tick()
-	var intro_elapsed := 0.0
-	if _bridge_intro_start_tick >= 0.0:
-		intro_elapsed = maxf(0.0, now - _bridge_intro_start_tick)
-	# Pose is presentation. FALLING→STAGED and TRANSPORTING→SEATED are committed only by the
-	# scheduler callbacks installed with their saved absolute deadlines.
-	_update_hydraulic_cargo_pose(intro_elapsed, now)
-
-
-func _force_bridge_cargo_staged_for_headless() -> void:
-	_advance_hydraulic_scavenger_chain_for_headless()
-
-
-func _advance_hydraulic_scavenger_chain_for_headless() -> bool:
-	if not _hydraulic_enabled() or not _first_sluice_open:
-		return false
-	if _bridge_scavenger_phase == BRIDGE_SCAVENGER_DORMANT \
-			and not _start_hydraulic_scavenger_approach():
-		return false
-	var gs := _hydraulic_scavenger_state()
-	var character_id := _hydraulic_scavenger_character_id()
-	for _step in range(12):
-		if _bridge_cargo_phase == BRIDGE_CARGO_STAGED and _bridge_scavenger_clear_recorded:
-			_update_hydraulic_cargo_sequence(0.0)
-			return true
-		if gs == null or not gs.characters.has(character_id):
-			return false
-		if gs.is_moving(character_id):
-			var movement_v: Variant = gs.characters[character_id].get("movement", null)
-			if not (movement_v is Dictionary):
-				# The scavenger RIDES the falling cargo, and a ride is EXTERNAL TRAVERSAL: is_moving()
-				# is true through is_external_traversal_active(), while planar movement is null. Treating
-				# that as a stall killed the whole cargo chain, so release_bridge never seated the span
-				# and every route past the cistern stayed cut. Advance the ride to its end instead.
-				if _bridge_cargo_phase == BRIDGE_CARGO_FALLING \
-						and _bridge_cargo_fall_end_tick >= 0.0:
-					if not _headless_advance_scheduler_to(_bridge_cargo_fall_end_tick):
-						return false
-					_update_hydraulic_cargo_sequence(0.0)
-					continue
-				return false
-			var movement := movement_v as Dictionary
-			var deadline := float(movement.get("start_tick", _hydraulic_sequence_tick())) \
-				+ float(movement.get("duration", 0.0))
-			if not _headless_advance_scheduler_to(deadline):
-				return false
-		elif _bridge_scavenger_motion_intent != BRIDGE_SCAVENGER_INTENT_NONE:
-			if not _command_hydraulic_scavenger_motion(_bridge_scavenger_motion_intent):
-				return false
-		elif _bridge_cargo_phase == BRIDGE_CARGO_FALLING \
-				and _bridge_cargo_fall_end_tick >= 0.0:
-			if not _headless_advance_scheduler_to(_bridge_cargo_fall_end_tick):
-				return false
-		else:
-			return false
-		_update_hydraulic_cargo_sequence(0.0)
-	return _bridge_cargo_phase == BRIDGE_CARGO_STAGED and _bridge_scavenger_clear_recorded
-
-
-func _complete_bridge_cargo_transport(announce := true) -> void:
-	if _bridge_cargo_phase == BRIDGE_CARGO_SEATED:
-		return
-	if _bridge_cargo_phase != BRIDGE_CARGO_TRANSPORTING \
-			or _bridge_transport_start_tick < 0.0 \
-			or _hydraulic_sequence_tick() + 0.000001 \
-				< _bridge_transport_start_tick + BRIDGE_TRANSPORT_DURATION:
-		return
-	# Seat every causal field before the first observable publication: the
-	# compatibility world-state signal must never fire while the installed flag,
-	# router route, or grid topology still describes a blocked gap.
-	_bridge_cargo_phase = BRIDGE_CARGO_SEATED
-	_cistern_bridge_installed = true
-	_main_current_restored = true
-	_borrowed_current_diverted = false
-	_routed_current_flow_start_tick = _hydraulic_sequence_tick()
-	if _ensure_hydraulic_flow_router():
-		_hydraulic_flow_router.call("set_route", &"main")
-	_hydraulic_phase = "exit_ready"
-	_last_outcome = "hydraulic:cistern_bridge_installed"
-	_record_bridge_cargo_milestone("cargo_seated_as_bridge", false)
-	_set_hydraulic_bridge_blocked(false)
-	# The canonical generated-runtime record owns the whole seated state. Legacy
-	# bridge keys and presentation derive only after that record can restore truth.
-	_publish_generated_runtime_authority()
-	_publish_bridge_cargo_compatibility("cargo_seated_as_bridge")
-	_apply_hydraulic_visual_state()
-	_update_hydraulic_cargo_pose(
-		maxf(0.0, _hydraulic_sequence_tick() - _bridge_intro_start_tick),
-		_hydraulic_sequence_tick()
-	)
-	if not announce:
-		return
-	_flash_hydraulic_link(_hydraulic_cargo_route_link, 1.8, 1.45)
-	if _hydraulic_cargo_route_link != null \
-			and _hydraulic_cargo_route_link.has_method("pulse_arrival"):
-		_hydraulic_cargo_route_link.call("pulse_arrival", 1.45, 1.0)
-	_hydraulic_focus(_hydraulic_bridge_mesh, false, 3.2)
-	_request_preview_shake(0.18, 5.5)
-	_set_preview_step("generated_cistern_bridge_installed")
-	_show_note("BRIDGE SEATED // The carried span now closes the gap.", 3.0)
-
-
-func _apply_hydraulic_visual_state() -> void:
-	if not _hydraulic_enabled():
-		return
-	_update_hydraulic_flow_visuals()
-	_update_spillway_delivery_visual()
-	if _hydraulic_bridge_mesh != null and is_instance_valid(_hydraulic_bridge_mesh):
-		_hydraulic_bridge_mesh.visible = true
-	var cargo_color := HYDRAULIC_CONTROL_COLOR
-	var cargo_status := "LOOSE BRIDGE CARGO"
-	match _bridge_cargo_phase:
-		BRIDGE_CARGO_FALLING:
-			cargo_status = "CARGO DISLODGED"
-			cargo_color = Color(1.0, 0.38, 0.16)
-		BRIDGE_CARGO_STAGED:
-			cargo_status = (
-				"CARGO STAGED // NEEDS CURRENT"
-				if _bridge_scavenger_clear_recorded
-				else "CARGO STAGED // SCAVENGER CLEARING"
-			)
-			cargo_color = HYDRAULIC_ACTIVE_COLOR
-		BRIDGE_CARGO_TRANSPORTING:
-			cargo_status = "CARGO AFLOAT"
-			cargo_color = HYDRAULIC_ACTIVE_COLOR.lightened(0.14)
-		BRIDGE_CARGO_SEATED:
-			cargo_status = "BRIDGE SEATED"
-			cargo_color = HYDRAULIC_READY_COLOR
-	_set_hydraulic_status_label(
-		_hydraulic_bridge_cargo_label, cargo_status, cargo_color.lightened(0.18)
-	)
-	if _hydraulic_bridge_cargo_light != null \
-			and is_instance_valid(_hydraulic_bridge_cargo_light):
-		_hydraulic_bridge_cargo_light.light_color = cargo_color
-		_hydraulic_bridge_cargo_light.light_energy = (
-			0.92
-			if _bridge_cargo_phase in [BRIDGE_CARGO_STAGED, BRIDGE_CARGO_TRANSPORTING]
-			else (0.48 if _bridge_cargo_phase == BRIDGE_CARGO_SEATED else 0.62)
-		)
-	if _hydraulic_cargo_route_link != null \
-			and is_instance_valid(_hydraulic_cargo_route_link) \
-			and _hydraulic_cargo_route_link.has_method("set_feedback_mode"):
-		var cargo_link_mode := "predicted"
-		if _bridge_cargo_phase == BRIDGE_CARGO_TRANSPORTING:
-			cargo_link_mode = "active"
-		elif _bridge_cargo_phase == BRIDGE_CARGO_SEATED:
-			cargo_link_mode = "complete"
-		elif _bridge_cargo_phase == BRIDGE_CARGO_FALLING:
-			cargo_link_mode = "warning"
-		_hydraulic_cargo_route_link.call("set_feedback_mode", cargo_link_mode)
-	if _hydraulic_spillway_catch != null and is_instance_valid(_hydraulic_spillway_catch):
-		var catch_ready := _spillway_delivery_phase == SPILLWAY_DELIVERY_AVAILABLE
-		var catch_color := (
-			HYDRAULIC_READY_COLOR if catch_ready else HYDRAULIC_CONTROL_COLOR
-		)
-		_hydraulic_spillway_catch.material_override = _make_material(
-			catch_color.darkened(0.58),
-			catch_color,
-			1.15 if catch_ready else 0.55
-		)
-	if _hydraulic_exit_beacon != null and is_instance_valid(_hydraulic_exit_beacon):
-		# The shelter is gated by TWO prerequisites and the water is only the second one. The command
-		# checks the mandatory branch spans FIRST (_query_generated_node_interaction_gate), and both of
-		# this spec's spans name exit_shelter -- so a run with the current restored but a span still
-		# unbridged is refused. Advertising readiness from the hydraulic state alone let the beacon go
-		# green, the label read OPEN, and the verb say ENTER SHELTER over a door that would not open.
-		# What the player is told has to come from what the command actually asks.
-		var exit_blocking_span := _required_unresolved_branch_action_before_node("exit_shelter")
-		var exit_water_ready := bool(_hydraulic_state().get("hydraulic_exit_unlocked", false))
-		var exit_ready := exit_water_ready and exit_blocking_span.is_empty()
-		var exit_color := HYDRAULIC_READY_COLOR if exit_ready else HYDRAULIC_CONTROL_COLOR
-		_hydraulic_exit_beacon.material_override = _make_material(
-			exit_color.darkened(0.6), exit_color, 1.35 if exit_ready else 0.5
-		)
-		var exit_target: Node = _node_targets.get("exit_shelter", null)
-		var exit_interactable: Node = null
-		if exit_target != null and exit_target.has_method("get_interaction_delegate"):
-			exit_interactable = exit_target.call("get_interaction_delegate")
-		if exit_interactable != null:
-			# Name the prerequisite that is actually in the way, in the same words the refusal uses.
-			var exit_label := "ENTER SHELTER"
-			var exit_note := "Follow the restored main current into the shelter"
-			if not exit_blocking_span.is_empty():
-				var span_extending := str(
-					exit_blocking_span.get("runtime_phase", "dormant")) == "extending"
-				exit_label = "SPAN EXTENDING" if span_extending else "EXTEND FIRST"
-				exit_note = (
-					"The lit branch span is still extending; wait for it to seat."
-					if span_extending
-					else "The route crosses an open cut. Work the lit EXTEND terminal first."
-				)
-			elif not exit_water_ready:
-				exit_label = "SHELTER LOCKED"
-				exit_note = "Restore the main current before entering the shelter"
-			_set_interactable_copy(exit_interactable, exit_label, exit_note)
-		_set_hydraulic_status_label(
-			_hydraulic_exit_label,
-			"SHELTER ROUTE // OPEN" if exit_ready else "SHELTER CHANNEL // DRY",
-			exit_color.lightened(0.2)
-		)
-	var first_landmark_color := (
-		HYDRAULIC_READY_COLOR if _first_sluice_open else HYDRAULIC_CONTROL_COLOR
-	)
-	for landmark in _hydraulic_first_landmark_meshes:
-		if landmark != null and is_instance_valid(landmark):
-			landmark.material_override = _make_material(
-				first_landmark_color.darkened(0.52),
-				first_landmark_color,
-				1.05 if _first_sluice_open else 1.85
-			)
-	if (
-		_hydraulic_first_landmark_light != null
-		and is_instance_valid(_hydraulic_first_landmark_light)
-	):
-		_hydraulic_first_landmark_light.light_color = first_landmark_color.lightened(0.12)
-		_hydraulic_first_landmark_light.light_energy = 0.8 if _first_sluice_open else 1.65
-
-	_set_hydraulic_control_state(
-		_hydraulic_first_control,
-		_hydraulic_first_target,
-		not _first_sluice_open,
-		"FLOW OPEN" if _first_sluice_open else "OPEN FIRST SLUICE",
-		(
-			"The first sluice is open"
-			if _first_sluice_open
-			else "Open the first sluice and send water toward the cistern"
-		)
-	)
-	_set_hydraulic_status_label(
-		_hydraulic_first_label,
-		"FLOW OPEN" if _first_sluice_open else "FIRST SLUICE",
-		HYDRAULIC_READY_COLOR if _first_sluice_open else HYDRAULIC_CONTROL_COLOR.lightened(0.28)
-	)
-	_set_hydraulic_control_state(
-		_hydraulic_cistern_control,
-		_hydraulic_cistern_target,
-		_first_sluice_open
-		and _bridge_cargo_phase == BRIDGE_CARGO_STAGED
-		and _bridge_scavenger_clear_recorded,
-		(
-			"BRIDGE SEATED"
-			if _cistern_bridge_installed
-			else (
-				"CURRENT RELEASED"
-				if _bridge_cargo_phase == BRIDGE_CARGO_TRANSPORTING
-				else (
-					"RELEASE CURRENT"
-					if _bridge_scavenger_clear_recorded
-					else "WAIT FOR CLEAR"
-				)
-			)
-		),
-		(
-			"The carried bridge span is seated across the gap"
-			if _cistern_bridge_installed
-			else (
-				"The released current is carrying the staged cargo downstream"
-				if _bridge_cargo_phase == BRIDGE_CARGO_TRANSPORTING
-				else (
-					"Release stored cistern water to carry the staged cargo downstream"
-					if _bridge_scavenger_clear_recorded
-					else "The scavenger is clearing the basin route toward the lysate source"
-				)
-			)
-		)
-	)
-	var cistern_status := "CISTERN DRY"
-	var cistern_status_color := HYDRAULIC_ACTIVE_COLOR.darkened(0.58)
-	if _cistern_bridge_installed:
-		cistern_status = "BRIDGE SEATED"
-		cistern_status_color = HYDRAULIC_READY_COLOR
-	elif _bridge_cargo_phase == BRIDGE_CARGO_TRANSPORTING:
-		cistern_status = "CURRENT RELEASED // CARGO AFLOAT"
-		cistern_status_color = HYDRAULIC_ACTIVE_COLOR.lightened(0.24)
-	elif _bridge_cargo_phase == BRIDGE_CARGO_FALLING:
-		cistern_status = "WAIT // CARGO DISLODGING"
-		cistern_status_color = HYDRAULIC_CONTROL_COLOR
-	elif _bridge_cargo_phase == BRIDGE_CARGO_ELEVATED:
-		cistern_status = (
-			"WAIT // SCAVENGER APPROACHING"
-			if _first_sluice_open
-			else "LOOSE SPAN ON RACK // CISTERN DRY"
-		)
-		cistern_status_color = HYDRAULIC_CONTROL_COLOR
-	elif _first_sluice_open and _bridge_scavenger_clear_recorded:
-		cistern_status = "CISTERN CHARGED // CARGO STAGED"
-		cistern_status_color = HYDRAULIC_ACTIVE_COLOR.lightened(0.28)
-	elif _first_sluice_open:
-		cistern_status = "WAIT // SCAVENGER CLEARING"
-		cistern_status_color = HYDRAULIC_CONTROL_COLOR
-	else:
-		cistern_status = "CISTERN DRY"
-	_set_hydraulic_status_label(_hydraulic_cistern_label, cistern_status, cistern_status_color)
-	var diverter_label := "DIVERT TO SPILLWAY"
-	var diverter_description := (
-		"One current feeds one branch at a time. The spillway is dry; the main channel is fed."
-	)
-	var diverter_status := "MAIN FED // SPILLWAY DRY"
-	var spillway_relation := "DIVERTS THE ONE CURRENT TO SPILLWAY"
-	var exit_relation := "THE SAME CURRENT FEEDS THE SHELTER"
-	if _borrowed_current_diverted:
-		diverter_label = "RETURN CURRENT TO MAIN"
-		diverter_description = (
-			"The launched lysate is still traveling on the spillway route; returning the valve will not redirect it."
-			if _spillway_delivery_phase == SPILLWAY_DELIVERY_TRAVELING
-			else "The spillway is fed; return the finite current to reopen the shelter route."
-		)
-		diverter_status = (
-			"SPILLWAY FED // LYSATE TRAVELING"
-			if _spillway_delivery_phase == SPILLWAY_DELIVERY_TRAVELING
-			else "SPILLWAY FED // MAIN STARVED"
-		)
-		spillway_relation = "BORROWED FLOW FEEDS SPILLWAY"
-		exit_relation = "DIVERSION STARVES THE SHELTER"
-	elif _main_current_restored:
-		diverter_description = "The main current reaches the shelter. Diverting it is an optional food bet."
-		diverter_status = "MAIN FED // SPILLWAY DRY"
-		spillway_relation = "SPILLWAY RELEASED"
-		exit_relation = "MAIN CURRENT FEEDS THE SHELTER"
-	_set_hydraulic_control_state(
-		_hydraulic_diverter_control,
-		_hydraulic_diverter_target,
-		_cistern_bridge_installed and not _shelter_reached,
-		diverter_label,
-		diverter_description
-	)
-
-	var catch_step_active := (
-		_spillway_delivery_phase == SPILLWAY_DELIVERY_AVAILABLE
-		and not bool(_hydraulic_spillway_food_cache.get("collected", false))
-	)
-	_set_outline_target_enabled(_hydraulic_catch_target, catch_step_active)
-
-	if _hydraulic_catch_control != null and is_instance_valid(_hydraulic_catch_control):
-		if _hydraulic_catch_control.has_method("set_interaction_enabled"):
-			_hydraulic_catch_control.call("set_interaction_enabled", catch_step_active)
-		_hydraulic_catch_control.input_ray_pickable = catch_step_active
-		_set_interactable_copy(
-			_hydraulic_catch_control,
-			"TAKE LYSATE" if catch_step_active else "CATCH EMPTY",
-			(
-				"Take the arrived lysate with a free hand"
-				if catch_step_active
-				else (
-					"The lysate is traveling down the spillway"
-					if _spillway_delivery_phase == SPILLWAY_DELIVERY_TRAVELING
-					else "Diverting the finite current can send one lysate payload here"
-				)
-			)
-		)
-	if not _cistern_bridge_installed:
-		diverter_status = "CURRENT LOCKED"
-	var diverter_status_color := (
-		Color(0.82, 0.64, 1.0) if _borrowed_current_diverted else HYDRAULIC_READY_COLOR
-	)
-	if not _cistern_bridge_installed:
-		diverter_status_color = Color(0.34, 0.24, 0.46)
-	_set_hydraulic_status_label(_hydraulic_diverter_label, diverter_status, diverter_status_color)
-	_set_hydraulic_link_label(_hydraulic_spillway_link, spillway_relation)
-	_set_hydraulic_link_label(_hydraulic_exit_link, exit_relation)
-
-	# Light communicates availability, not the solution: the currently operable piece gains
-	# a restrained local pool, locked pieces remain visible but quiet, and completed pieces
-	# settle to a low confirmation glow. Hue continues to describe each system role.
-	var exit_ready_now := bool(_hydraulic_state().get("hydraulic_exit_unlocked", false))
-	_set_hydraulic_focus_light(
-		_hydraulic_first_landmark_light,
-		HYDRAULIC_READY_COLOR if _first_sluice_open else HYDRAULIC_CONTROL_COLOR,
-		"completed" if _first_sluice_open else "active",
-		1.25
-	)
-	_set_hydraulic_focus_light(
-		_hydraulic_cistern_light,
-		HYDRAULIC_READY_COLOR if _cistern_bridge_installed else HYDRAULIC_ACTIVE_COLOR,
-		(
-			"completed"
-			if _cistern_bridge_installed
-			else (
-				"active"
-				if _first_sluice_open
-				and (
-					_bridge_cargo_phase == BRIDGE_CARGO_TRANSPORTING
-					or (
-						_bridge_cargo_phase == BRIDGE_CARGO_STAGED
-						and _bridge_scavenger_clear_recorded
-					)
-				)
-				else "inactive"
-			)
-		)
-	)
-	_set_hydraulic_focus_light(
-		_hydraulic_diverter_light,
-		Color(0.68, 0.42, 1.0) if _borrowed_current_diverted else HYDRAULIC_READY_COLOR,
-		"active" if _cistern_bridge_installed else "inactive"
-	)
-	_set_hydraulic_focus_light(
-		_hydraulic_catch_light,
-		HYDRAULIC_READY_COLOR if catch_step_active else HYDRAULIC_CONTROL_COLOR,
-		(
-			"completed"
-			if _spillway_delivery_phase == SPILLWAY_DELIVERY_COLLECTED
-			else ("active" if catch_step_active else "inactive")
-		)
-	)
-	_set_hydraulic_focus_light(
-		_hydraulic_exit_light,
-		HYDRAULIC_READY_COLOR if exit_ready_now else HYDRAULIC_CONTROL_COLOR,
-		"active" if exit_ready_now else "inactive"
-	)
-
-	var next_target: Node = null
-	if not _shelter_reached:
-		match _hydraulic_phase:
-			"first_sluice":
-				next_target = _hydraulic_first_target
-			# Only the first intervention is answer-highlighted. The cistern is guided
-			# practice through its world label and hover-only causal link; allocation,
-			# catching, and restoration are the independent transfer test.
-			"cistern_bridge", "borrowed_current", "food_spillway", "restore_current":
-				next_target = null
-			"exit_ready":
-				next_target = _node_targets.get("exit_shelter", null)
-	_set_hydraulic_next_highlight(next_target)
-
-
-func _reset_hydraulic_state() -> void:
-	_cancel_bridge_cargo_events()
-	if _hydraulic_flow_router != null and is_instance_valid(_hydraulic_flow_router):
-		_hydraulic_flow_router.call("reset")
-	_first_sluice_open = false
-	_cistern_bridge_installed = false
-	_borrowed_current_diverted = false
-	_borrowed_current_delivery_latched = false
-	_main_current_restored = false
-	_spillway_delivery_phase = SPILLWAY_DELIVERY_IDLE
-	_spillway_delivery_flow_id = 0
-	_spillway_delivery_launch_tick = -1.0
-	_first_sluice_flow_start_tick = -1.0
-	_bridge_current_flow_start_tick = -1.0
-	_routed_current_flow_start_tick = -1.0
-	_bridge_cargo_phase = BRIDGE_CARGO_ELEVATED
-	_bridge_intro_start_tick = -1.0
-	_bridge_cargo_fall_start_tick = -1.0
-	_bridge_cargo_fall_end_tick = -1.0
-	_bridge_transport_start_tick = -1.0
-	_bridge_scavenger_phase = BRIDGE_SCAVENGER_DORMANT
-	_bridge_scavenger_motion_intent = BRIDGE_SCAVENGER_INTENT_NONE
-	_bridge_scavenger_clear_recorded = false
-	_bridge_cargo_milestones.clear()
-	_hydraulic_phase = "first_sluice" if _hydraulic_enabled() else "disabled"
-	_hydraulic_grid_instance_id = 0
-	if _hydraulic_enabled():
-		_reset_hydraulic_scavenger_body()
-		_record_bridge_cargo_milestone("cargo_elevated_on_breakaway_rack")
-	_apply_hydraulic_visual_state()
-	_update_spillway_delivery_visual()
-	var now := _hydraulic_sequence_tick()
-	_update_hydraulic_cargo_pose(0.0, now)
-	_sync_hydraulic_bridge_blocker()
 
 
 ## Every openable mechanism this stretch realizes, as the solvability validator's inventory: the
@@ -8204,344 +5166,7 @@ func get_gate_inventory() -> Array:
 			"tag": str(span_v.get("_blocker_tag")),
 			"producer_positions": [span_v.get("_producer_data_position")],
 		})
-	if _hydraulic_enabled():
-		# Only the controls that must be operated BEFORE the span seats: the First Sluice and the
-		# cistern release at node_02. node_03 sits on the far landing and gates later steps, so
-		# listing it would demand crossing the bridge to open the bridge.
-		var controls: Array = []
-		if _hydraulic_first_control != null and is_instance_valid(_hydraulic_first_control):
-			var control_pos: Vector3 = _hydraulic_first_control.global_position
-			if _hydraulic_first_control.has_meta("flat_authored_position"):
-				control_pos = _hydraulic_first_control.get_meta("flat_authored_position")
-			controls.append(control_pos)
-		var node_02 := _node_position("node_02")
-		if node_02 != Vector3.INF:
-			controls.append(node_02)
-		if not controls.is_empty():
-			gates.append({
-				"tag": HYDRAULIC_BLOCKER_TAG,
-				"producer_positions": controls,
-			})
 	return gates
-
-func _hydraulic_bridge_blocker_cells() -> Array[Vector2i]:
-	var cells: Array[Vector2i] = []
-	if not _hydraulic_enabled():
-		return cells
-	var gs = _get_game_state()
-	if gs == null or gs.grid == null:
-		return cells
-	var node_02 := _node_position("node_02")
-	var node_03 := _node_position("node_03")
-	if node_02 == Vector3.INF or node_03 == Vector3.INF:
-		return cells
-	var bridge_center := node_02.lerp(node_03, 0.5)
-	var direction := Vector2(node_03.x - node_02.x, node_03.z - node_02.z).normalized()
-	var lateral := Vector2(-direction.y, direction.x)
-	for offset in [-1.25, -0.62, 0.0, 0.62, 1.25]:
-		var sample := bridge_center + Vector3(lateral.x * offset, 0.0, lateral.y * offset)
-		var cell: Vector2i = gs.grid.world_to_grid(sample)
-		if not cells.has(cell):
-			cells.append(cell)
-	return cells
-
-
-func _set_hydraulic_bridge_blocked(blocked: bool) -> bool:
-	var gs = _get_game_state()
-	if gs == null or gs.grid == null:
-		return false
-	for cell in _hydraulic_bridge_blocker_cells():
-		if blocked:
-			gs.grid.add_dynamic_blocker(cell, HYDRAULIC_BLOCKER_TAG)
-		elif str(gs.grid.dynamic_blockers.get(cell, "")) == HYDRAULIC_BLOCKER_TAG:
-			gs.grid.remove_dynamic_blocker(cell)
-	_hydraulic_grid_instance_id = gs.grid.get_instance_id()
-	return true
-
-
-func _sync_hydraulic_bridge_blocker() -> void:
-	if not _hydraulic_enabled():
-		return
-	var gs = _get_game_state()
-	if gs == null or gs.grid == null:
-		return
-	# The Grid instance may stay the same while a snapshot rolls the canonical
-	# bridge state backward or forward. Re-derive our tagged blocker on every
-	# restore/reset seam; _set_hydraulic_bridge_blocked is ownership-aware and
-	# idempotent, so this cannot erase another mechanism's blocker.
-	_set_hydraulic_bridge_blocked(not _cistern_bridge_installed)
-
-
-func _hydraulic_focus(target: Node3D, pause_gameplay := true, duration := 1.35) -> void:
-	if target == null or not is_instance_valid(target):
-		return
-	_request_preview_focus(
-		target,
-		duration,
-		pause_gameplay,
-		{
-			"reason": "hydraulic_consequence",
-			"hold": 0.35,
-			"offscreen_only": false,
-		}
-	)
-
-
-func _introduce_first_hydraulic_step() -> void:
-	if (
-		not _hydraulic_enabled()
-		or _first_sluice_open
-		or _hydraulic_first_control == null
-		or not is_instance_valid(_hydraulic_first_control)
-	):
-		return
-
-	var focus_target: Node3D = _hydraulic_first_control
-	if (
-		_hydraulic_first_landmark_light != null
-		and is_instance_valid(_hydraulic_first_landmark_light)
-	):
-		focus_target = _hydraulic_first_landmark_light
-	_hydraulic_focus(focus_target, true, 2.2)
-
-
-func open_first_sluice(source: Node = null) -> bool:
-	if not _hydraulic_control_receipt_pending(source, "first_sluice"):
-		return false
-	if not _hydraulic_enabled() or _first_sluice_open:
-		_rearm_hydraulic_control(source)
-		return false
-	_first_sluice_open = true
-	_first_sluice_flow_start_tick = _hydraulic_sequence_tick()
-	if _bridge_cargo_phase == BRIDGE_CARGO_ELEVATED and _bridge_intro_start_tick < 0.0:
-		_bridge_intro_start_tick = _hydraulic_sequence_tick()
-		_start_hydraulic_scavenger_approach()
-	_hydraulic_phase = "cistern_bridge"
-	_last_outcome = "hydraulic:first_sluice_open"
-	_apply_hydraulic_visual_state()
-	_flash_causal_feedback(_hydraulic_first_control, 1.7, 1.35)
-	_hydraulic_focus(_hydraulic_cistern_effect)
-	_request_preview_shake(0.08, 7.5)
-	_set_preview_step("generated_first_sluice_open")
-	_show_note("FIRST SLUICE // Water now reaches the cistern release.", 2.8)
-	_publish_generated_runtime_authority()
-	return true
-
-
-func release_cistern_bridge(source: Node = null) -> bool:
-	if not _hydraulic_control_receipt_pending(source, "cistern_release"):
-		return false
-	if (
-		not _hydraulic_enabled()
-		or _cistern_bridge_installed
-		or _bridge_cargo_phase == BRIDGE_CARGO_TRANSPORTING
-	):
-		_rearm_hydraulic_control(source)
-		return false
-	if not _first_sluice_open:
-		_rearm_hydraulic_control(source)
-		_hydraulic_focus(_hydraulic_first_control, false)
-		_show_note("The cistern is dry. Open the First Sluice first.", 2.2)
-		return false
-	if _bridge_cargo_phase != BRIDGE_CARGO_STAGED:
-		_rearm_hydraulic_control(source)
-		_hydraulic_focus(_hydraulic_bridge_cargo, false, 2.2)
-		_show_note("The loose span has not landed in the cistern basin yet.", 2.2)
-		return false
-	if not _bridge_scavenger_clear_recorded:
-		_rearm_hydraulic_control(source)
-		_hydraulic_focus(_hydraulic_scavenger, false, 2.2)
-		_show_note("Wait for the scavenger to clear the basin route.", 2.2)
-		return false
-	_bridge_transport_start_tick = _hydraulic_sequence_tick()
-	_bridge_current_flow_start_tick = _bridge_transport_start_tick
-	_bridge_cargo_phase = BRIDGE_CARGO_TRANSPORTING
-	_record_bridge_cargo_milestone("current_released_to_staged_cargo")
-	_apply_hydraulic_visual_state()
-	_schedule_bridge_cargo_transport()
-	_last_outcome = "hydraulic:bridge_cargo_transporting"
-	_set_hydraulic_bridge_blocked(true)
-	_flash_causal_feedback(_hydraulic_cistern_control, 1.8, 1.45)
-	_flash_hydraulic_link(_hydraulic_cargo_route_link, 1.8, 1.45)
-	_hydraulic_focus(_hydraulic_bridge_cargo, false, 4.0)
-	_request_preview_shake(0.10, 7.0)
-	_set_preview_step("generated_cistern_current_released")
-	_show_note("CURRENT RELEASED // The staged span is floating toward the gap.", 3.0)
-	_publish_generated_runtime_authority()
-	return true
-
-
-func toggle_borrowed_current(source: Node = null) -> bool:
-	if not _hydraulic_control_receipt_pending(source, "borrowed_current"):
-		return false
-	if not _hydraulic_enabled():
-		_rearm_hydraulic_control(source)
-		return false
-	if not _cistern_bridge_installed:
-		_rearm_hydraulic_control(source)
-		_hydraulic_focus(_hydraulic_bridge_cargo, false)
-		_show_note("The cargo has not seated across the cistern gap yet.", 2.2)
-		return false
-	_ensure_hydraulic_flow_router()
-	_routed_current_flow_start_tick = _hydraulic_sequence_tick()
-	if not _borrowed_current_diverted:
-		_borrowed_current_diverted = true
-		_main_current_restored = false
-		if _hydraulic_flow_router != null:
-			_hydraulic_flow_router.call("set_route", &"spillway")
-		if _spillway_delivery_phase == SPILLWAY_DELIVERY_IDLE:
-			_spillway_delivery_phase = SPILLWAY_DELIVERY_TRAVELING
-			_spillway_delivery_launch_tick = _hydraulic_sequence_tick()
-			if _hydraulic_flow_router != null:
-				_spillway_delivery_flow_id = int(
-					_hydraulic_flow_router.call(
-						"launch_flow",
-						&"spillway_lysate",
-						{"kind": "physical_lysate", "source": "borrowed_current"}
-					)
-				)
-		_hydraulic_phase = "food_spillway"
-		_last_outcome = "hydraulic:borrowed_current_diverted"
-		_apply_hydraulic_visual_state()
-		_flash_hydraulic_link(_hydraulic_spillway_link, 1.8, 1.45)
-		_flash_hydraulic_link(_hydraulic_exit_link, 1.8, 1.35)
-
-		_hydraulic_focus(_hydraulic_spillway_catch, false, 4.0)
-		_request_preview_shake(0.1, 7.0)
-		_set_preview_step("generated_borrowed_current_diverted")
-		_show_note(
-			"BORROWED CURRENT // Watch the lysate travel. The shelter is dry until you route the current back.",
-			3.4
-		)
-		_publish_generated_runtime_authority()
-		_rearm_hydraulic_control(source)
-		return true
-	_borrowed_current_diverted = false
-	_main_current_restored = true
-	if _hydraulic_flow_router != null:
-		_hydraulic_flow_router.call("set_route", &"main")
-	_hydraulic_phase = "exit_ready"
-	_last_outcome = "hydraulic:main_current_restored"
-	_apply_hydraulic_visual_state()
-	_flash_hydraulic_link(_hydraulic_exit_link, 1.9, 1.5)
-	_flash_hydraulic_link(_hydraulic_spillway_link, 1.6, 1.25)
-
-	_hydraulic_focus(_hydraulic_exit_beacon, false, 4.0)
-	_request_preview_shake(0.12, 6.5)
-	_set_preview_step("generated_main_current_restored")
-	_show_note(
-		"MAIN CURRENT RESTORED // The shelter route is open. Any lysate already launched keeps traveling on its captured route.",
-		3.5
-	)
-	_publish_generated_runtime_authority()
-	_rearm_hydraulic_control(source)
-	return true
-
-
-func _latch_borrowed_current_delivery(flow: Dictionary = {}) -> bool:
-	if not _hydraulic_enabled() \
-			or _spillway_delivery_phase != SPILLWAY_DELIVERY_TRAVELING \
-			or int(flow.get("flow_id", 0)) <= 0 \
-			or int(flow.get("flow_id", 0)) != _spillway_delivery_flow_id \
-			or str(flow.get("payload_id", "")) != "spillway_lysate" \
-			or str(flow.get("route", "")) != "spillway" \
-			or str(flow.get("status", "")) != "arrived" \
-			or not is_equal_approx(
-				float(flow.get("launch_tick", -1.0)),
-				_spillway_delivery_launch_tick
-			) \
-			or float(flow.get("arrival_tick", INF)) \
-				> _hydraulic_sequence_tick() + 0.000001:
-		return false
-	_spillway_delivery_flow_id = 0
-	_borrowed_current_delivery_latched = true
-	_spillway_delivery_phase = SPILLWAY_DELIVERY_AVAILABLE
-	# Arrival materializes the one authoritative payload at the catch. The traveling
-	# cube remains only a flow-front effect; collection can move this exact item but
-	# can never mint a replacement at the recipient.
-	var spillway_source_id := _physical_cache_source_id(_hydraulic_spillway_food_cache)
-	var spillway_item_id := _ensure_resource_source_item(spillway_source_id)
-	if spillway_item_id != "":
-		# Arrival is the deferred source's materialization boundary. Reconcile the
-		# indexes and interaction presenter immediately so no idle frame or save/load
-		# cycle is required before the exact item becomes serviceable.
-		_rebuild_resource_claim_indexes()
-		_apply_resource_claim_presenters()
-	_hydraulic_phase = "food_spillway" if _borrowed_current_diverted else "exit_ready"
-	_last_outcome = "hydraulic:spillway_delivery_arrived"
-	_apply_hydraulic_visual_state()
-	_update_spillway_delivery_visual()
-	_flash_hydraulic_link(_hydraulic_spillway_link, 1.6, 1.35)
-
-	_hydraulic_focus(_hydraulic_spillway_catch, false, 3.0)
-	_request_preview_shake(0.09, 7.0)
-	_set_preview_step("generated_spillway_delivery_arrived")
-	_show_note(
-		"LYSATE ARRIVED // It remains in the catch until a character with a free hand takes it.",
-		3.2
-	)
-	_publish_generated_runtime_authority()
-	return true
-
-
-func _hydraulic_progress_ready(node_id: String) -> bool:
-	if not _hydraulic_enabled():
-		return true
-	match node_id:
-		"node_02":
-			if not _first_sluice_open:
-				return _block_hydraulic_progress(
-					"Open the First Sluice before advancing the cistern.", _hydraulic_first_control
-				)
-		"node_03":
-			if not _cistern_bridge_installed:
-				return _block_hydraulic_progress(
-					"Release the cistern current and wait for the carried span to seat.",
-					_hydraulic_cistern_control
-				)
-		"node_04":
-			if _spillway_delivery_phase != SPILLWAY_DELIVERY_AVAILABLE:
-				return _block_hydraulic_progress(
-					(
-						"The lysate is still traveling to the catch."
-						if _spillway_delivery_phase == SPILLWAY_DELIVERY_TRAVELING
-						else "Divert the current only if you want the optional lysate detour."
-					),
-					_hydraulic_diverter_control,
-					_hydraulic_spillway_link
-				)
-		"exit_shelter":
-			if not bool(_hydraulic_state().get("hydraulic_exit_unlocked", false)):
-				return _block_hydraulic_progress(
-					"Restore the main current before leaving for the shelter.",
-					_hydraulic_diverter_control,
-					_hydraulic_exit_link
-				)
-	return true
-
-
-func _block_hydraulic_progress(
-	message: String, focus_target: Node3D, feedback_link: Node3D = null
-) -> bool:
-	_route_phase = "blocked"
-	_last_outcome = "blocked:hydraulic:%s" % _hydraulic_phase
-	_hydraulic_focus(focus_target, false)
-	if feedback_link != null:
-		_flash_hydraulic_link(feedback_link, 1.3, 1.15)
-	elif focus_target != null:
-		_flash_causal_feedback(focus_target, 1.3, 1.15)
-	_show_note(message, 2.5)
-	return false
-
-
-func _headless_complete_hydraulic_puzzle() -> void:
-	if not _hydraulic_enabled() or bool(_hydraulic_state().get("hydraulic_exit_unlocked", false)):
-		return
-	# Compatibility helper for older focused tests. Unlike the former pre-solve,
-	# this consumes the emitted solution contract instead of embedding an answer.
-	for action_v in _solution_world_actions():
-		if action_v is Dictionary:
-			_run_solution_world_action(str((action_v as Dictionary).get("action", "")))
 
 
 func get_playthrough_interaction_target(action_id: String) -> Node3D:
@@ -8558,17 +5183,8 @@ func get_playthrough_interaction_target(action_id: String) -> Node3D:
 		if span != null and is_instance_valid(span):
 			return span.call("get_producer_interactable") as Node3D
 		return null
-	match action_id:
-		"open_first_sluice":
-			return _hydraulic_first_target
-		"release_cistern_bridge":
-			return _hydraulic_cistern_target
-		"divert_current", "restore_main_current":
-			return _hydraulic_diverter_target
-		"catch_spillway":
-			return _hydraulic_catch_target
-		"enter_shelter":
-			return _node_targets.get("exit_shelter", null)
+	if action_id == "enter_shelter":
+		return _node_targets.get("exit_shelter", null)
 	return null
 
 
@@ -8694,9 +5310,6 @@ func _physical_cache_source_id(cache: Dictionary) -> String:
 	var explicit_id := str(cache.get("resource_source_id", ""))
 	if explicit_id != "":
 		return explicit_id
-	if bool(cache.get("hydraulic_spillway", false)) \
-			or cache == _hydraulic_spillway_food_cache:
-		return "hydraulic_spillway:%s" % str(_spec.get("id", "stretch"))
 	var branch_id := str(cache.get("branch_id", ""))
 	if branch_id != "":
 		return "branch_cache:%s" % branch_id
@@ -8759,46 +5372,23 @@ func _physical_cache_resource_contract(
 	cache: Dictionary, properties: Dictionary = {}
 ) -> Dictionary:
 	var source_id := _physical_cache_source_id(cache)
-	var node_id := str(properties.get(
-		"generated_node_id",
-		"node_04" if bool(cache.get("hydraulic_spillway", false)) else ""
-	))
+	var node_id := str(properties.get("generated_node_id", ""))
 	var source_position := _vec3(cache.get("position", []), Vector3.INF)
 	var resolved_properties := properties.duplicate(true)
 	if resolved_properties.is_empty():
-		if bool(cache.get("hydraulic_spillway", false)):
-			resolved_properties = {
-				"display_name": "Spillway Lysate",
-				"display_names_by_character":
-				{
-					"aster": "Lysate",
-					"peris": "Lysate",
-					"endo": "Starch",
-				},
-				"visual_color": Color(0.66, 0.86, 0.42),
-				"atp_restore": float(BRANCH_ATP),
-				"hydraulic_spillway": true,
-				"generated_node_id": "node_04",
-			}
-		else:
-			var reward_atp := float(cache.get("food_atp", BRANCH_ATP))
-			resolved_properties = {
-				"display_name": "Branch Lysate",
-				"display_names_by_character":
-				{
-					"aster": "Lysate",
-					"peris": "Lysate",
-					"endo": "Starch",
-				},
-				"visual_color": Color(0.66, 0.82, 0.4),
-				"atp_restore": reward_atp,
-				"branch_cache_index": int(cache.get("index", -1)),
-			}
-	if bool(cache.get("hydraulic_spillway", false)) and source_position != Vector3.INF:
-		# The catch housing sits above the data-layer source point. Keep the exact
-		# GameState item at that flat pickup coordinate while lifting only its
-		# rendered ground presenter so the arrived lysate is not buried in the basin.
-		resolved_properties["ground_visual_y"] = source_position.y + 0.92
+		var reward_atp := float(cache.get("food_atp", BRANCH_ATP))
+		resolved_properties = {
+			"display_name": "Branch Lysate",
+			"display_names_by_character":
+			{
+				"aster": "Lysate",
+				"peris": "Lysate",
+				"endo": "Starch",
+			},
+			"visual_color": Color(0.66, 0.82, 0.4),
+			"atp_restore": reward_atp,
+			"branch_cache_index": int(cache.get("index", -1)),
+		}
 	return {
 		"source_id": source_id,
 		"node_id": node_id,
@@ -8868,23 +5458,6 @@ func _initialize_resource_claim_authority() -> void:
 		_resource_claims[source_id] = _new_resource_claim(
 			_physical_cache_resource_contract(cache)
 		)
-	if not _hydraulic_spillway_food_cache.is_empty():
-		_hydraulic_spillway_food_cache["hydraulic_spillway"] = true
-		var source_id := _physical_cache_source_id(_hydraulic_spillway_food_cache)
-		_hydraulic_spillway_food_cache["resource_source_id"] = source_id
-		_resource_claims[source_id] = _new_resource_claim(
-			_physical_cache_resource_contract(_hydraulic_spillway_food_cache)
-		)
-
-
-func _resource_source_is_deferred(claim: Dictionary) -> bool:
-	return str(claim.get("source_id", "")).begins_with("hydraulic_spillway:")
-
-
-func _resource_source_should_exist(claim: Dictionary) -> bool:
-	if not _resource_source_is_deferred(claim):
-		return true
-	return _spillway_delivery_phase == SPILLWAY_DELIVERY_AVAILABLE
 
 
 func _ensure_resource_source_item(source_id: String) -> String:
@@ -8899,7 +5472,7 @@ func _ensure_resource_source_item(source_id: String) -> String:
 		return str(claim.get("item_id", ""))
 	# A nonempty missing id means a previously materialized identity was destroyed.
 	# Never mint a replacement for that ambiguous history.
-	if str(claim.get("item_id", "")) != "" or not _resource_source_should_exist(claim):
+	if str(claim.get("item_id", "")) != "":
 		return ""
 	var source_position := _vec3(claim.get("source_position", []), Vector3.INF)
 	var item_type := str(claim.get("item_type", ""))
@@ -8918,15 +5491,11 @@ func _ensure_resource_source_item(source_id: String) -> String:
 	return item_id
 
 
-func _materialize_resource_sources(include_deferred: bool) -> void:
+func _materialize_resource_sources() -> void:
 	var source_ids: Array = _resource_claims.keys()
 	source_ids.sort()
 	for source_id_v in source_ids:
-		var source_id := str(source_id_v)
-		var claim := _resource_claims.get(source_id, {}) as Dictionary
-		if _resource_source_is_deferred(claim) and not include_deferred:
-			continue
-		_ensure_resource_source_item(source_id)
+		_ensure_resource_source_item(str(source_id_v))
 	_rebuild_resource_claim_indexes()
 	_apply_resource_claim_presenters()
 
@@ -9002,8 +5571,6 @@ func _commit_resource_claim_progression(claim: Dictionary) -> void:
 	if chain_output_ref != "":
 		_produced_chain_states[chain_output_ref] = node_id
 	_apply_generated_section_transition(node, false, str(claim.get("recipient", "")))
-	if _runtime_handler_for_node(node) == RuntimeRegistryScript.HANDLER_HYDRAULIC_SPILLWAY:
-		_spillway_delivery_phase = SPILLWAY_DELIVERY_COLLECTED
 
 
 func _rebuild_resource_claim_indexes() -> void:
@@ -9063,31 +5630,6 @@ func _apply_resource_claim_presenters() -> void:
 		var interactable = cache.get("interactable", null)
 		if interactable != null and interactable.has_method("set_interaction_enabled"):
 			interactable.call("set_interaction_enabled", available)
-	if not _hydraulic_spillway_food_cache.is_empty():
-		var source_id := _physical_cache_source_id(_hydraulic_spillway_food_cache)
-		var claimed := _resource_claim_phase(source_id) == RESOURCE_PHASE_CLAIMED
-		var source_available := _resource_claim_item_is_at_source(
-			_get_game_state(), _resource_claims.get(source_id, {}) as Dictionary
-		)
-		_hydraulic_spillway_food_cache["collected"] = claimed
-		if claimed:
-			_spillway_delivery_phase = SPILLWAY_DELIVERY_COLLECTED
-		_set_branch_cache_available_visual(
-			_hydraulic_spillway_food_cache,
-			not claimed
-			and (
-				_spillway_delivery_phase == SPILLWAY_DELIVERY_TRAVELING
-				or source_available
-			)
-		)
-		var interactable = _hydraulic_spillway_food_cache.get("interactable", null)
-		if interactable != null and interactable.has_method("set_interaction_enabled"):
-			interactable.call(
-				"set_interaction_enabled",
-				not claimed
-				and source_available
-				and _spillway_delivery_phase == SPILLWAY_DELIVERY_AVAILABLE
-			)
 
 
 func _resource_claim_mutation_authorized(source_id: String, source: Node) -> bool:
@@ -9110,7 +5652,7 @@ func _finish_resource_claim(source_id: String, source: Node = null) -> Dictionar
 		return {}
 	var claim := claim_v as Dictionary
 	claim["phase"] = RESOURCE_PHASE_CLAIMED
-	claim["claimed_tick"] = _hydraulic_sequence_tick()
+	claim["claimed_tick"] = _sequence_tick()
 	_resource_claims[source_id] = claim
 	_commit_resource_claim_progression(claim)
 	_rebuild_resource_claim_indexes()
@@ -9237,7 +5779,7 @@ func _begin_resource_claim(
 	claim["counts_physical_food"] = bool(
 		claim.get("counts_physical_food", counts_physical_food)
 	)
-	claim["claim_tick"] = _hydraulic_sequence_tick()
+	claim["claim_tick"] = _sequence_tick()
 	_resource_claims[source_id] = claim
 	# The commitment already names an extant source item. Publish it before pickup
 	# can emit observer-visible feedback, then move that exact identity.
@@ -9257,11 +5799,6 @@ func _resource_claim_source_interactable(source_id: String) -> Node:
 		if cache_v is Dictionary \
 				and _physical_cache_source_id(cache_v as Dictionary) == source_id:
 			return (cache_v as Dictionary).get("interactable", null) as Node
-	if (
-		not _hydraulic_spillway_food_cache.is_empty()
-		and _physical_cache_source_id(_hydraulic_spillway_food_cache) == source_id
-	):
-		return _hydraulic_spillway_food_cache.get("interactable", null) as Node
 	return null
 
 
@@ -9284,13 +5821,6 @@ func _resource_claim_template_for_source(source_id: String) -> Dictionary:
 			return _new_resource_claim(
 				_physical_cache_resource_contract(cache_v as Dictionary)
 			)
-	if (
-		not _hydraulic_spillway_food_cache.is_empty()
-		and _physical_cache_source_id(_hydraulic_spillway_food_cache) == source_id
-	):
-		return _new_resource_claim(
-			_physical_cache_resource_contract(_hydraulic_spillway_food_cache)
-		)
 	return {}
 
 
@@ -9345,8 +5875,6 @@ func _reconcile_resource_claims_after_restore() -> void:
 			_resume_resource_claim(source_id)
 		elif phase == RESOURCE_PHASE_CLAIMED:
 			_commit_resource_claim_progression(claim)
-		elif not _resource_source_should_exist(claim):
-			continue
 		elif _resource_claim_item_is_valid(_get_game_state(), claim):
 			if not _resource_claim_item_is_at_source(_get_game_state(), claim):
 				_finish_resource_claim(source_id)
@@ -9407,54 +5935,6 @@ func _transfer_physical_lysate_from_receipt(
 	return pickup
 
 
-## Always-refusing stub. Arrival at the catch has to consume
-## node_04's exact one-shot interaction receipt.
-func _collect_hydraulic_spillway_food(_interaction_actor := "") -> bool:
-	return false
-
-
-func _collect_hydraulic_spillway_food_from_receipt(
-	interaction_actor: String, source: Node
-) -> bool:
-	if source == null \
-			or source != _hydraulic_spillway_food_cache.get("interactable", null) \
-			or str(source.get("active_character")) != interaction_actor:
-		return false
-	var pickup := _transfer_physical_lysate_from_receipt(
-		_hydraulic_spillway_food_cache,
-		{
-			"display_name": "Spillway Lysate",
-			"display_names_by_character":
-			{
-				"aster": "Lysate",
-				"peris": "Lysate",
-				"endo": "Starch",
-			},
-			"visual_color": Color(0.66, 0.86, 0.42),
-			"atp_restore": float(BRANCH_ATP),
-			"hydraulic_spillway": true,
-			"generated_node_id": "node_04",
-		},
-		source
-	)
-	if pickup.is_empty():
-		return false
-	_spillway_delivery_phase = SPILLWAY_DELIVERY_COLLECTED
-	_apply_hydraulic_visual_state()
-	_update_spillway_delivery_visual()
-	var recipient := str(pickup.get("recipient", ""))
-	_last_outcome = "physical_food:spillway:%s" % recipient
-	_show_message(
-		(
-			"%s caught the spillway lysate (+%d ATP when consumed). Their portrait shows it."
-			% [recipient.capitalize(), BRANCH_ATP]
-		),
-		2.8
-	)
-	_publish_generated_runtime_authority()
-	return true
-
-
 ## How many branch salvage caches exist / were collected — for tests + overlays.
 func get_branch_cache_count() -> int:
 	return _branch_caches.size()
@@ -9508,12 +5988,8 @@ func _build_generated_node(node: Dictionary) -> void:
 	var physical_source_handler := handler_id in [
 		RuntimeRegistryScript.HANDLER_PHYSICAL_LYSATE,
 		RuntimeRegistryScript.HANDLER_PHYSICAL_PAYLOAD,
-		RuntimeRegistryScript.HANDLER_HYDRAULIC_SPILLWAY,
 	]
-	var ground_resource_handler := handler_id in [
-		RuntimeRegistryScript.HANDLER_PHYSICAL_LYSATE,
-		RuntimeRegistryScript.HANDLER_PHYSICAL_PAYLOAD,
-	]
+	var ground_resource_handler := physical_source_handler
 	var approach := _vec3(
 		node.get("approach_position", []), pos + Vector3(0.0, 0.0, pad_size.z * 0.34)
 	)
@@ -9553,7 +6029,7 @@ func _build_generated_node(node: Dictionary) -> void:
 		marker.set_meta("visual_role", "interactive_anchor")
 		highlight_meshes.append(marker)
 		_node_markers[node_id] = marker
-	if actionable and not _hydraulic_enabled():
+	if actionable:
 		var hierarchy := _visual_hierarchy()
 		var focus_position := approach if physical_source_handler else pos
 		var focus_light := _add_light(
@@ -9655,8 +6131,6 @@ func _build_generated_node(node: Dictionary) -> void:
 		target_center = approach + Vector3(0.0, 0.25, 0.0)
 	elif physical_source_handler:
 		target_size = Vector3(1.8, 1.35, 1.8)
-	if _hydraulic_enabled() and not ground_resource_handler:
-		target_size = Vector3(1.5, 1.35, 1.5)
 	var target := _add_outline_target(
 		self,
 		"GeneratedNodeTarget_%s" % node_id,
@@ -9699,27 +6173,8 @@ func _build_generated_node(node: Dictionary) -> void:
 func _on_generated_node_interacted(node_id: String, interactable: Node) -> void:
 	if interactable == null or not is_instance_valid(interactable):
 		return
-	var committed := _commit_generated_node_from_receipt(node_id, interactable)
-	if not committed:
+	if not _commit_generated_node_from_receipt(node_id, interactable):
 		_rearm_generated_node_control(interactable)
-		return
-	if node_id == "node_04":
-		var completed_tick := _hydraulic_sequence_tick()
-		if _hydraulic_catch_receipt.is_empty():
-			_hydraulic_catch_receipt = _new_hydraulic_catch_receipt()
-		_hydraulic_catch_receipt["phase"] = HYDRAULIC_CATCH_RECEIPT_COMPLETE
-		_hydraulic_catch_receipt["source_interactable_id"] = str(
-			interactable.get("data_id")
-		)
-		_hydraulic_catch_receipt["actor_id"] = str(
-			interactable.get("active_character")
-		)
-		if float(_hydraulic_catch_receipt.get("started_tick", -1.0)) < 0.0:
-			_hydraulic_catch_receipt["started_tick"] = completed_tick
-			_hydraulic_catch_receipt["deadline"] = completed_tick
-		_hydraulic_catch_receipt["completed_tick"] = completed_tick
-		_cancel_hydraulic_catch_receipt_event()
-		_publish_generated_runtime_authority()
 
 
 ## Resolve only concrete endpoints owned by the implemented runtime handler. The
@@ -9761,11 +6216,6 @@ func _generated_section_runtime_feedback_binding(
 				"target": interactable,
 				"default_label": "PARTY ENTERS SHELTER",
 			}
-		# The hydraulic spillway already owns authored controls, a traveling physical
-		# payload, a catch, and exact route links. A second generic node link would
-		# falsely collapse that sequence back into one abstract click.
-		RuntimeRegistryScript.HANDLER_HYDRAULIC_SPILLWAY:
-			return {}
 	return {}
 
 
@@ -9897,8 +6347,6 @@ func _generated_interaction_duration(node: Dictionary) -> float:
 			return 0.7
 		RuntimeRegistryScript.HANDLER_PHYSICAL_PAYLOAD:
 			return 1.0
-		RuntimeRegistryScript.HANDLER_HYDRAULIC_SPILLWAY:
-			return 0.0
 	return 0.0
 
 
@@ -10774,43 +7222,10 @@ func _apply_completed_exit_shelter_transaction(announce: bool) -> void:
 	_cancel_scarcity_drain()
 	_disable_exit_shelter_interaction()
 	_highlight_node("exit_shelter", true)
-	if not _is_shelter2_stim_cutscene_target():
-		_finalize_shelter2_stim_cutscene(announce)
-		return
-	var controller := _ensure_shelter2_stim_cutscene_controller()
-	if controller != null and bool(controller.call("is_complete")):
-		_finalize_shelter2_stim_cutscene(announce)
-		return
-	_route_phase = "shelter_cutscene"
-	_last_outcome = "shelter_cutscene"
-	_first_shelter_beat_fired = false
-	_set_preview_step("generated_shelter2_stim_cutscene")
-	_publish_generated_runtime_authority()
-	if controller != null and bool(controller.call("is_playing")):
-		return
-	var completed_tick := float(
-		_exit_shelter_transaction.get("completed_tick", _hydraulic_sequence_tick())
-	)
-	if controller == null or not _shelter2_stim_cutscene_can_present():
-		if controller != null:
-			controller.call("complete_without_playback", completed_tick)
-		else:
-			_finalize_shelter2_stim_cutscene(announce)
-		return
-	if not bool(controller.call(
-		"begin", _shelter2_stim_cutscene_placement_transform()
-	)):
-		push_warning(
-			"generated_stretch_chunk: Shelter 2 cutscene presentation could not acquire ownership"
-		)
-		controller.call("complete_without_playback", completed_tick)
+	_finalize_generated_stretch_completion(announce)
 
 
-func _on_shelter2_stim_cutscene_completed() -> void:
-	_finalize_shelter2_stim_cutscene(not _restoring_generated_authority)
-
-
-func _finalize_shelter2_stim_cutscene(announce: bool) -> void:
+func _finalize_generated_stretch_completion(announce: bool) -> void:
 	var was_complete := _generated_completion_ready()
 	_route_phase = "complete"
 	_last_outcome = "success"
@@ -10900,7 +7315,7 @@ func _resume_exit_shelter_transaction(announce := false) -> bool:
 	if paid_count > 0:
 		_rests_taken += 1
 	_exit_shelter_transaction["phase"] = EXIT_PHASE_COMPLETE
-	_exit_shelter_transaction["completed_tick"] = _hydraulic_sequence_tick()
+	_exit_shelter_transaction["completed_tick"] = _sequence_tick()
 	_apply_completed_exit_shelter_transaction(announce)
 	_rebuild_resource_claim_indexes()
 	_publish_generated_runtime_authority()
@@ -10937,13 +7352,6 @@ func _reach_exit_shelter() -> bool:
 		_show_message("A downstream break is still open. Work the producer in its side branch.", 2.2)
 		_show_note("ROUTE INCOMPLETE // Follow the branch linkage back to its producer.", 3.5)
 		return false
-	if _hydraulic_enabled() and not bool(_hydraulic_state().get("hydraulic_exit_unlocked", false)):
-		_block_hydraulic_progress(
-			"Restore the main current before leaving for the shelter.",
-			_hydraulic_diverter_control,
-			_hydraulic_exit_link
-		)
-		return false
 	var payload_delivery := _required_payload_delivery()
 	if not bool(payload_delivery.get("ready", false)):
 		var missing_node := str(payload_delivery.get("node_id", ""))
@@ -10969,7 +7377,7 @@ func _reach_exit_shelter() -> bool:
 		"rest_plan": (preflight.get("rest_plan", {}) as Dictionary).duplicate(true),
 		"payload_node_ids": (preflight.get("payload_node_ids", []) as Array).duplicate(),
 		"payload_item_ids": (preflight.get("payload_item_ids", []) as Array).duplicate(),
-		"started_tick": _hydraulic_sequence_tick(),
+		"started_tick": _sequence_tick(),
 		"completed_tick": -1.0,
 	}
 	_route_phase = "exit_committing"
@@ -10997,8 +7405,7 @@ func _rearm_exit_shelter_interaction() -> void:
 			interactable.call("set_interaction_enabled", true)
 		# Generated-node interaction is delegated through the visible outline target.
 		interactable.set("input_ray_pickable", false)
-	if not _hydraulic_enabled():
-		_set_outline_target_enabled(_node_targets.get("exit_shelter", null), true)
+	_set_outline_target_enabled(_node_targets.get("exit_shelter", null), true)
 
 
 ## Always-refusing stub. Generated resources are finite physical sources,

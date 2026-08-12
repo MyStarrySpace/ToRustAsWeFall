@@ -7752,16 +7752,6 @@ func _diagnostic_solution_action_target_id(
 	if action_group == "branch":
 		return str(action.get("id", ""))
 	match str(action.get("action", "")):
-		"open_sluice", "open_first_sluice":
-			return "open_first_sluice"
-		"release_bridge", "release_cistern_bridge":
-			return "release_cistern_bridge"
-		"divert", "divert_current":
-			return "divert_current"
-		"restore", "restore_main_current":
-			return "restore_main_current"
-		"catch", "catch_spillway":
-			return "catch_spillway"
 		"enter_shelter":
 			return "enter_shelter"
 	return str(action.get("target", ""))
@@ -8085,16 +8075,6 @@ func _diagnostic_solution_action_completed(
 				return str((span_v as Dictionary).get("phase", "")) == expected
 		return false
 	match str(action.get("action", "")):
-		"open_sluice", "open_first_sluice":
-			return bool(chunk.get("first_sluice_open", false))
-		"release_bridge", "release_cistern_bridge":
-			return bool(chunk.get("cistern_bridge_installed", false))
-		"divert", "divert_current":
-			return bool(chunk.get("borrowed_current_diverted", false))
-		"restore", "restore_main_current":
-			return bool(chunk.get("main_current_restored", false))
-		"catch", "catch_spillway":
-			return bool(chunk.get("hydraulic_spillway_food_collected", false))
 		"enter_shelter":
 			return bool(chunk.get("shelter_rested", false))
 	return false

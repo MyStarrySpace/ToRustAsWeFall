@@ -10,18 +10,6 @@
 							{
 								"branch": "main",
 								"children": [],
-								"entry": "shelter_1",
-								"exit": "shelter_2",
-								"id": "stretch_003",
-								"kind": "stretch",
-								"region": "Channels",
-								"spec_id": "generated_teaching_channels_shelter_1_to_2",
-								"stage": 2,
-								"title": "Generated Teaching Channels: Shelter 1 -> Shelter 2"
-							},
-							{
-								"branch": "main",
-								"children": [],
 								"entry": "shelter_2",
 								"exit": "shelter_3",
 								"id": "stretch_004",

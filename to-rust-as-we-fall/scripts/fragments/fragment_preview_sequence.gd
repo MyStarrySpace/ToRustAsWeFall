@@ -118,8 +118,6 @@ const PREVIEW_ENTRIES := [
 	{"id": "rest_lab", "chunk": "rest_lab", "title": "Shelter Rest Lab", "stage": 2},
 	# Compatibility id retained for old links; the scene now inherits the one canonical chase.
 	{"id": "lockout", "chunk": "lockout", "title": "The Lockout Chase (legacy alias)", "stage": 4},
-	{"id": "generated_stretch", "chunk": "generated_stretch", "title": "Generated Stretch", "stage": 2,
-		"config": {"spec_path": "res://data/generated_stretches/generated_teaching_channels_shelter_1_to_2.json"}},
 	{"id": "dusk_run", "chunk": "dusk_run", "title": "Dusk Run", "stage": 3},
 	{"id": "flora_garden", "chunk": "flora_garden", "title": "Flora Garden", "stage": 3},
 	{"id": "pump_hall", "chunk": "data_fragment", "title": "Pump Hall (tactical stealth)", "stage": 3,
@@ -253,6 +251,8 @@ const PREVIEW_ENTRIES := [
 	{"id": "windup_window", "chunk": "windup_window", "title": "Windup Window", "stage": 3},
 	{"id": "push_chamber", "chunk": "push_chamber", "title": "Push Chamber", "stage": 3},
 	{"id": "long_hall", "chunk": "long_hall", "title": "Long Hall", "stage": 3},
+	{"id": "generated_stretch", "chunk": "generated_stretch", "title": "Generated Stretch", "stage": 2,
+		"config": {"spec_path": "res://data/generated_stretches/generated_sample_teaching_first_fork.json"}},
 ]
 
 # Exported-browser regression fixtures are immutable launch contracts, not game

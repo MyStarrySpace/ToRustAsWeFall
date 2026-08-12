@@ -5,8 +5,7 @@ const Solver := preload("res://scripts/generation/stretch_solution_solver.gd")
 const Replay := preload("res://scripts/generation/stretch_replay_builder.gd")
 const RuntimeRegistry := preload("res://scripts/generation/generated_node_runtime_registry.gd")
 
-const HYDRAULIC_SPEC_PATH := "res://data/generated_stretches/generated_teaching_channels_shelter_1_to_2.json"
-const FINITE_CURRENT_MODEL_ID := "finite_current_routing_v1"
+const Catalog := preload("res://scripts/generation/stretch_spec_catalog.gd")
 
 var checks := 0
 var failures := 0
@@ -37,109 +36,29 @@ func _init() -> void:
 	check((replay.get("solutions", []) as Array).size() == 2, "replay keeps spotlight and shadow solutions")
 	check(JSON.stringify(replay) == JSON.stringify(Replay.build(b)), "same systems seed emits the same replay")
 
-	var hydraulic_fixture := Generator.load_spec(HYDRAULIC_SPEC_PATH)
-	check(not hydraulic_fixture.is_empty(), "authored hydraulic teaching fixture loads")
-	if not hydraulic_fixture.is_empty():
-		var fixture_validation := Generator.validate_systems_contract(hydraulic_fixture)
+	var teaching_fixture: Dictionary = Catalog.load_spec(Catalog.TEACHING_SPEC)
+	check(not teaching_fixture.is_empty(), "authored teaching fixture loads")
+	if not teaching_fixture.is_empty():
+		var fixture_validation := Generator.validate_systems_contract(teaching_fixture)
 		check(
 			bool(fixture_validation.get("valid", false)),
-			"saved hydraulic teaching fixture validates: %s" % str(fixture_validation.get("errors", []))
+			"saved teaching fixture validates: %s" % str(fixture_validation.get("errors", []))
 		)
-		check_hydraulic_solution_projection(hydraulic_fixture, "saved hydraulic fixture")
-		var hydraulic := Generator.generate(hydraulic_fixture.get("settings", {}))
-		check(bool(hydraulic.get("success", false)), "authored hydraulic teaching stretch regenerates")
-		if bool(hydraulic.get("success", false)):
-			check_hydraulic_solution_projection(hydraulic, "regenerated hydraulic stretch")
-			var hydraulic_contract: Dictionary = hydraulic.get("systems_contract", {})
+		check(
+			str(teaching_fixture.get("systems_contract", {}).get("reasoning_solved_at", ""))
+				== "exit_shelter",
+			"saved teaching route resolves its reasoning at shelter arrival"
+		)
+		var regenerated := Generator.generate(teaching_fixture.get("settings", {}))
+		check(bool(regenerated.get("success", false)), "authored teaching stretch regenerates")
+		if bool(regenerated.get("success", false)):
 			check(
-				str(hydraulic_contract.get("focus_model_id", "")) == FINITE_CURRENT_MODEL_ID,
-				"hydraulic chain is one finite-current focus model"
-			)
-			var focus_roles := []
-			for raw_beat in hydraulic_contract.get("lesson_spine", []):
-				if raw_beat is Dictionary \
-						and str((raw_beat as Dictionary).get("model_id", "")) == FINITE_CURRENT_MODEL_ID:
-					focus_roles.append(str((raw_beat as Dictionary).get("beat", "")))
-			check(
-				focus_roles == ["teach", "test"],
-				"hydraulic main route ends after its explicit teach and bridge test"
+				bool(Generator.validate_systems_contract(regenerated).get("valid", false)),
+				"regenerated teaching stretch validates its systems contract"
 			)
 			check(
-				str(hydraulic_contract.get("reasoning_solved_at", "")) == "hydraulic:cistern_bridge",
-				"seating the carried bridge solves the mandatory hydraulic reasoning"
-			)
-			var optional_focus_roles := []
-			var all_optional_beats_noncritical := true
-			for raw_beat in hydraulic_contract.get("optional_lesson_spine", []):
-				if raw_beat is Dictionary \
-						and str((raw_beat as Dictionary).get("model_id", "")) == FINITE_CURRENT_MODEL_ID:
-					optional_focus_roles.append(str((raw_beat as Dictionary).get("beat", "")))
-					all_optional_beats_noncritical = (
-						all_optional_beats_noncritical
-						and not bool((raw_beat as Dictionary).get("critical", true))
-					)
-			check(
-				optional_focus_roles == ["transfer", "application", "application"]
-				and all_optional_beats_noncritical,
-				"spillway routing is a noncritical transfer, restore-in-flight, and catch branch"
-			)
-			var hydraulic_validation := Generator.validate_systems_contract(hydraulic)
-			check(
-				bool(hydraulic_validation.get("focus_has_transfer", false))
-				and bool(hydraulic_validation.get("focus_transfer_follows_test", false)),
-				"hydraulic transfer is sequenced after its teach and test"
-			)
-			var action_ids := []
-			var action_boundaries := []
-			for raw_action in hydraulic.get("headless", {}).get("solution", {}).get("world_actions", []):
-				if raw_action is Dictionary:
-					action_ids.append(str((raw_action as Dictionary).get("action", "")))
-					action_boundaries.append(str((raw_action as Dictionary).get("before_node", "")))
-			check(
-				action_ids == ["open_sluice", "release_bridge"],
-				"headless solution contains only mandatory main-route hydraulic actions"
-			)
-			check(
-				action_boundaries == ["node_02", "node_03"],
-				"mandatory hydraulic actions declare their traversal interleave boundaries"
-			)
-			var optional_action_ids := []
-			var optional_actions: Array = hydraulic_contract.get("optional_world_actions", [])
-			for raw_action in optional_actions:
-				if raw_action is Dictionary:
-					optional_action_ids.append(str((raw_action as Dictionary).get("action", "")))
-			check(
-				optional_action_ids == ["divert", "restore", "catch"],
-				"spillway actions are explicit but excluded from the mandatory solution"
-			)
-			var capture: Dictionary = (
-				optional_actions[0].get("captured_route_timing", {})
-				if not optional_actions.is_empty()
-				else {}
-			)
-			check(
-				str(capture.get("route_captured_at", "")) == "launch"
-				and is_equal_approx(float(capture.get("travel_delay_seconds", 0.0)), 2.6)
-				and bool(capture.get("valve_changes_after_launch_do_not_redirect", false)),
-				"optional payload captures the spillway route for its 2.6-second travel"
-			)
-			check(
-				hydraulic_contract.get("optional_world_action_policy", {}).get(
-					"preferred_transfer_order", []
-				) == ["divert", "restore", "catch"],
-				"optional transfer asks the player to restore main flow while the payload is moving"
-			)
-			var missing_test := hydraulic.duplicate(true)
-			var broken_spine: Array = missing_test.get("systems_contract", {}).get("lesson_spine", [])
-			for beat_index in range(broken_spine.size()):
-				if broken_spine[beat_index] is Dictionary \
-						and str((broken_spine[beat_index] as Dictionary).get("model_id", "")) == FINITE_CURRENT_MODEL_ID \
-						and str((broken_spine[beat_index] as Dictionary).get("beat", "")) == "test":
-					broken_spine.remove_at(beat_index)
-					break
-			check(
-				not bool(Generator.validate_systems_contract(missing_test).get("valid", true)),
-				"validation rejects transfer when its preceding test is missing"
+				str(regenerated.get("systems_contract", {}).get("focus_model_id", "")) != "",
+				"regenerated teaching stretch names a focus causal model"
 			)
 
 	# Spatial composition is selected through the archetype's affordance contract. Plant-as-tool's
@@ -418,42 +337,6 @@ func _init() -> void:
 	])
 	print("STRETCH SYSTEMS GENERATION: %d/%d checks passed" % [checks - failures, checks])
 	quit(1 if failures > 0 else 0)
-
-
-func check_hydraulic_solution_projection(spec: Dictionary, label: String) -> void:
-	var mandatory_action_nodes := []
-	for raw_action in spec.get("headless", {}).get("solution", {}).get("actions", []):
-		if raw_action is Dictionary:
-			mandatory_action_nodes.append(str((raw_action as Dictionary).get("node", "")))
-	check(
-		not mandatory_action_nodes.has("node_04"),
-		"%s does not claim the skipped spillway catch as a mandatory action" % label
-	)
-	var optional_traversal_count := 0
-	var optional_projection_valid := true
-	for raw_path in spec.get("headless", {}).get("solution_paths", []):
-		if not (raw_path is Dictionary):
-			continue
-		for raw_approach in (raw_path as Dictionary).get("approach_per_node", []):
-			if not (raw_approach is Dictionary):
-				continue
-			var approach := raw_approach as Dictionary
-			if str(approach.get("node", "")) != "node_04":
-				continue
-			optional_traversal_count += 1
-			optional_projection_valid = (
-				optional_projection_valid
-				and str(approach.get("approach_id", "")) == "skip_optional_interaction"
-				and str(approach.get("kind", "")) == "optional_layout_traversal"
-				and str(approach.get("runtime_handler", "")) == ""
-				and str(approach.get("optional_runtime_handler", ""))
-					== "authored_hydraulic_spillway_food_v1"
-				and bool(approach.get("optional_interaction", false))
-			)
-	check(
-		optional_traversal_count == 2 and optional_projection_valid,
-		"%s marks the catch as an optional pass-through for both loadouts" % label
-	)
 
 
 func check(condition: bool, label: String) -> void:

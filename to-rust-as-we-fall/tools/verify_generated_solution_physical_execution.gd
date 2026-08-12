@@ -8,20 +8,9 @@ extends SceneTree
 ##     --script res://tools/verify_generated_solution_physical_execution.gd
 
 const CHUNK_SCENE := preload("res://scenes/fragments/chunks/generated_stretch_chunk.tscn")
-const SPEC_PATH := \
-		"res://data/generated_stretches/generated_teaching_channels_shelter_1_to_2.json"
-const CARGO_MILESTONE_KEY := "generated_hydraulic_bridge_cargo_milestone"
+const Catalog := preload("res://scripts/generation/stretch_spec_catalog.gd")
 const BRANCH_INTERACTION_LIMIT := 2.25
 const EPSILON := 0.001
-
-const EXPECTED_CARGO_EVENTS := [
-	"cargo_elevated_on_breakaway_rack",
-	"scavenger_dislodged_cargo",
-	"cargo_staged_in_basin",
-	"scavenger_reached_lysate_source",
-	"current_released_to_staged_cargo",
-	"cargo_seated_as_bridge",
-]
 
 
 class PhysicalSolutionHost:
@@ -68,7 +57,7 @@ func _run() -> void:
 	root.add_child(host)
 	var chunk := CHUNK_SCENE.instantiate()
 	chunk.configure_chunk({
-		"spec_path": SPEC_PATH,
+		"spec_path": Catalog.teaching_path(),
 		"game_mode": "neutral",
 		"food_test": "neutral",
 	})
@@ -79,6 +68,7 @@ func _run() -> void:
 		await process_frame
 	host.grid = GridWorld.from_data(chunk.call("get_grid_data"))
 	host.game_state.grid = host.grid
+	chunk.call("on_game_state_grid_ready")
 	chunk.reset_preview_state()
 	await process_frame
 
@@ -92,10 +82,7 @@ func _run() -> void:
 	var solution: Dictionary = chunk.call("get_solution_script")
 	var branch_actions: Array = solution.get("branch_actions", [])
 	check(
-		not bool(chunk.call("open_first_sluice"))
-		and not bool(chunk.call("release_cistern_bridge"))
-		and not bool(chunk.call("toggle_borrowed_current"))
-		and not bool(chunk.call("activate_generated_node", "node_02", "aster"))
+		not bool(chunk.call("activate_generated_node", "node_02", "aster"))
 		and not bool(chunk.call("choose_generated_route", "main_00_01", false)),
 		"public consequence and semantic-route helpers cannot advance the solution"
 	)
@@ -113,9 +100,8 @@ func _run() -> void:
 		)
 
 	verify_solution_result(result)
-	verify_event_trace(host.game_state.event_log, solution, chunk)
+	verify_event_trace(host.game_state.event_log, solution, chunk, host.grid)
 	verify_branch_ranges(branch_actions)
-	verify_cargo_timeline(chunk, host.game_state.event_log)
 
 	host.queue_free()
 	await process_frame
@@ -162,7 +148,7 @@ func verify_solution_result(result: Dictionary) -> void:
 	)
 
 
-func verify_event_trace(log: EventLog, solution: Dictionary, chunk: Node) -> void:
+func verify_event_trace(log: EventLog, solution: Dictionary, chunk: Node, grid) -> void:
 	var branch_actions: Array = solution.get("branch_actions", [])
 	var snap_count := 0
 	var moves: Array[Dictionary] = []
@@ -173,7 +159,9 @@ func verify_event_trace(log: EventLog, solution: Dictionary, chunk: Node) -> voi
 		var kind: StringName = event.get("kind", &"")
 		if kind == GameEvent.KIND_SNAP_POSITION:
 			snap_count += 1
-		elif kind == GameEvent.KIND_MOVE_TO_POS:
+		elif kind == GameEvent.KIND_MOVE_TO_POS \
+				or kind == GameEvent.KIND_MOVE_TO_CELL \
+				or kind == GameEvent.KIND_MOVE_CROSS_LEVEL:
 			var move := event.duplicate(true)
 			move["event_index"] = event_index
 			moves.append(move)
@@ -192,7 +180,7 @@ func verify_event_trace(log: EventLog, solution: Dictionary, chunk: Node) -> voi
 	check(snap_count == 0, "the solution event trace contains no SNAP_POSITION shortcut")
 	check(
 		moves.size() >= branch_actions.size() * 2,
-		"MOVE_TO_POS records both legs of every mandatory branch detour"
+		"movement commands record both legs of every mandatory branch detour"
 	)
 	check(
 		branch_phases.size() == branch_actions.size(),
@@ -236,8 +224,8 @@ func verify_event_trace(log: EventLog, solution: Dictionary, chunk: Node) -> voi
 				continue
 			var move_index := int(move.get("event_index", -1))
 			if move_index < phase_index:
-				var target := GameEvent.arr_to_v3(move_payload.get("pos", []))
-				if target.distance_to(producer) <= EPSILON:
+				var target := _move_destination(move_payload, grid)
+				if target.is_finite() and target.distance_to(producer) <= EPSILON:
 					inbound = move
 			elif move_index > phase_index and outbound.is_empty():
 				outbound = move
@@ -251,6 +239,18 @@ func verify_event_trace(log: EventLog, solution: Dictionary, chunk: Node) -> voi
 	)
 
 
+func _move_destination(move_payload: Dictionary, grid) -> Vector3:
+	if move_payload.has("pos"):
+		return GameEvent.arr_to_v3(move_payload.get("pos", []))
+	var cell_arr: Array = move_payload.get("cell", [])
+	if grid != null and cell_arr.size() >= 2:
+		return grid.grid_to_world(
+			Vector2i(int(cell_arr[0]), int(cell_arr[1])),
+			int(move_payload.get("level", 0))
+		)
+	return Vector3.INF
+
+
 func _solution_interactable_ids(solution: Dictionary, chunk: Node) -> Array[String]:
 	var ids: Array[String] = []
 	var node_interactables := chunk.get("_node_interactables") as Dictionary
@@ -259,20 +259,6 @@ func _solution_interactable_ids(solution: Dictionary, chunk: Node) -> Array[Stri
 			continue
 		var node_id := str((action_v as Dictionary).get("node", ""))
 		var source: Node = node_interactables.get(node_id, null)
-		_append_interactable_id(ids, source)
-	for action_v in solution.get("world_actions", []):
-		if not (action_v is Dictionary):
-			continue
-		var source: Node = null
-		match str((action_v as Dictionary).get("action", "")):
-			"open_first_sluice", "open_sluice":
-				source = chunk.get("_hydraulic_first_control") as Node
-			"release_cistern_bridge", "release_bridge":
-				source = chunk.get("_hydraulic_cistern_control") as Node
-			"divert_current", "divert", "restore_main_current", "restore":
-				source = chunk.get("_hydraulic_diverter_control") as Node
-			"catch_spillway", "catch":
-				source = node_interactables.get("node_04", null)
 		_append_interactable_id(ids, source)
 	var spans := chunk.get("_branch_span_by_id") as Dictionary
 	for action_v in solution.get("branch_actions", []):
@@ -310,90 +296,3 @@ func verify_branch_ranges(branch_actions: Array) -> void:
 	check(all_in_range, "all branch work begins inside the authoritative interaction radius")
 
 
-func verify_cargo_timeline(chunk: Node, log: EventLog) -> void:
-	var state: Dictionary = chunk.call("get_preview_state")
-	var milestones: Array = state.get("bridge_cargo_milestones", [])
-	var names: Array[String] = []
-	var ticks: Array[float] = []
-	var sequence_ticks: Array[float] = []
-	for milestone_v in milestones:
-		var milestone := milestone_v as Dictionary
-		names.append(str(milestone.get("event", "")))
-		ticks.append(float(milestone.get("tick", -1.0)))
-		sequence_ticks.append(float(milestone.get("sequence_tick", -1.0)))
-	check(names == EXPECTED_CARGO_EVENTS, "cargo follows the full authored six-milestone causal chain")
-	var authored_intro := sequence_ticks.size() == EXPECTED_CARGO_EVENTS.size()
-	var scavenger_route := chunk.get("_bridge_scavenger_route") as Array
-	var scavenger: Node = chunk.get("_hydraulic_scavenger") as Node
-	var cargo_context: Dictionary = chunk.call("_bridge_cargo_authority_context")
-	var expected_intro: Array[float] = []
-	if authored_intro and scavenger_route.size() >= 4 \
-			and scavenger != null and is_instance_valid(scavenger):
-		var speed := float(scavenger.get("move_speed"))
-		if speed <= 0.0:
-			authored_intro = false
-		else:
-			var contact_time := (
-				(scavenger_route[0] as Vector3).distance_to(scavenger_route[1])
-				/ speed
-			)
-			var staged_time := contact_time + float(cargo_context.get("fall_duration", -1.0))
-			var clear_time := contact_time + (
-				(scavenger_route[1] as Vector3).distance_to(scavenger_route[2])
-				+ (scavenger_route[2] as Vector3).distance_to(scavenger_route[3])
-			) / speed
-			expected_intro.assign([
-				0.0,
-				snappedf(contact_time, 0.001),
-				snappedf(staged_time, 0.001),
-				snappedf(clear_time, 0.001),
-			])
-			for index in range(expected_intro.size()):
-				authored_intro = authored_intro and absf(
-					sequence_ticks[index] - expected_intro[index]
-				) <= EPSILON
-	else:
-		authored_intro = false
-	if not authored_intro:
-		print(
-			"  CARGO TIMING DIAGNOSTIC actual=%s expected_intro=%s"
-			% [JSON.stringify(sequence_ticks), JSON.stringify(expected_intro)]
-		)
-	check(
-		authored_intro,
-		"cargo intro milestones match the authored body route and fall duration"
-	)
-	var physical_order := ticks.size() == EXPECTED_CARGO_EVENTS.size()
-	if physical_order:
-		for index in range(1, ticks.size()):
-			physical_order = physical_order and ticks[index] >= ticks[index - 1] - EPSILON
-		physical_order = physical_order \
-			and absf(ticks[5] - ticks[4] - 3.0) <= EPSILON \
-			and sequence_ticks[4] >= 4.2 - EPSILON
-	check(
-		physical_order,
-		"release follows the cleared basin and transport consumes its scheduled three seconds"
-	)
-
-	var logged_names: Array[String] = []
-	var logged_ticks: Array[float] = []
-	for event_v in log.events:
-		var event := event_v as Dictionary
-		if event.get("kind", &"") != GameEvent.KIND_SET_WORLD_STATE:
-			continue
-		var payload: Dictionary = event.get("payload", {})
-		if str(payload.get("key", "")) != CARGO_MILESTONE_KEY:
-			continue
-		var value: Dictionary = payload.get("value", {})
-		logged_names.append(str(value.get("event", "")))
-		logged_ticks.append(float(event.get("tick", -1.0)))
-	var expected_logged: Array = EXPECTED_CARGO_EVENTS.slice(1)
-	var callbacks_match := logged_names == expected_logged and logged_ticks.size() == expected_logged.size()
-	if callbacks_match:
-		for index in range(logged_ticks.size()):
-			callbacks_match = callbacks_match \
-				and absf(logged_ticks[index] - ticks[index + 1]) <= EPSILON
-	check(
-		callbacks_match,
-		"scheduler callbacks commit each post-baseline cargo milestone at its recorded physical tick"
-	)

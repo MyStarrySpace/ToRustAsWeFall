@@ -12,12 +12,6 @@ const RuntimeRegistryScript := preload("res://scripts/generation/generated_node_
 ## relationship. Nothing here adds execution padding after the reasoning is done.
 
 const CONTRACT_SCHEMA := "trawf_generated_systems_contract_v1"
-const FINITE_CURRENT_MODEL_ID := "finite_current_routing_v1"
-const HYDRAULIC_FIRST_SLUICE_NODE := "hydraulic:first_sluice"
-const HYDRAULIC_CISTERN_BRIDGE_NODE := "hydraulic:cistern_bridge"
-const HYDRAULIC_BORROWED_CURRENT_NODE := "hydraulic:borrowed_current"
-const HYDRAULIC_RESTORE_CURRENT_NODE := "hydraulic:restore_current"
-const HYDRAULIC_CAPTURED_ROUTE_TRAVEL_SECONDS := 2.6
 
 ## Archetype 9 intentionally stays outside the procedural pool until its broken
 ## convention has a typed producer -> consumer handshake. Hand-authored setpieces
@@ -306,32 +300,19 @@ static func build_contract(catalog, nodes: Array, routes: Array, settings: Dicti
 	for model_id in model_order:
 		models.append((model_by_id[model_id] as Dictionary).duplicate(true))
 	var optional_lesson_spine := []
-	if spec_id == RuntimeRegistryScript.HYDRAULIC_SPEC_ID:
-		var hydraulic_projection := _apply_hydraulic_lesson_projection(nodes, models, lesson_spine)
-		models = hydraulic_projection.get("models", models)
-		lesson_spine = hydraulic_projection.get("lesson_spine", lesson_spine)
-		optional_lesson_spine = hydraulic_projection.get("optional_lesson_spine", [])
-	var focus_model_id := (
-		FINITE_CURRENT_MODEL_ID
-		if spec_id == RuntimeRegistryScript.HYDRAULIC_SPEC_ID
-		else _focus_model_id(models, profile)
-	)
+	var focus_model_id := _focus_model_id(models, profile)
 	var focus_matches_profile := false
 	for model_v in models:
 		if model_v is Dictionary and str((model_v as Dictionary).get("id", "")) == focus_model_id:
 			focus_matches_profile = _model_matches_profile(model_v as Dictionary, profile)
 			break
 	var causal_links := _build_causal_links(nodes, models)
-	if spec_id == RuntimeRegistryScript.HYDRAULIC_SPEC_ID:
-		causal_links.append_array(_hydraulic_causal_links())
 	var reasoning_solved_at := "entry"
 	for i in range(actionable_indices.size() - 1, -1, -1):
 		var candidate: Dictionary = nodes[actionable_indices[i]]
 		if not bool(candidate.get("optional", false)):
 			reasoning_solved_at = str(candidate.get("id", reasoning_solved_at))
 			break
-	if spec_id == RuntimeRegistryScript.HYDRAULIC_SPEC_ID:
-		reasoning_solved_at = HYDRAULIC_CISTERN_BRIDGE_NODE
 	var complete_lesson_sequence := lesson_spine.duplicate(true)
 	complete_lesson_sequence.append_array(optional_lesson_spine)
 
@@ -378,373 +359,23 @@ static func build_contract(catalog, nodes: Array, routes: Array, settings: Dicti
 	}
 
 
-## Ordered authored actions that deterministic replay may execute after loading the
-## fixed generated spec. Keeping this beside the causal curriculum makes replay data
-## and the teach -> test -> transfer lesson share one authority.
-static func world_actions_for_spec(spec_id: String) -> Array:
-	if spec_id != RuntimeRegistryScript.HYDRAULIC_SPEC_ID:
-		return []
-	return [
-		{
-			"action": "open_sluice",
-			"target": "first_sluice",
-			"before_node": "node_02",
-			"model_id": FINITE_CURRENT_MODEL_ID,
-			"lesson_role": "teach",
-			"route_role": "mandatory_main_route",
-			"required_for_exit": true,
-			"expected_phase": "cistern_bridge",
-		},
-		{
-			"action": "release_bridge",
-			"target": "cistern_bridge",
-			"before_node": "node_03",
-			"model_id": FINITE_CURRENT_MODEL_ID,
-			"lesson_role": "test",
-			"route_role": "mandatory_main_route",
-			"required_for_exit": true,
-			"expected_phase": "exit_ready",
-		},
-	]
+## Ordered authored actions that deterministic replay may execute after loading a
+## fixed generated spec. No committed spec carries authored world actions; an
+## authored stretch that adds them must also ship the chunk runtime that executes
+## each action, or the generated solution would promise moves the game cannot make.
+static func world_actions_for_spec(_spec_id: String) -> Array:
+	return []
 
 
-## Optional hydraulic actions are deliberately excluded from the headless golden
-## path. They describe a risk/reward transfer test: the player may temporarily
-## starve the already-open exit to launch food along the spillway. The launch
-## captures its route, so the main route can be restored while that payload travels.
-static func optional_world_actions_for_spec(spec_id: String) -> Array:
-	if spec_id != RuntimeRegistryScript.HYDRAULIC_SPEC_ID:
-		return []
-	return [
-		{
-			"action": "divert",
-			"target": "borrowed_current",
-			"before_node": "node_04",
-			"model_id": FINITE_CURRENT_MODEL_ID,
-			"lesson_role": "transfer",
-			"route_role": "optional_risk_reward",
-			"required_for_exit": false,
-			"expected_phase": "food_spillway",
-			"risk": "temporarily_starves_the_ready_shelter_route",
-			"reward": "one_physical_lysate_after_spillway_arrival",
-			"captured_route_timing": {
-				"payload_id": "spillway_lysate",
-				"route_captured_at": "launch",
-				"captured_route": "spillway",
-				"travel_delay_seconds": HYDRAULIC_CAPTURED_ROUTE_TRAVEL_SECONDS,
-				"arrival_state": "spillway_delivery_available",
-				"valve_changes_after_launch_do_not_redirect": true,
-			},
-		},
-		{
-			"action": "restore",
-			"target": "borrowed_current",
-			"before_node": "node_04",
-			"model_id": FINITE_CURRENT_MODEL_ID,
-			"lesson_role": "application",
-			"route_role": "optional_risk_reward",
-			"required_for_exit": false,
-			"expected_phase": "exit_ready",
-			"preferred_timing": "while_spillway_payload_is_in_transit",
-			"in_flight_payload_effect": "continues_on_captured_spillway_route",
-		},
-		{
-			"action": "catch",
-			"target": "node_04",
-			"before_node": "node_04",
-			"model_id": FINITE_CURRENT_MODEL_ID,
-			"lesson_role": "application",
-			"route_role": "optional_risk_reward",
-			"required_for_exit": false,
-			"available_after": "spillway_delivery_available",
-			"expected_phase": "exit_ready",
-			"alternate_phase_if_caught_before_restore": "restore_current",
-			"requires": "one_free_carrier_hand",
-			"atp_change_on_pickup": 0.0,
-			"reward": "one_physical_lysate",
-		},
-	]
+## Optional authored actions are excluded from the headless golden path; they
+## describe risk/reward transfer tests layered onto an authored spec. Empty for
+## every committed spec, for the same runtime-honesty reason as above.
+static func optional_world_actions_for_spec(_spec_id: String) -> Array:
+	return []
 
 
-static func optional_world_action_policy_for_spec(spec_id: String) -> Dictionary:
-	if spec_id != RuntimeRegistryScript.HYDRAULIC_SPEC_ID:
-		return {}
-	return {
-		"route_role": "optional_risk_reward",
-		"required_for_exit": false,
-		"risk": "diversion temporarily dries the ready main route",
-		"reward": "one physical lysate whose ATP value is realized only through endocytosis",
-		"route_capture_rule": "the payload keeps the route selected at launch even if the valve changes during travel",
-		"preferred_transfer_order": ["divert", "restore", "catch"],
-		"valid_orders": [
-			["divert", "restore", "catch"],
-			["divert", "catch", "restore"],
-		],
-	}
-
-
-## The hydraulic controls are authored runtime phases around generated node_04, so
-## project them into the generated contract without pretending they are generic node
-## handlers. One finite-current model now owns the complete lesson sequence.
-static func _apply_hydraulic_lesson_projection(
-		nodes: Array, models: Array, lesson_spine: Array
-) -> Dictionary:
-	var projected_models := []
-	for raw_model in models:
-		if not (raw_model is Dictionary):
-			continue
-		if str((raw_model as Dictionary).get("runtime_handler", "")) \
-				== RuntimeRegistryScript.HANDLER_HYDRAULIC_SPILLWAY:
-			continue
-		projected_models.append((raw_model as Dictionary).duplicate(true))
-	projected_models.append(_finite_current_model())
-
-	var hydraulic_node_beat := _hydraulic_node_beat(
-		"application",
-		"catch a reward whose spillway route was captured before the main route was restored",
-		"restoring the main current during travel will not redirect the launched payload; it still reaches the spillway and occupies one hand when caught",
-		"divert, restore while the payload travels, then catch it at the spillway with a free hand",
-		"the main channel is visibly fed while the in-flight payload finishes its captured spillway route and becomes a held lysate",
-		false
-	)
-	for index in range(nodes.size()):
-		if not (nodes[index] is Dictionary):
-			continue
-		var node := nodes[index] as Dictionary
-		if str(node.get("runtime_handler", "")) != RuntimeRegistryScript.HANDLER_HYDRAULIC_SPILLWAY:
-			continue
-		node["runtime_progression_required"] = false
-		node["optional_systems_branch"] = true
-		node["optional_reward"] = "one_physical_lysate"
-		node["systems_beat"] = hydraulic_node_beat.duplicate(true)
-		node["prediction_hint"] = str(hydraulic_node_beat.get("prediction", ""))
-		node["evidence_hint"] = str(hydraulic_node_beat.get("evidence", ""))
-		var section := _playable_section_for_node(node, hydraulic_node_beat)
-		section["source_role"] = "route-captured spillway payload"
-		section["effect_role"] = "optional physical lysate catch"
-		section["relationship_label"] = "MAIN RESTORED // PAYLOAD KEEPS ROUTE"
-		section["before_state"] = "the launched payload may seem as though a later valve change should redirect it"
-		section["after_state"] = "the main route is fed again while the launched payload continues to the spillway chosen at launch"
-		section["predicted_effect"] = str(hydraulic_node_beat.get("prediction", ""))
-		section["completed_preview"] = str(hydraulic_node_beat.get("evidence", ""))
-		section["observable_evidence"] = str(hydraulic_node_beat.get("evidence", ""))
-		section["interacting_systems"] = [
-			"finite hydraulic current", "captured payload route", "shelter feed", "carrier hand"
-		]
-		node["playable_section"] = section
-		nodes[index] = node
-
-	var non_hydraulic_by_node := {}
-	var remaining_non_hydraulic := []
-	for raw_beat in lesson_spine:
-		if not (raw_beat is Dictionary):
-			continue
-		var beat := raw_beat as Dictionary
-		if str(beat.get("runtime_handler", "")) == RuntimeRegistryScript.HANDLER_HYDRAULIC_SPILLWAY:
-			continue
-		var node_id := str(beat.get("node", ""))
-		if node_id in ["node_02", "exit_shelter"]:
-			non_hydraulic_by_node[node_id] = beat.duplicate(true)
-		else:
-			remaining_non_hydraulic.append(beat.duplicate(true))
-
-	var projected_spine := [
-		_hydraulic_spine_beat(
-			HYDRAULIC_FIRST_SLUICE_NODE,
-			"teach",
-			false,
-			"one current feeding one downstream cistern",
-			"opening the marked source sends visible water toward the cistern"
-		),
-	]
-	if non_hydraulic_by_node.has("node_02"):
-		projected_spine.append(non_hydraulic_by_node["node_02"])
-	projected_spine.append(_hydraulic_spine_beat(
-		HYDRAULIC_CISTERN_BRIDGE_NODE,
-		"test",
-		true,
-		"the same current now carries a bridge into a route gap and feeds the main exit route",
-		"releasing the cistern will install the bridge and make the shelter route ready only after the carried cargo seats"
-	))
-	projected_spine.append_array(remaining_non_hydraulic)
-	if non_hydraulic_by_node.has("exit_shelter"):
-		projected_spine.append(non_hydraulic_by_node["exit_shelter"])
-
-	var optional_spine := [
-		_hydraulic_spine_beat(
-			HYDRAULIC_BORROWED_CURRENT_NODE,
-			"transfer",
-			true,
-			"the already-ready main route may be temporarily borrowed for an optional physical reward",
-			"diverting launches one payload on the spillway route and visibly starves the ready shelter route",
-			"",
-			false
-		),
-		_hydraulic_spine_beat(
-			HYDRAULIC_RESTORE_CURRENT_NODE,
-			"application",
-			true,
-			"the spillway payload is still travelling on the route captured at launch",
-			"restoring the valve now re-feeds the shelter without redirecting the in-flight payload",
-			"",
-			false
-		),
-		_hydraulic_spine_beat(
-			"node_04",
-			"application",
-			true,
-			"the main route is restored before the captured spillway payload arrives",
-			str(hydraulic_node_beat.get("prediction", "")),
-			RuntimeRegistryScript.HANDLER_HYDRAULIC_SPILLWAY,
-			false
-		),
-	]
-	return {
-		"models": projected_models,
-		"lesson_spine": projected_spine,
-		"optional_lesson_spine": optional_spine,
-	}
-
-
-static func _finite_current_model() -> Dictionary:
-	return {
-		"id": FINITE_CURRENT_MODEL_ID,
-		"archetype_id": "authored_hydraulic",
-		"archetype_name": "Finite-current routing",
-		"runtime_handler": RuntimeRegistryScript.HANDLER_HYDRAULIC_SPILLWAY,
-		"implementation_scope": "authored_chunk_hydraulic_phases",
-		"verb": "route",
-		"relationship": "the current carries the bridge to complete the mandatory route; borrowing that ready route can launch an optional reward whose route is fixed at launch",
-		"cause": "a hydraulic control feeds the cistern or changes which branch receives newly launched flow",
-		"effect": "carried cargo seats at its target, while a launched reward keeps its captured route even after the main current is restored",
-		"polarity": "mixed",
-		"stock": "one available hydraulic current and each downstream service state",
-		"flow": "the current first transports bridge cargo to the required gap, then may be borrowed to launch one optional spillway payload",
-		"delay": "bridge cargo and the optional payload visibly travel before their downstream effects occur",
-		"feedback_loop": "restoring the main route ends the optional starvation while the already-launched payload completes its captured spillway route",
-		"threshold": "a downstream action completes only after the current visibly reaches that target",
-		"local_vs_party_scale": "an optional local diversion temporarily removes the party's already-ready shelter feed in exchange for a physical reward",
-		"leverage_point": "the upstream diverter that allocates the one current between both sinks",
-		"likely_misconception": "the bridge is a switch rather than transported cargo, or changing the valve redirects a payload that is already travelling",
-		"prediction": "bridge cargo will seat only after travel; an optional payload will keep its launch route while later valve changes affect only future flow",
-		"intervention": "trace the carried bridge to the route gap; optionally divert, restore during payload travel, and catch the reward at its captured destination",
-		"evidence": "moving cargo, animated water, route-colored payload travel, branch labels, and target state change in causal order",
-		"transfer_test": "optionally borrow the ready main current, then restore it before arrival and predict that the launched reward still reaches the spillway",
-		"dimensions": ["relation", "stock", "flow", "delay", "threshold", "topology", "leverage", "transfer"],
-		"node_ids": [
-			HYDRAULIC_FIRST_SLUICE_NODE,
-			HYDRAULIC_CISTERN_BRIDGE_NODE,
-			HYDRAULIC_BORROWED_CURRENT_NODE,
-			"node_04",
-			HYDRAULIC_RESTORE_CURRENT_NODE,
-		],
-		"critical_node_ids": [
-			HYDRAULIC_FIRST_SLUICE_NODE,
-			HYDRAULIC_CISTERN_BRIDGE_NODE,
-		],
-		"optional_node_ids": [
-			HYDRAULIC_BORROWED_CURRENT_NODE, HYDRAULIC_RESTORE_CURRENT_NODE, "node_04"
-		],
-		"teach_node": HYDRAULIC_FIRST_SLUICE_NODE,
-		"test_nodes": [HYDRAULIC_CISTERN_BRIDGE_NODE],
-		"transfer_nodes": [
-			HYDRAULIC_BORROWED_CURRENT_NODE, HYDRAULIC_RESTORE_CURRENT_NODE, "node_04"
-		],
-	}
-
-
-static func _hydraulic_node_beat(
-		role: String,
-		changed_condition: String,
-		prediction: String,
-		intervention: String,
-		evidence: String,
-		critical := true
-) -> Dictionary:
-	return {
-		"model_id": FINITE_CURRENT_MODEL_ID,
-		"beat": role,
-		"verb": "route",
-		"cause": "the optional diverter launches a payload on its selected route; restoring the valve changes future flow only",
-		"effect": "the main route can become active again while the launched payload continues along its captured spillway route",
-		"prediction": prediction,
-		"intervention": intervention,
-		"evidence": evidence,
-		"likely_misconception": "restoring the main current redirects or destroys the payload that already launched toward the spillway",
-		"changed_condition": changed_condition,
-		"critical": critical,
-	}
-
-
-static func _hydraulic_spine_beat(
-		node_id: String,
-		role: String,
-		prediction_required: bool,
-		changed_condition: String,
-		prediction: String,
-		runtime_handler := "",
-		critical := true
-) -> Dictionary:
-	return {
-		"node": node_id,
-		"archetype_id": "authored_hydraulic",
-		"runtime_handler": runtime_handler,
-		"model_id": FINITE_CURRENT_MODEL_ID,
-		"beat": role,
-		"verb": "route",
-		"critical": critical,
-		"prediction_required": prediction_required,
-		"changed_condition": changed_condition,
-		"prediction": prediction,
-	}
-
-
-static func _hydraulic_causal_links() -> Array:
-	return [
-		_hydraulic_link(
-			HYDRAULIC_FIRST_SLUICE_NODE, "first sluice", "cistern feed",
-			"SLUICE FEEDS CISTERN", "opening the source sends the finite current toward the cistern"
-		),
-		_hydraulic_link(
-			HYDRAULIC_CISTERN_BRIDGE_NODE, "fed cistern", "bridge route",
-			"CURRENT CARRIES BRIDGE", "the fed cistern carries the bridge across the route gap and makes the main exit route ready"
-		),
-		_hydraulic_link(
-			HYDRAULIC_BORROWED_CURRENT_NODE, "optional upstream diverter", "captured spillway payload and main channel",
-			"PAYLOAD LAUNCHED // MAIN STARVED", "the optional diversion launches a spillway payload and temporarily dries the ready main channel",
-			false
-		),
-		_hydraulic_link(
-			HYDRAULIC_RESTORE_CURRENT_NODE, "optional upstream diverter", "captured payload and shelter feed",
-			"MAIN FED // PAYLOAD KEEPS ROUTE", "restoring future flow re-feeds the shelter while the launched payload continues to the spillway",
-			false
-		),
-	]
-
-
-static func _hydraulic_link(
-		node_id: String,
-		source_role: String,
-		effect_role: String,
-		state_label: String,
-		prediction: String,
-		critical := true
-) -> Dictionary:
-	return {
-		"kind": "intervention_effect",
-		"node": node_id,
-		"from": "%s:cause" % node_id,
-		"to": "%s:effect" % node_id,
-		"source_role": source_role,
-		"effect_role": effect_role,
-		"state": prediction,
-		"state_label": state_label,
-		"prediction": prediction,
-		"critical": critical,
-		"route_role": "mandatory_main_route" if critical else "optional_risk_reward",
-		"visibility_policy": "party_visibility_union",
-		"display": "hover_or_pause",
-	}
+static func optional_world_action_policy_for_spec(_spec_id: String) -> Dictionary:
+	return {}
 
 
 static func _has_explicit_transfer(lesson_spine: Array, focus_model_id: String) -> bool:
@@ -1114,8 +745,6 @@ static func validate_contract(spec: Dictionary) -> Dictionary:
 	for raw_node in spec.get("nodes", []):
 		if raw_node is Dictionary and str((raw_node as Dictionary).get("archetype_id", "")) == "9":
 			errors.append("Procedural archetype 9 is blocked until its typed convention handshake exists.")
-	if spec_id == RuntimeRegistryScript.HYDRAULIC_SPEC_ID:
-		_validate_hydraulic_lesson_data(spec, contract, errors)
 	return {
 		"valid": errors.is_empty(),
 		"errors": errors,
@@ -1129,77 +758,6 @@ static func validate_contract(spec: Dictionary) -> Dictionary:
 		"actionable_node_count": expected_actionable.size(),
 		"layout_only_node_count": expected_layout_only.size(),
 	}
-
-
-static func _validate_hydraulic_lesson_data(
-		spec: Dictionary, contract: Dictionary, errors: Array[String]
-) -> void:
-	if str(contract.get("focus_model_id", "")) != FINITE_CURRENT_MODEL_ID:
-		errors.append("The authored hydraulic stretch must focus finite_current_routing_v1.")
-	if str(contract.get("reasoning_solved_at", "")) != HYDRAULIC_CISTERN_BRIDGE_NODE:
-		errors.append("The authored hydraulic main-route reasoning is solved when the carried bridge seats and the exit becomes ready.")
-	var focus_roles := []
-	for raw_beat in contract.get("lesson_spine", []):
-		if raw_beat is Dictionary \
-				and str((raw_beat as Dictionary).get("model_id", "")) == FINITE_CURRENT_MODEL_ID:
-			focus_roles.append(str((raw_beat as Dictionary).get("beat", "")))
-	if focus_roles != ["teach", "test"]:
-		errors.append(
-			"The mandatory hydraulic lesson must be only teach -> test; the spillway reward cannot gate the exit."
-		)
-	var optional_focus_roles := []
-	for raw_beat in contract.get("optional_lesson_spine", []):
-		if not (raw_beat is Dictionary):
-			continue
-		var optional_beat := raw_beat as Dictionary
-		if str(optional_beat.get("model_id", "")) != FINITE_CURRENT_MODEL_ID:
-			continue
-		optional_focus_roles.append(str(optional_beat.get("beat", "")))
-		if bool(optional_beat.get("critical", true)):
-			errors.append("Optional hydraulic lesson beats must never be marked critical.")
-	if optional_focus_roles != ["transfer", "application", "application"]:
-		errors.append(
-			"The optional hydraulic reward must explicitly transfer through divert -> restore-in-flight -> catch."
-		)
-	var expected_actions := world_actions_for_spec(RuntimeRegistryScript.HYDRAULIC_SPEC_ID)
-	var actual_actions: Array = spec.get("headless", {}).get("solution", {}).get("world_actions", [])
-	if actual_actions != expected_actions:
-		errors.append(
-			"The authored hydraulic headless solution must contain only the mandatory open and release actions."
-		)
-	var expected_optional_actions := optional_world_actions_for_spec(
-		RuntimeRegistryScript.HYDRAULIC_SPEC_ID
-	)
-	if contract.get("optional_world_actions", []) != expected_optional_actions:
-		errors.append("The authored hydraulic contract must own the explicit optional divert, restore, catch actions.")
-	if contract.get("optional_world_action_policy", {}) != optional_world_action_policy_for_spec(
-		RuntimeRegistryScript.HYDRAULIC_SPEC_ID
-	):
-		errors.append("The authored hydraulic optional-action policy must preserve its risk, reward, and valid orders.")
-	if not expected_optional_actions.is_empty():
-		var capture: Dictionary = expected_optional_actions[0].get("captured_route_timing", {})
-		if (
-			str(capture.get("route_captured_at", "")) != "launch"
-			or not is_equal_approx(
-				float(capture.get("travel_delay_seconds", 0.0)),
-				HYDRAULIC_CAPTURED_ROUTE_TRAVEL_SECONDS
-			)
-			or not bool(capture.get("valve_changes_after_launch_do_not_redirect", false))
-		):
-			errors.append("The optional spillway payload must declare its 2.6-second route-captured travel contract.")
-	var found_optional_catch := false
-	for raw_node in spec.get("nodes", []):
-		if not (raw_node is Dictionary):
-			continue
-		var node := raw_node as Dictionary
-		if str(node.get("runtime_handler", "")) != RuntimeRegistryScript.HANDLER_HYDRAULIC_SPILLWAY:
-			continue
-		found_optional_catch = true
-		if bool(node.get("runtime_progression_required", true)) \
-				or not bool(node.get("optional_systems_branch", false)):
-			errors.append("The physical spillway catch must be an optional interaction, never a progression gate.")
-	if not found_optional_catch:
-		errors.append("The authored hydraulic stretch is missing its optional physical spillway catch.")
 
 
 static func _model_for_runtime_handler(catalog, node: Dictionary, handler_id: String) -> Dictionary:
@@ -1229,20 +787,6 @@ static func _model_for_runtime_handler(catalog, node: Dictionary, handler_id: St
 				"intervention": "regroup inside the shelter and enter it once the party is ready",
 				"evidence": "presence, recovery need, successful rest starts, and unchanged ATP for already-full members are reported separately",
 				"transfer_test": "distinguish safe arrival from ATP-paid recovery at another shelter",
-			}, true)
-			return model
-		RuntimeRegistryScript.HANDLER_HYDRAULIC_SPILLWAY:
-			var model := model_for_archetype(catalog.get_archetype("12"), "12")
-			model.merge({
-				"verb": "forage",
-				"relationship": "the borrowed current must reach the physical spillway catch before its lysate can enter a carrier hand",
-				"cause": "the authored hydraulic controls divert the finite current through the spillway",
-				"effect": "the catch receives one physical lysate pickup while the shelter current remains starved",
-				"prediction": "catching the spillway lysate will occupy one hand without restoring ATP or the shelter current",
-				"intervention": "divert the current, catch the lysate with a free hand, then restore the main current",
-				"evidence": "water routing, catch state, held item, and dry shelter channel remain visible",
-				"transfer_test": "recognize another finite-service diversion where taking a reward temporarily starves the required output",
-				"dimensions": ["relation", "stock", "flow", "threshold", "leverage", "transfer"],
 			}, true)
 			return model
 	# Defensive fallback. The registry rejects this before a node becomes actionable,

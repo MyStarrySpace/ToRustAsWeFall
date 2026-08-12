@@ -6,8 +6,7 @@ const Solver := preload("res://scripts/generation/stretch_solution_solver.gd")
 const SpiralTemplate := preload("res://scripts/generation/spiral_meta_template.gd")
 const GridWorldScript := preload("res://scripts/game/world/grid_world.gd")
 
-const HYDRAULIC_SPEC_PATH := \
-	"res://data/generated_stretches/generated_teaching_channels_shelter_1_to_2.json"
+const Catalog := preload("res://scripts/generation/stretch_spec_catalog.gd")
 
 var _checks := 0
 var _failures := 0
@@ -16,7 +15,7 @@ var _failures := 0
 func _initialize() -> void:
 	verify_branch_roles()
 	verify_generator_branch_solution_projection()
-	verify_saved_hydraulic_topology_projection()
+	verify_saved_teaching_topology_projection()
 	verify_gated_spiral_returns()
 	verify_semantic_topology_guard()
 	if _failures == 0:
@@ -239,9 +238,9 @@ func verify_generator_branch_solution_projection() -> void:
 	)
 
 
-func verify_saved_hydraulic_topology_projection() -> void:
-	var fixture := Generator.load_spec(HYDRAULIC_SPEC_PATH)
-	check(not fixture.is_empty(), "saved Channels fixture loads for topology verification")
+func verify_saved_teaching_topology_projection() -> void:
+	var fixture: Dictionary = Catalog.load_spec(Catalog.TEACHING_SPEC)
+	check(not fixture.is_empty(), "saved teaching fixture loads for topology verification")
 	if fixture.is_empty():
 		return
 	var spine: Dictionary = fixture.get("spine_navigation_grid", {})
@@ -252,10 +251,10 @@ func verify_saved_hydraulic_topology_projection() -> void:
 		and (spine.get("branches", []) as Array).is_empty()
 		and str(navigation.get("branch_weave_contract_id", ""))
 			== Weaver.BRANCH_WEAVE_CONTRACT_ID
-		and branches.size() == 3
+		and not branches.is_empty()
 		and (navigation.get("walkable_cells", []) as Array).size()
 			> (spine.get("walkable_cells", []) as Array).size(),
-		"saved Channels fixture separates its bare spine from the authoritative woven grid"
+		"saved teaching fixture separates its bare spine from the authoritative woven grid"
 	)
 	var saved_fake_returns := []
 	for route_v in fixture.get("routes", []):
@@ -266,33 +265,33 @@ func verify_saved_hydraulic_topology_projection() -> void:
 			saved_fake_returns.append(route_v)
 	check(
 		saved_fake_returns.is_empty(),
-		"saved Channels topology contains no prose-only return shortcut beside the real climbvine"
+		"saved teaching topology contains no prose-only return shortcut"
 	)
 	check(
 		not (fixture.get("settings", {}).get("budget", {}) as Dictionary).has(
 			"shortcut_count"
 		),
-		"saved Channels settings contain no obsolete semantic-shortcut budget"
-	)
-	var branch_validation := Weaver.validate_branch_contracts(branches, navigation)
-	check(
-		bool(branch_validation.get("valid", false))
-		and int(branch_validation.get("proven_cut_count", 0)) == 2,
-		"saved Channels mandatory branches carry two grid-proven consumer cut sets"
-	)
-	var topology_validation := Generator.validate_topology_contract(fixture)
-	check(
-		bool(topology_validation.get("valid", false)),
-		"saved Channels fixture passes the complete topology contract: %s"
-				% str(topology_validation.get("errors", []))
+		"saved teaching settings contain no obsolete semantic-shortcut budget"
 	)
 	var expected_actions := Solver.mandatory_branch_actions(
 		branches, fixture.get("nodes", []), navigation
 	)
+	var branch_validation := Weaver.validate_branch_contracts(branches, navigation)
+	check(
+		bool(branch_validation.get("valid", false))
+		and int(branch_validation.get("proven_cut_count", 0)) == expected_actions.size(),
+		"saved teaching mandatory branches each carry a grid-proven consumer cut set"
+	)
+	var topology_validation := Generator.validate_topology_contract(fixture)
+	check(
+		bool(topology_validation.get("valid", false)),
+		"saved teaching fixture passes the complete topology contract: %s"
+				% str(topology_validation.get("errors", []))
+	)
 	var headless_actions: Array = fixture.get("headless", {}).get(
 		"solution", {}
 	).get("branch_actions", [])
-	var action_projection_valid := expected_actions.size() == 2 \
+	var action_projection_valid := not expected_actions.is_empty() \
 		and _serialized_variants_equal(headless_actions, expected_actions)
 	for action_v in headless_actions:
 		if not (action_v is Dictionary):
@@ -312,20 +311,7 @@ func verify_saved_hydraulic_topology_projection() -> void:
 		)
 	check(
 		action_projection_valid,
-		"saved Channels headless solution serializes exact cut sets and traversal anchors"
-	)
-	var mandatory_hydraulic_actions := []
-	for action_v in fixture.get("headless", {}).get("solution", {}).get("world_actions", []):
-		if action_v is Dictionary:
-			mandatory_hydraulic_actions.append(str((action_v as Dictionary).get("action", "")))
-	var optional_hydraulic_actions := []
-	for action_v in fixture.get("systems_contract", {}).get("optional_world_actions", []):
-		if action_v is Dictionary:
-			optional_hydraulic_actions.append(str((action_v as Dictionary).get("action", "")))
-	check(
-		mandatory_hydraulic_actions == ["open_sluice", "release_bridge"]
-		and optional_hydraulic_actions == ["divert", "restore", "catch"],
-		"saved Channels migration preserves mandatory hydraulic progress and optional spillway play"
+		"saved teaching headless solution serializes exact cut sets and traversal anchors"
 	)
 
 

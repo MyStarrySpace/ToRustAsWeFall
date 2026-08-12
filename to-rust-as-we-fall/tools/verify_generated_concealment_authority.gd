@@ -5,9 +5,7 @@ extends SceneTree
 ## that same-instance rollback and a fresh presenter consume the same remainder.
 
 const CHUNK_SCENE := preload("res://scenes/fragments/chunks/generated_stretch_chunk.tscn")
-const SPEC_PATH := (
-	"res://data/generated_stretches/generated_teaching_channels_shelter_1_to_2.json"
-)
+const Catalog := preload("res://scripts/generation/stretch_spec_catalog.gd")
 const EPSILON := 0.0001
 
 var _checks := 0
@@ -23,25 +21,24 @@ func _run() -> void:
 	var source := await _boot_pair()
 	var host: ChunkHostStub = source.host
 	var chunk: Node = source.chunk
-	var capbage_origin := _first_cover_origin(chunk, "capbage")
 	var scarpet_origin := _first_cover_origin(chunk, "scarpet")
-	check(capbage_origin.is_finite() and scarpet_origin.is_finite(),
-		"generated fixture exposes real Capbage and Scarpet cover")
+	check(scarpet_origin.is_finite(),
+		"generated fixture exposes real Scarpet cover")
 
 	host.game_state.snap_character_to("aster", Vector3(5000.0, 0.0, 5000.0))
 	_advance_to(host, float(chunk.get("_theme_hazard_next_tick")) + EPSILON)
 	check(_tier(host) == GameState.CONCEAL_NONE,
 		"saved cover cadence establishes a clear baseline")
 
-	host.game_state.snap_character_to("aster", capbage_origin)
-	var capbage_deadline := float(chunk.get("_theme_hazard_next_tick"))
+	host.game_state.snap_character_to("aster", scarpet_origin)
+	var scarpet_deadline := float(chunk.get("_theme_hazard_next_tick"))
 	var midpoint := (
 		float(host.scheduler.get_current_tick())
-		+ (capbage_deadline - float(host.scheduler.get_current_tick())) * 0.5
+		+ (scarpet_deadline - float(host.scheduler.get_current_tick())) * 0.5
 	)
 	_advance_to(host, midpoint)
 	check(_tier(host) == GameState.CONCEAL_NONE,
-		"moving into Capbage does not grant concealment before the saved boundary")
+		"moving onto Scarpet does not grant concealment before the saved boundary")
 	for _frame in range(8):
 		chunk.call("_process", 3.0)
 	check(_tier(host) == GameState.CONCEAL_NONE,
@@ -49,9 +46,9 @@ func _run() -> void:
 
 	var saved_scheduler := _json_round_trip(host.scheduler.serialize())
 	var saved_state := _json_round_trip(host.game_state.serialize())
-	_advance_to(host, capbage_deadline + EPSILON)
-	check(_tier(host) == GameState.CONCEAL_FULL,
-		"Capbage grants FULL concealment at its fixed-cadence boundary")
+	_advance_to(host, scarpet_deadline + EPSILON)
+	check(_tier(host) == GameState.CONCEAL_MEDIUM,
+		"Scarpet grants MEDIUM concealment at its fixed-cadence boundary")
 
 	host.scheduler.clear()
 	host.scheduler.deserialize(saved_scheduler)
@@ -61,15 +58,15 @@ func _run() -> void:
 	check(
 		_tier(host) == GameState.CONCEAL_NONE
 			and is_equal_approx(
-				float(chunk.get("_theme_hazard_next_tick")), capbage_deadline
+				float(chunk.get("_theme_hazard_next_tick")), scarpet_deadline
 			),
 		"same-instance rollback restores the sampled tier and original deadline once"
 	)
-	_advance_to(host, capbage_deadline - EPSILON)
+	_advance_to(host, scarpet_deadline - EPSILON)
 	check(_tier(host) == GameState.CONCEAL_NONE,
 		"same-instance rollback cannot sample cover before the original deadline")
-	_advance_to(host, capbage_deadline + EPSILON)
-	check(_tier(host) == GameState.CONCEAL_FULL,
+	_advance_to(host, scarpet_deadline + EPSILON)
+	check(_tier(host) == GameState.CONCEAL_MEDIUM,
 		"same-instance rollback consumes only the saved cover remainder")
 
 	var fresh := await _boot_pair()
@@ -83,7 +80,7 @@ func _run() -> void:
 	check(
 		_tier(fresh_host) == GameState.CONCEAL_NONE
 			and is_equal_approx(
-				float(fresh_chunk.get("_theme_hazard_next_tick")), capbage_deadline
+				float(fresh_chunk.get("_theme_hazard_next_tick")), scarpet_deadline
 			),
 		"fresh generated presenter restores the same cover midpoint and deadline"
 	)
@@ -91,17 +88,17 @@ func _run() -> void:
 		fresh_chunk.call("_process", 3.0)
 	check(_tier(fresh_host) == GameState.CONCEAL_NONE,
 		"fresh presenter render calls cannot consume the saved cover remainder")
-	_advance_to(fresh_host, capbage_deadline + EPSILON)
-	check(_tier(fresh_host) == GameState.CONCEAL_FULL,
-		"fresh generated presenter consumes only the saved cover remainder")
-
-	fresh_host.game_state.snap_character_to("aster", scarpet_origin)
-	var scarpet_deadline := float(fresh_chunk.get("_theme_hazard_next_tick"))
-	check(_tier(fresh_host) == GameState.CONCEAL_FULL,
-		"the previous sampled tier persists between fixed boundaries")
 	_advance_to(fresh_host, scarpet_deadline + EPSILON)
 	check(_tier(fresh_host) == GameState.CONCEAL_MEDIUM,
-		"Scarpet replaces FULL with MEDIUM only at the next fixed boundary")
+		"fresh generated presenter consumes only the saved cover remainder")
+
+	fresh_host.game_state.snap_character_to("aster", Vector3(5000.0, 0.0, 5000.0))
+	var open_deadline := float(fresh_chunk.get("_theme_hazard_next_tick"))
+	check(_tier(fresh_host) == GameState.CONCEAL_MEDIUM,
+		"the previous sampled tier persists between fixed boundaries")
+	_advance_to(fresh_host, open_deadline + EPSILON)
+	check(_tier(fresh_host) == GameState.CONCEAL_NONE,
+		"open ground replaces MEDIUM with NONE only at the next fixed boundary")
 
 	host.queue_free()
 	fresh_host.queue_free()
@@ -118,7 +115,7 @@ func _boot_pair() -> Dictionary:
 	root.add_child(host)
 	var chunk := CHUNK_SCENE.instantiate()
 	chunk.configure_chunk({
-		"spec_path": SPEC_PATH,
+		"spec_path": Catalog.teaching_path(),
 		"game_mode": "neutral",
 		"food_test": "neutral",
 	})
@@ -135,8 +132,7 @@ func _boot_pair() -> Dictionary:
 
 
 func _first_cover_origin(chunk: Node, kind: String) -> Vector3:
-	var field_name := "_generated_capbages" if kind == "capbage" \
-		else "_generated_scarpets"
+	var field_name := "_generated_%ss" % kind
 	var covers_v: Variant = chunk.get(field_name)
 	if not (covers_v is Array):
 		return Vector3.INF

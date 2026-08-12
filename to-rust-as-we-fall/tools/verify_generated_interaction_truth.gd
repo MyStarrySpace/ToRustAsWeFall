@@ -21,9 +21,7 @@ const PlayerObservationControllerScript := preload(
 const RUNTIME_REGISTRY := preload(
 	"res://scripts/generation/generated_node_runtime_registry.gd"
 )
-const SPEC_PATH := (
-	"res://data/generated_stretches/generated_teaching_channels_shelter_1_to_2.json"
-)
+const SpecCatalog := preload("res://scripts/generation/stretch_spec_catalog.gd")
 const WALK_PROXY_TEXT := "PROXY WALK PROSE MUST NOT RENDER"
 const WALK_PROXY_REF := "legacy:walk:proxy"
 
@@ -150,10 +148,6 @@ func _run() -> void:
 		_count_forged_mechanism_nodes(chunk) == 0
 		and int(chunk.get("_omitted_content_count")) >= 3,
 		"unbound portal/crawl/flure placements are omitted instead of represented by proxy geometry"
-	)
-	check(
-		not section_states.has("node_04"),
-		"authored hydraulic spillway does not receive a second generic node transition"
 	)
 	var physical_pick_target := target_map.get(physical_node_id, null) as StaticBody3D
 	var physical_pick_shape := (
@@ -332,18 +326,6 @@ func _run() -> void:
 	# The authored opening camera emphasis is itself visible production feedback.
 	# Let it finish on real frames before asking the player surface for a click.
 	await _wait_rendered_seconds(2.35)
-	var sluice_run := await _drive_observed_interaction(
-		player_preview, driver, observer, "OPEN FIRST SLUICE", 14.0
-	)
-	check(
-		bool(sluice_run.get("source_affordance_visible_before_click", false))
-		and bool(sluice_run.get("exact_pointer_receipt", false))
-		and bool(sluice_run.get("exact_visible_success", false)),
-		"authored hydraulic prerequisite is reached and opened through its rendered pointer surface"
-	)
-	# Opening the sluice focuses the actual cistern consequence. Wait for that
-	# visible camera beat rather than advancing the scheduler through a test seam.
-	await _wait_rendered_seconds(1.55)
 	var physical_action := str(probe.get("physical_action", "TAKE LYSATE"))
 	var pickup_run := await _drive_observed_interaction(
 		player_preview, driver, observer, physical_action, 18.0
@@ -374,10 +356,24 @@ func _run() -> void:
 		_find_affordance_by_token(success_observation, source_token).is_empty(),
 		"the retained exact-token success stays visible after the one-shot affordance disables"
 	)
+	var physical_item_fragment := str(
+		probe.get("physical_item_fragment", "Lysate")
+	)
+	# The claim commits on the scheduler a beat after the visible success cue, so
+	# the held-item presentation is allowed a short rendered window to appear.
+	var hands_observation: Dictionary = success_observation
+	var hands_deadline := Time.get_ticks_msec() + 4000
+	while not _observation_shows_held_item(hands_observation, physical_item_fragment) \
+			and Time.get_ticks_msec() < hands_deadline:
+		hands_observation = await _capture_rendered_observation(observer)
+	if not _observation_shows_held_item(hands_observation, physical_item_fragment):
+		print("  HANDS DIAGNOSTIC hud=%s" % JSON.stringify(
+			(hands_observation.get("state", {}) as Dictionary).get("hud", {})
+		))
 	check(
-		not _observation_hands_contain(before_observation, "LYSATE")
-		and _observation_hands_contain(success_observation, "LYSATE"),
-		"the same observed interaction visibly puts the exact lysate consequence in Aster's hand"
+		not _observation_shows_held_item(before_observation, physical_item_fragment)
+		and _observation_shows_held_item(hands_observation, physical_item_fragment),
+		"the same observed interaction visibly puts the exact source item in Aster's hold"
 	)
 
 	player_preview.queue_free()
@@ -386,11 +382,7 @@ func _run() -> void:
 
 
 func _load_spec() -> Dictionary:
-	var file := FileAccess.open(SPEC_PATH, FileAccess.READ)
-	if file == null:
-		return {}
-	var parsed: Variant = JSON.parse_string(file.get_as_text())
-	return (parsed as Dictionary).duplicate(true) if parsed is Dictionary else {}
+	return SpecCatalog.load_spec(SpecCatalog.TEACHING_SPEC)
 
 
 func _mutate_truth_probe(spec: Dictionary) -> Dictionary:
@@ -400,6 +392,7 @@ func _mutate_truth_probe(spec: Dictionary) -> Dictionary:
 	var nodes: Array = spec.get("nodes", [])
 	var physical_node_id := ""
 	var physical_action := ""
+	var physical_item_fragment := ""
 	var layout_node_id := ""
 	for index in range(nodes.size()):
 		if not (nodes[index] is Dictionary):
@@ -419,6 +412,9 @@ func _mutate_truth_probe(spec: Dictionary) -> Dictionary:
 					"action", "TAKE LYSATE"
 				)
 			)
+			# The held reward presents its display name, which is the node's
+			# authored title (falling back to the bare item name).
+			physical_item_fragment = str(node.get("title", "Lysate"))
 			node["nested_archetypes"] = [{
 				"id": "legacy_nested_probe",
 				"ref": "legacy:nested:probe",
@@ -434,7 +430,9 @@ func _mutate_truth_probe(spec: Dictionary) -> Dictionary:
 			node["walk_ref"] = WALK_PROXY_REF
 			node["walk_index"] = 0
 			node["walk_step_index"] = 0
-			node.erase("content_placements")
+			# An intentionally empty list keeps the content-realization contract
+			# present while guaranteeing this node carries no content of its own.
+			node["content_placements"] = []
 		elif (
 			layout_node_id == ""
 			and handler_id == ""
@@ -450,16 +448,9 @@ func _mutate_truth_probe(spec: Dictionary) -> Dictionary:
 			node["walk_ref"] = WALK_PROXY_REF
 			node["walk_index"] = 1
 			node["walk_step_index"] = 3
-			node["playable_section"] = {
-				"predicted_effect": (
-					"Prose claims a flure opens a portal into a crawl tunnel."
-				),
-				"completed_preview": "Prose claims all three traversal mechanisms fired.",
-				"source_role": "fake flure",
-				"source_category": "flora",
-				"effect_role": "fake portal and crawl tunnel",
-				"effect_category": "structures",
-			}
+			# A prose playable_section on a handler-less node is rejected by spec
+			# acceptance itself (fail-closed), so the probe cannot carry one; the
+			# unbound placements below are the surviving prose-injection surface.
 			node["content_placements"] = [
 				{
 					"category": "flora",
@@ -487,6 +478,7 @@ func _mutate_truth_probe(spec: Dictionary) -> Dictionary:
 	return {
 		"physical_node_id": physical_node_id,
 		"physical_action": physical_action,
+		"physical_item_fragment": physical_item_fragment,
 		"layout_node_id": layout_node_id,
 	}
 
@@ -884,7 +876,9 @@ static func _receipt_position_matches(position_v: Variant, expected: Vector2) ->
 		and x == expected.x and y == expected.y
 
 
-func _observation_hands_contain(
+## A held item is player-visible on either surface: the hand-chip row, or the
+## carrying character's portrait hold badge wearing the item's display name.
+func _observation_shows_held_item(
 	observation: Dictionary, expected_fragment: String
 	) -> bool:
 	var state_v: Variant = observation.get("state", {})
@@ -893,8 +887,21 @@ func _observation_hands_contain(
 	var hud_v: Variant = (state_v as Dictionary).get("hud", {})
 	if not (hud_v is Dictionary):
 		return false
-	for label_v in (hud_v as Dictionary).get("hands", []):
+	var hud := hud_v as Dictionary
+	for label_v in hud.get("hands", []):
 		if str(label_v).to_upper().contains(expected_fragment.to_upper()):
+			return true
+	for portrait_v in hud.get("portraits", []):
+		if not (portrait_v is Dictionary):
+			continue
+		var hold_v: Variant = (portrait_v as Dictionary).get("hold", {})
+		if not (hold_v is Dictionary):
+			continue
+		var hold := hold_v as Dictionary
+		if str(hold.get("kind", "")) == "carried_item" \
+				and str(hold.get("label", "")).to_upper().contains(
+					expected_fragment.to_upper()
+				):
 			return true
 	return false
 

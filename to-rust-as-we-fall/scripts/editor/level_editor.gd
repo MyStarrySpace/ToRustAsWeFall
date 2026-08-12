@@ -12,7 +12,7 @@ const PLAN_PREVIEW_ROOT_NAME := "PlanPreviewRoot"
 const StretchGeneratorScript := preload("res://scripts/generation/stretch_generator.gd")
 const StretchArchetypeCatalogScript := preload("res://scripts/generation/stretch_archetype_catalog.gd")
 const StretchGenerationPlaytestLoopScript := preload("res://scripts/generation/stretch_generation_playtest_loop.gd")
-const GENERATED_STRETCH_SPEC_PATH := "res://data/generated_stretches/generated_teaching_channels_shelter_1_to_2.json"
+const GENERATED_STRETCH_SPEC_PATH := "res://data/generated_stretches/generated_sample_teaching_first_fork.json"
 const GENERATED_CHAIN_NESTED_POC_SPEC_PATH := "res://data/generated_stretches/generated_chain_nested_poc_shelter_2_to_3.json"
 const GENERATED_RANDOM_WALK_POC_SPEC_PATH := "res://data/generated_stretches/generated_random_walk_poc_shelter_3_to_4.json"
 const GENERATED_STRETCH_CHUNK_SCENE_PATH := "res://scenes/fragments/chunks/generated_stretch_chunk.tscn"
@@ -57,8 +57,8 @@ const PLAN_SCENES := [
 		"preview_scene": "res://scenes/fragments/fragment_preview.tscn",
 	},
 	{
-		"id": "generated_teaching_channels_shelter_1_to_2",
-		"title": "Generated: Teaching Channels Shelter 1 -> 2",
+		"id": "generated_sample_teaching_first_fork",
+		"title": "Generated: Teaching First Fork",
 		"chunk_scene": GENERATED_STRETCH_CHUNK_SCENE_PATH,
 		"preview_scene": GENERATED_STRETCH_PREVIEW_SCENE_PATH,
 		"generated": true,

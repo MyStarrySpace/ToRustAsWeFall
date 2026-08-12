@@ -1,16 +1,13 @@
 extends SceneTree
 
 ## Adversarial save/restore regression for generated-stretch one-shot resources,
-## exact EXIT shelter completion, physical payload delivery, and bridge seating.
+## exact EXIT shelter completion, and physical payload delivery.
 ## Every snapshot is JSON round-tripped and restored into a newly built presenter.
 
 const CHUNK_SCENE := preload("res://scenes/fragments/chunks/generated_stretch_chunk.tscn")
-const TEACHING_SPEC := (
-	"res://data/generated_stretches/generated_teaching_channels_shelter_1_to_2.json"
-)
-const HARD_CARRY_SPEC := "res://data/generated_stretches/generated_sample_hard_carry_run.json"
-const CARGO_PHASE_KEY := "generated_hydraulic_bridge_cargo_phase"
-const CARGO_MILESTONE_KEY := "generated_hydraulic_bridge_cargo_milestone"
+const Catalog := preload("res://scripts/generation/stretch_spec_catalog.gd")
+const TEACHING_SPEC := Catalog.TEACHING_SPEC
+const HARD_CARRY_SPEC := "generated_sample_hard_carry_run"
 
 
 class AuthorityHost:
@@ -45,11 +42,9 @@ func _run() -> void:
 	EventLog.print_events = false
 	await _verify_generated_resource_transaction()
 	await _verify_physical_cache_transaction()
-	await _verify_spillway_source_transaction()
 	if not OS.get_cmdline_user_args().has("--resource-sources-only"):
 		await _verify_exact_exit_and_atomic_rest()
 		await _verify_committed_payload_delivery()
-		await _verify_bridge_seated_publication()
 	print(
 		"GENERATED RESOURCE/EXIT AUTHORITY: %d checks, %d failures"
 		% [_checks, _failures]
@@ -63,17 +58,17 @@ func _verify_generated_resource_transaction() -> void:
 	var host: AuthorityHost = pair.host
 	var chunk: Node = pair.chunk
 	var runtime_key := str(chunk.call("_generated_runtime_authority_key"))
-	var source_id := "node:node_02"
+	var source_id := "node:node_01"
 	var captures := {}
-	var node: Dictionary = chunk.call("_find_node", "node_02")
-	var source := _node_source(pair, "node_02")
+	var node: Dictionary = chunk.call("_find_node", "node_01")
+	var source := _node_source(pair, "node_01")
 	var source_position := _source_position(pair, source)
 	var initial_claim := _claim(pair, source_id)
 	var initial_item_id := str(initial_claim.get("item_id", ""))
 
 	check(
 		not node.is_empty() and source != null and source_position != Vector3.INF,
-		"teaching node_02 exposes one exact bound physical source"
+		"teaching node_01 exposes one exact bound physical source"
 	)
 	_assert_claim_available(pair, source_id, "untouched generated source")
 	check(
@@ -90,11 +85,6 @@ func _verify_generated_resource_transaction() -> void:
 		and _claim(pair, source_id).get("item_id", "") == initial_item_id,
 		"direct claim helpers are inert and cannot move a body or reserve a reward"
 	)
-	check(
-		_trigger_control(pair, "_hydraulic_first_control"),
-		"the exact First Sluice cause makes the downstream generated source ready"
-	)
-
 	# Render-space proximity is not simulation-space proximity. This is the exact
 	# regression for the retired normalize-and-snap interaction hack.
 	var rendered_source := source_position
@@ -216,7 +206,7 @@ func _verify_generated_resource_transaction() -> void:
 		"direct interacted signal emission cannot manufacture a generated reward"
 	)
 
-	var stale_source := _node_source(pair, "node_01")
+	var stale_source := _node_source(pair, "exit_shelter")
 	check(
 		stale_source == null
 		or not bool(chunk.call(
@@ -225,7 +215,7 @@ func _verify_generated_resource_transaction() -> void:
 			"aster",
 			stale_source
 		)),
-		"a different generated Interactable cannot impersonate node_02's source"
+		"a different generated Interactable cannot impersonate node_01's source"
 	)
 
 	host.set_preview_active_character("peris")
@@ -240,10 +230,10 @@ func _verify_generated_resource_transaction() -> void:
 		and captures.has("pickup_signal"),
 		"claim exposes accepted-source, durable CLAIMING, and pickup-signal boundaries"
 	)
-	_assert_claim_whole(pair, source_id, "node_02", "completed source")
+	_assert_claim_whole(pair, source_id, "node_01", "completed source")
 	chunk.call("_return_resource_claim_to_available", source_id)
 	_assert_claim_whole(
-		pair, source_id, "node_02", "completed source resists direct reopening"
+		pair, source_id, "node_01", "completed source resists direct reopening"
 	)
 
 	# Accepted-source and CLAIMING snapshots both precede pickup. Restore must
@@ -257,7 +247,7 @@ func _verify_generated_resource_transaction() -> void:
 			str(_claim(pair, source_id).get("item_id", "")) == initial_item_id,
 			"same-instance %s restore preserves exact item identity" % same_stage
 		)
-		var restored_source := _node_source(pair, "node_02")
+		var restored_source := _node_source(pair, "node_01")
 		host.set_preview_character_position("aster", _source_position(pair, restored_source))
 		restored_source.set("active_character", "aster")
 		check(
@@ -265,7 +255,7 @@ func _verify_generated_resource_transaction() -> void:
 			"same-instance %s restore re-arms only the exact physical source" % same_stage
 		)
 		_assert_claim_whole(
-			pair, source_id, "node_02", "same-instance retried %s source" % same_stage
+			pair, source_id, "node_01", "same-instance retried %s source" % same_stage
 		)
 
 	for stage in ["accepted", "committed", "pickup_signal"]:
@@ -275,7 +265,7 @@ func _verify_generated_resource_transaction() -> void:
 		_apply_snapshot(fresh, captures[stage])
 		if stage in ["accepted", "committed"]:
 			_assert_claim_available(fresh, source_id, "fresh commitment restore")
-			var fresh_source := _node_source(fresh, "node_02")
+			var fresh_source := _node_source(fresh, "node_01")
 			fresh.host.set_preview_character_position(
 				"aster", _source_position(fresh, fresh_source)
 			)
@@ -285,9 +275,9 @@ func _verify_generated_resource_transaction() -> void:
 				"fresh %s restore requires and accepts an exact-source retry" % stage
 			)
 		else:
-			_assert_claim_whole(fresh, source_id, "node_02", "fresh pickup restore")
+			_assert_claim_whole(fresh, source_id, "node_01", "fresh pickup restore")
 		var before_count := _count_items_for_source(fresh.host.game_state, source_id)
-		var spent_source := _node_source(fresh, "node_02")
+		var spent_source := _node_source(fresh, "node_01")
 		spent_source.set("active_character", "aster")
 		check(
 			not bool(spent_source.call("_trigger", false))
@@ -305,7 +295,7 @@ func _verify_generated_resource_transaction() -> void:
 		check(
 			str(injected_claim.get("phase", "")) == "claiming"
 			and str(injected_claim.get("recipient", "")) == "aster"
-			and not (_runtime_record(adversarial).get("completed_nodes", []) as Array).has("node_02")
+			and not (_runtime_record(adversarial).get("completed_nodes", []) as Array).has("node_01")
 			and str((adversarial.host.game_state.items[initial_item_id] as Dictionary).get(
 				"holder", ""
 			)) == "peris",
@@ -489,126 +479,6 @@ func _verify_physical_cache_transaction() -> void:
 	await _free_pair(pair)
 
 
-func _verify_spillway_source_transaction() -> void:
-	print("\n--- exact spillway-catch transaction ---")
-	var pair := await _boot_pair(TEACHING_SPEC)
-	var host: AuthorityHost = pair.host
-	var chunk: Node = pair.chunk
-	var cache: Dictionary = chunk.get("_hydraulic_spillway_food_cache")
-	var source_id := str(cache.get("resource_source_id", ""))
-	var source: Node = cache.get("interactable", null)
-
-	check(
-		source != null
-		and source_id != ""
-		and not bool(chunk.call("_collect_hydraulic_spillway_food", "aster")),
-		"retired spillway helper cannot mint or collect a dormant payload"
-	)
-	check(
-		_prepare_spillway_delivery(pair),
-		"physical controls carry the exact spillway payload to its catch"
-	)
-	var source_position := _source_position(pair, source)
-	var initial_item_id := str(_claim(pair, source_id).get("item_id", ""))
-	_assert_claim_available(pair, source_id, "arrived spillway source")
-	check(
-		initial_item_id != ""
-		and source_position != Vector3.INF
-		and _count_items_for_source(host.game_state, source_id) == 1,
-		"spillway arrival owns one exact item and data-space service point"
-	)
-
-	source.emit_signal("interacted")
-	check(
-		str(_claim(pair, source_id).get("phase", "")) == "available",
-		"direct catch signal emission cannot consume the arrived payload"
-	)
-	host.set_preview_character_position("aster", source_position + Vector3(10.0, 0.0, 0.0))
-	source.set("active_character", "aster")
-	check(
-		not bool(source.call("_trigger", false))
-		and str(_claim(pair, source_id).get("item_id", "")) == initial_item_id,
-		"a distant body cannot collect the arrived spillway payload"
-	)
-	host.set_preview_character_position("aster", source_position)
-	host.set_preview_character_position("peris", source_position + Vector3(10.0, 0.0, 0.0))
-	source.set("active_character", "peris")
-	check(
-		not bool(source.call("_trigger", false)),
-		"a remote selected actor cannot borrow another body's catch proximity"
-	)
-
-	var captures := {}
-	var runtime_key := str(chunk.call("_generated_runtime_authority_key"))
-	host.game_state.interactable_triggered.connect(
-		func(interactable_id: String, _actor: String) -> void:
-			if interactable_id == str(source.get("data_id")) \
-					and not captures.has("accepted"):
-				captures["accepted"] = _capture(pair)
-	)
-	host.game_state.world_state_changed.connect(
-		func(key: String, _value: Variant) -> void:
-			if key == runtime_key \
-					and str(_claim(pair, source_id).get("phase", "")) == "claiming" \
-					and not captures.has("committed"):
-				captures["committed"] = _capture(pair)
-	)
-	host.game_state.item_picked_up.connect(
-		func(_character_id: String, item_id: String) -> void:
-			if str(_item_properties(host.game_state, item_id).get(
-				"generated_resource_source_id", ""
-			)) == source_id and not captures.has("pickup"):
-				captures["pickup"] = _capture(pair)
-	)
-	host.set_preview_active_character("peris")
-	host.set_preview_character_position("aster", source_position)
-	source.set("active_character", "aster")
-	check(
-		bool(source.call("_trigger", false)),
-		"nearby Aster collects at the catch while Peris remains selected"
-	)
-	check(
-		captures.has("accepted")
-		and captures.has("committed")
-		and captures.has("pickup"),
-		"spillway claim exposes accepted-source, CLAIMING, and pickup boundaries"
-	)
-	_assert_claim_whole(pair, source_id, "node_04", "completed spillway source")
-
-	for stage in ["accepted", "committed", "pickup"]:
-		if not captures.has(stage):
-			continue
-		var fresh := await _boot_pair(TEACHING_SPEC)
-		_apply_snapshot(fresh, captures[stage])
-		var fresh_cache: Dictionary = fresh.chunk.get("_hydraulic_spillway_food_cache")
-		var fresh_source: Node = fresh_cache.get("interactable", null)
-		if stage in ["accepted", "committed"]:
-			_assert_claim_available(
-				fresh, source_id, "fresh spillway %s restore" % stage
-			)
-			fresh.host.set_preview_character_position(
-				"aster", _source_position(fresh, fresh_source)
-			)
-			fresh_source.set("active_character", "aster")
-			check(
-				bool(fresh_source.call("_trigger", false)),
-				"fresh spillway %s restore requires an exact-source retry" % stage
-			)
-		else:
-			_assert_claim_whole(
-				fresh, source_id, "node_04", "fresh spillway pickup restore"
-			)
-		var before_count := _count_items_for_source(fresh.host.game_state, source_id)
-		fresh_source.set("active_character", "aster")
-		check(
-			not bool(fresh_source.call("_trigger", false))
-			and _count_items_for_source(fresh.host.game_state, source_id) == before_count,
-			"fresh spillway %s restore remains exact-once" % stage
-		)
-		await _free_pair(fresh)
-	await _free_pair(pair)
-
-
 func _verify_exact_exit_and_atomic_rest() -> void:
 	print("\n--- exact EXIT roster and atomic paid rest ---")
 	var pair := await _boot_pair(TEACHING_SPEC)
@@ -617,9 +487,8 @@ func _verify_exact_exit_and_atomic_rest() -> void:
 	check(_solve_before_exit(chunk), "teaching route reaches the decision immediately before EXIT")
 	var state: Dictionary = chunk.call("get_preview_state")
 	check(
-		bool(state.get("hydraulic_exit_unlocked", false))
-		and bool(chunk.call("_all_mandatory_branch_spans_bridged")),
-		"EXIT probe has resolved hydraulic and branch prerequisites"
+		bool(chunk.call("_all_mandatory_branch_spans_bridged")),
+		"EXIT probe has resolved its mandatory branch prerequisites"
 	)
 	_place_party_at_spawns(pair)
 	var roster := _active_roster(chunk)
@@ -834,94 +703,14 @@ func _verify_committed_payload_delivery() -> void:
 	await _free_pair(pair)
 
 
-func _verify_bridge_seated_publication() -> void:
-	print("\n--- bridge seated publication ---")
-	var pair := await _boot_pair(TEACHING_SPEC)
-	var host: AuthorityHost = pair.host
-	var chunk: Node = pair.chunk
-	check(
-		_trigger_control(pair, "_hydraulic_first_control"),
-		"bridge probe opens First Sluice"
-	)
-	host.scheduler.advance_ticks(4.3)
-	check(
-		_trigger_control(pair, "_hydraulic_cistern_control"),
-		"bridge probe starts physical cargo transport"
-	)
-	var transporting_snapshot := _capture(pair)
-	var runtime_key := str(chunk.call("_generated_runtime_authority_key"))
-	var seated_signal_keys: Array[String] = []
-	var seated_authorities: Array[Dictionary] = []
-	var seated_topology_observations: Array[bool] = []
-	var seated_captures := {}
-	host.game_state.world_state_changed.connect(
-		func(key: String, value: Variant) -> void:
-			var announces_seated := (
-				(key == runtime_key and value is Dictionary \
-					and str((value as Dictionary).get("bridge_cargo_phase", "")) == "seated")
-				or (key == CARGO_PHASE_KEY and str(value) == "seated")
-				or (key == CARGO_MILESTONE_KEY and value is Dictionary \
-					and str((value as Dictionary).get("phase", "")) == "seated")
-			)
-			if not announces_seated:
-				return
-			seated_signal_keys.append(key)
-			seated_authorities.append(_runtime_record(pair).duplicate(true))
-			seated_topology_observations.append(_bridge_blockers_match(chunk, false))
-			if not seated_captures.has("snapshot"):
-				seated_captures["snapshot"] = _capture(pair)
-	)
-	host.scheduler.advance_ticks(3.001)
-	check(
-		seated_signal_keys == [runtime_key, CARGO_PHASE_KEY, CARGO_MILESTONE_KEY],
-		"canonical seated record publishes before both compatibility signals"
-	)
-	var all_signal_states_whole := not seated_authorities.is_empty()
-	for authority in seated_authorities:
-		if not _bridge_authority_is_whole(authority):
-			all_signal_states_whole = false
-	check(
-		all_signal_states_whole and not seated_topology_observations.has(false),
-		"every 'seated' observer sees installed bridge, main flow, router, and open topology"
-	)
-
-	_apply_snapshot(pair, transporting_snapshot)
-	check(
-		str((chunk.call("get_preview_state") as Dictionary).get("bridge_cargo_phase", ""))
-		== "transporting"
-		and _bridge_blockers_match(chunk, true),
-		"same-instance rollback restores the physical gap blocker with transporting state"
-	)
-
-	if seated_captures.has("snapshot"):
-		var fresh := await _boot_pair(TEACHING_SPEC)
-		_apply_snapshot(fresh, seated_captures.snapshot)
-		var fresh_state: Dictionary = fresh.chunk.call("get_preview_state")
-		check(
-			_bridge_authority_is_whole(_runtime_record(fresh))
-			and str(fresh_state.get("bridge_cargo_phase", "")) == "seated"
-			and _bridge_blockers_match(fresh.chunk, false),
-			"fresh first-signal restore derives seated visuals and traversable topology"
-		)
-		check(
-			str(fresh.host.game_state.get_world_state(CARGO_PHASE_KEY, "")) == "seated"
-			and str((fresh.host.game_state.get_world_state(CARGO_MILESTONE_KEY, {}) as Dictionary).get(
-				"phase", ""
-			)) == "seated",
-			"fresh canonical restore advances compatibility keys captured one publication behind"
-		)
-		await _free_pair(fresh)
-	await _free_pair(pair)
-
-
-func _boot_pair(spec_path: String, branches_enabled := true) -> Dictionary:
+func _boot_pair(spec_id: String, branches_enabled := true) -> Dictionary:
 	var host := AuthorityHost.new()
 	host.setup()
 	root.add_child(host)
 	var chunk := CHUNK_SCENE.instantiate()
 	chunk.configure_chunk(
 		{
-			"spec_path": spec_path,
+			"spec_path": Catalog.path(spec_id),
 			"game_mode": "neutral",
 			"food_test": "neutral",
 			"branches": branches_enabled,
@@ -934,69 +723,10 @@ func _boot_pair(spec_path: String, branches_enabled := true) -> Dictionary:
 		await process_frame
 	host.grid = GridWorld.from_data(chunk.call("get_grid_data"))
 	host.game_state.grid = host.grid
+	chunk.call("on_game_state_grid_ready")
 	chunk.call("reset_preview_state")
 	await process_frame
 	return {"host": host, "chunk": chunk}
-
-
-func _trigger_control(pair: Dictionary, field_name: String, actor := "aster") -> bool:
-	var source_v: Variant = pair.chunk.get(field_name)
-	if not (source_v is Node) or not is_instance_valid(source_v):
-		return false
-	var source := source_v as Node
-	var position_v: Variant = pair.chunk.call(
-		"_generated_interaction_data_position", source
-	)
-	if not (position_v is Vector3):
-		return false
-	pair.host.game_state.snap_character_to(actor, position_v as Vector3)
-	source.set("active_character", actor)
-	return bool(source.call("_trigger", false))
-
-
-func _prepare_spillway_delivery(pair: Dictionary) -> bool:
-	var solution_v: Variant = pair.chunk.call("get_solution_script")
-	if not (solution_v is Dictionary):
-		return false
-	var solution := solution_v as Dictionary
-	var consumed_actions := {}
-	# The release control is physically beyond branch_00's unresolved span. Replay
-	# the same per-node interleave as the golden path, including its mandatory
-	# producer action, rather than invoking the hydraulic verbs in isolation.
-	for node_id in ["entry", "node_01", "node_02", "node_03"]:
-		pair.chunk.call(
-			"_apply_solution_world_actions_before_node",
-			solution,
-			node_id,
-			consumed_actions
-		)
-	var prepared_state := pair.chunk.call("get_preview_state") as Dictionary
-	if not bool(prepared_state.get("first_sluice_open", false)) \
-			or not bool(prepared_state.get("cistern_bridge_installed", false)):
-		return false
-	var diverter_v: Variant = pair.chunk.get("_hydraulic_diverter_control")
-	var diverter_succeeded := (
-		diverter_v is Node
-		and bool(pair.chunk.call(
-		"_headless_trigger_hydraulic_control", diverter_v as Node
-		))
-	)
-	if not diverter_succeeded:
-		return false
-	var launch_tick := float(pair.chunk.get("_spillway_delivery_launch_tick"))
-	var arrival_succeeded := (
-		launch_tick >= 0.0
-		and bool(pair.chunk.call(
-		"_headless_advance_scheduler_to", launch_tick + 2.6
-		))
-	)
-	if not arrival_succeeded:
-		return false
-	return (
-		str((pair.chunk.call("get_preview_state") as Dictionary).get(
-			"spillway_delivery_phase", ""
-		)) == "available"
-	)
 
 
 func _free_pair(pair: Dictionary) -> void:
@@ -1287,32 +1017,6 @@ func _remove_payloads_from_serialized_game_state(snapshot: Dictionary, item_ids:
 		for index in range(hands.size()):
 			if item_ids.has(str(hands[index])):
 				hands[index] = null
-
-
-func _bridge_authority_is_whole(authority: Dictionary) -> bool:
-	var router := authority.get("flow_router", {}) as Dictionary
-	return (
-		str(authority.get("bridge_cargo_phase", "")) == "seated"
-		and bool(authority.get("cistern_bridge_installed", false))
-		and bool(authority.get("main_current_restored", false))
-		and not bool(authority.get("borrowed_current_diverted", true))
-		and str(authority.get("hydraulic_phase", "")) == "exit_ready"
-		and str(router.get("current_route", "")) == "main"
-	)
-
-
-func _bridge_blockers_match(chunk: Node, expected_blocked: bool) -> bool:
-	var host: AuthorityHost = chunk.get("host")
-	if host == null or host.game_state.grid == null:
-		return false
-	var cells: Array = chunk.call("_hydraulic_bridge_blocker_cells")
-	if cells.is_empty():
-		return false
-	for cell_v in cells:
-		var cell := cell_v as Vector2i
-		if host.game_state.grid.dynamic_blockers.has(cell) != expected_blocked:
-			return false
-	return true
 
 
 func check(condition: bool, label: String) -> void:

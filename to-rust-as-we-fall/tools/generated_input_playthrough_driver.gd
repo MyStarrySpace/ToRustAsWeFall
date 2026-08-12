@@ -13,9 +13,10 @@ const AgentPlayerInputDriverScript := preload(
 const StretchSeedCatalogScript := preload(
 	"res://scripts/generation/stretch_seed_catalog.gd"
 )
+const SpecCatalog := preload("res://scripts/generation/stretch_spec_catalog.gd")
 
 const PARTY_IDS := ["aster", "peris", "endo"]
-const AUTHORED_HYDRAULIC_CASE_ID := "teaching_channels_spiral"
+const AUTHORED_TEACHING_CASE_ID := SpecCatalog.TEACHING_SPEC
 const TARGET_COMPLETION_TIMEOUT_SECONDS := 42.0
 const PLAYTHROUGH_TIMEOUT_SECONDS := 300.0
 const MAX_PLAYER_DECISIONS := 96
@@ -132,7 +133,7 @@ func _run() -> void:
 
 
 func _choose_case_through_visible_menu(preview: Node) -> bool:
-	if case_id == AUTHORED_HYDRAULIC_CASE_ID:
+	if case_id == AUTHORED_TEACHING_CASE_ID:
 		var generated_button := _find_button(preview, "Generated Stretch")
 		if generated_button == null:
 			_fail("Generated Stretch button was not found")
@@ -764,8 +765,8 @@ func _record_decision(
 
 
 func _preferred_active_character() -> String:
-	# Peris owns the hydraulic read/interaction grammar in this maintained case.
-	return "peris" if case_id == AUTHORED_HYDRAULIC_CASE_ID else ""
+	# Peris anchors camera and interaction focus for the authored teaching case.
+	return "peris" if case_id == AUTHORED_TEACHING_CASE_ID else ""
 
 
 func _autonomous_focus_matches(preview: Node, expected_character: String) -> bool:
