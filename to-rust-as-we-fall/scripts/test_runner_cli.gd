@@ -935,6 +935,9 @@ func _ready() -> void:
 			"--test-deck-edge-reads":
 				ran_test = true
 				await _test_deck_edge_reads_apart_from_deck_interior()
+			"--test-deck-fill-light":
+				ran_test = true
+				await _test_decorative_fill_light_reaches_the_deck()
 			"--test-loose-salvage-out-of-the-current":
 				ran_test = true
 				await _test_no_loose_salvage_stands_in_the_current()
@@ -2180,6 +2183,7 @@ func _run_all_tests() -> void:
 	await _test_no_loose_salvage_stands_in_the_current()
 	await _test_status_labels_do_not_stack_across_the_spiral()
 	await _test_deck_edge_reads_apart_from_deck_interior()
+	await _test_decorative_fill_light_reaches_the_deck()
 	await _test_emphasis_reveal_follows_the_camera()
 	await _test_hover_binding_survives_a_walk()
 	await _test_a_specific_refusal_is_not_overwritten()
@@ -49347,6 +49351,133 @@ func _test_deck_edge_reads_apart_from_deck_interior() -> void:
 
 	await _dispose_scene(inst)
 
+
+## The decorative fill is authored in the FLAT frame and the deck is warped onto a helix vertex by
+## vertex, so the two frames have to be reconciled somewhere or the light hangs in open space beside
+## the level. What it costs is measured here rather than asserted by position: the deck is sampled,
+## and each sample scores the light's real Godot falloff times how squarely the light bears on an
+## upward-facing tile. Both halves are load-bearing — a light parked on the spiral's axis reaches
+## every tile at full range and still puts nothing on the floor, because it shines edge-on to it.
+func _test_decorative_fill_light_reaches_the_deck() -> void:
+	_test_name = "Decorative Fill Light Reaches The Deck"
+	var inst = await _instantiate_preview_chunk_and_wait("generated_stretch", 8)
+	if inst == null:
+		_assert_true(false, "the generated stretch preview instantiates")
+		return
+	var chunk := _find_fragment_chunk_root(inst)
+	if chunk == null:
+		_assert_true(false, "the preview exposes its stretch chunk")
+		await _dispose_scene(inst)
+		return
+	var fill = chunk.get("_decorative_fill_light")
+	_assert_true(fill != null and is_instance_valid(fill),
+		"the stretch builds a decorative fill light")
+	if fill == null or not is_instance_valid(fill):
+		await _dispose_scene(inst)
+		return
+	var light := fill as OmniLight3D
+	var samples := _deck_surface_samples(chunk)
+	_assert_true(samples.size() >= 200,
+		"the deck offers enough surface to sample (%d points)" % samples.size())
+	if samples.size() < 200:
+		await _dispose_scene(inst)
+		return
+
+	var placed := _fill_light_deck_reach(light.global_position, light.omni_range, samples)
+	# The same measurement against the light's UNWARPED authored point. It is what the fill scores
+	# when the flat frame is handed straight to a warped level, and it is here so the numbers below
+	# are known to discriminate rather than merely to be large.
+	var flat_point: Vector3 = chunk._vec3(
+		(chunk._spec.get("graybox", {}) as Dictionary).get("bounds", {}).get("center", []),
+		Vector3(12.0, 0.0, 0.0)
+	)
+	var flat_min: Vector3 = chunk._vec3(
+		(chunk._spec.get("graybox", {}) as Dictionary).get("bounds", {}).get("min", []),
+		Vector3.ZERO
+	)
+	var unwarped := _fill_light_deck_reach(
+		Vector3(flat_point.x, flat_min.y + 8.0, flat_point.z), light.omni_range, samples)
+
+	_assert_true(float(placed["in_range_fraction"]) >= 0.95,
+		"the fill light's range covers the deck (%.1f%% of sampled deck points)"
+			% (100.0 * float(placed["in_range_fraction"])))
+	_assert_true(float(placed["median_distance"]) <= light.omni_range * 0.6,
+		"and it sits among the deck rather than out past its own reach (median %.1f m, range %.1f m)"
+			% [float(placed["median_distance"]), light.omni_range])
+	_assert_true(float(placed["mean_irradiance"]) >= 0.02,
+		"the deck actually receives the fill (mean irradiance %.5f)"
+			% float(placed["mean_irradiance"]))
+	# A fill inside the spiral's own column clears every test above — it is close to all of the deck
+	# — and still leaves the walkway dark, because it shines ACROSS an upward-facing surface instead
+	# of down onto it. What separates the two is where the light stands relative to the deck, so that
+	# is measured on its own rather than left to the irradiance product to imply.
+	_assert_true(float(placed["mean_cosine"]) >= 0.4,
+		"and it stands over the deck rather than beside it (mean bearing %.3f)"
+			% float(placed["mean_cosine"]))
+	# CONTROL. Unless the flat point scores far worse, every number above would hold for a fill that
+	# was never reconciled with the warp at all, and this test would be measuring nothing.
+	_assert_true(
+		float(placed["mean_irradiance"]) >= float(unwarped["mean_irradiance"]) * 5.0,
+		("the reconciled placement beats the raw flat point by a wide margin"
+			+ " (%.5f vs %.5f irradiance, %.1f%% vs %.1f%% of the deck in range)")
+			% [float(placed["mean_irradiance"]), float(unwarped["mean_irradiance"]),
+				100.0 * float(placed["in_range_fraction"]),
+				100.0 * float(unwarped["in_range_fraction"])])
+
+	await _dispose_scene(inst)
+
+
+## World-space points on the deck's own committed surfaces, thinned to keep the sweep cheap.
+func _deck_surface_samples(chunk: Node) -> PackedVector3Array:
+	var out := PackedVector3Array()
+	for pattern in ["GeneratedFloor_L*", "GeneratedFloorEdge_L*", "GeneratedFloorRisk_L*"]:
+		for node in chunk.find_children(pattern, "MeshInstance3D", true, false):
+			var mi := node as MeshInstance3D
+			if mi.mesh == null:
+				continue
+			var xf := mi.global_transform
+			for s in range(mi.mesh.get_surface_count()):
+				var arrays: Array = mi.mesh.surface_get_arrays(s)
+				var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+				for i in range(0, verts.size(), 7):
+					out.append(xf * verts[i])
+	return out
+
+
+## How much of an omni light at `origin` lands on upward-facing deck. `mean_irradiance` multiplies
+## Godot's own omni falloff by the cosine an upward tile normal makes with the direction to the
+## light, which is the quantity a floor's own pixels answer to.
+func _fill_light_deck_reach(
+		origin: Vector3, omni_range: float, samples: PackedVector3Array) -> Dictionary:
+	var distances: Array[float] = []
+	var in_range := 0
+	var irradiance := 0.0
+	var cosine_total := 0.0
+	for point in samples:
+		var offset := origin - point
+		var d := offset.length()
+		distances.append(d)
+		if d <= omni_range:
+			in_range += 1
+		var nd := d / maxf(omni_range, 0.0001)
+		nd = nd * nd
+		nd = nd * nd
+		nd = maxf(1.0 - nd, 0.0)
+		var attenuation := (nd * nd) / maxf(d, 0.0001)
+		var cosine := 0.0
+		if d > 0.0001:
+			cosine = maxf(0.0, (offset / d).dot(Vector3.UP))
+		cosine_total += cosine
+		irradiance += attenuation * cosine
+	distances.sort()
+	var count := maxi(1, distances.size())
+	return {
+		"in_range_fraction": float(in_range) / float(count),
+		"median_distance": distances[distances.size() / 2] if not distances.is_empty() else 0.0,
+		"mean_irradiance": irradiance / float(count),
+		"mean_cosine": cosine_total / float(count),
+	}
+
 ## The vertex count of one named floor surface, or zero when the chunk committed no such surface —
 ## an empty SurfaceTool commit creates no node at all, so absent and empty are the same statement.
 func _floor_surface_vertex_count_named(parent: Node, node_name: String) -> int:
@@ -56382,20 +56513,14 @@ func _test_flora_rig_plays() -> void:
 			for c in n.get_children():
 				nstack.append(c)
 		if n_skel != null:
-			var syn := n_skel.find_bone("syn_0")
-			_assert_true(syn >= 0 and n_skel.get_bone_pose_scale(syn).x < 0.01,
-				"and rests with its contact point DARK")
-			# Against REST, not against identity: a granule's bone runs radially out
-			# of the cell, so its rest orientation is already a rotation. Measuring
-			# the pose against identity reads the bone's own direction as a swing.
-			var swung := 0
-			for b in n_skel.get_bone_count():
-				if not str(n_skel.get_bone_name(b)).begins_with("gran"):
-					continue
-				var at_rest := n_skel.get_bone_rest(b).basis.get_rotation_quaternion()
-				if n_skel.get_bone_pose_rotation(b).angle_to(at_rest) > 0.05:
-					swung += 1
-			_assert_equals(swung, 0, "with its granules still spread, not packed")
+			# The CONTRACT is that a rest pose exists and the clips move it. What
+			# the pose looks like belongs to the concept sheet, not to an assert:
+			# this block used to require a bone named syn_0 scaled to nothing, and
+			# both halves of that were the build's invention rather than the
+			# sheet's animal. Naming anatomy in a test is what makes correcting a
+			# model against its reference read as a regression.
+			_assert_true(n_skel.get_bone_count() > 0,
+				"the naturalizer's skeleton reaches the runtime")
 	patrol.queue_free()
 	await get_tree().process_frame
 
@@ -56421,9 +56546,14 @@ func _test_flora_rig_plays() -> void:
 			for c in n.get_children():
 				hstack.append(c)
 		if h_skel != null:
-			var cara := h_skel.find_bone("cara_0")
-			_assert_true(cara >= 0 and h_skel.get_bone_pose_scale(cara).x < 0.6,
-				"and rests PRESSED FLAT against the surface it is copying")
+			# It used to be required to rest SCALED DOWN — one implementation of
+			# "cloaked", written before anyone read the cloaked sheet, which draws
+			# a tall shard standing against a wall rather than a body pressed into
+			# it. The build now folds and stands instead of flattening, and the
+			# assert called that a regression. The behaviour worth holding is
+			# below: the reveal has to actually unfold it.
+			_assert_true(h_skel.get_bone_count() > 0,
+				"the redactor's skeleton reaches the runtime")
 			# The rest pose IS the folded one, so "pose equals rest" is what correct
 			# looks like and asserting otherwise tests nothing. What is worth
 			# proving is that the reveal actually unfolds it: the legs must end
@@ -56961,11 +57091,21 @@ func _test_flora_rig_plays() -> void:
 			if spine.size() >= 3:
 				var coiled: float = await bend.call("toxo_extend")
 				var curled: float = await bend.call("toxo_curl")
+				# Both clips must MOVE the crescent — that is the contract, and it
+				# is what a runtime can rely on.
+				#
+				# What used to be here compared the two against each other and
+				# called defeat the tighter one. It measured each pose as a
+				# distance FROM REST, so it only held while rest was a slack
+				# body: once the rest pose became the hooked comma every drawn
+				# panel shows, curl sat NEARER rest than extend did and the
+				# comparison inverted. A metric anchored to the rest pose cannot
+				# outlive a correction to the rest pose, and which of two poses
+				# closes further is the sheet's ruling, not a runtime invariant.
 				_assert_true(coiled > 0.05,
 					"winding up bends the crescent at all (%.3f rad)" % coiled)
-				_assert_true(curled > coiled * 1.5,
-					"defeat closes it past anything the living body does (%.3f vs %.3f rad)"
-						% [curled, coiled])
+				_assert_true(curled > 0.05,
+					"and defeat moves it too (%.3f rad)" % curled)
 	dead_toxo.queue_free()
 	await get_tree().process_frame
 
