@@ -2767,3 +2767,17 @@ the ruling:
 - **GENERATED** pieces (archetype/district piece sets, channels, stacks) — the script
   is the truth and the blend is an artefact, so keep ignoring it. These are the ones
   regenerated wholesale, and they are exactly the churn that would balloon the repo.
+
+### sapscrap patchwork read — CAUSE FOUND, fix specified, not yet executed
+
+Director, from the live viewport: "why does it look like it's made of patchwork".
+Because `paint_sapscrap.py:border_lines()` draws a 2px dark seam along every UV
+ISLAND boundary, and the shell is 42 smart_project islands. Island borders are
+packing artefacts — they land mid-facet wherever the projector cut — so every patch
+wears a stitched rim in an arbitrary place. The zigzag is those seams rasterised at
+512px nearest-filtered.
+
+THE FIX: seams belong on GEOMETRICALLY SHARP edges (dihedral angle > ~35 deg), not
+island borders. border_lines already walks per-face edge data from the uv manifest;
+replace the island-membership test with a crease-angle test so dark lines trace the
+shell's real plates and UV cuts get no line. Then repaint, re-export, species gate.
