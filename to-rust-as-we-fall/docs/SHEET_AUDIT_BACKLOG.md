@@ -2405,3 +2405,34 @@ silently, which is the whole point of a declaration.
 Verified against the live blend rather than by rebuilding: a full flora regen would
 rewrite every flora asset for a two-line change, and the pipeline law warns that batch
 regen clobbers hand work.
+
+### climbvine — it was a bare stick, because its rootlets were built as specks
+
+Director: *"do the flora LOOK RIGHT"*. No. Rendering all eleven and comparing to the
+sheets, the Climbvine read as a peeled twig with a few dark marks — while its own
+brief says the rootlets ARE the piece and the rope is only what they hold on to.
+
+The rootlets were there all along. They were just built at a size that could not
+read: `CV_ROOT_LEN = 0.12` against a stalk of radius 0.05 — a rootlet barely longer
+than the stalk is thick — at three per node, spanning a 97-degree arc so the whole
+whorl sat on one flank like a comb. The sheet throws five to eight curling rootlets
+per node, reaching several times the node's diameter, radiating BOTH ways around it.
+
+Now `CV_ROOT_LEN = 0.34`, seven per node, over a 240-degree arc still centred on the
+substrate side (the vine is authored gripping something behind it). The card reads as
+a vine with gripping collars instead of a stick.
+
+**Four previous passes had worked on these rootlets and left them invisible.** Worth
+naming why: every one of those passes was tuning node SPACING and count — which
+whorls flush in sequence, how many internodes to leave for the eye to measure the
+swelling against — all of it correct, and all of it invisible at a rootlet length of
+0.12. The thing was measured, reasoned about and rigged correctly while being too
+small to see.
+
+Still off the sheet: its nodes should be chunky faceted knuckles and mine are dark
+bands where the rootlet cards meet the stalk — those blotches read as an alpha or
+material seam rather than a swelling.
+
+Gates: UV audit 11 of 11 PASS, rig PASS 22 bones, scene load green. Only the
+Climbvine's four files changed — every other flora piece rebuilt byte-identical, so
+the chain is deterministic and this did not disturb anything else.
