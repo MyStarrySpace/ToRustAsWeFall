@@ -2720,3 +2720,50 @@ meshes, `Sapscrap_Rig`, and all four actions — `Sapscrap_Idle`, `Sapscrap_Wind
 three arms and a small hub maw, and the build is still maw-dominant. But that rebuild
 must start from the RECOVERED file or from a chain that actually reproduces all four
 objects, not from `build_sapscrap.py` as it stands.
+
+### sapscrap mouth rim — FIXED, and the tripod finding is WITHDRAWN
+
+**Director: the approved Sapscrap is the SPHERICAL body with three limbs that was
+already in the model — the only fix it needed was the mouth rim.** My previous entry
+read the three-arm-bud action sheet as the approved design and concluded the build was
+the wrong body plan. That conclusion is withdrawn. The build's body plan was right all
+along; I found a sheet for a different variant and treated it as the spec.
+
+**The rim.** Measured against the shell: `Sapscrap_Mouth_Ring` spanned 0.917 across a
+body 1.406 wide — **65%** of the whole creature, which is the "what is this big ring"
+complaint. Scaled about its own centre to **40%** (0.568 across), it reads as a rim
+around the maw instead of a collar swallowing the front.
+
+Exported and shipped; scene load ALL PASSED.
+
+**Two things learned the hard way, both worth keeping.**
+
+1. **The gltf round-trip is not a faithful source recovery for UV auditing.** Importing
+   the shipped gltf gives back four meshes, the rig and all four actions — but it
+   SPLITS every face: the shell comes back with 1792 open edges on 1794 verts, so no
+   two faces share an edge. The fold check's adjacency exclusion is then inert and
+   adjacent-in-UV faces count as folds (3 reported here where the welded original had
+   0). The geometry and animation survive the round trip; the topology does not.
+2. **The chain-built blend had lost the materials.** My earlier card render of this
+   piece came out flat grey and I nearly reported it as untextured. The recovered
+   version renders correctly — mauve shell, dark seams, gold marks — which is one more
+   proof that `build_sapscrap.py` does not reproduce this asset.
+
+### SOURCE OF TRUTH (director, 2026-08-12): concept images -> blender model
+
+Not the generation scripts. The chain is **concept image -> .blend**, and the scripts
+are neither end of it. This settles the ambiguity that destroyed the Sapscrap's source:
+a script that claimed to build the asset and a blend that had diverged, with nothing
+marking which was authoritative.
+
+**Tracking the blends, with the numbers.** 216 `.blend` files, 182.9 MB total, 0.85 MB
+mean, against a `.git` already at 605 MB. The one-time cost is affordable; the risk is
+CHURN, because git stores each version of a binary whole. The split that follows from
+the ruling:
+
+- **AUTHORED** pieces (fauna, flora, hero assets) — the blend IS the truth, so track
+  it. Churn is naturally low because these are edited live and saved when a pass is
+  finished, not rewritten by a chain on every tweak.
+- **GENERATED** pieces (archetype/district piece sets, channels, stacks) — the script
+  is the truth and the blend is an artefact, so keep ignoring it. These are the ones
+  regenerated wholesale, and they are exactly the churn that would balloon the repo.
