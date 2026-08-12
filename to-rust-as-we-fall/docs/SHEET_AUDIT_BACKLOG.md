@@ -647,3 +647,52 @@ The Climbvine's defining feature — the swollen node carrying a rootlet whorl �
 **States with no clip:**
 - climbvine_crest — the over-the-lip pose from the two bottom-right wall panels (the vine running up a face, bending over the top edge, and continuing on the far side). No clip poses the 9-bone `vine` chain into it, and the module cannot be tiled into the read either: `_cv_x(0)=0` vs `_cv_x(9)=0.068`, and r(ring 1)=0.069 vs r(ring 9)=0.035, so head-to-tail instances jog laterally and step in diameter — against the brief's 'establishes a continuous climb line' and 'keeping the route silhouette continuous'.
 - climbvine_coil — the roughly 1.5-turn coil in the bottom-left severed panel. `climbvine_harvest` is a 0.7 s bone-scale reset that produces no coil and no cut face; the sibling `VineCutRigged` is parked in a 'lazy curve' with sling/gather clips, which is not the tight coil the sheet draws.
+
+## unwelded limb chains — measured sweep (2026-08-11)
+
+Every fauna build was scanned for UNWELDED SEAMS: open edges lying coincident
+with another open edge. A card's boundary is a real boundary and is fine; two
+abutting rings that were never welded show up as pairs of open edges on top of
+each other, which is the signature.
+
+| build | verts | open | seam pairs | verdict |
+| --- | --- | --- | --- | --- |
+| hidra | 810 | 774 | **732** | the coil is 62 abutting prisms — visibly loose blocks |
+| gnawer | 234 | 32 | **12** | four leg chains |
+| toxo | 194 | 12 | 0 | fixed 2026-08-11 (was 92 open) |
+| candid, crust, flare, meeb, naturalizer, redactor, spiker, tangler | — | — | 0 | clean; their open edges are card perimeters and designed openings (the Meeb's bored cups, the Crust's craters) |
+
+**The Hidra is the worst asset defect currently shipping.** Its body is one run
+from tail cap to cutting tip, emitted as 62 separate prisms along a helix. A
+helix changes axis at every joint, so every one of the 61 abutments is a real
+gap — the creature reads as a stack of loose chunks strung on a wire, not a
+coil. Worth knowing: the coil went through four revision passes that never
+landed. They were adjusting proportions on a body that was never one surface.
+
+### What a fix must respect (found by an adversarial review of two auto-drafted plans; both were REFUTED)
+
+1. **The weight boundary may not land on the recess span.** With exclusive
+   weights the crease falls on exactly one span per link, and the naive "a bone
+   claims the ring at its TIP" rule puts it on the 12.5 mm pinch
+   (`0.16 * SEG_LEN`), which cannot carry the shipped ~32.7 deg per-link bend —
+   all 19 joints fold back through themselves. The boundary belongs at the
+   link's own joint (`_spine(i)`), whose span is `0.45 * SEG_LEN` ~ 35 mm.
+   The same tip-claiming rule IS correct on the Toxo, because its stations are
+   evenly spaced and there is no short span to land on. The rule is not
+   portable; the span lengths decide it.
+2. **The body carries TWO parts.** `hd_recess` (the dark joint band) alternates
+   with `hd_body`, and `Builder.tube` takes one part — a naive conversion erases
+   the dark joints. Either `tube` learns a per-span part (one welded ring set,
+   one atlas group per contiguous part-run, which works because UVs are
+   per-loop so a shared ring may hold a different corner key in each group), or
+   the recess moves entirely into the drawn skin card, which already paints
+   "a near-black recess at every joint".
+3. **`SEG_START` is read by the conduit surgery**, not only by the weighting.
+   One tube emits rings consecutively and that index scheme stops existing.
+4. **Re-audit UVs after.** A rebuild invalidates them, and the packer's tube
+   island is new.
+
+Gnawer is the same defect at four legs, plus a real behavioural change the
+review caught: the shin currently swings RIGIDLY about the knee and would shear
+after a conversion, so its clips need re-checking rather than assuming the
+silhouette holds.
